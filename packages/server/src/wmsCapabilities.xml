@@ -1,0 +1,1772 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE WMT_MS_Capabilities SYSTEM "http://schemas.opengeospatial.net//wms/1.1.1/capabilities_1_1_1.dtd">
+<WMT_MS_Capabilities version="1.1.1">
+	<Service>
+		<Name>OGC:WMS</Name>
+		<Title/>
+		<OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink"/>
+		<ContactInformation/>
+	</Service>
+	<Capability>
+		<Request>
+			<GetCapabilities>
+				<Format>application/vnd.ogc.wms_xml</Format>
+				<DCPType>
+					<HTTP>
+						<Get>
+							<OnlineResource xlink:href="http://kinetica.example.com:9191/gpudb-0/wms?" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+						</Get>
+						<Post>
+							<OnlineResource xlink:href="http://kinetica.example.com:9191/gpudb-0/wms?" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+						</Post>
+					</HTTP>
+				</DCPType>
+			</GetCapabilities>
+			<GetMap>
+				<Format>image/png</Format>
+				<DCPType>
+					<HTTP>
+						<Get>
+							<OnlineResource xlink:href="http://kinetica.example.com:9191/gpudb-0/wms?" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+						</Get>
+						<Post>
+							<OnlineResource xlink:href="http://kinetica.example.com:9191/gpudb-0/wms?" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+						</Post>
+					</HTTP>
+				</DCPType>
+			</GetMap>
+			<GetFeatureInfo>
+				<Format>application/json</Format>
+				<Format>text/html</Format>
+				<DCPType>
+					<HTTP>
+						<Get>
+							<OnlineResource xlink:href="http://kinetica.example.com:9191/gpudb-0/wms?" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+						</Get>
+						<Post>
+							<OnlineResource xlink:href="http://kinetica.example.com:9191/gpudb-0/wms?" xmlns:xlink="http://www.w3.org/1999/xlink"/>
+						</Post>
+					</HTTP>
+				</DCPType>
+			</GetFeatureInfo>
+		</Request>
+		<Exception>
+			<Format>application/vnd.ogc.se_xml</Format>
+		</Exception>
+		<VendorSpecificCapabilities/>
+		<Layer queryable="0">
+			<Name>Kinetica</Name>
+			<Title>Kinetica Tables</Title>
+			<Abstract/>
+			<SRS>EPSG:900913</SRS>
+			<SRS>EPSG:4326</SRS>
+			<SRS>EPSG:102100</SRS>
+			<SRS>EPSG:3857</SRS>
+			<LatLonBoundingBox maxx="180.0" maxy="90.0" minx="-180.0" miny="-90.0"/>
+			<BoundingBox SRS="EPSG:4326" maxx="180.0" maxy="90.0" minx="-180.0" miny="-90.0"/>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_views</Name>
+				<Title>TABLE: pg_catalog.pg_views</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_user</Name>
+				<Title>TABLE: pg_catalog.pg_user</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_timezone_abbrevs</Name>
+				<Title>TABLE: pg_catalog.pg_timezone_abbrevs</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_stat_all_tables</Name>
+				<Title>TABLE: pg_catalog.pg_stat_all_tables</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_shdescription</Name>
+				<Title>TABLE: pg_catalog.pg_shdescription</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_datasinks</Name>
+				<Title>TABLE: ki_catalog.ki_datasinks</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_QUERY_SPAN_METRICS_BY_SQL_STEP</Name>
+				<Title>TABLE: information_schema.KI_QUERY_SPAN_METRICS_BY_SQL_STEP</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_contexts</Name>
+				<Title>TABLE: ki_catalog.ki_contexts</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_QUERY_ACTIVE</Name>
+				<Title>TABLE: information_schema.KI_QUERY_ACTIVE</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_constraint</Name>
+				<Title>TABLE: pg_catalog.pg_constraint</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.TABLE_CONSTRAINTS</Name>
+				<Title>TABLE: information_schema.TABLE_CONSTRAINTS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_kafka_lag_info</Name>
+				<Title>TABLE: ki_catalog.ki_kafka_lag_info</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.TABLES</Name>
+				<Title>TABLE: information_schema.TABLES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_KAFKA_LAG_INFO</Name>
+				<Title>TABLE: information_schema.KI_KAFKA_LAG_INFO</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_attribute</Name>
+				<Title>TABLE: pg_catalog.pg_attribute</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.SCHEMATA</Name>
+				<Title>TABLE: information_schema.SCHEMATA</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_DATASOURCE_SUBSCRIPTIONS</Name>
+				<Title>TABLE: information_schema.KI_DATASOURCE_SUBSCRIPTIONS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.MV_DEPENDENCIES</Name>
+				<Title>TABLE: information_schema.MV_DEPENDENCIES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_QUERY_SPAN_METRICS</Name>
+				<Title>TABLE: information_schema.KI_QUERY_SPAN_METRICS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_CATALOG_VERSION</Name>
+				<Title>TABLE: information_schema.KI_CATALOG_VERSION</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.OBJECT_PRIVILEGES</Name>
+				<Title>TABLE: information_schema.OBJECT_PRIVILEGES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_matviews</Name>
+				<Title>TABLE: pg_catalog.pg_matviews</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_BACKUP_HISTORY</Name>
+				<Title>TABLE: information_schema.KI_BACKUP_HISTORY</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.APPLICABLE_ROLES</Name>
+				<Title>TABLE: information_schema.APPLICABLE_ROLES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>demo.nyctaxi</Name>
+				<Title>TABLE: demo.nyctaxi</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CONSTRAINT_COLUMN_USAGE</Name>
+				<Title>TABLE: information_schema.CONSTRAINT_COLUMN_USAGE</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_indexes</Name>
+				<Title>TABLE: ki_catalog.ki_indexes</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_datasource_subscriptions</Name>
+				<Title>TABLE: ki_catalog.ki_datasource_subscriptions</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.ATTRIBUTES</Name>
+				<Title>TABLE: information_schema.ATTRIBUTES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_settings</Name>
+				<Title>TABLE: pg_catalog.pg_settings</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_columns</Name>
+				<Title>TABLE: ki_catalog.ki_columns</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_PERIODIC_OBJECTS</Name>
+				<Title>TABLE: information_schema.KI_PERIODIC_OBJECTS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.DATABASES</Name>
+				<Title>TABLE: information_schema.DATABASES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_backup_history</Name>
+				<Title>TABLE: ki_catalog.ki_backup_history</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_rag_embeddings</Name>
+				<Title>TABLE: ki_catalog.ki_rag_embeddings</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.VIEWS</Name>
+				<Title>TABLE: information_schema.VIEWS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.FUNCTIONS</Name>
+				<Title>TABLE: information_schema.FUNCTIONS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CONTEXT_SAMPLES</Name>
+				<Title>TABLE: information_schema.CONTEXT_SAMPLES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_stat_activity</Name>
+				<Title>TABLE: pg_catalog.pg_stat_activity</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_sequences</Name>
+				<Title>TABLE: pg_catalog.pg_sequences</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.REFERENTIAL_CONSTRAINTS</Name>
+				<Title>TABLE: information_schema.REFERENTIAL_CONSTRAINTS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_timezone_names</Name>
+				<Title>TABLE: pg_catalog.pg_timezone_names</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_QUERY_HISTORY</Name>
+				<Title>TABLE: information_schema.KI_QUERY_HISTORY</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_database</Name>
+				<Title>TABLE: pg_catalog.pg_database</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_opclass</Name>
+				<Title>TABLE: pg_catalog.pg_opclass</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_QUERY_WORKERS</Name>
+				<Title>TABLE: information_schema.KI_QUERY_WORKERS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CHARACTER_SETS</Name>
+				<Title>TABLE: information_schema.CHARACTER_SETS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_RESTORE_HISTORY</Name>
+				<Title>TABLE: information_schema.KI_RESTORE_HISTORY</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_query_active_all</Name>
+				<Title>TABLE: ki_catalog.ki_query_active_all</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_HA_CONSUMERS</Name>
+				<Title>TABLE: information_schema.KI_HA_CONSUMERS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_partitioned_table</Name>
+				<Title>TABLE: pg_catalog.pg_partitioned_table</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.SEQUENCES</Name>
+				<Title>TABLE: information_schema.SEQUENCES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_LOAD_HISTORY</Name>
+				<Title>TABLE: information_schema.KI_LOAD_HISTORY</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_datasources</Name>
+				<Title>TABLE: ki_catalog.ki_datasources</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_schema_registry</Name>
+				<Title>TABLE: ki_catalog.ki_schema_registry</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>SYSTEM.ITER</Name>
+				<Title>TABLE: SYSTEM.ITER</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KI_STREAMS</Name>
+				<Title>TABLE: information_schema.KI_STREAMS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_stats</Name>
+				<Title>TABLE: pg_catalog.pg_stats</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.geometry_columns</Name>
+				<Title>TABLE: pg_catalog.geometry_columns</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.TABLE_PRIVILEGES</Name>
+				<Title>TABLE: information_schema.TABLE_PRIVILEGES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_foreign_server</Name>
+				<Title>TABLE: pg_catalog.pg_foreign_server</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.FIELDS</Name>
+				<Title>TABLE: information_schema.FIELDS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.ROLE_TABLE_GRANTS</Name>
+				<Title>TABLE: information_schema.ROLE_TABLE_GRANTS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_foreign_data_wrapper</Name>
+				<Title>TABLE: pg_catalog.pg_foreign_data_wrapper</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CONTEXT_TABLES</Name>
+				<Title>TABLE: information_schema.CONTEXT_TABLES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_class</Name>
+				<Title>TABLE: pg_catalog.pg_class</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CONTEXT_TABLE_COLUMNS</Name>
+				<Title>TABLE: information_schema.CONTEXT_TABLE_COLUMNS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.ENABLED_ROLES</Name>
+				<Title>TABLE: information_schema.ENABLED_ROLES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.INDEXES</Name>
+				<Title>TABLE: information_schema.INDEXES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.PARTITIONS</Name>
+				<Title>TABLE: information_schema.PARTITIONS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_sequence</Name>
+				<Title>TABLE: pg_catalog.pg_sequence</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_enum</Name>
+				<Title>TABLE: pg_catalog.pg_enum</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_policy</Name>
+				<Title>TABLE: pg_catalog.pg_policy</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.INFORMATION_SCHEMA_CATALOG_NAME</Name>
+				<Title>TABLE: information_schema.INFORMATION_SCHEMA_CATALOG_NAME</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_amproc</Name>
+				<Title>TABLE: pg_catalog.pg_amproc</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.KEY_COLUMN_USAGE</Name>
+				<Title>TABLE: information_schema.KEY_COLUMN_USAGE</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_datatypes</Name>
+				<Title>TABLE: ki_catalog.ki_datatypes</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_inherits</Name>
+				<Title>TABLE: pg_catalog.pg_inherits</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_functions</Name>
+				<Title>TABLE: ki_catalog.ki_functions</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_depend</Name>
+				<Title>TABLE: ki_catalog.ki_depend</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_type</Name>
+				<Title>TABLE: pg_catalog.pg_type</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_group</Name>
+				<Title>TABLE: pg_catalog.pg_group</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_users_and_roles</Name>
+				<Title>TABLE: ki_catalog.ki_users_and_roles</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_fk_constraints</Name>
+				<Title>TABLE: ki_catalog.ki_fk_constraints</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_tablespace</Name>
+				<Title>TABLE: pg_catalog.pg_tablespace</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_ha_consumers</Name>
+				<Title>TABLE: ki_catalog.ki_ha_consumers</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_ingest_file_info</Name>
+				<Title>TABLE: ki_catalog.ki_ingest_file_info</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_obj_stat</Name>
+				<Title>TABLE: ki_catalog.ki_obj_stat</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_object_permissions</Name>
+				<Title>TABLE: ki_catalog.ki_object_permissions</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_objects</Name>
+				<Title>TABLE: ki_catalog.ki_objects</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_schemas</Name>
+				<Title>TABLE: ki_catalog.ki_schemas</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_query_history</Name>
+				<Title>TABLE: ki_catalog.ki_query_history</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_tiered_objects</Name>
+				<Title>TABLE: ki_catalog.ki_tiered_objects</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_partitions</Name>
+				<Title>TABLE: ki_catalog.ki_partitions</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_periodic_objects</Name>
+				<Title>TABLE: ki_catalog.ki_periodic_objects</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_query_span_metrics_all</Name>
+				<Title>TABLE: ki_catalog.ki_query_span_metrics_all</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_language</Name>
+				<Title>TABLE: pg_catalog.pg_language</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_query_workers</Name>
+				<Title>TABLE: ki_catalog.ki_query_workers</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_description</Name>
+				<Title>TABLE: pg_catalog.pg_description</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_foreign_table</Name>
+				<Title>TABLE: pg_catalog.pg_foreign_table</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_role_members</Name>
+				<Title>TABLE: ki_catalog.ki_role_members</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_streams</Name>
+				<Title>TABLE: ki_catalog.ki_streams</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_namespace</Name>
+				<Title>TABLE: pg_catalog.pg_namespace</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_authid</Name>
+				<Title>TABLE: pg_catalog.pg_authid</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.geography_columns</Name>
+				<Title>TABLE: pg_catalog.geography_columns</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>ki_catalog.ki_load_history</Name>
+				<Title>TABLE: ki_catalog.ki_load_history</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_aggregate</Name>
+				<Title>TABLE: pg_catalog.pg_aggregate</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_attrdef</Name>
+				<Title>TABLE: pg_catalog.pg_attrdef</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_am</Name>
+				<Title>TABLE: pg_catalog.pg_am</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_amop</Name>
+				<Title>TABLE: pg_catalog.pg_amop</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_default_acl</Name>
+				<Title>TABLE: pg_catalog.pg_default_acl</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_auth_members</Name>
+				<Title>TABLE: pg_catalog.pg_auth_members</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_collation</Name>
+				<Title>TABLE: pg_catalog.pg_collation</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CONTEXT_RULES</Name>
+				<Title>TABLE: information_schema.CONTEXT_RULES</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_depend</Name>
+				<Title>TABLE: pg_catalog.pg_depend</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_event_trigger</Name>
+				<Title>TABLE: pg_catalog.pg_event_trigger</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_extension</Name>
+				<Title>TABLE: pg_catalog.pg_extension</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_range</Name>
+				<Title>TABLE: pg_catalog.pg_range</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_trigger</Name>
+				<Title>TABLE: pg_catalog.pg_trigger</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_index</Name>
+				<Title>TABLE: pg_catalog.pg_index</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_indexes</Name>
+				<Title>TABLE: pg_catalog.pg_indexes</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_locks</Name>
+				<Title>TABLE: pg_catalog.pg_locks</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_operator</Name>
+				<Title>TABLE: pg_catalog.pg_operator</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.CONTEXTS</Name>
+				<Title>TABLE: information_schema.CONTEXTS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_opfamily</Name>
+				<Title>TABLE: pg_catalog.pg_opfamily</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_policies</Name>
+				<Title>TABLE: pg_catalog.pg_policies</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_proc</Name>
+				<Title>TABLE: pg_catalog.pg_proc</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_tables</Name>
+				<Title>TABLE: pg_catalog.pg_tables</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_rewrite</Name>
+				<Title>TABLE: pg_catalog.pg_rewrite</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>information_schema.COLUMNS</Name>
+				<Title>TABLE: information_schema.COLUMNS</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+			<Layer queryable="1">
+				<Name>pg_catalog.pg_roles</Name>
+				<Title>TABLE: pg_catalog.pg_roles</Title>
+				<Abstract/>
+				<Style>
+					<Name>heatmap</Name>
+					<Title>heatmap</Title>
+				</Style>
+				<Style>
+					<Name>raster</Name>
+					<Title>raster</Title>
+				</Style>
+			</Layer>
+		</Layer>
+	</Capability>
+</WMT_MS_Capabilities>

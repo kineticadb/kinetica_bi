@@ -1,0 +1,18 @@
+{
+  "name": "kinetica-bi",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @kinetica-bi/web",
+    "dev:server": "npm run dev --workspace @kinetica-bi/server",
+    "build": "npm run build --workspace @kinetica-bi/web",
+    "build:server": "npm run build --workspace @kinetica-bi/server",
+    "preview": "npm run preview --workspace @kinetica-bi/web",
+    "test": "npm run test --workspace @kinetica-bi/web",
+    "test:server": "npm run test --workspace @kinetica-bi/server -- --run",
+    "test:all": "npm run test && npm run test:server"
+  }
+}

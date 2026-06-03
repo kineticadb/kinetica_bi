@@ -1,0 +1,3826 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f172a;
+  --panel: #111827;
+  --accent: #22c55e;
+  --accent-2: #38bdf8;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --border: #1f2937;
+  --card: rgba(255, 255, 255, 0.04);
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  /* Deep panel tone for inputs / selects / code editors. Flips in light mode. */
+  --input-bg: #0b1224;
+  /* Sidebar gradient stops (flip in light mode). */
+  --sidebar-from: #0b1224;
+  --sidebar-to: #0d142b;
+  /* Floating overlays ON the map (zoom/draw toolbars, layers legend). */
+  --map-surface: rgba(11, 18, 36, 0.85);
+  --map-surface-hover: rgba(11, 18, 36, 0.95);
+  /* Subtle chip fill + swatch border (light tint on dark; dark tint on light). */
+  --chip-bg: rgba(255, 255, 255, 0.08);
+  --swatch-border: rgba(255, 255, 255, 0.2);
+  font-family: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Light theme — overrides the variables; applied via <html data-theme="light"> ── */
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* Slate page tone so the lighter widget surfaces below read as elevated — mirrors the
+     bg/panel contrast dark mode gets for free. */
+  --bg: #e2e8f0;
+  --panel: #ffffff;
+  /* Widget/card surface: a hair off white (slate-50) so it lifts off the page without the
+     starkness of pure white. */
+  --surface: #f8fafc;
+  --accent: #16a34a;
+  --accent-2: #0284c7;
+  --text: #0f172a;
+  --muted: #64748b;
+  /* Slate-300 — more visible than slate-200 so card/table/panel outlines read on light bg. */
+  --border: #cbd5e1;
+  /* Faint tint (kept translucent so active-row/nav highlights still read). Card EDGES are
+     defined by --border + --shadow below, not the fill. */
+  --card: rgba(15, 23, 42, 0.025);
+  /* Two-layer shadow: a tight near-edge layer DEFINES the card outline + a soft lift.
+     (The old single 60px blur gave a halo but no crisp edge on a light background.) */
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 10px 28px rgba(15, 23, 42, 0.18);
+  --input-bg: #ffffff;
+  --sidebar-from: #ffffff;
+  --sidebar-to: #f1f5f9;
+  --map-surface: rgba(255, 255, 255, 0.92);
+  --map-surface-hover: rgba(255, 255, 255, 1);
+  --chip-bg: rgba(15, 23, 42, 0.06);
+  --swatch-border: rgba(15, 23, 42, 0.25);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(56, 189, 248, 0.12), transparent 32%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  /* Global typography compaction — drop the cascade default from the browser's 16px to
+     13px so unset text inherits smaller. Components with explicit font-size: Npx still
+     win the cascade; this just reduces the baseline. line-height nudged down for tighter
+     vertical rhythm. */
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* In light mode the bright corner washes lift the page toward white near the topbar and
+   eat the card/page contrast — keep only a faint brand tint so the slate canvas stays even. */
+:root[data-theme="light"] body {
+  background: radial-gradient(circle at 20% 20%, rgba(22, 163, 74, 0.04), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(2, 132, 199, 0.05), transparent 38%),
+    var(--bg);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#root {
+  min-height: 100vh;
+  display: grid;
+  /* App.tsx writes --sidebar-width on :root — 260px expanded, 56px collapsed.
+     Fallback to 260px in case the JS hasn't run yet (first paint). */
+  grid-template-columns: var(--sidebar-width, 260px) 1fr;
+  grid-template-rows: auto 1fr;
+}
+
+@media (max-width: 900px) {
+  #root {
+    grid-template-columns: 1fr;
+  }
+}
+
+.app-shell {
+  display: contents;
+}
+
+.sidebar {
+  grid-row: 1 / span 2;
+  background: linear-gradient(180deg, var(--sidebar-from), var(--sidebar-to));
+  border-right: 1px solid var(--border);
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: hidden;
+  transition: padding 0.18s ease;
+}
+
+.sidebar.collapsed {
+  padding: 28px 8px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar.collapsed .sidebar-header {
+  justify-content: center;
+}
+
+.sidebar-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.sidebar-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.logo {
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  font-size: 16px;
+}
+
+.nav-item {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 12px 14px;
+  margin-bottom: 4px;
+  text-align: left;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.sidebar.collapsed .nav-item {
+  padding: 12px 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar.collapsed .nav-label {
+  display: none;
+}
+
+.nav-item:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.nav-item.active {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.nav-icon {
+  opacity: 0.8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  justify-content: center;
+}
+
+.sidebar-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sidebar-sub {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12);
+}
+
+.main {
+  padding: 0 22px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 16px;
+  border-radius: 0;
+  box-shadow: none;
+  /* Pull flush with the page edges so the bar abuts the top + the sidebar without a gutter */
+  margin: 0 -22px;
+}
+
+/* Topbar-scoped compaction — keep the buttons usable but trim the chrome height */
+.topbar .ghost {
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.topbar .avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.ghost:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-2);
+  color: #0b1224;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.kpi-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 6px 0;
+}
+
+.kpi-delta {
+  font-size: 13px;
+}
+
+.kpi-delta.up {
+  color: var(--accent);
+}
+
+.kpi-delta.down {
+  color: #ef4444;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 14px 10px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Light mode: give cards a solid white surface (the translucent --card tint is too faint
+   against the page and made widgets blend into the dashboard). --card stays translucent for
+   the row/nav highlights that need to show the surface beneath them. */
+:root[data-theme="light"] .card,
+:root[data-theme="light"] .widget-card {
+  background: var(--surface);
+}
+
+.card-dense {
+  padding-top: 10px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-weight: 700;
+}
+
+.card-sub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.card-body {
+  width: 100%;
+  height: 100%;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.dashboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboards-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dash-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dash-name {
+  font-weight: 700;
+}
+
+.dash-desc {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.dash-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dash-grid {
+  grid-template-columns: 1.5fr 2fr 1.5fr auto;
+}
+
+/* Dashboard open page */
+.dashboard-open {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Flushed header — no card chrome, minimal vertical padding so the action bar
+   (Tables / Visualizations / Map Layers) sits tight against the Topbar and
+   leaves more vertical real estate for the dashboard grid below. */
+.dashboard-open-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 0 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dashboard-open-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.dashboard-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.dashboard-grid {
+  min-height: 200px;
+}
+
+.widget-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.widget-drag-handle {
+  cursor: grab;
+}
+
+.widget-drag-handle:active {
+  cursor: grabbing;
+}
+
+.widget-title {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+}
+
+.widget-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widget-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.widget-remove:hover {
+  color: #ef4444;
+}
+
+.widget-body {
+  flex: 1;
+  padding: 10px 14px;
+  overflow: hidden;
+}
+
+/* react-grid-layout overrides */
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent) !important;
+  opacity: 0.15 !important;
+  border-radius: 12px;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: var(--muted) !important;
+  border-bottom-color: var(--muted) !important;
+}
+
+.dash-tables-grid {
+  grid-template-columns: 2fr 1fr 1fr auto;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+}
+
+.modal-content {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.modal-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px 0;
+}
+
+.modal-section-title-spaced {
+  margin-top: 20px;
+}
+
+.confirm-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.confirm-prompt {
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: white;
+  border: 1px solid #dc2626;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+/* Datasets page */
+.datasets-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ds-header,
+.ds-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.5fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.ds-header {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+
+.ds-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.ds-row:last-child {
+  border-bottom: none;
+}
+
+.ds-name {
+  font-weight: 700;
+}
+
+.ds-schema {
+  color: var(--muted);
+}
+
+.ds-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ds-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ghost-sm {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.2s ease;
+}
+
+.ghost-sm:hover {
+  border-color: var(--accent);
+}
+
+.ghost-danger:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.ds-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ds-detail-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.ds-detail-row:last-child {
+  border-bottom: none;
+}
+
+.ds-detail-label {
+  color: var(--muted);
+  min-width: 100px;
+  font-weight: 500;
+}
+
+.ds-columns-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 600px;
+}
+
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-field-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ds-select,
+.ds-field input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.ds-select:focus,
+.ds-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ds-field input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.ds-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #0b1224;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  align-self: flex-start;
+  transition: opacity 0.2s ease;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: #ef4444;
+}
+
+/* Visualization picker grid */
+.viz-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.viz-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.viz-picker-item:hover {
+  border-color: var(--accent);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.viz-picker-icon {
+  font-family: monospace;
+  font-size: 22px;
+  opacity: 0.7;
+}
+
+.viz-picker-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Widget configure button */
+.widget-configure {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.widget-configure:hover {
+  color: var(--accent);
+}
+
+/* Config modal */
+.modal-config {
+  max-width: 520px;
+}
+
+/* Config panel */
+.config-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.config-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.config-group-label {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.config-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.config-color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Big Number "color by value range" rules (colorRules field). */
+.color-rules-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.color-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.color-rule-row input[type="number"] {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+.color-rule-sep {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.config-color-picker {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.config-color-text {
+  flex: 1;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.config-color-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.config-range {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.config-range-value {
+  float: right;
+  font-family: monospace;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.config-panel-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* Filter bar */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.filter-bar-table {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.filter-bar-clause {
+  color: var(--muted);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12px;
+}
+
+.filter-bar-none {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- Phase 10 drill-down additions --- */
+
+/* Container for the inline row of dismissable store-filter chips. Allows
+   horizontal scroll when chips overflow rather than wrapping to a second line. */
+.filter-bar-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  min-width: 0;
+}
+
+/* Individual dismissable store-filter chip (accent-tinted; distinct from
+   muted static SQL clause). */
+.filter-bar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 12px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 6px;
+  color: var(--accent);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* × button inside a chip — dismisses one filter via removeFilter(tableId, column). */
+.filter-bar-chip-dismiss {
+  background: none;
+  border: none;
+  color: var(--accent);
+  opacity: 0.6;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.filter-bar-chip-dismiss:hover {
+  opacity: 1;
+}
+
+.filter-bar-chip-dismiss:focus-visible {
+  outline: 1px solid var(--accent);
+  border-radius: 2px;
+}
+
+/* Per-table "Clear all" text button — calls clearFilters(tableId). */
+.filter-bar-clear {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.filter-bar-clear:hover {
+  color: var(--text);
+}
+
+/* Active filter row tint — applied to <tr> elements in TableRenderer and
+   RecordsTableRenderer when row[drillDownColumn] matches active filter value.
+   Plan 10-04 wires the conditional class application; this CSS is shipped
+   in Plan 10-02 so the class exists when 10-04 references it. !important
+   overrides .widget-table-stripe's background. */
+.widget-table-row-active {
+  background: rgba(34, 197, 94, 0.08) !important;
+}
+
+.widget-table-row-active:hover {
+  background: rgba(34, 197, 94, 0.14) !important;
+}
+
+/* Views modal */
+.modal-views {
+  max-width: 700px;
+}
+
+.view-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.view-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.view-row-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-right: 8px;
+}
+
+.view-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.view-status-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.view-status-created {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.view-status-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.view-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+/* SQL preview */
+.config-sql-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.config-sql-code {
+  display: block;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--accent);
+  font-size: 12px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Config textarea */
+.config-textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.config-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Widget placeholder (no data / loading / error) */
+.widget-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 12px;
+}
+
+.widget-error {
+  color: #ef4444;
+}
+
+/* Phase 35 Plan 05 (DV-V16-13/14): dynamic-view status empty states.
+   Composes with .widget-placeholder; namespaced classes for over-threshold,
+   orphan, and the inline Retry button surfaced in the error variant. */
+.widget-over-threshold {
+  color: var(--muted);
+  text-align: center;
+  padding: 16px;
+}
+.widget-orphan-dynamic-view {
+  color: var(--muted);
+  text-align: center;
+  padding: 16px;
+  font-style: italic;
+}
+.widget-retry-btn {
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.widget-retry-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* Widget table renderer */
+.widget-table-wrap {
+  overflow: auto;
+  height: 100%;
+}
+
+.widget-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.widget-table th,
+.widget-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.widget-table th {
+  color: var(--muted);
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+
+.widget-table-compact th,
+.widget-table-compact td {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.widget-table-stripe {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.widget-table-rownum {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Value-bar overlay for aggregated Data Table — numeric metric cells get a
+   gradient background bar whose width is normalized to the column's max.
+   Text sits on top via z-index; the fill is non-interactive. */
+.widget-table-cell-bar {
+  position: relative;
+}
+.widget-table-cell-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.widget-table-cell-bar-text {
+  position: relative;
+  z-index: 1;
+}
+
+/* Records table — sortable headers + pagination footer */
+.widget-records {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.widget-records .widget-table-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.widget-table-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.widget-table-th-sortable:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.widget-records-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.widget-records-count {
+  color: var(--muted);
+}
+
+.widget-records-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.widget-records-page-indicator {
+  color: var(--muted);
+  min-width: 80px;
+  text-align: center;
+}
+
+.widget-records-pager button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Big number renderer */
+.widget-bignumber {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 4px;
+  text-align: center;
+}
+
+.widget-bignumber-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.widget-bignumber-value {
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.widget-bignumber-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    grid-row: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-item {
+    justify-content: center;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+}
+
+.login-shell {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-brand {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.login-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.login-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.login-field input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.login-field input:focus {
+  border-color: var(--accent-2);
+}
+
+.login-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.login-submit {
+  margin-top: 4px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #052e16;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.logout-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logout-btn:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+
+/* --- Phase 3 additions --- */
+
+.login-banner {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #cae8ff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 360px;
+  color: var(--text);
+  font-size: 13px;
+  animation: toast-in 0.18s ease;
+}
+
+.toast-permission {
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.toast-error {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.toast-message {
+  flex: 1;
+}
+
+.toast-dismiss {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.toast-dismiss:hover {
+  color: var(--text);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.widget-permission-denied {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 13px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+/* === Phase 11: Map Chart =============================================
+   Source: .planning/phases/11-map-chart/11-UI-SPEC.md Component Inventory
+   Spacing: strict multiples of 4 (4/8/12/16/20/24)
+   Color: --bg / --panel / --card / --border / --accent / --muted / #ef4444 (destructive)
+   ============================================ */
+
+/* Widget-body content for map */
+.widget-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 240px; /* Phase 11 spacing scale: multiple of 4 */
+}
+
+.widget-map-canvas {
+  width: 100%;
+  height: 100%;
+  background: var(--input-bg); /* matches .config-color-text deep-panel tone */
+}
+
+/* OpenLayers attribution — shrink for widget context (default OL is too large here). */
+.widget-map-canvas .ol-attribution {
+  font-size: 9px;
+  line-height: 1.2;
+  padding: 1px 4px;
+  background: var(--map-surface);
+  color: var(--text);
+  border-radius: 2px 0 0 0;
+}
+.widget-map-canvas .ol-attribution ul {
+  margin: 0;
+  padding: 0;
+}
+.widget-map-canvas .ol-attribution li {
+  font-size: 9px;
+}
+.widget-map-canvas .ol-attribution button {
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+}
+
+.widget-map-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  z-index: 1;
+}
+
+.widget-map-toolbar-btn {
+  padding: 8px 12px;
+  background: var(--map-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  min-width: 36px;
+  min-height: 36px;
+}
+.widget-map-toolbar-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ============================================================
+   Phase 29 (DRAW-V15-01): MapDrawToolbar
+   - Absolutely-positioned React overlay, sits inside .widget-map sibling to .widget-map-canvas.
+   - pointer-events: none on container; pointer-events: auto on individual buttons
+     (V15-P-17 lock: prevents accidental OL event swallowing in gaps between buttons).
+   - Vertical column of 36×36 icon buttons; visually abuts the OL zoom control (top-left).
+   - Active-mode styling: filled accent background + white icon (29-CONTEXT.md operator lock).
+   ============================================================ */
+/* MapZoomToolbar — custom zoom +/- bar at top-left, replaces the default OL zoom
+   control. Shares .map-draw-toolbar-btn for button styling so the two bars match. */
+.map-zoom-toolbar {
+  position: absolute;
+  top: 0.5em;
+  left: 0.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.map-draw-toolbar {
+  position: absolute;
+  /* Sits below the MapZoomToolbar — 2 × 28px buttons stacked + 0.5em top inset
+     + 8px gap between bars = 72px. */
+  top: 72px;
+  left: 0.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.map-draw-toolbar-btn {
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--map-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  padding: 0;
+  font-size: 12px;
+}
+
+.map-draw-toolbar-btn:first-child {
+  border-radius: 6px 6px 0 0;
+}
+
+.map-draw-toolbar-btn:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+/* Active state: filled accent background + WHITE icon (29-CONTEXT.md operator lock).
+   Plan advisory: plan specified #0b1224 (dark icon) but CONTEXT.md locked decision
+   requires white icon on active. Using #ffffff per operator intent. */
+.map-draw-toolbar-btn.is-active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.map-draw-toolbar-btn:hover:not(.is-active):not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--map-surface-hover);
+}
+
+.map-draw-toolbar-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Disabled state: bbox/lasso/circle when no eligible spatial targets are configured.
+   Title-attribute tooltip still surfaces on hover so the user knows why. */
+.map-draw-toolbar-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.map-draw-toolbar-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 4px;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Phase 29 (SHAPE-V15-03): Shape measurement pill.
+   - Shared CSS class for the persistent measurement label (Plan 03) and the live tooltip
+     during draw (Plan 04). Same dark pill, same white text, same font — single class for
+     visual continuity (29-CONTEXT.md locked).
+   - position is set by ol/Overlay (no positioning here); pointer-events: none so clicks
+     pass through to the map canvas (selection / draw interactions).
+   ============================================================ */
+.shape-measurement-pill {
+  background: rgba(15, 23, 42, 0.82);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 4px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  font-family: Manrope, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.widget-map-empty {
+  /* Reuses .widget-placeholder layout — copy applied via Copywriting Contract */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.widget-map-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--panel);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  border-left: 4px solid #ef4444;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+  z-index: 2;
+}
+
+.widget-map-error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.widget-map-error-body {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.widget-map-error-retry {
+  align-self: flex-start;
+}
+
+/* Tile fade-in (M-03 loading affordance) — applied to the WMS layer's canvas via OL Layer.className */
+.widget-map-tile {
+  transition: opacity 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-map-tile {
+    transition: none;
+  }
+}
+
+/* Config panel: spatial-mode picker */
+.config-spatial-mode {
+  /* Reuses .config-group shape — no extra rules needed beyond base; placeholder for future tweaks */
+}
+
+/* Config panel: render-mode picker */
+.config-render-mode {
+  /* Reuses .config-group shape */
+}
+
+/* Config panel: classbreak builder */
+.config-classbreak-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Class Break form: dark-theme inputs + selects (match .ds-select) ── */
+.config-classbreak-rows input[type="text"],
+.config-classbreak-rows input[type="number"],
+.cb-row-advanced input[type="text"],
+.cb-row-advanced input[type="number"],
+.cb-row-advanced select {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  min-width: 0;
+}
+.config-classbreak-rows input:focus,
+.cb-row-advanced input:focus,
+.cb-row-advanced select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Color theme picker (label above select). */
+.cb-theme-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+/* Each break = a card; main controls on one wrapping row, advanced/error full-width below. */
+.config-classbreak-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.config-classbreak-row-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  min-width: 52px;
+}
+
+/* Small square chevron toggle */
+.cb-row-chevron {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Value + label text inputs share remaining space and shrink freely so the
+   whole control row (incl. the × remove button) stays on ONE line. Small basis
+   + min-width keeps them from forcing the × button to wrap. */
+.config-classbreak-row > input[type="text"] {
+  flex: 1 1 80px;
+  min-width: 56px;
+}
+
+/* Hex color text — fits an 8-char AARRGGBB value; fixed, no wrap. */
+.config-classbreak-row .config-color-text {
+  flex: 0 0 84px;
+  width: 84px;
+}
+
+/* Remove (×) button stays inline with the controls (never wraps to its own line). */
+.config-classbreak-row .ghost-danger {
+  flex: 0 0 auto;
+}
+
+/* Numeric break range: [min] : [max] sharing one slot. */
+.cb-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.cb-range-inputs input {
+  min-width: 0;
+  flex: 1 1 0;
+}
+.cb-range-sep {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+/* <other> sink-bucket chip in categorical mode. */
+.cb-other-chip {
+  flex: 1 1 80px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Inline row error + advanced panel break to their own full-width line. */
+.cb-row-error,
+.cb-row-advanced {
+  flex-basis: 100%;
+}
+
+/* Per-break advanced panel: tidy labeled grid instead of cramped wrapping. */
+.cb-row-advanced {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+}
+.cb-row-advanced > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.cb-row-advanced .config-color-row,
+.cb-row-advanced > label > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Form-level Advanced disclosure header + categorical/autosuggest panels. */
+.cb-advanced-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.cb-advanced-panel,
+.cb-categorical-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.cb-advanced-panel label,
+.cb-other-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Auto-suggest panel: N slider + button on one row. */
+.cb-autosuggest-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+.cb-autosuggest-n-label,
+.cb-method-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cb-autosuggest-error {
+  flex-basis: 100%;
+}
+.cb-autosuggest-confirm {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+}
+.cb-autosuggest-confirm p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.config-classbreak-add {
+  align-self: flex-start;
+}
+
+/* Cardinality warn / hard-cap hint (extends .config-hint with semantic color) */
+.config-cardinality-warn {
+  color: var(--accent);
+}
+.config-cardinality-cap {
+  color: #ef4444;
+}
+
+/* Config panel: basemap selector */
+.config-basemap {
+  /* Reuses .config-group shape */
+}
+
+/* ─── Phase 12: Dashboard Layers Panel ─────────────────────────── */
+
+/* LayersModal */
+.modal-layers {
+  max-width: 900px;
+  width: 95%;
+}
+
+.layers-modal-body {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  flex: 1;
+}
+
+.layers-modal-left {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.layers-modal-right {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+.layers-modal-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px;
+}
+
+/* Layer List */
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.layer-list-add {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.layer-row:hover {
+  background: rgba(255,255,255,0.03);
+  border-color: var(--border);
+}
+
+.layer-row.active {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+.layer-row-drag {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 16px;
+  flex-shrink: 0;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.layer-row-drag:active {
+  cursor: grabbing;
+}
+
+.layer-row-eye {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.layer-row-eye.hidden {
+  opacity: 0.3;
+}
+
+.layer-row-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* OPACITY group inside the right panel (moved out of the layer row). */
+.layer-opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.layer-opacity-slider {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.layer-opacity-value {
+  flex: 0 0 auto;
+  min-width: 40px;
+  text-align: right;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.layer-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.layer-row-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.layer-row-btn:hover {
+  color: var(--text);
+}
+
+.layer-row-btn.danger:hover {
+  color: #ef4444;
+}
+
+.layer-row-badge {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.layer-row-badge.error {
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.4);
+  color: #fecaca;
+}
+
+/* MapConfigPanel layer-inclusion picker (used by Plan 05) */
+.config-layer-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-layer-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+  font-size: 13px;
+}
+
+.config-layer-toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.config-layer-toggle-row label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.config-layer-none {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* MapChartRenderer overlays (used by Plan 05) */
+.widget-map-reconfigure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  background: rgba(11,18,36,0.85);
+  border-radius: 8px;
+}
+
+.widget-map-reconfigure-badge {
+  background: rgba(56,189,248,0.08);
+  border: 1px solid rgba(56,189,248,0.4);
+  color: #cae8ff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  max-width: 280px;
+  text-align: center;
+}
+
+.widget-map-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  background: rgba(11,18,36,0.85);
+  border-radius: 8px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Phase 35 (DV-V16-13/14): per-layer over-threshold overlay         */
+/* ------------------------------------------------------------------ */
+/* Rendered when at least one dv-bound layer is non-materialized (pending,
+ * over_threshold, error, or store-entry absent). buildWmsParams returns null
+ * for those layers and MapChartRenderer Effect 2 omits them from the visible
+ * stack; the overlay tells the operator the layer is intentionally hidden.
+ * Mirrors the MapFilteringBadge visual posture: top-right corner, low-key
+ * warning-yellow, pointer-events disabled so map interactions stay alive. */
+.map-over-threshold-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 224, 130, 0.18);
+  border: 1px solid rgba(212, 160, 23, 0.55);
+  border-radius: 6px;
+  color: #f0d99a;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 100;
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* When the in-map Layers panel is anchored top-right, the warning collides
+   with it. The renderer applies this modifier in that case so the warning
+   relocates to the bottom-left corner instead. */
+.map-over-threshold-overlay--bottom-left {
+  top: auto;
+  right: auto;
+  bottom: 8px;
+  left: 8px;
+}
+.map-over-threshold-overlay::before {
+  content: "⚠ ";
+}
+/* Light mode: pale amber text is unreadable on a light basemap — darken the ink and
+   firm up the fill/border so the warning keeps contrast (mirrors the legend badge). */
+:root[data-theme="light"] .map-over-threshold-overlay {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(180, 83, 9, 0.5);
+  color: #92400e;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Phase 15 (FILT-V13-04): "Filtering..." badge in widget card header */
+/* ------------------------------------------------------------------ */
+
+.widget-filtering-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.widget-filtering-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: filtering-spin 0.8s linear infinite;
+}
+
+@keyframes filtering-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Phase 21 (POPUP-V14-02..05): info popup chrome.
+   Anchored variant of .modal-content. The .info-popup-backdrop is mounted INSIDE the
+   ol/Overlay element (Plan 21-03), so it covers the popup's bounding box only — not the
+   full viewport like .modal-overlay. */
+.info-popup-backdrop {
+  /* Transparent backdrop — click-outside dismiss target. Sits over the popup body. */
+  position: relative;
+}
+.info-popup {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  /* width + height set inline by InfoPopup (popup-only; falls back to defaults via
+     getInfoPopupWidthPx / getInfoPopupHeightPx). Card surface uses .widget-info-card sizing. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+}
+.info-selection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Reserve right-side space for the absolute-positioned .info-popup-close button so the
+     dropdown select doesn't sit underneath the X. The card surface doesn't render a close
+     button, so the extra padding is benign there (no visible difference). */
+  padding: 8px 32px 8px 10px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+.info-selection-layer-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  /* Match the app's standard dark dropdown (.ds-select). */
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-family: inherit;
+}
+.info-selection-layer-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.info-popup-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+  color: var(--text-muted, #6b7280);
+  z-index: 1;
+}
+.info-popup-close:hover { color: inherit; }
+.info-selection-body {
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+.info-selection-loading,
+.info-selection-empty,
+.info-selection-error {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted, #6b7280);
+}
+.info-selection-error { color: #b91c1c; }
+.info-selection-row { padding: 6px; border: 1px solid var(--border); border-radius: 4px; }
+.info-selection-row-kv { width: 100%; border-collapse: collapse; }
+.info-selection-row-kv th { text-align: left; padding: 2px 6px; font-weight: 600; vertical-align: top; }
+.info-selection-row-kv td { padding: 2px 6px; word-break: break-word; }
+/* Single-record nav footer: [Back] Record N of M(+) [Next] */
+.info-selection-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* Back = secondary (ghost button), Next = primary (accent) — match app button styles. */
+.info-selection-nav-back {
+  font-size: 12px;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.info-selection-nav-back:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.info-selection-nav-next {
+  font-size: 12px;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #0b1224;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.2s ease;
+}
+.info-selection-nav-next:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.info-selection-nav-back:disabled,
+.info-selection-nav-next:disabled { opacity: 0.4; cursor: not-allowed; }
+.info-selection-nav-total {
+  font-size: 12px;
+  color: var(--text-muted, #6b7280);
+  white-space: nowrap;
+}
+
+/* Phase 23 (CARD-V14-01): Info Card outer wrapper. The card uses standard widget chrome
+   (drag/delete/title) provided by the dashboard widget grid OUTSIDE this component;
+   .widget-info-card is the inner body container. Internal scroll on the records area is
+   handled via .info-selection-body's existing overflow rules; sticky header + footer come
+   from .info-selection-header / .info-selection-footer. */
+.widget-info-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Phase 21: ol/Overlay's element wrapper. OL imperatively moves this element into its own
+   DOM tree when map.addOverlay() runs. Width follows .info-popup; height auto. */
+/* width set inline by MapChartRenderer (matches popup body width); pointer-events must
+   stay 'auto' so clicks register inside the OL Overlay container. */
+.info-popup-overlay-element { pointer-events: auto; }
+
+/* ─── Phase 22 (CONFIG-V14-03/04) — INFO POPUP config section ──────────── */
+
+/* Section disabled state (missing-table predicate from LayersModal:142-143) */
+.info-popup-config-section.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.info-popup-config-section-message {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* Chip container — flex-wrap row of chip buttons */
+.info-popup-config-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+/* Individual chip (deselected state — the default 'click to add') */
+.info-popup-config-chip {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.info-popup-config-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Selected state — solid accent fill, dark text */
+.info-popup-config-chip.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1224;
+  font-weight: 500;
+}
+
+.info-popup-config-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* CodeMirror wrapper — min-height + border parity with .ds-field input.
+   Background matches the One Dark theme (theme={oneDark}) applied to the editor
+   so the wrapper edge doesn't seam against the editor surface. */
+.info-popup-config-editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #282c34;
+}
+
+/* Readability: comfortable monospace size + line-height for the HTML template editor. */
+.info-popup-config-editor .cm-editor {
+  font-size: 13.5px;
+}
+
+.info-popup-config-editor .cm-scroller {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  line-height: 1.6;
+}
+
+.info-popup-config-editor.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Inline syntax note + security warning (verbatim copy in Plan 22-03) */
+.info-popup-config-syntax-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.info-popup-config-security-note {
+  font-size: 12px;
+  color: #f59e0b;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* Inline error for radius clamp (auto-dismiss after ~3s; Plan 22-02 owns the timer) */
+.info-popup-config-inline-error {
+  font-size: 12px;
+  color: #ef4444;
+  margin-top: 4px;
+}
+
+/* "Insert column" picker dropdown above the editor */
+.info-popup-config-insert-column {
+  margin-bottom: 8px;
+}
+
+/* ============================================================
+   Spatial filter targets (MapConfigPanel — Phase 28 TARGET-V15)
+   ============================================================ */
+
+.config-spatial-targets {
+  /* Inherits .config-group flex-column + gap:10px */
+}
+
+.config-spatial-targets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-spatial-targets-header .config-group-label {
+  /* Header already supplies the border-bottom; suppress duplicate */
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.config-spatial-targets-add {
+  background: var(--map-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.config-spatial-targets-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.config-spatial-targets-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.config-spatial-targets-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.config-spatial-target-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.config-spatial-target-row-line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-spatial-target-row-line1 .ds-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.config-spatial-target-remove {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--map-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.config-spatial-target-remove:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.config-spatial-target-remove:focus-visible {
+  outline: 2px solid #ef4444;
+  outline-offset: 1px;
+}
+
+.config-spatial-target-row-line2 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.config-spatial-target-mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.config-spatial-target-mode-option input[type="radio"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.config-spatial-target-mode-option:hover span {
+  color: var(--accent);
+}
+
+.config-spatial-target-row-line3 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.config-spatial-target-row-line3 .ds-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.config-spatial-target-wkb-warning {
+  font-size: 12px;
+  color: #f59e0b;
+  line-height: 1.4;
+}
+
+.config-spatial-target-incomplete {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* === Phase 34 (DV-V16-08, DV-V16-11): Dynamic Views Modal === */
+/* DynamicViewsModal reuses the .modal-overlay portal + .modal-content.modal-layers
+ * 900px size class established by Phase 12 LayersModal. The two-pane body and
+ * left-list row styling live under the .dynamic-views-modal-* namespace below. */
+
+.dynamic-views-modal-body {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  height: 65vh;
+  overflow: hidden;
+  flex: 1;
+}
+
+.dynamic-views-modal-left {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 8px;
+  min-height: 0;
+}
+
+.dynamic-views-modal-right {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px 24px;
+  min-height: 0;
+}
+
+.dynamic-views-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dynamic-views-modal-add {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dynamic-views-modal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  flex: 1;
+  gap: 8px;
+}
+
+.dynamic-views-modal-empty.error {
+  color: #ef4444;
+}
+
+.view-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.view-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border);
+}
+
+.view-row.active {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+.view-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.view-row-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.view-row-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.view-row-btn.danger {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.view-row-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.view-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+}
+
+.view-status-badge.materialized {
+  color: var(--accent);
+}
+
+.view-status-badge.pending {
+  color: var(--muted);
+}
+
+.view-status-badge.over_threshold {
+  color: #f59e0b;
+}
+
+.view-status-badge.error {
+  color: #ef4444;
+}
+
+/* === Phase 34 Plan 03 (DV-V16-09, DV-V16-10): Form + Preview output panel === */
+
+.dynamic-views-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+
+.dynamic-views-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dynamic-views-modal-form input[type="text"],
+.dynamic-views-modal-form input[type="number"],
+.dynamic-views-modal-form select {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dynamic-views-modal-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Readability parity with the info-popup HTML template editor: bordered, rounded,
+   comfortable monospace text. Colors come from the One Dark theme (theme={oneDark}). */
+.dynamic-views-modal-editor-section .cm-editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13.5px;
+}
+
+.dynamic-views-modal-editor-section .cm-scroller {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  line-height: 1.6;
+}
+
+.dynamic-views-modal-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dynamic-views-modal-editor-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.dynamic-views-modal-field-error {
+  font-size: 12px;
+  color: #ef4444;
+  margin-top: 2px;
+}
+
+.dynamic-views-modal-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.dynamic-views-modal-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.dynamic-views-modal-preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dynamic-views-modal-preview-chip {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.dynamic-views-modal-preview-table-wrap {
+  overflow-x: auto;
+}
+
+.dynamic-views-modal-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.dynamic-views-modal-preview-table th,
+.dynamic-views-modal-preview-table td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.dynamic-views-modal-preview-table th {
+  background: var(--card);
+  font-weight: 600;
+}
+
+.dynamic-views-modal-preview-footer {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.dynamic-views-modal-preview-error {
+  background: rgba(239, 68, 68, 0.10);
+  color: #ef4444;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid #ef4444;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+/* ─── Dual-handle zoom range slider (KineticaWmsLayerForm ZOOM RANGE section) ─── */
+/* Two overlaid native range inputs share one decorative track. The native */
+/* tracks are hidden so only the thumbs participate in pointer/keyboard input. */
+/* Selected sub-track is painted between the two thumbs via percentage offsets. */
+
+.zoom-range-slider {
+  position: relative;
+  height: 40px;
+  margin: 8px 0 4px;
+  padding: 0 8px;
+}
+
+.zoom-range-track,
+.zoom-range-track-selected {
+  position: absolute;
+  top: 16px;
+  height: 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.zoom-range-track {
+  left: 8px;
+  right: 8px;
+  background: var(--border, #334155);
+}
+
+.zoom-range-track-selected {
+  background: var(--accent, #38f5b9);
+  /* left + width come from inline style on the element */
+}
+
+.zoom-range-thumb {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  width: calc(100% - 16px);
+  height: 20px;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+/* Only the thumb receives pointer events — the track of each native input
+   would otherwise stack and prevent the lower input from being interactable. */
+.zoom-range-thumb::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent, #38f5b9);
+  border: 2px solid var(--card, #0f172a);
+  cursor: grab;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.zoom-range-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent, #38f5b9);
+  border: 2px solid var(--card, #0f172a);
+  cursor: grab;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.zoom-range-thumb:active::-webkit-slider-thumb,
+.zoom-range-thumb:active::-moz-range-thumb {
+  cursor: grabbing;
+}
+
+.zoom-range-thumb::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+}
+
+.zoom-range-thumb::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+.zoom-range-thumb:focus {
+  outline: none;
+}
+
+.zoom-range-thumb:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(56, 245, 185, 0.35);
+}
+
+.zoom-range-thumb:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(56, 245, 185, 0.35);
+}
+
+.zoom-range-labels {
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted, #94a3b8);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-range-description {
+  font-size: 11px;
+  color: var(--muted, #94a3b8);
+  margin: 4px 0 0;
+}
+
+/* ============================================================================
+ * v1.7 Phase 41: LayersLegendPanel (PANEL-V17-01/03/06)
+ * In-map overlay panel mounted as React child of .widget-map.
+ * z=1000 sits BELOW MapDrawToolbar/MapZoomToolbar (z=1001) per V15-P-17 lock.
+ * ============================================================================ */
+
+.layers-legend-panel {
+  position: absolute;
+  z-index: 1000;
+  background: var(--map-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  min-width: 180px;
+  max-width: 280px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.layers-legend-panel--top-right    { top: 8px; right: 8px; }
+/* Top-left corner offsets `left` to clear OpenLayers' default zoom controls
+   (which anchor at top-left, ~22px wide × 46px tall). Without this shift the
+   panel header lands on top of the +/- buttons (see UAT 2026-05-29). */
+.layers-legend-panel--top-left     { top: 8px; left: 50px; }
+.layers-legend-panel--bottom-right { bottom: 8px; right: 8px; }
+.layers-legend-panel--bottom-left  { bottom: 8px; left: 8px; }
+
+.layers-legend-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.layers-legend-panel-body {
+  padding: 6px 0;
+}
+
+.layers-legend-panel-layer-block {
+  /* Per-layer container; groups the header row + (optional) break rows */
+}
+
+.layers-legend-panel-layer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* Layer name grows so the render-mode chip stays right-aligned next to the
+   optional eye toggle on the left. */
+.layers-legend-panel-layer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Per-layer visibility toggle — mirrors .layer-row-eye from the Layers modal. */
+.layers-legend-panel-eye {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.layers-legend-panel-eye.hidden {
+  opacity: 0.4;
+}
+
+/* Dim the whole block (name + chip + breaks) when the layer is hidden, so the
+   legend reads at a glance which layers are off. */
+.layers-legend-panel-layer-block.hidden .layers-legend-panel-layer-name,
+.layers-legend-panel-layer-block.hidden .layers-legend-panel-mode-chip,
+.layers-legend-panel-layer-block.hidden .layers-legend-panel-break-row {
+  opacity: 0.45;
+}
+
+/* Phase 44 follow-up: dv-non-materialized state (over_threshold / pending / error / absent).
+   The dv-bound layer can't render so we dim the row to ~60% to read as "not on the map"
+   and the inline badge below the eye toggle carries the precise status text. */
+.layers-legend-panel-layer-block--stale .layers-legend-panel-layer-name,
+.layers-legend-panel-layer-block--stale .layers-legend-panel-mode-chip,
+.layers-legend-panel-layer-block--stale .layers-legend-panel-break-row {
+  opacity: 0.55;
+}
+.layers-legend-panel-layer-block--stale .layers-legend-panel-eye:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Inline status pill next to the layer name when dv-bound layer is not materialized.
+   Yellow (warning) for over_threshold / pending / absent — all "fixable / transient".
+   Red for error — needs operator attention. */
+.layers-legend-panel-dv-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  background: rgba(255, 224, 130, 0.18);
+  border: 1px solid rgba(212, 160, 23, 0.55);
+  color: #f0d99a;
+}
+.layers-legend-panel-dv-badge--error {
+  background: rgba(220, 38, 38, 0.18);
+  border-color: rgba(220, 38, 38, 0.55);
+  color: #f8a3a3;
+}
+
+/* Light mode: the pale warning/error text is unreadable on a light pill — use darker
+   amber/red ink so the OVER THRESHOLD / error badges keep contrast. */
+:root[data-theme="light"] .layers-legend-panel-dv-badge {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(180, 83, 9, 0.5);
+  color: #92400e;
+}
+:root[data-theme="light"] .layers-legend-panel-dv-badge--error {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.5);
+  color: #991b1b;
+}
+
+/* Render-mode chip mirrors .layer-row-badge exactly per research */
+.layers-legend-panel-mode-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.layers-legend-panel-break-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 20px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.layers-legend-panel-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--swatch-border);
+  flex-shrink: 0;
+}
+
+.layers-legend-panel-empty {
+  padding: 8px 10px;
+  font-style: italic;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ─── v1.7 Phase 42 (Plan 42-02): Standalone Legend widget ─────────────────── */
+
+.legend-widget-body {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+.legend-widget-orphan {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.legend-widget-orphan-message {
+  color: var(--color-text-muted, #6b7280);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.legend-widget-orphan-reconfigure {
+  background: var(--color-surface-2, #f3f4f6);
+  color: var(--color-text, #111827);
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 4px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.legend-widget-orphan-reconfigure:hover {
+  background: var(--color-surface-3, #e5e7eb);
+}
+
+/* When LegendRenderer mounts <LayersLegendPanel showChevron={false}>, the panel must
+   fill the standalone widget body (no corner-absolute positioning). Override the
+   Phase 41 corner positioning with static positioning for this nested context. */
+.legend-widget-body .layers-legend-panel {
+  position: static;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* ─── Data Filter widget (Phase 44) ───────────────────────────────────────────
+   Themes the new `datafilter` chart type's config panel + runtime renderer
+   so its buttons, inputs, and layout match the rest of the dashboard surface.
+   Inputs use the same dark-rounded look as .ds-select (executor reached for
+   `.ds-input` but the original rule only matched `.ds-field input` — adding
+   a real `.ds-input` class here so the same look is reusable elsewhere). */
+
+/* Bare class form of the dark input — pairs with .ds-select */
+.ds-input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ds-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Runtime widget shell */
+.widget-datafilter {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  height: 100%;
+  overflow: auto;
+}
+.widget-datafilter--empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* One label-over-control field block in the runtime renderer */
+.datafilter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.datafilter-field--missing {
+  padding: 8px 10px;
+  border: 1px dashed rgba(204, 68, 68, 0.5);
+  border-radius: 6px;
+  background: rgba(204, 68, 68, 0.08);
+  font-size: 12px;
+}
+
+/* "●" applied-indicator dot next to a field label */
+.datafilter-applied-badge {
+  color: var(--accent);
+  margin-left: 6px;
+  font-size: 10px;
+  vertical-align: middle;
+}
+
+/* Apply / Clear button row at the bottom of the runtime widget */
+.datafilter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+/* Apply is disabled when there are no pending changes — strongest signal that
+   nothing's queued up. Scoped here so the disabled style doesn't leak to other
+   primary buttons in the app. */
+.datafilter-actions .btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  /* Keep the green color but dim it so "no work to do" reads as inactive */
+}
+
+/* Multi-select tag input (CoreUI multi-select pattern):
+   Trigger row holds the selected chips AND an inline text input that grows
+   to fill remaining space. Typing in the inline input filters the popover's
+   option list live; popover has no separate search field. */
+.datafilter-mschips {
+  position: relative;
+  width: 100%;
+}
+
+/* Trigger row — looks like .ds-input (dark + rounded border) but holds chips + input */
+.datafilter-mschips-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px 4px 8px;
+  cursor: text;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.datafilter-mschips.is-open .datafilter-mschips-trigger,
+.datafilter-mschips.is-focused .datafilter-mschips-trigger {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 1px var(--accent-2);
+}
+
+/* Chips area + inline input — wraps to a second line when chips overflow */
+.datafilter-mschips-chips {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.datafilter-mschips-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(56, 189, 248, 0.10);
+  border: 1px solid rgba(56, 189, 248, 0.40);
+  border-radius: 6px;
+  padding: 2px 4px 2px 8px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.datafilter-mschips-chip-x {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.datafilter-mschips-chip-x:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Inline input — borderless, transparent; grows to fill chip-area remainder */
+.datafilter-mschips-input {
+  flex: 1;
+  min-width: 60px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 2px;
+}
+.datafilter-mschips-input::placeholder {
+  color: var(--muted);
+}
+
+/* Action buttons on the right of the trigger (clear-all + chevron) */
+.datafilter-mschips-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.datafilter-mschips-action {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.datafilter-mschips-action:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.datafilter-mschips-chevron {
+  font-size: 10px;
+}
+
+/* Popover — absolute-positioned below the trigger */
+.datafilter-mschips-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.datafilter-mschips-selectall {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.datafilter-mschips-selectall:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.datafilter-mschips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.datafilter-mschips-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 4px;
+}
+.datafilter-mschips-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.datafilter-mschips-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.datafilter-mschips-empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 12px;
+  padding: 8px 4px;
+}
+
+/* Dual-thumb numeric slider — uses ZoomRangeSlider's `.zoom-range-*` styles. */
+.datafilter-slider {
+  padding: 8px 4px 4px;
+}
+.datafilter-slider-loading {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  padding: 8px 4px;
+}
+
+/* Numeric/date range — two inputs separated by "to" */
+.datafilter-range,
+.datafilter-daterange {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.datafilter-range > .ds-input,
+.datafilter-daterange > .ds-input {
+  flex: 1;
+  min-width: 0;
+}
+.datafilter-range > span,
+.datafilter-daterange > span {
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Boolean tri-state: Any / True / False button group */
+.datafilter-tristate {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* Config-panel rows (column picker + kind picker + remove) */
+.datafilter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.datafilter-row > .config-hint {
+  grid-column: 1 / -1;
+}
+
+/* + Add filter field button stretches full-width for affordance */
+.datafilter-add-row {
+  width: 100%;
+  margin-top: 4px;
+  border-style: dashed;
+  color: var(--muted);
+}
+.datafilter-add-row:hover {
+  color: var(--text);
+}
+
+/* Surface-level error banner inside the runtime widget */
+.datafilter-error {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(204, 68, 68, 0.08);
+  font-size: 12px;
+}

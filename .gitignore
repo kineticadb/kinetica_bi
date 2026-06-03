@@ -1,0 +1,22 @@
+node_modules/
+dist/
+# SQLite runtime data — never source-controlled
+*.db
+*.db-shm
+*.db-wal
+# Env files — ignore .env and ALL variants (incl. ".env.local" and ".env copy"); keep .env.example tracked
+.env*
+!.env.example
+.vite/
+# WMS spike scratch output (wmsSpike.ts writes here). The tracked test fixture lives at
+# server/src/wmsCapabilities.xml and is intentionally NOT ignored.
+/packages/server/src/spikes/wmsCapabilities.xml
+# CB+Track WMS spike raw tile-byte output (Phase 37) — only 37-SPIKE-NOTES.md + pasted screenshots commit
+/packages/server/spike-output/
+# Internal GSD planning docs + local agent config — excluded from the public repo
+.planning/
+.claude/
+# Local-only runtime data dir
+/packages/server/data/
+# macOS Finder metadata
+.DS_Store
