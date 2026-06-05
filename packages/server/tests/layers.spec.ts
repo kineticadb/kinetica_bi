@@ -544,8 +544,13 @@ describe("layers PATCH dynamic_view_id — AUTH_MODE=oidc smoke", () => {
 
     resetOidcClientForTests();
 
-    // Issue an OIDC session cookie
-    const seeded = seedOidcSession();
+    // Issue an OIDC session cookie using the bootstrap admin username so the
+    // requirePermission short-circuit fires (APP_ADMIN_USERNAME default "admin").
+    // Phase 47 GUARD-V18-05: OIDC smoke tests use admin credentials per the
+    // createAdminSession migration pattern — credential-type (oidc) is the test focus,
+    // not the permission level.
+    const adminUsername = process.env.APP_ADMIN_USERNAME || "admin";
+    const seeded = seedOidcSession(adminUsername);
     oidcCookie = seeded.cookie;
   });
 

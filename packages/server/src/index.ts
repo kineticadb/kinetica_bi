@@ -102,6 +102,10 @@ import {
 // v1.8 RBAC (SCHEMA-V18-03): bootstrap admin username resolution — used for the OIDC
 // default-admin boot warning. Import AFTER "./env" (env must stay the first import).
 import { getAppAdminUsername } from "./lib/rbacDb";
+// v1.8 Phase 47 Plan 03 (GUARD-V18-02/03/04): requirePermission factory for mutation route gating.
+import { requirePermission } from "./rbac";
+// v1.8 Phase 47: PERMISSIONS catalog — canonical permission constants for server enforcement.
+import { PERMISSIONS } from "./lib/permissions";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -496,21 +500,21 @@ export const createApp = async (): Promise<express.Express> => {
     res.json({ data: listDashboards() });
   });
 
-  app.post("/api/dashboards", (req, res) => {
+  app.post("/api/dashboards", ...requirePermission(PERMISSIONS.DASHBOARDS_CREATE), (req, res) => {
     const { name, description } = req.body as { name?: string; description?: string };
     if (!name) return res.status(400).json({ error: "Dashboard name is required." });
     const dashboard = createDashboard(name, description);
     return res.status(201).json(dashboard);
   });
 
-  app.patch("/api/dashboards/:id", (req, res) => {
+  app.patch("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
     const updated = updateDashboard(id, req.body);
     if (!updated) return res.status(404).json({ error: "Dashboard not found." });
     return res.json(updated);
   });
 
-  app.delete("/api/dashboards/:id", (req, res) => {
+  app.delete("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_DELETE), (req, res) => {
     const id = Number(req.params.id);
     const ok = deleteDashboard(id);
     if (!ok) return res.status(404).json({ error: "Dashboard not found." });
@@ -524,7 +528,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json({ data: listWidgets(id) });
   });
 
-  app.post("/api/dashboards/:id/widgets", (req, res) => {
+  app.post("/api/dashboards/:id/widgets", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
     const input = req.body as Omit<Widget, "id" | "dashboard_id" | "created_at" | "updated_at">;
@@ -540,14 +544,14 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(201).json(widget);
   });
 
-  app.patch("/api/widgets/:id", (req, res) => {
+  app.patch("/api/widgets/:id", ...requirePermission(PERMISSIONS.WIDGETS_CONFIGURE), (req, res) => {
     const id = Number(req.params.id);
     const updated = updateWidget(id, req.body);
     if (!updated) return res.status(404).json({ error: "Widget not found." });
     return res.json(updated);
   });
 
-  app.delete("/api/widgets/:id", (req, res) => {
+  app.delete("/api/widgets/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
     const ok = deleteWidget(id);
     if (!ok) return res.status(404).json({ error: "Widget not found." });
@@ -561,7 +565,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json({ data: listDashboardTables(id) });
   });
 
-  app.post("/api/dashboards/:id/tables", (req, res) => {
+  app.post("/api/dashboards/:id/tables", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
     const { table_id } = req.body as { table_id?: number };
@@ -571,7 +575,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(201).json({ data: listDashboardTables(dashboardId) });
   });
 
-  app.delete("/api/dashboards/:dashboardId/tables/:tableId", (req, res) => {
+  app.delete("/api/dashboards/:dashboardId/tables/:tableId", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.dashboardId);
     const tableId = Number(req.params.tableId);
     const ok = removeDashboardTable(dashboardId, tableId);
@@ -590,7 +594,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json({ data: listDashboardLayers(id) });
   });
 
-  app.post("/api/dashboards/:id/layers", (req, res) => {
+  app.post("/api/dashboards/:id/layers", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
     const { table_id, layer_type, position, config } = req.body as {
@@ -607,7 +611,7 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // REORDER — must precede :layerId
-  app.patch("/api/dashboards/:id/layers/reorder", (req, res) => {
+  app.patch("/api/dashboards/:id/layers/reorder", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
     const { orderedIds } = req.body as { orderedIds?: number[] };
@@ -623,7 +627,7 @@ export const createApp = async (): Promise<express.Express> => {
     }
   });
 
-  app.patch("/api/dashboards/:id/layers/:layerId", (req, res) => {
+  app.patch("/api/dashboards/:id/layers/:layerId", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const layerId = Number(req.params.layerId);
     // v1.4 Phase 19 (CONFIG-V14-01): pass-through forwarding of info_enabled / info_columns /
     // info_template alongside existing table_id / position / config. No strict validation here —
@@ -656,7 +660,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json(updated);
   });
 
-  app.delete("/api/dashboards/:id/layers/:layerId", (req, res) => {
+  app.delete("/api/dashboards/:id/layers/:layerId", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const layerId = Number(req.params.layerId);
     const ok = deleteDashboardLayer(layerId);
     if (!ok) return res.status(404).json({ error: "Layer not found." });
@@ -670,7 +674,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json({ data: listViews(id) });
   });
 
-  app.post("/api/dashboards/:id/views", (req, res) => {
+  app.post("/api/dashboards/:id/views", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
     const { table_id, view_name, filter_clause } = req.body as {
@@ -686,7 +690,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(201).json(view);
   });
 
-  app.patch("/api/views/:id", (req, res) => {
+  app.patch("/api/views/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
     const { filter_clause } = req.body as { filter_clause?: string };
     if (filter_clause === undefined) return res.status(400).json({ error: "filter_clause is required." });
@@ -695,7 +699,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json(updated);
   });
 
-  app.delete("/api/views/:id", (req, res) => {
+  app.delete("/api/views/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
     const view = getView(id);
     if (!view) return res.status(404).json({ error: "View not found." });
@@ -708,7 +712,7 @@ export const createApp = async (): Promise<express.Express> => {
   // as a side effect on every failure path (status persistence). The catch block does the side
   // effect, then forwards via next(err) so the middleware translates the HTTP response.
   // (CONTEXT.md §"Single exception: materialize")
-  app.post("/api/views/:id/materialize", requireConfig, asyncHandler(async (req, res, next) => {
+  app.post("/api/views/:id/materialize", requireConfig, ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), asyncHandler(async (req, res, next) => {
     const id = Number(req.params.id);
     const view = getView(id);
     if (!view) return res.status(404).json({ error: "View not found." });
@@ -744,6 +748,46 @@ export const createApp = async (): Promise<express.Express> => {
       return next(err);
     }
   }));
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ANALYST-PASSTHROUGH BOUNDARY (GUARD-V18-03)
+  // ═══════════════════════════════════════════════════════════════════════════════
+  //
+  // Routes below this comment are gated by requireAuth ONLY — NO requirePermission.
+  // These are the "analyst interaction" routes: every authenticated user can reach
+  // them regardless of their assigned role or the analyst-passthrough fallback.
+  //
+  // WHY each route is here:
+  //   POST /api/filter/materialize   — click-through drill-down; the core product value.
+  //                                    Session-scoped view name (username+sid) prevents
+  //                                    cross-user leakage. Gating this on ANY write
+  //                                    permission breaks the analyst role entirely.
+  //   DELETE /api/filter/materialize — analyst clears their own session filter.
+  //   POST /api/dynamic-view/materialize — fires on every filter change for widgets
+  //                                    bound to a dynamic view; analysts trigger this.
+  //   POST /api/dynamic-view/:id/drop — lifecycle cleanup at logout/dashboard-switch;
+  //                                    called automatically, not by user intent.
+  //                                    DISTINCT from DELETE /api/dynamic-view/:id which
+  //                                    deletes the saved config and requires DYNAMIC_VIEWS_MANAGE.
+  //   POST /api/dynamic-view/preview — reads data only; no persistent resource created.
+  //                                    Designer surface (DynamicViewsModal) but auth-only
+  //                                    route since it performs no writes.
+  //   POST /api/info/query           — spatial nearest-neighbor read; map popup interaction.
+  //   POST /api/top-values           — column cardinality probe for Data Filter widget dropdowns.
+  //   POST /api/column-stats         — chart config column stats; visible to all roles.
+  //   POST /api/quantile             — NTILE query backing class-break auto-suggest.
+  //   POST /api/sql                  — general Kinetica passthrough for all widget renders.
+  //                                    DATA ACCESS enforced by Kinetica per-user creds.
+  //   GET  /api/wms                  — map tile proxy; analyst views maps.
+  //   GET  /api/wms/capabilities     — WMS metadata; all roles may view maps.
+  //   GET  /api/kinetica/*           — schema/table/column discovery; auth-only per CONTEXT.
+  //   GET  /api/tables               — app table registry reads.
+  //   GET  /api/tables/:id           — single table read.
+  //
+  // If adding a new route, ask: "Can an analyst (dashboards:view only) need this?"
+  //   YES → place here with requireAuth (or requireAuth + requireConfig) only.
+  //   NO  → place in the guarded section with requirePermission(...).
+  // ═══════════════════════════════════════════════════════════════════════════════
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.
@@ -1062,6 +1106,7 @@ export const createApp = async (): Promise<express.Express> => {
   app.post(
     "/api/dashboards/:dashboardId/dynamic-views",
     requireConfig,
+    ...requirePermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE),
     asyncHandler(async (req, res) => {
       const dashboardId = Number(req.params.dashboardId);
       if (!Number.isFinite(dashboardId)) {
@@ -1139,6 +1184,7 @@ export const createApp = async (): Promise<express.Express> => {
   app.put(
     "/api/dynamic-views/:id",
     requireConfig,
+    ...requirePermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE),
     asyncHandler(async (req, res) => {
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) {
@@ -1546,6 +1592,7 @@ export const createApp = async (): Promise<express.Express> => {
   app.delete(
     "/api/dynamic-view/:id",
     requireConfig,
+    ...requirePermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE),
     asyncHandler(async (req, res) => {
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) {
@@ -1823,7 +1870,7 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json(table);
   });
 
-  app.post("/api/tables", (req, res) => {
+  app.post("/api/tables", ...requirePermission(PERMISSIONS.DATASETS_MANAGE), (req, res) => {
     const { name, schema, description, columns } = req.body as Partial<Table>;
     if (!name) return res.status(400).json({ error: "Table name is required." });
     if (schema === undefined) return res.status(400).json({ error: "Table schema is required." });
@@ -1831,14 +1878,14 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(201).json(table);
   });
 
-  app.patch("/api/tables/:id", (req, res) => {
+  app.patch("/api/tables/:id", ...requirePermission(PERMISSIONS.DATASETS_MANAGE), (req, res) => {
     const id = Number(req.params.id);
     const updated = updateTable(id, req.body);
     if (!updated) return res.status(404).json({ error: "Table not found." });
     return res.json(updated);
   });
 
-  app.delete("/api/tables/:id", (req, res) => {
+  app.delete("/api/tables/:id", ...requirePermission(PERMISSIONS.DATASETS_MANAGE), (req, res) => {
     const id = Number(req.params.id);
     const ok = deleteTable(id);
     if (!ok) return res.status(404).json({ error: "Table not found." });

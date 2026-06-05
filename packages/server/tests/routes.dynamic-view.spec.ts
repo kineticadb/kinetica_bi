@@ -909,7 +909,10 @@ describe("Dynamic-view runtime — AUTH_MODE=oidc smoke", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId);
-    const { cookie } = seedOidcSession("john.doe@kinetica.com");
+    // Phase 47 GUARD-V18-05: DELETE /api/dynamic-view/:id is now gated (DYNAMIC_VIEWS_MANAGE).
+    // Use bootstrap admin username so requirePermission short-circuits. View name sanitizes
+    // "admin" → "_kbi_dv_uadmin_..." in the DROP statement.
+    const { cookie } = seedOidcSession(process.env.APP_ADMIN_USERNAME || "admin");
 
     const res = await agent
       .delete(`/api/dynamic-view/${dv.id}`)
@@ -919,6 +922,6 @@ describe("Dynamic-view runtime — AUTH_MODE=oidc smoke", () => {
     expect(res.body).toEqual({ deleted: true, dropped: true });
     expect(getDashboardDynamicView(dv.id)).toBeUndefined();
     const statements = sqlStatements(fetchMock);
-    expect(statements[0]).toMatch(/^DROP TABLE IF EXISTS _kbi_dv_ujohn_doe_kinetica_com_/);
+    expect(statements[0]).toMatch(/^DROP TABLE IF EXISTS _kbi_dv_uadmin_/);
   });
 });

@@ -645,7 +645,8 @@ describe("Dynamic-view CRUD — AUTH_MODE=oidc smoke", () => {
     );
     const agent = await buildTestApp();
     const { dashId } = seedFixture();
-    const { cookie } = seedOidcSession("john.doe@kinetica.com");
+    // Phase 47 GUARD-V18-05: use bootstrap admin username so requirePermission short-circuits.
+    const { cookie } = seedOidcSession(process.env.APP_ADMIN_USERNAME || "admin");
     const res = await agent
       .get(`/api/dashboards/${dashId}/dynamic-views`)
       .set("Cookie", cookie);
@@ -662,7 +663,8 @@ describe("Dynamic-view CRUD — AUTH_MODE=oidc smoke", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = seedOidcSession("john.doe@kinetica.com");
+    // Phase 47 GUARD-V18-05: use bootstrap admin username so requirePermission short-circuits.
+    const { cookie } = seedOidcSession(process.env.APP_ADMIN_USERNAME || "admin");
     const res = await agent
       .post(`/api/dashboards/${dashId}/dynamic-views`)
       .set("Cookie", cookie)
@@ -691,7 +693,8 @@ describe("Dynamic-view CRUD — AUTH_MODE=oidc smoke", () => {
       template_sql: "SELECT * FROM {view}",
       max_records: 1000,
     });
-    const { cookie } = seedOidcSession("john.doe@kinetica.com");
+    // Phase 47 GUARD-V18-05: use bootstrap admin username so requirePermission short-circuits.
+    const { cookie } = seedOidcSession(process.env.APP_ADMIN_USERNAME || "admin");
     const res = await agent
       .put(`/api/dynamic-views/${row.id}`)
       .set("Cookie", cookie)

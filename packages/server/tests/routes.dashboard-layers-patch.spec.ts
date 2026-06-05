@@ -275,7 +275,8 @@ describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=oidc", () => {
   it("Test 4 (oidc smoke): PATCHing cb_config round-trips correctly under OIDC credentials", async () => {
     const agent = await buildTestApp();
     const { dashId, layerId } = seedFixture();
-    const { cookie } = seedOidcSession();
+    // Phase 47 GUARD-V18-05: use bootstrap admin username so requirePermission short-circuits.
+    const { cookie } = seedOidcSession(process.env.APP_ADMIN_USERNAME || "admin");
     const cbJson = '{"attr":"fare_amount","valsType":"numeric","breaks":[{"value":10,"color":"FF112233"}]}';
     const res = await agent
       .patch(`/api/dashboards/${dashId}/layers/${layerId}`)
