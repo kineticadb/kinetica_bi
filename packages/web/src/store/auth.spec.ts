@@ -107,3 +107,54 @@ describe("bootstrap() — fetchMe failure", () => {
     expect(useAuthStore.getState().authMode).toBe("password");
   });
 });
+
+describe("hasPermission selector + setPermissions", () => {
+  it("hasPermission(p) returns true when p is in user.permissions", () => {
+    useAuthStore.setState({
+      status: "authenticated",
+      user: { username: "t", roles: ["designer"], permissions: ["dashboards:edit"] },
+    });
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(true);
+  });
+
+  it("hasPermission(p) returns false when p is not in user.permissions", () => {
+    useAuthStore.setState({
+      status: "authenticated",
+      user: { username: "t", roles: ["analyst"], permissions: ["dashboards:view"] },
+    });
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(false);
+  });
+
+  it("hasPermission(p) returns false when user is null (unauthenticated)", () => {
+    useAuthStore.setState({ user: null });
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(false);
+  });
+
+  it("hasPermission reads CURRENT state — reflects update after setPermissions", () => {
+    useAuthStore.setState({
+      status: "authenticated",
+      user: { username: "t", roles: ["analyst"], permissions: ["dashboards:view"] },
+    });
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(false);
+    useAuthStore.getState().setPermissions(["designer"], ["dashboards:view", "dashboards:edit"]);
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(true);
+  });
+
+  it("setPermissions updates user.roles + user.permissions in place (preserving username)", () => {
+    useAuthStore.setState({
+      status: "authenticated",
+      user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] },
+    });
+    useAuthStore.getState().setPermissions(["designer"], ["dashboards:view", "dashboards:edit"]);
+    const user = useAuthStore.getState().user;
+    expect(user?.username).toBe("alice");
+    expect(user?.roles).toEqual(["designer"]);
+    expect(user?.permissions).toEqual(["dashboards:view", "dashboards:edit"]);
+  });
+
+  it("setPermissions is a safe no-op when user is null", () => {
+    useAuthStore.setState({ user: null });
+    useAuthStore.getState().setPermissions(["designer"], ["dashboards:edit"]);
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+});

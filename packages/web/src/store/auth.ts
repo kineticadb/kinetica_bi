@@ -15,9 +15,11 @@ type AuthState = {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   markUnauthenticated: (reason?: AuthReason) => void;
+  hasPermission: (perm: string) => boolean;
+  setPermissions: (roles: string[], permissions: string[]) => void;
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   status: "unknown",
   user: null,
   error: null,
@@ -66,5 +68,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   // reason defaults to null; UNAUTHORIZED_EVENT path passes "session-expired"
   markUnauthenticated: (reason: AuthReason = null) =>
-    set({ status: "unauthenticated", user: null, reason })
+    set({ status: "unauthenticated", user: null, reason }),
+  // Phase 48 (GATE-V18-01): reads get().user to avoid stale closure (Pitfall 3).
+  // Returns false when user is null (unauthenticated) — always safe to call.
+  hasPermission: (perm: string) => new Set(get().user?.permissions ?? []).has(perm),
+  // setPermissions: in-place update of user.roles + user.permissions; no-op when user is null.
+  // Permissions vanish naturally when markUnauthenticated sets user=null (no reset chain entry needed).
+  setPermissions: (roles: string[], permissions: string[]) =>
+    set((s) => (s.user ? { user: { ...s.user, roles, permissions } } : s)),
 }));

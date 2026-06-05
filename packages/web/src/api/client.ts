@@ -86,7 +86,7 @@ const throwForStatus = async (response: Response, fallbackMessage: string): Prom
 
 // --- Auth ---
 
-export type AuthUser = { username: string };
+export type AuthUser = { username: string; roles: string[]; permissions: string[] };
 
 // Phase 7 (UX-08 / OIDC-01): runtime auth-mode discovery — used by store/auth.ts bootstrap()
 // and by LoginPage.tsx for the OIDC SSO branch.
@@ -128,7 +128,14 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
   if (response.status === 401) return null;
   if (!response.ok) throw new Error(`Failed to load session: ${response.status}`);
   const json = await response.json();
-  return { user: json.user as AuthUser, authMode: json.authMode as AuthMode };
+  return {
+    user: {
+      username: json.user.username,
+      roles: json.user.roles ?? [],
+      permissions: json.user.permissions ?? [],
+    },
+    authMode: json.authMode as AuthMode,
+  };
 };
 
 export const runSql = async <T = unknown>(
