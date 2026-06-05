@@ -243,6 +243,12 @@ Backend config lives in `packages/server/.env` (copy `packages/server/.env.examp
 
 <sub>✓* = required only in `oidc` mode.</sub>
 
+**v1.8 RBAC**
+
+| Variable | Default | Req. | Description |
+|----------|---------|------|-------------|
+| `APP_ADMIN_USERNAME` | `admin` | – | Bootstrap admin username — always resolves to all permissions (short-circuit before DB lookup). Case-insensitive. In OIDC mode, set to the intended admin's OIDC username (post-regex claim value); otherwise the server logs an `rbac_bootstrap_admin_warning` at boot. |
+
 **Kinetica service account** — backs the anonymous WMS GetCapabilities probe (and `password`-mode validation). Per-user analytics queries use the signed-in user's own credentials, **not** these (see [Architecture](#architecture)).
 
 | Variable | Default | Req. | Description |

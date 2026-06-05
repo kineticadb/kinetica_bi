@@ -99,6 +99,9 @@ import {
   mapOidcError,
   type OidcConfig,
 } from "./oidc";
+// v1.8 RBAC (SCHEMA-V18-03): bootstrap admin username resolution — used for the OIDC
+// default-admin boot warning. Import AFTER "./env" (env must stay the first import).
+import { getAppAdminUsername } from "./lib/rbacDb";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -186,6 +189,26 @@ export const createApp = async (): Promise<express.Express> => {
         redirect_uri: oidcConfig.redirectUri,
       })
     );
+
+    // v1.8 RBAC (SCHEMA-V18-03): warn-and-boot when the bootstrap admin is still the
+    // default "admin" in OIDC mode. OIDC usernames come from the IdP claim (post-regex),
+    // which is rarely literally "admin" — so no OIDC user would short-circuit to admin and
+    // roles could only be assigned by users already granted admin. NON-FATAL (analyst default
+    // means nobody is locked out). Operators search: jq 'select(.event=="rbac_bootstrap_admin_warning")'.
+    const appAdminUsername = getAppAdminUsername();
+    if (appAdminUsername.toLowerCase() === "admin") {
+      console.warn(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "warn",
+          event: "rbac_bootstrap_admin_warning",
+          message:
+            "AUTH_MODE=oidc but APP_ADMIN_USERNAME is the default 'admin'. OIDC usernames come from the IdP claim and are rarely literally 'admin'. Set APP_ADMIN_USERNAME to the intended admin's OIDC username (post-regex claim value), or roles can only be assigned by a user already granted the admin role.",
+          app_admin_username: appAdminUsername,
+          auth_mode: authMode,
+        })
+      );
+    }
 
     // Unauthenticated reachability probe — fire-and-forget.
     // NOT an OIDC-trust test (no token to send); catches DNS/TLS/connectivity at boot.
