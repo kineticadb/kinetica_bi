@@ -24,14 +24,15 @@ const EXPECTED_PERMISSION_STRINGS = [
   "roles:create_custom",
   "roles:delete_custom",
   "audit:view",
+  "datasets:manage",
 ] as const;
 
 describe("PERMISSIONS catalog", () => {
-  it("has exactly 15 entries", () => {
-    expect(Object.keys(PERMISSIONS).length).toBe(15);
+  it("has exactly 16 entries", () => {
+    expect(Object.keys(PERMISSIONS).length).toBe(16);
   });
 
-  it("contains exactly the 15 expected permission strings (independent lock)", () => {
+  it("contains exactly the 16 expected permission strings (independent lock)", () => {
     const actual = Object.values(PERMISSIONS).sort();
     const expected = [...EXPECTED_PERMISSION_STRINGS].sort();
     expect(actual).toEqual(expected);
@@ -46,8 +47,8 @@ describe("PERMISSIONS catalog", () => {
 });
 
 describe("ALL_PERMISSIONS", () => {
-  it("has length 15", () => {
-    expect(ALL_PERMISSIONS.length).toBe(15);
+  it("has length 16", () => {
+    expect(ALL_PERMISSIONS.length).toBe(16);
   });
 
   it("contains every value in PERMISSIONS (no omissions)", () => {
@@ -60,6 +61,10 @@ describe("ALL_PERMISSIONS", () => {
   it("has no duplicates", () => {
     const unique = new Set(ALL_PERMISSIONS);
     expect(unique.size).toBe(ALL_PERMISSIONS.length);
+  });
+
+  it("contains 'datasets:manage' (16th permission, Phase 47 addition)", () => {
+    expect(ALL_PERMISSIONS).toContain("datasets:manage");
   });
 });
 
@@ -90,6 +95,7 @@ const EXPECTED_ADMIN_PERMS = [
   "roles:create_custom",
   "roles:delete_custom",
   "audit:view",
+  "datasets:manage",
 ];
 
 const EXPECTED_DESIGNER_PERMS = [
@@ -101,6 +107,7 @@ const EXPECTED_DESIGNER_PERMS = [
   "layers:manage",
   "dynamic_views:manage",
   "data_filters:configure",
+  "datasets:manage",
 ];
 
 const EXPECTED_USER_ADMIN_PERMS = [
@@ -115,20 +122,20 @@ const EXPECTED_USER_ADMIN_PERMS = [
 const EXPECTED_ANALYST_PERMS = ["dashboards:view"];
 
 describe("DEFAULT_ROLE_MAPPINGS", () => {
-  it("admin deep-equals ALL_PERMISSIONS (all 15) — compared as sorted sets", () => {
+  it("admin deep-equals ALL_PERMISSIONS (all 16) — compared as sorted sets", () => {
     const actual = [...DEFAULT_ROLE_MAPPINGS.admin].sort();
     const expected = [...ALL_PERMISSIONS].sort();
     expect(actual).toEqual(expected);
   });
 
-  it("admin has exactly 15 permissions (independently locked)", () => {
+  it("admin has exactly 16 permissions (independently locked)", () => {
     const actual = [...DEFAULT_ROLE_MAPPINGS.admin].sort();
     const expected = [...EXPECTED_ADMIN_PERMS].sort();
     expect(actual).toEqual(expected);
   });
 
-  it("designer is exactly the 8 design permissions — no users:*, roles:*, audit:*", () => {
-    expect(DEFAULT_ROLE_MAPPINGS.designer.length).toBe(8);
+  it("designer is exactly the 9 design permissions — no users:*, roles:*, audit:*", () => {
+    expect(DEFAULT_ROLE_MAPPINGS.designer.length).toBe(9);
     const actual = [...DEFAULT_ROLE_MAPPINGS.designer].sort();
     const expected = [...EXPECTED_DESIGNER_PERMS].sort();
     expect(actual).toEqual(expected);

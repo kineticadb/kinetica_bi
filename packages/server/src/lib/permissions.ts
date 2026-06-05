@@ -31,11 +31,12 @@ export const PERMISSIONS = {
   ROLES_CREATE_CUSTOM:      "roles:create_custom",
   ROLES_DELETE_CUSTOM:      "roles:delete_custom",
   AUDIT_VIEW:               "audit:view",
+  DATASETS_MANAGE:          "datasets:manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-// Flat array of all 15 permission strings — used by the admin bootstrap
+// Flat array of all 16 permission strings — used by the admin bootstrap
 // short-circuit (returns new Set(ALL_PERMISSIONS)) and the catalog seed.
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(PERMISSIONS);
 
@@ -60,10 +61,10 @@ export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
 // matrix.
 
 export const DEFAULT_ROLE_MAPPINGS: Record<BuiltinRole, readonly Permission[]> = {
-  // admin: all 15 permissions (bootstrap short-circuit always returns full set)
+  // admin: all 16 permissions (bootstrap short-circuit always returns full set)
   admin: [...ALL_PERMISSIONS],
 
-  // designer: full dashboard lifecycle + all design tooling.
+  // designer: full dashboard lifecycle + all design tooling + dataset management.
   // Mental model: "designer designs, admin governs."
   // Everything except users:*, roles:*, audit:*.
   designer: [
@@ -75,6 +76,7 @@ export const DEFAULT_ROLE_MAPPINGS: Record<BuiltinRole, readonly Permission[]> =
     PERMISSIONS.LAYERS_MANAGE,
     PERMISSIONS.DYNAMIC_VIEWS_MANAGE,
     PERMISSIONS.DATA_FILTERS_CONFIGURE,
+    PERMISSIONS.DATASETS_MANAGE,
   ],
 
   // user_admin: least-privilege management + analyst-level dashboard view ONLY.

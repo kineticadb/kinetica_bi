@@ -4,17 +4,17 @@
  * Coverage:
  *   - Fresh-boot path: createDb on an empty/in-memory DB creates roles,
  *     role_permissions, user_roles tables + idx_user_roles_username index.
- *   - Seed correctness: 4 built-in roles seeded; analyst=1, designer=8,
- *     user_admin=6, admin=15 permissions; all 4 have built_in=1.
+ *   - Seed correctness: 4 built-in roles seeded; analyst=1, designer=9,
+ *     user_admin=6, admin=16 permissions; all 4 have built_in=1.
  *   - Idempotency (THE key test): two consecutive createDb calls on the same
- *     file path produce no duplicate role or mapping rows (COUNT stays 4/30).
+ *     file path produce no duplicate role or mapping rows (COUNT stays 4/32).
  *   - Operator-edit survival: manually deleting a designer permission mapping
  *     then re-booting does NOT re-insert it (INSERT OR IGNORE semantics).
  *   - v1.7-schema upgrade: a hand-built pre-v1.8 DB (dashboards + a row but
  *     no RBAC tables) gets the three tables added without losing existing data.
  *   - FK cascade: deleting a role cascade-deletes its user_roles rows when
  *     foreign_keys=ON.
- *   - Seed-history contract (addendum 2026-06-05): rbac_seed_history has 30
+ *   - Seed-history contract (addendum 2026-06-05): rbac_seed_history has 32
  *     rows after first boot; operator-removed default permission stays removed
  *     after second boot; new-default simulation seeds exactly once.
  *
@@ -138,17 +138,17 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
     }
   });
 
-  it("seeds 30 role_permissions rows total (15+8+6+1)", () => {
+  it("seeds 32 role_permissions rows total (16+9+6+1)", () => {
     const x = createDb(":memory:");
     const count = (
       x
         .prepare("SELECT COUNT(*) AS c FROM role_permissions")
         .get() as { c: number }
     ).c;
-    expect(count).toBe(30);
+    expect(count).toBe(32);
   });
 
-  it("admin role maps to exactly 15 permissions", () => {
+  it("admin role maps to exactly 16 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -157,10 +157,10 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(15);
+    expect(count).toBe(16);
   });
 
-  it("designer role maps to exactly 8 permissions", () => {
+  it("designer role maps to exactly 9 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -169,7 +169,7 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(8);
+    expect(count).toBe(9);
   });
 
   it("user_admin role maps to exactly 6 permissions", () => {
@@ -223,7 +223,7 @@ describe("RBAC seed idempotency (SCHEMA-V18-01)", () => {
           .prepare("SELECT COUNT(*) AS c FROM role_permissions")
           .get() as { c: number }
       ).c;
-      expect(permCount).toBe(30);
+      expect(permCount).toBe(32);
 
       second.close();
     }).not.toThrow();
@@ -307,7 +307,7 @@ describe("RBAC operator-edit survival (SCHEMA-V18-01)", () => {
         )
         .all(designerRow.id) as Array<{ permission: string }>
     ).map((r) => r.permission);
-    expect(firstBootPerms).toHaveLength(8);
+    expect(firstBootPerms).toHaveLength(9);
     first.close();
 
     const second = createDb(dbPath);
@@ -431,7 +431,7 @@ describe("RBAC FK cascade (SCHEMA-V18-01)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
-  it("rbac_seed_history has exactly 30 rows after first boot (one per default mapping)", () => {
+  it("rbac_seed_history has exactly 32 rows after first boot (one per default mapping)", () => {
     const dbPath = mkTempDbPath();
     const x = createDb(dbPath);
 
@@ -439,8 +439,8 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
       x.prepare("SELECT COUNT(*) AS c FROM rbac_seed_history").get() as { c: number }
     ).c;
 
-    // 15 (admin) + 8 (designer) + 6 (user_admin) + 1 (analyst) = 30
-    expect(histCount).toBe(30);
+    // 16 (admin) + 9 (designer) + 6 (user_admin) + 1 (analyst) = 32
+    expect(histCount).toBe(32);
     x.close();
   });
 
@@ -485,7 +485,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
     // The removal survived — the permission was NOT re-inserted by the seed.
     expect(stillAbsent).toBe(0);
 
-    // Designer should now have 7 permissions (8 defaults minus the removed one).
+    // Designer should now have 8 permissions (9 defaults minus the removed one).
     const designerPerms = (
       second
         .prepare(
@@ -493,7 +493,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(designerPerms).toBe(7);
+    expect(designerPerms).toBe(8);
 
     second.close();
   });
@@ -565,5 +565,114 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
     expect(analystPermsThirdBoot).toBe(1); // still exactly 1 — no duplication
 
     third.close();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// datasets:manage seed-history upgrade path (Phase 47 Plan 01, GUARD-V18-05)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("datasets:manage — seed-history upgrade path (Phase 47)", () => {
+  it("(a) fresh DB boot seeds datasets:manage into role_permissions for designer AND admin exactly once", () => {
+    const x = createDb(":memory:");
+
+    // designer gets datasets:manage
+    const designerCount = (
+      x
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'designer' AND rp.permission = ?"
+        )
+        .get("datasets:manage") as { c: number }
+    ).c;
+    expect(designerCount).toBe(1);
+
+    // admin gets datasets:manage (via ALL_PERMISSIONS spread)
+    const adminCount = (
+      x
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'admin' AND rp.permission = ?"
+        )
+        .get("datasets:manage") as { c: number }
+    ).c;
+    expect(adminCount).toBe(1);
+  });
+
+  it("(b) second seedRbac boot does NOT double-seed (designer, datasets:manage) — count stays exactly 1", () => {
+    const dbPath = mkTempDbPath();
+
+    // First boot — seeds all defaults including datasets:manage.
+    const first = createDb(dbPath);
+    first.close();
+
+    // Second boot — INSERT OR IGNORE on rbac_seed_history → changes=0 → no re-insert.
+    const second = createDb(dbPath);
+
+    const count = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'designer' AND rp.permission = ?"
+        )
+        .get("datasets:manage") as { c: number }
+    ).c;
+
+    // Exactly 1 — no duplication from second boot.
+    expect(count).toBe(1);
+
+    second.close();
+  });
+
+  it("(c) operator-removal survives: deleting (designer, datasets:manage) + re-booting does NOT re-insert it", () => {
+    const dbPath = mkTempDbPath();
+
+    // First boot — seeds datasets:manage for designer (and records history row).
+    const first = createDb(dbPath);
+
+    const designerRow = first
+      .prepare("SELECT id FROM roles WHERE name = 'designer'")
+      .get() as { id: number };
+
+    // Operator removes datasets:manage from designer role.
+    first
+      .prepare("DELETE FROM role_permissions WHERE role_id = ? AND permission = ?")
+      .run(designerRow.id, "datasets:manage");
+
+    // Confirm the row is gone.
+    const afterDelete = (
+      first
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions WHERE role_id = ? AND permission = ?"
+        )
+        .get(designerRow.id, "datasets:manage") as { c: number }
+    ).c;
+    expect(afterDelete).toBe(0);
+
+    first.close();
+
+    // Second boot — history row for (designer, datasets:manage) exists → changes=0
+    // → seedRbac SKIPS the role_permissions insert → removal survives.
+    const second = createDb(dbPath);
+
+    const stillAbsent = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'designer' AND rp.permission = ?"
+        )
+        .get("datasets:manage") as { c: number }
+    ).c;
+
+    // The removal survived — operator's edit was preserved by the seed-history contract.
+    expect(stillAbsent).toBe(0);
+
+    // rbac_seed_history still has the row (was inserted on first boot, not affected by role_permissions delete).
+    const histCount = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM rbac_seed_history WHERE role_name = ? AND permission = ?"
+        )
+        .get("designer", "datasets:manage") as { c: number }
+    ).c;
+    expect(histCount).toBe(1);
+
+    second.close();
   });
 });
