@@ -639,6 +639,142 @@ describe("Phase 34 — Dynamic Views action-bar button (DV-V16-08)", () => {
 // Phase 35 Plan 03 (DV-V16-13): orchestrator hook mount + dynamicViews prop
 // threading through WidgetConfigModal + LayersModal + DashboardContext.
 // ---------------------------------------------------------------------------
+// ===========================================================================
+// Phase 48 Plan 03 — permission gating (GATE-V18-02/03/04)
+// Analyst-hidden vs designer-visible assertions for action-bar + toolbar +
+// widget gear/× affordances. Analyst regression: ungated interactions remain
+// fully functional (FilterBar chip dismiss fires without error).
+// ===========================================================================
+describe("Phase 48 — permission gating (GATE-V18-02/03/04)", () => {
+  const dashboardId = 1;
+  const tableId = 42;
+  const dashboard = {
+    id: dashboardId,
+    name: "Gating Test Dashboard",
+    created_at: "2026-06-05T00:00:00Z",
+    updated_at: "2026-06-05T00:00:00Z",
+  };
+  const dashboardTable = {
+    id: tableId,
+    schema_name: "demo",
+    table_name: "trips",
+    columns: { zone: "string" },
+  };
+  // A minimal bar widget so widget-card elements (gear, ×) render.
+  const barWidget = {
+    id: 200,
+    dashboard_id: dashboardId,
+    title: "Bar Chart",
+    type: "bar",
+    position: 0,
+    config: { sql: "SELECT zone, COUNT(*) AS value FROM trips GROUP BY zone", tableId },
+    created_at: "2026-06-05T00:00:00Z",
+    updated_at: "2026-06-05T00:00:00Z",
+  };
+
+  const openDashboard = async (widgets: unknown[] = []) => {
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue(widgets);
+    const utils = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const openBtn = await screen.findByRole("button", { name: /^open$/i });
+    await userEvent.click(openBtn);
+    await waitFor(() => expect(listWidgets).toHaveBeenCalled());
+    return utils;
+  };
+
+  beforeEach(() => {
+    useFilterStore.getState().reset();
+    useSpatialFilterStore.getState().reset();
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([dashboardTable]);
+    (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  });
+
+  // ── Analyst-hidden assertions ─────────────────────────────────────────────
+  describe("analyst: gated affordances are hidden", () => {
+    beforeEach(() => {
+      seedAnalystStore();
+    });
+
+    it("list view: + New Dashboard button is hidden for analyst", async () => {
+      render(<DashboardsPage onViewChange={() => {}} />);
+      await screen.findByText(dashboard.name);
+      expect(screen.queryByRole("button", { name: "+ New Dashboard" })).toBeNull();
+    });
+
+    it("open dashboard: Dynamic Views, Map Layers, Visualizations, Tables toolbar buttons hidden for analyst", async () => {
+      await openDashboard();
+      expect(screen.queryByRole("button", { name: "Dynamic Views" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Map Layers" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Visualizations" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Tables" })).toBeNull();
+    });
+
+    it("open dashboard with widget: no gear (widget-configure) and no × (widget-remove) for analyst", async () => {
+      const { container } = await openDashboard([barWidget]);
+      expect(container.querySelector(".widget-configure")).toBeNull();
+      expect(container.querySelector(".widget-remove")).toBeNull();
+    });
+  });
+
+  // ── Designer-visible assertions ───────────────────────────────────────────
+  describe("designer: gated affordances are visible", () => {
+    beforeEach(() => {
+      seedDesignerStore();
+    });
+
+    it("list view: + New Dashboard button is visible for designer", async () => {
+      render(<DashboardsPage onViewChange={() => {}} />);
+      await screen.findByText(dashboard.name);
+      expect(await screen.findByRole("button", { name: "+ New Dashboard" })).toBeInTheDocument();
+    });
+
+    it("open dashboard: Dynamic Views, Map Layers, Visualizations, Tables toolbar buttons visible for designer", async () => {
+      await openDashboard();
+      expect(await screen.findByRole("button", { name: "Dynamic Views" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Map Layers" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Visualizations" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Tables" })).toBeInTheDocument();
+    });
+
+    it("open dashboard with widget: gear (widget-configure) and × (widget-remove) visible for designer", async () => {
+      const { container } = await openDashboard([barWidget]);
+      await waitFor(() => {
+        expect(container.querySelector(".widget-configure")).not.toBeNull();
+        expect(container.querySelector(".widget-remove")).not.toBeNull();
+      });
+    });
+  });
+
+  // ── EXPLICIT ANALYST REGRESSION (orchestrator-mandated) ──────────────────
+  // Confirms that ungated analyst interactions remain fully functional — not
+  // just a baseline-count proxy but a positive assertion that clicking works.
+  it("ANALYST REGRESSION: FilterBar chip dismiss is clickable and fires removeFilter without error", async () => {
+    seedAnalystStore();
+    // Pre-seed a column filter in the store (simulates a drill-down already applied).
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, {
+        column: "zone",
+        value: "East",
+        dataType: "string",
+        sourceWidgetId: 1,
+        addedAt: Date.now(),
+      });
+    });
+    await openDashboard([]);
+    // The FilterBar chip for "zone" should be visible (filter-bar is always visible for analysts with active filters).
+    const dismissBtn = await screen.findByLabelText("Remove filter zone");
+    expect(dismissBtn).toBeInTheDocument();
+    // Click the dismiss — should remove the filter from the store without error.
+    await userEvent.click(dismissBtn);
+    await waitFor(() => {
+      const colFilters = useFilterStore.getState().filters[tableId] ?? [];
+      expect(colFilters).toHaveLength(0);
+    });
+  });
+});
+
 describe("Phase 35 — useDynamicViewMaterializeChain mount + prop threading (DV-V16-13)", () => {
   const dashboardId = 1;
   const tableId = 42;

@@ -947,27 +947,31 @@ const DashboardOpen = ({
                     <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
                   )}
                   <div className="widget-actions">
-                    <button
-                      className="widget-configure"
-                      onClick={() => setConfiguringWidget(w)}
-                      title="Configure"
-                    >
-                      <FontAwesomeIcon icon={faGear} />
-                    </button>
-                    <button
-                      className="widget-remove"
-                      onClick={() => handleRemoveWidget(w.id)}
-                      title="Remove"
-                    >
-                      <FontAwesomeIcon icon={faXmark} />
-                    </button>
+                    {canConfigure && (
+                      <button
+                        className="widget-configure"
+                        onClick={() => setConfiguringWidget(w)}
+                        title="Configure"
+                      >
+                        <FontAwesomeIcon icon={faGear} />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        className="widget-remove"
+                        onClick={() => handleRemoveWidget(w.id)}
+                        title="Remove"
+                      >
+                        <FontAwesomeIcon icon={faXmark} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="widget-body">
                   <WidgetRenderer
                     widget={w}
                     tables={associatedTables}
-                    onConfigureWidget={(target) => setConfiguringWidget(target)}
+                    onConfigureWidget={canConfigure ? (target) => setConfiguringWidget(target) : undefined}
                   />
                 </div>
               </div>

@@ -109,13 +109,15 @@ export default function LegendRenderer({
         <div className="legend-widget-orphan-message">
           Source map widget not found. Reconfigure the legend.
         </div>
-        <button
-          type="button"
-          className="legend-widget-orphan-reconfigure"
-          onClick={() => onConfigureWidget?.(widget)}
-        >
-          Reconfigure
-        </button>
+        {onConfigureWidget && (
+          <button
+            type="button"
+            className="legend-widget-orphan-reconfigure"
+            onClick={() => onConfigureWidget(widget)}
+          >
+            Reconfigure
+          </button>
+        )}
       </div>
     );
   }

@@ -95,7 +95,8 @@ describe("LegendRenderer (Phase 42 / WIDGET-V17-01..05)", () => {
     expect(
       screen.getByText("Source map widget not found. Reconfigure the legend."),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reconfigure" })).toBeTruthy();
+    // Reconfigure button hidden when onConfigureWidget is undefined (GATE-V18-04 clean-hide)
+    expect(screen.queryByRole("button", { name: "Reconfigure" })).toBeNull();
     expect(screen.queryByTestId("mocked-layers-legend-panel")).toBeNull();
   });
 
