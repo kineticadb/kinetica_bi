@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
+import { seedRbac } from "./lib/rbacSeed";
 
 const ensureDir = (dbPath: string) => {
   // Skip directory creation for in-memory databases used in tests.
@@ -238,6 +239,10 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!layerColNames.has("track_config")) {
     instance.exec("ALTER TABLE dashboard_layers ADD COLUMN track_config TEXT");
   }
+
+  // v1.8 RBAC (SCHEMA-V18-01): idempotent built-in role + default-mapping seed.
+  // Runs every boot; INSERT OR IGNORE makes it a no-op on subsequent restarts.
+  seedRbac(instance);
 
   return instance;
 };
