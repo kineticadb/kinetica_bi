@@ -5,6 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen, cleanup } from "@testing-library/react";
 import Sidebar from "./Sidebar";
+import { useAuthStore } from "../store/auth";
+import { seedAnalystStore, seedAdminStore } from "../test/seedAuthStore";
 
 function renderSidebar(
   overrides: Partial<{
@@ -26,7 +28,10 @@ function renderSidebar(
 }
 
 describe("Sidebar", () => {
-  beforeEach(() => { cleanup(); });
+  beforeEach(() => {
+    cleanup();
+    useAuthStore.setState({ status: "unauthenticated", user: null });
+  });
 
   it("renders the three nav items with their labels (expanded)", () => {
     renderSidebar();
@@ -106,5 +111,41 @@ describe("Sidebar", () => {
     expect(screen.queryByText("GPU-DB")).toBeNull();
     expect(screen.queryByText("Connected")).toBeNull();
     expect(container.querySelector(".status-dot")).not.toBeNull();
+  });
+
+  describe("Phase 48 — gated nav items (GATE-V18-05)", () => {
+    it("analyst: User Management and Roles nav items are hidden; base 3 items still present", () => {
+      seedAnalystStore();
+      renderSidebar();
+      // Gated items must NOT be present
+      expect(screen.queryByRole("button", { name: "User Management" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Roles" })).toBeNull();
+      // Base 3 items always visible
+      expect(screen.getByRole("button", { name: "Dashboards" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Datasets" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    });
+
+    it("admin (users:view + roles:view): User Management and Roles nav items are visible", () => {
+      seedAdminStore();
+      renderSidebar();
+      // Gated items must be present
+      expect(screen.getByRole("button", { name: "User Management" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Roles" })).toBeInTheDocument();
+      // Base 3 items still present
+      expect(screen.getByRole("button", { name: "Dashboards" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Datasets" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    });
+
+    it("unauthenticated user: gated items hidden, base 3 items present", () => {
+      // user is null — default state after beforeEach reset
+      renderSidebar();
+      expect(screen.queryByRole("button", { name: "User Management" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Roles" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Dashboards" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Datasets" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    });
   });
 });

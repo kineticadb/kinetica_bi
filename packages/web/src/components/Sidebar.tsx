@@ -6,19 +6,26 @@ import {
   faGear,
   faAnglesLeft,
   faAnglesRight,
+  faUsers,
+  faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import { useAuthStore } from "../store/auth";
+import { PERMISSIONS } from "../lib/permissions";
 
 type NavItem = {
   label: string;
   key: string;
   icon: IconDefinition;
+  permission?: string;
 };
 
 const nav: NavItem[] = [
   { label: "Dashboards", key: "dashboards", icon: faTableColumns },
   { label: "Datasets", key: "datasets", icon: faDatabase },
   { label: "Settings", key: "settings", icon: faGear },
+  { label: "User Management", key: "users", icon: faUsers, permission: PERMISSIONS.USERS_VIEW },
+  { label: "Roles", key: "roles", icon: faUserShield, permission: PERMISSIONS.ROLES_VIEW },
 ];
 
 type Props = {
@@ -29,6 +36,9 @@ type Props = {
 };
 
 const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) => {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const visibleNav = nav.filter((item) => !item.permission || hasPermission(item.permission));
+
   return (
     <aside className={clsx("sidebar", collapsed && "collapsed")}>
       <div className="sidebar-header">
@@ -45,7 +55,7 @@ const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) =>
         </button>
       </div>
       <nav>
-        {nav.map((item) => (
+        {visibleNav.map((item) => (
           <button
             key={item.key}
             className={clsx("nav-item", item.key === activeKey && "active")}
