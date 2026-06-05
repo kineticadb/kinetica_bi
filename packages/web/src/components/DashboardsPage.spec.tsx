@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, screen, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { seedDesignerStore, seedAnalystStore } from "../test/seedAuthStore";
 import { useFilterStore, type ActiveFilter } from "../store/filterStore";
 import { useFilterViewStore } from "../store/filterViewStore";
 import { useInfoSelectionStore } from "../store/infoSelectionStore";
@@ -134,6 +135,7 @@ import {
 
 describe("DashboardsPage — LIFE-V13-04 (dashboard-switch cleanup)", () => {
   beforeEach(() => {
+    seedDesignerStore();
     (dropFilterView as ReturnType<typeof vi.fn>).mockClear();
     (dropFilterView as ReturnType<typeof vi.fn>).mockImplementation(() => Promise.resolve({ dropped: true as const }));
     // Phase 33 DV-V16-07: clear + default the 6th-store DROP-loop mock.
@@ -391,6 +393,7 @@ describe("Phase 30 — spatial chips in FilterBar (CHIP-V15-01/02)", () => {
   };
 
   beforeEach(() => {
+    seedDesignerStore();
     useSpatialFilterStore.getState().reset();
     useFilterStore.getState().reset();
     useFilterViewStore.getState().reset();
@@ -574,6 +577,7 @@ describe("Phase 34 — Dynamic Views action-bar button (DV-V16-08)", () => {
   };
 
   beforeEach(() => {
+    seedDesignerStore();
     (globalThis as unknown as { __lastDVMProps?: unknown }).__lastDVMProps = null;
     (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
     (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([dashboardTable]);
@@ -663,6 +667,7 @@ describe("Phase 35 — useDynamicViewMaterializeChain mount + prop threading (DV
   };
 
   beforeEach(() => {
+    seedDesignerStore();
     (globalThis as unknown as { __lastLayersModalProps?: unknown }).__lastLayersModalProps =
       null;
     (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
