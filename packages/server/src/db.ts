@@ -127,6 +127,40 @@ const SCHEMA_DDL = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_dashboard_dynamic_views_dashboard_id ON dashboard_dynamic_views (dashboard_id);
+
+  -- v1.7 → v1.8 RBAC (SCHEMA-V18-01): app-local role registry. Three wholly-new tables
+  -- (no ALTER needed — CREATE TABLE IF NOT EXISTS covers both fresh installs and existing
+  -- v1.7 deployments). Seeded idempotently by seedRbac() in createDb (INSERT OR IGNORE).
+  -- Username is the Kinetica/OIDC username; NO local users table (identity is external).
+  -- Usernames are stored LOWERCASED in user_roles (46-CONTEXT.md: OIDC casing is inconsistent;
+  -- case-insensitive matching prevents silent role-assignment breakage).
+  CREATE TABLE IF NOT EXISTS roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    built_in INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Role → permission mapping (many-to-many). permission is a code-catalog string
+  -- (lib/permissions.ts), intentionally NOT a FK; no permissions table in v1.8 per
+  -- 46-CONTEXT.md. Editable by user admin in Phase 50, including for built-in roles.
+  CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission TEXT NOT NULL,
+    PRIMARY KEY (role_id, permission)
+  );
+
+  -- Username → role assignment (many-to-many). username stored LOWERCASED.
+  -- Multiple roles per user → union of permissions (resolved in rbacDb.ts Plan 46-03).
+  CREATE TABLE IF NOT EXISTS user_roles (
+    username TEXT NOT NULL,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (username, role_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_roles_username ON user_roles (username);
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
