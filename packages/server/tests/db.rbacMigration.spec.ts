@@ -71,6 +71,33 @@ describe("RBAC migration — fresh boot (SCHEMA-V18-01)", () => {
     expect(tableNames).toContain("role_permissions");
     expect(tableNames).toContain("user_roles");
     expect(tableNames).toContain("rbac_seed_history");
+    // Phase 47 (v1.8): known_users table for durable login history
+    expect(tableNames).toContain("known_users");
+  });
+
+  it("creates known_users table with correct schema on fresh and existing DB", () => {
+    // Fresh DB
+    const fresh = createDb(":memory:");
+    const freshCols = fresh
+      .prepare("PRAGMA table_info(known_users)")
+      .all() as Array<{ name: string; type: string; notnull: number }>;
+    const freshByName = Object.fromEntries(freshCols.map((c) => [c.name, c]));
+    expect(freshByName.username).toBeDefined();
+    expect(freshByName.username.type).toBe("TEXT");
+    expect(freshByName.first_seen).toBeDefined();
+    expect(freshByName.last_seen).toBeDefined();
+
+    // Existing DB (second createDb call on same path — idempotent)
+    const dbPath = mkTempDbPath();
+    const first = createDb(dbPath);
+    first.close();
+    const second = createDb(dbPath);
+    const secondCols = second
+      .prepare("PRAGMA table_info(known_users)")
+      .all() as Array<{ name: string }>;
+    expect(secondCols.map((c) => c.name)).toContain("username");
+    expect(secondCols.map((c) => c.name)).toContain("last_seen");
+    second.close();
   });
 
   it("creates idx_user_roles_username index on fresh boot", () => {

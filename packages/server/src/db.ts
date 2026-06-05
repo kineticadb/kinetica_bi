@@ -179,6 +179,15 @@ const SCHEMA_DDL = `
     permission TEXT NOT NULL,
     PRIMARY KEY (role_name, permission)
   );
+
+  -- Phase 47 (v1.8): durable login history independent of session GC. Upserted on every
+  -- successful login (password + OIDC). Username LOWERCASED (Phase 46 convention). Feeds
+  -- GET /api/users union + Phase 49 last-seen. CREATE TABLE IF NOT EXISTS covers existing deployments.
+  CREATE TABLE IF NOT EXISTS known_users (
+    username TEXT PRIMARY KEY,
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 export const createDb = (dbPath: string): Database.Database => {

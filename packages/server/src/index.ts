@@ -295,6 +295,14 @@ export const createApp = async (): Promise<express.Express> => {
     }
     try {
       const sid = createSession({ username, secret: password, kineticaUrl });
+      // Phase 47 (v1.8): upsert into known_users on successful login so GET /api/users
+      // can list every user who has ever logged in (union with user_roles).
+      // Username lowercased per Phase 46 convention. Placed on success path only (Pitfall 4).
+      db.prepare(
+        `INSERT INTO known_users (username, first_seen, last_seen)
+         VALUES (lower(?), datetime('now'), datetime('now'))
+         ON CONFLICT(username) DO UPDATE SET last_seen = datetime('now')`
+      ).run(username);
       issueSessionCookie(res, username, sid);
     } catch (error) {
       return res.status(500).json({ error: String(error) });
@@ -469,6 +477,13 @@ export const createApp = async (): Promise<express.Express> => {
       credentialType: "oidc",
       idToken,
     });
+    // Phase 47 (v1.8): upsert into known_users on successful OIDC login.
+    // Username lowercased per Phase 46 convention. Placed on success path only (Pitfall 4).
+    db.prepare(
+      `INSERT INTO known_users (username, first_seen, last_seen)
+       VALUES (lower(?), datetime('now'), datetime('now'))
+       ON CONFLICT(username) DO UPDATE SET last_seen = datetime('now')`
+    ).run(username);
     issueSessionCookie(res, username, sid);
     return res.redirect(`${webRedirectBase}/`);
   }));
