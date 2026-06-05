@@ -2003,6 +2003,150 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json(data);
   }));
 
+  // ─── v1.8 Phase 47 Plan 03: RBAC Management Routes (GUARD-V18-04) ────────────
+  // 7 management routes for user/role administration. All gated with requirePermission.
+  // No requireConfig needed — these routes are SQLite-only; no Kinetica calls.
+  // REST shapes intentionally detailed to lock the Phase 49 contract now.
+  //
+  // SAFE-V18-01 (last-admin protection) is deferred to Phase 49 with the assign/revoke UI.
+  // SAFE-V18-02 (escalation guards) is deferred to Phase 50 with role management routes.
+  //
+  // Pitfall-6-safe targeting: target = req.params.username.toLowerCase() (the user being
+  // administered); actor = req.user!.creds.username (the admin caller, for future Phase 50 audit).
+
+  // GET /api/users — list all known+assigned users with their roles
+  app.get("/api/users", ...requirePermission(PERMISSIONS.USERS_VIEW), (req, res) => {
+    // Union of known_users (every user who has ever logged in) and user_roles (assigned users).
+    // This ensures users who have never logged in but have roles are still visible, and
+    // users who have logged in but have no explicit role are also visible (analyst default).
+    const rows = db.prepare(`
+      SELECT ku.username,
+             json_group_array(DISTINCT r.name) FILTER (WHERE r.name IS NOT NULL) AS roles
+      FROM (
+        SELECT username FROM known_users
+        UNION
+        SELECT DISTINCT username FROM user_roles
+      ) AS ku
+      LEFT JOIN user_roles ur ON ur.username = ku.username
+      LEFT JOIN roles r ON r.id = ur.role_id
+      GROUP BY ku.username
+      ORDER BY ku.username
+    `).all() as Array<{ username: string; roles: string }>;
+    const users = rows.map((row) => ({
+      username: row.username,
+      roles: JSON.parse(row.roles) as string[],
+    }));
+    return res.json({ users });
+  });
+
+  // POST /api/users/:username/roles — assign a role to a user
+  app.post("/api/users/:username/roles", ...requirePermission(PERMISSIONS.USERS_ASSIGN_ROLES), (req, res) => {
+    const target = req.params.username.toLowerCase(); // Pitfall 6: target from path, not session
+    const { roleName } = req.body as { roleName?: string };
+    if (!roleName) return res.status(400).json({ error: "roleName is required." });
+    const roleRow = db.prepare("SELECT id FROM roles WHERE name = ?").get(roleName) as { id: number } | undefined;
+    if (!roleRow) return res.status(404).json({ error: `Role '${roleName}' not found.` });
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(target, roleRow.id);
+    return res.json({ ok: true, username: target, roleName });
+  });
+
+  // DELETE /api/users/:username/roles/:roleName — revoke a role from a user (idempotent)
+  // NOTE: SAFE-V18-01 (last-admin protection) is deferred to Phase 49.
+  app.delete("/api/users/:username/roles/:roleName", ...requirePermission(PERMISSIONS.USERS_ASSIGN_ROLES), (req, res) => {
+    const target = req.params.username.toLowerCase(); // Pitfall 6
+    const roleName = req.params.roleName;
+    const roleRow = db.prepare("SELECT id FROM roles WHERE name = ?").get(roleName) as { id: number } | undefined;
+    if (!roleRow) return res.status(404).json({ error: `Role '${roleName}' not found.` });
+    db.prepare("DELETE FROM user_roles WHERE username = lower(?) AND role_id = ?").run(target, roleRow.id);
+    return res.json({ ok: true, username: target, roleName });
+  });
+
+  // GET /api/roles — list all roles with their permissions
+  app.get("/api/roles", ...requirePermission(PERMISSIONS.ROLES_VIEW), (_req, res) => {
+    const roleRows = db.prepare("SELECT id, name, description, built_in FROM roles ORDER BY name").all() as Array<{
+      id: number; name: string; description: string; built_in: number;
+    }>;
+    const roles = roleRows.map((role) => {
+      const perms = db.prepare(
+        "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission"
+      ).all(role.id) as Array<{ permission: string }>;
+      return {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        built_in: Boolean(role.built_in),
+        permissions: perms.map((p) => p.permission),
+      };
+    });
+    return res.json({ roles });
+  });
+
+  // POST /api/roles — create a custom role
+  app.post("/api/roles", ...requirePermission(PERMISSIONS.ROLES_CREATE_CUSTOM), (req, res) => {
+    const { name, description, permissions: perms } = req.body as {
+      name?: string; description?: string; permissions?: string[];
+    };
+    if (!name) return res.status(400).json({ error: "name is required." });
+    if (!Array.isArray(perms)) return res.status(400).json({ error: "permissions array is required." });
+    // 409 if name already exists
+    const existing = db.prepare("SELECT id FROM roles WHERE name = ?").get(name);
+    if (existing) return res.status(409).json({ error: `Role '${name}' already exists.` });
+    const result = db.prepare(
+      "INSERT INTO roles (name, description, built_in) VALUES (?, ?, 0)"
+    ).run(name, description ?? "");
+    const roleId = result.lastInsertRowid as number;
+    // Insert permissions
+    const insertPerm = db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)");
+    for (const perm of perms) {
+      insertPerm.run(roleId, perm);
+    }
+    const newRole = {
+      id: roleId,
+      name,
+      description: description ?? "",
+      built_in: false,
+      permissions: perms,
+    };
+    return res.status(201).json({ role: newRole });
+  });
+
+  // PUT /api/roles/:id/permissions — replace a role's permission set
+  app.put("/api/roles/:id/permissions", ...requirePermission(PERMISSIONS.ROLES_MANAGE_PERMISSIONS), (req, res) => {
+    const roleId = Number(req.params.id);
+    if (!Number.isFinite(roleId)) return res.status(400).json({ error: "id must be numeric." });
+    const roleRow = db.prepare("SELECT id, name FROM roles WHERE id = ?").get(roleId) as { id: number; name: string } | undefined;
+    if (!roleRow) return res.status(404).json({ error: "Role not found." });
+    const { permissions: newPerms } = req.body as { permissions?: string[] };
+    if (!Array.isArray(newPerms)) return res.status(400).json({ error: "permissions array is required." });
+    // Validate each permission string against the catalog
+    const validPerms = new Set(Object.values(PERMISSIONS));
+    const invalid = newPerms.filter((p) => !validPerms.has(p as typeof PERMISSIONS[keyof typeof PERMISSIONS]));
+    if (invalid.length > 0) {
+      return res.status(400).json({ error: `Unknown permissions: ${invalid.join(", ")}` });
+    }
+    // Replace: DELETE existing then INSERT new set
+    db.prepare("DELETE FROM role_permissions WHERE role_id = ?").run(roleId);
+    const insertPerm = db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)");
+    for (const perm of newPerms) {
+      insertPerm.run(roleId, perm);
+    }
+    return res.json({ ok: true, roleId, permissions: newPerms });
+  });
+
+  // DELETE /api/roles/:id — delete a custom role
+  // NOTE: SAFE-V18-02 (escalation guards) is deferred to Phase 50.
+  app.delete("/api/roles/:id", ...requirePermission(PERMISSIONS.ROLES_DELETE_CUSTOM), (req, res) => {
+    const roleId = Number(req.params.id);
+    if (!Number.isFinite(roleId)) return res.status(400).json({ error: "id must be numeric." });
+    const roleRow = db.prepare("SELECT id, built_in FROM roles WHERE id = ?").get(roleId) as { id: number; built_in: number } | undefined;
+    if (!roleRow) return res.status(404).json({ error: "Role not found." });
+    // Block deletion of built-in roles (400)
+    if (roleRow.built_in) return res.status(400).json({ error: "Cannot delete a built-in role." });
+    // Last-holder check deferred to Phase 50 (SAFE-V18-02).
+    db.prepare("DELETE FROM roles WHERE id = ?").run(roleId);
+    return res.json({ ok: true, roleId });
+  });
+
   // Global error-handling middleware — translates typed Kinetica errors to user-visible responses.
   // Must be mounted before the 404 handler (CONTEXT.md §"Backend global error middleware" → "Mount location").
   // 4-arg signature is Express's contract for error middleware.
