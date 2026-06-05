@@ -1,5 +1,5 @@
 /**
- * db.rbacMigration.spec.ts — Phase 46 Plan 02 (SCHEMA-V18-01).
+ * db.rbacMigration.spec.ts — Phase 46 Plan 02 (SCHEMA-V18-01) + addendum.
  *
  * Coverage:
  *   - Fresh-boot path: createDb on an empty/in-memory DB creates roles,
@@ -14,6 +14,9 @@
  *     no RBAC tables) gets the three tables added without losing existing data.
  *   - FK cascade: deleting a role cascade-deletes its user_roles rows when
  *     foreign_keys=ON.
+ *   - Seed-history contract (addendum 2026-06-05): rbac_seed_history has 30
+ *     rows after first boot; operator-removed default permission stays removed
+ *     after second boot; new-default simulation seeds exactly once.
  *
  * Mirrors db.dynamicViewsMigration.spec.ts structure (tmp-file helper,
  * afterEach cleanup, cascade test with foreign_keys=ON).
@@ -54,7 +57,7 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("RBAC migration — fresh boot (SCHEMA-V18-01)", () => {
-  it("creates roles, role_permissions, user_roles tables on a fresh in-memory DB", () => {
+  it("creates roles, role_permissions, user_roles, rbac_seed_history tables on a fresh in-memory DB", () => {
     const x = createDb(":memory:");
 
     const tableNames = x
@@ -67,6 +70,7 @@ describe("RBAC migration — fresh boot (SCHEMA-V18-01)", () => {
     expect(tableNames).toContain("roles");
     expect(tableNames).toContain("role_permissions");
     expect(tableNames).toContain("user_roles");
+    expect(tableNames).toContain("rbac_seed_history");
   });
 
   it("creates idx_user_roles_username index on fresh boot", () => {
@@ -419,5 +423,147 @@ describe("RBAC FK cascade (SCHEMA-V18-01)", () => {
         .get(analystRow.id) as { c: number }
     ).c;
     expect(postDel).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seed-history contract (addendum 2026-06-05)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
+  it("rbac_seed_history has exactly 30 rows after first boot (one per default mapping)", () => {
+    const dbPath = mkTempDbPath();
+    const x = createDb(dbPath);
+
+    const histCount = (
+      x.prepare("SELECT COUNT(*) AS c FROM rbac_seed_history").get() as { c: number }
+    ).c;
+
+    // 15 (admin) + 8 (designer) + 6 (user_admin) + 1 (analyst) = 30
+    expect(histCount).toBe(30);
+    x.close();
+  });
+
+  it("operator-removed default permission stays removed after a second seedRbac run (removal survives restart)", () => {
+    const dbPath = mkTempDbPath();
+
+    // First boot — seed full defaults.
+    const first = createDb(dbPath);
+
+    // Operator deletes a specific designer permission from role_permissions.
+    const designerRow = first
+      .prepare("SELECT id FROM roles WHERE name = 'designer'")
+      .get() as { id: number };
+    first
+      .prepare("DELETE FROM role_permissions WHERE role_id = ? AND permission = ?")
+      .run(designerRow.id, "layers:manage");
+
+    // Confirm deletion landed.
+    const afterDelete = (
+      first
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions WHERE role_id = ? AND permission = ?"
+        )
+        .get(designerRow.id, "layers:manage") as { c: number }
+    ).c;
+    expect(afterDelete).toBe(0);
+
+    first.close();
+
+    // Second boot — history row for (designer, layers:manage) exists (changes=0) →
+    // seedRbac must NOT re-insert the role_permissions row.
+    const second = createDb(dbPath);
+
+    const stillAbsent = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'designer' AND rp.permission = ?"
+        )
+        .get("layers:manage") as { c: number }
+    ).c;
+
+    // The removal survived — the permission was NOT re-inserted by the seed.
+    expect(stillAbsent).toBe(0);
+
+    // Designer should now have 7 permissions (8 defaults minus the removed one).
+    const designerPerms = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'designer'"
+        )
+        .get() as { c: number }
+    ).c;
+    expect(designerPerms).toBe(7);
+
+    second.close();
+  });
+
+  it("a permission newly added to DEFAULT_ROLE_MAPPINGS (simulated by deleting its history row) is seeded exactly once on next boot", () => {
+    const dbPath = mkTempDbPath();
+
+    // First boot — seeds all 30 defaults and records 30 history rows.
+    const first = createDb(dbPath);
+
+    // Simulate a future catalog addition: delete the history row for (analyst, dashboards:view)
+    // and also the role_permissions row, to replicate the state you'd see if a NEW permission
+    // had just been added to DEFAULT_ROLE_MAPPINGS for the first time.
+    const analystRow = first
+      .prepare("SELECT id FROM roles WHERE name = 'analyst'")
+      .get() as { id: number };
+    first
+      .prepare("DELETE FROM rbac_seed_history WHERE role_name = ? AND permission = ?")
+      .run("analyst", "dashboards:view");
+    first
+      .prepare("DELETE FROM role_permissions WHERE role_id = ? AND permission = ?")
+      .run(analystRow.id, "dashboards:view");
+
+    // Confirm both rows are gone before second boot.
+    const histBefore = (
+      first
+        .prepare(
+          "SELECT COUNT(*) AS c FROM rbac_seed_history WHERE role_name = ? AND permission = ?"
+        )
+        .get("analyst", "dashboards:view") as { c: number }
+    ).c;
+    expect(histBefore).toBe(0);
+
+    first.close();
+
+    // Second boot — no history row for (analyst, dashboards:view) → changes=1 → seeded once.
+    const second = createDb(dbPath);
+
+    const permPresent = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'analyst' AND rp.permission = ?"
+        )
+        .get("dashboards:view") as { c: number }
+    ).c;
+    expect(permPresent).toBe(1); // seeded exactly once
+
+    // History row was also recorded on this boot.
+    const histAfter = (
+      second
+        .prepare(
+          "SELECT COUNT(*) AS c FROM rbac_seed_history WHERE role_name = ? AND permission = ?"
+        )
+        .get("analyst", "dashboards:view") as { c: number }
+    ).c;
+    expect(histAfter).toBe(1);
+
+    // Third boot — history row now exists → mapping NOT re-inserted (idempotent).
+    second.close();
+    const third = createDb(dbPath);
+
+    const analystPermsThirdBoot = (
+      third
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'analyst'"
+        )
+        .get() as { c: number }
+    ).c;
+    expect(analystPermsThirdBoot).toBe(1); // still exactly 1 — no duplication
+
+    third.close();
   });
 });

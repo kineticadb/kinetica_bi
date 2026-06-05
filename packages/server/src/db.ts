@@ -162,6 +162,23 @@ const SCHEMA_DDL = `
     PRIMARY KEY (username, role_id)
   );
   CREATE INDEX IF NOT EXISTS idx_user_roles_username ON user_roles (username);
+
+  -- v1.8 RBAC seed history (addendum 2026-06-05): tracks which (role_name, permission)
+  -- default mappings have EVER been seeded. This table implements the
+  -- operator-removal-survival contract:
+  --   Boot 1 → INSERT OR IGNORE into history (changes=1) → INSERT OR IGNORE into role_permissions.
+  --   Operator deletes a role_permissions row → next boot: history row already exists
+  --   (changes=0) → mapping NOT re-inserted (removal survives restart).
+  --   Future release adds a new permission to a role's defaults → no history row
+  --   (changes=1) → seeded exactly once.
+  -- Intentionally stores role_name TEXT (not role_id FK) so history survives a hypothetical
+  -- role drop + re-create without orphaning. role_name uniqueness is enforced by the roles
+  -- table's UNIQUE constraint, so the (role_name, permission) composite PK is stable.
+  CREATE TABLE IF NOT EXISTS rbac_seed_history (
+    role_name TEXT NOT NULL,
+    permission TEXT NOT NULL,
+    PRIMARY KEY (role_name, permission)
+  );
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
