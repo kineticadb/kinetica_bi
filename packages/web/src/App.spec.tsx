@@ -42,6 +42,8 @@ vi.mock("./api/client", async () => {
   return {
     ...actual,
     UNAUTHORIZED_EVENT: actual.UNAUTHORIZED_EVENT,
+    // Phase 48 GATE-V18-01: expose PERMISSION_DENIED_EVENT so tests can dispatch it.
+    PERMISSION_DENIED_EVENT: actual.PERMISSION_DENIED_EVENT,
     dropFilterView: vi.fn(() => Promise.resolve({ dropped: true as const })),
     // Phase 33 DV-V16-07: mock dropDynamicView for the 6th-store DROP loop.
     dropDynamicView: vi.fn(() => Promise.resolve({ dropped: true as const })),
@@ -51,7 +53,7 @@ vi.mock("./api/client", async () => {
 });
 
 import App from "./App";
-import { dropFilterView, dropDynamicView } from "./api/client";
+import { dropFilterView, dropDynamicView, PERMISSION_DENIED_EVENT, fetchMe } from "./api/client";
 
 const setAuth = (patch: Partial<ReturnType<typeof useAuthStore.getState>>) => {
   act(() => {
@@ -451,5 +453,69 @@ describe("App — LIFE-V13-03 (logout cleanup)", () => {
     expect(dropFilterView).not.toHaveBeenCalled();
     expect(useFilterViewStore.getState().views).toEqual({});
     expect(useFilterStore.getState().filters).toEqual({});
+  });
+});
+
+// Phase 48 (GATE-V18-01): PERMISSION_DENIED_EVENT re-syncs /me and calls setPermissions.
+describe("App — PERMISSION_DENIED_EVENT re-fetches /me and updates permissions (GATE-V18-01)", () => {
+  beforeEach(() => {
+    // Reset useAuthStore to known clean authenticated state with empty permissions.
+    useAuthStore.setState({
+      status: "authenticated",
+      user: { username: "u", roles: [], permissions: [] },
+      authMode: "password",
+      bootstrap: async () => {},
+    } as ReturnType<typeof useAuthStore.getState>);
+    // Reset fetchMe mock to return a full MeResponse with updated permissions.
+    (fetchMe as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { username: "u", roles: ["designer"], permissions: ["dashboards:edit"] },
+      authMode: "password" as const,
+    });
+  });
+
+  afterEach(() => {
+    // Restore fetchMe to the default null-returning mock so other test suites are unaffected.
+    (fetchMe as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  });
+
+  it("PERMISSION_DENIED_EVENT re-fetches /me and updates permissions via setPermissions", async () => {
+    render(<App />);
+
+    // Precondition: permissions are empty.
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(false);
+
+    // Dispatch the permission-denied event (mirrors what apiFetch fires on 403/PERMISSION_DENIED).
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PERMISSION_DENIED_EVENT));
+    });
+
+    // Wait for fetchMe promise to resolve and setPermissions to apply.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // The store must now reflect the refreshed permissions.
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(true);
+    expect(fetchMe).toHaveBeenCalled();
+  });
+
+  it("PERMISSION_DENIED_EVENT handler swallows fetchMe errors silently (no crash)", async () => {
+    (fetchMe as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Network error"));
+
+    render(<App />);
+
+    // Must not throw.
+    expect(() => {
+      act(() => {
+        window.dispatchEvent(new CustomEvent(PERMISSION_DENIED_EVENT));
+      });
+    }).not.toThrow();
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // Permissions remain unchanged (not cleared) — fetchMe rejection is swallowed.
+    expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(false);
   });
 });

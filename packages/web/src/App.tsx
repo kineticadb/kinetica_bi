@@ -13,7 +13,7 @@ import { useLastInfoClickContextStore } from "./store/lastInfoClickContextStore"
 import { useSpatialFilterStore } from "./store/spatialFilterStore";
 import { useDynamicViewStore } from "./store/dynamicViewStore";
 import { initWmsCapabilities } from "./store/wmsCapabilities";
-import { UNAUTHORIZED_EVENT, dropFilterView, dropDynamicView } from "./api/client";
+import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView } from "./api/client";
 
 type Page = "dashboards" | "datasets" | "settings";
 
@@ -132,6 +132,20 @@ const App = () => {
     // Effect deps include page + dashboardViewMode so the handler closure always
     // captures fresh values (otherwise the closure would freeze at mount).
   }, [markUnauthenticated, page, dashboardViewMode]);
+
+  // Phase 48 (GATE-V18-01): PERMISSION_DENIED_EVENT listener — re-syncs /me so gated
+  // surfaces re-render immediately after a mid-session role change.
+  // Uses raw-fetch fetchMe (not apiFetch) to avoid re-triggering the 403 handler (Pitfall 7).
+  // Handler reads getState() imperatively — empty dep array is safe (no stale closure).
+  useEffect(() => {
+    const handler = () => {
+      fetchMe().then((me) => {
+        if (me) useAuthStore.getState().setPermissions(me.user.roles, me.user.permissions);
+      }).catch(() => {});
+    };
+    window.addEventListener(PERMISSION_DENIED_EVENT, handler);
+    return () => window.removeEventListener(PERMISSION_DENIED_EVENT, handler);
+  }, []);
 
   // Phase 7 (UX-06): when bootstrap finishes and the user is authenticated, restore
   // the page state from sessionStorage if it's set. Single-use: clear after restore.
