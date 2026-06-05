@@ -66,6 +66,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import { db } from "../src/db";
 
@@ -89,11 +90,7 @@ const makeNtileBody = (column_2: number[]) =>
     }),
   });
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 const makeJwt = (payload: Record<string, unknown>): string => {
   const header = Buffer.from('{"alg":"none","typ":"JWT"}').toString("base64url");

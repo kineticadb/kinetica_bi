@@ -67,6 +67,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import {
   db,
@@ -139,11 +140,7 @@ const seedFixture = (tableName = "events", schema = "ki_home") => {
   return { dashId: dash.id, tableId: tbl.id, schema, tableName };
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 // Build a 3-segment JWT with a parseable exp claim for OIDC access_token.
 const makeJwt = (payload: Record<string, unknown>): string => {
@@ -192,7 +189,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -214,7 +211,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture("shapes", "demo");
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -249,7 +246,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture("us_states", "ki_home");
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -308,7 +305,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture("h3_view", "demo");
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -361,7 +358,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture("shapes", "demo");
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -390,7 +387,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -417,7 +414,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -453,7 +450,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -476,7 +473,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -491,7 +488,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("missing layerId: returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const body = baseReqBody({ tableId }) as Partial<InfoQueryReqBody>;
     delete body.layerId;
     const res = await agent
@@ -506,7 +503,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("missing schema: returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const body = baseReqBody({ tableId }) as Partial<InfoQueryReqBody>;
     delete body.schema;
     const res = await agent
@@ -520,7 +517,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("bad spatialMode 'invalid': returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -532,7 +529,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("spatialMode='latlon' but no latCol: returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -550,7 +547,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("radiusPx=0: returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -562,7 +559,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("page=-1: returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -574,7 +571,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("mapBbox=[1,2,3] (wrong length): returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -586,7 +583,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("non-existent tableId: returns 404 with 'Table not found.'", async () => {
     const agent = await buildTestApp();
     seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -603,7 +600,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -620,7 +617,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -638,7 +635,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -666,7 +663,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -686,7 +683,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -704,7 +701,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)
@@ -728,7 +725,7 @@ describe("POST /api/info/query — AUTH_MODE=password", () => {
   it("empty-string viewName: returns 400 (callers must omit, not pass empty string)", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/info/query")
       .set("Cookie", cookie)

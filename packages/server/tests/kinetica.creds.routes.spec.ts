@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 import { mockKineticaLoginOK } from "./setup";
 

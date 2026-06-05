@@ -59,6 +59,7 @@ vi.mock("openid-client", () => ({
 import { buildTestApp } from "./helpers/app";
 import { db } from "../src/db";
 import { resetOidcClientForTests } from "../src/oidc";
+import { createAdminSession } from "./helpers/db";
 
 const stubOidcEnv = () => {
   vi.stubEnv("AUTH_MODE", "oidc");

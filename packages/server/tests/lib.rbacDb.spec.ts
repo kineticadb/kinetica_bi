@@ -34,7 +34,7 @@ function assignRole(db: ReturnType<typeof createDb>, username: string, roleName:
 }
 
 describe("rbacDb — getEffectivePermissions", () => {
-  it("admin short-circuit: 'admin' returns all 15 permissions on EMPTY db (before seed)", () => {
+  it("admin short-circuit: 'admin' returns all 16 permissions on EMPTY db (before seed)", () => {
     // Use a raw fresh DB with NO seedRbac to prove the short-circuit fires before any DB read.
     // We can't easily get a pre-seed DB via createDb(), so use the already-seeded one — the
     // short-circuit must fire BEFORE any query regardless of DB state.
@@ -44,37 +44,37 @@ describe("rbacDb — getEffectivePermissions", () => {
     db.prepare("DELETE FROM roles").run();
     const result = getEffectivePermissions("admin", db);
     expect(result).toBeInstanceOf(Set);
-    expect(result.size).toBe(15);
+    expect(result.size).toBe(16);
     expect([...result].sort()).toEqual([...ALL_PERMISSIONS].sort());
   });
 
-  it("admin short-circuit: 'ADMIN' (uppercase) also returns all 15 — case-insensitive bootstrap", () => {
+  it("admin short-circuit: 'ADMIN' (uppercase) also returns all 16 — case-insensitive bootstrap", () => {
     const db = createDb(":memory:");
     const result = getEffectivePermissions("ADMIN", db);
-    expect(result.size).toBe(15);
+    expect(result.size).toBe(16);
     expect([...result].sort()).toEqual([...ALL_PERMISSIONS].sort());
   });
 
-  it("admin short-circuit: '  Admin  ' (whitespace + mixed case) returns all 15", () => {
+  it("admin short-circuit: '  Admin  ' (whitespace + mixed case) returns all 16", () => {
     const db = createDb(":memory:");
     const result = getEffectivePermissions("  Admin  ", db);
-    expect(result.size).toBe(15);
+    expect(result.size).toBe(16);
   });
 
-  it("APP_ADMIN_USERNAME override: 'alice@corp.com' returns all 15; 'admin' does NOT short-circuit", () => {
+  it("APP_ADMIN_USERNAME override: 'alice@corp.com' returns all 16; 'admin' does NOT short-circuit", () => {
     const db = createDb(":memory:");
     const original = process.env.APP_ADMIN_USERNAME;
     try {
       process.env.APP_ADMIN_USERNAME = "alice@corp.com";
       // alice@corp.com (case variations) gets admin short-circuit
-      expect(getEffectivePermissions("Alice@Corp.com", db).size).toBe(15);
-      expect(getEffectivePermissions("ALICE@CORP.COM", db).size).toBe(15);
+      expect(getEffectivePermissions("Alice@Corp.com", db).size).toBe(16);
+      expect(getEffectivePermissions("ALICE@CORP.COM", db).size).toBe(16);
       // "admin" must NOT short-circuit when APP_ADMIN_USERNAME is overridden
       // (it may still have permissions from DB; the point is it doesn't short-circuit)
       // With an empty user_roles for "admin", it should fall back to analyst (dashboards:view).
       const adminResult = getEffectivePermissions("admin", db);
-      // Should NOT be 15 (no short-circuit)
-      expect(adminResult.size).not.toBe(15);
+      // Should NOT be 16 (no short-circuit)
+      expect(adminResult.size).not.toBe(16);
       // Should be analyst fallback (1 permission: dashboards:view)
       expect(adminResult.has("dashboards:view")).toBe(true);
       expect(adminResult.size).toBe(1);
@@ -98,7 +98,7 @@ describe("rbacDb — getEffectivePermissions", () => {
     expect(result.size).toBe(1);
   });
 
-  it("single role: user assigned 'designer' → returns designer's 8 permissions", () => {
+  it("single role: user assigned 'designer' → returns designer's 9 permissions", () => {
     const db = createDb(":memory:");
     assignRole(db, "alice", "designer");
     const result = getEffectivePermissions("alice", db);
@@ -111,8 +111,9 @@ describe("rbacDb — getEffectivePermissions", () => {
       "layers:manage",
       "dynamic_views:manage",
       "data_filters:configure",
+      "datasets:manage",
     ];
-    expect(result.size).toBe(8);
+    expect(result.size).toBe(9);
     for (const perm of expected) {
       expect(result.has(perm)).toBe(true);
     }
@@ -123,12 +124,12 @@ describe("rbacDb — getEffectivePermissions", () => {
     assignRole(db, "bob", "designer");
     assignRole(db, "bob", "user_admin");
     const result = getEffectivePermissions("bob", db);
-    // designer: 8, user_admin: 6, overlap: dashboards:view → union = 13
-    // designer: view,create,edit,delete,widgets:configure,layers:manage,dynamic_views:manage,data_filters:configure
+    // designer: 9, user_admin: 6, overlap: dashboards:view → union = 14
+    // designer: view,create,edit,delete,widgets:configure,layers:manage,dynamic_views:manage,data_filters:configure,datasets:manage
     // user_admin: users:view, users:assign_roles, roles:view, roles:manage_permissions, roles:create_custom, dashboards:view
     // overlap: dashboards:view (1)
-    // total unique = 8 + 6 - 1 = 13
-    expect(result.size).toBe(13);
+    // total unique = 9 + 6 - 1 = 14
+    expect(result.size).toBe(14);
     // Check some from each role
     expect(result.has("dashboards:create")).toBe(true); // designer only
     expect(result.has("users:assign_roles")).toBe(true); // user_admin only
@@ -199,15 +200,16 @@ describe("rbacDb — getEffectiveRolesAndPermissions", () => {
     expect(Array.isArray(result.roles)).toBe(true);
     expect(Array.isArray(result.permissions)).toBe(true);
     expect(result.roles).toEqual(["designer"]);
-    expect(result.permissions).toHaveLength(8);
+    expect(result.permissions).toHaveLength(9);
     expect(result.permissions).toContain("dashboards:view");
+    expect(result.permissions).toContain("datasets:manage");
   });
 
-  it("admin: roles=['admin'], permissions has all 15", () => {
+  it("admin: roles=['admin'], permissions has all 16", () => {
     const db = createDb(":memory:");
     const result = getEffectiveRolesAndPermissions("admin", db);
     expect(result.roles).toEqual(["admin"]);
-    expect(result.permissions).toHaveLength(15);
+    expect(result.permissions).toHaveLength(16);
   });
 
   it("zero user_roles: roles=['analyst'], permissions has dashboards:view", () => {

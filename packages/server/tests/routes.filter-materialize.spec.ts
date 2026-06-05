@@ -71,6 +71,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import {
   db,
@@ -96,11 +97,7 @@ const seedFixture = (tableName = "events", schema = "ki_home") => {
   return { dashId: dash.id, tableId: tbl.id, schema, tableName };
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 // Build a 3-segment JWT with a parseable exp claim for OIDC access_token.
 const makeJwt = (payload: Record<string, unknown>): string => {
@@ -148,7 +145,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const before = Date.now();
     const res = await agent
       .post("/api/filter/materialize")
@@ -173,7 +170,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -229,7 +226,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -265,7 +262,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -294,7 +291,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -319,7 +316,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -344,7 +341,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -373,7 +370,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -400,7 +397,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -427,7 +424,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
   it("empty filters array: returns 400", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -439,7 +436,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
   it("missing dashboardId: returns 400", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -453,7 +450,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
   it("missing tableId: returns 400", async () => {
     const agent = await buildTestApp();
     const { dashId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -467,7 +464,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
   it("non-existent tableId: returns 404", async () => {
     const agent = await buildTestApp();
     const { dashId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -487,7 +484,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -508,7 +505,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -543,7 +540,7 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const before = Date.now();
     const res = await agent
       .post("/api/filter/materialize")
@@ -646,7 +643,7 @@ describe("DELETE /api/filter/materialize — AUTH_MODE=password", () => {
       )
     );
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .delete("/api/filter/materialize")
       .query({ dashboardId: 1, tableId: 1 })
@@ -661,7 +658,7 @@ describe("DELETE /api/filter/materialize — AUTH_MODE=password", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .delete("/api/filter/materialize")
       .query({ dashboardId: 1, tableId: 1 })
@@ -686,7 +683,7 @@ describe("DELETE /api/filter/materialize — AUTH_MODE=password", () => {
       )
     );
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .delete("/api/filter/materialize")
       .query({ dashboardId: 1, tableId: 1 })
@@ -702,7 +699,7 @@ describe("DELETE /api/filter/materialize — AUTH_MODE=password", () => {
 
   it("missing dashboardId query param: returns 400", async () => {
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .delete("/api/filter/materialize")
       .query({ tableId: 1 })
@@ -712,7 +709,7 @@ describe("DELETE /api/filter/materialize — AUTH_MODE=password", () => {
 
   it("missing tableId query param: returns 400", async () => {
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .delete("/api/filter/materialize")
       .query({ dashboardId: 1 })
@@ -722,7 +719,7 @@ describe("DELETE /api/filter/materialize — AUTH_MODE=password", () => {
 
   it("non-numeric dashboardId: returns 400", async () => {
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .delete("/api/filter/materialize")
       .query({ dashboardId: "abc", tableId: 1 })

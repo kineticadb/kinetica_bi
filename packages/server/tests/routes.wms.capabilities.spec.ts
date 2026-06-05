@@ -13,9 +13,8 @@
  * to Kinetica. The wmsCapabilities.spec.ts suite covers the parser + cache logic directly.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 
 // Mock the wmsCapabilities module so getCachedCapabilities returns a fixed shape
@@ -33,19 +32,11 @@ vi.mock("../src/wmsCapabilities", () => ({
   __resetCacheForTest: vi.fn(),
 }));
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const SESSION_PASSWORD = "wmsuser-secret";
-
 const stubPasswordMode = () => {
   vi.stubEnv("AUTH_MODE", "password");
 };
 
-const makeSessionCookie = (username = "wmsuser") => {
-  const kineticaUrl = process.env.KINETICA_URL!;
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 describe("GET /api/wms/capabilities route (Phase 11 Plan 03)", () => {
   beforeEach(() => {

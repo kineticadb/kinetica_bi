@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { requireAuth, clearSessionCookie } from "../src/auth";
 import { createSession } from "../src/sessionStore";
 import { db } from "../src/db";
+import { createAdminSession } from "./helpers/db";
 
 const AUTH_SECRET = process.env.AUTH_SECRET!;
 const KINETICA_URL = process.env.KINETICA_URL!;

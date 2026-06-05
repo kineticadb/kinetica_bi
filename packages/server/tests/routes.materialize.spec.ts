@@ -15,9 +15,8 @@
  *   - Does NOT leak credentials in persisted error_message
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import {
   db,
   createDashboard,
@@ -26,9 +25,9 @@ import {
   getView,
 } from "../src/db";
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const KINETICA_URL = process.env.KINETICA_URL!;
-const SESSION_PASSWORD = "alice-pw-secret";
+// createAdminSession uses APP_ADMIN_USERNAME (default "admin") + "admin-test-secret"
+const ADMIN_USERNAME = process.env.APP_ADMIN_USERNAME || "admin";
+const ADMIN_SESSION_SECRET = "admin-test-secret";
 
 // Seed a dashboard + table + view fixture
 const seedFixture = () => {
@@ -38,11 +37,7 @@ const seedFixture = () => {
   return { dashId: dash.id, tableId: tbl.id, viewId: view.id, viewName: view.view_name };
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 // A Kinetica success response for DDL (materialize returns minimal data_str)
 const successKineticaBody = {
@@ -70,7 +65,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       )
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -95,7 +90,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -106,7 +101,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
     const auth = (init.headers as Record<string, string>).Authorization;
     expect(auth.startsWith("Basic ")).toBe(true);
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    expect(decoded).toBe(`alice:${SESSION_PASSWORD}`);
+    expect(decoded).toBe(`${ADMIN_USERNAME}:${ADMIN_SESSION_SECRET}`);
   });
 
   it("sends DDL statement: CREATE OR REPLACE MATERIALIZED VIEW <view_name> AS SELECT * FROM <schema>.<table>", async () => {
@@ -115,7 +110,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const { viewId, viewName } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -134,7 +129,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403 }))
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -145,13 +140,13 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
     expect(res.body.code).toBeUndefined();
     // Error message must not leak credentials
     expect(res.body.error).not.toContain("Basic ");
-    expect(res.body.error).not.toContain(SESSION_PASSWORD);
+    expect(res.body.error).not.toContain(ADMIN_SESSION_SECRET);
     // DB persistence
     const persisted = getView(viewId);
     expect(persisted?.status).toBe("error");
     expect(persisted?.error_message).toBeTruthy();
     expect(persisted?.error_message).not.toContain("Basic ");
-    expect(persisted?.error_message).not.toContain(SESSION_PASSWORD);
+    expect(persisted?.error_message).not.toContain(ADMIN_SESSION_SECRET);
   });
 
   it("400+access-denied from Kinetica (DDL denial) → KineticaPermissionError → status='error' persisted, middleware returns 403 (Phase 3)", async () => {
@@ -165,7 +160,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       )
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -179,7 +174,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
     expect(persisted?.error_message).toBeTruthy();
     // Must not leak credentials or raw Kinetica internals
     expect(persisted?.error_message).not.toContain("Basic ");
-    expect(persisted?.error_message).not.toContain(SESSION_PASSWORD);
+    expect(persisted?.error_message).not.toContain(ADMIN_SESSION_SECRET);
   });
 
   it("401 from Kinetica → KineticaAuthError → status='error' persisted, middleware returns 401 + REAUTH_REQUIRED (Phase 3)", async () => {
@@ -188,7 +183,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       vi.fn().mockResolvedValue(new Response("Unauthorized", { status: 401 }))
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -213,7 +208,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       )
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -229,7 +224,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
   it("network throw → KineticaUpstreamError → status='error' persisted, middleware returns 502", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -250,7 +245,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       )
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -272,7 +267,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
       )
     );
     const { viewId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     await agent
       .post(`/api/views/${viewId}/materialize`)
@@ -291,7 +286,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
   it("returns 404 if view not found (no Kinetica fetch)", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post("/api/views/99999/materialize")
@@ -313,7 +308,7 @@ describe("POST /api/views/:id/materialize with per-user credentials", () => {
     db.pragma("foreign_keys = OFF");
     db.exec(`DELETE FROM tables WHERE id = ${tbl.id}`);
     db.pragma("foreign_keys = ON");
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const agent = await buildTestApp();
     const res = await agent
       .post(`/api/views/${view.id}/materialize`)

@@ -10,20 +10,15 @@
  *   - Returns 401 on unauthenticated request (Phase 1 behavior)
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const KINETICA_URL = process.env.KINETICA_URL!;
-const SESSION_PASSWORD = "alice-secret-pw";
+// createAdminSession uses APP_ADMIN_USERNAME (default "admin") + "admin-test-secret"
+const ADMIN_USERNAME = process.env.APP_ADMIN_USERNAME || "admin";
+const ADMIN_SESSION_SECRET = "admin-test-secret";
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 const successKineticaBody = {
   status: "OK",
@@ -45,7 +40,7 @@ describe("POST /api/sql with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
     expect(res.status).toBe(200);
@@ -56,8 +51,8 @@ describe("POST /api/sql with per-user credentials", () => {
     const auth = (init.headers as Record<string, string>).Authorization;
     expect(auth.startsWith("Basic ")).toBe(true);
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    expect(decoded).toBe(`alice:${SESSION_PASSWORD}`);
-    // Must NOT be admin creds from env
+    expect(decoded).toBe(`${ADMIN_USERNAME}:${ADMIN_SESSION_SECRET}`);
+    // Must NOT be admin creds from env (module-level env vars)
     expect(decoded).not.toContain("admin-env-user");
   });
 
@@ -69,15 +64,15 @@ describe("POST /api/sql with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
 
     const [, init] = fetchMock.mock.calls[0];
     const auth = (init.headers as Record<string, string>).Authorization;
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    // Must be the session user "alice:alice-secret-pw", not the sentinel
-    expect(decoded.startsWith("alice:")).toBe(true);
+    // Must be the session user (admin bootstrap), not a module-level env sentinel
+    expect(decoded.startsWith(`${ADMIN_USERNAME}:`)).toBe(true);
     expect(decoded).not.toContain("admin-env-user");
   });
 
@@ -86,7 +81,7 @@ describe("POST /api/sql with per-user credentials", () => {
       new Response("Unauthorized", { status: 401 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
     expect(res.status).toBe(401);
@@ -104,7 +99,7 @@ describe("POST /api/sql with per-user credentials", () => {
       new Response("Forbidden", { status: 403 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
     expect(res.status).toBe(403);
@@ -118,7 +113,7 @@ describe("POST /api/sql with per-user credentials", () => {
       new Response("Internal Server Error", { status: 500 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
     expect(res.status).toBe(502);
@@ -129,7 +124,7 @@ describe("POST /api/sql with per-user credentials", () => {
   it("network throw (fetch rejects) → 502 to client", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
     expect(res.status).toBe(502);
@@ -145,7 +140,7 @@ describe("POST /api/sql with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app
       .post("/api/sql")
@@ -162,7 +157,7 @@ describe("POST /api/sql with per-user credentials", () => {
       new Response("Forbidden", { status: 403 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
     expect(res.status).toBe(403);
@@ -181,7 +176,7 @@ describe("POST /api/sql with per-user credentials", () => {
       new Response(JSON.stringify(successKineticaBody), { status: 200 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ options: {} });
     expect(res.status).toBe(400);

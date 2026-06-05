@@ -74,6 +74,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import {
   db,
@@ -127,11 +128,7 @@ const seedDynamicView = (
   });
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 const makeJwt = (payload: Record<string, unknown>): string => {
   const header = Buffer.from('{"alg":"none","typ":"JWT"}').toString("base64url");
@@ -186,7 +183,7 @@ describe("POST /api/dynamic-view/:id/drop — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post(`/api/dynamic-view/${dv.id}/drop`)
@@ -211,7 +208,7 @@ describe("POST /api/dynamic-view/:id/drop — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post(`/api/dynamic-view/99999/drop`)
@@ -228,7 +225,7 @@ describe("POST /api/dynamic-view/:id/drop — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post(`/api/dynamic-view/abc/drop`)
@@ -259,7 +256,7 @@ describe("POST /api/dynamic-view/:id/drop — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res1 = await agent.post(`/api/dynamic-view/${dv.id}/drop`).set("Cookie", cookie).send();
     const res2 = await agent.post(`/api/dynamic-view/${dv.id}/drop`).set("Cookie", cookie).send();

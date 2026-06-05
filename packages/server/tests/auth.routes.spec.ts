@@ -59,6 +59,7 @@ import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
 import { db } from "../src/db";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import { mockKineticaLoginOK } from "./setup";
 

@@ -23,6 +23,7 @@ import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
 import { db } from "../src/db";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 
 // Hoisted openid-client mock — required for AUTH_MODE=oidc describe block below.
@@ -71,10 +72,6 @@ vi.mock("openid-client", () => ({
   errors: { OPError: mocks.OPError, RPError: mocks.RPError },
 }));
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const KINETICA_URL = process.env.KINETICA_URL!;
-const SESSION_PASSWORD = "layer-test-secret";
-
 describe("layers", () => {
   let cookie: string;
 
@@ -92,10 +89,8 @@ describe("layers", () => {
     db.exec("DELETE FROM tables");
     db.exec("DELETE FROM sessions");
 
-    // Issue a test session cookie for all requests
-    const sid = createSession({ username: "testuser", secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-    const token = jwt.sign({ sub: "testuser", sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-    cookie = `kbi_session=${token}`;
+    // Issue an admin session cookie for all requests
+    ({ cookie } = createAdminSession());
   });
 
   // ─── Helpers ────────────────────────────────────────────────────────────────

@@ -17,11 +17,10 @@
  * handles directly (no route try/catch in the way).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import express, { NextFunction, Request, Response } from "express";
 import request from "supertest";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 import { errorMiddleware } from "../src/index";
 
@@ -31,15 +30,7 @@ import { errorMiddleware } from "../src/index";
 // with "Response is not a constructor". Using FetchResponse alias preserves both.
 const FetchResponse = globalThis.Response;
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const KINETICA_URL = process.env.KINETICA_URL!;
-const SESSION_PASSWORD = "alice-secret-pw";
-
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 describe("errorMiddleware", () => {
   beforeEach(() => {
@@ -58,7 +49,7 @@ describe("errorMiddleware", () => {
       "fetch",
       vi.fn().mockResolvedValue(new FetchResponse("Unauthorized", { status: 401 }))
     );
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
 
@@ -76,7 +67,7 @@ describe("errorMiddleware", () => {
       "fetch",
       vi.fn().mockResolvedValue(new FetchResponse("Forbidden", { status: 403 }))
     );
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
 
@@ -91,7 +82,7 @@ describe("errorMiddleware", () => {
       "fetch",
       vi.fn().mockResolvedValue(new FetchResponse("Internal Server Error", { status: 500 }))
     );
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
 
@@ -103,7 +94,7 @@ describe("errorMiddleware", () => {
   // Test 4: KineticaUpstreamError (network throw) — same as above.
   it("network throw → BI app returns 502 with NO code field", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.post("/api/sql").set("Cookie", cookie).send({ sql: "SELECT 1" });
 

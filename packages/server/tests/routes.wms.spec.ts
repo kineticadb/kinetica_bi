@@ -9,20 +9,11 @@
  *   - Returns 401 on unauthenticated request (Phase 1 behavior)
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const KINETICA_URL = process.env.KINETICA_URL!;
-const SESSION_PASSWORD = "mapuser-secret";
-
-const makeSessionCookie = (username = "mapuser") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 // Minimal PNG header bytes (first 8 bytes of a valid PNG)
 const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -41,7 +32,7 @@ describe("GET /api/wms with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("mapuser");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app
       .get("/api/wms?bbox=1,2,3,4&width=256&height=256")
@@ -77,7 +68,7 @@ describe("GET /api/wms with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("mapuser");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app
       .get("/api/wms?bbox=0,0,1,1")

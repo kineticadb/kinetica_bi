@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { issueSessionCookie, decodeAndVerifyJwt } from "../src/auth";
 import { createSession, deleteSession } from "../src/sessionStore";
 import { db } from "../src/db";
+import { createAdminSession } from "./helpers/db";
 
 const AUTH_SECRET = process.env.AUTH_SECRET!;
 

@@ -67,6 +67,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import {
   db,
@@ -92,11 +93,7 @@ const seedFixture = (tableName = "events", schema = "ki_home") => {
   return { dashId: dash.id, tableId: tbl.id, schema, tableName };
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 // Build a 3-segment JWT with a parseable exp claim for OIDC access_token.
 const makeJwt = (payload: Record<string, unknown>): string => {
@@ -184,7 +181,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -203,7 +200,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -229,7 +226,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -253,7 +250,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -278,7 +275,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -303,7 +300,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -330,7 +327,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -351,7 +348,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
   it("empty input: filters: [] + spatialFilters: [] + no spatialTarget → 400", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -363,7 +360,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
   it("spatialFilters present without spatialTarget → 400", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     // Include a column filter so step 2 (empty-input check) passes; step 3 then
     // rejects the missing spatialTarget (pair-completeness check).
     const res = await agent
@@ -382,7 +379,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
   it("spatialTarget present without spatialFilters → 400", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -400,7 +397,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
   it("spatialTarget.tableId !== body.tableId → 400", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -422,7 +419,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)
@@ -447,7 +444,7 @@ describe("POST /api/filter/materialize spatial — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     await agent
       .post("/api/filter/materialize")
       .set("Cookie", cookie)

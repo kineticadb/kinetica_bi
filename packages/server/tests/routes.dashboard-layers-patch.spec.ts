@@ -67,6 +67,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import {
   db,
   createDashboard,
@@ -95,11 +96,7 @@ const seedFixture = (tableName = "nyctaxi", schema = "demo") => {
   return { dashId: dash.id, tableId: tbl.id, layerId: layer.id };
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 // Build a 3-segment JWT with a parseable exp claim for OIDC access_token.
 const makeJwt = (payload: Record<string, unknown>): string => {
@@ -151,7 +148,7 @@ describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=password", () 
   it("Test 1: PATCHing cb_config sets it; track_config remains null (key omitted = preserve)", async () => {
     const agent = await buildTestApp();
     const { dashId, layerId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const cbJson = '{"attr":"fare_amount","valsType":"numeric","breaks":[{"value":10,"color":"FF112233"}]}';
     const res = await agent
       .patch(`/api/dashboards/${dashId}/layers/${layerId}`)
@@ -175,7 +172,7 @@ describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=password", () 
   it("Test 2: PATCHing track_config sets it; cb_config remains null (key omitted = preserve)", async () => {
     const agent = await buildTestApp();
     const { dashId, layerId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const trackJson = '{"enabled":true,"trackIdAttr":"TRACKID"}';
     const res = await agent
       .patch(`/api/dashboards/${dashId}/layers/${layerId}`)
@@ -198,7 +195,7 @@ describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=password", () 
   it("Test 3: PATCHing cb_config with explicit null CLEARS the field (key-in-attrs discriminant)", async () => {
     const agent = await buildTestApp();
     const { dashId, layerId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     // First set cb_config to a non-null value
     const cbJson = '{"attr":"x","valsType":"numeric","breaks":[]}';
@@ -227,7 +224,7 @@ describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=password", () 
   it("Test 5: PATCH without cb_config / track_config in body preserves both existing values", async () => {
     const agent = await buildTestApp();
     const { dashId, layerId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     // Set both fields first
     const cbJson = '{"attr":"fare_amount","valsType":"numeric","breaks":[]}';

@@ -10,13 +10,9 @@
  * the functional correctness of the WMS proxy.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
-
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const SESSION_PASSWORD = "mapuser-secret";
 
 // Minimal PNG header bytes (first 8 bytes of a valid PNG)
 const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -27,13 +23,7 @@ const stubPasswordMode = () => {
   vi.stubEnv("AUTH_MODE", "password");
 };
 
-const makeSessionCookie = (username = "mapuser") => {
-  // Must be called AFTER stubPasswordMode() so the session is created after KINETICA_URL is stable
-  const kineticaUrl = process.env.KINETICA_URL!;
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 describe("GET /api/wms Cache-Control: no-store enforcement (PITFALL M-08)", () => {
   beforeEach(() => {

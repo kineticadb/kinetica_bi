@@ -13,20 +13,15 @@
  *   - Return existing { data: [...] } / { data: { col: type } } shapes
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
-import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 
-const AUTH_SECRET = process.env.AUTH_SECRET!;
-const KINETICA_URL = process.env.KINETICA_URL!;
-const SESSION_PASSWORD = "alice-secret-pw";
+// createAdminSession uses APP_ADMIN_USERNAME (default "admin") + "admin-test-secret"
+const ADMIN_USERNAME = process.env.APP_ADMIN_USERNAME || "admin";
+const ADMIN_SESSION_SECRET = "admin-test-secret";
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 const successSchemasBody = {
   status: "OK",
@@ -73,7 +68,7 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.get("/api/kinetica/schemas").set("Cookie", cookie);
     expect(res.status).toBe(200);
@@ -84,7 +79,7 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
     const auth = (init.headers as Record<string, string>).Authorization;
     expect(auth.startsWith("Basic ")).toBe(true);
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    expect(decoded).toBe(`alice:${SESSION_PASSWORD}`);
+    expect(decoded).toBe(`${ADMIN_USERNAME}:${ADMIN_SESSION_SECRET}`);
     expect(decoded).not.toContain("admin-env-user");
   });
 
@@ -96,14 +91,14 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app.get("/api/kinetica/schemas").set("Cookie", cookie);
 
     const [, init] = fetchMock.mock.calls[0];
     const auth = (init.headers as Record<string, string>).Authorization;
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    expect(decoded.startsWith("alice:")).toBe(true);
+    expect(decoded.startsWith(`${ADMIN_USERNAME}:`)).toBe(true);
     expect(decoded).not.toContain("admin-env-user");
   });
 
@@ -112,7 +107,7 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
       new Response("Forbidden", { status: 403 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.get("/api/kinetica/schemas").set("Cookie", cookie);
     expect(res.status).toBe(403);
@@ -126,7 +121,7 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
       new Response("Unauthorized", { status: 401 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.get("/api/kinetica/schemas").set("Cookie", cookie);
     expect(res.status).toBe(401);
@@ -149,7 +144,7 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
         })
       )
     );
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app.get("/api/kinetica/schemas").set("Cookie", cookie);
     const auditLine = logSpy.mock.calls
@@ -172,7 +167,7 @@ describe("GET /api/kinetica/schemas with per-user credentials", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app.get("/api/kinetica/schemas").set("Cookie", cookie);
     expect(res.status).toBe(200);
@@ -201,7 +196,7 @@ describe("GET /api/kinetica/schemas/:schema/tables with per-user credentials", (
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app
       .get("/api/kinetica/schemas/public/tables")
@@ -222,14 +217,14 @@ describe("GET /api/kinetica/schemas/:schema/tables with per-user credentials", (
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app.get("/api/kinetica/schemas/public/tables").set("Cookie", cookie);
 
     const [, init] = fetchMock.mock.calls[0];
     const auth = (init.headers as Record<string, string>).Authorization;
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    expect(decoded).toBe(`alice:${SESSION_PASSWORD}`);
+    expect(decoded).toBe(`${ADMIN_USERNAME}:${ADMIN_SESSION_SECRET}`);
   });
 
   it("SQL-escape: single quotes in :schema are escaped to prevent injection", async () => {
@@ -237,7 +232,7 @@ describe("GET /api/kinetica/schemas/:schema/tables with per-user credentials", (
       new Response(JSON.stringify(emptyKineticaBody), { status: 200 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app
       .get("/api/kinetica/schemas/evil';DROP--/tables")
@@ -253,7 +248,7 @@ describe("GET /api/kinetica/schemas/:schema/tables with per-user credentials", (
       new Response("Forbidden", { status: 403 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app
       .get("/api/kinetica/schemas/public/tables")
@@ -267,7 +262,7 @@ describe("GET /api/kinetica/schemas/:schema/tables with per-user credentials", (
   it("network throw → 502 to client", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app
       .get("/api/kinetica/schemas/public/tables")
@@ -290,7 +285,7 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app
       .get("/api/kinetica/schemas/public/tables/orders/columns")
@@ -307,7 +302,7 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app
       .get("/api/kinetica/schemas/public/tables/orders/columns")
@@ -316,7 +311,7 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
     const [, init] = fetchMock.mock.calls[0];
     const auth = (init.headers as Record<string, string>).Authorization;
     const decoded = Buffer.from(auth.slice(6), "base64").toString("utf-8");
-    expect(decoded).toBe(`alice:${SESSION_PASSWORD}`);
+    expect(decoded).toBe(`${ADMIN_USERNAME}:${ADMIN_SESSION_SECRET}`);
   });
 
   it("SQL-escape: single quotes in :schema and :table are escaped", async () => {
@@ -324,7 +319,7 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
       new Response(JSON.stringify(emptyKineticaBody), { status: 200 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app
       .get("/api/kinetica/schemas/evil';DROP--/tables/bad'table/columns")
@@ -340,7 +335,7 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
       new Response("Forbidden", { status: 403 })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     const res = await app
       .get("/api/kinetica/schemas/public/tables/orders/columns")
@@ -362,7 +357,7 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
         })
       )
     );
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const app = await buildTestApp();
     await app
       .get("/api/kinetica/schemas/public/tables/orders/columns")

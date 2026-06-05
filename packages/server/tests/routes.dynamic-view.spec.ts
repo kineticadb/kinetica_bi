@@ -75,6 +75,7 @@ vi.mock("openid-client", () => ({
 
 import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
+import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
 import {
   db,
@@ -161,11 +162,7 @@ const seedDynamicView = (
   });
 };
 
-const makeSessionCookie = (username = "alice") => {
-  const sid = createSession({ username, secret: SESSION_PASSWORD, kineticaUrl: KINETICA_URL });
-  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
-  return { sid, cookie: `kbi_session=${token}` };
-};
+const makeSessionCookie = () => createAdminSession();
 
 const makeJwt = (payload: Record<string, unknown>): string => {
   const header = Buffer.from('{"alg":"none","typ":"JWT"}').toString("base64url");
@@ -231,7 +228,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -272,7 +269,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -307,7 +304,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -335,7 +332,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -361,7 +358,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     await agent
       .post("/api/dynamic-view/preview")
@@ -388,7 +385,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     await agent
       .post("/api/dynamic-view/preview")
@@ -406,7 +403,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
   it("returns 404 when source_table_id does not exist", async () => {
     const agent = await buildTestApp();
     const { dashId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -424,7 +421,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
   it("returns 400 when template_sql is missing", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -438,7 +435,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
   it("returns 400 when source_table_id is missing", async () => {
     const agent = await buildTestApp();
     const { dashId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -452,7 +449,7 @@ describe("POST /api/dynamic-view/preview — AUTH_MODE=password", () => {
   it("returns 400 when dashboard_id is missing", async () => {
     const agent = await buildTestApp();
     const { tableId } = seedFixture();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/preview")
@@ -502,7 +499,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 1000 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const before = Date.now();
 
     const res = await agent
@@ -535,7 +532,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/materialize")
@@ -568,7 +565,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 0 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/materialize")
@@ -602,7 +599,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 1000 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/materialize")
@@ -637,7 +634,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 0 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/materialize")
@@ -665,7 +662,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/materialize")
@@ -700,7 +697,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId, { max_records: 1000 });
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .post("/api/dynamic-view/materialize")
@@ -722,7 +719,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
 
   it("returns 400 when dynamic_view_id is missing", async () => {
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/dynamic-view/materialize")
       .set("Cookie", cookie)
@@ -733,7 +730,7 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
 
   it("returns 404 when dynamic_view_id does not exist", async () => {
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
     const res = await agent
       .post("/api/dynamic-view/materialize")
       .set("Cookie", cookie)
@@ -772,7 +769,7 @@ describe("DELETE /api/dynamic-view/:id — AUTH_MODE=password", () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const dv = seedDynamicView(dashId, tableId);
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .delete(`/api/dynamic-view/${dv.id}`)
@@ -793,7 +790,7 @@ describe("DELETE /api/dynamic-view/:id — AUTH_MODE=password", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .delete("/api/dynamic-view/99999")
@@ -806,7 +803,7 @@ describe("DELETE /api/dynamic-view/:id — AUTH_MODE=password", () => {
 
   it("returns 400 when id path param is non-numeric", async () => {
     const agent = await buildTestApp();
-    const { cookie } = makeSessionCookie("alice");
+    const { cookie } = makeSessionCookie();
 
     const res = await agent
       .delete("/api/dynamic-view/abc")
