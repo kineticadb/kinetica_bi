@@ -73,7 +73,7 @@ const setMatVersion = (tableId: number, version: number) => {
 describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
   beforeEach(() => {
     // Authoritative auth — every test needs a username for the cascade unless overridden.
-    useAuthStore.setState({ status: "authenticated", user: { username: "u1" }, error: null, reason: null, authMode: "password" });
+    useAuthStore.setState({ status: "authenticated", user: { username: "u1", roles: [], permissions: [] }, error: null, reason: null, authMode: "password" });
     // Default mock: listDynamicViews resolves to empty; tests that need rows override.
     (listDynamicViews as Mock).mockReset();
     (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [] });

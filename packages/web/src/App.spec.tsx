@@ -63,7 +63,7 @@ beforeEach(() => {
   // Override the bootstrap to a no-op for these tests so we control status manually.
   useAuthStore.setState({
     status: "authenticated",
-    user: { username: "alice" },
+    user: { username: "alice", roles: [], permissions: [] },
     authMode: "oidc",
     reason: null,
     error: null,
@@ -125,7 +125,7 @@ describe("App — read+restore+clear on status='authenticated' (UX-06)", () => {
     const { rerender } = render(<App />);
     // Loading state visible.
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
-    setAuth({ status: "authenticated", authMode: "oidc", user: { username: "alice" } });
+    setAuth({ status: "authenticated", authMode: "oidc", user: { username: "alice", roles: [], permissions: [] } });
     rerender(<App />);
     // Page transitioned to datasets.
     expect(await screen.findByTestId("page-datasets")).toBeInTheDocument();
