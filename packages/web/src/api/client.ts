@@ -1,9 +1,15 @@
 import type { ActiveFilter } from "../store/filterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
+import { useToastStore } from "../store/toast";
 
 export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export const UNAUTHORIZED_EVENT = "kbi:unauthorized";
+export const PERMISSION_DENIED_EVENT = "kbi:permission-denied";
+
+// Module-level debounce timer for PERMISSION_DENIED_EVENT dispatch.
+// N parallel 403/PERMISSION_DENIED responses collapse into a single /me re-fetch.
+let permissionDeniedRefetchTimer: ReturnType<typeof setTimeout> | null = null;
 
 // --- Client-side error classes ---
 
@@ -54,6 +60,23 @@ const apiFetch: typeof fetch = async (input, init) => {
     }
     if (shouldDispatch) {
       window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+    }
+  }
+  if (response.status === 403 && typeof window !== "undefined") {
+    try {
+      const peek = await response.clone().json();
+      if (peek && typeof peek === "object" && (peek as { code?: string }).code === "PERMISSION_DENIED") {
+        const perm = typeof (peek as { permission?: unknown }).permission === "string"
+          ? (peek as { permission: string }).permission : "a required permission";
+        useToastStore.getState().showToast(`You no longer have permission: ${perm}`, "permission");
+        if (permissionDeniedRefetchTimer !== null) clearTimeout(permissionDeniedRefetchTimer);
+        permissionDeniedRefetchTimer = setTimeout(() => {
+          permissionDeniedRefetchTimer = null;
+          window.dispatchEvent(new CustomEvent(PERMISSION_DENIED_EVENT));
+        }, 200);
+      }
+    } catch {
+      // body wasn't JSON or already consumed — do not dispatch
     }
   }
   return response;
