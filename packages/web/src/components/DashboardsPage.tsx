@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faGear } from "@fortawesome/free-solid-svg-icons";
+import { useAuthStore } from "../store/auth";
+import { PERMISSIONS } from "../lib/permissions";
 import {
   listDashboards,
   createDashboard,
@@ -72,6 +74,11 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [view, setViewState] = useState<View>({ mode: "list" });
 
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canCreate = hasPermission(PERMISSIONS.DASHBOARDS_CREATE);
+  const canEdit   = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+  const canDelete = hasPermission(PERMISSIONS.DASHBOARDS_DELETE);
+
   // Sync dashboards state from useApiQuery data (preserves local mutation for delete)
   useEffect(() => {
     if (data) setDashboards(data);
@@ -139,9 +146,11 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
         title="Dashboards"
         description="All saved dashboards from the backend"
         actions={
-          <button className="btn-primary" onClick={() => setView({ mode: "create" })}>
-            + New Dashboard
-          </button>
+          canCreate ? (
+            <button className="btn-primary" onClick={() => setView({ mode: "create" })}>
+              + New Dashboard
+            </button>
+          ) : undefined
         }
       >
         {loading && <div className="muted">Loading dashboards…</div>}
@@ -173,12 +182,16 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
                   <button className="ghost-sm" onClick={() => setView({ mode: "view", dashboard: dash })}>
                     View
                   </button>
-                  <button className="ghost-sm" onClick={() => setView({ mode: "edit", dashboard: dash })}>
-                    Edit
-                  </button>
-                  <button className="ghost-sm ghost-danger" onClick={() => handleDelete(dash)}>
-                    Delete
-                  </button>
+                  {canEdit && (
+                    <button className="ghost-sm" onClick={() => setView({ mode: "edit", dashboard: dash })}>
+                      Edit
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button className="ghost-sm ghost-danger" onClick={() => handleDelete(dash)}>
+                      Delete
+                    </button>
+                  )}
                 </span>
               </div>
             ))}
@@ -197,14 +210,17 @@ const DashboardDetail = ({
   dashboard: DashboardDto;
   onBack: () => void;
   onEdit: () => void;
-}) => (
+}) => {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+  return (
   <div className="dashboard-list">
     <ChartCard
       title={dashboard.name}
       description={dashboard.description || "No description"}
       actions={
         <div className="ds-actions">
-          <button className="ghost-sm" onClick={onEdit}>Edit</button>
+          {canEdit && <button className="ghost-sm" onClick={onEdit}>Edit</button>}
           <button className="ghost-sm" onClick={onBack}>Back</button>
         </div>
       }
@@ -227,7 +243,8 @@ const DashboardDetail = ({
       </div>
     </ChartCard>
   </div>
-);
+  );
+};
 
 const DashboardEdit = ({
   dashboard,
@@ -346,6 +363,12 @@ const DashboardOpen = ({
   dashboard: DashboardDto;
   onBack: () => void;
 }) => {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+  const canConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
+  const canDynamicViews = hasPermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE);
+  const canLayers       = hasPermission(PERMISSIONS.LAYERS_MANAGE);
+
   const tablesQuery = useApiQuery<TableDto[]>(() => listDashboardTables(dashboard.id), [dashboard.id]);
   const widgetsQuery = useApiQuery<WidgetDto[]>(() => listWidgets(dashboard.id), [dashboard.id]);
   const viewsQuery = useApiQuery<ViewDto[]>(() => listViews(dashboard.id), [dashboard.id]);
@@ -714,18 +737,26 @@ const DashboardOpen = ({
           <div className="dashboard-open-title">{dashboard.name}</div>
         </div>
         <div className="dashboard-toolbar">
-          <button className="btn-primary btn-sm" onClick={() => setShowTableModal(true)}>
-            Tables
-          </button>
-          <button className="btn-primary btn-sm" onClick={() => setShowDynamicViewsModal(true)}>
-            Dynamic Views
-          </button>
-          <button className="btn-primary btn-sm" onClick={() => setShowLayersModal(true)}>
-            Map Layers
-          </button>
-          <button className="btn-primary btn-sm" onClick={() => setShowVizModal(true)}>
-            Visualizations
-          </button>
+          {canEdit && (
+            <button className="btn-primary btn-sm" onClick={() => setShowTableModal(true)}>
+              Tables
+            </button>
+          )}
+          {canDynamicViews && (
+            <button className="btn-primary btn-sm" onClick={() => setShowDynamicViewsModal(true)}>
+              Dynamic Views
+            </button>
+          )}
+          {canLayers && (
+            <button className="btn-primary btn-sm" onClick={() => setShowLayersModal(true)}>
+              Map Layers
+            </button>
+          )}
+          {canEdit && (
+            <button className="btn-primary btn-sm" onClick={() => setShowVizModal(true)}>
+              Visualizations
+            </button>
+          )}
           <button className="ghost-sm" onClick={onBack}>Back</button>
         </div>
       </div>
@@ -886,8 +917,8 @@ const DashboardOpen = ({
             rowHeight={80}
             layouts={{ lg: layouts }}
             onLayoutChange={(layout) => handleLayoutChange(layout)}
-            dragConfig={{ enabled: true, handle: ".widget-drag-handle" }}
-            resizeConfig={{ enabled: true }}
+            dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
+            resizeConfig={{ enabled: canEdit }}
           >
             {widgets.map((w) => {
               // Phase 16: for map widgets, derive the included layer tableIds so MapFilteringBadge
