@@ -101,7 +101,8 @@ import {
 } from "./oidc";
 // v1.8 RBAC (SCHEMA-V18-03): bootstrap admin username resolution — used for the OIDC
 // default-admin boot warning. Import AFTER "./env" (env must stay the first import).
-import { getAppAdminUsername } from "./lib/rbacDb";
+// v1.8 Phase 48 Plan 01 (GATE-V18-01): getEffectiveRolesAndPermissions wired to /me handler.
+import { getAppAdminUsername, getEffectiveRolesAndPermissions } from "./lib/rbacDb";
 // v1.8 Phase 47 Plan 03 (GUARD-V18-02/03/04): requirePermission factory for mutation route gating.
 import { requirePermission } from "./rbac";
 // v1.8 Phase 47: PERMISSIONS catalog — canonical permission constants for server enforcement.
@@ -334,7 +335,10 @@ export const createApp = async (): Promise<express.Express> => {
     }
     // Phase 7 (UX-08 / D-3): include authMode top-level. Closes over the boot-captured const at
     // line 82 — NEVER re-read process.env here (ARCHITECTURE.md AP-5).
-    return res.json({ user: { username: loaded.session.username }, authMode });
+    // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
+    // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
+    const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
