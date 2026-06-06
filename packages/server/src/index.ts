@@ -103,6 +103,7 @@ import {
 // default-admin boot warning. Import AFTER "./env" (env must stay the first import).
 // v1.8 Phase 48 Plan 01 (GATE-V18-01): getEffectiveRolesAndPermissions wired to /me handler.
 import { getAppAdminUsername, getEffectiveRolesAndPermissions, getEffectiveRoles, getEffectivePermissions } from "./lib/rbacDb";
+import { emitRbacAudit } from "./lib/rbacAudit";
 // v1.8 Phase 47 Plan 03 (GUARD-V18-02/03/04): requirePermission factory for mutation route gating.
 import { requirePermission } from "./rbac";
 // v1.8 Phase 47: PERMISSIONS catalog — canonical permission constants for server enforcement.
@@ -2069,7 +2070,22 @@ export const createApp = async (): Promise<express.Express> => {
     if (!callerIsAdmin && roleName === "admin") {
       return res.status(403).json({ error: "Only admins can assign the admin role." });
     }
+    // Capture the target's ASSIGNED role names (raw rows, not analyst-fallback) before INSERT.
+    const beforeRoles = (db.prepare(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.username = lower(?)"
+    ).all(target) as Array<{ name: string }>).map((r) => r.name);
     db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(target, roleRow.id);
+    // Capture after state.
+    const afterRoles = (db.prepare(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.username = lower(?)"
+    ).all(target) as Array<{ name: string }>).map((r) => r.name);
+    emitRbacAudit(db, {
+      actor,
+      action: "role_assigned",
+      target,
+      before_json: JSON.stringify(beforeRoles),
+      after_json: JSON.stringify(afterRoles),
+    });
     return res.json({ ok: true, username: target, roleName });
   });
 
@@ -2102,7 +2118,23 @@ export const createApp = async (): Promise<express.Express> => {
       }
     }
 
+    // Capture the target's ASSIGNED role names before DELETE.
+    const actor = req.user!.creds.username;
+    const beforeRoles = (db.prepare(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.username = lower(?)"
+    ).all(target) as Array<{ name: string }>).map((r) => r.name);
     db.prepare("DELETE FROM user_roles WHERE username = lower(?) AND role_id = ?").run(target, roleRow.id);
+    // Capture after state.
+    const afterRoles = (db.prepare(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.username = lower(?)"
+    ).all(target) as Array<{ name: string }>).map((r) => r.name);
+    emitRbacAudit(db, {
+      actor,
+      action: "role_revoked",
+      target,
+      before_json: JSON.stringify(beforeRoles),
+      after_json: JSON.stringify(afterRoles),
+    });
     return res.json({ ok: true, username: target, roleName });
   });
 
@@ -2160,6 +2192,13 @@ export const createApp = async (): Promise<express.Express> => {
       built_in: false,
       permissions: perms,
     };
+    emitRbacAudit(db, {
+      actor: req.user!.creds.username,
+      action: "role_created",
+      target: name,
+      before_json: null,
+      after_json: JSON.stringify(perms),
+    });
     return res.status(201).json({ role: newRole });
   });
 
@@ -2191,12 +2230,23 @@ export const createApp = async (): Promise<express.Express> => {
         return res.status(403).json({ error: `Cannot grant permissions you do not hold: ${unheld.join(", ")}` });
       }
     }
+    // Capture before_json BEFORE the DELETE (plan requirement: before captured before mutation).
+    const beforePerms = (db.prepare(
+      "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission"
+    ).all(roleId) as Array<{ permission: string }>).map((r) => r.permission);
     // Replace: DELETE existing then INSERT new set
     db.prepare("DELETE FROM role_permissions WHERE role_id = ?").run(roleId);
     const insertPerm = db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)");
     for (const perm of newPerms) {
       insertPerm.run(roleId, perm);
     }
+    emitRbacAudit(db, {
+      actor,
+      action: "mappings_updated",
+      target: roleRow.name,
+      before_json: JSON.stringify(beforePerms),
+      after_json: JSON.stringify(newPerms),
+    });
     return res.json({ ok: true, roleId, permissions: newPerms });
   });
 
@@ -2213,7 +2263,20 @@ export const createApp = async (): Promise<express.Express> => {
     if (holders > 0) {
       return res.status(409).json({ error: `Cannot delete: ${holders} user(s) currently hold this role.` });
     }
+    // Capture before_json (role's permissions) BEFORE the DELETE.
+    const beforePerms = (db.prepare(
+      "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission"
+    ).all(roleId) as Array<{ permission: string }>).map((r) => r.permission);
+    const roleName = roleRow.name;
+    const actor = req.user!.creds.username;
     db.prepare("DELETE FROM roles WHERE id = ?").run(roleId);
+    emitRbacAudit(db, {
+      actor,
+      action: "role_deleted",
+      target: roleName,
+      before_json: JSON.stringify(beforePerms),
+      after_json: null,
+    });
     return res.json({ ok: true, roleId });
   });
 
