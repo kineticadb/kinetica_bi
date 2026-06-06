@@ -434,6 +434,7 @@ export function RolesPage() {
                               disabled={isDisabled}
                               onChange={() => handleTogglePerm(perm)}
                               className="roles-perm-checkbox"
+                              aria-label={perm}
                             />
                             <span className="roles-perm-name">{perm}</span>
                           </label>
