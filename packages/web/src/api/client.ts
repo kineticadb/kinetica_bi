@@ -1174,3 +1174,68 @@ export const columnStatsFn = async (
   }
   return response.json() as Promise<ColumnStatsResponse>;
 };
+
+// --- Users & Roles Management (Phase 49) ---
+
+export type RoleDto = {
+  id: number;
+  name: string;
+  description: string;
+  built_in: boolean;
+  permissions: string[];
+};
+
+export type UserRow = {
+  username: string;
+  roles: string[];
+  last_seen: string | null;
+  is_bootstrap: boolean;
+};
+
+export const listUsers = async (signal?: AbortSignal): Promise<UserRow[]> => {
+  const response = await apiFetch(`${API_BASE}/api/users`, { signal });
+  if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
+  const json = await response.json();
+  return json.users as UserRow[];
+};
+
+export const listRoles = async (signal?: AbortSignal): Promise<RoleDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/roles`, { signal });
+  if (!response.ok) throw new Error(`Failed to load roles (${response.status})`);
+  const json = await response.json();
+  return json.roles as RoleDto[];
+};
+
+// Returns { ok: true } on success, or { ok: false, error } carrying the verbatim
+// server message (e.g. the SAFE-V18-01 last-admin 400) so callers can surface it.
+export const assignRole = async (
+  username: string,
+  roleName: string,
+): Promise<{ ok: boolean; error?: string }> => {
+  const response = await apiFetch(
+    `${API_BASE}/api/users/${encodeURIComponent(username)}/roles`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roleName }),
+    },
+  );
+  const json = await response.json().catch(() => ({}));
+  return response.ok
+    ? { ok: true }
+    : { ok: false, error: (json as { error?: string }).error || `Failed (${response.status})` };
+};
+
+export const revokeRole = async (
+  username: string,
+  roleName: string,
+): Promise<{ ok: boolean; error?: string }> => {
+  const response = await apiFetch(
+    `${API_BASE}/api/users/${encodeURIComponent(username)}/roles/${encodeURIComponent(roleName)}`,
+    { method: "DELETE" },
+  );
+  const json = await response.json().catch(() => ({}));
+  return response.ok
+    ? { ok: true }
+    : { ok: false, error: (json as { error?: string }).error || `Failed (${response.status})` };
+};

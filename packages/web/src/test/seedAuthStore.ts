@@ -69,3 +69,27 @@ export function seedAdminStore(): void {
     },
   });
 }
+
+/**
+ * Seeds useAuthStore with a user_admin user.
+ * Permissions: USERS_VIEW + USERS_ASSIGN_ROLES + ROLES_VIEW +
+ *   ROLES_MANAGE_PERMISSIONS + ROLES_CREATE_CUSTOM + DASHBOARDS_VIEW.
+ * Mirrors DEFAULT_ROLE_MAPPINGS.user_admin from packages/server/src/lib/permissions.ts.
+ */
+export function seedUserAdminStore(): void {
+  useAuthStore.setState({
+    status: "authenticated",
+    user: {
+      username: "testuseradmin",
+      roles: ["user_admin"],
+      permissions: [
+        PERMISSIONS.USERS_VIEW,
+        PERMISSIONS.USERS_ASSIGN_ROLES,
+        PERMISSIONS.ROLES_VIEW,
+        PERMISSIONS.ROLES_MANAGE_PERMISSIONS,
+        PERMISSIONS.ROLES_CREATE_CUSTOM,
+        PERMISSIONS.DASHBOARDS_VIEW,
+      ],
+    },
+  });
+}
