@@ -2018,28 +2018,39 @@ export const createApp = async (): Promise<express.Express> => {
   // Pitfall-6-safe targeting: target = req.params.username.toLowerCase() (the user being
   // administered); actor = req.user!.creds.username (the admin caller, for future Phase 50 audit).
 
-  // GET /api/users — list all known+assigned users with their roles
+  // GET /api/users — list all known+assigned users with their roles, last_seen, and is_bootstrap flag
+  // USERS-V18-01: extends Phase 47 union query to include last_seen from known_users and
+  // is_bootstrap flag. Synthesizes a bootstrap row when the bootstrap username is absent from
+  // both tables (e.g. fresh deployment with no logins yet).
   app.get("/api/users", ...requirePermission(PERMISSIONS.USERS_VIEW), (req, res) => {
-    // Union of known_users (every user who has ever logged in) and user_roles (assigned users).
-    // This ensures users who have never logged in but have roles are still visible, and
-    // users who have logged in but have no explicit role are also visible (analyst default).
+    // LEFT JOIN known_users ku2 to pick up last_seen without disturbing the UNION de-dup.
+    // The UNION subquery (ku) is the source of distinct usernames; ku2 provides last_seen only.
     const rows = db.prepare(`
       SELECT ku.username,
+             ku2.last_seen AS last_seen,
              json_group_array(DISTINCT r.name) FILTER (WHERE r.name IS NOT NULL) AS roles
       FROM (
         SELECT username FROM known_users
         UNION
         SELECT DISTINCT username FROM user_roles
       ) AS ku
+      LEFT JOIN known_users ku2 ON ku2.username = ku.username
       LEFT JOIN user_roles ur ON ur.username = ku.username
       LEFT JOIN roles r ON r.id = ur.role_id
       GROUP BY ku.username
       ORDER BY ku.username
-    `).all() as Array<{ username: string; roles: string }>;
+    `).all() as Array<{ username: string; last_seen: string | null; roles: string }>;
+    const bootstrapUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
     const users = rows.map((row) => ({
       username: row.username,
       roles: JSON.parse(row.roles) as string[],
+      last_seen: row.last_seen ?? null,
+      is_bootstrap: row.username === bootstrapUsername,
     }));
+    // Synthesize the bootstrap row if absent from both tables (never-logged-in, no roles).
+    if (!users.some((u) => u.username === bootstrapUsername)) {
+      users.unshift({ username: bootstrapUsername, roles: [], last_seen: null, is_bootstrap: true });
+    }
     return res.json({ users });
   });
 
