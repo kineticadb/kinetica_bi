@@ -1,8 +1,30 @@
 /**
- * permissionGroups.ts — Phase 50.1
+ * permissionGroups.ts — Phase 50.1 / 50.2
  * Shared permission-grouping constants and helper, extracted from RolesPage.tsx
  * for reuse by ProfilePage and any other consumer.
+ *
+ * PERMISSION_DESCRIPTIONS added in Phase 50.2: human-readable descriptions for
+ * all 16 permissions, displayed as muted secondary text in the Roles matrix.
  */
+
+export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
+  "dashboards:view": "Open and view dashboards, including filters, drill-down, and map interactions",
+  "dashboards:create": "Create new dashboards",
+  "dashboards:edit": "Edit dashboard layout and widgets; add/remove widgets and associated tables",
+  "dashboards:delete": "Delete dashboards",
+  "widgets:configure": "Open the chart configuration panel and change widget settings",
+  "layers:manage": "Add, edit, and reorder map layers (Map Layers)",
+  "dynamic_views:manage": "Create and edit dynamic views (saved SQL templates)",
+  "data_filters:configure": "Configure the fields of Data Filter widgets",
+  "datasets:manage": "Register, edit, and remove datasets (Kinetica tables)",
+  "users:view": "View the user list and current role assignments",
+  "users:assign_roles": "Assign and revoke user roles",
+  "roles:view": "View roles and their permission mappings",
+  "roles:manage_permissions": "Edit which permissions each role grants",
+  "roles:create_custom": "Create new custom roles",
+  "roles:delete_custom": "Delete custom roles",
+  "audit:view": "View the audit log (viewer ships in a future release)",
+};
 
 export const NOUN_TO_GROUP: Record<string, string> = {
   dashboards: "Dashboards",

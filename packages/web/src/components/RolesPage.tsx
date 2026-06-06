@@ -13,7 +13,7 @@ import { faLock, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
 import { PERMISSIONS } from "../lib/permissions";
-import { groupPermissionList } from "../lib/permissionGroups";
+import { groupPermissionList, PERMISSION_DESCRIPTIONS } from "../lib/permissionGroups";
 import {
   listRoles,
   updateRolePermissions,
@@ -398,7 +398,10 @@ export function RolesPage() {
                               className="roles-perm-checkbox"
                               aria-label={perm}
                             />
-                            <span className="roles-perm-name">{perm}</span>
+                            <span className="roles-perm-text">
+                              <span className="roles-perm-name">{perm}</span>
+                              <span className="roles-perm-desc">{PERMISSION_DESCRIPTIONS[perm]}</span>
+                            </span>
                           </label>
                         </li>
                       );

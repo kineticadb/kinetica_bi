@@ -387,6 +387,22 @@ describe("RolesPage", () => {
 
   // ── Test 7: dirty guard on role switch ────────────────────────────────────────
 
+  // ── Test: description text renders in permission matrix ───────────────────────
+
+  it("permission descriptions render as muted secondary text under each permission label", async () => {
+    seedAdminStore();
+    render(<RolesPage />);
+
+    // Select a role so the matrix renders
+    await selectRole("analyst");
+
+    // A verbatim description string must be present in the document
+    // Using users:assign_roles → "Assign and revoke user roles" (unambiguous, specific)
+    expect(
+      await screen.findByText("Assign and revoke user roles"),
+    ).toBeInTheDocument();
+  });
+
   it("switching roles with unsaved changes triggers confirm; cancel keeps current selection", async () => {
     seedAdminStore();
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
