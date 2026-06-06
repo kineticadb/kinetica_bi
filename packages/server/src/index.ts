@@ -2147,12 +2147,16 @@ export const createApp = async (): Promise<express.Express> => {
       const perms = db.prepare(
         "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission"
       ).all(role.id) as Array<{ permission: string }>;
+      const { cnt } = db.prepare(
+        "SELECT COUNT(*) AS cnt FROM user_roles WHERE role_id = ?"
+      ).get(role.id) as { cnt: number };
       return {
         id: role.id,
         name: role.name,
         description: role.description,
         built_in: Boolean(role.built_in),
         permissions: perms.map((p) => p.permission),
+        holders_count: cnt,
       };
     });
     return res.json({ roles });

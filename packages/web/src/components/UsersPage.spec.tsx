@@ -34,10 +34,10 @@ import { UsersPage } from "./UsersPage";
 
 // Seed data
 const MOCK_ROLES = [
-  { id: 1, name: "admin", description: "All permissions", built_in: true, permissions: [] },
-  { id: 2, name: "user_admin", description: "User management", built_in: true, permissions: [] },
-  { id: 3, name: "designer", description: "Dashboard design", built_in: true, permissions: [] },
-  { id: 4, name: "analyst", description: "View only", built_in: true, permissions: [] },
+  { id: 1, name: "admin", description: "All permissions", built_in: true, permissions: [], holders_count: 0 },
+  { id: 2, name: "user_admin", description: "User management", built_in: true, permissions: [], holders_count: 0 },
+  { id: 3, name: "designer", description: "Dashboard design", built_in: true, permissions: [], holders_count: 0 },
+  { id: 4, name: "analyst", description: "View only", built_in: true, permissions: [], holders_count: 0 },
 ];
 
 const MOCK_USERS_WITH_ROLES = [

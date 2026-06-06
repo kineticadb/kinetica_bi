@@ -1183,6 +1183,7 @@ export type RoleDto = {
   description: string;
   built_in: boolean;
   permissions: string[];
+  holders_count: number;
 };
 
 export type UserRow = {
@@ -1234,6 +1235,48 @@ export const revokeRole = async (
     `${API_BASE}/api/users/${encodeURIComponent(username)}/roles/${encodeURIComponent(roleName)}`,
     { method: "DELETE" },
   );
+  const json = await response.json().catch(() => ({}));
+  return response.ok
+    ? { ok: true }
+    : { ok: false, error: (json as { error?: string }).error || `Failed (${response.status})` };
+};
+
+export const updateRolePermissions = async (
+  roleId: number,
+  permissions: string[],
+): Promise<{ ok: boolean; error?: string }> => {
+  const response = await apiFetch(`${API_BASE}/api/roles/${roleId}/permissions`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ permissions }),
+  });
+  const json = await response.json().catch(() => ({}));
+  return response.ok
+    ? { ok: true }
+    : { ok: false, error: (json as { error?: string }).error || `Failed (${response.status})` };
+};
+
+export const createRole = async (
+  name: string,
+  permissions: string[],
+): Promise<{ ok: boolean; role?: RoleDto; error?: string }> => {
+  const response = await apiFetch(`${API_BASE}/api/roles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, permissions }),
+  });
+  const json = await response.json().catch(() => ({}));
+  return response.ok
+    ? { ok: true, role: (json as { role: RoleDto }).role }
+    : { ok: false, error: (json as { error?: string }).error || `Failed (${response.status})` };
+};
+
+export const deleteRole = async (
+  roleId: number,
+): Promise<{ ok: boolean; error?: string }> => {
+  const response = await apiFetch(`${API_BASE}/api/roles/${roleId}`, {
+    method: "DELETE",
+  });
   const json = await response.json().catch(() => ({}));
   return response.ok
     ? { ok: true }
