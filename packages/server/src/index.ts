@@ -2065,7 +2065,7 @@ export const createApp = async (): Promise<express.Express> => {
     const roleRow = db.prepare("SELECT id FROM roles WHERE name = ?").get(roleName) as { id: number } | undefined;
     if (!roleRow) return res.status(404).json({ error: `Role '${roleName}' not found.` });
     // SAFE-V18-02 Guard 1: only admins can assign the admin role.
-    const actor = req.user!.creds.username;
+    const actor = (req as AuthedRequest).user!.creds.username;
     const callerIsAdmin = getEffectiveRoles(actor).includes("admin");
     if (!callerIsAdmin && roleName === "admin") {
       return res.status(403).json({ error: "Only admins can assign the admin role." });
@@ -2119,7 +2119,7 @@ export const createApp = async (): Promise<express.Express> => {
     }
 
     // Capture the target's ASSIGNED role names before DELETE.
-    const actor = req.user!.creds.username;
+    const actor = (req as AuthedRequest).user!.creds.username;
     const beforeRoles = (db.prepare(
       "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.username = lower(?)"
     ).all(target) as Array<{ name: string }>).map((r) => r.name);
@@ -2197,7 +2197,7 @@ export const createApp = async (): Promise<express.Express> => {
       permissions: perms,
     };
     emitRbacAudit(db, {
-      actor: req.user!.creds.username,
+      actor: (req as AuthedRequest).user!.creds.username,
       action: "role_created",
       target: name,
       before_json: null,
@@ -2221,7 +2221,7 @@ export const createApp = async (): Promise<express.Express> => {
       return res.status(400).json({ error: `Unknown permissions: ${invalid.join(", ")}` });
     }
     // SAFE-V18-02 Guard 2: only admins can modify the admin role's permission set.
-    const actor = req.user!.creds.username;
+    const actor = (req as AuthedRequest).user!.creds.username;
     const callerIsAdmin = getEffectiveRoles(actor).includes("admin");
     if (!callerIsAdmin && roleRow.name === "admin") {
       return res.status(403).json({ error: "Only admins can modify the admin role." });
@@ -2272,7 +2272,7 @@ export const createApp = async (): Promise<express.Express> => {
       "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission"
     ).all(roleId) as Array<{ permission: string }>).map((r) => r.permission);
     const roleName = roleRow.name;
-    const actor = req.user!.creds.username;
+    const actor = (req as AuthedRequest).user!.creds.username;
     db.prepare("DELETE FROM roles WHERE id = ?").run(roleId);
     emitRbacAudit(db, {
       actor,
