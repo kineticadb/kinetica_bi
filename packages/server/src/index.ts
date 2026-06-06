@@ -2012,7 +2012,7 @@ export const createApp = async (): Promise<express.Express> => {
   // No requireConfig needed — these routes are SQLite-only; no Kinetica calls.
   // REST shapes intentionally detailed to lock the Phase 49 contract now.
   //
-  // SAFE-V18-01 (last-admin protection) is deferred to Phase 49 with the assign/revoke UI.
+  // SAFE-V18-01 (last-admin protection) is implemented in Phase 49 in the DELETE role handler.
   // SAFE-V18-02 (escalation guards) is deferred to Phase 50 with role management routes.
   //
   // Pitfall-6-safe targeting: target = req.params.username.toLowerCase() (the user being
@@ -2066,12 +2066,34 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // DELETE /api/users/:username/roles/:roleName — revoke a role from a user (idempotent)
-  // NOTE: SAFE-V18-01 (last-admin protection) is deferred to Phase 49.
+  // SAFE-V18-01: last-admin protection guard implemented in Phase 49.
   app.delete("/api/users/:username/roles/:roleName", ...requirePermission(PERMISSIONS.USERS_ASSIGN_ROLES), (req, res) => {
     const target = req.params.username.toLowerCase(); // Pitfall 6
     const roleName = req.params.roleName;
     const roleRow = db.prepare("SELECT id FROM roles WHERE name = ?").get(roleName) as { id: number } | undefined;
     if (!roleRow) return res.status(404).json({ error: `Role '${roleName}' not found.` });
+
+    // SAFE-V18-01: last-admin protection. Only engages for the admin role when the
+    // target currently holds it. Bootstrap admin is exempt and never counted.
+    if (roleName === "admin") {
+      const bootstrapUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+      const holdsAdmin = db.prepare(
+        "SELECT 1 FROM user_roles WHERE username = lower(?) AND role_id = ?"
+      ).get(target, roleRow.id);
+      if (holdsAdmin) {
+        const remaining = (db.prepare(
+          "SELECT COUNT(*) AS cnt FROM user_roles WHERE role_id = ? AND username != lower(?)"
+        ).get(roleRow.id, bootstrapUsername) as { cnt: number }).cnt;
+        // remaining counts non-bootstrap admin holders INCLUDING the target. If <= 1,
+        // the target is the last one; deleting it would leave zero non-bootstrap admins.
+        if (remaining <= 1) {
+          return res.status(400).json({
+            error: "Cannot revoke: this is the last admin. At least one non-bootstrap user must hold the admin role.",
+          });
+        }
+      }
+    }
+
     db.prepare("DELETE FROM user_roles WHERE username = lower(?) AND role_id = ?").run(target, roleRow.id);
     return res.json({ ok: true, username: target, roleName });
   });
