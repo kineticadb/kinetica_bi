@@ -362,6 +362,18 @@ describe("GET /api/roles (GUARD-V18-04)", () => {
       expect(Array.isArray(role.permissions)).toBe(true);
     }
   });
+
+  it("each role has a holders_count integer field (50-02: delete-blocked UX)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get("/api/roles").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    const roles = res.body.roles as Array<{ holders_count: number }>;
+    for (const role of roles) {
+      expect(typeof role.holders_count).toBe("number");
+      expect(role.holders_count).toBeGreaterThanOrEqual(0);
+    }
+  });
 });
 
 // ─── POST /api/roles ──────────────────────────────────────────────────────────
