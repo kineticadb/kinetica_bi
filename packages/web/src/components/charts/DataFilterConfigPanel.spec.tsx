@@ -22,7 +22,7 @@ import { registerAllChartTypes } from "./definitions/index";
 // Test fixtures
 // ---------------------------------------------------------------------------
 
-const makeTables = () => [
+const makeTables = (): { id: number; name: string; schema: string; columns: Record<string, string> }[] => [
   {
     id: 1,
     name: "t1",

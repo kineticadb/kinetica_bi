@@ -224,7 +224,7 @@ describe("App — LIFE-V13-03 (logout cleanup)", () => {
       user: { username: "test" },
       authMode: "password",
       bootstrap: async () => {},
-    } as ReturnType<typeof useAuthStore.getState>);
+    } as unknown as ReturnType<typeof useAuthStore.getState>);
   });
 
   afterEach(() => {
@@ -484,7 +484,7 @@ describe("App — PERMISSION_DENIED_EVENT re-fetches /me and updates permissions
       user: { username: "u", roles: [], permissions: [] },
       authMode: "password",
       bootstrap: async () => {},
-    } as ReturnType<typeof useAuthStore.getState>);
+    } as unknown as ReturnType<typeof useAuthStore.getState>);
     // Reset fetchMe mock to return a full MeResponse with updated permissions.
     (fetchMe as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { username: "u", roles: ["designer"], permissions: ["dashboards:edit"] },
