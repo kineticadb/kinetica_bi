@@ -773,3 +773,234 @@ describe("ROLES-V18-03 POST /api/roles slug validation", () => {
     expect(res.body.role.name).toBe("valid_slug_123");
   });
 });
+
+// ─── AUDIT-V18-01: rbac_audit emission assertions ────────────────────────────
+
+// Helper to get the latest rbac_audit row
+const getLatestAuditRow = () =>
+  db.prepare("SELECT * FROM rbac_audit ORDER BY id DESC LIMIT 1").get() as {
+    id: number;
+    ts: string;
+    actor: string;
+    action: string;
+    target: string;
+    before_json: string | null;
+    after_json: string | null;
+  } | undefined;
+
+const getAuditCount = () =>
+  (db.prepare("SELECT COUNT(*) AS c FROM rbac_audit").get() as { c: number }).c;
+
+describe("AUDIT-V18-01 role_assigned audit emission", () => {
+  it("successful POST /api/users/:username/roles inserts one rbac_audit row", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const adminUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+
+    const countBefore = getAuditCount();
+    const res = await app.post("/api/users/audit_target/roles").set("Cookie", cookie).send({ roleName: "designer" });
+    expect(res.status).toBe(200);
+
+    expect(getAuditCount()).toBe(countBefore + 1);
+    const row = getLatestAuditRow();
+    expect(row).toBeDefined();
+    expect(row!.action).toBe("role_assigned");
+    expect(row!.actor).toBe(adminUsername);
+    expect(row!.target).toBe("audit_target");
+    expect(typeof row!.ts).toBe("string");
+    // before_json and after_json should be JSON arrays of role names
+    const before = JSON.parse(row!.before_json ?? "null");
+    const after = JSON.parse(row!.after_json ?? "null");
+    expect(Array.isArray(before)).toBe(true);
+    expect(Array.isArray(after)).toBe(true);
+    expect(after).toContain("designer");
+  });
+
+  it("no audit row written when assign is rejected (Guard 1 403)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession("audit_useradmin");
+
+    const countBefore = getAuditCount();
+    const res = await app.post("/api/users/bob/roles").set("Cookie", cookie).send({ roleName: "admin" });
+    expect(res.status).toBe(403);
+    // No row written on rejection
+    expect(getAuditCount()).toBe(countBefore);
+  });
+});
+
+describe("AUDIT-V18-01 role_revoked audit emission", () => {
+  it("successful DELETE /api/users/:username/roles/:roleName inserts one rbac_audit row", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const adminUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+
+    // Assign first, then revoke
+    await app.post("/api/users/revoke_target/roles").set("Cookie", cookie).send({ roleName: "designer" });
+
+    const countBefore = getAuditCount();
+    const res = await app.delete("/api/users/revoke_target/roles/designer").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+
+    expect(getAuditCount()).toBe(countBefore + 1);
+    const row = getLatestAuditRow();
+    expect(row).toBeDefined();
+    expect(row!.action).toBe("role_revoked");
+    expect(row!.actor).toBe(adminUsername);
+    expect(row!.target).toBe("revoke_target");
+    const before = JSON.parse(row!.before_json ?? "null");
+    const after = JSON.parse(row!.after_json ?? "null");
+    expect(Array.isArray(before)).toBe(true);
+    expect(Array.isArray(after)).toBe(true);
+    expect(before).toContain("designer");
+    expect(after).not.toContain("designer");
+  });
+
+  it("no audit row written when revoke is blocked (SAFE-V18-01 400)", async () => {
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("solo_audit_admin", adminRole.id);
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    const countBefore = getAuditCount();
+    const res = await app.delete("/api/users/solo_audit_admin/roles/admin").set("Cookie", cookie);
+    expect(res.status).toBe(400);
+    expect(getAuditCount()).toBe(countBefore);
+  });
+});
+
+describe("AUDIT-V18-01 mappings_updated audit emission", () => {
+  it("successful PUT /api/roles/:id/permissions inserts one rbac_audit row", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const adminUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+
+    // Create a custom role
+    const createRes = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "audit_perm_role",
+      permissions: ["dashboards:view"],
+    });
+    const roleId = createRes.body.role.id;
+
+    const countBefore = getAuditCount();
+    const res = await app.put(`/api/roles/${roleId}/permissions`).set("Cookie", cookie).send({
+      permissions: ["dashboards:view", "dashboards:create"],
+    });
+    expect(res.status).toBe(200);
+
+    expect(getAuditCount()).toBe(countBefore + 1);
+    const row = getLatestAuditRow();
+    expect(row).toBeDefined();
+    expect(row!.action).toBe("mappings_updated");
+    expect(row!.actor).toBe(adminUsername);
+    expect(row!.target).toBe("audit_perm_role");
+    // before_json captured BEFORE the mutation — should include the original permission
+    const before = JSON.parse(row!.before_json ?? "null");
+    const after = JSON.parse(row!.after_json ?? "null");
+    expect(Array.isArray(before)).toBe(true);
+    expect(Array.isArray(after)).toBe(true);
+    expect(before).toContain("dashboards:view");
+    expect(after).toContain("dashboards:create");
+  });
+
+  it("no audit row written when PUT is rejected (Guard 2 403 — admin role)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession("audit_ua2");
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+
+    const countBefore = getAuditCount();
+    const res = await app.put(`/api/roles/${adminRole.id}/permissions`).set("Cookie", cookie).send({
+      permissions: ["dashboards:view"],
+    });
+    expect(res.status).toBe(403);
+    expect(getAuditCount()).toBe(countBefore);
+  });
+});
+
+describe("AUDIT-V18-01 role_created audit emission", () => {
+  it("successful POST /api/roles inserts one rbac_audit row", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const adminUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+
+    const countBefore = getAuditCount();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "audit_created_role",
+      permissions: ["dashboards:view"],
+    });
+    expect(res.status).toBe(201);
+
+    expect(getAuditCount()).toBe(countBefore + 1);
+    const row = getLatestAuditRow();
+    expect(row).toBeDefined();
+    expect(row!.action).toBe("role_created");
+    expect(row!.actor).toBe(adminUsername);
+    expect(row!.target).toBe("audit_created_role");
+    expect(row!.before_json).toBeNull();
+    const after = JSON.parse(row!.after_json ?? "null");
+    expect(Array.isArray(after)).toBe(true);
+    expect(after).toContain("dashboards:view");
+  });
+
+  it("no audit row written when POST /api/roles is rejected (slug validation 400)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    const countBefore = getAuditCount();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "BadSlug!",
+      permissions: [],
+    });
+    expect(res.status).toBe(400);
+    expect(getAuditCount()).toBe(countBefore);
+  });
+});
+
+describe("AUDIT-V18-01 role_deleted audit emission", () => {
+  it("successful DELETE /api/roles/:id inserts one rbac_audit row", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const adminUsername = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+
+    // Create a custom role with a permission, then delete it
+    const createRes = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "audit_delete_role",
+      permissions: ["dashboards:view"],
+    });
+    const roleId = createRes.body.role.id;
+
+    const countBefore = getAuditCount();
+    const res = await app.delete(`/api/roles/${roleId}`).set("Cookie", cookie);
+    expect(res.status).toBe(200);
+
+    expect(getAuditCount()).toBe(countBefore + 1);
+    const row = getLatestAuditRow();
+    expect(row).toBeDefined();
+    expect(row!.action).toBe("role_deleted");
+    expect(row!.actor).toBe(adminUsername);
+    expect(row!.target).toBe("audit_delete_role");
+    // before_json captured BEFORE the delete — should include the role's permissions
+    const before = JSON.parse(row!.before_json ?? "null");
+    expect(Array.isArray(before)).toBe(true);
+    expect(before).toContain("dashboards:view");
+    expect(row!.after_json).toBeNull();
+  });
+
+  it("no audit row written when DELETE /api/roles/:id is rejected (holder 409)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    // Create a custom role with a holder
+    const createRes = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "audit_held_role",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id as number;
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("held_by_user", roleId);
+
+    const countBefore = getAuditCount();
+    const res = await app.delete(`/api/roles/${roleId}`).set("Cookie", cookie);
+    expect(res.status).toBe(409);
+    expect(getAuditCount()).toBe(countBefore);
+  });
+});
