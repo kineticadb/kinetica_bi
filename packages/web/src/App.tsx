@@ -6,6 +6,7 @@ import DatasetsPage from "./components/DatasetsPage";
 import LoginPage from "./components/LoginPage";
 import Toast from "./components/Toast";
 import { UsersPage } from "./components/UsersPage";
+import { RolesPage } from "./components/RolesPage";
 import { useAuthStore } from "./store/auth";
 import { useFilterStore } from "./store/filterStore";
 import { useFilterViewStore } from "./store/filterViewStore";
@@ -17,7 +18,7 @@ import { initWmsCapabilities } from "./store/wmsCapabilities";
 import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, listUsers } from "./api/client";
 import { PERMISSIONS } from "./lib/permissions";
 
-type Page = "dashboards" | "datasets" | "settings" | "users";
+type Page = "dashboards" | "datasets" | "settings" | "users" | "roles";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
 // Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
@@ -167,7 +168,8 @@ const App = () => {
         parsed.page === "dashboards" ||
         parsed.page === "datasets" ||
         parsed.page === "settings" ||
-        parsed.page === "users"
+        parsed.page === "users" ||
+        parsed.page === "roles"
       ) {
         setPage(parsed.page);
       }
@@ -251,6 +253,7 @@ const App = () => {
           <div className="muted">Section coming soon.</div>
         )}
         {page === "users" && <UsersPage />}
+        {page === "roles" && <RolesPage />}
       </div>
       <Toast />
     </div>
