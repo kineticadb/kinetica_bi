@@ -14,7 +14,8 @@ import { useLastInfoClickContextStore } from "./store/lastInfoClickContextStore"
 import { useSpatialFilterStore } from "./store/spatialFilterStore";
 import { useDynamicViewStore } from "./store/dynamicViewStore";
 import { initWmsCapabilities } from "./store/wmsCapabilities";
-import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView } from "./api/client";
+import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, listUsers } from "./api/client";
+import { PERMISSIONS } from "./lib/permissions";
 
 type Page = "dashboards" | "datasets" | "settings" | "users";
 
@@ -54,9 +55,14 @@ const App = () => {
       // ignore quota / private-mode errors — state still persists in memory
     }
   }, [sidebarCollapsed]);
+  // USERS-V18-04: onboarding banner state — count of non-bootstrap unassigned users + dismiss flag.
+  const [unassignedCount, setUnassignedCount] = useState<number | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
   const status = useAuthStore((s) => s.status);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const markUnauthenticated = useAuthStore((s) => s.markUnauthenticated);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
 
   useEffect(() => {
     bootstrap();
@@ -193,6 +199,25 @@ const App = () => {
     }
   }, [status]);
 
+  // USERS-V18-04: lazy banner fetch — SEPARATE from the auth bootstrap chain (Pitfall 6).
+  // Only users with users:assign_roles see the banner; everyone else skips the fetch entirely.
+  // Counts non-bootstrap users with no explicit role assignments (roles.length === 0 && !is_bootstrap).
+  useEffect(() => {
+    if (status !== "authenticated" || !hasPermission(PERMISSIONS.USERS_ASSIGN_ROLES)) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const users = await listUsers(controller.signal);
+        const count = users.filter((u) => !u.is_bootstrap && u.roles.length === 0).length;
+        setUnassignedCount(count);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        // Swallow other errors — banner is non-critical; a failed fetch just hides it.
+      }
+    })();
+    return () => controller.abort();
+  }, [status, hasPermission]);
+
   if (status === "unknown") {
     return <div className="login-shell"><div className="muted">Loading…</div><Toast /></div>;
   }
@@ -211,6 +236,15 @@ const App = () => {
       />
       <div className="main">
         <Topbar />
+        {unassignedCount !== null && unassignedCount > 0 && !bannerDismissed && (
+          <div className="onboarding-banner" role="status">
+            {unassignedCount} user{unassignedCount !== 1 ? "s are" : " is"} on the default analyst role —{" "}
+            <button className="banner-link" onClick={() => setPage("users")}>
+              Review in User Management
+            </button>
+            <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setBannerDismissed(true)}>×</button>
+          </div>
+        )}
         {page === "dashboards" && <DashboardsPage onViewChange={setDashboardViewMode} />}
         {page === "datasets" && <DatasetsPage />}
         {page === "settings" && (

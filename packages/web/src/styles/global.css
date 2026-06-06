@@ -4073,3 +4073,48 @@ a {
   padding-left: 22px;
   line-height: 1.4;
 }
+
+/* ── Phase 49 USERS-V18-04: onboarding banner ── */
+
+/* Full-width info bar below the topbar; mirrors .login-banner role="status" precedent. */
+.onboarding-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+  color: #cae8ff;
+  font-size: 13px;
+  padding: 8px 16px;
+  flex-shrink: 0;
+}
+
+/* Link-styled button inside the banner */
+.banner-link {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+.banner-link:hover {
+  opacity: 0.85;
+}
+
+/* × dismiss button, right-aligned */
+.banner-dismiss {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  margin-left: auto;
+}
+.banner-dismiss:hover {
+  color: #cae8ff;
+}
