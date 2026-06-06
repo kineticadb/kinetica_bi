@@ -100,6 +100,72 @@ describe("GET /api/users (GUARD-V18-04)", () => {
     expect(testUser).toBeDefined();
     expect(testUser!.roles).toContain("designer");
   });
+
+  it("includes last_seen for known users and null for assigned-only users", async () => {
+    // login_user has logged in (exists in known_users) — should have non-null last_seen
+    db.prepare("INSERT INTO known_users (username) VALUES (?)").run("login_user");
+    // assigned_only has a role but has never logged in — should have last_seen === null
+    const designerRole = db.prepare("SELECT id FROM roles WHERE name = 'designer'").get() as { id: number };
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("assigned_only", designerRole.id);
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get("/api/users").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+
+    type UserRow = { username: string; roles: string[]; last_seen: string | null; is_bootstrap: boolean };
+    const users = res.body.users as UserRow[];
+
+    const loginUser = users.find((u) => u.username === "login_user");
+    expect(loginUser).toBeDefined();
+    expect(typeof loginUser!.last_seen).toBe("string");
+    expect(loginUser!.last_seen).not.toBeNull();
+
+    const assignedOnly = users.find((u) => u.username === "assigned_only");
+    expect(assignedOnly).toBeDefined();
+    expect(assignedOnly!.last_seen).toBeNull();
+  });
+
+  it("flags the bootstrap admin row with is_bootstrap:true and others false", async () => {
+    db.prepare("INSERT INTO known_users (username) VALUES (?)").run("alice");
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get("/api/users").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+
+    type UserRow = { username: string; roles: string[]; last_seen: string | null; is_bootstrap: boolean };
+    const users = res.body.users as UserRow[];
+
+    const bootstrapName = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+    const bootstrapRow = users.find((u) => u.username === bootstrapName);
+    expect(bootstrapRow).toBeDefined();
+    expect(bootstrapRow!.is_bootstrap).toBe(true);
+
+    const aliceRow = users.find((u) => u.username === "alice");
+    expect(aliceRow).toBeDefined();
+    expect(aliceRow!.is_bootstrap).toBe(false);
+  });
+
+  it("synthesizes a bootstrap row when bootstrap is absent from both tables", async () => {
+    // Only alice in known_users — no bootstrap row anywhere
+    db.prepare("INSERT INTO known_users (username) VALUES (?)").run("alice");
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get("/api/users").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+
+    type UserRow = { username: string; roles: string[]; last_seen: string | null; is_bootstrap: boolean };
+    const users = res.body.users as UserRow[];
+
+    const bootstrapName = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+    const bootstrapRow = users.find((u) => u.username === bootstrapName);
+    expect(bootstrapRow).toBeDefined();
+    expect(bootstrapRow!.is_bootstrap).toBe(true);
+    expect(bootstrapRow!.roles).toEqual([]);
+    expect(bootstrapRow!.last_seen).toBeNull();
+  });
 });
 
 // ─── POST /api/users/:username/roles ─────────────────────────────────────────
