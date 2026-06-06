@@ -595,16 +595,18 @@ describe("Phase 34 — Dynamic Views action-bar button (DV-V16-08)", () => {
     return utils;
   };
 
-  it("renders 'Dynamic Views' button in dashboard action bar after 'Map Layers'", async () => {
+  it("renders 'Dynamic Views' button in dashboard toolbar between 'Tables' and 'Map Layers'", async () => {
     await openDashboard();
     const button = await screen.findByRole("button", { name: "Dynamic Views" });
     expect(button).toBeInTheDocument();
-    // Button ordering: Map Layers → Dynamic Views.
+    // Button ordering: Tables → Dynamic Views → Map Layers (matches DashboardsPage.tsx dashboard-toolbar).
     const buttons = screen.getAllByRole("button");
-    const mapLayersIdx = buttons.findIndex((b) => b.textContent === "Map Layers");
+    const tablesIdx = buttons.findIndex((b) => b.textContent === "Tables");
     const dvIdx = buttons.findIndex((b) => b.textContent === "Dynamic Views");
-    expect(mapLayersIdx).toBeGreaterThanOrEqual(0);
-    expect(dvIdx).toBeGreaterThan(mapLayersIdx);
+    const mapLayersIdx = buttons.findIndex((b) => b.textContent === "Map Layers");
+    expect(tablesIdx).toBeGreaterThanOrEqual(0);
+    expect(dvIdx).toBeGreaterThan(tablesIdx);
+    expect(mapLayersIdx).toBeGreaterThan(dvIdx);
   });
 
   it("clicking 'Dynamic Views' opens DynamicViewsModal with dashboardId + associatedTables + onClose props", async () => {
