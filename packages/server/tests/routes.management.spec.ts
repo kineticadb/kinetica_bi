@@ -491,3 +491,282 @@ describe("DELETE /api/roles/:id (GUARD-V18-04)", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── createUserAdminSession helper ───────────────────────────────────────────
+
+/**
+ * Creates a session cookie for a non-admin user with the user_admin role.
+ * Seeds an explicit user_roles row so getEffectiveRoles returns ["user_admin"].
+ * user_admin holds: users:view, users:assign_roles, roles:view,
+ * roles:manage_permissions, roles:create_custom, dashboards:view.
+ * Crucially does NOT hold roles:delete_custom (Guard 3 unheld example).
+ */
+const createUserAdminSession = (username = "test_user_admin") => {
+  const role = db.prepare("SELECT id FROM roles WHERE name = 'user_admin'").get() as { id: number } | undefined;
+  if (role) {
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(username, role.id);
+  }
+  const sid = createSession({ username, secret: "useradmin-test-secret", kineticaUrl: KINETICA_URL });
+  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
+  return { cookie: `kbi_session=${token}` };
+};
+
+// ─── SAFE-V18-02: Guard 1 — assign-admin escalation ──────────────────────────
+
+describe("SAFE-V18-02 Guard 1 — assign-admin escalation", () => {
+  it("user_admin caller assigning admin role → 403 with escalation error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    const res = await app.post("/api/users/bob/roles").set("Cookie", cookie).send({ roleName: "admin" });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("Only admins can assign the admin role.");
+  });
+
+  it("user_admin caller assigning a non-admin role (designer) → 200 (passes Guard 1)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    const res = await app.post("/api/users/bob/roles").set("Cookie", cookie).send({ roleName: "designer" });
+    expect(res.status).toBe(200);
+  });
+
+  it("bootstrap admin caller assigning admin role → 200 (passes Guard 1)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/users/bob/roles").set("Cookie", cookie).send({ roleName: "admin" });
+    expect(res.status).toBe(200);
+  });
+
+  it("explicit admin-role holder assigning admin role → 200 (passes Guard 1)", async () => {
+    // Seed an explicit user with the admin role
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("explicit_admin", adminRole.id);
+    const sid = createSession({ username: "explicit_admin", secret: "explicit-secret", kineticaUrl: KINETICA_URL });
+    const token = jwt.sign({ sub: "explicit_admin", sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
+    const cookie = `kbi_session=${token}`;
+
+    const app = await buildTestApp();
+    const res = await app.post("/api/users/target_user/roles").set("Cookie", cookie).send({ roleName: "admin" });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── SAFE-V18-02: Guard 2 — modify-admin-role escalation ─────────────────────
+
+describe("SAFE-V18-02 Guard 2 — modify-admin-role escalation", () => {
+  it("user_admin caller modifying admin role permissions → 403 with escalation error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    const res = await app.put(`/api/roles/${adminRole.id}/permissions`).set("Cookie", cookie).send({
+      permissions: ["dashboards:view"],
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("Only admins can modify the admin role.");
+  });
+
+  it("user_admin caller modifying a non-admin built-in role (analyst) → not blocked by Guard 2", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    const analystRole = db.prepare("SELECT id FROM roles WHERE name = 'analyst'").get() as { id: number };
+    // Guard 2 passes; Guard 3 also passes (dashboards:view is held by user_admin)
+    const res = await app.put(`/api/roles/${analystRole.id}/permissions`).set("Cookie", cookie).send({
+      permissions: ["dashboards:view"],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("bootstrap admin caller modifying admin role → 200 (passes Guard 2)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    const res = await app.put(`/api/roles/${adminRole.id}/permissions`).set("Cookie", cookie).send({
+      permissions: ["dashboards:view"],
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── SAFE-V18-02: Guard 3 — grant-unheld-permission escalation ───────────────
+
+describe("SAFE-V18-02 Guard 3 — grant-unheld-permission escalation", () => {
+  it("unknown permission string → 400 catalog check BEFORE Guard 3 403", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    // Create a custom role to operate on
+    const adminCookie = createAdminSession().cookie;
+    const createRes = await app.post("/api/roles").set("Cookie", adminCookie).send({
+      name: "guard3_test_role",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id;
+
+    const res = await app.put(`/api/roles/${roleId}/permissions`).set("Cookie", cookie).send({
+      permissions: ["totally_invalid:perm_that_does_not_exist"],
+    });
+    // Catalog check fires at 400 BEFORE the 403 escalation guard
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Unknown permissions/);
+  });
+
+  it("user_admin granting roles:delete_custom (unheld) → 403 naming the permission", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    // Create a custom role so we can PUT its permissions
+    const adminCookie = createAdminSession().cookie;
+    const createRes = await app.post("/api/roles").set("Cookie", adminCookie).send({
+      name: "guard3_unheld_test",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id;
+
+    // roles:delete_custom is NOT held by user_admin
+    const res = await app.put(`/api/roles/${roleId}/permissions`).set("Cookie", cookie).send({
+      permissions: ["roles:delete_custom"],
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("roles:delete_custom");
+    expect(res.body.error).toContain("Cannot grant permissions you do not hold");
+  });
+
+  it("user_admin granting dashboards:view (held) on a custom role → 200", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createUserAdminSession();
+    const adminCookie = createAdminSession().cookie;
+    const createRes = await app.post("/api/roles").set("Cookie", adminCookie).send({
+      name: "guard3_held_test",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id;
+
+    // dashboards:view IS held by user_admin
+    const res = await app.put(`/api/roles/${roleId}/permissions`).set("Cookie", cookie).send({
+      permissions: ["dashboards:view"],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("bootstrap admin granting any permission → 200 (passes Guard 3)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const createRes = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "guard3_admin_test",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id;
+
+    // admin can grant any permission
+    const res = await app.put(`/api/roles/${roleId}/permissions`).set("Cookie", cookie).send({
+      permissions: ["roles:delete_custom", "dashboards:create"],
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── ROLES-V18-04: Held-role delete block ─────────────────────────────────────
+
+describe("ROLES-V18-04 held-role delete block", () => {
+  it("deleting a custom role with an active holder → 409 naming count", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    // Create a custom role
+    const createRes = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "held_custom_role",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id as number;
+
+    // Assign a user to the role so it has a holder
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("holder_user", roleId);
+
+    const res = await app.delete(`/api/roles/${roleId}`).set("Cookie", cookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/Cannot delete/);
+    expect(res.body.error).toMatch(/1 user\(s\)/);
+  });
+
+  it("deleting a custom role with no holders → 200", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const createRes = await app.post("/api/roles").set("Cookie", cookie).send({
+      name: "unheld_custom_role",
+      permissions: [],
+    });
+    const roleId = createRes.body.role.id as number;
+    // No holders seeded
+
+    const res = await app.delete(`/api/roles/${roleId}`).set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it("built-in role delete still → 400 (built-in check fires before holder check)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const analystRole = db.prepare("SELECT id FROM roles WHERE name = 'analyst'").get() as { id: number };
+    const res = await app.delete(`/api/roles/${analystRole.id}`).set("Cookie", cookie);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/built-in/);
+  });
+});
+
+// ─── ROLES-V18-03: POST /api/roles slug validation ───────────────────────────
+
+describe("ROLES-V18-03 POST /api/roles slug validation", () => {
+  it("uppercase name → 400 slug error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "MyRole", permissions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/lowercase slug/);
+  });
+
+  it("name with space → 400 slug error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "my role", permissions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/lowercase slug/);
+  });
+
+  it("name with hyphen → 400 slug error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "my-role", permissions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/lowercase slug/);
+  });
+
+  it("reserved built-in name 'admin' → 400 reservation error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "admin", permissions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/reserved/);
+  });
+
+  it("reserved built-in name 'analyst' → 400 reservation error", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "analyst", permissions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/reserved/);
+  });
+
+  it("case-insensitive duplicate of existing custom role → 409", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    // Create the original (lowercase slug passes validation)
+    await app.post("/api/roles").set("Cookie", cookie).send({ name: "my_custom_role", permissions: [] });
+    // Attempt to create the same name again (case-insensitive match)
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "my_custom_role", permissions: [] });
+    expect(res.status).toBe(409);
+  });
+
+  it("valid lowercase slug name → 201", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.post("/api/roles").set("Cookie", cookie).send({ name: "valid_slug_123", permissions: [] });
+    expect(res.status).toBe(201);
+    expect(res.body.role.name).toBe("valid_slug_123");
+  });
+});
