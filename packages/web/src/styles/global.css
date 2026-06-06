@@ -1559,6 +1559,17 @@ a {
   font-size: 13px;
 }
 
+/* Light theme: dark-on-tint for legibility (50.3 follow-up — same broken-contrast class). */
+:root[data-theme="light"] .login-error {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.45);
+}
+
+:root[data-theme="light"] .login-banner {
+  color: #0c4a6e;
+  border-color: rgba(2, 132, 199, 0.45);
+}
+
 .login-submit {
   margin-top: 4px;
   padding: 10px 16px;
