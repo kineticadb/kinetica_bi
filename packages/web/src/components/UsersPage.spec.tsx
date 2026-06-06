@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
-import { seedUserAdminStore, seedAnalystStore } from "../test/seedAuthStore";
+import { seedUserAdminStore, seedAnalystStore, seedAdminStore } from "../test/seedAuthStore";
 import { PERMISSIONS } from "../lib/permissions";
 
 // Mock the api/client module — we stub listUsers/listRoles/assignRole/revokeRole
@@ -212,5 +212,86 @@ describe("UsersPage", () => {
 
     // jchen has last_seen 5 minutes ago → should show something like "5m ago"
     expect(screen.getByText(/\d+m ago/)).toBeInTheDocument();
+  });
+
+  // ── Tests 6 & 7: SAFE-V18-02 admin-role filter ───────────────────────────────
+  it("Test 6 (SAFE-V18-02): non-admin editor (user_admin) — popover and bulk dropdown do NOT list 'admin' role", async () => {
+    seedUserAdminStore(); // roles: ["user_admin"] — NOT admin
+    render(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("jchen")).toBeInTheDocument();
+    });
+
+    // Open the popover for jchen
+    const editButtons = screen.getAllByRole("button", { name: "Edit roles" });
+    fireEvent.click(editButtons[0]);
+
+    // Wait for popover to open
+    await waitFor(() => {
+      expect(screen.getByText(/Edit roles for jchen/)).toBeInTheDocument();
+    });
+
+    // Popover must NOT contain an 'admin' checkbox (no label with text "admin" in the popover row)
+    // The popover rows render role names as text spans; admin must be absent
+    const popoverTitle = screen.getByText(/Edit roles for jchen/);
+    const popover = popoverTitle.closest(".users-popover")!;
+    const roleNames = Array.from(popover.querySelectorAll(".users-popover-role-name")).map(
+      (el) => el.textContent,
+    );
+    expect(roleNames).not.toContain("admin");
+
+    // Select jchen to trigger bulk bar
+    fireEvent.click(editButtons[0]); // close popover
+    const checkbox = screen.getByRole("checkbox", { name: "Select jchen" });
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Assign role to 1 selected/ })).toBeInTheDocument();
+    });
+
+    // Bulk dropdown must NOT contain "admin" option
+    const bulkSelect = screen.getByRole("combobox");
+    const options = Array.from(bulkSelect.querySelectorAll("option")).map((o) => o.value);
+    expect(options).not.toContain("admin");
+  });
+
+  it("Test 7 (SAFE-V18-02): admin editor — popover and bulk dropdown DO list 'admin' role", async () => {
+    seedAdminStore(); // roles: ["admin"] — IS admin
+    render(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("jchen")).toBeInTheDocument();
+    });
+
+    // Open the popover for jchen
+    const editButtons = screen.getAllByRole("button", { name: "Edit roles" });
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Edit roles for jchen/)).toBeInTheDocument();
+    });
+
+    // Popover MUST contain "admin" role name
+    const popoverTitle = screen.getByText(/Edit roles for jchen/);
+    const popover = popoverTitle.closest(".users-popover")!;
+    const roleNames = Array.from(popover.querySelectorAll(".users-popover-role-name")).map(
+      (el) => el.textContent,
+    );
+    expect(roleNames).toContain("admin");
+
+    // Close popover, select jchen, open bulk bar
+    fireEvent.click(editButtons[0]);
+    const checkbox = screen.getByRole("checkbox", { name: "Select jchen" });
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Assign role to 1 selected/ })).toBeInTheDocument();
+    });
+
+    // Bulk dropdown MUST contain "admin" option
+    const bulkSelect = screen.getByRole("combobox");
+    const options = Array.from(bulkSelect.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toContain("admin");
   });
 });

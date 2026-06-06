@@ -44,6 +44,10 @@ export function UsersPage() {
 
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canAssign = hasPermission(PERMISSIONS.USERS_ASSIGN_ROLES);
+  // SAFE-V18-02: editors who do not themselves hold the admin role cannot assign admin to others.
+  // The server is the authority; this is a UI mirror only.
+  const editorIsAdmin = useAuthStore((s) => s.user?.roles ?? []).includes("admin");
+  const assignableRoles = editorIsAdmin ? roles : roles.filter((r) => r.name !== "admin");
 
   // Fetch users and roles on mount
   const fetchData = async (signal?: AbortSignal) => {
@@ -55,7 +59,13 @@ export function UsersPage() {
       setUsers(fetchedUsers);
       setRoles(fetchedRoles);
       if (fetchedRoles.length > 0 && !bulkRoleName) {
-        setBulkRoleName(fetchedRoles[0].name);
+        // Pick the first assignable role (admin filtered out for non-admin editors).
+        // editorIsAdmin is computed from the store, but fetchedRoles isn't filtered yet
+        // at this point (assignableRoles is derived on render). Use the same predicate inline.
+        const editorRoles = useAuthStore.getState().user?.roles ?? [];
+        const isAdmin = editorRoles.includes("admin");
+        const firstAssignable = isAdmin ? fetchedRoles[0] : fetchedRoles.find((r) => r.name !== "admin");
+        if (firstAssignable) setBulkRoleName(firstAssignable.name);
       }
       setError(null);
     } catch (err) {
@@ -221,7 +231,7 @@ export function UsersPage() {
             value={bulkRoleName}
             onChange={(e) => setBulkRoleName(e.target.value)}
           >
-            {roles.map((r) => (
+            {assignableRoles.map((r) => (
               <option key={r.name} value={r.name}>
                 {r.name}
               </option>
@@ -340,7 +350,7 @@ export function UsersPage() {
                           {isPopoverOpen && (
                             <div className="users-popover">
                               <div className="users-popover-title">Edit roles for {user.username}</div>
-                              {roles.map((role) => {
+                              {assignableRoles.map((role) => {
                                 const assigned = user.roles.includes(role.name);
                                 const errKey = `${user.username}_${role.name}`;
                                 const inlineError = popoverErrors[errKey];
