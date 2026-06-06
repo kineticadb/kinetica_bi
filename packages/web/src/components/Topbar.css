@@ -20,7 +20,7 @@
 }
 
 .user-menu-trigger:hover {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+  background: var(--card);
 }
 
 .user-menu-avatar {
@@ -31,7 +31,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--accent, #4f8ef7);
+  background: var(--accent);
   color: #fff;
   font-weight: 600;
   flex-shrink: 0;
@@ -47,10 +47,10 @@
   top: calc(100% + 6px);
   right: 0;
   min-width: 140px;
-  background: var(--surface, #1e1e2e);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
   z-index: 200;
   overflow: hidden;
   display: flex;
@@ -70,5 +70,5 @@
 }
 
 .user-menu-item:hover {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+  background: var(--card);
 }

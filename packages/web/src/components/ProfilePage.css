@@ -48,15 +48,15 @@
   display: inline-block;
   padding: 3px 10px;
   border-radius: 999px;
-  background: var(--accent, #4f8ef7);
+  background: var(--accent);
   color: #fff;
   font-size: 12px;
   font-weight: 500;
 }
 
 .profile-role-chip--default {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.1));
-  color: var(--text-muted, rgba(255, 255, 255, 0.45));
+  background: var(--chip-bg);
+  color: var(--muted);
 }
 
 .profile-perm-groups {
