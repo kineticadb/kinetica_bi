@@ -102,11 +102,12 @@ import {
 // v1.8 RBAC (SCHEMA-V18-03): bootstrap admin username resolution — used for the OIDC
 // default-admin boot warning. Import AFTER "./env" (env must stay the first import).
 // v1.8 Phase 48 Plan 01 (GATE-V18-01): getEffectiveRolesAndPermissions wired to /me handler.
-import { getAppAdminUsername, getEffectiveRolesAndPermissions } from "./lib/rbacDb";
+import { getAppAdminUsername, getEffectiveRolesAndPermissions, getEffectiveRoles, getEffectivePermissions } from "./lib/rbacDb";
 // v1.8 Phase 47 Plan 03 (GUARD-V18-02/03/04): requirePermission factory for mutation route gating.
 import { requirePermission } from "./rbac";
 // v1.8 Phase 47: PERMISSIONS catalog — canonical permission constants for server enforcement.
-import { PERMISSIONS } from "./lib/permissions";
+import { PERMISSIONS, BUILTIN_ROLES } from "./lib/permissions";
+import type { Permission } from "./lib/permissions";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -2013,10 +2014,11 @@ export const createApp = async (): Promise<express.Express> => {
   // REST shapes intentionally detailed to lock the Phase 49 contract now.
   //
   // SAFE-V18-01 (last-admin protection) is implemented in Phase 49 in the DELETE role handler.
-  // SAFE-V18-02 (escalation guards) is deferred to Phase 50 with role management routes.
+  // SAFE-V18-02 (escalation guards) are implemented in Phase 50 (POST /api/users/:username/roles
+  // Guard 1 and PUT /api/roles/:id/permissions Guards 2 + 3).
   //
   // Pitfall-6-safe targeting: target = req.params.username.toLowerCase() (the user being
-  // administered); actor = req.user!.creds.username (the admin caller, for future Phase 50 audit).
+  // administered); actor = req.user!.creds.username (the admin caller for Phase 50 audit).
 
   // GET /api/users — list all known+assigned users with their roles, last_seen, and is_bootstrap flag
   // USERS-V18-01: extends Phase 47 union query to include last_seen from known_users and
@@ -2061,6 +2063,12 @@ export const createApp = async (): Promise<express.Express> => {
     if (!roleName) return res.status(400).json({ error: "roleName is required." });
     const roleRow = db.prepare("SELECT id FROM roles WHERE name = ?").get(roleName) as { id: number } | undefined;
     if (!roleRow) return res.status(404).json({ error: `Role '${roleName}' not found.` });
+    // SAFE-V18-02 Guard 1: only admins can assign the admin role.
+    const actor = req.user!.creds.username;
+    const callerIsAdmin = getEffectiveRoles(actor).includes("admin");
+    if (!callerIsAdmin && roleName === "admin") {
+      return res.status(403).json({ error: "Only admins can assign the admin role." });
+    }
     db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(target, roleRow.id);
     return res.json({ ok: true, username: target, roleName });
   });
@@ -2125,8 +2133,16 @@ export const createApp = async (): Promise<express.Express> => {
     };
     if (!name) return res.status(400).json({ error: "name is required." });
     if (!Array.isArray(perms)) return res.status(400).json({ error: "permissions array is required." });
-    // 409 if name already exists
-    const existing = db.prepare("SELECT id FROM roles WHERE name = ?").get(name);
+    // ROLES-V18-03: slug validation — lowercase letters, digits, underscores only.
+    if (!/^[a-z0-9_]+$/.test(name)) {
+      return res.status(400).json({ error: "Role name must be a lowercase slug (letters, digits, underscore)." });
+    }
+    // ROLES-V18-03: reserved built-in name check.
+    if (BUILTIN_ROLES.includes(name as (typeof BUILTIN_ROLES)[number])) {
+      return res.status(400).json({ error: `'${name}' is a reserved built-in role name.` });
+    }
+    // 409 if name already exists (case-insensitive)
+    const existing = db.prepare("SELECT id FROM roles WHERE lower(name) = lower(?)").get(name);
     if (existing) return res.status(409).json({ error: `Role '${name}' already exists.` });
     const result = db.prepare(
       "INSERT INTO roles (name, description, built_in) VALUES (?, ?, 0)"
@@ -2161,6 +2177,20 @@ export const createApp = async (): Promise<express.Express> => {
     if (invalid.length > 0) {
       return res.status(400).json({ error: `Unknown permissions: ${invalid.join(", ")}` });
     }
+    // SAFE-V18-02 Guard 2: only admins can modify the admin role's permission set.
+    const actor = req.user!.creds.username;
+    const callerIsAdmin = getEffectiveRoles(actor).includes("admin");
+    if (!callerIsAdmin && roleRow.name === "admin") {
+      return res.status(403).json({ error: "Only admins can modify the admin role." });
+    }
+    // SAFE-V18-02 Guard 3: caller cannot grant permissions they do not hold.
+    if (!callerIsAdmin) {
+      const callerPerms = getEffectivePermissions(actor);
+      const unheld = newPerms.filter((p) => !callerPerms.has(p as Permission));
+      if (unheld.length > 0) {
+        return res.status(403).json({ error: `Cannot grant permissions you do not hold: ${unheld.join(", ")}` });
+      }
+    }
     // Replace: DELETE existing then INSERT new set
     db.prepare("DELETE FROM role_permissions WHERE role_id = ?").run(roleId);
     const insertPerm = db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)");
@@ -2171,15 +2201,18 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // DELETE /api/roles/:id — delete a custom role
-  // NOTE: SAFE-V18-02 (escalation guards) is deferred to Phase 50.
   app.delete("/api/roles/:id", ...requirePermission(PERMISSIONS.ROLES_DELETE_CUSTOM), (req, res) => {
     const roleId = Number(req.params.id);
     if (!Number.isFinite(roleId)) return res.status(400).json({ error: "id must be numeric." });
-    const roleRow = db.prepare("SELECT id, built_in FROM roles WHERE id = ?").get(roleId) as { id: number; built_in: number } | undefined;
+    const roleRow = db.prepare("SELECT id, name, built_in FROM roles WHERE id = ?").get(roleId) as { id: number; name: string; built_in: number } | undefined;
     if (!roleRow) return res.status(404).json({ error: "Role not found." });
-    // Block deletion of built-in roles (400)
+    // Block deletion of built-in roles (400) — fires BEFORE the holder check.
     if (roleRow.built_in) return res.status(400).json({ error: "Cannot delete a built-in role." });
-    // Last-holder check deferred to Phase 50 (SAFE-V18-02).
+    // ROLES-V18-04: block deletion of a role that still has active holders (409).
+    const holders = (db.prepare("SELECT COUNT(*) AS cnt FROM user_roles WHERE role_id = ?").get(roleId) as { cnt: number }).cnt;
+    if (holders > 0) {
+      return res.status(409).json({ error: `Cannot delete: ${holders} user(s) currently hold this role.` });
+    }
     db.prepare("DELETE FROM roles WHERE id = ?").run(roleId);
     return res.json({ ok: true, roleId });
   });

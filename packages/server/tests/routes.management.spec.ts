@@ -537,14 +537,17 @@ describe("SAFE-V18-02 Guard 1 — assign-admin escalation", () => {
   });
 
   it("explicit admin-role holder assigning admin role → 200 (passes Guard 1)", async () => {
-    // Seed an explicit user with the admin role
+    // Seed an explicit user with the admin role.
+    // Session is created AFTER buildTestApp() to avoid auth_mode_change_wipe deleting it.
     const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
     db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("explicit_admin", adminRole.id);
+
+    const app = await buildTestApp();
+
     const sid = createSession({ username: "explicit_admin", secret: "explicit-secret", kineticaUrl: KINETICA_URL });
     const token = jwt.sign({ sub: "explicit_admin", sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
     const cookie = `kbi_session=${token}`;
 
-    const app = await buildTestApp();
     const res = await app.post("/api/users/target_user/roles").set("Cookie", cookie).send({ roleName: "admin" });
     expect(res.status).toBe(200);
   });
