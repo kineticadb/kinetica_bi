@@ -49,11 +49,19 @@ vi.mock("./api/client", async () => {
     dropDynamicView: vi.fn(() => Promise.resolve({ dropped: true as const })),
     fetchAuthConfig: vi.fn(() => Promise.resolve({ authMode: "password" as const })),
     fetchMe: vi.fn(() => Promise.resolve(null)),
+    // Phase 49 USERS-V18-04: listUsers mock for onboarding banner tests.
+    listUsers: vi.fn(() => Promise.resolve([])),
   };
 });
 
+// Stub UsersPage — App routing + banner is what we're testing here; UsersPage internals tested in its own spec.
+vi.mock("./components/UsersPage", () => ({
+  UsersPage: () => <main data-testid="page-users">Users</main>,
+}));
+
 import App from "./App";
-import { dropFilterView, dropDynamicView, PERMISSION_DENIED_EVENT, fetchMe } from "./api/client";
+import { dropFilterView, dropDynamicView, PERMISSION_DENIED_EVENT, fetchMe, listUsers } from "./api/client";
+import { seedUserAdminStore, seedAnalystStore } from "./test/seedAuthStore";
 
 const setAuth = (patch: Partial<ReturnType<typeof useAuthStore.getState>>) => {
   act(() => {
@@ -517,5 +525,85 @@ describe("App — PERMISSION_DENIED_EVENT re-fetches /me and updates permissions
 
     // Permissions remain unchanged (not cleared) — fetchMe rejection is swallowed.
     expect(useAuthStore.getState().hasPermission("dashboards:edit")).toBe(false);
+  });
+});
+
+// Phase 49 USERS-V18-04: Onboarding banner — gating, dismiss, zero-unassigned, bootstrap exclusion.
+describe("App — onboarding banner (USERS-V18-04)", () => {
+  beforeEach(() => {
+    (listUsers as ReturnType<typeof vi.fn>).mockClear();
+    (fetchMe as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  });
+
+  it("Test 1: shows banner with correct count when user has users:assign_roles and unassigned non-bootstrap users exist; clicking link routes to Users page", async () => {
+    (listUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { username: "a", roles: [], last_seen: null, is_bootstrap: false },
+      { username: "b", roles: [], last_seen: null, is_bootstrap: false },
+    ]);
+    seedUserAdminStore();
+
+    const { getByText, findByText, getByTestId } = render(<App />);
+
+    // Wait for the banner to appear via async fetch
+    await findByText(/2 users are on the default analyst role/);
+
+    // Clicking the banner link should route to the Users page
+    const link = getByText("Review in User Management");
+    act(() => {
+      link.click();
+    });
+
+    expect(getByTestId("page-users")).toBeInTheDocument();
+  });
+
+  it("Test 2: does NOT call listUsers and does NOT show the banner when user lacks users:assign_roles", () => {
+    seedAnalystStore();
+
+    render(<App />);
+
+    // listUsers must not have been called at all
+    expect(listUsers).not.toHaveBeenCalled();
+    // Banner text must not be present
+    expect(document.body).not.toHaveTextContent(/on the default analyst role/);
+  });
+
+  it("Test 3: dismiss — clicking × hides the banner", async () => {
+    (listUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { username: "a", roles: [], last_seen: null, is_bootstrap: false },
+    ]);
+    seedUserAdminStore();
+
+    const { findByText, queryByText, getByLabelText } = render(<App />);
+
+    // Banner appears
+    await findByText(/1 user is on the default analyst role/);
+
+    // Click dismiss
+    act(() => {
+      getByLabelText("Dismiss").click();
+    });
+
+    // Banner gone
+    expect(queryByText(/on the default analyst role/)).not.toBeInTheDocument();
+  });
+
+  it("Test 4: banner not shown when all non-bootstrap users are assigned (bootstrap row excluded from unassigned count)", async () => {
+    // Bootstrap row has roles:[] but is_bootstrap:true — must NOT count
+    // User "c" has a role — assigned
+    (listUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { username: "admin", roles: [], last_seen: null, is_bootstrap: true },
+      { username: "c", roles: ["designer"], last_seen: null, is_bootstrap: false },
+    ]);
+    seedUserAdminStore();
+
+    render(<App />);
+
+    // Wait for fetch resolution
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // unassignedCount === 0 → banner must NOT appear
+    expect(document.body).not.toHaveTextContent(/on the default analyst role/);
   });
 });
