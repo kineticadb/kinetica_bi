@@ -3900,9 +3900,6 @@ a {
 }
 
 .users-td-username {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-weight: 500;
 }
 
@@ -3912,11 +3909,11 @@ a {
   flex-shrink: 0;
 }
 
-.users-td-roles {
+.users-cell-flex {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .users-td-last-seen {

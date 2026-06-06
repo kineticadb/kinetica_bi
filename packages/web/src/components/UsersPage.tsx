@@ -281,52 +281,56 @@ export function UsersPage() {
 
                   {/* Username */}
                   <td className="users-td users-td-username">
-                    {user.is_bootstrap && (
-                      <FontAwesomeIcon
-                        icon={faLock}
-                        className="users-lock-icon"
-                        title="Bootstrap admin — always app admin"
-                      />
-                    )}
-                    <span>{user.username}</span>
+                    <div className="users-cell-flex">
+                      {user.is_bootstrap && (
+                        <FontAwesomeIcon
+                          icon={faLock}
+                          className="users-lock-icon"
+                          title="Bootstrap admin — always app admin"
+                        />
+                      )}
+                      <span>{user.username}</span>
+                    </div>
                   </td>
 
                   {/* Roles chips */}
                   <td className="users-td users-td-roles">
-                    {user.is_bootstrap ? (
-                      // Bootstrap: immutable admin chip, no ×
-                      <span
-                        className="role-chip"
-                        title={`Bootstrap admin (${user.username}) — always app admin.`}
-                      >
-                        admin
-                      </span>
-                    ) : user.roles.length === 0 ? (
-                      // Unassigned: muted default chip, no ×
-                      <span
-                        className="role-chip role-chip--default"
-                        title="No roles assigned — analyst by default."
-                      >
-                        analyst (default)
-                      </span>
-                    ) : (
-                      // Explicit roles: each as chip with × when canAssign
-                      user.roles.map((roleName) => (
-                        <span key={roleName} className="role-chip">
-                          {roleName}
-                          {canAssign && (
-                            <button
-                              className="role-chip__remove"
-                              aria-label={`Revoke ${roleName} from ${user.username}`}
-                              onClick={() => void handleRevoke(user.username, roleName)}
-                              title={`Revoke ${roleName}`}
-                            >
-                              <FontAwesomeIcon icon={faXmark} />
-                            </button>
-                          )}
+                    <div className="users-cell-flex">
+                      {user.is_bootstrap ? (
+                        // Bootstrap: immutable admin chip, no ×
+                        <span
+                          className="role-chip"
+                          title={`Bootstrap admin (${user.username}) — always app admin.`}
+                        >
+                          admin
                         </span>
-                      ))
-                    )}
+                      ) : user.roles.length === 0 ? (
+                        // Unassigned: muted default chip, no ×
+                        <span
+                          className="role-chip role-chip--default"
+                          title="No roles assigned — analyst by default."
+                        >
+                          analyst (default)
+                        </span>
+                      ) : (
+                        // Explicit roles: each as chip with × when canAssign
+                        user.roles.map((roleName) => (
+                          <span key={roleName} className="role-chip">
+                            {roleName}
+                            {canAssign && (
+                              <button
+                                className="role-chip__remove"
+                                aria-label={`Revoke ${roleName} from ${user.username}`}
+                                onClick={() => void handleRevoke(user.username, roleName)}
+                                title={`Revoke ${roleName}`}
+                              >
+                                <FontAwesomeIcon icon={faXmark} />
+                              </button>
+                            )}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </td>
 
                   {/* Last seen */}

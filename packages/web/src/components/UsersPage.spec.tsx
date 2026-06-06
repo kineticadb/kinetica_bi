@@ -294,4 +294,31 @@ describe("UsersPage", () => {
     const options = Array.from(bulkSelect.querySelectorAll("option")).map((o) => o.value);
     expect(options).toContain("admin");
   });
+
+  // ── Test 8: table structure — td count per row matches th count; chips in roles column ─
+  it("each body row td count equals header th count; .role-chip elements are inside .users-td-roles", async () => {
+    seedAdminStore();
+    const { container } = render(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("jchen")).toBeInTheDocument();
+    });
+
+    // Per-row td count should equal header th count
+    const headerCols = container.querySelectorAll("thead th").length;
+    expect(headerCols).toBeGreaterThan(0);
+    container.querySelectorAll("tbody tr").forEach((tr) => {
+      expect(tr.querySelectorAll("td").length).toBe(headerCols);
+    });
+
+    // Chips render inside .users-td-roles — not stacked elsewhere
+    const jchenRow = Array.from(container.querySelectorAll("tbody tr")).find(
+      (tr) => tr.textContent?.includes("jchen"),
+    );
+    expect(jchenRow).toBeDefined();
+    const rolesTd = jchenRow!.querySelector(".users-td-roles");
+    expect(rolesTd).not.toBeNull();
+    const chips = rolesTd!.querySelectorAll(".role-chip");
+    expect(chips.length).toBeGreaterThan(0);
+  });
 });
