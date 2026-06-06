@@ -20,4 +20,17 @@ describe("humanizeRelativeTime", () => {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
     expect(humanizeRelativeTime(threeDaysAgo)).toMatch(/\d+d ago/);
   });
+
+  it("marker-less UTC string from 5 min ago renders positive minutes (not negative)", () => {
+    // Server emits "YYYY-MM-DD HH:MM:SS" without timezone marker — must be treated as UTC
+    const d = new Date(Date.now() - 5 * 60 * 1000);
+    const utc = d.toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
+    expect(humanizeRelativeTime(utc)).toMatch(/\d+m ago/);
+  });
+
+  it("future marker-less UTC timestamp (clock skew) renders 'just now' (not negative)", () => {
+    const future = new Date(Date.now() + 60 * 60 * 1000);
+    const utc = future.toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
+    expect(humanizeRelativeTime(utc)).toBe("just now");
+  });
 });
