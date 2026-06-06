@@ -188,6 +188,23 @@ const SCHEMA_DDL = `
     first_seen TEXT NOT NULL DEFAULT (datetime('now')),
     last_seen  TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Phase 50 (v1.8 AUDIT-V18-01): RBAC mutation audit log. Every role assign, revoke,
+  -- mapping-save, role-create, and role-delete writes one row AND emits one OBS-01
+  -- JSON log line (via emitRbacAudit helper in lib/rbacAudit.ts).
+  -- before_json/after_json capture state before and after the mutation (null where
+  -- not applicable — e.g. before_json=null for role_created).
+  CREATE TABLE IF NOT EXISTS rbac_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT NOT NULL,
+    before_json TEXT,
+    after_json TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_rbac_audit_ts ON rbac_audit (ts);
+  CREATE INDEX IF NOT EXISTS idx_rbac_audit_actor ON rbac_audit (actor);
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
