@@ -13,6 +13,7 @@ import { faLock, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
 import { PERMISSIONS } from "../lib/permissions";
+import { groupPermissionList } from "../lib/permissionGroups";
 import {
   listRoles,
   updateRolePermissions,
@@ -21,22 +22,6 @@ import {
 } from "../api/client";
 import type { RoleDto } from "../api/client";
 import "./RolesPage.css";
-
-// ─── Permission grouping constants ────────────────────────────────────────────
-
-const NOUN_TO_GROUP: Record<string, string> = {
-  dashboards: "Dashboards",
-  widgets: "Design",
-  layers: "Design",
-  dynamic_views: "Design",
-  data_filters: "Design",
-  datasets: "Design",
-  users: "Users",
-  roles: "Roles",
-  audit: "Audit",
-};
-
-const GROUP_ORDER = ["Dashboards", "Design", "Users", "Roles", "Audit"] as const;
 
 // All 16 permission strings from the catalog (in canonical order for display)
 const ALL_PERMISSIONS: string[] = Object.values(PERMISSIONS);
@@ -47,31 +32,8 @@ const BUILTIN_ROLE_NAMES = ["admin", "user_admin", "designer", "analyst"];
 // Slug validation regex (matches server: lowercase letters, digits, underscore)
 const SLUG_RE = /^[a-z0-9_]+$/;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function groupPermissions(): Array<{ group: string; perms: string[] }> {
-  const buckets = new Map<string, string[]>();
-  for (const perm of ALL_PERMISSIONS) {
-    const noun = perm.split(":")[0];
-    const group = NOUN_TO_GROUP[noun] ?? "Other";
-    if (!buckets.has(group)) buckets.set(group, []);
-    buckets.get(group)!.push(perm);
-  }
-
-  const ordered: Array<{ group: string; perms: string[] }> = [];
-  for (const g of GROUP_ORDER) {
-    if (buckets.has(g)) {
-      ordered.push({ group: g, perms: buckets.get(g)! });
-    }
-  }
-  // Catch any "Other" perms that didn't map (never silently drop)
-  if (buckets.has("Other")) {
-    ordered.push({ group: "Other", perms: buckets.get("Other")! });
-  }
-  return ordered;
-}
-
-const PERMISSION_GROUPS = groupPermissions();
+// Group the full permission catalog — same 5 groups as before
+const PERMISSION_GROUPS = groupPermissionList(ALL_PERMISSIONS);
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
