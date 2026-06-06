@@ -1,0 +1,85 @@
+/* ProfilePage — Phase 50.1 */
+
+.profile-page {
+  padding: 32px 40px;
+  max-width: 680px;
+}
+
+.profile-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin: 0 0 24px;
+}
+
+.profile-section {
+  margin-bottom: 32px;
+}
+
+.profile-username {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.profile-auth-mode {
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+.profile-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin: 0 0 10px;
+}
+
+.profile-role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-role-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent, #4f8ef7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.profile-role-chip--default {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.1));
+  color: var(--text-muted, rgba(255, 255, 255, 0.45));
+}
+
+.profile-perm-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-perm-group {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.profile-perm-group-label {
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.profile-perm-group-values {
+  opacity: 0.85;
+}
+
+.profile-perm-empty {
+  font-size: 13px;
+  opacity: 0.5;
+}

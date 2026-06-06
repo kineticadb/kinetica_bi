@@ -7,6 +7,7 @@ import LoginPage from "./components/LoginPage";
 import Toast from "./components/Toast";
 import { UsersPage } from "./components/UsersPage";
 import { RolesPage } from "./components/RolesPage";
+import { ProfilePage } from "./components/ProfilePage";
 import { useAuthStore } from "./store/auth";
 import { useFilterStore } from "./store/filterStore";
 import { useFilterViewStore } from "./store/filterViewStore";
@@ -18,7 +19,7 @@ import { initWmsCapabilities } from "./store/wmsCapabilities";
 import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, listUsers } from "./api/client";
 import { PERMISSIONS } from "./lib/permissions";
 
-type Page = "dashboards" | "datasets" | "settings" | "users" | "roles";
+type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
 // Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
@@ -169,7 +170,8 @@ const App = () => {
         parsed.page === "datasets" ||
         parsed.page === "settings" ||
         parsed.page === "users" ||
-        parsed.page === "roles"
+        parsed.page === "roles" ||
+        parsed.page === "profile"
       ) {
         setPage(parsed.page);
       }
@@ -237,7 +239,7 @@ const App = () => {
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />
       <div className="main">
-        <Topbar />
+        <Topbar onNavigateProfile={() => setPage("profile")} />
         {unassignedCount !== null && unassignedCount > 0 && !bannerDismissed && (
           <div className="onboarding-banner" role="status">
             {unassignedCount} user{unassignedCount !== 1 ? "s are" : " is"} on the default analyst role —{" "}
@@ -254,6 +256,7 @@ const App = () => {
         )}
         {page === "users" && <UsersPage />}
         {page === "roles" && <RolesPage />}
+        {page === "profile" && <ProfilePage />}
       </div>
       <Toast />
     </div>

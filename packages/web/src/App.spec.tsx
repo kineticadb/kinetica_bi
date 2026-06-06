@@ -64,6 +64,11 @@ vi.mock("./components/RolesPage", () => ({
   RolesPage: () => <main data-testid="page-roles">Roles</main>,
 }));
 
+// Stub ProfilePage — reached via Topbar menu, not Sidebar; internals tested separately.
+vi.mock("./components/ProfilePage", () => ({
+  ProfilePage: () => <main data-testid="page-profile">Profile</main>,
+}));
+
 import App from "./App";
 import { dropFilterView, dropDynamicView, PERMISSION_DENIED_EVENT, fetchMe, listUsers } from "./api/client";
 import { seedUserAdminStore, seedAnalystStore } from "./test/seedAuthStore";
