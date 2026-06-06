@@ -137,7 +137,9 @@ export const login = async (username: string, password: string): Promise<AuthUse
   if (!response.ok) {
     throw new Error(json?.error || `Login failed: ${response.status}`);
   }
-  return json.user as AuthUser;
+  const u = json.user ?? {};
+  // Post-48 gap fix: coalesce roles/permissions so hasPermission never sees undefined.
+  return { username: u.username, roles: u.roles ?? [], permissions: u.permissions ?? [] } as AuthUser;
 };
 
 export const logout = async (): Promise<void> => {

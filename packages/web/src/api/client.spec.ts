@@ -11,6 +11,7 @@ import {
   materializeDynamicView,
   dropDynamicView,
   runSql,
+  login,
   PermissionError,
   ReauthRequiredError,
   UpstreamError,
@@ -942,5 +943,34 @@ describe("throwForStatus generic 4xx/5xx error preservation", () => {
       actualMessage = (e as Error).message;
     }
     expect(actualMessage).toBe("SQL request failed");
+  });
+});
+
+// Post-Phase-48 gap regression: login response must carry roles/permissions
+// (server now mirrors /me); client coalesces missing arrays defensively.
+describe("login — RBAC shape coalescing (post-48 gap fix)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("passes through roles + permissions from the widened login response", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ user: { username: "admin", roles: ["admin"], permissions: ["dashboards:edit"] } }), { status: 200 }),
+    );
+    const user = await login("admin", "pw");
+    expect(user.roles).toEqual(["admin"]);
+    expect(user.permissions).toEqual(["dashboards:edit"]);
+  });
+
+  it("coalesces missing roles/permissions to empty arrays (never undefined)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ user: { username: "legacy" } }), { status: 200 }),
+    );
+    const user = await login("legacy", "pw");
+    expect(user.roles).toEqual([]);
+    expect(user.permissions).toEqual([]);
   });
 });

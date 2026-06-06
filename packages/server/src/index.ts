@@ -314,7 +314,10 @@ export const createApp = async (): Promise<express.Express> => {
     } catch (error) {
       return res.status(500).json({ error: String(error) });
     }
-    return res.json({ user: { username } });
+    // v1.8 (post-48 gap fix): login response mirrors /me — without roles/permissions here,
+    // hasPermission() is false for everything until a refresh re-runs bootstrap (/me).
+    const rp = getEffectiveRolesAndPermissions(username);
+    return res.json({ user: { username, roles: rp.roles, permissions: rp.permissions } });
   });
 
   app.post("/api/auth/logout", (req, res) => {
