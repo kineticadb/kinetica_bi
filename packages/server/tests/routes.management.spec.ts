@@ -247,6 +247,83 @@ describe("DELETE /api/users/:username/roles/:roleName (GUARD-V18-04)", () => {
   });
 });
 
+// ─── DELETE /api/users/:username/roles/admin — SAFE-V18-01 ───────────────────
+
+describe("DELETE /api/users/:username/roles/admin — SAFE-V18-01", () => {
+  it("rejects revoking admin from the last non-bootstrap admin (400, verbatim message, row preserved)", async () => {
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    // Explicitly seed user_roles(admin) for a non-bootstrap username (createAdminSession uses
+    // the bootstrap short-circuit and has NO user_roles row — so solo_admin is the only non-bootstrap admin)
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("solo_admin", adminRole.id);
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.delete("/api/users/solo_admin/roles/admin").set("Cookie", cookie);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(
+      "Cannot revoke: this is the last admin. At least one non-bootstrap user must hold the admin role."
+    );
+    // Row must NOT be deleted
+    const row = db.prepare("SELECT * FROM user_roles WHERE username = ? AND role_id = ?").get("solo_admin", adminRole.id);
+    expect(row).toBeDefined();
+  });
+
+  it("allows revoking admin when two non-bootstrap admins exist (200, row deleted)", async () => {
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("admin_a", adminRole.id);
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("admin_b", adminRole.id);
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.delete("/api/users/admin_a/roles/admin").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // admin_a row should be gone
+    const goneRow = db.prepare("SELECT * FROM user_roles WHERE username = ? AND role_id = ?").get("admin_a", adminRole.id);
+    expect(goneRow).toBeUndefined();
+    // admin_b row must remain
+    const remainRow = db.prepare("SELECT * FROM user_roles WHERE username = ? AND role_id = ?").get("admin_b", adminRole.id);
+    expect(remainRow).toBeDefined();
+  });
+
+  it("does not engage for a non-admin role (designer revoke succeeds even as sole holder)", async () => {
+    const designerRole = db.prepare("SELECT id FROM roles WHERE name = 'designer'").get() as { id: number };
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("lonely_designer", designerRole.id);
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.delete("/api/users/lonely_designer/roles/designer").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+  });
+
+  it("does not engage when target does not currently hold admin (idempotent 200)", async () => {
+    // ghost has no user_roles row at all — revoking admin should return 200 (idempotent)
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.delete("/api/users/ghost/roles/admin").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+  });
+
+  it("bootstrap admin is not counted — sole non-bootstrap admin + explicit bootstrap row still blocks", async () => {
+    const adminRole = db.prepare("SELECT id FROM roles WHERE name = 'admin'").get() as { id: number };
+    const bootstrapName = (process.env.APP_ADMIN_USERNAME || "admin").toLowerCase();
+    // Insert explicit user_roles row for bootstrap (even though it normally uses short-circuit)
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run(bootstrapName, adminRole.id);
+    // Also insert real_admin as the sole non-bootstrap admin
+    db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)").run("real_admin", adminRole.id);
+
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.delete("/api/users/real_admin/roles/admin").set("Cookie", cookie);
+    // Bootstrap is excluded from the count — real_admin is still the last non-bootstrap admin
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(
+      "Cannot revoke: this is the last admin. At least one non-bootstrap user must hold the admin role."
+    );
+  });
+});
+
 // ─── GET /api/roles ───────────────────────────────────────────────────────────
 
 describe("GET /api/roles (GUARD-V18-04)", () => {
