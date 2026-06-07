@@ -947,6 +947,148 @@ describe("buildWmsParams — track spatial mode (Phase 52)", () => {
   });
 });
 
+// ─── RENDER-V19-04: Track emission under spatialMode=track (NEW flow, Phase 53) ──
+//
+// EMISSION-GATE DECISION (decide-in-planning directive — documented here per 53-02-PLAN.md):
+//
+// The emission block (wmsUrlBuilder.ts ~432) gates on:
+//   `tc.enabled && (renderMode === "raster" || renderMode === "classbreak")`
+//
+// We KEEP this gate UNCHANGED. Rationale:
+//   - Phase 52's onPickTrackCol/onSetTrackField always writes enabled:true whenever any
+//     track field is set, so under the new Track flow with a complete config, tc.enabled
+//     is reliably true — the `tc.enabled` gate and a hypothetical `spatialMode === "track"
+//     && complete` gate are functionally equivalent in the new flow.
+//   - Switching to a `spatialMode === "track"`-ONLY gate would BREAK existing emission
+//     specs (wmsUrlBuilder.spec.ts "Track block (SCHEMA-V17-04)") that drive the block
+//     under `spatialMode: "latlon"` with `enabled:true` and expect DOTRACKS=TRUE — that
+//     would WEAKEN the locked contract, which CONTEXT forbids.
+//   - Therefore both paths (legacy latlon+enabled AND new track+enabled) pass simultaneously
+//     by leaving the gate on `tc.enabled`. The emission SHAPES are byte-preserved per the
+//     Phase 37 spike Decision Record. New specs assert the NEW track-mode shape; old specs
+//     stay green.
+
+describe("buildWmsParams — Track emission under spatialMode=track (RENDER-V19-04 new-flow lock)", () => {
+  // NEW flow base config: spatialMode "track", columns live in track_config (not config.lonColumn).
+  const trackBase = { tableId: 1, tableRef: "s.t", spatialMode: "track" as const };
+
+  // Shared track_config fixture — full Phase 52 new-flow shape with xCol + yCol.
+  const trackJson = JSON.stringify({
+    enabled: true,
+    xCol: "x",
+    yCol: "y",
+    trackIdAttr: "TRACKID",
+    trackOrderAttr: "TIMESTAMP",
+    headColor: "FFFF0000",
+    trailColor: "FF0000FF",
+    headSize: 8,
+    trailSize: 2,
+    headShape: "circle",
+  });
+
+  it("raster: track+enabled emits DOTRACKS + single-value TRACK_* (byte-lock per Phase 37 spike Decision Record)", () => {
+    // BYTE-LOCK: exact values must match the Phase 37 spike contract shapes.
+    const params = buildWmsParams(
+      { ...trackBase, renderMode: "raster" },
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    expect(params).not.toBeNull();
+    expect(params!.DOTRACKS).toBe("TRUE");
+    expect(params!.TRACK_ID_ATTR).toBe("TRACKID");
+    expect(params!.TRACK_ORDER_ATTR).toBe("TIMESTAMP");
+    expect(params!.TRACKHEADCOLORS).toBe("FFFF0000");
+    expect(params!.TRACKLINECOLORS).toBe("FF0000FF");
+    expect(params!.TRACKHEADSIZES).toBe("8");
+    expect(params!.TRACKLINEWIDTHS).toBe("2");
+    expect(params!.TRACKMARKERSHAPES).toBe("circle");
+    // Phase 52 spatial branch: X_ATTR/Y_ATTR come from track_config.xCol/yCol, not config.lonColumn.
+    expect(params!.X_ATTR).toBe("x");
+    expect(params!.Y_ATTR).toBe("y");
+    // GEO_ATTR must be absent — track mode never falls through to wkb branch.
+    expect(params!.GEO_ATTR).toBeUndefined();
+  });
+
+  it("cb_raster: track+enabled emits N comma-separated TRACK_* matching breaks.length (byte-lock per Phase 37 spike Decision Record)", () => {
+    // 3-break cb_config — reuses the numeric shape from the SCHEMA-V17-03 describe (~line 808).
+    const cbJson = JSON.stringify({
+      attr: "x",
+      valsType: "numeric",
+      breaks: [
+        { value: 1, min: 0, max: 10, color: "FF000000" },
+        { value: 2, min: 10, max: 25, color: "FFFFFFFF" },
+        { value: 3, min: 25, max: 50, color: "FF112233" },
+      ],
+    });
+    const params = buildWmsParams(
+      { ...trackBase, renderMode: "classbreak" },
+      undefined, undefined, undefined,
+      { cb_config: cbJson, track_config: trackJson },
+    );
+    expect(params).not.toBeNull();
+    expect(params!.DOTRACKS).toBe("TRUE");
+    // N = 3 — each TRACK_* value is repeated 3 times comma-separated.
+    expect(params!.TRACKHEADCOLORS).toBe("FFFF0000,FFFF0000,FFFF0000");
+    expect(params!.TRACKLINECOLORS).toBe("FF0000FF,FF0000FF,FF0000FF");
+    expect(params!.TRACKHEADSIZES).toBe("8,8,8");
+    expect(params!.TRACKLINEWIDTHS).toBe("2,2,2");
+  });
+
+  it("raster: changing headColor changes TRACKHEADCOLORS (proves track-style edits flow to emission)", () => {
+    // Unit-level proxy for fingerprint coverage: if the emission value changes on a style edit,
+    // JSON.stringify({ p: wmsParams, c, t }) changes, triggering a tile refetch.
+    const trackJsonA = JSON.stringify({ enabled: true, xCol: "x", yCol: "y", headColor: "FFFF0000", trailColor: "FF0000FF", headSize: 8, trailSize: 2 });
+    const trackJsonB = JSON.stringify({ enabled: true, xCol: "x", yCol: "y", headColor: "FF00FF00", trailColor: "FF0000FF", headSize: 8, trailSize: 2 });
+
+    const paramsA = buildWmsParams(
+      { ...trackBase, renderMode: "raster" },
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJsonA },
+    );
+    const paramsB = buildWmsParams(
+      { ...trackBase, renderMode: "raster" },
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJsonB },
+    );
+    expect(paramsA!.TRACKHEADCOLORS).toBe("FFFF0000");
+    expect(paramsB!.TRACKHEADCOLORS).toBe("FF00FF00");
+    expect(paramsA!.TRACKHEADCOLORS).not.toBe(paramsB!.TRACKHEADCOLORS);
+  });
+
+  it("heatmap unreachable but defensive: track+enabled under heatmap emits NO TRACK_* (gate excludes heatmap)", () => {
+    // Mirrors the SCHEMA-V17-04 lock (~line 841). Confirms the gate still excludes heatmap
+    // even though the Phase 53 render-mode picker now prevents selecting it in track mode.
+    const params = buildWmsParams(
+      { ...trackBase, renderMode: "heatmap" },
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    expect(params!.DOTRACKS).toBeUndefined();
+    const trackKeys = Object.keys(params!).filter((k) => k.startsWith("TRACK"));
+    expect(trackKeys).toEqual([]);
+  });
+
+  it("fingerprint coverage lock (RENDER-V19-04): fingerprint changes on track_config color edit", () => {
+    // Simulates the MapChartRenderer.tsx ~1196/~1286 fingerprint:
+    //   const fingerprint = JSON.stringify({ p: wmsParams, c: layer.cb_config, t: layer.track_config });
+    // Linked to: MapChartRenderer.tsx `JSON.stringify({ p: wmsParams, c, t })` fingerprint block.
+    // A changed track_config headColor → changed emission (TRACKHEADCOLORS) → changed `p` in
+    // the fingerprint → tile refetch triggered. No test-double needed; the emission IS the proof.
+    const fp = (params: Record<string, string>, tcfg: string) =>
+      JSON.stringify({ p: params, c: null, t: tcfg });
+
+    const tcfgA = JSON.stringify({ enabled: true, xCol: "x", yCol: "y", headColor: "FFFF0000", trailColor: "FF0000FF", headSize: 8, trailSize: 2 });
+    const tcfgB = JSON.stringify({ enabled: true, xCol: "x", yCol: "y", headColor: "FF00FF00", trailColor: "FF0000FF", headSize: 8, trailSize: 2 });
+
+    const pA = buildWmsParams({ ...trackBase, renderMode: "raster" }, undefined, undefined, undefined, { cb_config: null, track_config: tcfgA });
+    const pB = buildWmsParams({ ...trackBase, renderMode: "raster" }, undefined, undefined, undefined, { cb_config: null, track_config: tcfgB });
+
+    const fpA = fp(pA!, tcfgA);
+    const fpB = fp(pB!, tcfgB);
+    expect(fpA).not.toBe(fpB);
+  });
+});
+
 describe("buildWmsParams — `_mv` cache-bust preservation (SCHEMA-V17-03 explicit requirement)", () => {
   it("LAYERS param contains the `_mv` cache-bust suffix when materializeVersion is supplied (v1.3 logic survived the rewrite)", () => {
     // 4-arg call (Phase 16 + Phase 35 caller shape) with materializeVersion=42.
