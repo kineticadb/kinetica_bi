@@ -1468,3 +1468,66 @@ describe("CbConfigForm", () => {
     }
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 53 Task 3: trackContext per-break advanced hiding             */
+/*  (RENDER-V19-03)                                                     */
+/* ------------------------------------------------------------------ */
+
+describe("trackContext per-break advanced hiding (RENDER-V19-03)", () => {
+  let onChange: ReturnType<typeof vi.fn> & ((config: Record<string, unknown>) => void);
+
+  const twoBreaks = [
+    { value: "cat1", color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+    { value: "cat2", color: "FFEF4444", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+  ];
+
+  const cbConfigWithBreaks: Record<string, unknown> = {
+    ...baseConfig,
+    cb_config: JSON.stringify({
+      attr: "vendor",
+      valsType: "categorical",
+      breaks: twoBreaks,
+    }),
+  };
+
+  beforeEach(() => {
+    onChange = vi.fn() as any;
+    vi.mocked(useToastStore.getState).mockReturnValue({ showToast: vi.fn() } as any);
+    vi.mocked(topValuesFn).mockResolvedValue({ values: [] });
+  });
+
+  it("trackContext=true: chevron toggle button absent; no advanced panel even after interaction attempt", () => {
+    render(
+      <CbConfigForm
+        config={cbConfigWithBreaks}
+        onChange={onChange}
+        columns={baseColumns}
+        trackContext={true}
+      />,
+    );
+    // No chevron toggle for any row
+    expect(screen.queryByLabelText("Toggle advanced for row 1")).toBeNull();
+    expect(screen.queryByLabelText("Toggle advanced for row 2")).toBeNull();
+    // No advanced panel
+    expect(screen.queryByTestId("cb-row-advanced-0")).toBeNull();
+    expect(screen.queryByTestId("cb-row-advanced-1")).toBeNull();
+  });
+
+  it("trackContext omitted (default): chevron toggle present; clicking reveals advanced panel", () => {
+    render(
+      <CbConfigForm
+        config={cbConfigWithBreaks}
+        onChange={onChange}
+        columns={baseColumns}
+      />,
+    );
+    // Chevron exists for row 1
+    const toggleBtn = screen.getByLabelText("Toggle advanced for row 1");
+    expect(toggleBtn).toBeInTheDocument();
+    // Click to expand
+    fireEvent.click(toggleBtn);
+    // Advanced panel appears
+    expect(screen.getByTestId("cb-row-advanced-0")).toBeInTheDocument();
+  });
+});

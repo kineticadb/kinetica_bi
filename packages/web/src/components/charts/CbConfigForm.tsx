@@ -65,6 +65,13 @@ type CbConfigFormProps = {
    * understands they need to define breaks manually until materialization.
    */
   autoSuggestDisabledReason?: string;
+  /**
+   * Phase 53 (RENDER-V19-03): when true (track + classbreak context), per-break
+   * point/shape advanced panels are hidden — track styling owns marker appearance,
+   * not per-break overrides. Additive: undefined/false preserves the full
+   * non-track CB form.
+   */
+  trackContext?: boolean;
 };
 
 // ── Cardinality state machine ───────────────────────────────────────
@@ -104,6 +111,7 @@ export default function CbConfigForm({
   schema,
   tableName,
   autoSuggestDisabledReason,
+  trackContext,
 }: CbConfigFormProps): JSX.Element {
   // ── Deserialize cb_config ────────────────────────────────────────
   const cbConfig: CbConfig = coalesceCbConfig((config.cb_config as string | null) ?? null);
@@ -815,15 +823,17 @@ export default function CbConfigForm({
       <div className="config-classbreak-rows" data-testid="cb-rows">
         {cbConfig.breaks.map((b, i) => (
           <div key={i} className="config-classbreak-row" data-row-index={i}>
-            {/* Per-row chevron toggle */}
-            <button
-              type="button"
-              className="ghost-sm cb-row-chevron"
-              aria-label={`Toggle advanced for row ${i + 1}`}
-              onClick={() => toggleExpanded(i)}
-            >
-              <FontAwesomeIcon icon={expandedRows.has(i) ? faChevronDown : faChevronRight} />
-            </button>
+            {/* Per-row chevron toggle — hidden in trackContext (track styling owns marker appearance) */}
+            {!trackContext && (
+              <button
+                type="button"
+                className="ghost-sm cb-row-chevron"
+                aria-label={`Toggle advanced for row ${i + 1}`}
+                onClick={() => toggleExpanded(i)}
+              >
+                <FontAwesomeIcon icon={expandedRows.has(i) ? faChevronDown : faChevronRight} />
+              </button>
+            )}
 
             {/* Row label span */}
             <span className="config-classbreak-row-label">Break {i + 1}</span>
@@ -934,8 +944,8 @@ export default function CbConfigForm({
               </div>
             )}
 
-            {/* Per-row advanced panel */}
-            {expandedRows.has(i) && (
+            {/* Per-row advanced panel — hidden in trackContext */}
+            {!trackContext && expandedRows.has(i) && (
               <div className="cb-row-advanced" data-testid={`cb-row-advanced-${i}`}>
                 <label>
                   Point size

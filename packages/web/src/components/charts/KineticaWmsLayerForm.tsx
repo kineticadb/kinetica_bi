@@ -1261,8 +1261,10 @@ export default function KineticaWmsLayerForm({
         {/* ─── CLASSBREAK PARAMS (Phase 39: replaced by CbConfigForm) ───────────────────
             Phase 44 follow-up: schema + tableName + autoSuggestDisabledReason come from
             cbAutoSuggestTarget so dv-bound layers query the materialized view (or disable
-            auto-suggest entirely when the view isn't materialized yet). */}
-        {renderMode === "classbreak" && (
+            auto-suggest entirely when the view isn't materialized yet).
+            Phase 53 (RENDER-V19-03): gate on effectiveRenderMode (coerced) + pass
+            trackContext so per-break advanced panels are hidden under Track+Classbreak. */}
+        {effectiveRenderMode === "classbreak" && (
           <CbConfigForm
             config={config}
             onChange={onChange}
@@ -1272,6 +1274,7 @@ export default function KineticaWmsLayerForm({
             schema={cbAutoSuggestTarget.schema}
             tableName={cbAutoSuggestTarget.tableName}
             autoSuggestDisabledReason={cbAutoSuggestTarget.autoSuggestDisabledReason}
+            trackContext={spatialMode === "track"}
           />
         )}
 

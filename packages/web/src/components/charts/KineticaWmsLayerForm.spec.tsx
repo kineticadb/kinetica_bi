@@ -1308,4 +1308,16 @@ describe("Track style + raster param hiding (RENDER-V19-02, COLOR-V19-01)", () =
     expect(screen.getByText("RASTER PARAMS")).toBeInTheDocument();
     expect(screen.queryByText("TRACK STYLE")).toBeNull();
   });
+
+  it("Track+Classbreak: CB builder AND TRACK STYLE both present", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "track", renderMode: "classbreak" }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.getByText("CLASS BREAK PARAMS")).toBeInTheDocument();
+    expect(screen.getByText("TRACK STYLE")).toBeInTheDocument();
+  });
 });
