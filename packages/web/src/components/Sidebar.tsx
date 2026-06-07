@@ -23,9 +23,9 @@ type NavItem = {
 const nav: NavItem[] = [
   { label: "Dashboards", key: "dashboards", icon: faTableColumns },
   { label: "Datasets", key: "datasets", icon: faDatabase },
-  { label: "Settings", key: "settings", icon: faGear },
   { label: "User Management", key: "users", icon: faUsers, permission: PERMISSIONS.USERS_VIEW },
   { label: "Roles", key: "roles", icon: faUserShield, permission: PERMISSIONS.ROLES_VIEW },
+  { label: "Settings", key: "settings", icon: faGear },
 ];
 
 type Props = {
