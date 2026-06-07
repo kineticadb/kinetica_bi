@@ -25,10 +25,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getValidSpatialColumns,
+  getTrackIdColumns,
+  getTrackOrderColumns,
   autoSuggestSpatialMode,
   type SpatialMode,
   type Column,
 } from "../../lib/columnTypes";
+import { coalesceTrackConfig } from "../../lib/trackConfig";
 import { useWmsCapabilitiesStore } from "../../store/wmsCapabilities";
 import { useToastStore } from "../../store/toast";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
@@ -48,7 +51,6 @@ import { html as htmlLang } from "@codemirror/lang-html";
 import ChipCombobox, { type ChipComboboxOption } from "./ChipCombobox";
 import ZoomRangeSlider, { type ZoomRangeValue } from "./ZoomRangeSlider";
 import CbConfigForm from "./CbConfigForm";
-import TrackSubSection from "./TrackSubSection";
 
 // Zoom-range defaults — full OL view range. Stored in `layer.config.minZoom`
 // + `layer.config.maxZoom` (inclusive semantics on the wire; MapChartRenderer
@@ -106,7 +108,7 @@ const RENDER_MODE_LABELS: Record<RenderMode, string> = {
   contour: "Contour (lines)",
 };
 
-const ALL_SPATIAL_MODES: SpatialMode[] = ["latlon", "wkt", "wkb"];
+const ALL_SPATIAL_MODES: SpatialMode[] = ["latlon", "wkt", "wkb", "track"];
 const ALL_RENDER_MODES: RenderMode[] = ["raster", "heatmap", "classbreak", "contour"];
 
 // Full Kinetica colormap catalog, grouped per the Kinetica WMS docs. The original
@@ -263,6 +265,14 @@ export default function KineticaWmsLayerForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderMode]);
 
+  // Phase 52: isValid signaling for track mode — all four pickers must be set
+  useEffect(() => {
+    if (spatialMode !== "track") return;
+    const tc = coalesceTrackConfig((config.track_config as string | null) ?? null);
+    isValid?.(!!tc.xCol && !!tc.yCol && !!tc.trackIdAttr && !!tc.trackOrderAttr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spatialMode, config.track_config, isValid]);
+
   // NOTE: KineticaWmsLayerForm is PURELY CONTROLLED — it does NOT auto-suggest spatial mode
   // on columns change. Auto-suggest is the caller's (LayersModal / MapConfigPanel) responsibility.
   // When the user changes the table in LayersModal, the parent runs autoSuggestSpatialMode and
@@ -272,6 +282,10 @@ export default function KineticaWmsLayerForm({
 
   const onSelectSpatialMode = (mode: SpatialMode) => {
     setAutoSuggestActiveLocal(false);
+    // When switching away from track, reset isValid to true (track pickers cleared)
+    if (mode !== "track") {
+      isValid?.(true);
+    }
     // Clear stale spatial columns when switching mode
     onChange({
       ...config,
@@ -282,6 +296,7 @@ export default function KineticaWmsLayerForm({
       lonColumn: "",
       wktColumn: "",
       wkbColumn: "",
+      // NOTE: Do NOT clear track_config here — Phase 53 needs it preserved for re-selection
     });
   };
 
@@ -290,7 +305,24 @@ export default function KineticaWmsLayerForm({
   };
 
   // Spatial column pickers — filtered via getValidSpatialColumns (Phase 11 11-02)
-  const validColumns = spatialMode ? getValidSpatialColumns(columns, spatialMode) : [];
+  const validColumns = spatialMode && spatialMode !== "track" ? getValidSpatialColumns(columns, spatialMode) : [];
+
+  // Phase 52: Track column pickers — four typed column lists for track mode
+  const trackXColumns = getValidSpatialColumns(columns, "latlon"); // numeric only
+  const trackYColumns = getValidSpatialColumns(columns, "latlon");
+  const trackIdColumns = getTrackIdColumns(columns);
+  const trackOrderColumns = getTrackOrderColumns(columns);
+  const trackCfg = coalesceTrackConfig((config.track_config as string | null) ?? null);
+
+  // Phase 52: Pick a track column and merge into track_config
+  const onPickTrackCol = (key: "xCol" | "yCol" | "trackIdAttr" | "trackOrderAttr", v: string) => {
+    const next = {
+      ...coalesceTrackConfig((config.track_config as string | null) ?? null),
+      enabled: true,
+      [key]: v || undefined,
+    };
+    onChange({ ...config, track_config: JSON.stringify(next) });
+  };
 
   const onPickColumn = (key: string, value: string) => {
     onChange({ ...config, [key]: value });
@@ -494,7 +526,7 @@ export default function KineticaWmsLayerForm({
             SPATIAL MODE
           </label>
 
-          {ALL_SPATIAL_MODES.filter((m) => allowedSpatialModes.includes(m)).map((m) => (
+          {ALL_SPATIAL_MODES.filter((m) => m === "track" || allowedSpatialModes.includes(m)).map((m) => (
             <label key={m}>
               <input
                 type="radio"
@@ -583,6 +615,68 @@ export default function KineticaWmsLayerForm({
                 ))}
               </select>
             </label>
+          )}
+
+          {/* Phase 52: Track column pickers (TRACKMODE-V19-01/02) */}
+          {spatialMode === "track" && (
+            <>
+              <label className="ds-field-label">
+                X column (longitude)
+                <select
+                  className="ds-select"
+                  aria-label="Track X column"
+                  value={trackCfg.xCol ?? ""}
+                  onChange={(e) => onPickTrackCol("xCol", e.target.value)}
+                >
+                  <option value="">— select —</option>
+                  {trackXColumns.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="ds-field-label">
+                Y column (latitude)
+                <select
+                  className="ds-select"
+                  aria-label="Track Y column"
+                  value={trackCfg.yCol ?? ""}
+                  onChange={(e) => onPickTrackCol("yCol", e.target.value)}
+                >
+                  <option value="">— select —</option>
+                  {trackYColumns.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="ds-field-label">
+                Track ID column
+                <select
+                  className="ds-select"
+                  aria-label="Track ID column"
+                  value={trackCfg.trackIdAttr ?? ""}
+                  onChange={(e) => onPickTrackCol("trackIdAttr", e.target.value)}
+                >
+                  <option value="">— select —</option>
+                  {trackIdColumns.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="ds-field-label">
+                Ordering column
+                <select
+                  className="ds-select"
+                  aria-label="Track ordering column"
+                  value={trackCfg.trackOrderAttr ?? ""}
+                  onChange={(e) => onPickTrackCol("trackOrderAttr", e.target.value)}
+                >
+                  <option value="">— select —</option>
+                  {trackOrderColumns.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+            </>
           )}
         </div>
 
@@ -972,23 +1066,6 @@ export default function KineticaWmsLayerForm({
             schema={cbAutoSuggestTarget.schema}
             tableName={cbAutoSuggestTarget.tableName}
             autoSuggestDisabledReason={cbAutoSuggestTarget.autoSuggestDisabledReason}
-          />
-        )}
-
-        {/* ─── TRACK SUB-SECTION (Phase 40 TRACK-V17-03) ──────────────────────
-            Gated as a SINGLE expression on raster OR classbreak so React preserves
-            component state across raster ↔ classbreak swaps (Pitfall 5 lock). The
-            Track sub-section is INDEPENDENT of the CbConfigForm gate — both can
-            render simultaneously (classbreak mode with track enabled). Heatmap +
-            contour render modes hide the sub-section without resetting track_config.
-            See .planning/phases/40-track-sub-section-ui/40-CONTEXT.md "Render-mode
-            gating". */}
-        {(renderMode === "raster" || renderMode === "classbreak") && (
-          <TrackSubSection
-            config={config}
-            onChange={onChange}
-            columns={columns}
-            isValid={isValid}
           />
         )}
 
