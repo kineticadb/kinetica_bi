@@ -61,7 +61,7 @@ import { useDashboardContextOptional } from "../DashboardContext";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { isViewExpired } from "../../lib/viewExpiry";
 import { useToastStore } from "../../store/toast";
-import { buildWmsParams, type MapWidgetConfig } from "../../lib/wmsUrlBuilder";
+import { buildWmsParams, type MapWidgetConfig, coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
 import { isLayerEffectivelyVisible } from "../../lib/layerVisibility";
 import { getSpatialTargets, isSpatialTargetEligible } from "../../lib/spatialTargets";
 import { buildSpatialColumns } from "../../lib/spatialColumns";
@@ -145,6 +145,12 @@ export function isConfigComplete(config: Partial<MapWidgetConfig>): boolean {
   }
   if (config.spatialMode === "wkb") {
     return !!config.wkbColumn;
+  }
+  // Phase 52: track mode requires all four track fields to be set (xCol, yCol, trackIdAttr, trackOrderAttr).
+  // Configuration is complete only when the operator has seeded all four column assignments.
+  if (config.spatialMode === "track") {
+    const tc = coalesceTrackConfig((config as { track_config?: string | null }).track_config ?? null);
+    return !!tc.xCol && !!tc.yCol && !!tc.trackIdAttr && !!tc.trackOrderAttr;
   }
   return false;
 }
@@ -1497,13 +1503,18 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
 
         useInfoSelectionStore.getState().setLoading(layer.id, true);
         try {
+          // Phase 52: translate track→latlon at the wire boundary. The wire (InfoSpatialMode)
+          // is a 3-mode union that never includes "track". buildSpatialColumns already
+          // returns latlon-shaped {lonCol,latCol} for track layers, so the wire gets latlon.
+          const infoMode: InfoSpatialMode =
+            cfg.spatialMode === "track" ? "latlon" : (cfg.spatialMode as InfoSpatialMode);
           const res = await infoQuery({
             layerId: layer.id,
             tableId: layer.table_id,
             schema: tableMeta.schema,
             table: tableMeta.name,
             viewName: queryViewName,
-            spatialMode: cfg.spatialMode as InfoSpatialMode,
+            spatialMode: infoMode,
             spatialColumns,
             clickLon,
             clickLat,

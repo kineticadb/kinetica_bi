@@ -466,9 +466,11 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
               const firstTableCols: Column[] = firstTable
                 ? Object.entries(firstTable.columns).map(([name, type]) => ({ name, type }))
                 : [];
-              const suggestedMode = autoSuggestSpatialMode(firstTableCols, {
-                preferWktOverWkb: true,
-              });
+              const rawMode = autoSuggestSpatialMode(firstTableCols, { preferWktOverWkb: true });
+              // Phase 52: "track" is not a valid spatial-filter target (isSpatialTargetEligible
+              // returns false for track; SpatialTarget.spatialMode is the 3-mode wire union).
+              // Fall back to "latlon" when autoSuggest returns "track".
+              const suggestedMode: SpatialMode = rawMode === "track" ? "latlon" : rawMode;
               const nextRow: SpatialTarget = {
                 tableId: firstTableId,
                 spatialMode: suggestedMode,
@@ -528,12 +530,14 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
             // Phase 30 follow-up: prefer WKT over WKB for geometry columns since WKB
             // is deferred at materialize-time (TD-V14-WKB-SPIKE). LayersModal stays on
             // the default (WKB-preferred) because WMS rendering supports both modes.
-            const suggestedMode = autoSuggestSpatialMode(newColumns, { preferWktOverWkb: true });
+            const rawMode2 = autoSuggestSpatialMode(newColumns, { preferWktOverWkb: true });
+            // Phase 52: "track" is not a valid spatial-filter target — fall back to "latlon".
+            const suggestedMode2: SpatialMode = rawMode2 === "track" ? "latlon" : rawMode2;
             const nextTargets = spatialTargets.map((t, i) =>
               i === idx
                 ? {
                     tableId: newTableId,
-                    spatialMode: suggestedMode,
+                    spatialMode: suggestedMode2,
                     // explicit undefined clears any prior column choices —
                     // the prior table's column names are invalid for the new table
                     lonCol: undefined,

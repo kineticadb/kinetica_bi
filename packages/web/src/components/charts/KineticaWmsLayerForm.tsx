@@ -96,6 +96,7 @@ const SPATIAL_MODE_LABELS: Record<SpatialMode, string> = {
   latlon: "Latitude / Longitude pair",
   wkt: "WKT geometry column",
   wkb: "Kinetica geometry column",
+  track: "Track (x/y point sequence)",
 };
 
 const RENDER_MODE_LABELS: Record<RenderMode, string> = {

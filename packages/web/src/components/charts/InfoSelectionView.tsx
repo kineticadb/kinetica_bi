@@ -86,6 +86,7 @@ import { buildSpatialColumns } from "../../lib/spatialColumns";
 import { infoQuery, type InfoSpatialMode } from "../../api/client";
 import type { DashboardLayerDto } from "../../api/client";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
+import { coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
 
 type Props = {
   /** Eligibility list. Caller (popup or card wrapper) computes with its own scoping rule.
@@ -202,6 +203,9 @@ export default function InfoSelectionView({
     store.setActiveLayer(newLayerId);  // wipes prior layer's entry per Phase 20 lock
     store.setLoading(newLayerId, true);
 
+    // Phase 52: translate track→latlon at the wire boundary (InfoSpatialMode is a 3-mode union).
+    const infoMode1: InfoSpatialMode =
+      cfg.spatialMode === "track" ? "latlon" : (cfg.spatialMode as InfoSpatialMode);
     infoQuery(
       {
         layerId: newLayerId,
@@ -209,7 +213,7 @@ export default function InfoSelectionView({
         schema: tableMeta.schema,
         table: tableMeta.name,
         viewName: resolved.viewName,
-        spatialMode: cfg.spatialMode as InfoSpatialMode,
+        spatialMode: infoMode1,
         spatialColumns,
         clickLon: lastClickContext.clickLon,
         clickLat: lastClickContext.clickLat,
@@ -276,6 +280,9 @@ export default function InfoSelectionView({
     store.setLoading(layerId, true);
 
     try {
+      // Phase 52: translate track→latlon at the wire boundary (InfoSpatialMode is a 3-mode union).
+      const infoMode2: InfoSpatialMode =
+        cfg.spatialMode === "track" ? "latlon" : (cfg.spatialMode as InfoSpatialMode);
       const res = await infoQuery(
         {
           layerId,
@@ -283,7 +290,7 @@ export default function InfoSelectionView({
           schema: tableMeta.schema,
           table: tableMeta.name,
           viewName: resolved.viewName,
-          spatialMode: cfg.spatialMode as InfoSpatialMode,
+          spatialMode: infoMode2,
           spatialColumns,
           clickLon: lastClickContext.clickLon,
           clickLat: lastClickContext.clickLat,
