@@ -4,6 +4,8 @@ import {
   inferDataTypeFromColumn,
   buildChipText,
   getValidSpatialColumns,
+  getTrackIdColumns,
+  getTrackOrderColumns,
   autoSuggestSpatialMode,
   type SpatialMode,
   type Column,
@@ -175,6 +177,88 @@ describe("buildChipText (DRILL-04 success criterion #5 + Phase 44 FILTER-V17-05)
   });
 });
 
+describe("getTrackIdColumns + getTrackOrderColumns (Phase 52)", () => {
+  it("getTrackIdColumns returns all non-geometry columns (string + numeric both included)", () => {
+    const cols: Column[] = [
+      { name: "TRACKID", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "y", type: "float" },
+      { name: "geom", type: "geometry" },
+      { name: "shape", type: "wkb" },
+    ];
+    const result = getTrackIdColumns(cols);
+    expect(result).toEqual([
+      { name: "TRACKID", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "y", type: "float" },
+    ]);
+  });
+
+  it("getTrackIdColumns excludes all Kinetica geometry types (geometry, wkb, geography, point)", () => {
+    const cols: Column[] = [
+      { name: "id", type: "int" },
+      { name: "label", type: "varchar" },
+      { name: "geom1", type: "geometry" },
+      { name: "geom2", type: "wkb" },
+      { name: "geom3", type: "geography" },
+      { name: "geom4", type: "point" },
+    ];
+    const result = getTrackIdColumns(cols);
+    expect(result).toEqual([
+      { name: "id", type: "int" },
+      { name: "label", type: "varchar" },
+    ]);
+  });
+
+  it("getTrackIdColumns returns all columns when none are geometry-typed", () => {
+    const cols: Column[] = [
+      { name: "TRACKID", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "TIMESTAMP", type: "timestamp" },
+    ];
+    expect(getTrackIdColumns(cols)).toEqual(cols);
+  });
+
+  it("getTrackIdColumns returns empty array for empty input", () => {
+    expect(getTrackIdColumns([])).toEqual([]);
+  });
+
+  it("getTrackOrderColumns returns only DATETIME_TYPES + NUMERIC_TYPES columns", () => {
+    const cols: Column[] = [
+      { name: "ts", type: "timestamp" },
+      { name: "x", type: "double" },
+      { name: "label", type: "varchar" },
+      { name: "active", type: "boolean" },
+    ];
+    const result = getTrackOrderColumns(cols);
+    expect(result).toEqual([
+      { name: "ts", type: "timestamp" },
+      { name: "x", type: "double" },
+    ]);
+  });
+
+  it("getTrackOrderColumns includes all datetime subtypes (date, time, datetime)", () => {
+    const cols: Column[] = [
+      { name: "a", type: "date" },
+      { name: "b", type: "time" },
+      { name: "c", type: "datetime" },
+    ];
+    expect(getTrackOrderColumns(cols)).toEqual(cols);
+  });
+
+  it("getTrackOrderColumns includes integer numeric types", () => {
+    const cols: Column[] = [
+      { name: "seq", type: "int" },
+      { name: "ord", type: "long" },
+    ];
+    expect(getTrackOrderColumns(cols)).toEqual(cols);
+  });
+
+  it("getTrackOrderColumns returns empty array for empty input", () => {
+    expect(getTrackOrderColumns([])).toEqual([]);
+  });
+});
+
 describe("getValidSpatialColumns + autoSuggestSpatialMode (Phase 11)", () => {
   // ---------------------------------------------------------------------------
   // getValidSpatialColumns
@@ -342,5 +426,62 @@ describe("getValidSpatialColumns + autoSuggestSpatialMode (Phase 11)", () => {
   it("preferWktOverWkb=false (explicit) preserves the default 'wkb' behavior", () => {
     const cols: Column[] = [{ name: "shape", type: "geometry" }];
     expect(autoSuggestSpatialMode(cols, { preferWktOverWkb: false })).toBe("wkb");
+  });
+
+  // Phase 52 — track detection (AFTER geometry/wkt, BEFORE latlon name heuristic)
+  it("returns 'track' for a table with TRACKID+x+y+TIMESTAMP columns (canonical case)", () => {
+    const cols: Column[] = [
+      { name: "TRACKID", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "y", type: "double" },
+      { name: "TIMESTAMP", type: "timestamp" },
+      { name: "speed", type: "float" },
+    ];
+    expect(autoSuggestSpatialMode(cols)).toBe("track");
+  });
+
+  it("returns 'track' for track columns with all-lowercase names (case-insensitive)", () => {
+    const cols: Column[] = [
+      { name: "trackid", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "y", type: "double" },
+      { name: "timestamp", type: "timestamp" },
+    ];
+    expect(autoSuggestSpatialMode(cols)).toBe("track");
+  });
+
+  it("returns 'wkb' when geometry column present + track shape columns present (geometry wins)", () => {
+    const cols: Column[] = [
+      { name: "TRACKID", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "y", type: "double" },
+      { name: "TIMESTAMP", type: "timestamp" },
+      { name: "geom", type: "geometry" },
+    ];
+    expect(autoSuggestSpatialMode(cols)).toBe("wkb");
+  });
+
+  it("returns 'wkt' when WKT hint in type and track shape columns present (wkt hint wins)", () => {
+    const cols: Column[] = [
+      { name: "TRACKID", type: "varchar" },
+      { name: "x", type: "double" },
+      { name: "y", type: "double" },
+      { name: "TIMESTAMP", type: "timestamp" },
+      { name: "shape_wkt", type: "WKT" },
+    ];
+    expect(autoSuggestSpatialMode(cols)).toBe("wkt");
+  });
+
+  it("returns 'latlon' (not 'track') when only lat/lon names present without TRACKID+TIMESTAMP", () => {
+    const cols: Column[] = [
+      { name: "lat", type: "double" },
+      { name: "lon", type: "double" },
+    ];
+    expect(autoSuggestSpatialMode(cols)).toBe("latlon");
+  });
+
+  it("SpatialMode union includes 'track' member (type-level check)", () => {
+    const mode: SpatialMode = "track";
+    expect(mode).toBe("track");
   });
 });

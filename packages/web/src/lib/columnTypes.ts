@@ -16,6 +16,8 @@
  *   (AP-3 lock — never bypass).
  */
 
+import { isTrackTable } from "./trackDetect";
+
 /** Mirrors filterStore.ts ActiveFilter["dataType"]. Single source of truth for downstream consumers. */
 export type DrillDownDataType = "string" | "number" | "boolean" | "datetime" | "null";
 
@@ -152,7 +154,7 @@ export function buildChipText(
 // Phase 11: Spatial column helpers (MAP-02)
 // CONTEXT.md "Spatial-column-mode picker" lock; RESEARCH.md Pattern 6.
 
-export type SpatialMode = "latlon" | "wkt" | "wkb";
+export type SpatialMode = "latlon" | "wkt" | "wkb" | "track";
 export type Column = { name: string; type: string };
 
 const STRING_TYPES: ReadonlySet<string> = new Set([
@@ -184,6 +186,26 @@ export function getValidSpatialColumns(
   });
 }
 
+/**
+ * Phase 52: Returns all columns eligible as the Track ID column — any non-geometry column.
+ * Both string and numeric IDs are valid track identifiers; geometry columns are excluded
+ * (geometry equality comparisons are nonsensical for track ID lookups).
+ */
+export function getTrackIdColumns(columns: Column[]): Column[] {
+  return columns.filter((c) => !KINETICA_GEOMETRY_TYPES.has(normalizeType(c.type)));
+}
+
+/**
+ * Phase 52: Returns all columns eligible as the Track Order column — datetime and numeric types.
+ * Timestamp/date/time/datetime columns and numeric sequence columns are valid ordering keys.
+ */
+export function getTrackOrderColumns(columns: Column[]): Column[] {
+  return columns.filter((c) => {
+    const t = normalizeType(c.type);
+    return DATETIME_TYPES.has(t) || NUMERIC_TYPES.has(t);
+  });
+}
+
 export function autoSuggestSpatialMode(
   columns: Column[],
   options?: { preferWktOverWkb?: boolean },
@@ -207,11 +229,16 @@ export function autoSuggestSpatialMode(
   );
   if (hasWktHint) return "wkt";
 
-  // 3. Both lat-name + lon-name columns present → latlon
+  // 3. Track column shape: TRACKID + x + y + TIMESTAMP all present (case-insensitive).
+  //    Must come BEFORE the lat/lon name heuristic because track tables have x/y columns
+  //    that would otherwise match the latlon name pattern (research §Pattern 3).
+  if (isTrackTable(columns)) return "track";
+
+  // 4. Both lat-name + lon-name columns present → latlon
   const hasLat = columns.some((c) => /^(lat|latitude|y)$/i.test(c.name));
   const hasLon = columns.some((c) => /^(lon|lng|longitude|x)$/i.test(c.name));
   if (hasLat && hasLon) return "latlon";
 
-  // 4. Fallback
+  // 5. Fallback
   return "latlon";
 }
