@@ -2433,7 +2433,7 @@ describe("RecordsTableRenderer CSV download", () => {
     const widget = makeCsvRecordsWidget({ config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, enableCsvDownload: false } });
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.queryByText(/Showing/) !== null);
-    expect(screen.queryByText("Download CSV")).toBeNull();
+    expect(screen.queryByText("Download")).toBeNull();
   });
 
   it("button is visible by default (enableCsvDownload omitted → default true)", async () => {
@@ -2443,8 +2443,8 @@ describe("RecordsTableRenderer CSV download", () => {
     // No enableCsvDownload key in config — should default to true
     const widget = makeCsvRecordsWidget({ config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25 } });
     render(wrap(<WidgetRenderer widget={widget} />));
-    await waitFor(() => screen.getByText("Download CSV"));
-    expect(screen.getByText("Download CSV")).toBeTruthy();
+    await waitFor(() => screen.getByText("Download"));
+    expect(screen.getByText("Download")).toBeTruthy();
   });
 
   it("export issues SELECT with only configured columns in order + active sort via runSql", async () => {
@@ -2456,10 +2456,10 @@ describe("RecordsTableRenderer CSV download", () => {
 
     const widget = makeCsvRecordsWidget();
     render(wrap(<WidgetRenderer widget={widget} />));
-    await waitFor(() => screen.getByText("Download CSV"));
+    await waitFor(() => screen.getByText("Download"));
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Download CSV"));
+      fireEvent.click(screen.getByText("Download"));
       // Allow async export to complete
       await new Promise((r) => setTimeout(r, 50));
     });
@@ -2495,10 +2495,10 @@ describe("RecordsTableRenderer CSV download", () => {
       config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: 2 },
     });
     render(wrap(<WidgetRenderer widget={widget} />));
-    await waitFor(() => screen.getByText("Download CSV"));
+    await waitFor(() => screen.getByText("Download"));
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Download CSV"));
+      fireEvent.click(screen.getByText("Download"));
       await new Promise((r) => setTimeout(r, 100));
     });
 
@@ -2525,11 +2525,11 @@ describe("RecordsTableRenderer CSV download", () => {
 
     const widget = makeCsvRecordsWidget();
     const { unmount } = render(wrap(<WidgetRenderer widget={widget} />));
-    await waitFor(() => screen.getByText("Download CSV"));
+    await waitFor(() => screen.getByText("Download"));
 
     // Start export (will hang on the export runSql call)
     await act(async () => {
-      fireEvent.click(screen.getByText("Download CSV"));
+      fireEvent.click(screen.getByText("Download"));
       // Give time for page/count calls to resolve and export call to start
       await new Promise((r) => setTimeout(r, 50));
     });

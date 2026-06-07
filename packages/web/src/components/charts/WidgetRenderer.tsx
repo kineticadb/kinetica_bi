@@ -1966,7 +1966,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
             disabled={exporting}
             onClick={handleDownloadCsv}
           >
-            {exporting ? "Exporting…" : "Download CSV"}
+            {exporting ? "Exporting…" : "Download"}
           </button>
         )}
         <span className="widget-records-count">
