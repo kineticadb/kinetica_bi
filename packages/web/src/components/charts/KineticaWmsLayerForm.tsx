@@ -31,7 +31,7 @@ import {
   type SpatialMode,
   type Column,
 } from "../../lib/columnTypes";
-import { coalesceTrackConfig } from "../../lib/trackConfig";
+import { coalesceTrackConfig, TRACK_DEFAULTS, type TrackConfig } from "../../lib/trackConfig";
 import { useWmsCapabilitiesStore } from "../../store/wmsCapabilities";
 import { useToastStore } from "../../store/toast";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
@@ -337,6 +337,16 @@ export default function KineticaWmsLayerForm({
       ...coalesceTrackConfig((config.track_config as string | null) ?? null),
       enabled: true,
       [key]: v || undefined,
+    };
+    onChange({ ...config, track_config: JSON.stringify(next) });
+  };
+
+  // Phase 53 (COLOR-V19-01): Write arbitrary track_config field while preserving all existing fields.
+  const onSetTrackField = (key: keyof TrackConfig, v: string | number | undefined) => {
+    const next = {
+      ...coalesceTrackConfig((config.track_config as string | null) ?? null),
+      enabled: true,
+      [key]: v,
     };
     onChange({ ...config, track_config: JSON.stringify(next) });
   };
@@ -739,8 +749,183 @@ export default function KineticaWmsLayerForm({
           ))}
         </div>
 
+        {/* ─── TRACK STYLE (Phase 53 RENDER-V19-02, COLOR-V19-01) ─────────── */}
+        {/* Rendered when spatialMode === "track" regardless of effectiveRenderMode:
+            appears for both Track+Raster and Track+Classbreak. */}
+        {spatialMode === "track" && (
+          <div className="config-group" role="group" aria-labelledby="map-track-style-label">
+            <label id="map-track-style-label" className="config-group-label">
+              TRACK STYLE
+            </label>
+
+            {/* Head color — AARRGGBB color input idiom (mirrors pointColor) */}
+            <label className="config-color-field">
+              Head color
+              <div className="config-color-row">
+                <input
+                  type="color"
+                  className="config-color-picker"
+                  aria-label="Track head color (RGB)"
+                  value={`#${rgbFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor)}`}
+                  onChange={(e) =>
+                    onSetTrackField(
+                      "headColor",
+                      joinAARRGGBB(
+                        alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor),
+                        e.target.value.replace("#", ""),
+                      ),
+                    )
+                  }
+                />
+                <input
+                  type="text"
+                  className="config-color-text"
+                  aria-label="Track head color (AARRGGBB hex)"
+                  value={normalizeAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor)}
+                  onChange={(e) =>
+                    onSetTrackField(
+                      "headColor",
+                      normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.headColor),
+                    )
+                  }
+                />
+              </div>
+            </label>
+            <label className="config-range-field">
+              Head color alpha
+              <input
+                type="range"
+                className="config-range"
+                aria-label="Track head color alpha"
+                min={0}
+                max={100}
+                step={1}
+                value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor))}
+                onChange={(e) =>
+                  onSetTrackField(
+                    "headColor",
+                    joinAARRGGBB(
+                      alphaPercentToHex(Number(e.target.value)),
+                      rgbFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor),
+                    ),
+                  )
+                }
+              />
+              <span className="config-range-value">
+                {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor))}%
+              </span>
+            </label>
+
+            {/* Head size */}
+            <label className="config-range-field">
+              Head size
+              <input
+                type="range"
+                className="config-range"
+                aria-label="Track head size"
+                min={1}
+                max={20}
+                step={1}
+                value={trackCfg.headSize ?? TRACK_DEFAULTS.headSize}
+                onChange={(e) => onSetTrackField("headSize", Number(e.target.value))}
+              />
+              <span className="config-range-value">{trackCfg.headSize ?? TRACK_DEFAULTS.headSize}</span>
+            </label>
+
+            {/* Head shape */}
+            <label className="ds-field-label">
+              Head shape
+              <select
+                className="ds-select"
+                aria-label="Track head shape"
+                value={trackCfg.headShape ?? TRACK_DEFAULTS.headShape}
+                onChange={(e) => onSetTrackField("headShape", e.target.value)}
+              >
+                {POINT_SHAPES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+
+            {/* Trail color — AARRGGBB color input idiom */}
+            <label className="config-color-field">
+              Trail color
+              <div className="config-color-row">
+                <input
+                  type="color"
+                  className="config-color-picker"
+                  aria-label="Track trail color (RGB)"
+                  value={`#${rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}`}
+                  onChange={(e) =>
+                    onSetTrackField(
+                      "trailColor",
+                      joinAARRGGBB(
+                        alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor),
+                        e.target.value.replace("#", ""),
+                      ),
+                    )
+                  }
+                />
+                <input
+                  type="text"
+                  className="config-color-text"
+                  aria-label="Track trail color (AARRGGBB hex)"
+                  value={normalizeAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}
+                  onChange={(e) =>
+                    onSetTrackField(
+                      "trailColor",
+                      normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.trailColor),
+                    )
+                  }
+                />
+              </div>
+            </label>
+            <label className="config-range-field">
+              Trail color alpha
+              <input
+                type="range"
+                className="config-range"
+                aria-label="Track trail color alpha"
+                min={0}
+                max={100}
+                step={1}
+                value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor))}
+                onChange={(e) =>
+                  onSetTrackField(
+                    "trailColor",
+                    joinAARRGGBB(
+                      alphaPercentToHex(Number(e.target.value)),
+                      rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor),
+                    ),
+                  )
+                }
+              />
+              <span className="config-range-value">
+                {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor))}%
+              </span>
+            </label>
+
+            {/* Line width (trail thickness → trailSize) */}
+            <label className="config-range-field">
+              Line width
+              <input
+                type="range"
+                className="config-range"
+                aria-label="Track line width"
+                min={0}
+                max={20}
+                step={1}
+                value={trackCfg.trailSize ?? TRACK_DEFAULTS.trailSize}
+                onChange={(e) => onSetTrackField("trailSize", Number(e.target.value))}
+              />
+              <span className="config-range-value">{trackCfg.trailSize ?? TRACK_DEFAULTS.trailSize}</span>
+            </label>
+          </div>
+        )}
+
         {/* ─── RASTER PARAMS ────────────────────────────────────────────────── */}
-        {renderMode === "raster" && (
+        {/* Phase 53 (RENDER-V19-02): hidden under Track+Raster — track styling owns marker appearance. */}
+        {effectiveRenderMode === "raster" && spatialMode !== "track" && (
           <div className="config-group" role="group" aria-labelledby="map-raster-params-label">
             <label id="map-raster-params-label" className="config-group-label">
               RASTER PARAMS

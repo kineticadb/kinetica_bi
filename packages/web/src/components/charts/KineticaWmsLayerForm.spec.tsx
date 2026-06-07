@@ -1209,3 +1209,103 @@ describe("Track render-mode narrowing (RENDER-V19-01)", () => {
     expect(screen.getByLabelText("Heatmap (density)")).toBeInTheDocument();
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 53 Task 2: Track style + raster param hiding                  */
+/*  (RENDER-V19-02, COLOR-V19-01)                                      */
+/* ------------------------------------------------------------------ */
+
+describe("Track style + raster param hiding (RENDER-V19-02, COLOR-V19-01)", () => {
+  const trackColumns = [
+    { name: "x", type: "DOUBLE" },
+    { name: "y", type: "DOUBLE" },
+    { name: "TRACKID", type: "INT" },
+    { name: "TIMESTAMP", type: "TIMESTAMP" },
+  ];
+
+  const trackRasterConfig = {
+    spatialMode: "track",
+    renderMode: "raster",
+    track_config: JSON.stringify({
+      enabled: true,
+      xCol: "x",
+      yCol: "y",
+      trackIdAttr: "TRACKID",
+      trackOrderAttr: "TIMESTAMP",
+    }),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCapabilities = null;
+  });
+
+  it("Track+Raster: TRACK STYLE section visible; RASTER PARAMS hidden", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.getByText("TRACK STYLE")).toBeInTheDocument();
+    expect(screen.queryByText("RASTER PARAMS")).toBeNull();
+    expect(screen.queryByLabelText("Point color (RGB)")).toBeNull();
+    expect(screen.queryByLabelText("Point shape")).toBeNull();
+  });
+
+  it("Track+Raster: TRACK STYLE contains color inputs for head and trail", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const headColorInput = screen.getByLabelText("Track head color (RGB)") as HTMLInputElement;
+    expect(headColorInput).toBeInTheDocument();
+    expect(headColorInput.type).toBe("color");
+
+    const trailColorInput = screen.getByLabelText("Track trail color (RGB)") as HTMLInputElement;
+    expect(trailColorInput).toBeInTheDocument();
+    expect(trailColorInput.type).toBe("color");
+
+    const headShapeSelect = screen.getByLabelText("Track head shape") as HTMLSelectElement;
+    expect(headShapeSelect).toBeInTheDocument();
+    expect(headShapeSelect.tagName.toLowerCase()).toBe("select");
+    // POINT_SHAPES has 12 options
+    expect(headShapeSelect.options.length).toBe(12);
+  });
+
+  it("Editing head color hex text calls onChange with track_config JSON preserving enabled:true and all cols", () => {
+    const onChange = vi.fn();
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={onChange}
+        columns={trackColumns}
+      />,
+    );
+    const hexInput = screen.getByLabelText("Track head color (AARRGGBB hex)") as HTMLInputElement;
+    fireEvent.change(hexInput, { target: { value: "FF00FF00" } });
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as Record<string, unknown>;
+    const tc = JSON.parse(lastCall.track_config as string);
+    expect(tc.headColor).toBe("FF00FF00");
+    expect(tc.enabled).toBe(true);
+    expect(tc.xCol).toBe("x");
+    expect(tc.yCol).toBe("y");
+  });
+
+  it("Control: latlon+raster shows RASTER PARAMS; no TRACK STYLE", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "latlon", renderMode: "raster" }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.getByText("RASTER PARAMS")).toBeInTheDocument();
+    expect(screen.queryByText("TRACK STYLE")).toBeNull();
+  });
+});
