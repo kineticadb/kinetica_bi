@@ -485,3 +485,27 @@ describe("getValidSpatialColumns + autoSuggestSpatialMode (Phase 11)", () => {
     expect(mode).toBe("track");
   });
 });
+
+// Regression (2026-06-07, operator-reported): Kinetica reports DOUBLE columns as the
+// SQL-standard "double precision" — NUMERIC_TYPES must recognize it or every double
+// column vanishes from numeric pickers (x/y track pickers, latlon pickers, metrics).
+describe("double precision type recognition", () => {
+  it("getValidSpatialColumns(latlon) includes double precision columns", () => {
+    const cols = [
+      { name: "X", type: "double precision" },
+      { name: "Y", type: "double precision" },
+      { name: "alt", type: "integer" },
+      { name: "name", type: "string" },
+    ];
+    const out = getValidSpatialColumns(cols as never, "latlon").map((c) => c.name);
+    expect(out).toContain("X");
+    expect(out).toContain("Y");
+    expect(out).toContain("alt");
+    expect(out).not.toContain("name");
+  });
+
+  it("getTrackOrderColumns includes double precision columns", () => {
+    const cols = [{ name: "ord", type: "double precision" }];
+    expect(getTrackOrderColumns(cols as never).map((c) => c.name)).toContain("ord");
+  });
+});

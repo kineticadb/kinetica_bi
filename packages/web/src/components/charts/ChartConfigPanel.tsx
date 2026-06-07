@@ -56,7 +56,7 @@ const AGGREGATIONS = [
 
 const NUMERIC_TYPES = new Set([
   "int", "integer", "int8", "int16", "int32", "int64",
-  "long", "float", "double", "decimal", "numeric",
+  "long", "float", "double", "double precision", "decimal", "numeric",
   "smallint", "bigint", "real", "number", "tinyint",
 ]);
 
