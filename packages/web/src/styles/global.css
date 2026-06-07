@@ -3888,6 +3888,14 @@ a {
   padding: 10px 8px;
 }
 
+/* Post-v1.8 polish: row-select checkboxes match the green-accent convention. */
+.users-td-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .users-th-actions {
   width: 120px;
 }

@@ -400,3 +400,16 @@
   color: var(--muted);
   font-style: italic;
 }
+
+/* Post-v1.8 polish: match the app's green-accent checkbox convention
+   (.config-toggle precedent at global.css ~970). */
+.roles-perm-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.roles-perm-label--disabled .roles-perm-checkbox {
+  cursor: not-allowed;
+}
