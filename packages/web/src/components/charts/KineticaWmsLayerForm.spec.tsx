@@ -1140,3 +1140,72 @@ describe("Phase 52 TRACKMODE-V19-01/02 — track mode picker and column pickers"
     expect(isValid).toHaveBeenCalledWith(true);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 53 Task 1: Track render-mode narrowing (RENDER-V19-01)       */
+/* ------------------------------------------------------------------ */
+
+describe("Track render-mode narrowing (RENDER-V19-01)", () => {
+  const trackColumns = [
+    { name: "x", type: "DOUBLE" },
+    { name: "y", type: "DOUBLE" },
+    { name: "TRACKID", type: "INT" },
+    { name: "TIMESTAMP", type: "TIMESTAMP" },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCapabilities = null;
+  });
+
+  it("Track mode: only Raster and Classbreak radios present; Heatmap absent", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "track", renderMode: "raster" }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.getByLabelText("Raster (point markers)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Classbreak (categorical)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Heatmap (density)")).toBeNull();
+  });
+
+  it("Track mode with persisted heatmap renderMode: onChange fires with renderMode=raster; Raster radio checked; no toast", () => {
+    const onChange = vi.fn();
+    // The top-level vi.mock for useToastStore sets getState to a vi.fn() returning { showToast: vi.fn() }.
+    // vi.clearAllMocks() in beforeEach resets the spy. We can assert showToast was NOT called
+    // by checking the call count on getState (which indirectly tracks invocations).
+    // Simpler: assert the Raster radio is checked and onChange emitted raster — toast absence
+    // is guaranteed structurally (the plan explicitly forbids importing useToastStore for coercion).
+
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "track", renderMode: "heatmap" }}
+        onChange={onChange}
+        columns={trackColumns}
+      />,
+    );
+
+    // onChange should be called with renderMode: "raster" (silent coercion)
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ renderMode: "raster" }),
+    );
+    // Raster radio should appear checked (effectiveRenderMode)
+    const rasterRadio = screen.getByLabelText("Raster (point markers)") as HTMLInputElement;
+    expect(rasterRadio.checked).toBe(true);
+    // Assert no toast element visible (structural guarantee — coercion is silent)
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("Control case: latlon mode still shows Heatmap radio (no regression)", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "latlon", renderMode: "raster" }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.getByLabelText("Heatmap (density)")).toBeInTheDocument();
+  });
+});

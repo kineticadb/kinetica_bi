@@ -273,6 +273,23 @@ export default function KineticaWmsLayerForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spatialMode, config.track_config, isValid]);
 
+  // Phase 53 (RENDER-V19-01): Silent heatmap→raster coercion under Track mode.
+  // No toast, no confirm — matches auto-suggest-wins philosophy from Phase 52.
+  useEffect(() => {
+    if (spatialMode !== "track") return;
+    if (renderMode === "heatmap" || renderMode === "contour") {
+      onChange({ ...config, renderMode: "raster" }); // silent — NO toast, NO confirm
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spatialMode, renderMode]);
+
+  // Phase 53 (RENDER-V19-01): Effective render mode for UI — shows raster immediately
+  // before the coercion effect's onChange round-trips back from the parent.
+  const effectiveRenderMode: RenderMode =
+    spatialMode === "track" && (renderMode === "heatmap" || renderMode === "contour")
+      ? "raster"
+      : renderMode;
+
   // NOTE: KineticaWmsLayerForm is PURELY CONTROLLED — it does NOT auto-suggest spatial mode
   // on columns change. Auto-suggest is the caller's (LayersModal / MapConfigPanel) responsibility.
   // When the user changes the table in LayersModal, the parent runs autoSuggestSpatialMode and
@@ -698,9 +715,13 @@ export default function KineticaWmsLayerForm({
               GetCapabilities XML does not advertise the cb_raster/classbreak Style, but
               Phase 37 spike confirmed STYLES=cb_raster renders. The server's
               wmsCapabilities.ts documents this and warns downstream code must not gate
-              classbreak/contour on renderModes. raster/heatmap stay capability-gated. */}
+              classbreak/contour on renderModes. raster/heatmap stay capability-gated.
+
+              Phase 53 (RENDER-V19-01): Under track, heatmap is also excluded — track
+              rendering only supports raster + classbreak. */}
           {ALL_RENDER_MODES.filter((m) => {
             if (m === "contour") return false;
+            if (spatialMode === "track" && m === "heatmap") return false;
             if (m === "classbreak") return true;
             return allowedRenderModes.includes(m);
           }).map((m) => (
@@ -709,7 +730,7 @@ export default function KineticaWmsLayerForm({
                 type="radio"
                 name="map-render-mode"
                 value={m}
-                checked={renderMode === m}
+                checked={effectiveRenderMode === m}
                 aria-label={RENDER_MODE_LABELS[m]}
                 onChange={() => onSelectRenderMode(m)}
               />
