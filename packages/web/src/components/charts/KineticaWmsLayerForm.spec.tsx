@@ -969,152 +969,174 @@ describe("Phase 35 Data Source picker (DV-V16-13)", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Phase 40 TRACK-V17-03 — host-mount gate + state preservation       */
+/*  Phase 52 TRACKMODE-V19-01/02 — track mode picker + four pickers    */
 /* ------------------------------------------------------------------ */
 
-describe("Phase 40 TRACK-V17-03 mount-gate + state preservation", () => {
-  // Integration-level tests: CbConfigForm is not mocked at file top, so
-  // TrackSubSection is also not mocked — we use real component selectors.
-  // TrackSubSection always renders "TRACK PARAMS" config-group-label and the
-  // "Treat as track table" checkbox when mounted.
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
+describe("Phase 52 TRACKMODE-V19-01/02 — track mode picker and column pickers", () => {
+  // Track-shaped table with all four required columns (TRACKID, x, y, TIMESTAMP)
+  // plus extra columns to verify filtering logic
   const trackColumns = [
     { name: "TRACKID", type: "INT" },
     { name: "x", type: "DOUBLE" },
     { name: "y", type: "DOUBLE" },
     { name: "TIMESTAMP", type: "TIMESTAMP" },
     { name: "vendor_id", type: "VARCHAR" },
+    { name: "speed", type: "FLOAT" },
   ];
 
-  it("renders TrackSubSection when renderMode === 'raster'", () => {
+  const trackConfig = {
+    spatialMode: "track" as const,
+    renderMode: "raster",
+    track_config: JSON.stringify({
+      enabled: true,
+      xCol: "x",
+      yCol: "y",
+      trackIdAttr: "TRACKID",
+      trackOrderAttr: "TIMESTAMP",
+    }),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCapabilities = null;
+  });
+
+  it("Track radio is present even when capabilities lists only latlon/wkt/wkb", () => {
+    mockCapabilities = {
+      renderModes: ["raster", "heatmap"],
+      colormaps: [],
+      spatialModes: ["latlon", "wkt", "wkb"],
+      srs: ["EPSG:3857"],
+      source: "probe",
+    };
     render(
       <KineticaWmsLayerForm
-        config={{ renderMode: "raster", track_config: null }}
+        config={{ spatialMode: "latlon", renderMode: "raster" }}
         onChange={vi.fn()}
         columns={trackColumns}
       />,
     );
-    expect(screen.queryByText("TRACK PARAMS")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Treat as track table")).toBeInTheDocument();
+    // Track radio MUST appear even though capabilities omits it
+    expect(screen.getByLabelText("Track (x/y point sequence)")).toBeInTheDocument();
   });
 
-  it("renders TrackSubSection when renderMode === 'classbreak'", () => {
+  it("selecting Track reveals four column pickers", () => {
     render(
       <KineticaWmsLayerForm
-        config={{ renderMode: "classbreak", track_config: null }}
+        config={trackConfig}
         onChange={vi.fn()}
         columns={trackColumns}
       />,
     );
-    expect(screen.queryByText("TRACK PARAMS")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Treat as track table")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track X column")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track Y column")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track ID column")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track ordering column")).toBeInTheDocument();
   });
 
-  it("HIDES TrackSubSection when renderMode === 'heatmap'", () => {
+  it("Track ID picker pre-selects TRACKID and ordering pre-selects TIMESTAMP from track_config", () => {
     render(
       <KineticaWmsLayerForm
-        config={{ renderMode: "heatmap", track_config: '{"enabled":true}' }}
+        config={trackConfig}
         onChange={vi.fn()}
         columns={trackColumns}
       />,
     );
-    expect(screen.queryByText("TRACK PARAMS")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Treat as track table")).not.toBeInTheDocument();
+    const trackIdSelect = screen.getByLabelText("Track ID column") as HTMLSelectElement;
+    expect(trackIdSelect.value).toBe("TRACKID");
+
+    const orderSelect = screen.getByLabelText("Track ordering column") as HTMLSelectElement;
+    expect(orderSelect.value).toBe("TIMESTAMP");
   });
 
-  it("HIDES TrackSubSection when renderMode === 'contour'", () => {
+  it("x/y option lists contain only numeric columns; ordering excludes pure-string columns; track ID includes string ID columns", () => {
     render(
       <KineticaWmsLayerForm
-        config={{ renderMode: "contour", track_config: '{"enabled":true}' }}
+        config={trackConfig}
         onChange={vi.fn()}
         columns={trackColumns}
       />,
     );
-    expect(screen.queryByText("TRACK PARAMS")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Treat as track table")).not.toBeInTheDocument();
+
+    const xSelect = screen.getByLabelText("Track X column") as HTMLSelectElement;
+    const xOptions = Array.from(xSelect.options)
+      .filter((o) => o.value !== "")
+      .map((o) => o.value);
+    // Only numeric: x (DOUBLE), y (DOUBLE), speed (FLOAT) — excludes TRACKID (INT? yes, INT is numeric)
+    // INT is in NUMERIC_TYPES so TRACKID, x, y, speed all qualify as numeric
+    expect(xOptions).toContain("x");
+    expect(xOptions).toContain("y");
+    expect(xOptions).toContain("speed");
+    // VARCHAR (vendor_id) is NOT numeric
+    expect(xOptions).not.toContain("vendor_id");
+    // TIMESTAMP is NOT numeric
+    expect(xOptions).not.toContain("TIMESTAMP");
+
+    const orderSelect = screen.getByLabelText("Track ordering column") as HTMLSelectElement;
+    const orderOptions = Array.from(orderSelect.options)
+      .filter((o) => o.value !== "")
+      .map((o) => o.value);
+    // Ordering = datetime + numeric — includes TIMESTAMP and numeric cols; excludes VARCHAR
+    expect(orderOptions).toContain("TIMESTAMP");
+    expect(orderOptions).toContain("x");
+    expect(orderOptions).not.toContain("vendor_id");
+
+    const idSelect = screen.getByLabelText("Track ID column") as HTMLSelectElement;
+    const idOptions = Array.from(idSelect.options)
+      .filter((o) => o.value !== "")
+      .map((o) => o.value);
+    // Track ID: all non-geometry — includes string vendor_id and numeric/timestamp cols
+    expect(idOptions).toContain("TRACKID");
+    expect(idOptions).toContain("vendor_id");
+    expect(idOptions).toContain("x");
   });
 
-  it("preserves TrackSubSection mount across raster → classbreak rerender (state preservation)", () => {
-    const onChange = vi.fn();
-    const persistedTrack = '{"enabled":true,"trackIdAttr":"TRACKID","trackOrderAttr":"TIMESTAMP","headColor":"FFAABBCC","headSize":12,"trailSize":4,"headShape":"square","trailColor":"FF112233"}';
-    const { rerender } = render(
+  it("isValid is called with false when a track picker is empty and true when all four are set", () => {
+    const isValid = vi.fn();
+    // Start with an incomplete track_config (no xCol)
+    const incompleteConfig = {
+      spatialMode: "track" as const,
+      renderMode: "raster",
+      track_config: JSON.stringify({
+        enabled: true,
+        yCol: "y",
+        trackIdAttr: "TRACKID",
+        trackOrderAttr: "TIMESTAMP",
+      }),
+    };
+    render(
       <KineticaWmsLayerForm
-        config={{ renderMode: "raster", track_config: persistedTrack }}
-        onChange={onChange}
+        config={incompleteConfig}
+        onChange={vi.fn()}
         columns={trackColumns}
+        isValid={isValid}
       />,
     );
-    // TrackSubSection is mounted in raster mode
-    expect(screen.queryByText("TRACK PARAMS")).toBeInTheDocument();
+    // isValid should have been called with false (xCol missing)
+    expect(isValid).toHaveBeenCalledWith(false);
 
-    // Flip render mode raster → classbreak; track_config UNCHANGED in props
-    rerender(
+    // Now render with all four set
+    const completeConfig = {
+      spatialMode: "track" as const,
+      renderMode: "raster",
+      track_config: JSON.stringify({
+        enabled: true,
+        xCol: "x",
+        yCol: "y",
+        trackIdAttr: "TRACKID",
+        trackOrderAttr: "TIMESTAMP",
+      }),
+    };
+    isValid.mockClear();
+    render(
       <KineticaWmsLayerForm
-        config={{ renderMode: "classbreak", track_config: persistedTrack }}
-        onChange={onChange}
+        config={completeConfig}
+        onChange={vi.fn()}
         columns={trackColumns}
+        isValid={isValid}
       />,
     );
-    // TrackSubSection remains mounted (single gate preserves component state)
-    expect(screen.queryByText("TRACK PARAMS")).toBeInTheDocument();
-  });
-
-  it("hides on flip to heatmap then restores on flip back to raster (track_config preserved)", () => {
-    const onChange = vi.fn();
-    const persistedTrack = '{"enabled":true,"headColor":"FFAABBCC"}';
-    const { rerender } = render(
-      <KineticaWmsLayerForm
-        config={{ renderMode: "raster", track_config: persistedTrack }}
-        onChange={onChange}
-        columns={trackColumns}
-      />,
-    );
-    expect(screen.queryByText("TRACK PARAMS")).toBeInTheDocument();
-
-    rerender(
-      <KineticaWmsLayerForm
-        config={{ renderMode: "heatmap", track_config: persistedTrack }}
-        onChange={onChange}
-        columns={trackColumns}
-      />,
-    );
-    expect(screen.queryByText("TRACK PARAMS")).not.toBeInTheDocument();
-
-    rerender(
-      <KineticaWmsLayerForm
-        config={{ renderMode: "raster", track_config: persistedTrack }}
-        onChange={onChange}
-        columns={trackColumns}
-      />,
-    );
-    // Restored after flip back — TrackSubSection mounts again
-    expect(screen.queryByText("TRACK PARAMS")).toBeInTheDocument();
-  });
-
-  it("does NOT fire onChange purely as a side-effect of render-mode swap (state preservation lock)", () => {
-    const onChange = vi.fn();
-    const { rerender } = render(
-      <KineticaWmsLayerForm
-        config={{ renderMode: "raster", track_config: '{"enabled":true,"headColor":"FFAABBCC"}' }}
-        onChange={onChange}
-        columns={trackColumns}
-      />,
-    );
-    const callsAfterMount = onChange.mock.calls.length;
-
-    rerender(
-      <KineticaWmsLayerForm
-        config={{ renderMode: "classbreak", track_config: '{"enabled":true,"headColor":"FFAABBCC"}' }}
-        onChange={onChange}
-        columns={trackColumns}
-      />,
-    );
-    // Mode swap MUST NOT trigger a track_config write
-    const callsAfterFlip = onChange.mock.calls.length;
-    expect(callsAfterFlip).toBe(callsAfterMount);
+    // isValid should have been called with true (all four set)
+    expect(isValid).toHaveBeenCalledWith(true);
   });
 });
