@@ -37,6 +37,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import KineticaWmsLayerForm from "./charts/KineticaWmsLayerForm";
 import { autoSuggestSpatialMode } from "../lib/columnTypes";
+import { isTrackTable } from "../lib/trackDetect";
+import { coalesceTrackConfig } from "../lib/trackConfig";
 import { isLayerEffectivelyVisible, hasValidSource } from "../lib/layerVisibility";
 import type { DashboardLayerDto, DynamicViewRow, TableDto } from "../api/client";
 
@@ -247,11 +249,30 @@ export default function LayersModal({
       ...cleared,
       spatialMode: suggestedMode,
     };
+    // Phase 52: Seed track_config defaults when autoSuggest detects a track table
+    let trackConfigPatch: string | undefined;
+    if (suggestedMode === "track") {
+      const match = isTrackTable(newColumns);
+      if (match) {
+        const tc = coalesceTrackConfig(
+          (selectedLayer.track_config as string | null) ?? null,
+        );
+        trackConfigPatch = JSON.stringify({
+          ...tc,
+          enabled: true,
+          xCol: match.xCol,
+          yCol: match.yCol,
+          trackIdAttr: match.trackIdCol,
+          trackOrderAttr: match.orderCol,
+        });
+      }
+    }
     // Plan 35-01 "key" in attrs discriminant: { dynamic_view_id: null } is the explicit-clear.
     onPatch(selectedLayer.id, {
       table_id: newTableId,
       dynamic_view_id: null,
       config: nextConfig,
+      ...(trackConfigPatch !== undefined ? { track_config: trackConfigPatch } : {}),
     });
   };
 

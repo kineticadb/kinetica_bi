@@ -39,6 +39,7 @@ import {
   autoSuggestSpatialMode,
   type Column,
 } from "../../lib/columnTypes";
+import { isTrackTable } from "../../lib/trackDetect";
 import {
   getLegendPanelEnabled,
   getLegendPanelCorner,
@@ -469,11 +470,14 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
               const rawMode = autoSuggestSpatialMode(firstTableCols, { preferWktOverWkb: true });
               // Phase 52: "track" is not a valid spatial-filter target (isSpatialTargetEligible
               // returns false for track; SpatialTarget.spatialMode is the 3-mode wire union).
-              // Fall back to "latlon" when autoSuggest returns "track".
+              // Fall back to "latlon" when autoSuggest returns "track"; also pre-fill lonCol/latCol
+              // from track match so the resulting latlon target is complete (CHECKER ADVISORY FIX).
               const suggestedMode: SpatialMode = rawMode === "track" ? "latlon" : rawMode;
+              const trackMatch = rawMode === "track" ? isTrackTable(firstTableCols) : null;
               const nextRow: SpatialTarget = {
                 tableId: firstTableId,
                 spatialMode: suggestedMode,
+                ...(trackMatch ? { lonCol: trackMatch.xCol, latCol: trackMatch.yCol } : {}),
               };
               const nextTargets = [...spatialTargets, nextRow];
               onChange({ ...config, spatialTargets: nextTargets });
@@ -532,7 +536,10 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
             // the default (WKB-preferred) because WMS rendering supports both modes.
             const rawMode2 = autoSuggestSpatialMode(newColumns, { preferWktOverWkb: true });
             // Phase 52: "track" is not a valid spatial-filter target — fall back to "latlon".
+            // CHECKER ADVISORY FIX: when rawMode2 === "track", also pre-fill lonCol/latCol from
+            // track match so the existing-row site gets the SAME prefill as the new-row site.
             const suggestedMode2: SpatialMode = rawMode2 === "track" ? "latlon" : rawMode2;
+            const trackMatch2 = rawMode2 === "track" ? isTrackTable(newColumns) : null;
             const nextTargets = spatialTargets.map((t, i) =>
               i === idx
                 ? {
@@ -540,8 +547,8 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
                     spatialMode: suggestedMode2,
                     // explicit undefined clears any prior column choices —
                     // the prior table's column names are invalid for the new table
-                    lonCol: undefined,
-                    latCol: undefined,
+                    lonCol: trackMatch2 ? trackMatch2.xCol : undefined,
+                    latCol: trackMatch2 ? trackMatch2.yCol : undefined,
                     spatialCol: undefined,
                   }
                 : t,
