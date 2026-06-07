@@ -548,8 +548,9 @@ export default function LayersModal({
                 <KineticaWmsLayerForm
                   // cb_config + track_config are TOP-LEVEL DashboardLayerDto columns
                   // (v1.7 Phase 38), NOT nested config keys — same precedent as info_*
-                  // below. Merge them IN so CbConfigForm/TrackSubSection (which read/write
-                  // config.cb_config / config.track_config) see the persisted values, and
+                  // below. Merge them IN so CbConfigForm (which reads/writes
+                  // config.cb_config) and track pickers (which read/write
+                  // config.track_config) see the persisted values, and
                   // split them back OUT to top-level onPatch fields on change. Without this
                   // the forms bury cb_config in the config blob and wmsUrlBuilder (which
                   // reads layer.cb_config) never sees it → no CB_*/TRACK_* params emit.

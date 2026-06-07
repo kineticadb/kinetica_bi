@@ -4460,7 +4460,7 @@ describe("Phase 40 TRACK-V17-05 — fingerprint covers layer.track_config", () =
   // Phase 38 already shipped the t-slot coverage; this Phase 40 regression test
   // locks it so future edits to MapChartRenderer.tsx cannot silently drop
   // track_config from the fingerprint and break tile re-renders on track-style
-  // edits from the Phase 40 TrackSubSection form.
+  // edits from the track form pickers.
   //
   // ROADMAP SC #4 (TRACK-V17-05): Phase 38 emits comma-sep TRACK_* under
   // STYLES=cb_raster + single-value under STYLES=raster — wmsUrlBuilder Track

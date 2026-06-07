@@ -1,6 +1,6 @@
 /**
  * UAT regression (v1.7 Phase 39/40 integration defect): cb_config + track_config
- * are TOP-LEVEL DashboardLayerDto columns, but CbConfigForm / TrackSubSection write
+ * are TOP-LEVEL DashboardLayerDto columns, but CbConfigForm and track pickers write
  * them into the config blob (config.cb_config / config.track_config). LayersModal must
  * translate at the form↔onPatch seam:
  *   - MERGE top-level cb_config/track_config INTO the config the form reads
@@ -15,7 +15,7 @@ import type { DashboardLayerDto, TableDto } from "../api/client";
 
 // Mock the form so we can (a) inspect the config it receives and (b) fire a
 // synthetic onChange that buries cb_config/track_config in the config blob —
-// exactly what the real CbConfigForm / TrackSubSection do.
+// exactly what the real CbConfigForm and track pickers do.
 let lastFormConfig: Record<string, unknown> | null = null;
 vi.mock("./charts/KineticaWmsLayerForm", () => ({
   default: (props: {
