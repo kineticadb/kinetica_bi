@@ -47,6 +47,7 @@ import { fromSwap } from "../../lib/fromSwap";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { buildChipText, type DrillDownDataType } from "../../lib/columnTypes";
 import { formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } from "../../lib/bigNumberFormat";
+import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
 
 type Props = {
@@ -1511,6 +1512,86 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // FK4: CSV export state
+  const enableCsvDownload = cfg.enableCsvDownload !== false;
+  const csvDownloadRowCap = Math.max(1, Math.floor(Number(cfg.csvDownloadRowCap) || 100000));
+  const [exporting, setExporting] = useState(false);
+  const exportAbortRef = useRef<AbortController | null>(null);
+
+  // FK4: abort in-flight export on unmount
+  useEffect(() => () => exportAbortRef.current?.abort(), []);
+
+  const handleDownloadCsv = async () => {
+    // Abort previous in-flight export if still running
+    exportAbortRef.current?.abort();
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
+
+    // Resolve source — REUSE existing view-name logic (same as the fetch effects)
+    const effectiveViewNameCsv =
+      dynamicViewId !== undefined ? recordsDvViewName : viewName;
+    const fromSourceCsv = effectiveViewNameCsv || table;
+
+    // Columns: use columnOrder if non-empty (on-screen order), else fall back to effectiveColumns
+    const exportCols = columnOrder.length > 0 ? columnOrder : effectiveColumns;
+    const colsClause = exportCols.length > 0 ? exportCols.join(", ") : "*";
+    const orderBy =
+      sortField && IDENT_RE.test(sortField)
+        ? ` ORDER BY ${sortField} ${sortDir.toUpperCase()}`
+        : "";
+
+    setExporting(true);
+    const PAGE = 5000;
+    const all: Row[] = [];
+    let offset = 0;
+    let capped = false;
+    try {
+      while (all.length < csvDownloadRowCap) {
+        const remaining = csvDownloadRowCap - all.length;
+        const limit = Math.min(PAGE, remaining);
+        const sql = `SELECT ${colsClause} FROM ${fromSourceCsv}${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+        const res = await runSql<Record<string, unknown>>(sql, undefined, controller.signal);
+        const rows = parseKineticaResponse(res);
+        all.push(...rows);
+        offset += rows.length;
+        if (rows.length < limit) break; // exhausted the view
+        if (all.length >= csvDownloadRowCap && rows.length === limit) {
+          capped = true;
+          break;
+        }
+      }
+
+      const finalCols = exportCols.length > 0 ? exportCols : Object.keys(all[0] ?? {});
+      const csv = rowsToCsv(all, finalCols);
+      const filename = buildCsvFilename(
+        widget.title && widget.title.trim() ? widget.title : table,
+        new Date(),
+      );
+
+      if (typeof document !== "undefined") {
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      if (capped) {
+        useToastStore.getState().showToast(`Capped at ${csvDownloadRowCap.toLocaleString()} rows`, "info");
+      }
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
+      useToastStore.getState().showToast((err as Error).message, "error");
+    } finally {
+      if (exportAbortRef.current === controller) setExporting(false);
+    }
+  };
+
   // Reset page when sort changes
   useEffect(() => {
     setPage(1);
@@ -1878,6 +1959,16 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         </table>
       </div>
       <div className="widget-records-footer">
+        {enableCsvDownload && (
+          <button
+            type="button"
+            className="widget-csv-download ghost-sm"
+            disabled={exporting}
+            onClick={handleDownloadCsv}
+          >
+            {exporting ? "Exporting…" : "Download CSV"}
+          </button>
+        )}
         <span className="widget-records-count">
           {totalCount !== null
             ? `Showing ${fromRow.toLocaleString()}–${toRow.toLocaleString()} of ${totalCount.toLocaleString()}`

@@ -1438,6 +1438,9 @@ a {
   cursor: not-allowed;
 }
 
+.widget-csv-download { margin-right: auto; }
+.widget-csv-download:disabled { opacity: 0.6; cursor: progress; }
+
 /* Big number renderer */
 .widget-bignumber {
   display: flex;

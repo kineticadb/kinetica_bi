@@ -2375,3 +2375,172 @@ describe("WidgetRenderer Phase 42 legend branch", () => {
     expect(screen.queryByText(/Select a table/)).toBeNull();
   });
 });
+
+// ----- FK4: RecordsTableRenderer CSV download -----
+
+// Kinetica columnar payload factory for records CSV tests
+const buildCsvResponse = (
+  headers: string[],
+  rows: unknown[][],
+): Record<string, unknown> => {
+  const out: Record<string, unknown> = {
+    column_headers: headers,
+    column_datatypes: headers.map(() => "string"),
+  };
+  // rows[rowIdx][colIdx] — transpose to columnar
+  headers.forEach((_, colIdx) => {
+    out[`column_${colIdx + 1}`] = rows.map((r) => r[colIdx]);
+  });
+  return out;
+};
+
+const makeCsvRecordsWidget = (overrides: Partial<WidgetDto> = {}): WidgetDto => ({
+  id: 5,
+  dashboard_id: 1,
+  title: "Sales Report",
+  type: "records",
+  position: 0,
+  config: {
+    table: "sales",
+    tableId: 50,
+    columns: "region,amount",
+    pageSize: 25,
+    enableCsvDownload: true,
+  },
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  ...overrides,
+});
+
+describe("RecordsTableRenderer CSV download", () => {
+  beforeEach(() => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    // Stub DOM Blob/URL APIs — jsdom does not implement createObjectURL
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:x");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("button is hidden when config.enableCsvDownload is false", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildCsvResponse(["region", "amount"], [["EAST", 100]]),
+    );
+    const widget = makeCsvRecordsWidget({ config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, enableCsvDownload: false } });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.queryByText(/Showing/) !== null);
+    expect(screen.queryByText("Download CSV")).toBeNull();
+  });
+
+  it("button is visible by default (enableCsvDownload omitted → default true)", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildCsvResponse(["region", "amount"], [["EAST", 100]]),
+    );
+    // No enableCsvDownload key in config — should default to true
+    const widget = makeCsvRecordsWidget({ config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25 } });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download CSV"));
+    expect(screen.getByText("Download CSV")).toBeTruthy();
+  });
+
+  it("export issues SELECT with only configured columns in order + active sort via runSql", async () => {
+    // Page fetch + count response
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100]])) // page fetch
+      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [1] }) // count
+      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100]])); // CSV export fetch
+
+    const widget = makeCsvRecordsWidget();
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download CSV"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download CSV"));
+      // Allow async export to complete
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    // Find the export call (SELECT with region,amount NOT containing COUNT)
+    const exportCall = calls.find(
+      (args) =>
+        typeof args[0] === "string" &&
+        args[0].includes("FROM sales") &&
+        !args[0].includes("COUNT") &&
+        // Export call will be the 3rd call (after page + count)
+        calls.indexOf(args) >= 2,
+    );
+    expect(exportCall).toBeDefined();
+    const exportSql = exportCall![0] as string;
+    // Must include both columns in order
+    expect(exportSql).toMatch(/SELECT region, amount FROM sales/);
+  });
+
+  it("cap behavior + toast: csvDownloadRowCap=2 with full page triggers 'Capped at 2 rows' toast", async () => {
+    const showToastMock = vi.fn();
+    const { useToastStore: toastStore } = await import("../../store/toast");
+    toastStore.setState({ showToast: showToastMock } as Parameters<typeof toastStore.setState>[0]);
+
+    // Page fetch returns 2 rows, count fetch
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100], ["WEST", 200]])) // page fetch
+      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }) // count (10 total → more exist)
+      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100], ["WEST", 200]])); // CSV export - returns full 2 rows
+
+    const widget = makeCsvRecordsWidget({
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: 2 },
+    });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download CSV"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download CSV"));
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Toast should be called with cap message
+    const capToastCall = showToastMock.mock.calls.find(
+      (args: unknown[]) => args[0] === "Capped at 2 rows",
+    );
+    expect(capToastCall).toBeDefined();
+    expect(capToastCall![1]).toBe("info");
+  });
+
+  it("abort-on-unmount: AbortController signal aborts when component unmounts during export", async () => {
+    let capturedSignal: AbortSignal | undefined;
+
+    // Page fetch (resolves)
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100]])) // page
+      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [1] }) // count
+      .mockImplementationOnce((_sql: string, _opts: unknown, signal: AbortSignal) => {
+        // Capture signal; return a promise that never resolves (simulates slow export)
+        capturedSignal = signal;
+        return new Promise(() => {});
+      });
+
+    const widget = makeCsvRecordsWidget();
+    const { unmount } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download CSV"));
+
+    // Start export (will hang on the export runSql call)
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download CSV"));
+      // Give time for page/count calls to resolve and export call to start
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Unmount — should abort the export
+    act(() => {
+      unmount();
+    });
+
+    // Signal captured from the export call must now be aborted
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal!.aborted).toBe(true);
+  });
+});
