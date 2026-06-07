@@ -1089,6 +1089,64 @@ describe("buildWmsParams — Track emission under spatialMode=track (RENDER-V19-
   });
 });
 
+// ─── CUTOVER-V19-01 (amended): stale old-shape track_config renders without error ───
+//
+// Phase 52 deleted the v1.7 TrackSubSection overlay. This describe verifies that layers
+// carrying a stale old-shape track_config (enabled:true, but no xCol/yCol — written by
+// Phase 40 before Phase 52 extended the schema) produce non-null WMS params without
+// throwing. The truth: "renders harmlessly, no crash." Not "no track params" — because
+// enabled:true + raster still fires the Track emission block (tc.enabled gate is true),
+// which is harmless pre-existing v1.7 latlon+track behavior. CUTOVER-V19-01 requires only
+// no-error, which is satisfied by both latlon and track-mode paths below.
+
+describe("buildWmsParams — stale track_config tolerance (CUTOVER-V19-01)", () => {
+  // Old-shape JSON: enabled:true + track attrs + colors, but NO xCol or yCol.
+  // Written by Phase 40 (v1.7) before Phase 52 added the xCol/yCol fields.
+  const oldShapeJson = JSON.stringify({
+    enabled: true,
+    trackIdAttr: "TRACKID",
+    trackOrderAttr: "TIMESTAMP",
+    headColor: "FFFF0000",
+  });
+
+  it("latlon layer with old-shape track_config (enabled:true, no xCol/yCol) does not throw and returns non-null params", () => {
+    // Because enabled:true + raster, the emission block emits DOTRACKS — harmless, mirrors
+    // pre-existing v1.7 latlon+track behavior. Truth: NO ERROR, not "no track params".
+    const config: MapWidgetConfig = {
+      tableId: 1,
+      tableRef: "s.t",
+      spatialMode: "latlon",
+      lonColumn: "lon",
+      latColumn: "lat",
+      renderMode: "raster",
+    };
+    let params: Record<string, string> | null = null;
+    expect(() => {
+      params = buildWmsParams(config, undefined, undefined, undefined, { cb_config: null, track_config: oldShapeJson });
+    }).not.toThrow();
+    expect(params).not.toBeNull();
+  });
+
+  it("track-mode layer with old-shape track_config (enabled:true, no xCol/yCol) does not throw; X_ATTR undefined (incomplete config)", () => {
+    // CONTEXT: "simply behaves as an incomplete track config, without crashing."
+    // tc.xCol is undefined → X_ATTR not emitted. tc.enabled is true → DOTRACKS still emits
+    // (same harmless path as above). The key truth: no throw.
+    const config: MapWidgetConfig = {
+      tableId: 1,
+      tableRef: "s.t",
+      spatialMode: "track",
+      renderMode: "raster",
+    };
+    let params: Record<string, string> | null = null;
+    expect(() => {
+      params = buildWmsParams(config, undefined, undefined, undefined, { cb_config: null, track_config: oldShapeJson });
+    }).not.toThrow();
+    expect(params).not.toBeNull();
+    // No xCol in old-shape → X_ATTR absent (incomplete config, not a crash).
+    expect(params!.X_ATTR).toBeUndefined();
+  });
+});
+
 describe("buildWmsParams — `_mv` cache-bust preservation (SCHEMA-V17-03 explicit requirement)", () => {
   it("LAYERS param contains the `_mv` cache-bust suffix when materializeVersion is supplied (v1.3 logic survived the rewrite)", () => {
     // 4-arg call (Phase 16 + Phase 35 caller shape) with materializeVersion=42.

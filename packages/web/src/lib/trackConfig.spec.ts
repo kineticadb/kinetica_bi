@@ -85,3 +85,36 @@ describe("TrackConfig type", () => {
     expectTypeOf(tc.enabled).toBeBoolean();
   });
 });
+
+// ─── CUTOVER-V19-01 (amended): stale old-shape track_config coalesces without error ───
+//
+// Phase 52 deleted the v1.7 old model (TrackSubSection / "Treat as track table" checkbox).
+// Phase 53-02 verifies-by-spec that a stale DB row with the OLD shape (enabled:true but
+// no xCol/yCol — written by v1.7 Phase 40 before Phase 52 added those fields) is handled
+// gracefully: coalesceTrackConfig passes the object through verbatim (it has "enabled"),
+// leaving xCol/yCol as undefined. The layer renders harmlessly — no throw, no crash.
+//
+// The amended CUTOVER-V19-01 removes the overlay (deleted in Phase 52); these no-throw
+// locks are the verification that clean deletion + harmless rendering satisfy the truth.
+
+describe("coalesceTrackConfig — stale old-shape config (CUTOVER-V19-01)", () => {
+  it("old-shape JSON (enabled:true, no xCol/yCol) does not throw and returns object with enabled===true", () => {
+    // v1.7 Phase 40 model shape: enabled + track attrs + colors, but no xCol/yCol
+    // (those were added by Phase 52). A stale DB row written before Phase 52 has this shape.
+    const oldShapeJson = '{"enabled":true,"trackIdAttr":"TRACKID","trackOrderAttr":"TIMESTAMP","headColor":"FFFF0000"}';
+    let result: TrackConfig | undefined;
+    expect(() => { result = coalesceTrackConfig(oldShapeJson); }).not.toThrow();
+    expect(result!.enabled).toBe(true);
+    // xCol/yCol absent from old-shape — must be undefined (not throw)
+    expect(result!.xCol).toBeUndefined();
+    expect(result!.yCol).toBeUndefined();
+  });
+
+  it("garbage/legacy JSON without 'enabled' key returns { enabled: false } without throwing", () => {
+    // JSON valid but missing the 'enabled' key — coalesceTrackConfig falls back to { enabled: false }.
+    const legacyJson = '{"trackIdAttr":"TRACKID","headColor":"FFFF0000"}';
+    let result: TrackConfig | undefined;
+    expect(() => { result = coalesceTrackConfig(legacyJson); }).not.toThrow();
+    expect(result!.enabled).toBe(false);
+  });
+});
