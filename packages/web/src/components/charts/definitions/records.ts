@@ -16,6 +16,8 @@ const records: ChartTypeDefinition = {
     { key: "pageSize", label: "Records Per Page", type: "number", defaultValue: 25, group: "Display" },
     { key: "striped", label: "Striped Rows", type: "boolean", defaultValue: true, group: "Display" },
     { key: "compact", label: "Compact Mode", type: "boolean", defaultValue: false, group: "Display" },
+    { key: "enableCsvDownload", label: "Enable CSV Download", type: "boolean", defaultValue: true, group: "Display" },
+    { key: "csvDownloadRowCap", label: "CSV Download Row Cap", type: "number", defaultValue: 100000, group: "Display", hint: "Maximum rows to export (min 1)" },
   ],
   defaultConfig: {
     columns: "",
@@ -24,6 +26,8 @@ const records: ChartTypeDefinition = {
     pageSize: 25,
     striped: true,
     compact: false,
+    enableCsvDownload: true,
+    csvDownloadRowCap: 100000,
   },
 };
 
