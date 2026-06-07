@@ -17,6 +17,7 @@
 
 import type { SpatialColumns } from "../api/client";
 import type { MapWidgetConfig } from "./wmsUrlBuilder";
+import { coalesceTrackConfig } from "./trackConfig";
 
 export function buildSpatialColumns(
   cfg: Partial<MapWidgetConfig>,
@@ -32,6 +33,15 @@ export function buildSpatialColumns(
   if (cfg.spatialMode === "wkb") {
     if (!cfg.wkbColumn) return null;
     return { wkbCol: cfg.wkbColumn };
+  }
+  // Phase 52: track mode translates to latlon columns at the info-popup boundary.
+  // The track layer stores x/y column names inside track_config (via coalesceTrackConfig).
+  // buildSpatialColumns translates to { lonCol, latCol } so downstream info-query consumers
+  // receive the standard latlon contract without needing to know about track_config.
+  if (cfg.spatialMode === "track") {
+    const tc = coalesceTrackConfig((cfg as { track_config?: string | null }).track_config ?? null);
+    if (!tc.xCol || !tc.yCol) return null;
+    return { lonCol: tc.xCol, latCol: tc.yCol };
   }
   return null;
 }

@@ -15,6 +15,8 @@ export type TrackConfig = {
   enabled: boolean;
   trackIdAttr?: string;       // default "TRACKID" when omitted at emission time
   trackOrderAttr?: string;    // default "TIMESTAMP" when omitted at emission time
+  xCol?: string;              // Phase 52: x/longitude column for track points
+  yCol?: string;              // Phase 52: y/latitude column for track points
   headColor?: string;         // 8-char AARRGGBB
   trailColor?: string;        // 8-char AARRGGBB
   headSize?: number;

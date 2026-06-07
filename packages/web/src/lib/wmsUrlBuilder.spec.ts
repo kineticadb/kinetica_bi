@@ -885,6 +885,68 @@ describe("buildWmsParams — backward-compat URL snapshot (legacy widgets pre-v1
   });
 });
 
+describe("buildWmsParams — track spatial mode (Phase 52)", () => {
+  const trackSpatialBase = {
+    tableId: 1,
+    tableRef: "s.t",
+    spatialMode: "track" as const,
+    renderMode: "raster" as const,
+  };
+
+  it("track mode emits X_ATTR/Y_ATTR from track_config xCol/yCol", () => {
+    const trackJson = JSON.stringify({ enabled: false, xCol: "x_col", yCol: "y_col" });
+    const params = buildWmsParams(
+      trackSpatialBase,
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    expect(params!.X_ATTR).toBe("x_col");
+    expect(params!.Y_ATTR).toBe("y_col");
+    expect(params!.GEO_ATTR).toBeUndefined();
+  });
+
+  it("track mode emits no X_ATTR/Y_ATTR when track_config is null", () => {
+    const params = buildWmsParams(
+      trackSpatialBase,
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: null },
+    );
+    expect(params!.X_ATTR).toBeUndefined();
+    expect(params!.Y_ATTR).toBeUndefined();
+  });
+
+  it("track mode emits no X_ATTR when xCol missing from track_config", () => {
+    const trackJson = JSON.stringify({ enabled: false, yCol: "y_col" });
+    const params = buildWmsParams(
+      trackSpatialBase,
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    expect(params!.X_ATTR).toBeUndefined();
+    expect(params!.Y_ATTR).toBe("y_col");
+  });
+
+  it("track mode does NOT emit GEO_ATTR (never falls through to wkb branch)", () => {
+    const trackJson = JSON.stringify({ enabled: false, xCol: "x", yCol: "y" });
+    const params = buildWmsParams(
+      trackSpatialBase,
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    expect(params!.GEO_ATTR).toBeUndefined();
+  });
+
+  it("track mode with no layerJsonFields arg emits neither X_ATTR nor Y_ATTR", () => {
+    // 2-arg / 4-arg legacy callers pass no layerJsonFields
+    const params = buildWmsParams(
+      trackSpatialBase,
+      undefined,
+    );
+    expect(params!.X_ATTR).toBeUndefined();
+    expect(params!.Y_ATTR).toBeUndefined();
+  });
+});
+
 describe("buildWmsParams — `_mv` cache-bust preservation (SCHEMA-V17-03 explicit requirement)", () => {
   it("LAYERS param contains the `_mv` cache-bust suffix when materializeVersion is supplied (v1.3 logic survived the rewrite)", () => {
     // 4-arg call (Phase 16 + Phase 35 caller shape) with materializeVersion=42.

@@ -297,6 +297,13 @@ export function buildWmsParams(
     if (config.latColumn) params[Y_COLUMN_PARAM] = config.latColumn;
   } else if (config.spatialMode === "wkt") {
     if (config.wktColumn) params[GEOMETRY_COLUMN_PARAM] = config.wktColumn;
+  } else if (config.spatialMode === "track") {
+    // Phase 52: track spatial mode — emit X_ATTR/Y_ATTR from track_config.xCol/yCol.
+    // Track columns live in track_config (NOT config.lonColumn); coalesceTrackConfig is
+    // already imported. Guard with optional chaining — layerJsonFields is the optional 5th arg.
+    const tc = coalesceTrackConfig(layerJsonFields?.track_config ?? null);
+    if (tc.xCol) params[X_COLUMN_PARAM] = tc.xCol;
+    if (tc.yCol) params[Y_COLUMN_PARAM] = tc.yCol;
   } else {
     // wkb — same param name as wkt per PITFALL M-04 lock
     if (config.wkbColumn) params[GEOMETRY_COLUMN_PARAM] = config.wkbColumn;
