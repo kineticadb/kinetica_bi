@@ -1147,6 +1147,46 @@ describe("buildWmsParams — stale track_config tolerance (CUTOVER-V19-01)", () 
   });
 });
 
+describe("Track block — saved track layer regression (TRACKFIX-V19-01)", () => {
+  // This test locks the buildWmsParams contract for a SAVED track layer — i.e., one where
+  // track_config is a top-level DTO column (NOT inside layer.config). The diagnostic showed
+  // the bug is in MapChartRenderer's isConfigComplete gate (feeds layer.config only), NOT in
+  // the builder. This test PASSES before any fix, documenting that the builder was never at fault.
+  it("buildWmsParams emits non-null track params for a saved track layer (DOTRACKS + LAYERS + X_ATTR + Y_ATTR + TRACK_ID_ATTR + TRACK_ORDER_ATTR)", () => {
+    const trackJson = JSON.stringify({
+      enabled: true,
+      xCol: "X",
+      yCol: "Y",
+      trackIdAttr: "TRACKID",
+      trackOrderAttr: "TIMESTAMP",
+      headColor: "FFFF0000",
+      trailColor: "FF0000FF",
+      headSize: 8,
+      trailSize: 2,
+      headShape: "circle",
+    });
+    const params = buildWmsParams(
+      {
+        tableId: 1,
+        tableRef: "demo.track",
+        spatialMode: "track",
+        renderMode: "raster",
+      },
+      undefined,
+      undefined,
+      undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    expect(params).not.toBeNull();
+    expect(params!.DOTRACKS).toBe("TRUE");
+    expect(params!.LAYERS).toBe("demo.track");
+    expect(params!.X_ATTR).toBe("X");
+    expect(params!.Y_ATTR).toBe("Y");
+    expect(params!.TRACK_ID_ATTR).toBe("TRACKID");
+    expect(params!.TRACK_ORDER_ATTR).toBe("TIMESTAMP");
+  });
+});
+
 describe("buildWmsParams — `_mv` cache-bust preservation (SCHEMA-V17-03 explicit requirement)", () => {
   it("LAYERS param contains the `_mv` cache-bust suffix when materializeVersion is supplied (v1.3 logic survived the rewrite)", () => {
     // 4-arg call (Phase 16 + Phase 35 caller shape) with materializeVersion=42.

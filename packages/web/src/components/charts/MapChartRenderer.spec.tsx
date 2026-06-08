@@ -4792,3 +4792,123 @@ describe("LayersLegendPanel mount (Phase 41)", () => {
     expect(src).not.toMatch(/legendKey\s*=\s*useDashboardLayersStore\(\(s\)\s*=>\s*s\.layers\)/);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  GAP-54-01 / TRACKFIX-V19-01 — saved track layer renders            */
+/* ------------------------------------------------------------------ */
+
+describe("MapChartRenderer — GAP-54-01 saved track layer renders (TRACKFIX-V19-01)", () => {
+  // defaultTables includes id:10 (schema "public", name "t10"). We need a table with id:10
+  // so the tableMeta guard passes. We use a dedicated table entry with a schema/name pair
+  // that lets us inspect LAYERS in the WMS params.
+  const trackTables: TableDto[] = [
+    {
+      id: 10,
+      name: "track",
+      schema: "demo",
+      columns: { X: "double", Y: "double", TRACKID: "varchar", TIMESTAMP: "long" },
+      created_at: "2026-05-05T00:00:00Z",
+      updated_at: "2026-05-05T00:00:00Z",
+    },
+    {
+      id: 11,
+      name: "t11",
+      schema: "public",
+      columns: { lat: "double", lon: "double" },
+      created_at: "2026-05-05T00:00:00Z",
+      updated_at: "2026-05-05T00:00:00Z",
+    },
+  ];
+
+  beforeEach(() => {
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    lastMapInstance = null;
+    lastBasemapLayerInstance = null;
+    lastResizeObserverCallback = null;
+    lastResizeObserverInstance = null;
+    tileLoadListeners = {};
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    lastViewportElement = null;
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Reproduction test (B): before the fix this FAILS — zero ImageWMS instances because
+  // isConfigComplete(layer.config) returns false (track_config absent from config blob).
+  // After the fix it PASSES — isConfigComplete is fed the merged config including top-level
+  // layer.track_config, returns true, and an ImageWMS source is constructed.
+  it("TRACKFIX-V19-01: a saved track layer (track_config on top-level DTO field) constructs an ImageWMS source with DOTRACKS=TRUE", async () => {
+    _layersState.layers = [
+      makeLayer({
+        id: 1,
+        position: 0,
+        table_id: 10,
+        config: {
+          spatialMode: "track",
+          renderMode: "raster",
+          visible: true,
+          POINTOPACITY: 100,
+        },
+        // track_config is a TOP-LEVEL field — NOT inside config. This matches the real
+        // persisted shape from LayersModal.onPatch (splits track_config out of the form config
+        // and writes it as a separate top-level DTO column at save time).
+        track_config: JSON.stringify({
+          enabled: true,
+          xCol: "X",
+          yCol: "Y",
+          trackIdAttr: "TRACKID",
+          trackOrderAttr: "TIMESTAMP",
+          headColor: "FFFF0000",
+          trailColor: "FF0000FF",
+          headSize: 8,
+          trailSize: 2,
+          headShape: "circle",
+        }),
+      }),
+    ];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={trackTables} />);
+    });
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    // At least one ImageWMS must be constructed (the track layer).
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    expect(params.DOTRACKS).toBe("TRUE");
+    expect(params.X_ATTR).toBe("X");
+    expect(params.Y_ATTR).toBe("Y");
+    expect(params.TRACK_ID_ATTR).toBe("TRACKID");
+  });
+
+  // Guard test (latlon regression): a standard latlon layer still renders its ImageWMS source
+  // both before and after the fix — proves no regression to the existing latlon path.
+  it("TRACKFIX-V19-01 guard: a latlon layer still constructs its ImageWMS source (no regression)", async () => {
+    _layersState.layers = [
+      makeLayer({
+        id: 2,
+        position: 0,
+        table_id: 11,
+        config: {
+          spatialMode: "latlon",
+          latColumn: "lat",
+          lonColumn: "lon",
+          renderMode: "raster",
+          visible: true,
+          POINTOPACITY: 100,
+        },
+        track_config: null,
+      }),
+    ];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={trackTables} />);
+    });
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+  });
+});
