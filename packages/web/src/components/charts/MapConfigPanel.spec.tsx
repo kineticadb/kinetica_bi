@@ -246,6 +246,35 @@ describe("MapConfigPanel — quick-260608-j5k MAP CONTROLS checkboxes", () => {
   });
 });
 
+describe("MapConfigPanel — quick-260608-rbq loading indicator checkbox", () => {
+  beforeEach(() => {
+    _storeState.layers = [];
+    vi.clearAllMocks();
+  });
+
+  it("renders 'Show loading indicator' checkbox CHECKED when config has no showLoadingIndicator field (default ON)", () => {
+    render(<MapConfigPanel config={makeConfig()} onChange={vi.fn()} />);
+    const cb = screen.getByLabelText("Show loading indicator") as HTMLInputElement;
+    expect(cb).toBeInTheDocument();
+    expect(cb.checked).toBe(true);
+  });
+
+  it("renders 'Show loading indicator' checkbox unchecked when config.showLoadingIndicator is false", () => {
+    render(<MapConfigPanel config={makeConfig({ showLoadingIndicator: false })} onChange={vi.fn()} />);
+    const cb = screen.getByLabelText("Show loading indicator") as HTMLInputElement;
+    expect(cb).toBeInTheDocument();
+    expect(cb.checked).toBe(false);
+  });
+
+  it("toggling the (default-checked) checkbox off fires onChange with objectContaining({ showLoadingIndicator: false })", () => {
+    const onChange = vi.fn();
+    render(<MapConfigPanel config={makeConfig()} onChange={onChange} />);
+    const cb = screen.getByLabelText("Show loading indicator");
+    fireEvent.click(cb);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ showLoadingIndicator: false }));
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  Phase 22 — INFO POPUP section tests                               */
 /* ------------------------------------------------------------------ */
