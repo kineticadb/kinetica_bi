@@ -173,6 +173,8 @@ vi.mock("ol/Map", () => ({
     this.getPixelFromCoordinate = vi.fn(() => [400, 300]);
     this.addOverlay = vi.fn();
     this.removeOverlay = vi.fn();
+    this.addControl = vi.fn();
+    this.removeControl = vi.fn();
     // Capture singleclick handler for POPUP-V14 tests
     // Phase 29 Plan 05: map supports multiple singleclick handlers (info + selection).
     // Store handlers in an array so each can be fired independently in tests.
@@ -4968,5 +4970,53 @@ describe("quick-260608-j5k — opt-in ScaleLine + FullScreen controls", () => {
     });
     expect(vi.mocked(FullScreen)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(FullScreen).mock.calls[0][0]).toHaveProperty("source");
+  });
+
+  // Live add/remove (quick-260608-j5k follow-up): toggling the config flag must add/remove the
+  // control on the EXISTING map via addControl/removeControl — no widget remount required.
+  it("addControl is called with the ScaleLine instance when showScaleBar: true", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget({ showScaleBar: true })} tables={[]} />);
+    });
+    const scaleInstance = vi.mocked(ScaleLine).mock.instances[0];
+    expect(lastMapInstance.addControl).toHaveBeenCalledWith(scaleInstance);
+  });
+
+  it("toggling showScaleBar from true → false removes the control without a remount", async () => {
+    let rerender!: (ui: React.ReactElement) => void;
+    await act(async () => {
+      ({ rerender } = render(
+        <MapChartRenderer widget={makeWidget({ showScaleBar: true })} tables={[]} />,
+      ));
+    });
+    const mapInstance = lastMapInstance;
+    const scaleInstance = vi.mocked(ScaleLine).mock.instances[0];
+    expect(mapInstance.addControl).toHaveBeenCalledWith(scaleInstance);
+
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget({ showScaleBar: false })} tables={[]} />);
+    });
+    // Same map instance — no rebuild — and the control was removed live.
+    expect(lastMapInstance).toBe(mapInstance);
+    expect(mapInstance.removeControl).toHaveBeenCalledWith(scaleInstance);
+  });
+
+  it("toggling showFullscreenButton from false → true adds the control without a remount", async () => {
+    let rerender!: (ui: React.ReactElement) => void;
+    await act(async () => {
+      ({ rerender } = render(
+        <MapChartRenderer widget={makeWidget()} tables={[]} />,
+      ));
+    });
+    const mapInstance = lastMapInstance;
+    expect(vi.mocked(FullScreen)).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget({ showFullscreenButton: true })} tables={[]} />);
+    });
+    expect(lastMapInstance).toBe(mapInstance); // not rebuilt
+    expect(vi.mocked(FullScreen)).toHaveBeenCalledTimes(1);
+    const fsInstance = vi.mocked(FullScreen).mock.instances[0];
+    expect(mapInstance.addControl).toHaveBeenCalledWith(fsInstance);
   });
 });

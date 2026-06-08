@@ -1730,6 +1730,51 @@ a {
   font-size: 10px;
 }
 
+/* quick-260608-j5k: opt-in ScaleLine + FullScreen controls. OL's defaults put the scale line
+   bottom-left (free corner — kept) and the fullscreen button top-right (collides with the Layers
+   panel + widget toolbar — moved to bottom-right, above the collapsed attribution "i"). Theme
+   tokens only; styled to match .widget-map-toolbar-btn so they read as part of the app. */
+.widget-map-canvas .ol-scale-line {
+  left: 8px;
+  bottom: 8px;
+  background: var(--map-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 4px;
+  backdrop-filter: blur(6px);
+}
+.widget-map-canvas .ol-scale-line-inner {
+  color: var(--text);
+  border: 1px solid var(--text);
+  border-top: none;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.widget-map-canvas .ol-full-screen {
+  top: auto;
+  left: auto;
+  bottom: 30px;
+  right: 8px;
+}
+.widget-map-canvas .ol-full-screen button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  background: var(--map-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+.widget-map-canvas .ol-full-screen button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .widget-map-toolbar {
   position: absolute;
   top: 8px;

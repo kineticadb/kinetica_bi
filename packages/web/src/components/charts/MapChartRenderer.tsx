@@ -431,6 +431,15 @@ export function pickPopupAnchor(
 export default function MapChartRenderer({ widget, tables = [] }: Props) {
   const widgetConfig = (widget.config ?? {}) as Record<string, unknown>;
 
+  // quick-260608-j5k: opt-in map-control flags (default false for legacy widgets). Derived at
+  // component scope so the live control-sync effect can depend on the resolved booleans.
+  const showScaleBarFlag = getShowScaleBar({
+    showScaleBar: (widgetConfig as Partial<MapWidgetConfig>).showScaleBar,
+  });
+  const showFullscreenFlag = getShowFullscreenButton({
+    showFullscreenButton: (widgetConfig as Partial<MapWidgetConfig>).showFullscreenButton,
+  });
+
   // Theme-aware basemap: pick the basemap configured for the active app theme so the
   // base layer suits light/dark, and swap it live when the theme toggles. Legacy widgets
   // only have `basemap` — fall back to it (preserving their original look).
@@ -698,6 +707,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   const vectorLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const vectorSourceRef = useRef<VectorSource | null>(null);
   const shapeOverlaysRef = useRef<Map<string, Overlay>>(new Map());
+  // quick-260608-j5k: live handles for the opt-in ScaleLine + FullScreen controls so a
+  // config toggle can add/remove them without remounting the map (see the sync effect below).
+  const scaleLineRef = useRef<ScaleLine | null>(null);
+  const fullScreenRef = useRef<FullScreen | null>(null);
 
   // ── Phase 29 (DRAW-V15-04): Active Draw interaction ref ──────────────────
   // Set by Effect 8 on mode change to a draw mode; null otherwise. Used by the ESC
@@ -830,21 +843,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     const basemapLayer = new TileLayer({ source: basemapSource });
     basemapLayerRef.current = basemapLayer as TileLayer<OSM | XYZ>;
 
-    // quick-260608-j5k: read opt-in control flags at mount time (M-01 invariant — controls
-    // constructed ONCE here; a config toggle takes effect on the widget's next mount).
-    const cfg = widgetConfig as Partial<MapWidgetConfig>;
-    const wantScaleBar = getShowScaleBar({ showScaleBar: cfg.showScaleBar });
-    const wantFullscreen = getShowFullscreenButton({ showFullscreenButton: cfg.showFullscreenButton });
-
+    // quick-260608-j5k: the opt-in ScaleLine + FullScreen controls are NOT constructed here.
+    // The map is built once (M-01 invariant, empty deps), so wiring them at mount would mean a
+    // config toggle only took effect on the next remount. Instead a dedicated sync effect below
+    // adds/removes them live via map.addControl/removeControl keyed on the config flags.
     const extraControls: Control[] = [new Attribution({ collapsible: true, collapsed: true })];
-    // quick-260608-j5k: opt-in controls. Constructed once at mount (M-01 invariant — never
-    // added/removed on re-render); a config toggle takes effect on the widget's next mount.
-    if (wantScaleBar) extraControls.push(new ScaleLine());
-    // FullScreen targets the widget's map container so fullscreen fills the dashboard grid cell
-    // (NOT document.body) and exiting restores the OL layout. containerRef.current is that element.
-    if (wantFullscreen && containerRef.current) {
-      extraControls.push(new FullScreen({ source: containerRef.current }));
-    }
 
     const map = new OlMap({
       target: containerRef.current,
@@ -931,6 +934,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         try { map.removeOverlay(overlay); } catch { /* already detached; ignore */ }
       }
       shapeOverlaysRef.current.clear();
+      // quick-260608-j5k: drop the opt-in control handles — map.dispose() tears the controls
+      // down with the map, so the next mount must start from null and re-add via the sync effect.
+      scaleLineRef.current = null;
+      fullScreenRef.current = null;
       map.setTarget(undefined);
       map.dispose();
       mapRef.current = null;
@@ -948,6 +955,37 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── quick-260608-j5k: opt-in map controls (ScaleLine + FullScreen) live sync ──
+  // Runs on mount AND whenever either config toggle flips. Adds/removes the controls
+  // on the live map via addControl/removeControl, so enabling the checkbox in the config
+  // panel shows the control immediately — no widget remount required. (M-01 governs the
+  // OL map instance lifecycle; these controls are detachable and managed independently.)
+  // Each control is created at most once (ref guard) and removed when its flag goes false.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (showScaleBarFlag && !scaleLineRef.current) {
+      const ctrl = new ScaleLine();
+      scaleLineRef.current = ctrl;
+      map.addControl(ctrl);
+    } else if (!showScaleBarFlag && scaleLineRef.current) {
+      map.removeControl(scaleLineRef.current);
+      scaleLineRef.current = null;
+    }
+
+    if (showFullscreenFlag && !fullScreenRef.current && containerRef.current) {
+      // FullScreen targets the widget's map container (NOT document.body) so fullscreen fills
+      // the dashboard grid cell and exiting restores the OL layout.
+      const ctrl = new FullScreen({ source: containerRef.current });
+      fullScreenRef.current = ctrl;
+      map.addControl(ctrl);
+    } else if (!showFullscreenFlag && fullScreenRef.current) {
+      map.removeControl(fullScreenRef.current);
+      fullScreenRef.current = null;
+    }
+  }, [showScaleBarFlag, showFullscreenFlag]);
 
   // ── Phase 29: drawModeRef mirror sync ────────────────────────────────────
   // Effect runs on every drawMode change; updates the ref so Effect 6's singleclick
