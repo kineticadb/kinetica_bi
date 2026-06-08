@@ -339,6 +339,14 @@ vi.mock("ol/control/Attribution", () => ({
   default: vi.fn().mockImplementation(function (this: any) { return this; }),
 }));
 
+vi.mock("ol/control/ScaleLine", () => ({
+  default: vi.fn().mockImplementation(function (this: any) { return this; }),
+}));
+
+vi.mock("ol/control/FullScreen", () => ({
+  default: vi.fn().mockImplementation(function (this: any, opts: any) { this._opts = opts; return this; }),
+}));
+
 vi.mock("ol/ol.css", () => ({}));
 
 /* ------------------------------------------------------------------ */
@@ -427,16 +435,21 @@ vi.mock("../../store/lastInfoClickContextStore", () => ({
   ),
 }));
 
-// Phase 21: mapInfoConfig mock — expose real values (defaults true/3/360/400; shape pill on)
+// Phase 21 + quick-260608-j5k: mapInfoConfig mock — expose real values for all getters.
 vi.mock("../../lib/mapInfoConfig", () => ({
   getInfoEnabled: (cfg: any) => cfg?.infoEnabled ?? true,
   getInfoRadiusPx: (cfg: any) => cfg?.infoRadiusPx ?? 3,
   getInfoPopupWidthPx: (cfg: any) => cfg?.infoPopupWidthPx ?? 360,
   getInfoPopupHeightPx: (cfg: any) => cfg?.infoPopupHeightPx ?? 400,
   getShowShapeMeasurements: (cfg: any) => cfg?.showShapeMeasurements ?? true,
+  // quick-260608-j5k: opt-in controls — default false so legacy tests are byte-identical
+  getShowScaleBar: (cfg: any) => cfg?.showScaleBar ?? false,
+  getShowFullscreenButton: (cfg: any) => cfg?.showFullscreenButton ?? false,
   DEFAULT_INFO_ENABLED: true,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: true,
+  DEFAULT_SHOW_SCALE_BAR: false,
+  DEFAULT_SHOW_FULLSCREEN_BUTTON: false,
 }));
 
 // Phase 21: InfoPopup mock — renders minimal sentinel so we can confirm it mounts
@@ -633,6 +646,8 @@ const _spatialFilterState = {
 
 import MapChartRenderer, { pickPopupAnchor } from "./MapChartRenderer";
 import OlMap from "ol/Map";
+import ScaleLine from "ol/control/ScaleLine";
+import FullScreen from "ol/control/FullScreen";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
 import { useThemeStore } from "../../store/theme";
 
@@ -4910,5 +4925,48 @@ describe("MapChartRenderer — GAP-54-01 saved track layer renders (TRACKFIX-V19
       render(<MapChartRenderer widget={makeWidget()} tables={trackTables} />);
     });
     expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  quick-260608-j5k — opt-in ScaleLine + FullScreen controls          */
+/* ------------------------------------------------------------------ */
+
+describe("quick-260608-j5k — opt-in ScaleLine + FullScreen controls", () => {
+  beforeEach(() => {
+    _layersState.layers = [];
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    vi.mocked(ScaleLine).mockClear();
+    vi.mocked(FullScreen).mockClear();
+  });
+
+  it("ScaleLine constructor NOT called when showScaleBar absent (legacy widget)", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={[]} />);
+    });
+    expect(vi.mocked(ScaleLine)).toHaveBeenCalledTimes(0);
+  });
+
+  it("ScaleLine constructor called exactly once when showScaleBar: true", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget({ showScaleBar: true })} tables={[]} />);
+    });
+    expect(vi.mocked(ScaleLine)).toHaveBeenCalledTimes(1);
+  });
+
+  it("FullScreen constructor NOT called when showFullscreenButton absent (legacy widget)", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={[]} />);
+    });
+    expect(vi.mocked(FullScreen)).toHaveBeenCalledTimes(0);
+  });
+
+  it("FullScreen constructor called with source option when showFullscreenButton: true", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget({ showFullscreenButton: true })} tables={[]} />);
+    });
+    expect(vi.mocked(FullScreen)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(FullScreen).mock.calls[0][0]).toHaveProperty("source");
   });
 });

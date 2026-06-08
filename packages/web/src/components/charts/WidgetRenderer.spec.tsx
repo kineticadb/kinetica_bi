@@ -167,11 +167,16 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   getInfoPopupWidthPx: (_cfg: any) => 360,
   getInfoPopupHeightPx: (_cfg: any) => 400,
   getShowShapeMeasurements: (_cfg: any) => true,
+  // quick-260608-j5k: opt-in controls — default false so legacy tests are byte-identical
+  getShowScaleBar: (_cfg: any) => false,
+  getShowFullscreenButton: (_cfg: any) => false,
   DEFAULT_INFO_ENABLED: true,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_INFO_POPUP_WIDTH_PX: 360,
   DEFAULT_INFO_POPUP_HEIGHT_PX: 400,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: true,
+  DEFAULT_SHOW_SCALE_BAR: false,
+  DEFAULT_SHOW_FULLSCREEN_BUTTON: false,
 }));
 vi.mock("./InfoPopup", () => ({ default: vi.fn(() => null) }));
 // Phase 12-02: bboxHelper deleted — mock removed (file no longer exists)

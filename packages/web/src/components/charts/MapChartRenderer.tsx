@@ -36,6 +36,9 @@ import XYZ from "ol/source/XYZ";
 import ImageWMS from "ol/source/ImageWMS";
 import { defaults as defaultControls } from "ol/control";
 import Attribution from "ol/control/Attribution";
+import ScaleLine from "ol/control/ScaleLine";
+import FullScreen from "ol/control/FullScreen";
+import type Control from "ol/control/Control";
 import Overlay from "ol/Overlay";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
@@ -76,6 +79,8 @@ import {
   getInfoPopupWidthPx,
   getInfoPopupHeightPx,
   getShowShapeMeasurements,
+  getShowScaleBar,
+  getShowFullscreenButton,
 } from "../../lib/mapInfoConfig";
 import InfoPopup from "./InfoPopup";
 import {
@@ -825,6 +830,22 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     const basemapLayer = new TileLayer({ source: basemapSource });
     basemapLayerRef.current = basemapLayer as TileLayer<OSM | XYZ>;
 
+    // quick-260608-j5k: read opt-in control flags at mount time (M-01 invariant — controls
+    // constructed ONCE here; a config toggle takes effect on the widget's next mount).
+    const cfg = widgetConfig as Partial<MapWidgetConfig>;
+    const wantScaleBar = getShowScaleBar({ showScaleBar: cfg.showScaleBar });
+    const wantFullscreen = getShowFullscreenButton({ showFullscreenButton: cfg.showFullscreenButton });
+
+    const extraControls: Control[] = [new Attribution({ collapsible: true, collapsed: true })];
+    // quick-260608-j5k: opt-in controls. Constructed once at mount (M-01 invariant — never
+    // added/removed on re-render); a config toggle takes effect on the widget's next mount.
+    if (wantScaleBar) extraControls.push(new ScaleLine());
+    // FullScreen targets the widget's map container so fullscreen fills the dashboard grid cell
+    // (NOT document.body) and exiting restores the OL layout. containerRef.current is that element.
+    if (wantFullscreen && containerRef.current) {
+      extraControls.push(new FullScreen({ source: containerRef.current }));
+    }
+
     const map = new OlMap({
       target: containerRef.current,
       layers: [basemapLayer],
@@ -832,9 +853,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       // React overlay (visual parity with MapDrawToolbar). attribution stays disabled
       // here and is added explicitly via Attribution() below so its collapsed state
       // is configurable.
-      controls: defaultControls({ attribution: false, zoom: false }).extend([
-        new Attribution({ collapsible: true, collapsed: true }),
-      ]),
+      controls: defaultControls({ attribution: false, zoom: false }).extend(extraControls),
       view: new OlView({
         // PITFALL M-03 lock: EPSG:3857 locked for all OL views.
         projection: "EPSG:3857",
