@@ -454,11 +454,20 @@ export function buildWmsParams(
       const n = isCb && cbForTrack && isCbConfigConfigured(cbForTrack) ? cbForTrack.breaks.length : 1;
       const expand = (v: string): string => Array.from({ length: n }, () => v).join(",");
 
+      // TRACKFIX-V19-06: per-break colors under track+classbreak. One break color drives all
+      // three TRACK_* color params positionally with CB_VALS (head/line/marker share the break color).
+      // When cb_config is null/unconfigured or under raster, cbColors is null → fall back to expand.
+      const cbColors: string[] | null =
+        isCb && cbForTrack && isCbConfigConfigured(cbForTrack) && cbForTrack.breaks.length > 0
+          ? cbForTrack.breaks.map((b: CbBreak) => normalizeAARRGGBB(b.color, "FFFFFFFF"))
+          : null;
+      const colorList = (single: string): string => (cbColors ? cbColors.join(",") : expand(single));
+
       if (tc.headColor !== undefined) {
-        params.TRACKHEADCOLORS = expand(normalizeAARRGGBB(tc.headColor, "FFFFFFFF"));
+        params.TRACKHEADCOLORS = colorList(normalizeAARRGGBB(tc.headColor, "FFFFFFFF"));
       }
       if (tc.trailColor !== undefined) {
-        params.TRACKLINECOLORS = expand(normalizeAARRGGBB(tc.trailColor, "FF00FF00"));
+        params.TRACKLINECOLORS = colorList(normalizeAARRGGBB(tc.trailColor, "FF00FF00"));
       }
       if (tc.headSize !== undefined) {
         params.TRACKHEADSIZES = expand(String(tc.headSize));
@@ -476,7 +485,7 @@ export function buildWmsParams(
       }
       // TRACKFIX-V19-05: New marker params — distinct from head params
       if (tc.markerColor !== undefined) {
-        params.TRACKMARKERCOLORS = expand(normalizeAARRGGBB(tc.markerColor, "FF0000FF"));
+        params.TRACKMARKERCOLORS = colorList(normalizeAARRGGBB(tc.markerColor, "FF0000FF"));
       }
       if (tc.markerShape !== undefined) {
         params.TRACKMARKERSHAPES = expand(tc.markerShape);

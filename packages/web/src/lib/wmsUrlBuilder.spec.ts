@@ -1155,10 +1155,40 @@ describe("buildWmsParams — Track emission under spatialMode=track (RENDER-V19-
     // TRACKFIX-V19-06: per-break colors from cb.breaks[].color, positionally matching CB_VALS
     expect(params!.TRACKHEADCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
     expect(params!.TRACKLINECOLORS).toBe("FF000000,FFFFFFFF,FF112233");
-    expect(params!.TRACKMARKERCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
     // Non-color params stay uniform expand(N)
     expect(params!.TRACKHEADSIZES).toBe("8,8,8");
     expect(params!.TRACKLINEWIDTHS).toBe("2,2,2");
+  });
+
+  it("cb_raster: track+enabled with markerColor emits per-break TRACKMARKERCOLORS (TRACKFIX-V19-06)", () => {
+    // Sibling test: verifies TRACKMARKERCOLORS per-break emission when markerColor is set
+    const cbJson = JSON.stringify({
+      attr: "x",
+      valsType: "numeric",
+      breaks: [
+        { value: 1, min: 0, max: 10, color: "FF000000" },
+        { value: 2, min: 10, max: 25, color: "FFFFFFFF" },
+        { value: 3, min: 25, max: 50, color: "FF112233" },
+      ],
+    });
+    const trackJsonWithMarker = JSON.stringify({
+      enabled: true, xCol: "x", yCol: "y", trackIdAttr: "TRACKID", trackOrderAttr: "TIMESTAMP",
+      headColor: "FFFF0000", trailColor: "FF0000FF", headSize: 8, trailSize: 2, headShape: "circle",
+      markerColor: "FF00FF00", markerShape: "square", markerSize: 4,
+    });
+    const params = buildWmsParams(
+      { ...trackBase, renderMode: "classbreak" },
+      undefined, undefined, undefined,
+      { cb_config: cbJson, track_config: trackJsonWithMarker },
+    );
+    expect(params).not.toBeNull();
+    // All three color params use per-break list
+    expect(params!.TRACKHEADCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    expect(params!.TRACKLINECOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    expect(params!.TRACKMARKERCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    // Non-color params stay uniform
+    expect(params!.TRACKMARKERSHAPES).toBe("square,square,square");
+    expect(params!.TRACKMARKERSIZES).toBe("4,4,4");
   });
 
   it("raster: changing headColor changes TRACKHEADCOLORS (proves track-style edits flow to emission)", () => {
