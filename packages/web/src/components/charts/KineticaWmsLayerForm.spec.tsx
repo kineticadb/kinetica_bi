@@ -1254,7 +1254,7 @@ describe("Track style + raster param hiding (RENDER-V19-02, COLOR-V19-01)", () =
     expect(screen.queryByLabelText("Point shape")).toBeNull();
   });
 
-  it("Track+Raster: TRACK STYLE contains color inputs for head and trail", () => {
+  it("Track+Raster: TRACK STYLE contains color inputs for head and track line (GAP-54-03 relabel)", () => {
     render(
       <KineticaWmsLayerForm
         config={trackRasterConfig}
@@ -1266,9 +1266,10 @@ describe("Track style + raster param hiding (RENDER-V19-02, COLOR-V19-01)", () =
     expect(headColorInput).toBeInTheDocument();
     expect(headColorInput.type).toBe("color");
 
-    const trailColorInput = screen.getByLabelText("Track trail color (RGB)") as HTMLInputElement;
-    expect(trailColorInput).toBeInTheDocument();
-    expect(trailColorInput.type).toBe("color");
+    // GAP-54-03: "Trail color" → "Track line color" — aria-label updated accordingly
+    const lineColorInput = screen.getByLabelText("Track line color (RGB)") as HTMLInputElement;
+    expect(lineColorInput).toBeInTheDocument();
+    expect(lineColorInput.type).toBe("color");
 
     const headShapeSelect = screen.getByLabelText("Track head shape") as HTMLSelectElement;
     expect(headShapeSelect).toBeInTheDocument();
@@ -1319,5 +1320,154 @@ describe("Track style + raster param hiding (RENDER-V19-02, COLOR-V19-01)", () =
     );
     expect(screen.getByText("CLASS BREAK PARAMS")).toBeInTheDocument();
     expect(screen.getByText("TRACK STYLE")).toBeInTheDocument();
+  });
+});
+
+/*  GAP-54-03 / TRACKFIX-V19-02 — Track line color + width controls (relabelling)  */
+/*                                                                                    */
+/*  These tests assert the renamed controls surface the right accessible labels and  */
+/*  that changing them writes trailColor/trailSize into track_config JSON (the same  */
+/*  fields that wmsUrlBuilder.ts emits as TRACKLINECOLORS/TRACKLINEWIDTHS).          */
+describe("GAP-54-03 TRACKFIX-V19-02 — Track line color and width controls (relabelled)", () => {
+  const trackColumns = [
+    { name: "x", type: "DOUBLE" },
+    { name: "y", type: "DOUBLE" },
+    { name: "TRACKID", type: "INT" },
+    { name: "TIMESTAMP", type: "TIMESTAMP" },
+  ];
+
+  const trackRasterConfig = {
+    spatialMode: "track" as const,
+    renderMode: "raster",
+    track_config: JSON.stringify({
+      enabled: true,
+      xCol: "x",
+      yCol: "y",
+      trackIdAttr: "TRACKID",
+      trackOrderAttr: "TIMESTAMP",
+      trailColor: "FF0000FF",
+      trailSize: 3,
+    }),
+  };
+
+  it("TRACK STYLE shows a 'Track line color' label (not 'Trail color')", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // The visible label text must say "Track line color"
+    expect(screen.getByText("Track line color")).toBeInTheDocument();
+    // "Trail color" must NOT appear anywhere
+    expect(screen.queryByText("Trail color")).toBeNull();
+  });
+
+  it("TRACK STYLE shows a 'Track line width' label (not 'Line width')", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // The visible label text must say "Track line width"
+    expect(screen.getByText("Track line width")).toBeInTheDocument();
+    // "Line width" must NOT appear as a standalone label
+    expect(screen.queryByText("Line width")).toBeNull();
+  });
+
+  it("Track line color control is accessible via 'Track line color (RGB)' aria-label", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const colorSwatch = screen.getByLabelText("Track line color (RGB)") as HTMLInputElement;
+    expect(colorSwatch.type).toBe("color");
+    // The picker should reflect the RGB portion of FF0000FF (blue in AARRGGBB = 0000FF hex)
+    expect(colorSwatch.value).toBe("#0000ff");
+  });
+
+  it("Track line color (AARRGGBB hex) input accessible and shows persisted value", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const hexInput = screen.getByLabelText("Track line color (AARRGGBB hex)") as HTMLInputElement;
+    expect(hexInput).toBeInTheDocument();
+    expect(hexInput.value).toBe("FF0000FF");
+  });
+
+  it("Track line color alpha range accessible via 'Track line color alpha' aria-label", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const alphaRange = screen.getByLabelText("Track line color alpha") as HTMLInputElement;
+    expect(alphaRange.type).toBe("range");
+    expect(alphaRange.min).toBe("0");
+    expect(alphaRange.max).toBe("100");
+  });
+
+  it("Changing track line color hex fires onChange with trailColor written into track_config", () => {
+    const onChange = vi.fn();
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={onChange}
+        columns={trackColumns}
+      />,
+    );
+    const hexInput = screen.getByLabelText("Track line color (AARRGGBB hex)") as HTMLInputElement;
+    fireEvent.change(hexInput, { target: { value: "FF112233" } });
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as Record<string, unknown>;
+    const tc = JSON.parse(lastCall.track_config as string);
+    // trailColor is the field that becomes TRACKLINECOLORS in wmsUrlBuilder.ts
+    expect(tc.trailColor).toBe("FF112233");
+    expect(tc.enabled).toBe(true);
+  });
+
+  it("Changing track line width range fires onChange with trailSize written into track_config", () => {
+    const onChange = vi.fn();
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={onChange}
+        columns={trackColumns}
+      />,
+    );
+    const widthRange = screen.getByLabelText("Track line width") as HTMLInputElement;
+    expect(widthRange.min).toBe("0");
+    expect(widthRange.max).toBe("20");
+    fireEvent.change(widthRange, { target: { value: "7" } });
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as Record<string, unknown>;
+    const tc = JSON.parse(lastCall.track_config as string);
+    // trailSize is the field that becomes TRACKLINEWIDTHS in wmsUrlBuilder.ts
+    expect(tc.trailSize).toBe(7);
+    expect(tc.enabled).toBe(true);
+  });
+
+  it("Track line color + width controls present in Track+Classbreak mode too", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "track" as const, renderMode: "classbreak" }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.getByText("Track line color")).toBeInTheDocument();
+    expect(screen.getByText("Track line width")).toBeInTheDocument();
   });
 });
