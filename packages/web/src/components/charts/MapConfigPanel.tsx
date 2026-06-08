@@ -25,6 +25,8 @@ import {
   getInfoPopupWidthPx,
   getInfoPopupHeightPx,
   getShowShapeMeasurements,
+  getShowScaleBar,
+  getShowFullscreenButton,
 } from "../../lib/mapInfoConfig";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
 // v1.5 Phase 28 (TARGET-V15-01/03) — Spatial filter targets section dependencies
@@ -109,6 +111,9 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
   const showShapeMeasurements = getShowShapeMeasurements({
     showShapeMeasurements: widgetCfg.showShapeMeasurements,
   });
+  // quick-260608-j5k: opt-in OL controls — default false via getters
+  const showScaleBar = getShowScaleBar({ showScaleBar: widgetCfg.showScaleBar });
+  const showFullscreenButton = getShowFullscreenButton({ showFullscreenButton: widgetCfg.showFullscreenButton });
 
   // ─── Phase 28 (TARGET-V15-01) — SPATIAL FILTER TARGETS derivation ─────
   // Read via Phase 28 helper for legacy-default coercion ([] for v1.4 widgets without the field).
@@ -387,6 +392,29 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
             {heightError}
           </div>
         )}
+      </div>
+
+      {/* ─── MAP CONTROLS (quick-260608-j5k) ────────────────────────── */}
+      <div className="config-group">
+        <div className="config-group-label">MAP CONTROLS</div>
+        <label className="config-toggle">
+          <input
+            type="checkbox"
+            aria-label="Show scale bar"
+            checked={showScaleBar}
+            onChange={(e) => onChange({ ...config, showScaleBar: e.target.checked })}
+          />
+          Show scale bar
+        </label>
+        <label className="config-toggle">
+          <input
+            type="checkbox"
+            aria-label="Show fullscreen button"
+            checked={showFullscreenButton}
+            onChange={(e) => onChange({ ...config, showFullscreenButton: e.target.checked })}
+          />
+          Show fullscreen button
+        </label>
       </div>
 
       {/* ─── LAYERS PANEL (Phase 41 PANEL-V17-04/05) ─────────────────── */}

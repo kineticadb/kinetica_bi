@@ -197,6 +197,55 @@ describe("MapConfigPanel — Phase 12 shrunk surface", () => {
   });
 });
 
+describe("MapConfigPanel — quick-260608-j5k MAP CONTROLS checkboxes", () => {
+  beforeEach(() => {
+    _storeState.layers = [];
+    vi.clearAllMocks();
+  });
+
+  it("renders 'Show scale bar' checkbox unchecked when config has no showScaleBar field", () => {
+    render(<MapConfigPanel config={makeConfig()} onChange={vi.fn()} />);
+    const cb = screen.getByLabelText("Show scale bar") as HTMLInputElement;
+    expect(cb).toBeInTheDocument();
+    expect(cb.checked).toBe(false);
+  });
+
+  it("ticking 'Show scale bar' fires onChange with objectContaining({ showScaleBar: true })", () => {
+    const onChange = vi.fn();
+    render(<MapConfigPanel config={makeConfig()} onChange={onChange} />);
+    const cb = screen.getByLabelText("Show scale bar");
+    fireEvent.click(cb);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ showScaleBar: true }));
+  });
+
+  it("renders 'Show fullscreen button' checkbox unchecked when config has no showFullscreenButton field", () => {
+    render(<MapConfigPanel config={makeConfig()} onChange={vi.fn()} />);
+    const cb = screen.getByLabelText("Show fullscreen button") as HTMLInputElement;
+    expect(cb).toBeInTheDocument();
+    expect(cb.checked).toBe(false);
+  });
+
+  it("ticking 'Show fullscreen button' fires onChange with objectContaining({ showFullscreenButton: true })", () => {
+    const onChange = vi.fn();
+    render(<MapConfigPanel config={makeConfig()} onChange={onChange} />);
+    const cb = screen.getByLabelText("Show fullscreen button");
+    fireEvent.click(cb);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ showFullscreenButton: true }));
+  });
+
+  it("renders 'Show scale bar' checked when config.showScaleBar is true", () => {
+    render(<MapConfigPanel config={makeConfig({ showScaleBar: true })} onChange={vi.fn()} />);
+    const cb = screen.getByLabelText("Show scale bar") as HTMLInputElement;
+    expect(cb.checked).toBe(true);
+  });
+
+  it("renders 'Show fullscreen button' checked when config.showFullscreenButton is true", () => {
+    render(<MapConfigPanel config={makeConfig({ showFullscreenButton: true })} onChange={vi.fn()} />);
+    const cb = screen.getByLabelText("Show fullscreen button") as HTMLInputElement;
+    expect(cb.checked).toBe(true);
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  Phase 22 — INFO POPUP section tests                               */
 /* ------------------------------------------------------------------ */
