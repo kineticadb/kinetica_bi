@@ -25,6 +25,7 @@ import {
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
+import { useMapOnlySpatialMaterialize } from "../hooks/useMapOnlySpatialMaterialize";  // Phase 54 (TRACKFIX-V19-09 / GAP-54-10)
 import { useFilterStore } from "../store/filterStore";
 import { useFilterViewStore } from "../store/filterViewStore";
 import { useInfoSelectionStore } from "../store/infoSelectionStore";
@@ -393,6 +394,12 @@ const DashboardOpen = ({
   // DashboardContext so renderers' error-state Retry button can re-fire the
   // cascade for a specific dynamic-view id.
   const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id);
+
+  // TRACKFIX-V19-09 (GAP-54-10): dashboard-scope map-only spatial materialize.
+  // Fires materialize for tables shown ONLY on a map (no chart/records trigger widget).
+  // Mirrors useDynamicViewMaterializeChain; preserves the Phase 30 sole-trigger invariant
+  // — tables with a chart/records widget are skipped here (WidgetRenderer Effect 1 owns them).
+  useMapOnlySpatialMaterialize(dashboard.id, widgets);
 
   // Phase 12: Layer store subscription
   const layers = useDashboardLayersStore((s) => s.layers);

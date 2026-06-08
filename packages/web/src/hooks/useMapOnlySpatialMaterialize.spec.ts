@@ -24,7 +24,8 @@ import { useMapOnlySpatialMaterialize } from "./useMapOnlySpatialMaterialize";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useFilterStore } from "../store/filterStore";
 import { useFilterViewStore } from "../store/filterViewStore";
-import type { WidgetDto, ActiveFilter } from "../api/client";
+import type { WidgetDto } from "../api/client";
+import type { ActiveFilter } from "../store/filterStore";
 
 // ---------------------------------------------------------------------------
 // Mock the client module
@@ -50,6 +51,7 @@ const makeMapWidget = (id: number, tableId: number): WidgetDto => ({
   dashboard_id: 42,
   type: "map",
   title: `Map ${id}`,
+  position: id,
   config: {
     spatialTargets: [
       { tableId, spatialMode: "latlon", lonCol: "x", latCol: "y" },
@@ -65,6 +67,7 @@ const makeMapWidgetWkb = (id: number, tableId: number): WidgetDto => ({
   dashboard_id: 42,
   type: "map",
   title: `Map ${id}`,
+  position: id,
   config: {
     spatialTargets: [{ tableId, spatialMode: "wkb" }],
   },
@@ -82,6 +85,7 @@ const makeTriggerWidget = (
   dashboard_id: 42,
   type,
   title: `Chart ${id}`,
+  position: id,
   config: { tableId },
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
