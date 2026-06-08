@@ -95,3 +95,32 @@ export function getShowShapeMeasurements(
 ): boolean {
   return config.showShapeMeasurements ?? DEFAULT_SHOW_SHAPE_MEASUREMENTS;
 }
+
+/** Default for `showScaleBar` — opt-in (false): legacy widgets show no scale bar. */
+export const DEFAULT_SHOW_SCALE_BAR = false;
+/** Default for `showFullscreenButton` — opt-in (false): legacy widgets show no fullscreen button. */
+export const DEFAULT_SHOW_FULLSCREEN_BUTTON = false;
+
+/**
+ * Read the per-widget opt-in scale bar toggle. Returns DEFAULT_SHOW_SCALE_BAR (false)
+ * when the config carries no `showScaleBar` field — legacy widgets are byte-identical
+ * to today (no ScaleLine control constructed).
+ *
+ * quick-260608-j5k: consumed only by MapChartRenderer's control construction at mount time.
+ */
+export function getShowScaleBar(config: Pick<MapWidgetConfig, "showScaleBar">): boolean {
+  return config.showScaleBar ?? DEFAULT_SHOW_SCALE_BAR;
+}
+
+/**
+ * Read the per-widget opt-in fullscreen button toggle. Returns DEFAULT_SHOW_FULLSCREEN_BUTTON
+ * (false) when the config carries no `showFullscreenButton` field — legacy widgets are
+ * byte-identical to today (no FullScreen control constructed).
+ *
+ * quick-260608-j5k: consumed only by MapChartRenderer's control construction at mount time.
+ */
+export function getShowFullscreenButton(
+  config: Pick<MapWidgetConfig, "showFullscreenButton">,
+): boolean {
+  return config.showFullscreenButton ?? DEFAULT_SHOW_FULLSCREEN_BUTTON;
+}

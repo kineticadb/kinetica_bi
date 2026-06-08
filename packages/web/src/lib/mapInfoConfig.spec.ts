@@ -3,9 +3,13 @@ import {
   DEFAULT_INFO_ENABLED,
   DEFAULT_INFO_RADIUS_PX,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS,
+  DEFAULT_SHOW_SCALE_BAR,
+  DEFAULT_SHOW_FULLSCREEN_BUTTON,
   getInfoEnabled,
   getInfoRadiusPx,
   getShowShapeMeasurements,
+  getShowScaleBar,
+  getShowFullscreenButton,
 } from "./mapInfoConfig";
 import type { MapWidgetConfig } from "./wmsUrlBuilder";
 
@@ -116,6 +120,52 @@ describe("mapInfoConfig — backward-compatible defaults (CONFIG-V14-02)", () =>
 
     it("returns false when explicitly set to false (pill hidden)", () => {
       expect(getShowShapeMeasurements({ showShapeMeasurements: false })).toBe(false);
+    });
+  });
+
+  describe("getShowScaleBar (quick-260608-j5k — opt-in scale bar control)", () => {
+    it("DEFAULT_SHOW_SCALE_BAR is false (opt-in; legacy widgets show no scale bar)", () => {
+      expect(DEFAULT_SHOW_SCALE_BAR).toBe(false);
+    });
+
+    it("returns false when config has no showScaleBar field (legacy widget)", () => {
+      const legacy: Pick<MapWidgetConfig, "showScaleBar"> = {};
+      expect(getShowScaleBar(legacy)).toBe(false);
+    });
+
+    it("returns false when config.showScaleBar === undefined", () => {
+      expect(getShowScaleBar({ showScaleBar: undefined })).toBe(false);
+    });
+
+    it("returns true when config.showScaleBar === true", () => {
+      expect(getShowScaleBar({ showScaleBar: true })).toBe(true);
+    });
+
+    it("returns false when config.showScaleBar === false (explicit opt-out)", () => {
+      expect(getShowScaleBar({ showScaleBar: false })).toBe(false);
+    });
+  });
+
+  describe("getShowFullscreenButton (quick-260608-j5k — opt-in fullscreen button control)", () => {
+    it("DEFAULT_SHOW_FULLSCREEN_BUTTON is false (opt-in; legacy widgets show no fullscreen button)", () => {
+      expect(DEFAULT_SHOW_FULLSCREEN_BUTTON).toBe(false);
+    });
+
+    it("returns false when config has no showFullscreenButton field (legacy widget)", () => {
+      const legacy: Pick<MapWidgetConfig, "showFullscreenButton"> = {};
+      expect(getShowFullscreenButton(legacy)).toBe(false);
+    });
+
+    it("returns false when config.showFullscreenButton === undefined", () => {
+      expect(getShowFullscreenButton({ showFullscreenButton: undefined })).toBe(false);
+    });
+
+    it("returns true when config.showFullscreenButton === true", () => {
+      expect(getShowFullscreenButton({ showFullscreenButton: true })).toBe(true);
+    });
+
+    it("returns false when config.showFullscreenButton === false (explicit opt-out)", () => {
+      expect(getShowFullscreenButton({ showFullscreenButton: false })).toBe(false);
     });
   });
 });

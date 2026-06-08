@@ -137,6 +137,12 @@ export type MapWidgetConfig = {
   // in lib/legendPanelConfig.ts (same pattern as v1.4 Phase 19 mapInfoConfig.ts).
   legendPanelEnabled?: boolean;
   legendPanelCorner?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+  // quick-260608-j5k: opt-in OpenLayers map controls. Both DEFAULT FALSE — legacy widgets
+  // (field absent) get no ScaleLine / no FullScreen, byte-identical to today. Not WMS params;
+  // consumed only by MapChartRenderer's control construction. Defaults resolved via
+  // getShowScaleBar / getShowFullscreenButton in lib/mapInfoConfig.ts.
+  showScaleBar?: boolean;
+  showFullscreenButton?: boolean;
 };
 
 // ─── SPIKE-LOCKED CONSTANTS ──────────────────────────────────────────────────
