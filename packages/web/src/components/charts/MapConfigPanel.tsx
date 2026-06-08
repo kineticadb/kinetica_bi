@@ -27,6 +27,7 @@ import {
   getShowShapeMeasurements,
   getShowScaleBar,
   getShowFullscreenButton,
+  getShowLoadingIndicator,
 } from "../../lib/mapInfoConfig";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
 // v1.5 Phase 28 (TARGET-V15-01/03) — Spatial filter targets section dependencies
@@ -114,6 +115,8 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
   // quick-260608-j5k: opt-in OL controls — default false via getters
   const showScaleBar = getShowScaleBar({ showScaleBar: widgetCfg.showScaleBar });
   const showFullscreenButton = getShowFullscreenButton({ showFullscreenButton: widgetCfg.showFullscreenButton });
+  // quick-260608-rbq: in-map loading indicator — default TRUE via getter (opt-out, not opt-in)
+  const showLoadingIndicator = getShowLoadingIndicator({ showLoadingIndicator: widgetCfg.showLoadingIndicator });
 
   // ─── Phase 28 (TARGET-V15-01) — SPATIAL FILTER TARGETS derivation ─────
   // Read via Phase 28 helper for legacy-default coercion ([] for v1.4 widgets without the field).
@@ -414,6 +417,15 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
             onChange={(e) => onChange({ ...config, showFullscreenButton: e.target.checked })}
           />
           Show fullscreen button
+        </label>
+        <label className="config-toggle">
+          <input
+            type="checkbox"
+            aria-label="Show loading indicator"
+            checked={showLoadingIndicator}
+            onChange={(e) => onChange({ ...config, showLoadingIndicator: e.target.checked })}
+          />
+          Show loading indicator
         </label>
       </div>
 
