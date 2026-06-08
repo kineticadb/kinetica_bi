@@ -930,6 +930,96 @@ export default function KineticaWmsLayerForm({
               />
               <span className="config-range-value">{trackCfg.trailSize ?? TRACK_DEFAULTS.trailSize}</span>
             </label>
+
+            {/* ─── Track marker subgroup (TRACKFIX-V19-05: markerColor/markerShape/markerSize) ─── */}
+            {/* Track marker color — AARRGGBB color input idiom (writes markerColor → TRACKMARKERCOLORS) */}
+            <label className="config-color-field">
+              Track marker color
+              <div className="config-color-row">
+                <input
+                  type="color"
+                  className="config-color-picker"
+                  aria-label="Track marker color (RGB)"
+                  value={`#${rgbFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor)}`}
+                  onChange={(e) =>
+                    onSetTrackField(
+                      "markerColor",
+                      joinAARRGGBB(
+                        alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor),
+                        e.target.value.replace("#", ""),
+                      ),
+                    )
+                  }
+                />
+                <input
+                  type="text"
+                  className="config-color-text"
+                  aria-label="Track marker color (AARRGGBB hex)"
+                  value={normalizeAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor)}
+                  onChange={(e) =>
+                    onSetTrackField(
+                      "markerColor",
+                      normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.markerColor),
+                    )
+                  }
+                />
+              </div>
+            </label>
+            <label className="config-range-field">
+              Track marker color alpha
+              <input
+                type="range"
+                className="config-range"
+                aria-label="Track marker color alpha"
+                min={0}
+                max={100}
+                step={1}
+                value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor))}
+                onChange={(e) =>
+                  onSetTrackField(
+                    "markerColor",
+                    joinAARRGGBB(
+                      alphaPercentToHex(Number(e.target.value)),
+                      rgbFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor),
+                    ),
+                  )
+                }
+              />
+              <span className="config-range-value">
+                {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor))}%
+              </span>
+            </label>
+
+            {/* Track marker shape — reuses POINT_SHAPES (12 options incl "none") → TRACKMARKERSHAPES */}
+            <label className="ds-field-label">
+              Track marker shape
+              <select
+                className="ds-select"
+                aria-label="Track marker shape"
+                value={trackCfg.markerShape ?? TRACK_DEFAULTS.markerShape}
+                onChange={(e) => onSetTrackField("markerShape", e.target.value)}
+              >
+                {POINT_SHAPES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+
+            {/* Track marker size → TRACKMARKERSIZES */}
+            <label className="config-range-field">
+              Track marker size
+              <input
+                type="range"
+                className="config-range"
+                aria-label="Track marker size"
+                min={0}
+                max={20}
+                step={1}
+                value={trackCfg.markerSize ?? TRACK_DEFAULTS.markerSize}
+                onChange={(e) => onSetTrackField("markerSize", Number(e.target.value))}
+              />
+              <span className="config-range-value">{trackCfg.markerSize ?? TRACK_DEFAULTS.markerSize}</span>
+            </label>
           </div>
         )}
 

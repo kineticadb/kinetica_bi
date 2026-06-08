@@ -1471,3 +1471,152 @@ describe("GAP-54-03 TRACKFIX-V19-02 — Track line color and width controls (rel
     expect(screen.getByText("Track line width")).toBeInTheDocument();
   });
 });
+
+/*  TRACKFIX-V19-05 — Track marker controls (markerColor / markerShape / markerSize)  */
+describe("TRACKFIX-V19-05 — Track marker controls", () => {
+  const trackColumns = [
+    { name: "x", type: "DOUBLE" },
+    { name: "y", type: "DOUBLE" },
+    { name: "TRACKID", type: "INT" },
+    { name: "TIMESTAMP", type: "TIMESTAMP" },
+  ];
+
+  const trackRasterConfig = {
+    spatialMode: "track" as const,
+    renderMode: "raster",
+    track_config: JSON.stringify({
+      enabled: true,
+      xCol: "x",
+      yCol: "y",
+      trackIdAttr: "TRACKID",
+      trackOrderAttr: "TIMESTAMP",
+      markerColor: "FF0000FF",
+      markerShape: "none",
+      markerSize: 2,
+    }),
+  };
+
+  it("TRACK STYLE renders a 'Track marker color (RGB)' color swatch input", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const swatch = screen.getByLabelText("Track marker color (RGB)") as HTMLInputElement;
+    expect(swatch).toBeInTheDocument();
+    expect(swatch.type).toBe("color");
+  });
+
+  it("TRACK STYLE renders a 'Track marker color (AARRGGBB hex)' text input", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const hexInput = screen.getByLabelText("Track marker color (AARRGGBB hex)") as HTMLInputElement;
+    expect(hexInput).toBeInTheDocument();
+    expect(hexInput.value).toBe("FF0000FF");
+  });
+
+  it("TRACK STYLE renders a 'Track marker color alpha' range input", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const alphaRange = screen.getByLabelText("Track marker color alpha") as HTMLInputElement;
+    expect(alphaRange).toBeInTheDocument();
+    expect(alphaRange.type).toBe("range");
+    expect(alphaRange.min).toBe("0");
+    expect(alphaRange.max).toBe("100");
+  });
+
+  it("TRACK STYLE renders a 'Track marker shape' select with 12 options (POINT_SHAPES incl none)", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const shapeSelect = screen.getByLabelText("Track marker shape") as HTMLSelectElement;
+    expect(shapeSelect).toBeInTheDocument();
+    expect(shapeSelect.tagName.toLowerCase()).toBe("select");
+    expect(shapeSelect.options.length).toBe(12);
+  });
+
+  it("TRACK STYLE renders a 'Track marker size' range input", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    const sizeRange = screen.getByLabelText("Track marker size") as HTMLInputElement;
+    expect(sizeRange).toBeInTheDocument();
+    expect(sizeRange.type).toBe("range");
+    expect(sizeRange.min).toBe("0");
+    expect(sizeRange.max).toBe("20");
+  });
+
+  it("Editing marker color hex calls onChange with markerColor written into track_config preserving other fields", () => {
+    const onChange = vi.fn();
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={onChange}
+        columns={trackColumns}
+      />,
+    );
+    const hexInput = screen.getByLabelText("Track marker color (AARRGGBB hex)") as HTMLInputElement;
+    fireEvent.change(hexInput, { target: { value: "FF112233" } });
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as Record<string, unknown>;
+    const tc = JSON.parse(lastCall.track_config as string);
+    expect(tc.markerColor).toBe("FF112233");
+    expect(tc.enabled).toBe(true);
+    expect(tc.xCol).toBe("x");
+    expect(tc.yCol).toBe("y");
+  });
+
+  it("Marker controls NOT present in latlon+raster (control: only appears under track spatialMode)", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{ spatialMode: "latlon", renderMode: "raster" }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    expect(screen.queryByLabelText("Track marker color (RGB)")).toBeNull();
+    expect(screen.queryByLabelText("Track marker shape")).toBeNull();
+    expect(screen.queryByLabelText("Track marker size")).toBeNull();
+  });
+
+  it("TRACK STYLE shows all 8 controls: head color/shape/size, line color/width, marker color/shape/size", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackRasterConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // Head controls
+    expect(screen.getByLabelText("Track head color (RGB)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track head shape")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track head size")).toBeInTheDocument();
+    // Line controls
+    expect(screen.getByLabelText("Track line color (RGB)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track line width")).toBeInTheDocument();
+    // Marker controls
+    expect(screen.getByLabelText("Track marker color (RGB)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track marker shape")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track marker size")).toBeInTheDocument();
+  });
+});
