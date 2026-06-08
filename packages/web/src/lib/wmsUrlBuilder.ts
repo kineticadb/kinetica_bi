@@ -143,6 +143,10 @@ export type MapWidgetConfig = {
   // getShowScaleBar / getShowFullscreenButton in lib/mapInfoConfig.ts.
   showScaleBar?: boolean;
   showFullscreenButton?: boolean;
+  // quick-260608-rbq: opt-in in-map WMS loading indicator. DEFAULT TRUE (legacy widgets
+  // with the field absent get the indicator ON). Not a WMS param — consumed only by
+  // MapChartRenderer's badge render via getShowLoadingIndicator in lib/mapInfoConfig.ts.
+  showLoadingIndicator?: boolean;
 };
 
 // ─── SPIKE-LOCKED CONSTANTS ──────────────────────────────────────────────────

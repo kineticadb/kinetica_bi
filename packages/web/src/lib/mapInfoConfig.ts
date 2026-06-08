@@ -124,3 +124,20 @@ export function getShowFullscreenButton(
 ): boolean {
   return config.showFullscreenButton ?? DEFAULT_SHOW_FULLSCREEN_BUTTON;
 }
+
+/** Default for `showLoadingIndicator` — DEFAULT TRUE: legacy widgets (field absent) get the indicator ON. */
+export const DEFAULT_SHOW_LOADING_INDICATOR = true;
+
+/**
+ * Read the per-widget in-map WMS loading indicator toggle. Returns DEFAULT_SHOW_LOADING_INDICATOR
+ * (true) when the config carries no `showLoadingIndicator` field — legacy widgets automatically
+ * get the indicator ON (opt-out, not opt-in; mirrors getInfoEnabled's default-true pattern).
+ *
+ * quick-260608-rbq: consumed only by MapChartRenderer's badge render (top-center "Loading…"
+ * overlay driven by imageloadstart/imageloadend source events).
+ */
+export function getShowLoadingIndicator(
+  config: Pick<MapWidgetConfig, "showLoadingIndicator">,
+): boolean {
+  return config.showLoadingIndicator ?? DEFAULT_SHOW_LOADING_INDICATOR;
+}
