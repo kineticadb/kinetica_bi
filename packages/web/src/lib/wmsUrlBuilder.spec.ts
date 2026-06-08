@@ -894,7 +894,8 @@ describe("buildWmsParams — Track block (SCHEMA-V17-04)", () => {
     expect(params!.SHAPELINEWIDTHS).toBeUndefined();
   });
 
-  it("under STYLES=cb_raster: emits N comma-separated TRACK_* params matching cb_config.breaks.length (incl new marker params)", () => {
+  it("under STYLES=cb_raster: emits per-break TRACK_* colors (TRACKFIX-V19-06: one break color drives head/line/marker positionally with CB_VALS)", () => {
+    // breaks have colors [FF000000, FFFFFFFF, FF112233] — per-break, NOT single color repeated
     const cbConfigJson = JSON.stringify({
       attr: "x",
       valsType: "numeric",
@@ -917,14 +918,37 @@ describe("buildWmsParams — Track block (SCHEMA-V17-04)", () => {
       { cb_config: cbConfigJson, track_config: trackJson },
     );
     expect(params!.DOTRACKS).toBe("TRUE");
-    expect(params!.TRACKHEADCOLORS).toBe("FFFFFFFF,FFFFFFFF,FFFFFFFF");
-    expect(params!.TRACKLINECOLORS).toBe("FF00FF00,FF00FF00,FF00FF00");
+    // TRACKFIX-V19-06: per-break color list from cb.breaks[].color (NOT single color × N)
+    expect(params!.TRACKHEADCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    expect(params!.TRACKLINECOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    expect(params!.TRACKMARKERCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    // Non-color params stay uniform expand(N)
     expect(params!.TRACKHEADSIZES).toBe("10,10,10");
     expect(params!.TRACKLINEWIDTHS).toBe("3,3,3");
     expect(params!.TRACKHEADSHAPES).toBe("circle,circle,circle");
-    expect(params!.TRACKMARKERCOLORS).toBe("FF0000FF,FF0000FF,FF0000FF");
     expect(params!.TRACKMARKERSHAPES).toBe("none,none,none");
     expect(params!.TRACKMARKERSIZES).toBe("2,2,2");
+  });
+
+  it("under STYLES=cb_raster with null cb_config: TRACK_* colors fall back to single TRACK STYLE color (no commas)", () => {
+    // When cb_config is null or unconfigured, cbColors is null → colorList falls back to expand(single)
+    const trackJsonLocal = JSON.stringify({
+      enabled: true,
+      headColor: "FFFFFFFF",
+      trailColor: "FF00FF00",
+      markerColor: "FF0000FF",
+      headSize: 10,
+    });
+    const params = buildWmsParams(
+      { ...baseConfig, renderMode: "classbreak" },
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJsonLocal },
+    );
+    expect(params!.DOTRACKS).toBe("TRUE");
+    // null cb_config → n=1, cbColors=null → single TRACK STYLE color, no commas
+    expect(params!.TRACKHEADCOLORS).toBe("FFFFFFFF");
+    expect(params!.TRACKLINECOLORS).toBe("FF00FF00");
+    expect(params!.TRACKMARKERCOLORS).toBe("FF0000FF");
   });
 
   it("NO Track params emitted when trackConfig.enabled === false", () => {
@@ -1110,8 +1134,8 @@ describe("buildWmsParams — Track emission under spatialMode=track (RENDER-V19-
     expect(params!.GEO_ATTR).toBeUndefined();
   });
 
-  it("cb_raster: track+enabled emits N comma-separated TRACK_* matching breaks.length (byte-lock per Phase 37 spike Decision Record)", () => {
-    // 3-break cb_config — reuses the numeric shape from the SCHEMA-V17-03 describe (~line 808).
+  it("cb_raster: track+enabled emits per-break TRACK_* colors positionally matching CB_VALS (TRACKFIX-V19-06)", () => {
+    // 3-break cb_config with distinct colors — per-break emission, NOT single color × N.
     const cbJson = JSON.stringify({
       attr: "x",
       valsType: "numeric",
@@ -1128,9 +1152,11 @@ describe("buildWmsParams — Track emission under spatialMode=track (RENDER-V19-
     );
     expect(params).not.toBeNull();
     expect(params!.DOTRACKS).toBe("TRUE");
-    // N = 3 — each TRACK_* value is repeated 3 times comma-separated.
-    expect(params!.TRACKHEADCOLORS).toBe("FFFF0000,FFFF0000,FFFF0000");
-    expect(params!.TRACKLINECOLORS).toBe("FF0000FF,FF0000FF,FF0000FF");
+    // TRACKFIX-V19-06: per-break colors from cb.breaks[].color, positionally matching CB_VALS
+    expect(params!.TRACKHEADCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    expect(params!.TRACKLINECOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    expect(params!.TRACKMARKERCOLORS).toBe("FF000000,FFFFFFFF,FF112233");
+    // Non-color params stay uniform expand(N)
     expect(params!.TRACKHEADSIZES).toBe("8,8,8");
     expect(params!.TRACKLINEWIDTHS).toBe("2,2,2");
   });
