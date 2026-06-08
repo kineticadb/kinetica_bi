@@ -94,3 +94,59 @@ describe("buildSpatialColumns — track branch (Phase 52)", () => {
     });
   });
 });
+
+// GAP-54-08 / TRACKFIX-V19-07 repro test.
+//
+// Root cause: track_config is a TOP-LEVEL DashboardLayerDto column, NOT inside
+// layer.config. At all 3 info-handler call sites, cfg = layer.config is passed
+// without track_config merged in, so cfg.track_config is undefined →
+// coalesceTrackConfig(null) → {enabled:false} → !xCol → returns null →
+// errorCount++/continue → "Failed to fetch info" toast with NO network call.
+//
+// Fix: buildSpatialColumns accepts a second optional trackConfigJson param and
+// uses it for the track branch instead of reading from cfg. Call sites thread
+// layer.track_config as the second argument.
+describe("buildSpatialColumns — TRACKFIX-V19-07: track_config as second param (GAP-54-08)", () => {
+  const realisticTrackConfig = JSON.stringify({
+    enabled: true,
+    xCol: "X",
+    yCol: "Y",
+    trackIdAttr: "TRACKID",
+    trackOrderAttr: "TIMESTAMP",
+  });
+
+  it("RED→GREEN: track mode with track_config as 2nd arg returns { lonCol, latCol } even when cfg has no track_config", () => {
+    // Simulate the real call-site: cfg = layer.config (no track_config inside)
+    const cfg: Partial<MapWidgetConfig> = { spatialMode: "track" };
+    // Pass layer.track_config as the second argument (the fix)
+    expect(buildSpatialColumns(cfg, realisticTrackConfig)).toEqual({
+      lonCol: "X",
+      latCol: "Y",
+    });
+  });
+
+  it("2nd-arg null with no cfg.track_config returns null (no regression)", () => {
+    const cfg: Partial<MapWidgetConfig> = { spatialMode: "track" };
+    expect(buildSpatialColumns(cfg, null)).toBeNull();
+  });
+
+  it("2nd-arg undefined falls back to cfg.track_config (backward compat for existing tests)", () => {
+    const trackConfig = JSON.stringify({ enabled: true, xCol: "LON", yCol: "LAT" });
+    const cfg = { spatialMode: "track" as const, track_config: trackConfig };
+    expect(buildSpatialColumns(cfg as Partial<MapWidgetConfig>, undefined)).toEqual({
+      lonCol: "LON",
+      latCol: "LAT",
+    });
+  });
+
+  it("2nd-arg takes precedence over cfg.track_config when both present", () => {
+    // cfg.track_config has wrong columns; 2nd arg has correct ones
+    const cfgTrackConfig = JSON.stringify({ enabled: true, xCol: "WRONG_X", yCol: "WRONG_Y" });
+    const layerTrackConfig = JSON.stringify({ enabled: true, xCol: "REAL_X", yCol: "REAL_Y" });
+    const cfg = { spatialMode: "track" as const, track_config: cfgTrackConfig };
+    expect(buildSpatialColumns(cfg as Partial<MapWidgetConfig>, layerTrackConfig)).toEqual({
+      lonCol: "REAL_X",
+      latCol: "REAL_Y",
+    });
+  });
+});

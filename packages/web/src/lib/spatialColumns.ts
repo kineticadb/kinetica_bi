@@ -21,6 +21,13 @@ import { coalesceTrackConfig } from "./trackConfig";
 
 export function buildSpatialColumns(
   cfg: Partial<MapWidgetConfig>,
+  /** TRACKFIX-V19-07 (GAP-54-08): track_config is a TOP-LEVEL DashboardLayerDto column,
+   *  NOT a key inside layer.config. Callers must thread layer.track_config here so the
+   *  track branch can resolve xCol/yCol. When provided (non-undefined), this value takes
+   *  precedence over any cfg.track_config (type-asserted fallback). When undefined, falls
+   *  back to cfg.track_config for backward compatibility with existing tests that pass
+   *  track_config on the cfg object directly. */
+  trackConfigJson?: string | null,
 ): SpatialColumns | null {
   if (cfg.spatialMode === "latlon") {
     if (!cfg.lonColumn || !cfg.latColumn) return null;
@@ -38,8 +45,16 @@ export function buildSpatialColumns(
   // The track layer stores x/y column names inside track_config (via coalesceTrackConfig).
   // buildSpatialColumns translates to { lonCol, latCol } so downstream info-query consumers
   // receive the standard latlon contract without needing to know about track_config.
+  //
+  // TRACKFIX-V19-07: When trackConfigJson is provided (non-undefined), it takes precedence
+  // over cfg.track_config — the caller passes layer.track_config (the top-level DTO field).
+  // When undefined, fall back to cfg.track_config (type-asserted) for backward compat.
   if (cfg.spatialMode === "track") {
-    const tc = coalesceTrackConfig((cfg as { track_config?: string | null }).track_config ?? null);
+    const rawTrackConfig =
+      trackConfigJson !== undefined
+        ? trackConfigJson
+        : (cfg as { track_config?: string | null }).track_config ?? null;
+    const tc = coalesceTrackConfig(rawTrackConfig);
     if (!tc.xCol || !tc.yCol) return null;
     return { lonCol: tc.xCol, latCol: tc.yCol };
   }
