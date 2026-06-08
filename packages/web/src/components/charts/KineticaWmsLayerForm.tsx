@@ -847,14 +847,24 @@ export default function KineticaWmsLayerForm({
               </select>
             </label>
 
-            {/* Trail color — AARRGGBB color input idiom */}
+            {/*
+             * GAP-54-03 (TRACKFIX-V19-02): Relabelled "Trail color" → "Track line color"
+             * and "Line width" → "Track line width" for operator discoverability.
+             * The underlying track_config fields and WMS emission are UNCHANGED:
+             *   trailColor  → TRACKLINECOLORS  (wmsUrlBuilder.ts ~449)
+             *   trailSize   → TRACKLINEWIDTHS  (wmsUrlBuilder.ts ~455-457)
+             * Do NOT introduce a separate trail vs. line pair — Kinetica exposes a single
+             * connecting-line color+width (TRACKLINECOLORS/TRACKLINEWIDTHS). If per-segment
+             * styling is needed in the future that requires a new Kinetica param, open a spike.
+             */}
+            {/* Track line color — AARRGGBB color input idiom (writes trailColor → TRACKLINECOLORS) */}
             <label className="config-color-field">
-              Trail color
+              Track line color
               <div className="config-color-row">
                 <input
                   type="color"
                   className="config-color-picker"
-                  aria-label="Track trail color (RGB)"
+                  aria-label="Track line color (RGB)"
                   value={`#${rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}`}
                   onChange={(e) =>
                     onSetTrackField(
@@ -869,7 +879,7 @@ export default function KineticaWmsLayerForm({
                 <input
                   type="text"
                   className="config-color-text"
-                  aria-label="Track trail color (AARRGGBB hex)"
+                  aria-label="Track line color (AARRGGBB hex)"
                   value={normalizeAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}
                   onChange={(e) =>
                     onSetTrackField(
@@ -881,11 +891,11 @@ export default function KineticaWmsLayerForm({
               </div>
             </label>
             <label className="config-range-field">
-              Trail color alpha
+              Track line color alpha
               <input
                 type="range"
                 className="config-range"
-                aria-label="Track trail color alpha"
+                aria-label="Track line color alpha"
                 min={0}
                 max={100}
                 step={1}
@@ -905,9 +915,9 @@ export default function KineticaWmsLayerForm({
               </span>
             </label>
 
-            {/* Line width (trail thickness → trailSize) */}
+            {/* Track line width (writes trailSize → TRACKLINEWIDTHS) */}
             <label className="config-range-field">
-              Line width
+              Track line width
               <input
                 type="range"
                 className="config-range"
