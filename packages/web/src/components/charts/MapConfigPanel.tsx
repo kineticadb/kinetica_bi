@@ -496,13 +496,21 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
           const rowColumns: Column[] = rowTable
             ? Object.entries(rowTable.columns).map(([name, type]) => ({ name, type }))
             : [];
+          // TRACKFIX-V19-08: coerce any legacy stored spatialMode:"track" to "latlon"
+          // for display purposes. SpatialTarget is a 3-mode wire union; "track" is
+          // never valid as a filter target mode (isSpatialTargetEligible has no track
+          // branch). A track-shaped table's target is always stored as latlon+X+Y
+          // at new-row / changeTable time; this coercion is a defensive guard for
+          // any legacy rows that slipped through before the Phase 52 partial fix.
+          const displayMode: SpatialMode =
+            (target.spatialMode as string) === "track" ? "latlon" : target.spatialMode;
           const validColumns =
-            target.spatialMode === "wkb"
+            displayMode === "wkb"
               ? []
-              : getValidSpatialColumns(rowColumns, target.spatialMode);
-          const eligible = isSpatialTargetEligible(target);
-          const showIncomplete = !eligible && target.spatialMode !== "wkb";
-          const rowKey = `${target.tableId}-${target.spatialMode}-${idx}`;
+              : getValidSpatialColumns(rowColumns, displayMode);
+          const eligible = isSpatialTargetEligible({ ...target, spatialMode: displayMode });
+          const showIncomplete = !eligible && displayMode !== "wkb";
+          const rowKey = `${target.tableId}-${displayMode}-${idx}`;
 
           const patchRow = (patch: Partial<SpatialTarget>) => {
             const nextTargets = spatialTargets.map((t, i) =>
@@ -557,14 +565,19 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
           };
 
           const changeMode = (newMode: SpatialMode) => {
-            // Stale-column clear when mode changes (mirrors KineticaWmsLayerForm onSelectSpatialMode at line 393-406)
+            // TRACKFIX-V19-08: when switching to latlon for a track-shaped table,
+            // pre-populate lonCol/latCol from isTrackTable instead of leaving them
+            // undefined. When switching AWAY from latlon, only clear mode-irrelevant
+            // columns (preserving columns relevant to the new mode reduces re-work).
+            const trackMatchForMode =
+              newMode === "latlon" ? isTrackTable(rowColumns) : null;
             const nextTargets = spatialTargets.map((t, i) =>
               i === idx
                 ? {
                     tableId: t.tableId,
                     spatialMode: newMode,
-                    lonCol: undefined,
-                    latCol: undefined,
+                    lonCol: trackMatchForMode ? trackMatchForMode.xCol : undefined,
+                    latCol: trackMatchForMode ? trackMatchForMode.yCol : undefined,
                     spatialCol: undefined,
                   }
                 : t,
@@ -614,7 +627,7 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
                       type="radio"
                       name={`spatial-target-mode-${idx}`}
                       value={m}
-                      checked={target.spatialMode === m}
+                      checked={displayMode === m}
                       onChange={() => changeMode(m)}
                     />
                     <span>{SPATIAL_MODE_LABELS[m]}</span>
@@ -624,7 +637,7 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
 
               {/* Line 3: mode-dependent column picker(s) OR WKB warning */}
               <div className="config-spatial-target-row-line3">
-                {target.spatialMode === "latlon" && (
+                {displayMode === "latlon" && (
                   <>
                     <label className="ds-field-label">
                       Longitude column
@@ -664,7 +677,7 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
                     </label>
                   </>
                 )}
-                {target.spatialMode === "wkt" && (
+                {displayMode === "wkt" && (
                   <label className="ds-field-label">
                     Spatial column
                     <select
@@ -684,7 +697,7 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
                     </select>
                   </label>
                 )}
-                {target.spatialMode === "wkb" && (
+                {displayMode === "wkb" && (
                   <div
                     className="config-spatial-target-wkb-warning"
                     role="alert"

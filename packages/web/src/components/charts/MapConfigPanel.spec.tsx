@@ -958,9 +958,10 @@ describe("MapConfigPanel — TRACKFIX-V19-08: track target translation", () => {
 
   // TRK-6: changeMode latlon→wkt→latlon — switching back to latlon for a track
   // table repopulates lonCol/latCol from isTrackTable (columns are NOT wiped).
+  // Uses rerender to simulate the parent applying the intermediate config update.
   it("TRK-6: changeMode latlon→wkt→latlon on a track table repopulates lonCol/latCol (not wiped)", () => {
     const onChange = vi.fn();
-    render(
+    const { rerender } = render(
       <MapConfigPanel
         config={makeConfig({
           spatialTargets: [
@@ -975,6 +976,15 @@ describe("MapConfigPanel — TRACKFIX-V19-08: track target translation", () => {
     fireEvent.click(screen.getByRole("radio", { name: "WKT geometry column" }));
     const afterWkt = onChange.mock.calls[0][0].spatialTargets[0];
     expect(afterWkt.spatialMode).toBe("wkt");
+
+    // Simulate parent applying the update (controlled component pattern)
+    rerender(
+      <MapConfigPanel
+        config={makeConfig({ spatialTargets: [afterWkt] })}
+        onChange={onChange}
+        tables={makeTrackTables()}
+      />,
+    );
 
     // Step 2: switch back to latlon — columns should be repopulated for track table
     onChange.mockClear();
