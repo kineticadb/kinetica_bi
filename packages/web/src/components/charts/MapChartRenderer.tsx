@@ -1464,7 +1464,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         const tableMeta = tables.find((t) => t.id === layer.table_id);
         if (!tableMeta) { errorCount++; continue; }
         const cfg = layer.config as Partial<MapWidgetConfig>;
-        const spatialColumns = buildSpatialColumns(cfg);
+        // TRACKFIX-V19-07 (GAP-54-08): thread layer.track_config as the 2nd arg so
+        // buildSpatialColumns can resolve xCol/yCol for track-mode layers. track_config
+        // is a top-level DashboardLayerDto column — it is NOT inside layer.config.
+        const spatialColumns = buildSpatialColumns(cfg, layer.track_config);
         if (!spatialColumns) { errorCount++; continue; }
 
         // Pick the FROM target for the info-query SQL. The server's info-query

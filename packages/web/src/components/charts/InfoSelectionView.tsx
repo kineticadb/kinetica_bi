@@ -182,7 +182,10 @@ export default function InfoSelectionView({
     if (!tableMeta) return;
 
     const cfg = layer.config as Partial<MapWidgetConfig>;
-    const spatialColumns = buildSpatialColumns(cfg);
+    // TRACKFIX-V19-07 (GAP-54-08): thread layer.track_config as the 2nd arg so
+    // buildSpatialColumns can resolve xCol/yCol for track-mode layers. track_config
+    // is a top-level DashboardLayerDto column — it is NOT inside layer.config.
+    const spatialColumns = buildSpatialColumns(cfg, layer.track_config);
     if (!spatialColumns) return;
 
     // Resolve FROM target — dv-bound layers query the DYNAMIC VIEW (not the
@@ -258,7 +261,10 @@ export default function InfoSelectionView({
     if (!tableMeta) return false;
 
     const cfg = layer.config as Partial<MapWidgetConfig>;
-    const spatialColumns = buildSpatialColumns(cfg);
+    // TRACKFIX-V19-07 (GAP-54-08): thread layer.track_config as the 2nd arg so
+    // buildSpatialColumns can resolve xCol/yCol for track-mode layers. track_config
+    // is a top-level DashboardLayerDto column — it is NOT inside layer.config.
+    const spatialColumns = buildSpatialColumns(cfg, layer.track_config);
     if (!spatialColumns) return false;
 
     // Resolve FROM target — fresh lookup at fetch time so a filter / dv
