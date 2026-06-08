@@ -1034,7 +1034,12 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       // status changes — Effect 2 fires when dynamicViewsKey moves. A previously-materialized
       // dv layer that flips to non-materialized must be REMOVED from the visible stack.
       const cfg = layer.config as Record<string, unknown>;
-      if (!isConfigComplete(cfg as Partial<MapWidgetConfig>)) continue;
+      // GAP-54-01 (TRACKFIX-V19-01): track_config is a TOP-LEVEL DashboardLayerDto column,
+      // not a key inside layer.config. isConfigComplete's track branch reads config.track_config,
+      // so merge the top-level field in before the gate — mirrors LayersModal:557-561 (form
+      // edit merge) and the buildWmsParams call at ~1079 (already reads layer.track_config).
+      const cfgForGate = { ...cfg, track_config: layer.track_config };
+      if (!isConfigComplete(cfgForGate as Partial<MapWidgetConfig>)) continue;
 
       // CRITICAL FIX: use top-level `layer.table_id` (DashboardLayerDto column, Phase 12+).
       // The config-embedded tableId is always undefined in Phase 12.
