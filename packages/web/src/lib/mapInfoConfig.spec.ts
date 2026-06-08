@@ -5,11 +5,13 @@ import {
   DEFAULT_SHOW_SHAPE_MEASUREMENTS,
   DEFAULT_SHOW_SCALE_BAR,
   DEFAULT_SHOW_FULLSCREEN_BUTTON,
+  DEFAULT_SHOW_LOADING_INDICATOR,
   getInfoEnabled,
   getInfoRadiusPx,
   getShowShapeMeasurements,
   getShowScaleBar,
   getShowFullscreenButton,
+  getShowLoadingIndicator,
 } from "./mapInfoConfig";
 import type { MapWidgetConfig } from "./wmsUrlBuilder";
 
@@ -166,6 +168,29 @@ describe("mapInfoConfig — backward-compatible defaults (CONFIG-V14-02)", () =>
 
     it("returns false when config.showFullscreenButton === false (explicit opt-out)", () => {
       expect(getShowFullscreenButton({ showFullscreenButton: false })).toBe(false);
+    });
+  });
+
+  describe("getShowLoadingIndicator (quick-260608-rbq — default-ON map loading indicator)", () => {
+    it("DEFAULT_SHOW_LOADING_INDICATOR is true (default-ON; legacy widgets get the indicator)", () => {
+      expect(DEFAULT_SHOW_LOADING_INDICATOR).toBe(true);
+    });
+
+    it("returns true when config has no showLoadingIndicator field (legacy widget — default ON)", () => {
+      const legacy: Pick<MapWidgetConfig, "showLoadingIndicator"> = {};
+      expect(getShowLoadingIndicator(legacy)).toBe(true);
+    });
+
+    it("returns true when config.showLoadingIndicator === undefined", () => {
+      expect(getShowLoadingIndicator({ showLoadingIndicator: undefined })).toBe(true);
+    });
+
+    it("returns true when config.showLoadingIndicator === true", () => {
+      expect(getShowLoadingIndicator({ showLoadingIndicator: true })).toBe(true);
+    });
+
+    it("returns false when config.showLoadingIndicator === false (indicator explicitly disabled)", () => {
+      expect(getShowLoadingIndicator({ showLoadingIndicator: false })).toBe(false);
     });
   });
 });
