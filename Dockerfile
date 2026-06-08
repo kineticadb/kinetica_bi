@@ -19,7 +19,7 @@ COPY packages/server/package.json ./packages/server/
 RUN npm ci --omit=dev
 
 FROM nginx:1.27-alpine AS web
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/packages/web/dist /usr/share/nginx/html
 
 FROM node:20-alpine AS server
