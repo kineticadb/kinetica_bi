@@ -1530,4 +1530,23 @@ describe("trackContext per-break advanced hiding (RENDER-V19-03)", () => {
     // Advanced panel appears
     expect(screen.getByTestId("cb-row-advanced-0")).toBeInTheDocument();
   });
+
+  it("trackContext=true (TRACKFIX-V19-06): per-break color picker PRESENT and editable; advanced chevron ABSENT", () => {
+    // Spec: full normal CB builder shown under track+CB — per-break color picker visible/editable.
+    // Only the per-row advanced point/shape panel is hidden (trackContext gate). Color picker is NOT gated.
+    render(
+      <CbConfigForm
+        config={cbConfigWithBreaks}
+        onChange={onChange}
+        columns={baseColumns}
+        trackContext={true}
+      />,
+    );
+    // Per-break color picker (RGB swatch) must be PRESENT for each break
+    expect(screen.getByLabelText("Color (RGB) for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Color (RGB) for break 2")).toBeInTheDocument();
+    // Per-break advanced chevron must be ABSENT (trackContext hides only the advanced panel)
+    expect(screen.queryByLabelText("Toggle advanced for row 1")).toBeNull();
+    expect(screen.queryByLabelText("Toggle advanced for row 2")).toBeNull();
+  });
 });

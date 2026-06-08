@@ -758,63 +758,67 @@ export default function KineticaWmsLayerForm({
               TRACK STYLE
             </label>
 
-            {/* Head color — AARRGGBB color input idiom (mirrors pointColor) */}
-            <label className="config-color-field">
-              Head color
-              <div className="config-color-row">
-                <input
-                  type="color"
-                  className="config-color-picker"
-                  aria-label="Track head color (RGB)"
-                  value={`#${rgbFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor)}`}
-                  onChange={(e) =>
-                    onSetTrackField(
-                      "headColor",
-                      joinAARRGGBB(
-                        alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor),
-                        e.target.value.replace("#", ""),
-                      ),
-                    )
-                  }
-                />
-                <input
-                  type="text"
-                  className="config-color-text"
-                  aria-label="Track head color (AARRGGBB hex)"
-                  value={normalizeAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor)}
-                  onChange={(e) =>
-                    onSetTrackField(
-                      "headColor",
-                      normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.headColor),
-                    )
-                  }
-                />
-              </div>
-            </label>
-            <label className="config-range-field">
-              Head color alpha
-              <input
-                type="range"
-                className="config-range"
-                aria-label="Track head color alpha"
-                min={0}
-                max={100}
-                step={1}
-                value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor))}
-                onChange={(e) =>
-                  onSetTrackField(
-                    "headColor",
-                    joinAARRGGBB(
-                      alphaPercentToHex(Number(e.target.value)),
-                      rgbFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor),
-                    ),
-                  )
-                }
-              />
-              <span className="config-range-value">
-                {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor))}%
-              </span>
-            </label>
+            {/* Head color — hidden under classbreak (per-break colors drive TRACKHEADCOLORS; TRACKFIX-V19-06) */}
+            {effectiveRenderMode !== "classbreak" && (
+              <>
+                <label className="config-color-field">
+                  Head color
+                  <div className="config-color-row">
+                    <input
+                      type="color"
+                      className="config-color-picker"
+                      aria-label="Track head color (RGB)"
+                      value={`#${rgbFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor)}`}
+                      onChange={(e) =>
+                        onSetTrackField(
+                          "headColor",
+                          joinAARRGGBB(
+                            alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor),
+                            e.target.value.replace("#", ""),
+                          ),
+                        )
+                      }
+                    />
+                    <input
+                      type="text"
+                      className="config-color-text"
+                      aria-label="Track head color (AARRGGBB hex)"
+                      value={normalizeAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor)}
+                      onChange={(e) =>
+                        onSetTrackField(
+                          "headColor",
+                          normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.headColor),
+                        )
+                      }
+                    />
+                  </div>
+                </label>
+                <label className="config-range-field">
+                  Head color alpha
+                  <input
+                    type="range"
+                    className="config-range"
+                    aria-label="Track head color alpha"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor))}
+                    onChange={(e) =>
+                      onSetTrackField(
+                        "headColor",
+                        joinAARRGGBB(
+                          alphaPercentToHex(Number(e.target.value)),
+                          rgbFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor),
+                        ),
+                      )
+                    }
+                  />
+                  <span className="config-range-value">
+                    {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.headColor ?? TRACK_DEFAULTS.headColor))}%
+                  </span>
+                </label>
+              </>
+            )}
 
             {/* Head size */}
             <label className="config-range-field">
@@ -857,63 +861,67 @@ export default function KineticaWmsLayerForm({
              * connecting-line color+width (TRACKLINECOLORS/TRACKLINEWIDTHS). If per-segment
              * styling is needed in the future that requires a new Kinetica param, open a spike.
              */}
-            {/* Track line color — AARRGGBB color input idiom (writes trailColor → TRACKLINECOLORS) */}
-            <label className="config-color-field">
-              Track line color
-              <div className="config-color-row">
-                <input
-                  type="color"
-                  className="config-color-picker"
-                  aria-label="Track line color (RGB)"
-                  value={`#${rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}`}
-                  onChange={(e) =>
-                    onSetTrackField(
-                      "trailColor",
-                      joinAARRGGBB(
-                        alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor),
-                        e.target.value.replace("#", ""),
-                      ),
-                    )
-                  }
-                />
-                <input
-                  type="text"
-                  className="config-color-text"
-                  aria-label="Track line color (AARRGGBB hex)"
-                  value={normalizeAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}
-                  onChange={(e) =>
-                    onSetTrackField(
-                      "trailColor",
-                      normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.trailColor),
-                    )
-                  }
-                />
-              </div>
-            </label>
-            <label className="config-range-field">
-              Track line color alpha
-              <input
-                type="range"
-                className="config-range"
-                aria-label="Track line color alpha"
-                min={0}
-                max={100}
-                step={1}
-                value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor))}
-                onChange={(e) =>
-                  onSetTrackField(
-                    "trailColor",
-                    joinAARRGGBB(
-                      alphaPercentToHex(Number(e.target.value)),
-                      rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor),
-                    ),
-                  )
-                }
-              />
-              <span className="config-range-value">
-                {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor))}%
-              </span>
-            </label>
+            {/* Track line color — hidden under classbreak (per-break colors drive TRACKLINECOLORS; TRACKFIX-V19-06) */}
+            {effectiveRenderMode !== "classbreak" && (
+              <>
+                <label className="config-color-field">
+                  Track line color
+                  <div className="config-color-row">
+                    <input
+                      type="color"
+                      className="config-color-picker"
+                      aria-label="Track line color (RGB)"
+                      value={`#${rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}`}
+                      onChange={(e) =>
+                        onSetTrackField(
+                          "trailColor",
+                          joinAARRGGBB(
+                            alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor),
+                            e.target.value.replace("#", ""),
+                          ),
+                        )
+                      }
+                    />
+                    <input
+                      type="text"
+                      className="config-color-text"
+                      aria-label="Track line color (AARRGGBB hex)"
+                      value={normalizeAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor)}
+                      onChange={(e) =>
+                        onSetTrackField(
+                          "trailColor",
+                          normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.trailColor),
+                        )
+                      }
+                    />
+                  </div>
+                </label>
+                <label className="config-range-field">
+                  Track line color alpha
+                  <input
+                    type="range"
+                    className="config-range"
+                    aria-label="Track line color alpha"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor))}
+                    onChange={(e) =>
+                      onSetTrackField(
+                        "trailColor",
+                        joinAARRGGBB(
+                          alphaPercentToHex(Number(e.target.value)),
+                          rgbFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor),
+                        ),
+                      )
+                    }
+                  />
+                  <span className="config-range-value">
+                    {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.trailColor ?? TRACK_DEFAULTS.trailColor))}%
+                  </span>
+                </label>
+              </>
+            )}
 
             {/* Track line width (writes trailSize → TRACKLINEWIDTHS) */}
             <label className="config-range-field">
@@ -932,63 +940,67 @@ export default function KineticaWmsLayerForm({
             </label>
 
             {/* ─── Track marker subgroup (TRACKFIX-V19-05: markerColor/markerShape/markerSize) ─── */}
-            {/* Track marker color — AARRGGBB color input idiom (writes markerColor → TRACKMARKERCOLORS) */}
-            <label className="config-color-field">
-              Track marker color
-              <div className="config-color-row">
-                <input
-                  type="color"
-                  className="config-color-picker"
-                  aria-label="Track marker color (RGB)"
-                  value={`#${rgbFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor)}`}
-                  onChange={(e) =>
-                    onSetTrackField(
-                      "markerColor",
-                      joinAARRGGBB(
-                        alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor),
-                        e.target.value.replace("#", ""),
-                      ),
-                    )
-                  }
-                />
-                <input
-                  type="text"
-                  className="config-color-text"
-                  aria-label="Track marker color (AARRGGBB hex)"
-                  value={normalizeAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor)}
-                  onChange={(e) =>
-                    onSetTrackField(
-                      "markerColor",
-                      normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.markerColor),
-                    )
-                  }
-                />
-              </div>
-            </label>
-            <label className="config-range-field">
-              Track marker color alpha
-              <input
-                type="range"
-                className="config-range"
-                aria-label="Track marker color alpha"
-                min={0}
-                max={100}
-                step={1}
-                value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor))}
-                onChange={(e) =>
-                  onSetTrackField(
-                    "markerColor",
-                    joinAARRGGBB(
-                      alphaPercentToHex(Number(e.target.value)),
-                      rgbFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor),
-                    ),
-                  )
-                }
-              />
-              <span className="config-range-value">
-                {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor))}%
-              </span>
-            </label>
+            {/* Track marker color — hidden under classbreak (per-break colors drive TRACKMARKERCOLORS; TRACKFIX-V19-06) */}
+            {effectiveRenderMode !== "classbreak" && (
+              <>
+                <label className="config-color-field">
+                  Track marker color
+                  <div className="config-color-row">
+                    <input
+                      type="color"
+                      className="config-color-picker"
+                      aria-label="Track marker color (RGB)"
+                      value={`#${rgbFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor)}`}
+                      onChange={(e) =>
+                        onSetTrackField(
+                          "markerColor",
+                          joinAARRGGBB(
+                            alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor),
+                            e.target.value.replace("#", ""),
+                          ),
+                        )
+                      }
+                    />
+                    <input
+                      type="text"
+                      className="config-color-text"
+                      aria-label="Track marker color (AARRGGBB hex)"
+                      value={normalizeAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor)}
+                      onChange={(e) =>
+                        onSetTrackField(
+                          "markerColor",
+                          normalizeAARRGGBB(e.target.value, TRACK_DEFAULTS.markerColor),
+                        )
+                      }
+                    />
+                  </div>
+                </label>
+                <label className="config-range-field">
+                  Track marker color alpha
+                  <input
+                    type="range"
+                    className="config-range"
+                    aria-label="Track marker color alpha"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={alphaHexToPercent(alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor))}
+                    onChange={(e) =>
+                      onSetTrackField(
+                        "markerColor",
+                        joinAARRGGBB(
+                          alphaPercentToHex(Number(e.target.value)),
+                          rgbFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor),
+                        ),
+                      )
+                    }
+                  />
+                  <span className="config-range-value">
+                    {alphaHexToPercent(alphaFromAARRGGBB(trackCfg.markerColor ?? TRACK_DEFAULTS.markerColor))}%
+                  </span>
+                </label>
+              </>
+            )}
 
             {/* Track marker shape — reuses POINT_SHAPES (12 options incl "none") → TRACKMARKERSHAPES */}
             <label className="ds-field-label">

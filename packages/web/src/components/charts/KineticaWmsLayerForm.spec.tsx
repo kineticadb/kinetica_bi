@@ -1459,7 +1459,9 @@ describe("GAP-54-03 TRACKFIX-V19-02 — Track line color and width controls (rel
     expect(tc.enabled).toBe(true);
   });
 
-  it("Track line color + width controls present in Track+Classbreak mode too", () => {
+  it("Track line width present in Track+Classbreak mode; Track line color hidden (TRACKFIX-V19-06)", () => {
+    // Under classbreak, per-break colors drive TRACKLINECOLORS — the single-color control is redundant and hidden.
+    // Track line width (uniform expand(N)) stays visible as a valid styling control.
     render(
       <KineticaWmsLayerForm
         config={{ spatialMode: "track" as const, renderMode: "classbreak" }}
@@ -1467,8 +1469,11 @@ describe("GAP-54-03 TRACKFIX-V19-02 — Track line color and width controls (rel
         columns={trackColumns}
       />,
     );
-    expect(screen.getByText("Track line color")).toBeInTheDocument();
-    expect(screen.getByText("Track line width")).toBeInTheDocument();
+    // Track line color (RGB swatch and alpha slider) must be ABSENT under classbreak
+    expect(screen.queryByLabelText("Track line color (RGB)")).toBeNull();
+    expect(screen.queryByLabelText("Track line color alpha")).toBeNull();
+    // Track line width must remain VISIBLE (uniform control, valid under CB)
+    expect(screen.getByLabelText("Track line width")).toBeInTheDocument();
   });
 });
 
@@ -1618,5 +1623,114 @@ describe("TRACKFIX-V19-05 — Track marker controls", () => {
     expect(screen.getByLabelText("Track marker color (RGB)")).toBeInTheDocument();
     expect(screen.getByLabelText("Track marker shape")).toBeInTheDocument();
     expect(screen.getByLabelText("Track marker size")).toBeInTheDocument();
+  });
+});
+
+/*  TRACKFIX-V19-06 — TRACK STYLE color gating under classbreak                         */
+/*                                                                                        */
+/*  Under Track + Class Break, the 3 TRACK STYLE single-color controls are hidden        */
+/*  (head color, track line color, track marker color + their alpha sliders).             */
+/*  Shape/size/width controls and the full CB builder remain visible.                     */
+describe("Track + Class Break — TRACK STYLE color gating (TRACKFIX-V19-06)", () => {
+  const trackColumns = [
+    { name: "x", type: "DOUBLE" },
+    { name: "y", type: "DOUBLE" },
+    { name: "TRACKID", type: "INT" },
+    { name: "TIMESTAMP", type: "TIMESTAMP" },
+  ];
+
+  const cbJson = JSON.stringify({
+    attr: "x",
+    valsType: "numeric",
+    breaks: [
+      { value: 1, min: 0, max: 10, color: "FFFF0000" },
+      { value: 2, min: 10, max: 25, color: "FF00FF00" },
+      { value: 3, min: 25, max: 50, color: "FF0000FF" },
+    ],
+  });
+
+  const trackCbConfig = {
+    spatialMode: "track" as const,
+    renderMode: "classbreak" as const,
+    track_config: JSON.stringify({
+      enabled: true, xCol: "x", yCol: "y", trackIdAttr: "TRACKID", trackOrderAttr: "TIMESTAMP",
+      headColor: "FFFFFFFF", trailColor: "FF00FF00", markerColor: "FF0000FF",
+      headSize: 10, trailSize: 3, headShape: "circle",
+    }),
+    cb_config: cbJson,
+  };
+
+  it("under Track+Classbreak: Head color, Track line color, Track marker color controls are ABSENT", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackCbConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // Single-color TRACK STYLE color controls must be hidden
+    expect(screen.queryByLabelText("Track head color (RGB)")).toBeNull();
+    expect(screen.queryByLabelText("Track head color (AARRGGBB hex)")).toBeNull();
+    expect(screen.queryByLabelText("Track head color alpha")).toBeNull();
+    expect(screen.queryByLabelText("Track line color (RGB)")).toBeNull();
+    expect(screen.queryByLabelText("Track line color (AARRGGBB hex)")).toBeNull();
+    expect(screen.queryByLabelText("Track line color alpha")).toBeNull();
+    expect(screen.queryByLabelText("Track marker color (RGB)")).toBeNull();
+    expect(screen.queryByLabelText("Track marker color (AARRGGBB hex)")).toBeNull();
+    expect(screen.queryByLabelText("Track marker color alpha")).toBeNull();
+  });
+
+  it("under Track+Classbreak: Head shape, Head size, Track line width, Marker shape, Marker size are PRESENT", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackCbConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // Non-color uniform controls must remain visible
+    expect(screen.getByLabelText("Track head shape")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track head size")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track line width")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track marker shape")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track marker size")).toBeInTheDocument();
+  });
+
+  it("under Track+Classbreak: full CB builder present (CB column, Auto-suggest, N slider)", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={trackCbConfig}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // CB header and column picker must be present
+    expect(screen.getByText("CLASS BREAK PARAMS")).toBeInTheDocument();
+    expect(screen.getByLabelText("CB column")).toBeInTheDocument();
+    // Auto-suggest button and N slider present (CB builder fully surfaced)
+    expect(screen.getByText("Auto-suggest breaks")).toBeInTheDocument();
+  });
+
+  it("under Track+Raster: all 3 color controls ARE present (raster path unchanged)", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={{
+          spatialMode: "track" as const,
+          renderMode: "raster" as const,
+          track_config: JSON.stringify({
+            enabled: true, xCol: "x", yCol: "y", trackIdAttr: "TRACKID", trackOrderAttr: "TIMESTAMP",
+            headColor: "FFFFFFFF", trailColor: "FF00FF00", markerColor: "FF0000FF",
+            headSize: 10, trailSize: 3,
+          }),
+          cb_config: null,
+        }}
+        onChange={vi.fn()}
+        columns={trackColumns}
+      />,
+    );
+    // Under raster, all single-color TRACK STYLE controls are visible
+    expect(screen.getByLabelText("Track head color (RGB)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track line color (RGB)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Track marker color (RGB)")).toBeInTheDocument();
   });
 });
