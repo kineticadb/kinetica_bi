@@ -436,6 +436,18 @@ export function buildWmsParams(
       params.TRACK_ID_ATTR = tc.trackIdAttr ?? "TRACKID";
       params.TRACK_ORDER_ATTR = tc.trackOrderAttr ?? "TIMESTAMP";
 
+      // TRACKFIX-V19-04 / GAP-54-05: Suppress the 7 point/shape keys under track mode.
+      // Kinetica WMS ignores TRACK_* styling when these params are present — they must
+      // be deleted so track tile rendering reflects TRACK_* styling exclusively.
+      // These deletes run regardless of whether the raster or classbreak lane emitted them.
+      delete params.POINTCOLORS;
+      delete params.POINTOPACITY;
+      delete params.POINTSIZES;
+      delete params.POINTSHAPES;
+      delete params.SHAPEFILLCOLORS;
+      delete params.SHAPELINECOLORS;
+      delete params.SHAPELINEWIDTHS;
+
       const isCb = config.renderMode === "classbreak";
       // Under cb_raster, expand to N = breaks.length matching CB_VALS; under raster, N = 1.
       const cbForTrack = isCb && layerJsonFields ? coalesceCbConfig(layerJsonFields.cb_config) : null;
@@ -443,10 +455,10 @@ export function buildWmsParams(
       const expand = (v: string): string => Array.from({ length: n }, () => v).join(",");
 
       if (tc.headColor !== undefined) {
-        params.TRACKHEADCOLORS = expand(normalizeAARRGGBB(tc.headColor, "FFFF0000"));
+        params.TRACKHEADCOLORS = expand(normalizeAARRGGBB(tc.headColor, "FFFFFFFF"));
       }
       if (tc.trailColor !== undefined) {
-        params.TRACKLINECOLORS = expand(normalizeAARRGGBB(tc.trailColor, "FF0000FF"));
+        params.TRACKLINECOLORS = expand(normalizeAARRGGBB(tc.trailColor, "FF00FF00"));
       }
       if (tc.headSize !== undefined) {
         params.TRACKHEADSIZES = expand(String(tc.headSize));
@@ -457,9 +469,20 @@ export function buildWmsParams(
         params.TRACKLINEWIDTHS = expand(String(lineWidthVal));
       }
       if (tc.headShape !== undefined) {
-        // 37-SPIKE-NOTES.md OQ-9 — Phase 40 emits TRACKMARKERSHAPES per Kinetica 7.1 docs;
-        // TRACKHEADSHAPES alternate-naming question deferred to Phase 43 UAT.
-        params.TRACKMARKERSHAPES = expand(tc.headShape);
+        // TRACKFIX-V19-05: headShape → TRACKHEADSHAPES (fixes OQ-9 misnaming where headShape
+        // was incorrectly emitting as TRACKMARKERSHAPES). Operator-confirmed against Kinetica
+        // WMS docs 2026-06-07: TRACKHEADSHAPES controls the head marker shape.
+        params.TRACKHEADSHAPES = expand(tc.headShape);
+      }
+      // TRACKFIX-V19-05: New marker params — distinct from head params
+      if (tc.markerColor !== undefined) {
+        params.TRACKMARKERCOLORS = expand(normalizeAARRGGBB(tc.markerColor, "FF0000FF"));
+      }
+      if (tc.markerShape !== undefined) {
+        params.TRACKMARKERSHAPES = expand(tc.markerShape);
+      }
+      if (tc.markerSize !== undefined) {
+        params.TRACKMARKERSIZES = expand(String(tc.markerSize));
       }
     }
   }

@@ -56,24 +56,38 @@ describe("coalesceTrackConfig", () => {
 });
 
 describe("TRACK_DEFAULTS", () => {
-  it("headColor is FFFF0000 (red, fully opaque)", () => {
-    expect(TRACK_DEFAULTS.headColor).toBe("FFFF0000");
+  // TRACKFIX-V19-05: Updated to Kinetica doc defaults (white head / green line / blue marker)
+  it("headColor is FFFFFFFF (white, fully opaque — Kinetica WMS doc default)", () => {
+    expect(TRACK_DEFAULTS.headColor).toBe("FFFFFFFF");
   });
 
-  it("trailColor is FF0000FF (blue, fully opaque)", () => {
-    expect(TRACK_DEFAULTS.trailColor).toBe("FF0000FF");
+  it("trailColor is FF00FF00 (green, fully opaque — Kinetica WMS doc default)", () => {
+    expect(TRACK_DEFAULTS.trailColor).toBe("FF00FF00");
   });
 
-  it("headSize is 8", () => {
-    expect(TRACK_DEFAULTS.headSize).toBe(8);
+  it("headSize is 10 (Kinetica WMS doc default)", () => {
+    expect(TRACK_DEFAULTS.headSize).toBe(10);
   });
 
-  it("trailSize is 2", () => {
-    expect(TRACK_DEFAULTS.trailSize).toBe(2);
+  it("trailSize is 3 (Kinetica WMS doc default)", () => {
+    expect(TRACK_DEFAULTS.trailSize).toBe(3);
   });
 
   it("headShape is 'circle'", () => {
     expect(TRACK_DEFAULTS.headShape).toBe("circle");
+  });
+
+  // TRACKFIX-V19-05: New marker defaults
+  it("markerColor is FF0000FF (blue, fully opaque)", () => {
+    expect(TRACK_DEFAULTS.markerColor).toBe("FF0000FF");
+  });
+
+  it("markerShape is 'none'", () => {
+    expect(TRACK_DEFAULTS.markerShape).toBe("none");
+  });
+
+  it("markerSize is 2", () => {
+    expect(TRACK_DEFAULTS.markerSize).toBe(2);
   });
 });
 

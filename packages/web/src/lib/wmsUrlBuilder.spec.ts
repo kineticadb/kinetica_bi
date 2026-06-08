@@ -778,16 +778,19 @@ describe("buildWmsParams — Track block (SCHEMA-V17-04)", () => {
     latColumn: "lat",
   };
 
-  it("under STYLES=raster: emits single-value TRACK_* params when trackConfig.enabled === true", () => {
+  it("under STYLES=raster: emits single-value TRACK_* params when trackConfig.enabled === true (TRACKFIX-V19-05: TRACKHEADSHAPES distinct from TRACKMARKERSHAPES)", () => {
     const trackJson = JSON.stringify({
       enabled: true,
       trackIdAttr: "TRACKID",
       trackOrderAttr: "TIMESTAMP",
-      headColor: "FFFF0000",
-      trailColor: "FF0000FF",
-      headSize: 8,
-      trailSize: 2,
+      headColor: "FFFFFFFF",
+      trailColor: "FF00FF00",
+      headSize: 10,
+      trailSize: 3,
       headShape: "circle",
+      markerColor: "FF0000FF",
+      markerShape: "none",
+      markerSize: 2,
     });
     const params = buildWmsParams(
       { ...baseConfig, renderMode: "raster" },
@@ -797,14 +800,101 @@ describe("buildWmsParams — Track block (SCHEMA-V17-04)", () => {
     expect(params!.DOTRACKS).toBe("TRUE");
     expect(params!.TRACK_ID_ATTR).toBe("TRACKID");
     expect(params!.TRACK_ORDER_ATTR).toBe("TIMESTAMP");
-    expect(params!.TRACKHEADCOLORS).toBe("FFFF0000");
-    expect(params!.TRACKLINECOLORS).toBe("FF0000FF");
-    expect(params!.TRACKHEADSIZES).toBe("8");
-    expect(params!.TRACKLINEWIDTHS).toBe("2");
-    expect(params!.TRACKMARKERSHAPES).toBe("circle");
+    expect(params!.TRACKHEADCOLORS).toBe("FFFFFFFF");
+    expect(params!.TRACKLINECOLORS).toBe("FF00FF00");
+    expect(params!.TRACKHEADSIZES).toBe("10");
+    expect(params!.TRACKLINEWIDTHS).toBe("3");
+    // TRACKFIX-V19-05: headShape → TRACKHEADSHAPES (was TRACKMARKERSHAPES — OQ-9 misnaming fixed)
+    expect(params!.TRACKHEADSHAPES).toBe("circle");
+    // NEW: markerShape → TRACKMARKERSHAPES (distinct param)
+    expect(params!.TRACKMARKERSHAPES).toBe("none");
+    // Verify they are distinct
+    expect(params!.TRACKHEADSHAPES).not.toBe(params!.TRACKMARKERSHAPES);
+    // NEW: marker color and size
+    expect(params!.TRACKMARKERCOLORS).toBe("FF0000FF");
+    expect(params!.TRACKMARKERSIZES).toBe("2");
   });
 
-  it("under STYLES=cb_raster: emits N comma-separated TRACK_* params matching cb_config.breaks.length", () => {
+  // TRACKFIX-V19-04: Suppression test — under raster+track, POINT*/SHAPE* must be absent
+  it("TRACKFIX-V19-04: under raster+track, POINT*/SHAPE* keys are suppressed even when config carries them", () => {
+    const trackJson = JSON.stringify({
+      enabled: true,
+      headColor: "FFFFFFFF",
+      trailColor: "FF00FF00",
+      headSize: 10,
+    });
+    const params = buildWmsParams(
+      {
+        ...baseConfig,
+        renderMode: "raster",
+        pointColor: "FFFF0000",
+        pointOpacity: 80,
+        pointSize: 5,
+        pointShape: "circle",
+        shapeFillColor: "FF00FF00",
+        shapeLineColor: "FF0000FF",
+        shapeLineWidth: 2,
+      },
+      undefined, undefined, undefined,
+      { cb_config: null, track_config: trackJson },
+    );
+    // Track params ARE present
+    expect(params!.DOTRACKS).toBe("TRUE");
+    expect(params!.TRACKHEADCOLORS).toBe("FFFFFFFF");
+    // Point/shape params MUST be absent (TRACKFIX-V19-04 / GAP-54-05)
+    expect(params!.POINTCOLORS).toBeUndefined();
+    expect(params!.POINTOPACITY).toBeUndefined();
+    expect(params!.POINTSIZES).toBeUndefined();
+    expect(params!.POINTSHAPES).toBeUndefined();
+    expect(params!.SHAPEFILLCOLORS).toBeUndefined();
+    expect(params!.SHAPELINECOLORS).toBeUndefined();
+    expect(params!.SHAPELINEWIDTHS).toBeUndefined();
+  });
+
+  // TRACKFIX-V19-04: Suppression test — under classbreak+track, POINT*/SHAPE* absent but CB_ATTR/CB_VALS present
+  it("TRACKFIX-V19-04: under classbreak+track, POINT*/SHAPE* suppressed but CB_ATTR/CB_VALS and TRACK_* present", () => {
+    const cbConfigJson = JSON.stringify({
+      attr: "speed",
+      valsType: "numeric",
+      breaks: [{ value: 1, color: "FF000000" }, { value: 2, color: "FFFFFFFF" }],
+    });
+    const trackJson = JSON.stringify({
+      enabled: true,
+      headColor: "FFFFFFFF",
+      trailColor: "FF00FF00",
+      headSize: 10,
+    });
+    const params = buildWmsParams(
+      {
+        ...baseConfig,
+        renderMode: "classbreak",
+        pointColor: "FFFF0000",
+        pointOpacity: 50,
+        pointSize: 4,
+        pointShape: "diamond",
+        shapeFillColor: "FF00FF00",
+        shapeLineColor: "FF0000FF",
+        shapeLineWidth: 1,
+      },
+      undefined, undefined, undefined,
+      { cb_config: cbConfigJson, track_config: trackJson },
+    );
+    // Track params ARE present
+    expect(params!.DOTRACKS).toBe("TRUE");
+    // CB params ARE present
+    expect(params!.CB_ATTR).toBe("speed");
+    expect(params!.CB_VALS).toBeDefined();
+    // POINT*/SHAPE* MUST be absent (TRACKFIX-V19-04 / GAP-54-05)
+    expect(params!.POINTCOLORS).toBeUndefined();
+    expect(params!.POINTOPACITY).toBeUndefined();
+    expect(params!.POINTSIZES).toBeUndefined();
+    expect(params!.POINTSHAPES).toBeUndefined();
+    expect(params!.SHAPEFILLCOLORS).toBeUndefined();
+    expect(params!.SHAPELINECOLORS).toBeUndefined();
+    expect(params!.SHAPELINEWIDTHS).toBeUndefined();
+  });
+
+  it("under STYLES=cb_raster: emits N comma-separated TRACK_* params matching cb_config.breaks.length (incl new marker params)", () => {
     const cbConfigJson = JSON.stringify({
       attr: "x",
       valsType: "numeric",
@@ -812,9 +902,14 @@ describe("buildWmsParams — Track block (SCHEMA-V17-04)", () => {
     });
     const trackJson = JSON.stringify({
       enabled: true,
-      headColor: "FFFF0000",
-      trailColor: "FF0000FF",
-      headSize: 8,
+      headColor: "FFFFFFFF",
+      trailColor: "FF00FF00",
+      headSize: 10,
+      trailSize: 3,
+      headShape: "circle",
+      markerColor: "FF0000FF",
+      markerShape: "none",
+      markerSize: 2,
     });
     const params = buildWmsParams(
       { ...baseConfig, renderMode: "classbreak" },
@@ -822,9 +917,14 @@ describe("buildWmsParams — Track block (SCHEMA-V17-04)", () => {
       { cb_config: cbConfigJson, track_config: trackJson },
     );
     expect(params!.DOTRACKS).toBe("TRUE");
-    expect(params!.TRACKHEADCOLORS).toBe("FFFF0000,FFFF0000,FFFF0000");
-    expect(params!.TRACKLINECOLORS).toBe("FF0000FF,FF0000FF,FF0000FF");
-    expect(params!.TRACKHEADSIZES).toBe("8,8,8");
+    expect(params!.TRACKHEADCOLORS).toBe("FFFFFFFF,FFFFFFFF,FFFFFFFF");
+    expect(params!.TRACKLINECOLORS).toBe("FF00FF00,FF00FF00,FF00FF00");
+    expect(params!.TRACKHEADSIZES).toBe("10,10,10");
+    expect(params!.TRACKLINEWIDTHS).toBe("3,3,3");
+    expect(params!.TRACKHEADSHAPES).toBe("circle,circle,circle");
+    expect(params!.TRACKMARKERCOLORS).toBe("FF0000FF,FF0000FF,FF0000FF");
+    expect(params!.TRACKMARKERSHAPES).toBe("none,none,none");
+    expect(params!.TRACKMARKERSIZES).toBe("2,2,2");
   });
 
   it("NO Track params emitted when trackConfig.enabled === false", () => {
@@ -1001,7 +1101,8 @@ describe("buildWmsParams — Track emission under spatialMode=track (RENDER-V19-
     expect(params!.TRACKLINECOLORS).toBe("FF0000FF");
     expect(params!.TRACKHEADSIZES).toBe("8");
     expect(params!.TRACKLINEWIDTHS).toBe("2");
-    expect(params!.TRACKMARKERSHAPES).toBe("circle");
+    // TRACKFIX-V19-05: headShape → TRACKHEADSHAPES (was TRACKMARKERSHAPES — OQ-9 misnaming fixed)
+    expect(params!.TRACKHEADSHAPES).toBe("circle");
     // Phase 52 spatial branch: X_ATTR/Y_ATTR come from track_config.xCol/yCol, not config.lonColumn.
     expect(params!.X_ATTR).toBe("x");
     expect(params!.Y_ATTR).toBe("y");
