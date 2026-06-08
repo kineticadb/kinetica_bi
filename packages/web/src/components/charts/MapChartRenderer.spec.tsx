@@ -5020,3 +5020,99 @@ describe("quick-260608-j5k — opt-in ScaleLine + FullScreen controls", () => {
     expect(mapInstance.addControl).toHaveBeenCalledWith(fsInstance);
   });
 });
+
+describe("quick-260608-rbq: WMS loading indicator", () => {
+  beforeEach(() => {
+    _layersState.layers = [];
+    tileLoadListeners = {};
+    vi.clearAllMocks();
+  });
+
+  it("firing imageloadstart on a visible source shows the top-center loading badge", async () => {
+    _layersState.layers = [
+      makeLayer({ id: 1, position: 0, table_id: 10, config: {
+        spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+        renderMode: "raster", visible: true, POINTOPACITY: 100,
+      } }),
+    ];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    await act(async () => {
+      tileLoadListeners["imageloadstart"]?.forEach((fn) => fn());
+    });
+
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+  });
+
+  it("firing imageloadend after imageloadstart hides the loading badge", async () => {
+    _layersState.layers = [
+      makeLayer({ id: 1, position: 0, table_id: 10, config: {
+        spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+        renderMode: "raster", visible: true, POINTOPACITY: 100,
+      } }),
+    ];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    await act(async () => {
+      tileLoadListeners["imageloadstart"]?.forEach((fn) => fn());
+    });
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+
+    await act(async () => {
+      tileLoadListeners["imageloadend"]?.forEach((fn) => fn());
+    });
+    expect(screen.queryByText(/Loading/i)).toBeNull();
+  });
+
+  it("with widget config showLoadingIndicator:false, firing imageloadstart does NOT show the badge", async () => {
+    _layersState.layers = [
+      makeLayer({ id: 1, position: 0, table_id: 10, config: {
+        spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+        renderMode: "raster", visible: true, POINTOPACITY: 100,
+      } }),
+    ];
+    await act(async () => {
+      render(
+        <MapChartRenderer
+          widget={makeWidget({ showLoadingIndicator: false })}
+          tables={defaultTables}
+        />
+      );
+    });
+
+    await act(async () => {
+      tileLoadListeners["imageloadstart"]?.forEach((fn) => fn());
+    });
+
+    expect(screen.queryByText(/Loading/i)).toBeNull();
+  });
+
+  it("toggling a layer visible:true→false calls source.un with 'imageloadstart' (no listener leak)", async () => {
+    _layersState.layers = [
+      makeLayer({ id: 1, position: 0, table_id: 10, config: {
+        spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+        renderMode: "raster", visible: true, POINTOPACITY: 100,
+      } }),
+    ];
+    const { rerender } = await act(async () =>
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />)
+    );
+    const source = allImageWmsInstances[0];
+    const unBefore = source.un.mock.calls.length;
+
+    _layersState.layers = [
+      { ..._layersState.layers[0], config: { ..._layersState.layers[0].config, visible: false } },
+    ];
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    const newUnCalls = source.un.mock.calls.slice(unBefore);
+    const events = newUnCalls.map((call: any[]) => call[0]);
+    expect(events).toContain("imageloadstart");
+  });
+});
