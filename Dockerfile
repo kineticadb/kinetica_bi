@@ -6,7 +6,7 @@ COPY packages/web/package.json ./packages/web/
 COPY packages/server/package.json ./packages/server/
 RUN npm ci
 COPY . .
-ENV VITE_API_URL=/api
+ENV VITE_API_URL=""
 RUN npm run build
 RUN npx esbuild packages/server/src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=packages/server/dist/index.js
 
