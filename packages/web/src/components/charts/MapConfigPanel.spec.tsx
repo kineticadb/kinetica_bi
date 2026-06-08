@@ -16,6 +16,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MapConfigPanel from "./MapConfigPanel";
 import type { DashboardLayerDto } from "../../api/client";
+import { isSpatialTargetEligible } from "../../lib/spatialTargets";
 
 /* ------------------------------------------------------------------ */
 /*  Store mock                                                         */
@@ -826,6 +827,187 @@ describe("MapConfigPanel — Phase 28 Spatial filter targets section", () => {
     // Both rows present (by their unique aria-labels)
     expect(screen.getByLabelText("Spatial filter target 1 table")).toBeInTheDocument();
     expect(screen.getByLabelText("Spatial filter target 2 table")).toBeInTheDocument();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  TRACKFIX-V19-08 (GAP-54-09): Track-shaped-table spatial target     */
+/*  translation — new-row, changeTable, changeMode, radio display      */
+/* ------------------------------------------------------------------ */
+
+// A minimal track-shaped table fixture: TRACKID + X + Y + TIMESTAMP
+// autoSuggestSpatialMode returns "track" for this column set.
+const makeTrackTables = (): SpecTableInfo[] => [
+  {
+    id: 20,
+    name: "track",
+    schema: "demo",
+    columns: {
+      TRACKID: "string",
+      X: "double",
+      Y: "double",
+      TIMESTAMP: "timestamp",
+      SPEED: "double",
+    },
+  },
+  {
+    id: 21,
+    name: "orders",
+    schema: "public",
+    columns: { lat: "double", lon: "double", id: "int" },
+  },
+];
+
+describe("MapConfigPanel — TRACKFIX-V19-08: track target translation", () => {
+  beforeEach(() => {
+    _storeState.layers = [];
+    vi.clearAllMocks();
+  });
+
+  // TRK-1: new-row path — clicking + with a track-shaped first table must store
+  // {spatialMode:"latlon", lonCol:"X", latCol:"Y"}, NOT spatialMode:"track".
+  it("TRK-1: clicking + with a track-shaped first table stores {spatialMode:'latlon', lonCol:'X', latCol:'Y'}", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel
+        config={makeConfig()}
+        onChange={onChange}
+        tables={makeTrackTables()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Add spatial filter target"));
+    const call = onChange.mock.calls[0][0];
+    const stored = call.spatialTargets[0];
+    expect(stored.spatialMode).toBe("latlon");
+    expect(stored.lonCol).toBe("X");
+    expect(stored.latCol).toBe("Y");
+    // isSpatialTargetEligible must return true for the stored target
+    expect(stored.tableId).toBe(20);
+  });
+
+  // TRK-2: changeTable to track-shaped table stores {spatialMode:"latlon", lonCol:"X", latCol:"Y"}
+  it("TRK-2: changing table to a track-shaped table stores {spatialMode:'latlon', lonCol:'X', latCol:'Y'}", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel
+        config={makeConfig({
+          spatialTargets: [{ tableId: 21, spatialMode: "latlon", lonCol: "lon", latCol: "lat" }],
+        })}
+        onChange={onChange}
+        tables={makeTrackTables()}
+      />,
+    );
+    const tableSelect = screen.getByLabelText(
+      "Spatial filter target 1 table",
+    ) as HTMLSelectElement;
+    fireEvent.change(tableSelect, { target: { value: "20" } });
+    const call = onChange.mock.calls[0][0];
+    const stored = call.spatialTargets[0];
+    expect(stored.spatialMode).toBe("latlon");
+    expect(stored.lonCol).toBe("X");
+    expect(stored.latCol).toBe("Y");
+    expect(stored.tableId).toBe(20);
+  });
+
+  // TRK-3: isSpatialTargetEligible returns true for the translated target
+  it("TRK-3: the translated track target {spatialMode:'latlon', lonCol:'X', latCol:'Y'} is eligible", () => {
+    // This target is what should be stored after the translation
+    const target = { tableId: 20, spatialMode: "latlon" as const, lonCol: "X", latCol: "Y" };
+    expect(isSpatialTargetEligible(target)).toBe(true);
+  });
+
+  // TRK-4: Mode radio group shows exactly 3 options (latlon/wkt/wkb) — NO "track" option
+  it("TRK-4: mode radio group shows exactly 3 options (latlon, wkt, wkb) — no track option", () => {
+    render(
+      <MapConfigPanel
+        config={makeConfig({
+          spatialTargets: [{ tableId: 20, spatialMode: "latlon", lonCol: "X", latCol: "Y" }],
+        })}
+        onChange={vi.fn()}
+        tables={makeTrackTables()}
+      />,
+    );
+    const radioGroup = document.querySelector('[role="radiogroup"]')!;
+    const radios = radioGroup.querySelectorAll('input[type="radio"]');
+    expect(radios).toHaveLength(3);
+    const values = Array.from(radios).map((r) => (r as HTMLInputElement).value);
+    expect(values).toContain("latlon");
+    expect(values).toContain("wkt");
+    expect(values).toContain("wkb");
+    expect(values).not.toContain("track");
+  });
+
+  // TRK-5: A legacy stored spatialMode:"track" row is coerced to latlon for radio
+  // display — the "Lat/Lon" radio is checked, not none of them.
+  it("TRK-5: a row with legacy spatialMode:'track' stored in config shows the latlon radio as checked", () => {
+    render(
+      <MapConfigPanel
+        config={makeConfig({
+          // @ts-ignore — testing legacy/stale stored value coercion
+          spatialTargets: [{ tableId: 20, spatialMode: "track" }],
+        })}
+        onChange={vi.fn()}
+        tables={makeTrackTables()}
+      />,
+    );
+    const latlonRadio = screen.getByRole("radio", {
+      name: "Latitude / Longitude pair",
+    }) as HTMLInputElement;
+    expect(latlonRadio.checked).toBe(true);
+  });
+
+  // TRK-6: changeMode latlon→wkt→latlon — switching back to latlon for a track
+  // table repopulates lonCol/latCol from isTrackTable (columns are NOT wiped).
+  it("TRK-6: changeMode latlon→wkt→latlon on a track table repopulates lonCol/latCol (not wiped)", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel
+        config={makeConfig({
+          spatialTargets: [
+            { tableId: 20, spatialMode: "latlon", lonCol: "X", latCol: "Y" },
+          ],
+        })}
+        onChange={onChange}
+        tables={makeTrackTables()}
+      />,
+    );
+    // Step 1: switch to wkt
+    fireEvent.click(screen.getByRole("radio", { name: "WKT geometry column" }));
+    const afterWkt = onChange.mock.calls[0][0].spatialTargets[0];
+    expect(afterWkt.spatialMode).toBe("wkt");
+
+    // Step 2: switch back to latlon — columns should be repopulated for track table
+    onChange.mockClear();
+    fireEvent.click(screen.getByRole("radio", { name: "Latitude / Longitude pair" }));
+    const afterLatlon = onChange.mock.calls[0][0].spatialTargets[0];
+    expect(afterLatlon.spatialMode).toBe("latlon");
+    expect(afterLatlon.lonCol).toBe("X");
+    expect(afterLatlon.latCol).toBe("Y");
+  });
+
+  // TRK-7: Non-track latlon/wkt/wkb flows unchanged (regression guard).
+  // Changing table to a non-track latlon table still works as before.
+  it("TRK-7: non-track latlon table changeTable still stores latlon with undefined columns (regression)", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel
+        config={makeConfig({
+          spatialTargets: [{ tableId: 20, spatialMode: "latlon", lonCol: "X", latCol: "Y" }],
+        })}
+        onChange={onChange}
+        tables={makeTrackTables()}
+      />,
+    );
+    const tableSelect = screen.getByLabelText(
+      "Spatial filter target 1 table",
+    ) as HTMLSelectElement;
+    // tableId=21 is orders: lat/lon columns, not a track table
+    fireEvent.change(tableSelect, { target: { value: "21" } });
+    const call = onChange.mock.calls[0][0];
+    const stored = call.spatialTargets[0];
+    expect(stored.spatialMode).toBe("latlon");
+    expect(stored.lonCol).toBeUndefined();
+    expect(stored.latCol).toBeUndefined();
   });
 });
 
