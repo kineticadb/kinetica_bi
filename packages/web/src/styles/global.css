@@ -2532,6 +2532,32 @@ a {
   to { transform: rotate(360deg); }
 }
 
+/* quick-260608-rbq: in-map WMS loading indicator badge.
+   Top-center React overlay sibling to widget-map-canvas (V15-P-17 lock — NOT ol/control).
+   Shows iff isMapLoading && getShowLoadingIndicator(widgetConfig) (default ON for legacy
+   widgets). Theme tokens only — light-mode covered by [data-theme="light"] overrides on
+   --map-surface / --border / --text. pointer-events:none so the badge never blocks map
+   interaction. Reuses .widget-filtering-spinner for the spinner (no redefinition). */
+.widget-map-loading-badge {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--map-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 100;
+  pointer-events: none;   /* never blocks map interaction */
+  white-space: nowrap;
+}
+
 /* Phase 21 (POPUP-V14-02..05): info popup chrome.
    Anchored variant of .modal-content. The .info-popup-backdrop is mounted INSIDE the
    ol/Overlay element (Plan 21-03), so it covers the popup's bounding box only — not the

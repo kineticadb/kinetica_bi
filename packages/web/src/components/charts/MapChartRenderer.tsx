@@ -81,6 +81,7 @@ import {
   getShowShapeMeasurements,
   getShowScaleBar,
   getShowFullscreenButton,
+  getShowLoadingIndicator,
 } from "../../lib/mapInfoConfig";
 import InfoPopup from "./InfoPopup";
 import {
@@ -676,6 +677,14 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // file). Effect 1's cleanup also clears this Map alongside imageLayersRef on unmount.
   const sourceListenerCleanupRef = useRef<Map<number, () => void>>(new Map());
 
+  // quick-260608-rbq: per-layer boolean loading tracker. Keyed by DashboardLayer.id;
+  // true = source is currently loading tiles. Aggregated into isMapLoading state via
+  // recomputeLoading() called inside microtask-deferred handlers (same defer discipline
+  // as handleTileError/handleTileLoadEnd — OL fires imageloadstart synchronously during
+  // the render commit; synchronous setState corrupts the OL/React DOM tree → app blanks).
+  // Cleared on unmount (Effect 1 cleanup) and per-layer on remove (cleanup closure).
+  const loadingByLayerRef = useRef<Map<number, boolean>>(new Map());
+
   // GAP-24-02-A fix (Phase 24-06): mountedRef cleanup-gate. Set to true on mount;
   // Effect 1's cleanup flips it to false BEFORE map.setTarget(undefined) + map.dispose().
   // ALL async OL callbacks that could fire post-unmount guard with
@@ -750,6 +759,12 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // caused buildWmsParams to return null. The overlay surfaces silently — no toast fires
   // per the locked status-aware-rendering taxonomy (35-CONTEXT.md §"Status → render mapping").
   const [hasOverThresholdLayers, setHasOverThresholdLayers] = useState<boolean>(false);
+  // quick-260608-rbq: aggregate loading state. True when ANY configured layer's ImageWMS
+  // source is mid-load. Drives the top-center "Loading…" badge render (badge shows iff
+  // isMapLoading && getShowLoadingIndicator(widgetConfig)). Recomputed inside microtask-
+  // deferred handlers via recomputeLoading() — same OL-fires-synchronously-during-commit
+  // discipline as handleTileError/handleTileLoadEnd.
+  const [isMapLoading, setIsMapLoading] = useState<boolean>(false);
 
   // ── Transparent placeholder (Fix C — loop prevention) ────────────────────
   const TRANSPARENT_PLACEHOLDER =
@@ -949,6 +964,8 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       imageSourcesRef.current.clear();
       sourceListenerCleanupRef.current.clear();
       lastEmittedParamsRef.current.clear();
+      // quick-260608-rbq: clear the per-layer loading tracker on unmount.
+      loadingByLayerRef.current.clear();
       // Phase 21: abort any in-flight info request; clear ref.
       infoQueryAbortRef.current?.abort();
       infoQueryAbortRef.current = null;
@@ -1182,12 +1199,34 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       // the next render's reconciler then fails on insertBefore because OL has moved
       // sibling nodes. Microtask defer guarantees setState runs AFTER the current
       // render commit completes, so the re-render reconciles against a stable DOM.
+      //
+      // quick-260608-rbq: recomputeLoading is called INSIDE the microtask block (after
+      // re-checking mountedRef) by all three event handlers. The microtask defer is
+      // MANDATORY — OL fires imageloadstart synchronously during the render commit just
+      // like imageloaderror; synchronous setState here would corrupt the OL/React DOM
+      // tree and blank the app (same pitfall documented in the comment above).
+      const recomputeLoading = () => {
+        const next = Array.from(loadingByLayerRef.current.values()).some(Boolean);
+        setIsMapLoading(next);
+      };
+      const handleTileLoadStart = () => {
+        // GAP-24-02-A: bail out if unmounted before the microtask fires.
+        if (!mountedRef.current) return;
+        loadingByLayerRef.current.set(layer.id, true);
+        queueMicrotask(() => {
+          if (!mountedRef.current) return; // re-check after task boundary
+          recomputeLoading();
+        });
+      };
       const handleTileError = () => {
         // GAP-24-02-A fix (Phase 24-06): do not run setState / showToast on unmounted
         // component. Defense in depth alongside GAP-24-01-A's per-layer listener cleanup.
         if (!mountedRef.current) return;
         queueMicrotask(() => {
           if (!mountedRef.current) return; // re-check after task boundary
+          // quick-260608-rbq: a failed load is no longer "loading".
+          loadingByLayerRef.current.set(layer.id, false);
+          recomputeLoading();
           setTileLoadError((prev) => ({
             count: (prev?.count ?? 0) + 1,
             lastAt: Date.now(),
@@ -1207,10 +1246,14 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         if (!mountedRef.current) return;
         queueMicrotask(() => {
           if (!mountedRef.current) return;
+          // quick-260608-rbq: load finished — clear this layer's loading bit.
+          loadingByLayerRef.current.set(layer.id, false);
+          recomputeLoading();
           setTileLoadError(null);
           setErrorOverlayDismissed(true);
         });
       };
+      source.on("imageloadstart", handleTileLoadStart);
       source.on("imageloaderror", handleTileError);
       source.on("imageloadend", handleTileLoadEnd);
       // GAP-24-01-A fix (Phase 24-04): register the per-layer cleanup closure NOW so
@@ -1221,8 +1264,15 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       sourceListenerCleanupRef.current.set(layer.id, () => {
         // `as never` casts mirror the existing OL typing pattern in this file; OL's
         // type signature for source.un is structurally identical to source.on.
+        source.un("imageloadstart" as never, handleTileLoadStart as never);
         source.un("imageloaderror" as never, handleTileError as never);
         source.un("imageloadend" as never, handleTileLoadEnd as never);
+        // quick-260608-rbq: clear this layer's loading bit on remove so the indicator
+        // can hide immediately (covers Effect 2 REMOVE loop, over-threshold removal,
+        // and unmount path via Effect 1's for-loop over cleanup closures).
+        loadingByLayerRef.current.delete(layer.id);
+        // Guard setState: on the unmount path mountedRef is already false.
+        if (mountedRef.current) recomputeLoading();
       });
 
       // PITFALL Pitfall 3: opacity has a single source of truth in layer.config (not CSS, not WMS param).
@@ -2012,6 +2062,18 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       />
       {/* OL renders into this div — PITFALL M-01 lock: ref points here */}
       <div ref={containerRef} className="widget-map-canvas" />
+
+      {/* quick-260608-rbq: top-center "Loading…" badge. React overlay (V15-P-17 lock —
+          NOT an ol/control). Shown iff isMapLoading AND showLoadingIndicator is enabled
+          (default true — legacy widgets without the field get the indicator ON). Uses
+          the existing .widget-filtering-spinner for the spinner. pointer-events:none so
+          the badge never blocks map interaction. */}
+      {isMapLoading && getShowLoadingIndicator(widgetConfig as MapWidgetConfig) && (
+        <div className="widget-map-loading-badge" role="status" aria-live="polite">
+          <span className="widget-filtering-spinner" aria-hidden="true" />
+          <span>Loading…</span>
+        </div>
+      )}
 
       {/* Custom zoom toolbar (visual parity with MapDrawToolbar). Sibling to OL canvas
           per V15-P-17 lock. Animates the view by ±1 zoom level over 200ms — matches

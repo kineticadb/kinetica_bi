@@ -437,7 +437,7 @@ vi.mock("../../store/lastInfoClickContextStore", () => ({
   ),
 }));
 
-// Phase 21 + quick-260608-j5k: mapInfoConfig mock — expose real values for all getters.
+// Phase 21 + quick-260608-j5k + quick-260608-rbq: mapInfoConfig mock — expose real values for all getters.
 vi.mock("../../lib/mapInfoConfig", () => ({
   getInfoEnabled: (cfg: any) => cfg?.infoEnabled ?? true,
   getInfoRadiusPx: (cfg: any) => cfg?.infoRadiusPx ?? 3,
@@ -447,11 +447,14 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   // quick-260608-j5k: opt-in controls — default false so legacy tests are byte-identical
   getShowScaleBar: (cfg: any) => cfg?.showScaleBar ?? false,
   getShowFullscreenButton: (cfg: any) => cfg?.showFullscreenButton ?? false,
+  // quick-260608-rbq: loading indicator — default TRUE (opt-out; legacy widgets get indicator ON)
+  getShowLoadingIndicator: (cfg: any) => cfg?.showLoadingIndicator ?? true,
   DEFAULT_INFO_ENABLED: true,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: true,
   DEFAULT_SHOW_SCALE_BAR: false,
   DEFAULT_SHOW_FULLSCREEN_BUTTON: false,
+  DEFAULT_SHOW_LOADING_INDICATOR: true,
 }));
 
 // Phase 21: InfoPopup mock — renders minimal sentinel so we can confirm it mounts
@@ -5025,6 +5028,7 @@ describe("quick-260608-rbq: WMS loading indicator", () => {
   beforeEach(() => {
     _layersState.layers = [];
     tileLoadListeners = {};
+    allImageWmsInstances.length = 0;
     vi.clearAllMocks();
   });
 
