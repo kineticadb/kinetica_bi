@@ -23,7 +23,10 @@ export type RbacAuditAction =
   | "role_revoked"
   | "mappings_updated"
   | "role_created"
-  | "role_deleted";
+  | "role_deleted"
+  // v1.10 Phase 55-02 (ENFORCE-V110-03/04): per-dashboard grant mutations.
+  | "dashboard_access_granted"
+  | "dashboard_access_revoked";
 
 export interface RbacAuditEntry {
   actor: string;

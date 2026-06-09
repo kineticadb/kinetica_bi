@@ -537,6 +537,68 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(204).send();
   });
 
+  // ─── Dashboard Access Grant CRUD (ENFORCE-V110-03/04) ─────────────────────────
+  // All three routes are gated by dashboards:manage_access. Admin and designer hold it
+  // by default; manage_access holders are also bypass users (see canViewDashboard), so
+  // 404 here means truly absent (not a denied visibility case).
+  // Audit emitted on-change only (audit-on-change decision) to avoid noise from idempotent re-grants.
+
+  // GET /api/dashboards/:id/access — list grants (manage_access holders only)
+  app.get("/api/dashboards/:id/access", ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS), (req, res) => {
+    const id = Number(req.params.id);
+    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    return res.json({ grants: listDashboardGrants(id) });
+  });
+
+  // POST /api/dashboards/:id/access — add a user or role grant
+  app.post("/api/dashboards/:id/access", ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS), (req, res) => {
+    const id = Number(req.params.id);
+    const { grantee_type, grantee } = req.body as { grantee_type?: string; grantee?: string };
+    if ((grantee_type !== "user" && grantee_type !== "role") || typeof grantee !== "string" || grantee.trim() === "") {
+      return res.status(400).json({ error: "grantee_type ('user'|'role') and grantee are required." });
+    }
+    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const actor = (req as AuthedRequest).user!.creds.username;
+    const before = listDashboardGrants(id);
+    const inserted = addDashboardGrant(id, grantee_type, grantee);
+    const after = listDashboardGrants(id);
+    if (inserted) {
+      emitRbacAudit(db, {
+        actor,
+        action: "dashboard_access_granted",
+        target: `dashboard:${id}:${grantee_type}:${grantee.trim().toLowerCase()}`,
+        before_json: JSON.stringify(before),
+        after_json: JSON.stringify(after),
+      });
+    }
+    return res.status(201).json({ grants: after });
+  });
+
+  // DELETE /api/dashboards/:id/access — remove a user or role grant (body carries grantee_type + grantee)
+  // Idempotent: removing a non-existent grant returns 200 with current grants (not 404).
+  app.delete("/api/dashboards/:id/access", ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS), (req, res) => {
+    const id = Number(req.params.id);
+    const { grantee_type, grantee } = req.body as { grantee_type?: string; grantee?: string };
+    if ((grantee_type !== "user" && grantee_type !== "role") || typeof grantee !== "string" || grantee.trim() === "") {
+      return res.status(400).json({ error: "grantee_type ('user'|'role') and grantee are required." });
+    }
+    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const actor = (req as AuthedRequest).user!.creds.username;
+    const before = listDashboardGrants(id);
+    const removed = removeDashboardGrant(id, grantee_type, grantee);
+    const after = listDashboardGrants(id);
+    if (removed) {
+      emitRbacAudit(db, {
+        actor,
+        action: "dashboard_access_revoked",
+        target: `dashboard:${id}:${grantee_type}:${grantee.trim().toLowerCase()}`,
+        before_json: JSON.stringify(before),
+        after_json: JSON.stringify(after),
+      });
+    }
+    return res.json({ grants: after });
+  });
+
   // Widget persistence
   // ENFORCE-V110-02: collapse access check into existing 404 guard (404, NOT 403 — hides existence).
   app.get("/api/dashboards/:id/widgets", (req, res) => {
