@@ -12,6 +12,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "dashboards:create": "Create new dashboards",
   "dashboards:edit": "Edit dashboard layout and widgets; add/remove widgets and associated tables",
   "dashboards:delete": "Delete dashboards",
+  "dashboards:manage_access": "Grant and revoke per-dashboard access for users and roles",
   "widgets:configure": "Open the chart configuration panel and change widget settings",
   "layers:manage": "Add, edit, and reorder map layers (Map Layers)",
   "dynamic_views:manage": "Create and edit dynamic views (saved SQL templates)",
