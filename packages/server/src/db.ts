@@ -205,6 +205,26 @@ const SCHEMA_DDL = `
   );
   CREATE INDEX IF NOT EXISTS idx_rbac_audit_ts ON rbac_audit (ts);
   CREATE INDEX IF NOT EXISTS idx_rbac_audit_actor ON rbac_audit (actor);
+
+  -- v1.10 Phase 55 (ACCESS-V110-02): per-dashboard view-access grants. App-local
+  -- visibility layer (Kinetica creds remain the data authority). Single table with a
+  -- grantee_type discriminator covers BOTH user grants (lowercased free-form username —
+  -- pre-provisioning allowed, intentionally NOT FK-constrained to known_users) and role
+  -- grants (role NAME, not id, so a role drop+recreate does not orphan). Cascade on
+  -- dashboard delete via FK ON DELETE CASCADE (matches dashboard_tables). CREATE TABLE IF
+  -- NOT EXISTS covers fresh + existing deployments — no destructive migration.
+  -- NOTE: foreign_keys PRAGMA is NOT enabled globally in this app (only WAL is set);
+  -- the FK ON DELETE CASCADE is defined for schema correctness and future-proofing.
+  -- Actual grant cleanup on dashboard delete is handled explicitly in deleteDashboard()
+  -- (see below) to ensure cascade fires regardless of PRAGMA state.
+  CREATE TABLE IF NOT EXISTS dashboard_access_grants (
+    dashboard_id INTEGER NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+    grantee_type TEXT NOT NULL CHECK(grantee_type IN ('user','role')),
+    grantee TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (dashboard_id, grantee_type, grantee)
+  );
+  CREATE INDEX IF NOT EXISTS idx_dashboard_access_grants_dashboard_id ON dashboard_access_grants (dashboard_id);
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -363,6 +383,10 @@ export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name
 };
 
 export const deleteDashboard = (id: number): boolean => {
+  // Explicit grant cleanup before dashboard delete. foreign_keys PRAGMA is not globally
+  // ON in this app (only WAL is set), so ON DELETE CASCADE on dashboard_access_grants
+  // does not fire automatically — we explicitly delete grants first (ACCESS-V110-02).
+  db.prepare("DELETE FROM dashboard_access_grants WHERE dashboard_id = ?").run(id);
   const result = db.prepare("DELETE FROM dashboards WHERE id = ?").run(id);
   return result.changes > 0;
 };
