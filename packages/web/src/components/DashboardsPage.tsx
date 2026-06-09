@@ -751,6 +751,29 @@ const DashboardOpen = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLayersModal]);
 
+  // Phase 56 (LISTUX-V110-02): 404 on any open-flow data fetch means access was revoked or
+  // the dashboard is absent. Phase 55-02 returns EXACTLY { error: "Dashboard not found." } on
+  // denied/absent dashboard open — useApiQuery maps a generic 404 Error → kind:"other",
+  // message = server error body. Short-circuit before rendering a broken/empty grid.
+  const noAccess = [tablesQuery.error, widgetsQuery.error, viewsQuery.error].some(
+    (e) => e && e.kind === "other" && e.message === "Dashboard not found."
+  );
+
+  if (noAccess) {
+    return (
+      <div className="dashboard-list">
+        <ChartCard
+          title="No access"
+          actions={<button className="ghost-sm" onClick={onBack}>Back to dashboards</button>}
+        >
+          <div className="muted" style={{ padding: "40px 0", textAlign: "center" }}>
+            You don't have access to this dashboard.
+          </div>
+        </ChartCard>
+      </div>
+    );
+  }
+
   const layouts = widgets.map((w, i) => getWidgetLayout(w, i));
 
   return (

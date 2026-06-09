@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, waitFor, screen, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { seedDesignerStore, seedAnalystStore } from "../test/seedAuthStore";
+import { seedDesignerStore, seedAnalystStore, seedAdminStore } from "../test/seedAuthStore";
 import { useFilterStore, type ActiveFilter } from "../store/filterStore";
 import { useFilterViewStore } from "../store/filterViewStore";
 import { useInfoSelectionStore } from "../store/infoSelectionStore";
@@ -78,6 +78,10 @@ vi.mock("../api/client", async (importOriginal) => {
     // Phase 35 Plan 03 (DV-V16-13): orchestrator hook list-fetch + materialize calls.
     listDynamicViews: vi.fn(() => Promise.resolve({ dynamic_views: [] })),
     materializeDynamicView: vi.fn(),
+    // Phase 56 Plan 02 (GRANTUI-V110-03): grant CRUD fns so the modal can mount in tests.
+    listDashboardGrants: vi.fn(() => Promise.resolve([])),
+    addDashboardGrant: vi.fn(() => Promise.resolve([])),
+    removeDashboardGrant: vi.fn(() => Promise.resolve([])),
   };
 });
 
@@ -116,6 +120,22 @@ vi.mock("./LayersModal", () => ({
         <button type="button" onClick={props.onClose as () => void}>
           close-lm
         </button>
+      </div>
+    );
+  },
+}));
+
+// Phase 56 Plan 02 (GRANTUI-V110-03): mock DashboardAccessModal so DashboardsPage tests can
+// assert button-click-opens-modal + correct props passed, without pulling in the full modal tree.
+// Capture props via globalThis.__lastDAMProps (mirrors DynamicViewsModal mock pattern above).
+vi.mock("./DashboardAccessModal", () => ({
+  __esModule: true,
+  default: (props: { dashboardId: number; dashboardName: string; onClose: () => void }) => {
+    (globalThis as unknown as { __lastDAMProps?: unknown }).__lastDAMProps = props;
+    return (
+      <div data-testid="dashboard-access-modal-mock">
+        Access modal: {props.dashboardName} (id={props.dashboardId})
+        <button type="button" onClick={props.onClose}>close-dam</button>
       </div>
     );
   },
@@ -871,5 +891,181 @@ describe("Phase 35 — useDynamicViewMaterializeChain mount + prop threading (DV
     // After unmount, dynamicViewStore is reset to its initial state.
     expect(useDynamicViewStore.getState().views).toEqual({});
     expect(useDynamicViewStore.getState().dynamicViewVersion).toBe(0);
+  });
+});
+
+// ─── Phase 56 Plan 02: GRANTUI-V110-03 — Manage-access entry point gating ─────
+
+describe("Manage access entry point (GRANTUI-V110-03)", () => {
+  const dashboard = {
+    id: 42,
+    name: "Sales Dashboard",
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-06-01T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    (listDashboards as Mock).mockResolvedValue([dashboard]);
+    (listWidgets as Mock).mockResolvedValue([]);
+    (listViews as Mock).mockResolvedValue([]);
+    (listDashboardTables as Mock).mockResolvedValue([]);
+  });
+
+  it("designer sees a 'Manage access' button in each dashboard row (present in DOM)", async () => {
+    seedDesignerStore();
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const btn = screen.getByRole("button", { name: /manage access/i });
+    expect(btn).toBeInTheDocument();
+  });
+
+  it("analyst does NOT have a 'Manage access' button in the DOM (hide-don't-disable)", async () => {
+    seedAnalystStore();
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    expect(screen.queryByRole("button", { name: /manage access/i })).toBeNull();
+  });
+
+  it("clicking 'Manage access' (designer) mounts the modal with correct dashboardId and dashboardName", async () => {
+    seedDesignerStore();
+    (globalThis as unknown as { __lastDAMProps?: unknown }).__lastDAMProps = null;
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const btn = screen.getByRole("button", { name: /manage access/i });
+    await userEvent.click(btn);
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-access-modal-mock")).toBeInTheDocument();
+    });
+    const props = (globalThis as unknown as {
+      __lastDAMProps: { dashboardId: number; dashboardName: string };
+    }).__lastDAMProps;
+    expect(props).toBeTruthy();
+    expect(props.dashboardId).toBe(dashboard.id);
+    expect(props.dashboardName).toBe(dashboard.name);
+  });
+
+  it("closing the modal (onClose) removes it from the DOM", async () => {
+    seedDesignerStore();
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    await userEvent.click(screen.getByRole("button", { name: /manage access/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-access-modal-mock")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: /close-dam/i }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("dashboard-access-modal-mock")).toBeNull();
+    });
+  });
+});
+
+// ─── Phase 56 Plan 02: LISTUX-V110-01 — Empty list friendly state ──────────────
+
+describe("Empty list (LISTUX-V110-01)", () => {
+  beforeEach(() => {
+    seedDesignerStore();
+    (listDashboards as Mock).mockResolvedValue([]);
+  });
+
+  it("shows friendly empty state when no dashboards are returned", async () => {
+    render(<DashboardsPage onViewChange={() => {}} />);
+    const msg = await screen.findByText(/no dashboards have been shared with you/i);
+    expect(msg).toBeInTheDocument();
+  });
+
+  it("does NOT show the old 'No dashboards yet.' message", async () => {
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(/no dashboards have been shared with you/i);
+    expect(screen.queryByText(/no dashboards yet/i)).toBeNull();
+  });
+});
+
+// ─── Phase 56 Plan 02: LISTUX-V110-02 — No-access state on 404 open ───────────
+
+describe("No-access state (LISTUX-V110-02)", () => {
+  const dashboard = {
+    id: 7,
+    name: "Restricted Dashboard",
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-06-01T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    seedAnalystStore();
+    (listDashboards as Mock).mockResolvedValue([dashboard]);
+    (listDashboardTables as Mock).mockResolvedValue([]);
+    (listViews as Mock).mockResolvedValue([]);
+    (listWidgets as Mock).mockResolvedValue([]);
+  });
+
+  it("renders the no-access panel when a data fetch returns 'Dashboard not found.'", async () => {
+    // Simulate 404 → useApiQuery maps generic Error("Dashboard not found.") → kind:"other"
+    (listWidgets as Mock).mockRejectedValue(new Error("Dashboard not found."));
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const openBtn = screen.getByRole("button", { name: /^open$/i });
+    await userEvent.click(openBtn);
+    const panel = await screen.findByText(/don't have access/i);
+    expect(panel).toBeInTheDocument();
+    const backBtn = await screen.findByRole("button", { name: /back to dashboards/i });
+    expect(backBtn).toBeInTheDocument();
+  });
+
+  it("no-access panel does NOT render the normal dashboard toolbar/grid", async () => {
+    (listWidgets as Mock).mockRejectedValue(new Error("Dashboard not found."));
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    await userEvent.click(screen.getByRole("button", { name: /^open$/i }));
+    await screen.findByText(/don't have access/i);
+    // The normal DashboardOpen toolbar buttons (Visualizations, Back) must not be present.
+    // The "Back" button in the header toolbar is distinct from "Back to dashboards" in the panel.
+    // No-access panel has "Back to dashboards" (ChartCard actions), not the toolbar "Back".
+    expect(screen.queryByRole("button", { name: /^visualizations$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^back$/i })).toBeNull();
+  });
+
+  it("clicking 'Back to dashboards' returns to the list (dashboard row reappears)", async () => {
+    (listWidgets as Mock).mockRejectedValue(new Error("Dashboard not found."));
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    await userEvent.click(screen.getByRole("button", { name: /^open$/i }));
+    const backBtn = await screen.findByRole("button", { name: /back to dashboards/i });
+    await userEvent.click(backBtn);
+    // Back in list — dashboard row with Open button present again
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^open$/i })).toBeInTheDocument();
+    });
+  });
+});
+
+// ─── Phase 56 Plan 02: LISTUX-V110-03 — Admin/designer see all (no regression) ─
+
+describe("Admin/designer see all rows (LISTUX-V110-03)", () => {
+  const dash1 = { id: 1, name: "Alpha Dashboard", created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z" };
+  const dash2 = { id: 2, name: "Beta Dashboard",  created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z" };
+
+  beforeEach(() => {
+    (listDashboards as Mock).mockResolvedValue([dash1, dash2]);
+    (listWidgets as Mock).mockResolvedValue([]);
+    (listViews as Mock).mockResolvedValue([]);
+    (listDashboardTables as Mock).mockResolvedValue([]);
+  });
+
+  it("admin sees both dashboard rows with Open buttons (server returns all; no client filtering)", async () => {
+    seedAdminStore();
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dash1.name);
+    await screen.findByText(dash2.name);
+    const openBtns = screen.getAllByRole("button", { name: /^open$/i });
+    expect(openBtns).toHaveLength(2);
+  });
+
+  it("designer sees both dashboard rows with Open buttons (no client filtering)", async () => {
+    seedDesignerStore();
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dash1.name);
+    await screen.findByText(dash2.name);
+    const openBtns = screen.getAllByRole("button", { name: /^open$/i });
+    expect(openBtns).toHaveLength(2);
   });
 });
