@@ -515,6 +515,14 @@ export type DashboardLayerDto = {
   updated_at: string;
 };
 
+// v1.10 Phase 56 (GRANTUI-V110-01/02): Grant DTO mirroring server-side dashboardAccessDb row shape.
+// grantee_type discriminator: "user" | "role"; user grantees are lowercased server-side.
+export type DashboardGrantDto = {
+  grantee_type: "user" | "role";
+  grantee: string;
+  created_at: string;
+};
+
 export const listDashboardLayers = async (dashboardId: number): Promise<DashboardLayerDto[]> => {
   const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/layers`);
   if (!response.ok) await throwForStatus(response, "Failed to load layers");
@@ -580,6 +588,45 @@ export const reorderLayers = async (
   if (!response.ok) await throwForStatus(response, "Failed to reorder layers");
   const json = await response.json();
   return json.data as DashboardLayerDto[];
+};
+
+// v1.10 Phase 56 (GRANTUI-V110-01/02): Grant CRUD fns for /api/dashboards/:id/access.
+// All three return the full updated grants array from the server response body { grants: [...] }.
+// DELETE sends a JSON body (grantee_type + grantee) for symmetry with POST — 55-02 delete-body
+// decision. This differs from the body-less deleteLayer above.
+export const listDashboardGrants = async (dashboardId: number): Promise<DashboardGrantDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/access`);
+  if (!response.ok) await throwForStatus(response, "Failed to load access grants");
+  const json = await response.json();
+  return json.grants as DashboardGrantDto[];
+};
+
+export const addDashboardGrant = async (
+  dashboardId: number,
+  input: { grantee_type: "user" | "role"; grantee: string },
+): Promise<DashboardGrantDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/access`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to add access grant");
+  const json = await response.json();
+  return json.grants as DashboardGrantDto[];
+};
+
+export const removeDashboardGrant = async (
+  dashboardId: number,
+  input: { grantee_type: "user" | "role"; grantee: string },
+): Promise<DashboardGrantDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/access`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to remove access grant");
+  const json = await response.json();
+  return json.grants as DashboardGrantDto[];
 };
 
 // Phase 11: WMS capabilities probe (MAP-01, MAP-02)

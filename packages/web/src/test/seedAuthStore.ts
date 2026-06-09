@@ -33,6 +33,7 @@ export function seedDesignerStore(): void {
         PERMISSIONS.DYNAMIC_VIEWS_MANAGE,
         PERMISSIONS.DATA_FILTERS_CONFIGURE,
         PERMISSIONS.DATASETS_MANAGE,
+        PERMISSIONS.DASHBOARDS_MANAGE_ACCESS,
       ],
     },
   });

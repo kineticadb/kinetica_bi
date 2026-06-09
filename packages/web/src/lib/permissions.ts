@@ -24,6 +24,7 @@ export const PERMISSIONS = {
   ROLES_DELETE_CUSTOM:      "roles:delete_custom",
   AUDIT_VIEW:               "audit:view",
   DATASETS_MANAGE:          "datasets:manage",
+  DASHBOARDS_MANAGE_ACCESS: "dashboards:manage_access",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
