@@ -165,17 +165,17 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
     }
   });
 
-  it("seeds 32 role_permissions rows total (16+9+6+1)", () => {
+  it("seeds 34 role_permissions rows total (17+10+6+1)", () => {
     const x = createDb(":memory:");
     const count = (
       x
         .prepare("SELECT COUNT(*) AS c FROM role_permissions")
         .get() as { c: number }
     ).c;
-    expect(count).toBe(32);
+    expect(count).toBe(34);
   });
 
-  it("admin role maps to exactly 16 permissions", () => {
+  it("admin role maps to exactly 17 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -184,10 +184,10 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(16);
+    expect(count).toBe(17);
   });
 
-  it("designer role maps to exactly 9 permissions", () => {
+  it("designer role maps to exactly 10 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -196,7 +196,7 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(9);
+    expect(count).toBe(10);
   });
 
   it("user_admin role maps to exactly 6 permissions", () => {
@@ -250,7 +250,7 @@ describe("RBAC seed idempotency (SCHEMA-V18-01)", () => {
           .prepare("SELECT COUNT(*) AS c FROM role_permissions")
           .get() as { c: number }
       ).c;
-      expect(permCount).toBe(32);
+      expect(permCount).toBe(34);
 
       second.close();
     }).not.toThrow();
@@ -334,7 +334,7 @@ describe("RBAC operator-edit survival (SCHEMA-V18-01)", () => {
         )
         .all(designerRow.id) as Array<{ permission: string }>
     ).map((r) => r.permission);
-    expect(firstBootPerms).toHaveLength(9);
+    expect(firstBootPerms).toHaveLength(10);
     first.close();
 
     const second = createDb(dbPath);
@@ -458,7 +458,7 @@ describe("RBAC FK cascade (SCHEMA-V18-01)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
-  it("rbac_seed_history has exactly 32 rows after first boot (one per default mapping)", () => {
+  it("rbac_seed_history has exactly 34 rows after first boot (one per default mapping)", () => {
     const dbPath = mkTempDbPath();
     const x = createDb(dbPath);
 
@@ -466,8 +466,8 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
       x.prepare("SELECT COUNT(*) AS c FROM rbac_seed_history").get() as { c: number }
     ).c;
 
-    // 16 (admin) + 9 (designer) + 6 (user_admin) + 1 (analyst) = 32
-    expect(histCount).toBe(32);
+    // 17 (admin) + 10 (designer) + 6 (user_admin) + 1 (analyst) = 34
+    expect(histCount).toBe(34);
     x.close();
   });
 
@@ -512,7 +512,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
     // The removal survived — the permission was NOT re-inserted by the seed.
     expect(stillAbsent).toBe(0);
 
-    // Designer should now have 8 permissions (9 defaults minus the removed one).
+    // Designer should now have 9 permissions (10 defaults minus the removed one).
     const designerPerms = (
       second
         .prepare(
@@ -520,7 +520,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(designerPerms).toBe(8);
+    expect(designerPerms).toBe(9);
 
     second.close();
   });
@@ -528,7 +528,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
   it("a permission newly added to DEFAULT_ROLE_MAPPINGS (simulated by deleting its history row) is seeded exactly once on next boot", () => {
     const dbPath = mkTempDbPath();
 
-    // First boot — seeds all 30 defaults and records 30 history rows.
+    // First boot — seeds all 34 defaults and records 34 history rows.
     const first = createDb(dbPath);
 
     // Simulate a future catalog addition: delete the history row for (analyst, dashboards:view)

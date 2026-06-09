@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   DASHBOARDS_CREATE:        "dashboards:create",
   DASHBOARDS_EDIT:          "dashboards:edit",
   DASHBOARDS_DELETE:        "dashboards:delete",
+  DASHBOARDS_MANAGE_ACCESS: "dashboards:manage_access",
   WIDGETS_CONFIGURE:        "widgets:configure",
   LAYERS_MANAGE:            "layers:manage",
   DYNAMIC_VIEWS_MANAGE:     "dynamic_views:manage",
@@ -36,7 +37,7 @@ export const PERMISSIONS = {
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-// Flat array of all 16 permission strings — used by the admin bootstrap
+// Flat array of all 17 permission strings — used by the admin bootstrap
 // short-circuit (returns new Set(ALL_PERMISSIONS)) and the catalog seed.
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(PERMISSIONS);
 
@@ -61,17 +62,18 @@ export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
 // matrix.
 
 export const DEFAULT_ROLE_MAPPINGS: Record<BuiltinRole, readonly Permission[]> = {
-  // admin: all 16 permissions (bootstrap short-circuit always returns full set)
+  // admin: all 17 permissions (bootstrap short-circuit always returns full set)
   admin: [...ALL_PERMISSIONS],
 
-  // designer: full dashboard lifecycle + all design tooling + dataset management.
-  // Mental model: "designer designs, admin governs."
+  // designer: full dashboard lifecycle + all design tooling + dataset management +
+  // per-dashboard access management. Mental model: "designer designs, admin governs."
   // Everything except users:*, roles:*, audit:*.
   designer: [
     PERMISSIONS.DASHBOARDS_VIEW,
     PERMISSIONS.DASHBOARDS_CREATE,
     PERMISSIONS.DASHBOARDS_EDIT,
     PERMISSIONS.DASHBOARDS_DELETE,
+    PERMISSIONS.DASHBOARDS_MANAGE_ACCESS,
     PERMISSIONS.WIDGETS_CONFIGURE,
     PERMISSIONS.LAYERS_MANAGE,
     PERMISSIONS.DYNAMIC_VIEWS_MANAGE,

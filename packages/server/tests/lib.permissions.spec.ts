@@ -13,6 +13,7 @@ const EXPECTED_PERMISSION_STRINGS = [
   "dashboards:create",
   "dashboards:edit",
   "dashboards:delete",
+  "dashboards:manage_access",
   "widgets:configure",
   "layers:manage",
   "dynamic_views:manage",
@@ -28,11 +29,11 @@ const EXPECTED_PERMISSION_STRINGS = [
 ] as const;
 
 describe("PERMISSIONS catalog", () => {
-  it("has exactly 16 entries", () => {
-    expect(Object.keys(PERMISSIONS).length).toBe(16);
+  it("has exactly 17 entries", () => {
+    expect(Object.keys(PERMISSIONS).length).toBe(17);
   });
 
-  it("contains exactly the 16 expected permission strings (independent lock)", () => {
+  it("contains exactly the 17 expected permission strings (independent lock)", () => {
     const actual = Object.values(PERMISSIONS).sort();
     const expected = [...EXPECTED_PERMISSION_STRINGS].sort();
     expect(actual).toEqual(expected);
@@ -47,8 +48,8 @@ describe("PERMISSIONS catalog", () => {
 });
 
 describe("ALL_PERMISSIONS", () => {
-  it("has length 16", () => {
-    expect(ALL_PERMISSIONS.length).toBe(16);
+  it("has length 17", () => {
+    expect(ALL_PERMISSIONS.length).toBe(17);
   });
 
   it("contains every value in PERMISSIONS (no omissions)", () => {
@@ -65,6 +66,10 @@ describe("ALL_PERMISSIONS", () => {
 
   it("contains 'datasets:manage' (16th permission, Phase 47 addition)", () => {
     expect(ALL_PERMISSIONS).toContain("datasets:manage");
+  });
+
+  it("contains 'dashboards:manage_access' (17th permission, Phase 55 addition)", () => {
+    expect(ALL_PERMISSIONS).toContain("dashboards:manage_access");
   });
 });
 
@@ -84,6 +89,7 @@ const EXPECTED_ADMIN_PERMS = [
   "dashboards:create",
   "dashboards:edit",
   "dashboards:delete",
+  "dashboards:manage_access",
   "widgets:configure",
   "layers:manage",
   "dynamic_views:manage",
@@ -103,6 +109,7 @@ const EXPECTED_DESIGNER_PERMS = [
   "dashboards:create",
   "dashboards:edit",
   "dashboards:delete",
+  "dashboards:manage_access",
   "widgets:configure",
   "layers:manage",
   "dynamic_views:manage",
@@ -122,20 +129,20 @@ const EXPECTED_USER_ADMIN_PERMS = [
 const EXPECTED_ANALYST_PERMS = ["dashboards:view"];
 
 describe("DEFAULT_ROLE_MAPPINGS", () => {
-  it("admin deep-equals ALL_PERMISSIONS (all 16) — compared as sorted sets", () => {
+  it("admin deep-equals ALL_PERMISSIONS (all 17) — compared as sorted sets", () => {
     const actual = [...DEFAULT_ROLE_MAPPINGS.admin].sort();
     const expected = [...ALL_PERMISSIONS].sort();
     expect(actual).toEqual(expected);
   });
 
-  it("admin has exactly 16 permissions (independently locked)", () => {
+  it("admin has exactly 17 permissions (independently locked)", () => {
     const actual = [...DEFAULT_ROLE_MAPPINGS.admin].sort();
     const expected = [...EXPECTED_ADMIN_PERMS].sort();
     expect(actual).toEqual(expected);
   });
 
-  it("designer is exactly the 9 design permissions — no users:*, roles:*, audit:*", () => {
-    expect(DEFAULT_ROLE_MAPPINGS.designer.length).toBe(9);
+  it("designer is exactly the 10 design permissions — no users:*, roles:*, audit:*", () => {
+    expect(DEFAULT_ROLE_MAPPINGS.designer.length).toBe(10);
     const actual = [...DEFAULT_ROLE_MAPPINGS.designer].sort();
     const expected = [...EXPECTED_DESIGNER_PERMS].sort();
     expect(actual).toEqual(expected);
@@ -143,6 +150,13 @@ describe("DEFAULT_ROLE_MAPPINGS", () => {
     for (const perm of DEFAULT_ROLE_MAPPINGS.designer) {
       expect(perm).not.toMatch(/^(users:|roles:|audit:)/);
     }
+  });
+
+  it("designer contains 'dashboards:manage_access' (17th permission, Phase 55)", () => {
+    expect(DEFAULT_ROLE_MAPPINGS.designer).toContain("dashboards:manage_access");
+    // user_admin and analyst do NOT get manage_access
+    expect(DEFAULT_ROLE_MAPPINGS.user_admin).not.toContain("dashboards:manage_access");
+    expect(DEFAULT_ROLE_MAPPINGS.analyst).not.toContain("dashboards:manage_access");
   });
 
   it("user_admin has exactly 6 permissions and does not include roles:delete_custom", () => {
