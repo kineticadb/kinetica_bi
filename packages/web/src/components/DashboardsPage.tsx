@@ -34,6 +34,7 @@ import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
+import DashboardAccessModal from "./DashboardAccessModal";  // Phase 56 (GRANTUI-V110-03)
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import {
   listDashboardLayers,
@@ -79,6 +80,9 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
   const canCreate = hasPermission(PERMISSIONS.DASHBOARDS_CREATE);
   const canEdit   = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
   const canDelete = hasPermission(PERMISSIONS.DASHBOARDS_DELETE);
+  const canManageAccess = hasPermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS);  // Phase 56 (GRANTUI-V110-03)
+
+  const [accessModalDashboard, setAccessModalDashboard] = useState<DashboardDto | null>(null);  // Phase 56 (GRANTUI-V110-03)
 
   // Sync dashboards state from useApiQuery data (preserves local mutation for delete)
   useEffect(() => {
@@ -162,7 +166,7 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
           <div className="error">{error.message}</div>
         )}
         {deleteError && <div className="error">{deleteError}</div>}
-        {!loading && !error && dashboards.length === 0 && <div className="muted">No dashboards yet.</div>}
+        {!loading && !error && dashboards.length === 0 && <div className="muted">No dashboards have been shared with you yet.</div>}
         {!loading && !error && dashboards.length > 0 && (
           <div className="datasets-table">
             <div className="ds-header dash-grid">
@@ -193,12 +197,24 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
                       Delete
                     </button>
                   )}
+                  {canManageAccess && (
+                    <button className="ghost-sm" onClick={() => setAccessModalDashboard(dash)}>
+                      Manage access
+                    </button>
+                  )}
                 </span>
               </div>
             ))}
           </div>
         )}
       </ChartCard>
+      {accessModalDashboard && (
+        <DashboardAccessModal
+          dashboardId={accessModalDashboard.id}
+          dashboardName={accessModalDashboard.name}
+          onClose={() => setAccessModalDashboard(null)}
+        />
+      )}
     </div>
   );
 };
