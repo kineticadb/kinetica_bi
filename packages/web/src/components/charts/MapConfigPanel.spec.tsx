@@ -69,31 +69,19 @@ describe("MapConfigPanel — Phase 12 shrunk surface", () => {
     vi.clearAllMocks();
   });
 
-  // 1. Renders title input with current value
-  it("renders the title input with the current config.title value", () => {
+  // 1+2. Regression: the panel must NOT render its own title field. The widget title is owned
+  // by the ChartConfigPanel scaffold ("Title" section); a duplicate here wrote to a dead
+  // config.title and showed two TITLE fields in the modal. Lock it out.
+  it("does NOT render its own title input (owned by the ChartConfigPanel scaffold)", () => {
     _storeState.layers = [];
     render(
-      <MapConfigPanel
-        config={makeConfig({ title: "My Dashboard Map" })}
-        onChange={vi.fn()}
-      />,
+      <MapConfigPanel config={makeConfig({ title: "My Dashboard Map" })} onChange={vi.fn()} />,
     );
-    const titleInput = screen.getByPlaceholderText("Map widget title") as HTMLInputElement;
-    expect(titleInput.value).toBe("My Dashboard Map");
-  });
-
-  // 2. Typing into title input fires onChange
-  it("typing into title input fires onChange with updated title", () => {
-    const onChange = vi.fn();
-    _storeState.layers = [];
-    render(
-      <MapConfigPanel config={makeConfig({ title: "Old Title" })} onChange={onChange} />,
+    expect(screen.queryByPlaceholderText("Map widget title")).toBeNull();
+    const labels = screen.queryAllByText("TITLE", { exact: true }).filter(
+      (el) => el.classList.contains("config-group-label"),
     );
-    const titleInput = screen.getByPlaceholderText("Map widget title");
-    fireEvent.change(titleInput, { target: { value: "New Title" } });
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "New Title" }),
-    );
+    expect(labels).toHaveLength(0);
   });
 
   // 3. Renders separate light + dark basemap pickers, each with 3 options
@@ -292,12 +280,11 @@ describe("MapConfigPanel — Phase 22 INFO POPUP section", () => {
     const labels = Array.from(
       document.querySelectorAll(".config-group-label"),
     ).map((el) => el.textContent);
-    const titleIdx = labels.indexOf("TITLE");
+    // TITLE is no longer rendered by this panel (owned by the ChartConfigPanel scaffold).
     const basemapIdx = labels.indexOf("BASEMAP");
     const layersIdx = labels.indexOf("LAYERS");
     const infoIdx = labels.indexOf("INFO POPUP");
-    expect(titleIdx).toBeGreaterThanOrEqual(0);
-    expect(basemapIdx).toBeGreaterThan(titleIdx);
+    expect(basemapIdx).toBeGreaterThanOrEqual(0);
     expect(layersIdx).toBeGreaterThan(basemapIdx);
     expect(infoIdx).toBeGreaterThan(layersIdx);
   });

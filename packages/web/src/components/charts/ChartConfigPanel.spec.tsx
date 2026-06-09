@@ -155,6 +155,30 @@ describe("ChartConfigPanel — custom panel scaffold (Phase 11-10)", () => {
     );
   });
 
+  it("persists a title-only edit on blur (custom-panel branch has no Apply button)", () => {
+    const onSave = vi.fn();
+
+    render(
+      <ChartConfigPanel
+        widgetType="map"
+        title="My Map"
+        config={{ table: "public.taxi_trips" }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    // Edit ONLY the title, then blur — without touching the custom panel at all.
+    const titleInput = screen.getByDisplayValue("My Map");
+    fireEvent.change(titleInput, { target: { value: "Renamed Map" } });
+    fireEvent.blur(titleInput);
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Renamed Map" }),
+    );
+  });
+
   it("strips __autoSuggestActive from persisted config", () => {
     const onSave = vi.fn();
 

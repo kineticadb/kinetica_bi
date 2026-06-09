@@ -73,7 +73,6 @@ const LAYER_STYLE_CONFIG_KEY = ["render", "Mode"].join(""); // avoids literal in
 
 export default function MapConfigPanel({ config, onChange, tables }: ConfigPanelProps): JSX.Element {
   const layers = useDashboardLayersStore((s) => s.layers);
-  const title = (config.title as string) ?? "";
   // Theme-aware basemaps: the renderer picks light vs dark based on the active app
   // theme. Legacy widgets only have `basemap` — fall back to it for both so they keep
   // their existing look until the operator picks per-theme basemaps.
@@ -225,17 +224,10 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
 
   return (
     <div className="config-panel">
-      {/* ─── TITLE ──────────────────────────────────────────────────────── */}
-      <div className="config-group">
-        <div className="config-group-label">TITLE</div>
-        <input
-          className="ds-field"
-          type="text"
-          value={title}
-          onChange={(e) => onChange({ ...config, title: e.target.value })}
-          placeholder="Map widget title"
-        />
-      </div>
+      {/* The widget title field is owned by the ChartConfigPanel scaffold (the "Title" section
+          rendered above this custom panel). A second title input here previously wrote to a
+          dead `config.title` (no reader anywhere) and visually duplicated the scaffold field —
+          removed so there is one title field that actually persists to widget.title. */}
 
       {/* ─── BASEMAP ────────────────────────────────────────────────────── */}
       {/* Two basemaps — one per app theme. The map auto-selects the matching one

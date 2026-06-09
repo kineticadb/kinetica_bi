@@ -333,6 +333,41 @@ const ChartConfigPanel = ({
 
   if (chartDef.CustomConfigPanel) {
     const Custom = chartDef.CustomConfigPanel;
+    // Build the save payload for a given config and persist it (auto-save model — no Apply
+    // button in the custom-panel branch). Shared by the custom panel's onChange AND the title
+    // field's onBlur, so editing ONLY the title still persists to widget.title (previously the
+    // title input just set local draft state and was never saved unless the custom panel changed).
+    const persistCustom = (cfg: Record<string, unknown>) => {
+      const customDrillDownColumn = (cfg.drillDownColumn as string) || "";
+      const customDrillDownColumnType = customDrillDownColumn
+        ? inferDataTypeFromColumn(customDrillDownColumn, selectedTable?.columns ?? {})
+        : "null";
+      // Phase 11-10: strip __autoSuggestActive draft flag before persistence.
+      const { __autoSuggestActive: _drop, ...persistedConfig } = cfg as Record<string, unknown> & {
+        __autoSuggestActive?: unknown;
+      };
+      const baseSourceTableId = selectedSource?.kind === "dynamic"
+        ? selectedSource.sourceTableId
+        : selectedSource?.tableId;
+      const dataSourceFields = chartDef.usesDataSource === false
+        ? {}
+        : {
+            tableRef: selectedTableName,
+            tableId: baseSourceTableId,
+            ...(selectedSource?.kind === "dynamic"
+              ? { dynamicViewId: selectedSource.dynamicViewId }
+              : {}),
+          };
+      onSave({
+        title: titleDraft,
+        config: {
+          ...persistedConfig,
+          ...dataSourceFields,
+          drillDownColumn: customDrillDownColumn,
+          drillDownColumnType: customDrillDownColumnType,
+        },
+      });
+    };
     return (
       <div className="config-panel">
         {/* ChartConfigPanel — custom panel scaffold (Phase 11-10 fix; addresses 11-VERIFICATION.md Criterion 1 RED) */}
@@ -346,6 +381,9 @@ const ChartConfigPanel = ({
                 className="ds-input"
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value)}
+                // Persist on blur so a title-only edit reaches widget.title even when the
+                // custom panel itself never changes (auto-save model, no Apply button here).
+                onBlur={() => persistCustom(draft)}
                 placeholder="Chart title"
               />
             </label>
@@ -403,45 +441,12 @@ const ChartConfigPanel = ({
             isValid={(valid) => setCustomPanelValid(valid)}
             onChange={(c) => {
               setDraft(c);
-              // Phase 10 DRILL-02: thread drillDownColumn + drillDownColumnType through Custom panels too.
-              const customDrillDownColumn = (c.drillDownColumn as string) || "";
-              const customDrillDownColumnType = customDrillDownColumn
-                ? inferDataTypeFromColumn(customDrillDownColumn, selectedTable?.columns ?? {})
-                : "null";
-              // Phase 11-10: strip __autoSuggestActive draft flag before persistence (resolves 11-07-SUMMARY caveat).
-              // Destructure-and-drop pattern keeps this defensive and explicit.
-              const { __autoSuggestActive: _drop, ...persistedConfig } = c as Record<string, unknown> & {
-                __autoSuggestActive?: unknown;
-              };
-              // Phase 11-10: persist BOTH tableRef (string for WMS LAYERS param) AND tableId
-              // (number for filter-store key, AP-4 lock). Skip both when this chart type has
-              // usesDataSource: false (map widget — per-layer dashboard_layers carries the
-              // table refs; no single source applies to the widget).
-              // Phase 35 (DV-V16-12): when selectedSource is a dynamic-view, dual-write
-              // dynamicViewId + tableId (=sourceTableId) so drill-down + filter-bar paths
-              // (which key on tableId) keep working unchanged. Renderer treats
-              // dynamicViewId as primary when present (Plan 35-05).
-              const baseSourceTableId = selectedSource?.kind === "dynamic"
-                ? selectedSource.sourceTableId
-                : selectedSource?.tableId;
-              const dataSourceFields = chartDef.usesDataSource === false
-                ? {}
-                : {
-                    tableRef: selectedTableName,
-                    tableId: baseSourceTableId,
-                    ...(selectedSource?.kind === "dynamic"
-                      ? { dynamicViewId: selectedSource.dynamicViewId }
-                      : {}),
-                  };
-              onSave({
-                title: titleDraft,
-                config: {
-                  ...persistedConfig,
-                  ...dataSourceFields,
-                  drillDownColumn: customDrillDownColumn,
-                  drillDownColumnType: customDrillDownColumnType,
-                },
-              });
+              // Phase 10 DRILL-02 / Phase 11-10 / Phase 35 (DV-V16-12) persistence logic lives
+              // in persistCustom (shared with the title field's onBlur). It threads drillDown
+              // column+type, strips the __autoSuggestActive draft flag, and dual-writes
+              // tableRef + tableId (+ dynamicViewId for dynamic-view sources; skipped entirely
+              // when usesDataSource === false, e.g. the map widget).
+              persistCustom(c);
             }}
           />
         </div>
