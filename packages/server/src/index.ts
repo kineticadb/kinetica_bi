@@ -109,6 +109,8 @@ import { requirePermission } from "./rbac";
 // v1.8 Phase 47: PERMISSIONS catalog — canonical permission constants for server enforcement.
 import { PERMISSIONS, BUILTIN_ROLES } from "./lib/permissions";
 import type { Permission } from "./lib/permissions";
+// v1.10 Phase 55-02 (ENFORCE-V110-01..04): per-dashboard view access enforcement + grant CRUD.
+import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboardGrant } from "./lib/dashboardAccessDb";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -505,8 +507,13 @@ export const createApp = async (): Promise<express.Express> => {
   app.use("/api", requireAuth);
 
   // Dashboard persistence
-  app.get("/api/dashboards", (_req, res) => {
-    res.json({ data: listDashboards() });
+  // ENFORCE-V110-01: server-side filter — bypass users (manage_access) get all;
+  // everyone else gets only dashboards for which canViewDashboard returns true.
+  app.get("/api/dashboards", (req, res) => {
+    const username = (req as AuthedRequest).user!.creds.username;
+    const all = listDashboards();
+    const visible = all.filter((d) => canViewDashboard(username, d.id));
+    return res.json({ data: visible });
   });
 
   app.post("/api/dashboards", ...requirePermission(PERMISSIONS.DASHBOARDS_CREATE), (req, res) => {
@@ -531,9 +538,11 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // Widget persistence
+  // ENFORCE-V110-02: collapse access check into existing 404 guard (404, NOT 403 — hides existence).
   app.get("/api/dashboards/:id/widgets", (req, res) => {
     const id = Number(req.params.id);
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
     return res.json({ data: listWidgets(id) });
   });
 
@@ -568,9 +577,11 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // Dashboard-Table associations
+  // ENFORCE-V110-02: collapse access check into existing 404 guard.
   app.get("/api/dashboards/:id/tables", (req, res) => {
     const id = Number(req.params.id);
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
     return res.json({ data: listDashboardTables(id) });
   });
 
@@ -597,9 +608,11 @@ export const createApp = async (): Promise<express.Express> => {
   // :layerId parameterised route. Express matches routes in registration order;
   // if reversed, "reorder" would be matched as the literal value of :layerId.
 
+  // ENFORCE-V110-02: collapse access check into existing 404 guard.
   app.get("/api/dashboards/:id/layers", (req, res) => {
     const id = Number(req.params.id);
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
     return res.json({ data: listDashboardLayers(id) });
   });
 
@@ -677,9 +690,11 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // Dashboard-Table Views
+  // ENFORCE-V110-02: collapse access check into existing 404 guard.
   app.get("/api/dashboards/:id/views", (req, res) => {
     const id = Number(req.params.id);
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
     return res.json({ data: listViews(id) });
   });
 
@@ -1099,6 +1114,8 @@ export const createApp = async (): Promise<express.Express> => {
   // /api/dynamic-view/:id with DELETE method) so the two plans share only this
   // route-registration region — no handler-body conflict possible.
 
+  // ENFORCE-V110-02: dynamic-views GET previously had NO getDashboard guard. Add both
+  // getDashboard and canViewDashboard checks here so denial is 404 (existence hidden).
   app.get(
     "/api/dashboards/:dashboardId/dynamic-views",
     requireConfig,
@@ -1106,6 +1123,10 @@ export const createApp = async (): Promise<express.Express> => {
       const dashboardId = Number(req.params.dashboardId);
       if (!Number.isFinite(dashboardId)) {
         return res.status(400).json({ error: "dashboardId path param must be numeric." });
+      }
+      const username = (req as AuthedRequest).user!.creds.username;
+      if (!getDashboard(dashboardId) || !canViewDashboard(username, dashboardId)) {
+        return res.status(404).json({ error: "Dashboard not found." });
       }
       const rows = listDashboardDynamicViews(dashboardId);
       return res.json({ dynamic_views: rows });
