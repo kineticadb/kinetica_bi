@@ -21,6 +21,7 @@ import registerLegend from "./legend";
 import registerDataFilter from "./data-filter";
 import registerTimeline from "./timeline";
 import registerNumericLine from "./numericline";
+import registerRadioGroup from "./radio-group";
 
 export function registerAllChartTypes() {
   registerBar();
@@ -37,4 +38,5 @@ export function registerAllChartTypes() {
   registerDataFilter();     // Phase 44 Plan 02 (FILTER-V17-07): Data Filter widget
   registerTimeline();       // Phase 45 Plan 02 (TIMELINE-V17-01): Timeline Chart widget
   registerNumericLine();    // Numeric Line Chart — numeric-X, interval-binned, multi-metric
+  registerRadioGroup();     // Phase 59 (RADIO-V111-01): Radio Group control widget
 }
