@@ -1,98 +1,95 @@
-# Requirements: Kinetica BI — v1.10 Per-Dashboard View Permissions
+# Requirements: Kinetica BI — v1.11 Programmable Widgets (Cross-Widget Control)
 
-**Defined:** 2026-06-09
+**Defined:** 2026-06-10
 **Core Value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, without writing SQL.
 
-**Locked decisions (from milestone questioning, 2026-06-09):** View-access granted to BOTH users (lowercased username) and roles, with union semantics; admin + designer BYPASS (see/open all), view-only roles (analyst) restricted to grants; newly created dashboards are PRIVATE-by-default (only bypass roles until granted); a new `dashboards:manage_access` permission (17th catalog entry, default admin + designer) gates grant/revoke; enforcement is server-authoritative on list + open + dashboard-scoped data routes; grant changes audited via the existing dual-sink. **Security boundary:** this is an app-level *visibility/organization* layer — actual data access stays enforced by each user's Kinetica credentials on every `/api/sql`/`/api/wms`/info call (v1.0 model). Intentionally revises the v1.8 "shared workspace — no dashboard ownership" decision.
+**Locked decisions (from milestone questioning + research, 2026-06-10):** Build a generic, serializable widget-action engine + a first control widget (radio group); AI chat widget and MCP server are DESIGNED-FOR but NOT built this milestone. Action contract is a serializable envelope `{ target, configPatch }` (zod-validated — the only new dep; also the future MCP `inputSchema`), NOT JSON-Patch or a typed command union. A **versioned allow-list** of patchable fields per target kind is the safety contract (no free-form patches) and ships in the engine foundation. The engine routes to THREE target kinds: **widget.config**, **map layer config** (`useDashboardLayersStore` / `dashboard_layers`, incl. top-level `track_config`/`cb_config`), and **dynamic-view config** (`dashboard_dynamic_views` — lower priority, "able to touch" but lighter verification). Same-dashboard targeting only. Must stay fully decoupled from the drill-down/filter + sole-materialize-trigger systems. Target widgets must re-render LIVE from externally-changed config (the read-once-at-mount trap is the #1 risk; mounted-renderer re-render test is the canary). MCP-future server surface is the existing `PATCH /api/widgets/:id` (+ layer/dynamic-view PATCH routes) — no new routes/WebSocket/action-log this milestone.
 
 ## v1 Requirements
 
-Requirements for this milestone (v1.10). Each maps to exactly one roadmap phase.
+### Action Engine & Contract
 
-### Access Model & Permission
+- [x] **ENGINE-V111-01**: A serializable widget-action contract — an envelope `{ target (kind + id), configPatch }` with NO closures or component refs (emittable by a non-human agent) — is defined and zod-validated; it is the single shape every caller (the radio widget now, a future AI/MCP layer) produces
+- [ ] **ENGINE-V111-02**: A single dispatch path applies an action to its target — optimistic transient update + persist via the existing config PATCH path — and the target widget re-renders LIVE from the changed config with NO remount (verified by a mounted-renderer re-render canary test)
+- [ ] **ENGINE-V111-03**: The engine routes actions to three target kinds: (a) a widget's `config` (widgets table), (b) a map layer's config via `useDashboardLayersStore` incl. the top-level `track_config`/`cb_config` fields, and (c) a dynamic-view's config (`dashboard_dynamic_views`); (a) and (b) are primary/verified, (c) is supported by the contract + router with lighter verification
+- [ ] **ENGINE-V111-04**: Targeting is same-dashboard only; an action whose target no longer exists (deleted widget/layer/dynamic-view) or whose field is absent fails safely — no crash, a no-op with a surfaced signal, no partial/corrupt write
 
-- [x] **ACCESS-V110-01**: A `dashboards:manage_access` permission exists in the catalog (17th permission), default-granted to the `admin` and `designer` built-in roles, seeded once-only via the existing `rbac_seed_history` mechanism (operator removals of the default mapping survive restarts; the new permission seeds exactly once)
-- [x] **ACCESS-V110-02**: A dashboard's view-access can be granted to specific users (by lowercased username) and/or to roles, persisted in a new app-local SQLite table keyed by dashboard + grantee (user or role), with cascade-on-dashboard-delete
-- [x] **ACCESS-V110-03**: A server-side resolver decides whether a user may view a given dashboard — true when the user is `admin` or `designer` (bypass), OR holds a direct user grant, OR holds a grant via ANY of their roles (union semantics mirroring `getEffectivePermissions`)
-- [x] **ACCESS-V110-04**: A newly created dashboard has no grants and is therefore visible/openable only to bypass roles until access is explicitly granted (private-by-default)
+### Safety & Decoupling
 
-### Server Enforcement
+- [x] **SAFETY-V111-01**: A versioned allow-list defines exactly which config fields are patchable per target kind / widget type; an action patching any field outside it (or a prototype-polluting / meta key like `id`/`tableId`) is rejected by validation — no free-form `Object.assign`. The allow-list IS the contract a future AI/MCP layer is bound by (`ALLOW_LIST_VERSION` constant)
+- [ ] **SAFETY-V111-02**: The action engine never writes to the drill-down/filter stores or triggers materialize (no `filterVersion` bump, no `materializeFilter`) — the sole-materialize-trigger invariant is preserved, enforced by a static source-grep assertion (mirrors the `DataFilterRenderer` precedent)
 
-- [x] **ENFORCE-V110-01**: `GET /api/dashboards` returns only the dashboards the requesting user may view (bypass roles receive all; everyone else receives only granted dashboards) — server-authoritative, not a client-side filter
-- [x] **ENFORCE-V110-02**: A user who may not view a dashboard is denied server-side on open — `GET /api/dashboards/:id` and its dashboard-scoped data routes (widgets, tables, layers, dynamic-views, views) return 403/404 for that user
-- [x] **ENFORCE-V110-03**: The dashboard access-grant routes (list / add / remove a dashboard's grants) are gated by `dashboards:manage_access`
-- [x] **ENFORCE-V110-04**: Every grant add/remove is recorded via the existing dual-sink audit (an `rbac_audit` row + an OBS-1 log line), consistent with v1.8 mutation auditing
+### Radio Control Widget
 
-### Access Management UI
+- [ ] **RADIO-V111-01**: A net-new "radio group" control widget type (registry definition + config panel + renderer) — the operator configures N options, each with a label and a bound action
+- [ ] **RADIO-V111-02**: The config panel lets the operator pick a same-dashboard target (widget / map layer / dynamic view) and an allowed field + value driven by the allow-list (no raw arbitrary JSON for unsafe fields); selecting an invalid/empty binding is prevented
+- [ ] **RADIO-V111-03**: Selecting a radio option applies its action — the target updates LIVE and the change persists across dashboard reload; the radio's own selected option persists (its `selectedIndex` is part of its config)
 
-- [x] **GRANTUI-V110-01**: A user with `dashboards:manage_access` can open an access panel for a dashboard that lists its current user grants and role grants
-- [x] **GRANTUI-V110-02**: From that panel the user can add a grant (choose a user or a role) and remove an existing grant, with changes persisted via the grant API
-- [x] **GRANTUI-V110-03**: The access-management entry point is hidden in the UI when the user lacks `dashboards:manage_access` (the server remains the authority; UI gating is UX only)
+### AI/MCP Future Seam (design + document only)
 
-### List & Open UX
-
-- [x] **LISTUX-V110-01**: The dashboard list view shows only the dashboards the user may view (driven by the filtered list endpoint) — analysts no longer see dashboards they have not been granted
-- [x] **LISTUX-V110-02**: Navigating directly to a non-permitted dashboard (stale URL / direct nav) shows a clear "you don't have access" state rather than a broken or empty dashboard
-- [x] **LISTUX-V110-03**: Admin and designer users continue to see and open all dashboards with no regression to the existing design/governance workflow
+- [ ] **SEAM-V111-01**: The dispatch entry point (e.g. `applyWidgetAction`) and the action envelope are documented as the hook a future AI chat widget / MCP server reuses, with the concrete MCP tool shape noted (the envelope as zod `inputSchema`, calling the existing PATCH routes) — NO AI widget and NO MCP server are built this milestone
 
 ### Verification
 
-- [x] **VERIFY-V110-01**: Live operator UAT — an analyst sees and can open only granted dashboards (list + direct nav both enforced); a `manage_access` user grants and revokes both user and role access and the effect is immediate; admin/designer are unaffected; automated gates green (frontend 100%, web+server tsc clean, server set-based known-flaky gate)
+- [ ] **VERIFY-V111-01**: Live operator UAT — a radio group switches a map layer's class-break render mode AND a widget.config field live + persisted across reload; an out-of-allow-list patch is rejected; no filter chips appear and no materialize fires; automated gates green (frontend 100%, web + server tsc clean, server set-based known-flaky gate)
 
 ## v2 Requirements
 
 Deferred to a future milestone. Tracked but not in this roadmap.
 
-### Dashboard Access (future)
+### AI-Driven Dashboards
 
-- **DACL-V2-01**: Per-dashboard EDIT grants (grant a specific user/role edit rights to one dashboard, independent of the global designer role)
-- **DACL-V2-02**: Dashboard ownership / creator column + ownership transfer
-- **DACL-V2-03**: Link-based / token public sharing (view a dashboard via an unauthenticated share link)
+- **AI-V2-01**: AI chat widget — a user asks a question in natural language; an LLM emits widget-actions that reconfigure the dashboard to answer it
+- **AI-V2-02**: MCP server exposing the widget-action envelope as tools, so an external AI agent can configure/drive a dashboard
+- **AI-V2-03**: AI can compose new visualizations / zoom a map to relevant data / set filters, not just patch existing widget config
+
+### More Control Widgets / Actions
+
+- **CTRL-V2-01**: Additional control widget types (dropdown, buttons, toggle, slider)
+- **CTRL-V2-02**: Actions that set data FILTERS (distinct from config; needs its own invariant analysis vs the existing drill-down/materialize pipeline)
+- **CTRL-V2-03**: One control driving multiple targets at once / dashboard-wide parameters
 
 ## Out of Scope
 
-Explicitly excluded for v1.10. Documented to prevent scope creep.
+Explicitly excluded for v1.11.
 
 | Feature | Reason |
 |---------|--------|
-| Per-dashboard EDIT grants | This milestone is about VIEW access; edit stays governed by the global `designer` role. Deferred to DACL-V2-01. |
-| Dashboard ownership / creator column / transfer | Grants model covers the analyst-assignment need without ownership semantics; ownership is a larger model change. Deferred to DACL-V2-02. |
-| Link-based / public (unauthenticated) sharing | Separate auth surface (anonymous identity); out of the RBAC-extension scope. Deferred to DACL-V2-03. |
-| Row/column-level data security | Kinetica per-user credentials already enforce data access on every call (v1.0 model); app-level dashboard ACL is a visibility layer, not a data-security boundary. |
-| Folders / dashboard grouping | Organization feature unrelated to access control. |
+| AI chat widget | Large LLM-integration scope; v1.11 only designs the action seam it will reuse (SEAM-V111-01). Deferred to AI-V2-01. |
+| MCP server | Built later on top of the same envelope; v1.11 documents the shape only. Deferred to AI-V2-02. |
+| Control widgets beyond radio (dropdown/buttons/toggle/slider) | Prove the mechanism with one control type first. Deferred to CTRL-V2-01. |
+| Actions that set data filters | Distinct from config-control; would entangle with the drill-down/sole-materialize-trigger systems. Deferred to CTRL-V2-02. |
+| New Express routes / WebSocket / action-log table | The existing PATCH routes are the entire server surface; no new server infra needed. |
+| Cross-dashboard targeting | Same-dashboard only for v1.11 (the `widgets` array scope). |
+| JSON-Patch (RFC 6902) / fast-json-patch / immer / a new Zustand-vs-function bikeshed | Research: the shallow `{ ...config, ...configPatch }` envelope + zod is sufficient; dispatch-mechanism detail resolved at discuss/plan-phase. |
 
 ## Traceability
 
-Which phases cover which requirements. Populated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCESS-V110-01 | Phase 55 | Complete |
-| ACCESS-V110-02 | Phase 55 | Complete |
-| ACCESS-V110-03 | Phase 55 | Complete |
-| ACCESS-V110-04 | Phase 55 | Complete |
-| ENFORCE-V110-01 | Phase 55 | Complete |
-| ENFORCE-V110-02 | Phase 55 | Complete |
-| ENFORCE-V110-03 | Phase 55 | Complete |
-| ENFORCE-V110-04 | Phase 55 | Complete |
-| GRANTUI-V110-01 | Phase 56 | Complete |
-| GRANTUI-V110-02 | Phase 56 | Complete |
-| GRANTUI-V110-03 | Phase 56 | Complete |
-| LISTUX-V110-01 | Phase 56 | Complete |
-| LISTUX-V110-02 | Phase 56 | Complete |
-| LISTUX-V110-03 | Phase 56 | Complete |
-| VERIFY-V110-01 | Phase 57 | Complete |
+| ENGINE-V111-01 | Phase 58 | Complete |
+| ENGINE-V111-02 | Phase 58 | Pending |
+| ENGINE-V111-03 | Phase 58 | Pending |
+| ENGINE-V111-04 | Phase 58 | Pending |
+| SAFETY-V111-01 | Phase 58 | Complete |
+| SAFETY-V111-02 | Phase 58 | Pending |
+| RADIO-V111-01 | Phase 59 | Pending |
+| RADIO-V111-02 | Phase 59 | Pending |
+| RADIO-V111-03 | Phase 60 | Pending |
+| SEAM-V111-01 | Phase 60 | Pending |
+| VERIFY-V111-01 | Phase 61 | Pending |
 
 **Coverage:**
-- v1 requirements: 15 total
-- Mapped to phases: 15 ✓
+- v1 requirements: 11 total
+- Mapped to phases: 11 ✓
 - Unmapped: 0 ✓
 
-**Phase rollup:**
-- Phase 55 (Access Model & Server Enforcement): 8 requirements (ACCESS-V110-01..04, ENFORCE-V110-01..04)
-- Phase 56 (Access-Management UI & List/Open UX): 6 requirements (GRANTUI-V110-01..03, LISTUX-V110-01..03)
-- Phase 57 (Verification & Live UAT): 1 requirement (VERIFY-V110-01)
+**Phase distribution:**
+- Phase 58 (Action Engine + Contract + Allow-List + Canary): ENGINE-V111-01..04, SAFETY-V111-01..02 (6)
+- Phase 59 (Radio-Group Registry Def + Config Panel): RADIO-V111-01, RADIO-V111-02 (2)
+- Phase 60 (Radio Renderer + Wiring + Persistence + MCP Seam Doc): RADIO-V111-03, SEAM-V111-01 (2)
+- Phase 61 (Verification + Live UAT): VERIFY-V111-01 (1)
 
 ---
-*Requirements defined: 2026-06-09*
-*Last updated: 2026-06-09 — roadmap created (Phases 55-57); traceability populated, 15/15 mapped*
+*Requirements defined: 2026-06-10*
+*Last updated: 2026-06-10 — traceability populated at roadmap creation (Phases 58-61); 11/11 mapped, no orphans*

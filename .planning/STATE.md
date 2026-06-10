@@ -1,30 +1,57 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.10
-milestone_name: Per-Dashboard View Permissions
-status: executing
-stopped_at: "Completed 57-02 — live UAT attested ALL PASS (overall_result: passed); 57-03 VERIFICATION compiler is next"
-last_updated: "2026-06-09T00:00:00Z"
+milestone: v1.11
+milestone_name: Programmable Widgets (Cross-Widget Control)
+status: unknown
+stopped_at: Completed 58-01 — WidgetActionSchema + validateActionPatch + allow-list; both test gates green (1762/1762 vitest + tsc clean); zod web-only
+last_updated: "2026-06-10T19:47:09.972Z"
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 6
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 2
+  completed_plans: 1
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-09 — v1.10 milestone started)
+See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 57 — verification-live-uat
+**Current focus:** Phase 58 — action-engine-contract-allow-list-canary
 
 ## Current Position
 
-Phase: 57 (verification-live-uat) — EXECUTING
-Plan: 3 of 3 (57-02 complete; 57-03 VERIFICATION compiler is next)
+Phase: 58 (action-engine-contract-allow-list-canary) — EXECUTING
+Plan: 1 of 2
+
+## v1.11 Phase Map
+
+| Phase | Name | Key Requirements |
+|-------|------|-----------------|
+| 58 | Action Engine + Contract + Allow-List + Canary | ENGINE-V111-01..04, SAFETY-V111-01..02 |
+| 59 | Radio-Group Widget — Registry Def + Config Panel | RADIO-V111-01, RADIO-V111-02 |
+| 60 | Radio Renderer + Wiring + Persistence + MCP Seam Doc | RADIO-V111-03, SEAM-V111-01 |
+| 61 | Verification + Live UAT | VERIFY-V111-01 |
+
+Phases 58-60 are FRONTEND-HEAVY — likely zero server changes (new dep `zod@^3.23.8` in `packages/web` only; existing PATCH routes are the entire server surface). Flag any server diff. Frontend vitest must stay 100% (run from `packages/web`); web + server tsc clean as SEPARATE gates; server vitest is a SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky list — NEVER a fixed pass-count). Phase 61 verifies both stacks + a blocking live operator walk-through (mirrors v1.9 Phase 54 / v1.10 Phase 57).
+
+### v1.11 Locked Decisions (from milestone questioning + research, 2026-06-10)
+
+- Action contract = serializable `{ target (kind+id), configPatch }` envelope + zod (the only new dep; also the future MCP `inputSchema`). NOT JSON-Patch, NOT a typed command union.
+- Versioned allow-list (`ALLOW_LIST_VERSION`) of patchable fields per target kind / widget type IS the AI-safety contract — ships in Phase 58 foundation, never retrofitted; no free-form `Object.assign`; meta keys (`id`/`tableId`/`type`/`__proto__`) permanently blocked.
+- Engine routes to THREE target kinds: (a) widget.config + (b) map-layer config via `useDashboardLayersStore` incl. TOP-LEVEL `track_config`/`cb_config` (primary, verified) and (c) dynamic-view config (`dashboard_dynamic_views`, lighter verification).
+- Same-dashboard targeting only; dangling target / absent field fails safe (typed no-op signal, no partial write).
+- Read-once-at-mount is the #1 risk (prior GAP-24-01-A, track gaps 54-01..09) → mounted-renderer LIVE-re-render CANARY TEST is a Phase 58 day-0 deliverable; target renderers read live config at render time.
+- Decoupled from drill-down/filter + sole-materialize-trigger; static source-grep assertion (DataFilterRenderer Phase 44 precedent) — engine never imports `materializeFilter`/`dropFilterView`/`addFilter`/`setBulkFilters`, never bumps `filterVersion`.
+- MCP/AI DESIGNED-FOR + documented only (SEAM-V111-01); NO new server routes / WebSocket / action-log table this milestone.
+- Action-engine overlay/state resets on dashboard-switch + logout as the NEXT store in the canonical lifecycle cleanup chain (currently 6 stores — see v1.6 6th-store entry; this adds the 7th).
+
+### UNRESOLVED tensions — resolve at discuss/plan-phase 58, NOT in roadmap
+
+- TENSION 1 (dispatch mechanism): thin `applyWidgetAction()` plain function (STACK) vs `useWidgetActionEngine` orchestrator hook + overlay store (ARCHITECTURE). Both agree on a transient overlay store; disagreement is whether persistence orchestration lives in a named hook (rollback UI, named MCP seam, mirrors `useDynamicViewMaterializeChain`) or inline in `DashboardOpen`. Decide before Phase 58 — affects file shapes directly.
+- TENSION 4 (first use case scope): "radio switches map-layer render mode" requires layer-level patch routing to `useDashboardLayersStore` (Option B); a `widget.config`-level field is fully supported by the basic engine (Option A). VERIFY-V111-01 demands a map class-break render-mode switch → Option B routing is in scope (ENGINE-V111-03b). Confirm allow-list content + `track_config`/`cb_config` top-level threading at Phase 58 plan time. May need targeted research before Phase 58 if layer-routing interactions with `buildWmsParams`/`lastEmittedParamsRef` are unclear.
 
 ### v1.10 Locked Decisions (from new-milestone questioning, 2026-06-09)
 
@@ -217,6 +244,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 56-access-management-ui-list-open-ux P02 | 4 | 2 tasks | 2 files |
 | Phase 57-verification-live-uat P01 | 4 | 1 tasks | 1 files |
 | Phase 57-verification-live-uat P02 | checkpoint-resolved | 2 tasks (1 auto + 1 checkpoint) | 1 file (57-UAT.md) — overall_result: passed (2026-06-09) |
+| Phase 57 P03 | 8 | 2 tasks | 2 files |
+| Phase 58-action-engine-contract-allow-list-canary P01 | 7 | 2 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -229,6 +258,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- v1.11 roadmap created 2026-06-10: Phases 58-61 (Programmable Widgets — Cross-Widget Control). 58 = action engine + contract + allow-list + canary (frontend, no UI; ENGINE-V111-01..04 + SAFETY-V111-01..02), 59 = radio-group registry def + config panel (RADIO-V111-01..02), 60 = radio renderer + wiring + persistence + MCP seam doc (RADIO-V111-03 + SEAM-V111-01), 61 = verification + live UAT (VERIFY-V111-01). 11/11 requirements mapped, no orphans. Starts at 58 (v1.10 ended at 57). Standard granularity → 4 phases matches research build order. TENSION 1 (dispatch mechanism) + TENSION 4 (layer-vs-widget first use case) deliberately left to discuss/plan-phase 58.
 
 - v1.10 roadmap created 2026-06-09: Phases 55-57 (Per-Dashboard View Permissions). 55 = access model + server enforcement (server-only), 56 = access-management UI + list/open UX (frontend-only), 57 = verification + live UAT. 15/15 requirements mapped, no orphans.
 
@@ -342,6 +373,10 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 56-access-management-ui-list-open-ux]: no-access-early-return: noAccess detector before layouts in DashboardOpen; ChartCard+dashboard-list wrapper for visual consistency; onBack wires to existing callback
 - [Phase 57-verification-live-uat]: server vitest gate is SET-BASED: failing-file set evaluated as subset of TD-V16-TEST-ISOLATION known-flaky list; fixed pass-count never asserted (nondeterministic flakiness in 8 known files)
 - [57-02 UAT overall_result: passed]: Live walk 2026-06-09 (RPereira@kinetica.com) — all sections PASS, no gaps; §1.3 deep-link step re-scoped (no URL routing in v1.10; no-access panel verified via revoke-then-open path; deep-linking DEFERRED)
+- [Phase 57-03]: overall_status: passed — 57-01 gates ALL PASS AND 57-UAT overall_result: passed; both conditions met
+- [Phase 57-03]: §1.3 re-scope: deep-linking by URL DEFERRED (out of v1.10 scope); no-access panel verified via revoke-then-open 404 path — LISTUX-V110-02 satisfied
+- [Phase 58-action-engine-contract-allow-list-canary]: zod@^3 in packages/web only — absent from packages/server; validateActionPatch uses Object.keys() enumeration (never spreads untrusted patch before validation) to prevent prototype pollution
+- [Phase 58-action-engine-contract-allow-list-canary]: Allow-list seed: map (show_popup/show_scale_bar/show_fullscreen), chart (metric/aggregation enum), records (page_size), layer (render_mode/visible/opacity/track_config TOP-LEVEL/cb_config TOP-LEVEL), dynamicView (enabled)
 
 ### Phase 49-users-management-ui
 
@@ -694,6 +729,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-10T02:02:44.256Z
-Stopped at: Completed 57-01-PLAN.md
+Last session: 2026-06-10T19:47:09.965Z
+Stopped at: Completed 58-01 — WidgetActionSchema + validateActionPatch + allow-list; both test gates green (1762/1762 vitest + tsc clean); zod web-only
 Resume file: None
