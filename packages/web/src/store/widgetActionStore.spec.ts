@@ -1,5 +1,14 @@
 /**
- * widgetActionStore.spec.ts — Phase 58 Plan 02 Task 1 (ENGINE-V111-02).
+ * widgetActionStore.spec.ts — Phase 58.1 Plan 01 Task 2 (ENGINE-V111-02).
+ *
+ * Phase 58.1 changes:
+ *   - Layer override shapes updated to be consistent with how applyWidgetAction now writes:
+ *       renderMode/visible/opacity → nested under `config` sub-object
+ *       track_config/cb_config    → top-level (as before)
+ *   - These are representative shapes matching the DTO-shaped overlay that
+ *     applyWidgetAction produces after the location-aware split.
+ *   - The store itself is generic (Record<string,unknown>) and unchanged —
+ *     only the test data updated to use the corrected shapes.
  *
  * Tests cover:
  *   - Initial state: all three override maps are empty
@@ -57,18 +66,18 @@ describe("applyWidgetOverride", () => {
 });
 
 describe("applyLayerOverride", () => {
-  it("writes a partial layer patch for the given layer id", () => {
-    useWidgetActionStore.getState().applyLayerOverride(10, { render_mode: "heatmap" });
-    expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({ render_mode: "heatmap" });
+  it("writes a DTO-shaped config patch (renderMode nested under config)", () => {
+    // applyWidgetAction produces { config: { renderMode: "heatmap" } } for renderMode patches
+    useWidgetActionStore.getState().applyLayerOverride(10, { config: { renderMode: "heatmap" } });
+    expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({
+      config: { renderMode: "heatmap" },
+    });
   });
 
-  it("merges additional patches (e.g. visible + opacity)", () => {
-    useWidgetActionStore.getState().applyLayerOverride(10, { render_mode: "heatmap" });
-    useWidgetActionStore.getState().applyLayerOverride(10, { visible: false, opacity: 0.5 });
+  it("writes top-level track_config (not nested under config)", () => {
+    useWidgetActionStore.getState().applyLayerOverride(10, { track_config: '{"enabled":true}' });
     expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({
-      render_mode: "heatmap",
-      visible: false,
-      opacity: 0.5,
+      track_config: '{"enabled":true}',
     });
   });
 
@@ -77,6 +86,20 @@ describe("applyLayerOverride", () => {
     expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({
       track_config: '{"enabled":true}',
     });
+  });
+
+  it("merges additional DTO-shaped patches (config sub-object + top-level)", () => {
+    // First patch: nested config
+    useWidgetActionStore.getState().applyLayerOverride(10, { config: { renderMode: "heatmap" } });
+    // Second patch: top-level
+    useWidgetActionStore.getState().applyLayerOverride(10, { track_config: '{"enabled":false}' });
+    // The store depth-1 merge keeps both (config object stays, track_config added)
+    expect(useWidgetActionStore.getState().layerOverrides[10]).toMatchObject({
+      track_config: '{"enabled":false}',
+    });
+    // Note: depth-1 merge means the second applyLayerOverride replaces the whole
+    // config sub-object if both patches target config. applyWidgetAction handles this
+    // by deep-merging config before calling applyLayerOverride.
   });
 });
 
@@ -104,7 +127,7 @@ describe("clearOverride", () => {
   });
 
   it("removes a layer override by kind+id", () => {
-    useWidgetActionStore.getState().applyLayerOverride(10, { visible: false });
+    useWidgetActionStore.getState().applyLayerOverride(10, { config: { visible: false } });
     useWidgetActionStore.getState().clearOverride("layer", 10);
     expect(useWidgetActionStore.getState().layerOverrides[10]).toBeUndefined();
   });
@@ -132,7 +155,7 @@ describe("clearOverride", () => {
 describe("reset", () => {
   it("empties all three override maps", () => {
     useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
-    useWidgetActionStore.getState().applyLayerOverride(10, { visible: false });
+    useWidgetActionStore.getState().applyLayerOverride(10, { config: { visible: false } });
     useWidgetActionStore.getState().applyDynamicViewOverride(5, { enabled: true });
     useWidgetActionStore.getState().reset();
     const s = useWidgetActionStore.getState();

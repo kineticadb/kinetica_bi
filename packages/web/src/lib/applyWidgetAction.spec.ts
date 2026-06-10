@@ -1,5 +1,13 @@
 /**
- * applyWidgetAction.spec.ts — Phase 58 Plan 02 Task 1 (ENGINE-V111-02/03/04).
+ * applyWidgetAction.spec.ts — Phase 58.1 Plan 01 Task 2 (ENGINE-V111-02/03/04).
+ *
+ * Phase 58.1 changes:
+ *   - renderMode (camelCase) is the correct allow-listed field name
+ *   - Layer overlay for renderMode/visible/opacity now nests under `config` sub-object
+ *     (e.g. { config: { renderMode: "heatmap" } }) not at top level
+ *   - track_config / cb_config stay top-level in the overlay
+ *   - Mixed-patch test: { renderMode, track_config } splits correctly
+ *   - Idempotency compares against the deep-merged proposed/current layer
  *
  * Tests cover ALL behaviors:
  *   1. applied — each of the 3 target kinds (widget / layer / dynamicView)
@@ -41,7 +49,7 @@ const makeLayer = (overrides: Partial<DashboardLayerDto> = {}): DashboardLayerDt
   table_id: 50,
   layer_type: "wms",
   position: 0,
-  config: {},
+  config: { renderMode: "raster", visible: true, POINTOPACITY: 100 },
   info_enabled: 0,
   info_columns: null,
   info_template: null,
@@ -102,27 +110,83 @@ describe("applyWidgetAction — applied (widget)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Applied — layer target
+// 2. Applied — layer target (renderMode → nested config)
 // ---------------------------------------------------------------------------
 describe("applyWidgetAction — applied (layer)", () => {
-  it("applies a render_mode patch to a layer overlay", () => {
+  it("applies a renderMode patch and stores it nested under config (not top-level)", () => {
     const result = applyWidgetAction(
-      { target: { kind: "layer", id: 100 }, configPatch: { render_mode: "heatmap" } },
+      { target: { kind: "layer", id: 100 }, configPatch: { renderMode: "heatmap" } },
       makeLookups()
     );
     expect(result.status).toBe("applied");
-    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({ render_mode: "heatmap" });
+    // renderMode is a layer.config field — overlay carries it under config
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
+      config: { renderMode: "heatmap" },
+    });
   });
 
-  it("merges top-level track_config string as a layer overlay", () => {
+  it("stores visible patch nested under config", () => {
+    const result = applyWidgetAction(
+      { target: { kind: "layer", id: 100 }, configPatch: { visible: false } },
+      makeLookups()
+    );
+    expect(result.status).toBe("applied");
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
+      config: { visible: false },
+    });
+  });
+
+  it("stores opacity patch nested under config", () => {
+    const result = applyWidgetAction(
+      { target: { kind: "layer", id: 100 }, configPatch: { opacity: 0.5 } },
+      makeLookups()
+    );
+    expect(result.status).toBe("applied");
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
+      config: { opacity: 0.5 },
+    });
+  });
+
+  it("stores track_config at top level (TOP-LEVEL DashboardLayerDto field)", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { track_config: '{"enabled":true}' } },
       makeLookups()
     );
     expect(result.status).toBe("applied");
+    // track_config stays at top level (not nested under config)
     expect(useWidgetActionStore.getState().layerOverrides[100]).toMatchObject({
       track_config: '{"enabled":true}',
     });
+    // NOT nested under config
+    const overlay = useWidgetActionStore.getState().layerOverrides[100];
+    expect((overlay?.config as Record<string, unknown> | undefined)?.track_config).toBeUndefined();
+  });
+
+  it("stores cb_config at top level (TOP-LEVEL DashboardLayerDto field)", () => {
+    const result = applyWidgetAction(
+      { target: { kind: "layer", id: 100 }, configPatch: { cb_config: '{"breaks":[]}' } },
+      makeLookups()
+    );
+    expect(result.status).toBe("applied");
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toMatchObject({
+      cb_config: '{"breaks":[]}',
+    });
+  });
+
+  it("handles mixed patch: renderMode goes nested, track_config stays top-level", () => {
+    const result = applyWidgetAction(
+      {
+        target: { kind: "layer", id: 100 },
+        configPatch: { renderMode: "classbreak", track_config: '{"enabled":true}' },
+      },
+      makeLookups()
+    );
+    expect(result.status).toBe("applied");
+    const overlay = useWidgetActionStore.getState().layerOverrides[100];
+    // renderMode nested under config
+    expect((overlay?.config as Record<string, unknown>)?.renderMode).toBe("classbreak");
+    // track_config at top level
+    expect(overlay?.track_config).toBe('{"enabled":true}');
   });
 });
 
@@ -202,6 +266,17 @@ describe("applyWidgetAction — rejected", () => {
     );
     expect(result.status).toBe("rejected");
   });
+
+  it("rejects an unknown layer field (old snake-case keys are unknown; use renderMode camelCase)", () => {
+    // The old Phase 58 snake-case key is not in the allow-list.
+    // Any unknown field should be rejected. The renderMode (camelCase) spec above
+    // confirms the correct key is accepted.
+    const result = applyWidgetAction(
+      { target: { kind: "layer", id: 100 }, configPatch: { totally_unknown: "heatmap" } },
+      makeLookups()
+    );
+    expect(result.status).toBe("rejected");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -236,7 +311,7 @@ describe("applyWidgetAction — target_not_found", () => {
 
   it("returns target_not_found for a layer id not in lookups", () => {
     const result = applyWidgetAction(
-      { target: { kind: "layer", id: 999 }, configPatch: { render_mode: "heatmap" } },
+      { target: { kind: "layer", id: 999 }, configPatch: { renderMode: "heatmap" } },
       makeLookups()
     );
     expect(result.status).toBe("target_not_found");
@@ -274,8 +349,11 @@ describe("applyWidgetAction — idempotency", () => {
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual(overrideAfterFirst);
   });
 
-  it("idempotency for layer target — second dispatch does not write", () => {
-    const action = { target: { kind: "layer" as const, id: 100 }, configPatch: { render_mode: "heatmap" as const } };
+  it("idempotency for layer renderMode — second dispatch does not write", () => {
+    const action = {
+      target: { kind: "layer" as const, id: 100 },
+      configPatch: { renderMode: "heatmap" as const },
+    };
     const lookups = makeLookups();
 
     applyWidgetAction(action, lookups);
@@ -299,6 +377,30 @@ describe("applyWidgetAction — idempotency", () => {
     expect(applyOverrideSpy).toHaveBeenCalled();
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ page_size: 100 });
   });
+
+  it("idempotency: dispatching same renderMode again after it was already applied does not write", () => {
+    // Layer starts with config.renderMode = "raster"
+    // After first dispatch, overlay has config: { renderMode: "heatmap" }
+    // Effective config.renderMode = "heatmap"
+    // Second dispatch of renderMode: "heatmap" should be idempotent (no write)
+    const layer = makeLayer({ id: 100, config: { renderMode: "raster", visible: true } });
+    const lookups = makeLookups({ layers: [layer] });
+    const action = {
+      target: { kind: "layer" as const, id: 100 },
+      configPatch: { renderMode: "heatmap" as const },
+    };
+
+    applyWidgetAction(action, lookups);
+    // After first dispatch: overlay = { config: { renderMode: "heatmap" } }
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
+      config: { renderMode: "heatmap" },
+    });
+
+    const spy = vi.spyOn(useWidgetActionStore.getState(), "applyLayerOverride");
+    const result = applyWidgetAction(action, lookups);
+    expect(result.status).toBe("applied");
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -317,7 +419,7 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
   it("never calls updateLayer on a valid layer dispatch", async () => {
     const { updateLayer } = await import("../api/client");
     applyWidgetAction(
-      { target: { kind: "layer", id: 100 }, configPatch: { render_mode: "heatmap" } },
+      { target: { kind: "layer", id: 100 }, configPatch: { renderMode: "heatmap" } },
       makeLookups()
     );
     expect(updateLayer).not.toHaveBeenCalled();
