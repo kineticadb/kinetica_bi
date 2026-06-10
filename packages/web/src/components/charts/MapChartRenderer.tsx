@@ -98,6 +98,7 @@ import { LayersLegendPanel } from "../LayersLegendPanel";
 import type { ResolvedLegendLayer, DvLayerStatus } from "../LayersLegendPanel";
 import { resolveLegendLayers } from "../../lib/resolveLegendLayers";
 import { useLayerVisibilityToggle } from "../../hooks/useLayerVisibilityToggle";
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { getLegendPanelEnabled, getLegendPanelCorner } from "../../lib/legendPanelConfig";
 
 /* ------------------------------------------------------------------ */
@@ -457,6 +458,24 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // ── Dashboard layers store subscription ─────────────────────────────────
   // PITFALL S-01 lock: layer list lives ONLY in useDashboardLayersStore.
   const allLayers = useDashboardLayersStore((s) => s.layers);
+
+  // Phase 58 Plan 02 (ENGINE-V111-03 map-layer render path):
+  // Subscribe to the session overlay store for layer config overlays.
+  // Merge overlays into allLayers AFTER reading from the layers store so that
+  // the render pipeline (includedLayers / WMS / legend) sees the overlay-merged
+  // values — including TOP-LEVEL track_config/cb_config fields (see
+  // [[track-config-toplevel-field]] memory and 58-CONTEXT.md).
+  // The CONFIG-TIME path (dashboardLayersStore.updateLayer) is untouched — this
+  // is a RENDER-TIME overlay only; the store retains the saved config as baseline.
+  const layerOverrides = useWidgetActionStore((s) => s.layerOverrides);
+  const effectiveLayers = useMemo(
+    () =>
+      allLayers.map((l) =>
+        layerOverrides[l.id] ? { ...l, ...layerOverrides[l.id] } : l
+      ),
+    [allLayers, layerOverrides]
+  );
+
   // PITFALL S-02 lock: primitive filterVersion dep only — never the array reference.
   const filterVersion = useFilterStore((s) => s.filterVersion);
 
@@ -488,10 +507,13 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // the layer simply doesn't render until the source is rebound.
   const includedLayers = useMemo<DashboardLayerDto[]>(() => {
     const ids = widgetConfig.includedLayerIds as number[] | undefined;
+    // Phase 58 Plan 02: use effectiveLayers (overlay-merged) instead of allLayers
+    // so the WMS/legend pipeline reads the overlay-merged config (incl. top-level
+    // track_config/cb_config/render_mode/visible/opacity).
     const filtered =
       ids === undefined || ids.length === 0
-        ? allLayers
-        : allLayers.filter((l) => ids.includes(l.id));
+        ? effectiveLayers
+        : effectiveLayers.filter((l) => ids.includes(l.id));
     const visible = filtered.filter((l) => {
       const userVisible =
         (l.config as { visible?: boolean }).visible !== false;
@@ -506,7 +528,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // Sort by position ascending (render-order lock).
     return visible.slice().sort((a, b) => a.position - b.position);
   }, [
-    allLayers,
+    effectiveLayers,
     widgetConfig.includedLayerIds,
     tables,
     dashboardDynamicViews,

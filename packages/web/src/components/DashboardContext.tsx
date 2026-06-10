@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { WidgetDto, DynamicViewRow } from "../api/client";
+import type { WidgetAction, WidgetActionResult } from "../lib/widgetAction";
 
 /**
  * Phase 15 + Phase 30 + Phase 35.
@@ -35,6 +36,12 @@ import type { WidgetDto, DynamicViewRow } from "../api/client";
  * Phase 35 consumers:
  *   - Plan 35-05 renderer orphan detection (reads dynamicViews to detect
  *     `widget.config.dynamicViewId` not in list) + Retry button binding.
+ *
+ * Phase 58 Plan 02 (ENGINE-V111-02/03):
+ *   - applyWidgetAction: the single dispatch entry for the widget action engine.
+ *     Optional on the provider to avoid breaking many existing specs that mount
+ *     renderers with the 4-prop provider — missing specs that never dispatch an
+ *     action are unaffected by the safe no-op default.
  */
 
 export type DashboardContextValue = {
@@ -42,28 +49,49 @@ export type DashboardContextValue = {
   widgets: WidgetDto[];
   dynamicViews: DynamicViewRow[];
   retryDynamicView: (dynamicViewId: number) => void;
+  /**
+   * Phase 58 (ENGINE-V111-02): single dispatch entry for the widget action engine.
+   * Applies a transient config overlay to the target widget/layer/dynamicView.
+   * NEVER persists to server — session-only; resets on dashboard-switch/logout.
+   */
+  applyWidgetAction: (action: WidgetAction) => WidgetActionResult;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
+
+/**
+ * Safe no-op default for applyWidgetAction.
+ * Used when the provider does not supply an applyWidgetAction prop (e.g. test
+ * fixtures that never dispatch actions). Returning target_not_found is the
+ * safest possible no-op — callers handle it gracefully and no overlay is written.
+ */
+const noopApplyWidgetAction = (action: WidgetAction): WidgetActionResult => ({
+  status: "target_not_found",
+  target: action.target,
+});
 
 export const DashboardContextProvider = ({
   dashboardId,
   widgets,
   dynamicViews,
   retryDynamicView,
+  applyWidgetAction = noopApplyWidgetAction,
   children,
 }: {
   dashboardId: number;
   widgets: WidgetDto[];
   dynamicViews: DynamicViewRow[];
   retryDynamicView: (dynamicViewId: number) => void;
+  /** Phase 58 (ENGINE-V111-02): optional — defaults to a safe no-op. */
+  applyWidgetAction?: (action: WidgetAction) => WidgetActionResult;
   children: ReactNode;
 }) => {
   // Memoize so consumers don't see a new context object identity on every
   // parent re-render when underlying props are unchanged.
   const value = useMemo(
-    () => ({ dashboardId, widgets, dynamicViews, retryDynamicView }),
-    [dashboardId, widgets, dynamicViews, retryDynamicView],
+    () => ({ dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction],
   );
   return (
     <DashboardContext.Provider value={value}>

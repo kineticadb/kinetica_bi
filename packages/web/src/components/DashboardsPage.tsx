@@ -32,6 +32,8 @@ import { useInfoSelectionStore } from "../store/infoSelectionStore";
 import { useLastInfoClickContextStore } from "../store/lastInfoClickContextStore";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
+import { useWidgetActionStore } from "../store/widgetActionStore";
+import { applyWidgetAction } from "../lib/applyWidgetAction";
 import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
 import DashboardAccessModal from "./DashboardAccessModal";  // Phase 56 (GRANTUI-V110-03)
@@ -420,6 +422,20 @@ const DashboardOpen = ({
   // Phase 12: Layer store subscription
   const layers = useDashboardLayersStore((s) => s.layers);
   const setLayers = useDashboardLayersStore((s) => s.setLayers);
+
+  // Phase 58 Plan 02 (ENGINE-V111-02): applyWidgetAction dispatch closure.
+  // Constructs the same-dashboard ActionLookups from current in-scope state so
+  // the dispatch function can detect dangling targets without importing React state.
+  // dynamicViewIds derived from the current dynamicViews list.
+  const applyAction = useCallback(
+    (action: Parameters<typeof applyWidgetAction>[0]) =>
+      applyWidgetAction(action, {
+        widgets,
+        layers,
+        dynamicViewIds: dynamicViews.map((dv) => dv.id),
+      }),
+    [widgets, layers, dynamicViews]
+  );
   const [error, setError] = useState<string | null>(null);
   const { width, mounted, containerRef } = useContainerWidth();
 
@@ -470,6 +486,10 @@ const DashboardOpen = ({
         }
       }
       useDynamicViewStore.getState().reset();
+      // Phase 58 (ENGINE-V111): 7th store — session action overlay; transient-for-everyone,
+      // must not leak across dashboard switch. Runtime config overlays applied by control
+      // widgets (e.g. radio groups) are session-only and must clear on dashboard-switch.
+      useWidgetActionStore.getState().reset();
     };
   }, [dashboard.id]);
 
@@ -952,6 +972,7 @@ const DashboardOpen = ({
         widgets={widgets}
         dynamicViews={dynamicViews}
         retryDynamicView={retryDynamicView}
+        applyWidgetAction={applyAction}
       >
         <div ref={containerRef as React.RefObject<HTMLDivElement>}>
         {widgets.length > 0 && mounted && (

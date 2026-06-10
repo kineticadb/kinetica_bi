@@ -49,6 +49,7 @@ import { buildChipText, type DrillDownDataType } from "../../lib/columnTypes";
 import { formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } from "../../lib/bigNumberFormat";
 import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 
 type Props = {
   widget: WidgetDto;
@@ -236,43 +237,59 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
   // `over_threshold`/`error` state) doesn't cascade up and crash the entire dashboard.
   // Each widget gets its own boundary keyed by widget.id so a retry resets that widget's
   // tree independently.
+
+  // Phase 58 Plan 02 (ENGINE-V111-02/03): widget.config overlay merge.
+  // Scoped selector — only re-renders when THIS widget's overlay changes.
+  // Depth-1 merge, consistent with the allow-list field granularity.
+  // map widgets skip this merge because their layer config is handled by
+  // MapChartRenderer via effectiveLayers (useDashboardLayersStore + layerOverrides).
+  // The widget.config merge still applies to non-layer widget-level config fields
+  // (e.g. show_popup / show_scale_bar for map widgets).
+  const widgetOverlay = useWidgetActionStore((s) => s.widgetOverrides[widget.id] ?? null);
+  const effectiveWidget = widgetOverlay
+    ? { ...widget, config: { ...(widget.config ?? {}), ...widgetOverlay } }
+    : widget;
+
   let body: ReactElement;
-  if (widget.type === "map") {
-    body = <MapChartRenderer widget={widget} tables={tables} />;
-  } else if (widget.type === "records") {
-    body = <RecordsTableRenderer widget={widget} />;
-  } else if (widget.type === "info-card") {
+  if (effectiveWidget.type === "map") {
+    // Pass effectiveWidget so widget.config-level fields (show_popup, show_scale_bar, etc.)
+    // reflect any overlay-merged config. Map LAYER overlays are handled separately inside
+    // MapChartRenderer via effectiveLayers (see Phase 58 Plan 02 wiring there).
+    body = <MapChartRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "records") {
+    body = <RecordsTableRenderer widget={effectiveWidget} />;
+  } else if (effectiveWidget.type === "info-card") {
     // Phase 23 (CARD-V14-01): info-card short-circuits BEFORE AggregatedWidgetRenderer so it
     // does not try to read widget.config.sql (info-card defaultConfig is {} — no SQL).
-    body = <InfoCardRenderer widget={widget} tables={tables} />;
-  } else if (widget.type === "legend") {
+    body = <InfoCardRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "legend") {
     // Phase 42 Plan 02 (WIDGET-V17-01): legend short-circuits BEFORE AggregatedWidgetRenderer
     // so it does not try to read widget.config.sql (legend defaultConfig is {} — no SQL).
     // onConfigureWidget threaded from DashboardsPage (Plan 42-01) for the Reconfigure CTA.
-    body = <LegendRenderer widget={widget} onConfigureWidget={onConfigureWidget} />;
-  } else if (widget.type === "datafilter") {
+    body = <LegendRenderer widget={effectiveWidget} onConfigureWidget={onConfigureWidget} />;
+  } else if (effectiveWidget.type === "datafilter") {
     // Phase 44 Plan 03 (FILTER-V17-16): datafilter short-circuits BEFORE AggregatedWidgetRenderer
     // — it owns its own lifecycle (no SQL, dispatches into useFilterStore on Apply).
     // Sole materialize trigger invariant (Phase 15/30 lock): DataFilterRenderer NEVER calls
     // the materialize function directly; Effect 1 in AggregatedWidgetRenderer fires off the
     // filterVersion tick produced by setBulkFilters.
     // tables prop mirrors InfoCardRenderer pattern (tables not in DashboardContext).
-    body = <DataFilterRenderer widget={widget} tables={tables} />;
-  } else if (widget.type === "timeline") {
+    body = <DataFilterRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "timeline") {
     // Phase 45 Plan 03 (TIMELINE-V17-02): timeline owns multi-axis Recharts + drag-to-filter
     // lifecycle. Sole materialize trigger invariant (Phase 15/30 lock): TimelineRenderer NEVER
     // calls the materialize function directly; Effect 1 in AggregatedWidgetRenderer fires off
     // the filterVersion tick produced by setBulkFilters.
-    body = <TimelineRenderer widget={widget} tables={tables} />;
-  } else if (widget.type === "numericline") {
+    body = <TimelineRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "numericline") {
     // Numeric Line chart — numeric-X analog of timeline; owns multi-axis Recharts +
     // drag-to-filter lifecycle. Same sole-materialize-trigger invariant as TimelineRenderer.
-    body = <NumericLineRenderer widget={widget} tables={tables} />;
+    body = <NumericLineRenderer widget={effectiveWidget} tables={tables} />;
   } else {
-    body = <AggregatedWidgetRenderer widget={widget} />;
+    body = <AggregatedWidgetRenderer widget={effectiveWidget} />;
   }
   return (
-    <WidgetErrorBoundary widgetLabel={widget.title || widget.type}>
+    <WidgetErrorBoundary widgetLabel={effectiveWidget.title || effectiveWidget.type}>
       {body}
     </WidgetErrorBoundary>
   );
