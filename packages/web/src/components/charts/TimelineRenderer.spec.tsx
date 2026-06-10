@@ -326,7 +326,7 @@ describe("TimelineRenderer", () => {
   it("Test 9 (TIMELINE-V17-02): WidgetRenderer.tsx contains the timeline short-circuit branch", () => {
     const path = resolve(__dirname, "WidgetRenderer.tsx");
     const src = readFileSync(path, "utf-8");
-    expect(src).toMatch(/widget\.type === "timeline"/);
+    expect(src).toMatch(/effectiveWidget\.type === "timeline"/);
     expect(src).toMatch(/<TimelineRenderer\s+widget=/);
   });
 
