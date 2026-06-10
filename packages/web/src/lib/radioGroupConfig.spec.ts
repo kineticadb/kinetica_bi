@@ -155,8 +155,17 @@ describe("validateRadioOption — meta/proto key", () => {
     }
   });
 
-  it("rejects __proto__", () => {
-    const option = makeLayerOption({ __proto__: {} } as Record<string, unknown>);
+  it("rejects a blocked key via Object.defineProperty (bypasses object literal prototype shorthand)", () => {
+    // __proto__ via object literal syntax sets the prototype (not an own key), so we use
+    // Object.defineProperty to put an actual "__proto__" own-property on the configPatch.
+    const configPatch: Record<string, unknown> = {};
+    Object.defineProperty(configPatch, "__proto__", {
+      value: {},
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    const option = makeLayerOption(configPatch);
     const result = validateRadioOption(option);
     expect(result.valid).toBe(false);
     if (!result.valid) {
