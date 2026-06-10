@@ -1,16 +1,71 @@
 /**
- * Phase 58 Plan 01 — Task 2 TDD spec for the versioned allow-list and validateActionPatch.
- * Covers: ALLOW_LIST_VERSION check, positive valid cases, and 5+ rejection cases.
+ * Phase 58.1 Plan 01 — Task 1 TDD spec for the corrected versioned allow-list.
+ *
+ * Changes from Phase 58 Plan 01:
+ *   - ALLOW_LIST_VERSION is now "v2" (contract changed)
+ *   - render_mode (snake) → renderMode (camelCase, nested in layer.config)
+ *   - visible and opacity declared as layer.config fields (nested)
+ *   - track_config / cb_config remain TOP-LEVEL DashboardLayerDto fields
+ *   - getFieldLocation() helper exported as single source of truth for field locations
+ *   - render_mode (old snake key) is now REJECTED as unknown field
+ *
+ * Covers: ALLOW_LIST_VERSION check, positive valid cases, rejection cases,
+ * and location-metadata assertions for the new getFieldLocation helper.
  */
 import { describe, it, expect } from "vitest";
 import {
   ALLOW_LIST_VERSION,
   validateActionPatch,
+  getFieldLocation,
 } from "./actionAllowList";
 
 describe("ALLOW_LIST_VERSION", () => {
-  it('is "v1"', () => {
-    expect(ALLOW_LIST_VERSION).toBe("v1");
+  it('is "v2" (contract updated — renderMode rename + per-field location metadata)', () => {
+    expect(ALLOW_LIST_VERSION).toBe("v2");
+  });
+});
+
+describe("getFieldLocation — layer fields", () => {
+  it("renderMode is located in layer.config (nested)", () => {
+    expect(getFieldLocation("layer", undefined, "renderMode")).toBe("layer.config");
+  });
+
+  it("visible is located in layer.config (nested)", () => {
+    expect(getFieldLocation("layer", undefined, "visible")).toBe("layer.config");
+  });
+
+  it("opacity is located in layer.config (nested)", () => {
+    expect(getFieldLocation("layer", undefined, "opacity")).toBe("layer.config");
+  });
+
+  it("track_config is located at the top-level layer (DashboardLayerDto field)", () => {
+    expect(getFieldLocation("layer", undefined, "track_config")).toBe("layer");
+  });
+
+  it("cb_config is located at the top-level layer (DashboardLayerDto field)", () => {
+    expect(getFieldLocation("layer", undefined, "cb_config")).toBe("layer");
+  });
+
+  it("returns null for an unknown/non-allow-listed field", () => {
+    expect(getFieldLocation("layer", undefined, "render_mode")).toBeNull();
+    expect(getFieldLocation("layer", undefined, "totally_unknown")).toBeNull();
+  });
+});
+
+describe("getFieldLocation — widget fields", () => {
+  it("widget/map fields are located in widget.config", () => {
+    expect(getFieldLocation("widget", "map", "show_popup")).toBe("widget.config");
+    expect(getFieldLocation("widget", "map", "show_scale_bar")).toBe("widget.config");
+    expect(getFieldLocation("widget", "map", "show_fullscreen")).toBe("widget.config");
+  });
+
+  it("widget/chart fields are located in widget.config", () => {
+    expect(getFieldLocation("widget", "chart", "metric")).toBe("widget.config");
+    expect(getFieldLocation("widget", "chart", "aggregation")).toBe("widget.config");
+  });
+
+  it("widget/records fields are located in widget.config", () => {
+    expect(getFieldLocation("widget", "records", "page_size")).toBe("widget.config");
   });
 });
 
@@ -22,11 +77,18 @@ describe("validateActionPatch — positive cases", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("accepts a valid layer patch with render_mode", () => {
+  it("accepts a valid layer patch with renderMode (camelCase — the REAL key)", () => {
     const result = validateActionPatch("layer", undefined, {
-      render_mode: "heatmap",
+      renderMode: "heatmap",
     });
     expect(result.valid).toBe(true);
+  });
+
+  it("accepts all renderMode enum values", () => {
+    for (const mode of ["raster", "heatmap", "classbreak", "contour"] as const) {
+      const result = validateActionPatch("layer", undefined, { renderMode: mode });
+      expect(result.valid).toBe(true);
+    }
   });
 
   it("accepts a valid layer patch with visible boolean", () => {
@@ -82,6 +144,17 @@ describe("validateActionPatch — positive cases", () => {
 });
 
 describe("validateActionPatch — rejection cases", () => {
+  // REJECTION: render_mode (old snake key) — now an UNKNOWN field
+  it("rejects render_mode (snake_case) — it is now an UNKNOWN field (correct key is renderMode)", () => {
+    const result = validateActionPatch("layer", undefined, {
+      render_mode: "heatmap",
+    });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("render_mode"))).toBe(true);
+    }
+  });
+
   // REJECTION 1: unknown key
   it("rejects a patch with a key not in the allow-list (unknown key)", () => {
     const result = validateActionPatch("widget", "map", {
@@ -126,13 +199,13 @@ describe("validateActionPatch — rejection cases", () => {
   });
 
   // REJECTION 3: enum violation
-  it("rejects a layer patch where render_mode is not in the allowed enum", () => {
+  it("rejects a layer patch where renderMode is not in the allowed enum", () => {
     const result = validateActionPatch("layer", undefined, {
-      render_mode: "DELETE",
+      renderMode: "DELETE",
     });
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.reasons.some((r) => r.includes("render_mode"))).toBe(true);
+      expect(result.reasons.some((r) => r.includes("renderMode"))).toBe(true);
     }
   });
 
