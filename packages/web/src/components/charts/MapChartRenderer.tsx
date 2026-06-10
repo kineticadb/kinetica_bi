@@ -459,20 +459,41 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // PITFALL S-01 lock: layer list lives ONLY in useDashboardLayersStore.
   const allLayers = useDashboardLayersStore((s) => s.layers);
 
-  // Phase 58 Plan 02 (ENGINE-V111-03 map-layer render path):
+  // Phase 58 Plan 02 / Phase 58.1 Plan 01 (ENGINE-V111-03 map-layer render path):
   // Subscribe to the session overlay store for layer config overlays.
   // Merge overlays into allLayers AFTER reading from the layers store so that
   // the render pipeline (includedLayers / WMS / legend) sees the overlay-merged
-  // values — including TOP-LEVEL track_config/cb_config fields (see
-  // [[track-config-toplevel-field]] memory and 58-CONTEXT.md).
+  // values — including TOP-LEVEL track_config/cb_config fields and NESTED
+  // config fields (renderMode/visible/opacity).
+  //
+  // Phase 58.1 deep-merge: applyWidgetAction stores DTO-shaped overlays:
+  //   { config?: { renderMode?, visible?, opacity? }, track_config?, cb_config? }
+  // We split the overlay into config patch vs top-level and deep-merge config
+  // so config.renderMode (and other nested fields) actually change.
+  // Null-safe: no override → return `l` unchanged (referentially stable).
+  //
+  // The [[track-config-toplevel-field]] invariant is preserved:
+  //   track_config/cb_config are TOP-LEVEL and land directly on the merged object.
+  //   renderMode/visible/opacity are NESTED and land inside the merged config blob.
+  //
   // The CONFIG-TIME path (dashboardLayersStore.updateLayer) is untouched — this
   // is a RENDER-TIME overlay only; the store retains the saved config as baseline.
   const layerOverrides = useWidgetActionStore((s) => s.layerOverrides);
   const effectiveLayers = useMemo(
     () =>
-      allLayers.map((l) =>
-        layerOverrides[l.id] ? { ...l, ...layerOverrides[l.id] } : l
-      ),
+      allLayers.map((l) => {
+        const ov = layerOverrides[l.id];
+        if (!ov) return l;
+        // Split the DTO-shaped overlay into nested config patch and top-level fields.
+        const { config: cfgPatch, ...topLevel } = ov as {
+          config?: Record<string, unknown>;
+          [key: string]: unknown;
+        };
+        // Deep-merge: nested config fields go into layer.config, top-level stay top-level.
+        return cfgPatch
+          ? { ...l, ...topLevel, config: { ...(l.config as Record<string, unknown>), ...cfgPatch } }
+          : { ...l, ...topLevel };
+      }),
     [allLayers, layerOverrides]
   );
 
