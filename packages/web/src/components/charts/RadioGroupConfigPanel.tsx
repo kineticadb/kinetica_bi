@@ -160,6 +160,16 @@ function OptionRow({
   const reasons = validation.valid ? [] : validation.reasons;
   const labelMissing = option.label.trim() === "";
 
+  // Orphan-target detection: the configured target kind+id must resolve against available lists.
+  // Only flag as orphaned when a specific target is set (id !== 0) and it is absent from all lists.
+  const targetIsSet = targetId !== 0;
+  const targetResolved =
+    !targetIsSet ||
+    (kind === "widget" && allWidgets.some((w) => w.id === targetId)) ||
+    (kind === "layer" && layers.some((l) => l.id === targetId)) ||
+    (kind === "dynamicView" && dynamicViews.some((dv) => dv.id === targetId));
+  const isOrphanTarget = targetIsSet && !targetResolved;
+
   const captureEmpty =
     Object.keys(option.action.configPatch).length === 0 &&
     !jsonError &&
@@ -279,6 +289,15 @@ function OptionRow({
               </option>
             )}
         </select>
+        {isOrphanTarget && (
+          <div
+            className="config-hint"
+            style={{ color: "var(--warning, #d97706)" }}
+            data-testid={`orphan-target-warning-${idx}`}
+          >
+            Target no longer available — pick a new target
+          </div>
+        )}
       </div>
 
       {/* Capture from target */}

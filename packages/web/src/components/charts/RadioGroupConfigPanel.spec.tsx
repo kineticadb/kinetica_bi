@@ -742,3 +742,68 @@ describe("RadioGroupConfigPanel — reads props.widgets (NOT context)", () => {
     expect(screen.getByRole("button", { name: /add option/i })).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Orphan-target warning (SC3 gap-closure)
+// ---------------------------------------------------------------------------
+
+describe("RadioGroupConfigPanel — orphan-target warning", () => {
+  afterEach(() => {
+    useDashboardLayersStore.setState({ layers: [] });
+  });
+
+  it("renders orphan-target-warning when the configured widget target id is absent from props.widgets", () => {
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-orphan",
+          label: "Gone",
+          action: {
+            // widget id 999 is NOT in props.widgets (only mockWidget1 id=1 is present)
+            target: { kind: "widget", id: 999 },
+            configPatch: { show_popup: true },
+          },
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1]} // id=1 only — id=999 is absent
+      />,
+    );
+
+    expect(screen.getByTestId("orphan-target-warning-0")).toBeTruthy();
+  });
+
+  it("does NOT render orphan-target-warning when the configured widget target id resolves in props.widgets", () => {
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-valid",
+          label: "Valid",
+          action: {
+            target: { kind: "widget", id: mockWidget1.id }, // id=1 IS in props.widgets
+            configPatch: { show_popup: true },
+          },
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1, mockWidget2]}
+      />,
+    );
+
+    expect(screen.queryByTestId("orphan-target-warning-0")).toBeNull();
+  });
+});
