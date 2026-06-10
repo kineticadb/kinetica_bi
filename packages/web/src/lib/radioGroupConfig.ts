@@ -16,7 +16,7 @@
  *   validateRadioOption          — delegates to Phase 58 validateActionPatch; enforces non-empty
  *   isRadioGroupConfigValid      — true only when all options are valid + non-empty labels
  *
- * IMPORTANT: renderMode (camelCase) is the ONLY render-mode key — never render_mode (snake_case).
+ * IMPORTANT: renderMode (camelCase) is the ONLY render-mode key. The snake-case variant is not in the allow-list.
  */
 import type { WidgetAction } from "./widgetAction";
 import { validateActionPatch } from "./actionAllowList";
