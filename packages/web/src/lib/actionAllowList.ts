@@ -1,5 +1,15 @@
 /**
- * Phase 58 Plan 01 — Versioned allow-list for the widget-action engine.
+ * Phase 58 Plan 01 / Phase 58.1 Plan 01 — Versioned allow-list for the widget-action engine.
+ *
+ * Phase 58.1 corrections (v2 contract):
+ *   - ALLOW_LIST_VERSION bumped to "v2" (field names + location structure changed)
+ *   - Layer field name corrected: camelCase renderMode is the REAL key read by wmsUrlBuilder.ts
+ *   - Each allow-listed field now carries per-field LOCATION metadata:
+ *       "layer.config"   — nested inside layer.config blob (renderMode / visible / opacity)
+ *       "layer"          — TOP-LEVEL DashboardLayerDto field (track_config / cb_config)
+ *       "widget.config"  — nested inside widget.config (all widget kind fields)
+ *   - getFieldLocation() exported as the SINGLE SOURCE OF TRUTH for where a field lives.
+ *     applyWidgetAction uses it to split layer patches into {config: {...nested}, ...topLevel}.
  *
  * This is the binding AI-safety contract: only fields explicitly listed here
  * may appear in a configPatch. The allow-list is versioned so future additions
@@ -17,7 +27,7 @@ import type { WidgetActionTarget } from "./widgetAction";
 // Version
 // ---------------------------------------------------------------------------
 
-export const ALLOW_LIST_VERSION = "v1" as const;
+export const ALLOW_LIST_VERSION = "v2" as const;
 
 // ---------------------------------------------------------------------------
 // Permanently blocked keys — meta / proto / identity fields
@@ -46,10 +56,27 @@ function isPermanentlyBlocked(key: string): key is PermanentlyBlockedKey {
 }
 
 // ---------------------------------------------------------------------------
-// Field validator map type
+// Field location type
 // ---------------------------------------------------------------------------
 
-type FieldValidators = Record<string, z.ZodTypeAny>;
+/**
+ * Where a field lives in the data model.
+ *   "layer.config"  — nested inside DashboardLayerDto.config blob
+ *   "layer"         — TOP-LEVEL DashboardLayerDto field (e.g. track_config, cb_config)
+ *   "widget.config" — nested inside WidgetDto.config blob
+ */
+export type FieldLocation = "layer.config" | "layer" | "widget.config";
+
+// ---------------------------------------------------------------------------
+// Field descriptor type
+// ---------------------------------------------------------------------------
+
+type FieldDescriptor = {
+  schema: z.ZodTypeAny;
+  location: FieldLocation;
+};
+
+type FieldDescriptors = Record<string, FieldDescriptor>;
 
 // ---------------------------------------------------------------------------
 // Allow-list seed — curated, not exhaustive
@@ -70,55 +97,65 @@ const CHART_AGGREGATIONS = [
 
 /**
  * Widget kind — keyed by widget type (e.g. "map", "chart", "records").
+ * All widget config fields live in widget.config.
  */
-const WIDGET_ALLOW_LIST: Record<string, FieldValidators> = {
+const WIDGET_ALLOW_LIST: Record<string, FieldDescriptors> = {
   map: {
     // Whether to show the info/popup panel on feature click (safe boolean toggle)
-    show_popup: z.boolean(),
+    show_popup: { schema: z.boolean(), location: "widget.config" },
     // Whether to show the map scale bar
-    show_scale_bar: z.boolean(),
+    show_scale_bar: { schema: z.boolean(), location: "widget.config" },
     // Whether fullscreen button is visible
-    show_fullscreen: z.boolean(),
+    show_fullscreen: { schema: z.boolean(), location: "widget.config" },
   },
   chart: {
     // The metric column for the chart (safe string; column name)
-    metric: z.string(),
+    metric: { schema: z.string(), location: "widget.config" },
     // The aggregation function applied to the metric
-    aggregation: z.enum(CHART_AGGREGATIONS),
+    aggregation: { schema: z.enum(CHART_AGGREGATIONS), location: "widget.config" },
   },
   records: {
     // Page size for the records table
-    page_size: z.number().int().positive(),
+    page_size: { schema: z.number().int().positive(), location: "widget.config" },
   },
 };
 
 /**
- * Layer kind — keyed by top-level DashboardLayerDto field names.
- * Note: track_config and cb_config are TOP-LEVEL DashboardLayerDto fields
- * (JSON strings), NOT nested under layer.config. This is a critical distinction —
- * see [[track-config-toplevel-field]] memory and 58-CONTEXT.md.
+ * Layer kind — with per-field location metadata.
+ *
+ * CRITICAL location facts (proven by direct code inspection, Phase 58.1):
+ *   - renderMode → NESTED in layer.config (wmsUrlBuilder.ts reads config.renderMode)
+ *   - visible    → NESTED in layer.config (layerVisibility.ts reads config.visible)
+ *   - opacity    → NESTED in layer.config (config field, mirrors visible/renderMode)
+ *   - track_config → TOP-LEVEL DashboardLayerDto field (JSON string)
+ *     See [[track-config-toplevel-field]] memory and client.ts DashboardLayerDto
+ *   - cb_config  → TOP-LEVEL DashboardLayerDto field (JSON string)
  */
-const LAYER_ALLOW_LIST: FieldValidators = {
-  // WMS render mode — must be one of the Kinetica-supported modes
-  render_mode: z.enum(["raster", "heatmap", "classbreak", "contour"]),
-  // Layer visibility toggle
-  visible: z.boolean(),
-  // Layer opacity (0–1 inclusive)
-  opacity: z.number().min(0).max(1),
+const LAYER_ALLOW_LIST: FieldDescriptors = {
+  // WMS render mode — NESTED in layer.config (wmsUrlBuilder reads config.renderMode)
+  // camelCase (renderMode) is the REAL field name. Phase 58 had this wrong.
+  renderMode: {
+    schema: z.enum(["raster", "heatmap", "classbreak", "contour"]),
+    location: "layer.config",
+  },
+  // Layer visibility — NESTED in layer.config (layerVisibility.ts reads config.visible)
+  visible: { schema: z.boolean(), location: "layer.config" },
+  // Layer opacity (0–1 inclusive) — NESTED in layer.config (config field)
+  opacity: { schema: z.number().min(0).max(1), location: "layer.config" },
   // TOP-LEVEL DashboardLayerDto field — JSON string carrying track styling config
   // (NOT config.track_config — see DashboardLayerDto in client.ts and [[track-config-toplevel-field]])
-  track_config: z.string(),
+  track_config: { schema: z.string(), location: "layer" },
   // TOP-LEVEL DashboardLayerDto field — JSON string carrying classbreak config
   // (NOT config.cb_config — see DashboardLayerDto in client.ts)
-  cb_config: z.string(),
+  cb_config: { schema: z.string(), location: "layer" },
 };
 
 /**
  * DynamicView kind — lightweight single allow-listed field.
  * The "enabled" toggle is safe and exercisable for canary/testing purposes.
  */
-const DYNAMIC_VIEW_ALLOW_LIST: FieldValidators = {
-  enabled: z.boolean(),
+const DYNAMIC_VIEW_ALLOW_LIST: FieldDescriptors = {
+  enabled: { schema: z.boolean(), location: "widget.config" },
 };
 
 // ---------------------------------------------------------------------------
@@ -128,7 +165,7 @@ const DYNAMIC_VIEW_ALLOW_LIST: FieldValidators = {
 function resolveAllowList(
   kind: WidgetActionTarget["kind"],
   widgetType: string | undefined,
-): FieldValidators | null {
+): FieldDescriptors | null {
   if (kind === "layer") return LAYER_ALLOW_LIST;
   if (kind === "dynamicView") return DYNAMIC_VIEW_ALLOW_LIST;
   if (kind === "widget") {
@@ -136,6 +173,68 @@ function resolveAllowList(
     return WIDGET_ALLOW_LIST[widgetType] ?? null;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// getFieldLocation — single source of truth for field location
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the location of a field for a given (kind, widgetType, field) triple,
+ * or null if the field is not in the allow-list (e.g. unknown or non-allow-listed
+ * fields).
+ *
+ * This is the SINGLE SOURCE OF TRUTH for where a field lives.
+ * applyWidgetAction uses this to split a layer patch into:
+ *   - config sub-object for "layer.config" fields (renderMode, visible, opacity)
+ *   - top-level for "layer" fields (track_config, cb_config)
+ *
+ * No hardcoded field names in the router — the allow-list drives the split.
+ */
+export function getFieldLocation(
+  kind: WidgetActionTarget["kind"],
+  widgetType: string | undefined,
+  field: string,
+): FieldLocation | null {
+  const allowList = resolveAllowList(kind, widgetType);
+  if (!allowList) return null;
+  const descriptor = allowList[field];
+  if (!descriptor) return null;
+  return descriptor.location;
+}
+
+/**
+ * Split a validated layer configPatch into nested-config fields and top-level fields,
+ * using the allow-list location metadata as the single source of truth.
+ *
+ * Returns: { config?: Record<string, unknown>; topLevel: Record<string, unknown> }
+ *   - config: fields with location "layer.config" — go under layer.config
+ *   - topLevel: fields with location "layer" — go at top level (track_config, cb_config)
+ *
+ * Only call this after validateActionPatch has returned { valid: true }.
+ * Unknown/blocked keys are silently excluded (they should not be present post-validation).
+ */
+export function splitLayerPatch(configPatch: Record<string, unknown>): {
+  config?: Record<string, unknown>;
+  topLevel: Record<string, unknown>;
+} {
+  const config: Record<string, unknown> = {};
+  const topLevel: Record<string, unknown> = {};
+
+  for (const key of Object.keys(configPatch)) {
+    const location = getFieldLocation("layer", undefined, key);
+    if (location === "layer.config") {
+      config[key] = configPatch[key];
+    } else if (location === "layer") {
+      topLevel[key] = configPatch[key];
+    }
+    // Unknown fields post-validation should not occur; silently skip
+  }
+
+  return {
+    ...(Object.keys(config).length > 0 ? { config } : {}),
+    topLevel,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -185,13 +284,13 @@ export function validateActionPatch(
     // Skip keys already blocked — they have their reason recorded above.
     if (isPermanentlyBlocked(key)) continue;
 
-    const validator = allowList[key];
-    if (validator === undefined) {
+    const descriptor = allowList[key];
+    if (descriptor === undefined) {
       reasons.push(`unknown field: ${key}`);
       continue;
     }
 
-    const parseResult = validator.safeParse(configPatch[key]);
+    const parseResult = descriptor.schema.safeParse(configPatch[key]);
     if (!parseResult.success) {
       const message = parseResult.error.errors.map((e) => e.message).join("; ");
       reasons.push(`invalid value for ${key}: ${message}`);
