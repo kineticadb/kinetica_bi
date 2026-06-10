@@ -27,6 +27,7 @@
  */
 
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
+// DashboardLayerDto used for ActionLookups only; layer overlays are stored as generic Record
 import type { WidgetAction, WidgetActionResult, WidgetActionTarget } from "./widgetAction";
 import { validateActionPatch } from "./actionAllowList";
 import { useWidgetActionStore } from "../store/widgetActionStore";
@@ -137,7 +138,7 @@ export function applyWidgetAction(
     if (fingerprint(proposed) === fingerprint(current)) {
       return { status: "applied", target };
     }
-    store.applyLayerOverride(target.id, configPatch as Partial<DashboardLayerDto>);
+    store.applyLayerOverride(target.id, configPatch);
   } else if (target.kind === "dynamicView") {
     const currentOverlay = store.dynamicViewOverrides[target.id] ?? {};
     const proposed = { ...currentOverlay, ...configPatch };

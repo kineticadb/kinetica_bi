@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: Completed 58-01 — WidgetActionSchema + validateActionPatch + allow-list; both test gates green (1762/1762 vitest + tsc clean); zod web-only
-last_updated: "2026-06-10T19:47:09.972Z"
+stopped_at: Completed 58-02 — runtime action engine (widgetActionStore + applyWidgetAction + overlay merges + canary + decoupling grep); 1828/1828 vitest + tsc clean; zero server diff
+last_updated: "2026-06-10T20:05:00Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 ## Current Position
 
-Phase: 58 (action-engine-contract-allow-list-canary) — EXECUTING
-Plan: 1 of 2
+Phase: 58 (action-engine-contract-allow-list-canary) — COMPLETE
+Plan: 2 of 2
 
 ## v1.11 Phase Map
 
@@ -246,6 +246,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 57-verification-live-uat P02 | checkpoint-resolved | 2 tasks (1 auto + 1 checkpoint) | 1 file (57-UAT.md) — overall_result: passed (2026-06-09) |
 | Phase 57 P03 | 8 | 2 tasks | 2 files |
 | Phase 58-action-engine-contract-allow-list-canary P01 | 7 | 2 tasks | 6 files |
+| Phase 58-action-engine-contract-allow-list-canary P02 | 14min | 3 tasks (+1 deviation fix) | 11 files |
 
 ### Quick Tasks Completed
 
@@ -258,6 +259,16 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+### Key Phase 58 Plan 02 Decisions (locked 2026-06-10)
+
+- **Session overlay store (7th store):** `useWidgetActionStore` with widgetOverrides/layerOverrides/dynamicViewOverrides; reset in DashboardsPage cleanup as 7th store after dynamicViewStore; INVARIANT: ACTION-ENGINE-NO-FILTER enforced by static grep
+- **applyWidgetAction dispatch:** resolves target from ActionLookups, validates via validateActionPatch, idempotency-guards via fingerprint, writes overlay; TRANSIENT-ONLY (zero network calls)
+- **DashboardContext.applyWidgetAction:** optional field with safe no-op default — non-breaking for existing specs; only production DashboardsPage passes real dispatch closure
+- **WidgetRenderer effectiveWidget:** scoped `widgetOverrides[widget.id]` selector merged into effectiveWidget before dispatch by type; depth-1 merge consistent with allow-list granularity
+- **MapChartRenderer effectiveLayers:** layerOverrides selector + useMemo AFTER allLayers read; includedLayers reads from effectiveLayers; top-level spread puts track_config/cb_config at DTO top level correctly
+- **layerOverrides typed as Record<number, Record<string, unknown>>:** DashboardLayerDto does not have render_mode/visible/opacity at top-level; generic type avoids TS errors while keeping top-level merge semantics
+- **Canary map assertion boundary:** jsdom cannot render OL canvas; overlay reach proven via layerOverrides in store + no map.dispose call after overlay write (no remount)
 
 - v1.11 roadmap created 2026-06-10: Phases 58-61 (Programmable Widgets — Cross-Widget Control). 58 = action engine + contract + allow-list + canary (frontend, no UI; ENGINE-V111-01..04 + SAFETY-V111-01..02), 59 = radio-group registry def + config panel (RADIO-V111-01..02), 60 = radio renderer + wiring + persistence + MCP seam doc (RADIO-V111-03 + SEAM-V111-01), 61 = verification + live UAT (VERIFY-V111-01). 11/11 requirements mapped, no orphans. Starts at 58 (v1.10 ended at 57). Standard granularity → 4 phases matches research build order. TENSION 1 (dispatch mechanism) + TENSION 4 (layer-vs-widget first use case) deliberately left to discuss/plan-phase 58.
 

@@ -17,7 +17,6 @@
  */
 
 import { create } from "zustand";
-import type { DashboardLayerDto } from "../api/client";
 
 // ---------------------------------------------------------------------------
 // State + actions
@@ -32,12 +31,15 @@ type WidgetActionStoreState = {
   widgetOverrides: Record<number, Record<string, unknown>>;
 
   /**
-   * Per-layer overlays: { [layerId]: Partial<DashboardLayerDto> }.
-   * Top-level field merge — covers track_config / cb_config / render_mode /
-   * visible / opacity which are all TOP-LEVEL DashboardLayerDto fields.
-   * (See [[track-config-toplevel-field]] memory.)
+   * Per-layer overlays: { [layerId]: Record<string, unknown> }.
+   * Top-level field merge at render time — covers:
+   *   - track_config / cb_config: TOP-LEVEL DashboardLayerDto fields (string | null)
+   *     (see [[track-config-toplevel-field]] memory and 58-CONTEXT.md)
+   *   - render_mode, visible, opacity: allow-list fields merged at the top level;
+   *     these land on the overlay-merged layer object for consumption by the
+   *     render pipeline.
    */
-  layerOverrides: Record<number, Partial<DashboardLayerDto>>;
+  layerOverrides: Record<number, Record<string, unknown>>;
 
   /**
    * Per-dynamic-view overlays: { [dvId]: configPatch }.
@@ -54,10 +56,11 @@ type WidgetActionStoreState = {
   applyWidgetOverride: (id: number, patch: Record<string, unknown>) => void;
 
   /**
-   * Merge `patch` (partial layer fields) into the existing layer override for `id`.
-   * Top-level merge — covers track_config/cb_config as TOP-LEVEL DashboardLayerDto fields.
+   * Merge `patch` (layer fields) into the existing layer override for `id`.
+   * Top-level merge — track_config/cb_config land at the DTO top level;
+   * other allow-listed fields (render_mode, visible, opacity) land as overlay keys.
    */
-  applyLayerOverride: (id: number, patch: Partial<DashboardLayerDto>) => void;
+  applyLayerOverride: (id: number, patch: Record<string, unknown>) => void;
 
   /**
    * Merge `patch` into the existing dynamic-view override for `id`.
