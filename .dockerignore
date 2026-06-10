@@ -1,0 +1,10 @@
+.git
+.github
+**/node_modules
+**/dist
+**/coverage
+packages/server/data
+packages/server/spike-output
+**/*.md
+**/.env
+**/.env.*

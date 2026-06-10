@@ -2,7 +2,7 @@ import type { ActiveFilter } from "../store/filterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
 import { useToastStore } from "../store/toast";
 
-export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 export const UNAUTHORIZED_EVENT = "kbi:unauthorized";
 export const PERMISSION_DENIED_EVENT = "kbi:permission-denied";
