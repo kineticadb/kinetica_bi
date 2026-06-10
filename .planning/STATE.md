@@ -1,0 +1,697 @@
+---
+gsd_state_version: 1.0
+milestone: v1.10
+milestone_name: Per-Dashboard View Permissions
+status: unknown
+stopped_at: Completed 57-01-PLAN.md
+last_updated: "2026-06-10T02:02:44.264Z"
+progress:
+  total_phases: 3
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 5
+---
+
+# Project State
+
+## Project Reference
+
+See: .planning/PROJECT.md (updated 2026-06-09 — v1.10 milestone started)
+
+**Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
+**Current focus:** Phase 57 — verification-live-uat
+
+## Current Position
+
+Phase: 57 (verification-live-uat) — EXECUTING
+Plan: 1 of 3
+
+### v1.10 Locked Decisions (from new-milestone questioning, 2026-06-09)
+
+- View-access granted to BOTH users (lowercased username) and roles; union semantics
+- Bypass roles (see/open all): admin + designer. View-only roles (analyst) restricted to grants
+- Private-by-default: a new dashboard is visible only to bypass roles until granted
+- New `dashboards:manage_access` permission (17th), default admin + designer, gates grant/revoke
+- Server-authoritative: list filter + open gating + dashboard-scoped data routes; grant changes dual-sink audited
+- Security boundary: app-level visibility layer ONLY; Kinetica per-user creds remain the data-access authority (v1.0 model)
+- Out of scope: per-dashboard EDIT grants, ownership/transfer, link-based public sharing
+
+Open tech debt: TD-V16-TEST-ISOLATION, TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names → quick task)
+
+## v1.8 Locked Decisions (from milestone questioning, 2026-06-05)
+
+- 4 built-in roles: admin (everything) / user admin (users + role-permission mappings) / designer (create+edit dashboards) / analyst (view-only interaction)
+- Custom roles supported — user admin composes permission sets from a predefined permission catalog; built-in mappings editable too
+- App-local role registry in SQLite (username → roles), many-to-many; **multiple roles per user, union of permissions**
+- No user creation in app — identity stays Kinetica password / OIDC; "manage users" = role assignment
+- Unassigned authenticated users default to **analyst**
+- Kinetica `admin` username is ALWAYS app admin (bootstrap; Kinetica's built-in superuser); `APP_ADMIN_USERNAME` env var overrides (for OIDC deployments where IdP claim differs from "admin")
+- Shared workspace — NO dashboard ownership column; any designer edits any dashboard
+- Server-side route enforcement is authoritative; frontend gating is UX only
+- No new npm dependencies — hand-rolled pure TypeScript using existing better-sqlite3 (^12.8.0)
+- Roles are NOT stored in session rows — per-request synchronous SQLite lookup via `getEffectivePermissions`
+- Permission strings are canonical constants (shared module, both server and client import) to prevent drift
+
+## v1.10 Phase Map
+
+| Phase | Name | Key Requirements |
+|-------|------|-----------------|
+| 55 | Access Model & Server Enforcement | ACCESS-V110-01..04, ENFORCE-V110-01..04 |
+| 56 | Access-Management UI & List/Open UX | GRANTUI-V110-01..03, LISTUX-V110-01..03 |
+| 57 | Verification & Live UAT | VERIFY-V110-01 |
+
+Server phase (55) is server-only: supertests + server tsc + server vitest SET-BASED known-flaky gate (failing files ⊆ TD-V16-TEST-ISOLATION list — NEVER a fixed pass-count). UI phase (56) is frontend-only: vitest 100% + web tsc. No frontend constraint applies to 55 and no server constraint to 56.
+
+## v1.8 Phase Map
+
+| Phase | Name | Key Requirements |
+|-------|------|-----------------|
+| 46 | RBAC Schema + Data Layer | SCHEMA-V18-01, -02, -03 |
+| 47 | Server Middleware + Route Guards | GUARD-V18-01..05 |
+| 48 | /me Extension + Frontend Store + UI Gating | GATE-V18-01..05 |
+| 49 | Users Management UI | USERS-V18-01..04, SAFE-V18-01 |
+| 50 | Roles Management UI + Custom Roles + Audit | ROLES-V18-01..04, SAFE-V18-02, AUDIT-V18-01 |
+| 51 | Verification + Live UAT | VERIFY-V18-01 |
+
+## REPO RESTRUCTURE NOTE (2026-06-04/05 — read before touching code)
+
+- npm-workspaces monorepo: frontend at `packages/web/`, backend at `packages/server/` (was double-nested `kinetica_bi/kinetica_bi/`)
+- ALL pre-v1.8 planning-doc paths `kinetica_bi/src/...` → `packages/web/src/...`; `kinetica_bi/server/...` → `packages/server/...`
+- Root scripts: `npm run dev` (web), `npm run dev:server`, `npm run test`, `npm run test:server`, `npm run test:all`, `npm run build`, `npm run build:server`
+- `packages/server/src/env.ts` is the FIRST import in `index.ts` (dotenv before module-level env validation — closed TD-03; do not add imports above it)
+- Git history squashed to single `Initial commit` — commit hashes/tags in older planning docs no longer resolve
+- Known-red tests (pre-existing, verified on pristine baseline): server ~106 (TD-V16-TEST-ISOLATION); frontend 100% green as of v1.8 close (1568/1568 → now 1593+ after quick tasks)
+
+## Performance Metrics
+
+**By Milestone (cumulative):**
+
+| Milestone | Phases | Plans | Timeline | Audit |
+|-----------|--------|-------|----------|-------|
+| v1.0 Authentication & Per-User Access | 3 | 16 | 2026-04-27 → 2026-04-29 (~3d) | tech_debt (19/19) |
+| v1.1 OIDC SSO Support | 5 | 19 | 2026-04-30 → 2026-05-01 (2d) | passed (21/21) |
+| v1.2 Interactive Dashboards | 4 | ~24 | 2026-05-01 → 2026-05-06 | pragmatic_close (12/12) |
+| v1.3 Unified Dashboard Filtering | 5 | 14+3 gap-closure | 2026-05-06 → 2026-05-07 | pragmatic_close/tech_debt (33/34 req; VERIFY-V13-01 Partial; 3 TDs to v1.4) |
+| v1.4 Map Info Popup | 7 | 23 (Phases 18-24) | 2026-05-07 → 2026-05-11 (5d) | passed (19/20 req; 1 Deferred → TD-V14-WKB-SPIKE → v1.5; 4 UAT gaps closed inline) |
+
+**By Plan (v1.3):**
+
+| Phase-Plan | Duration | Tasks | Files | Completed |
+|------------|----------|-------|-------|-----------|
+| 13-01 spike-runner | 25min | 2 | 1 | 2026-05-06 |
+| 13-02 view-utils | 14min | 2 | 4 | 2026-05-06 |
+| 13-03 endpoint | 16min | 2 | 2 | 2026-05-06 |
+| 14-01 filter-view-store | 2min | 2 | 2 | 2026-05-06 |
+| Phase 14-filter-view-store P03 | 2min | 2 tasks | 0 files |
+| 15-01 dashboard-context | 3min | 3 | 3 | 2026-05-07 |
+| 15-02 materialize-trigger+from-swap | 274min | 6 | 14 | 2026-05-06 |
+| Phase 15 P03 | 15 | 2 tasks | 2 files |
+| Phase 15 P04 | 5 | 3 tasks | 4 files |
+| Phase 15 P05 | 5 | 4 tasks | 4 files |
+| Phase 16 P01 | 11min | 5 tasks | 9 files |
+| Phase 17-verification P02 | 525796min | 4 tasks | 6 files |
+| 18-02 spatial-modules | 5min | 2 (TDD: 4 commits) | 4 | 2026-05-08 |
+| 18-03 info-query-endpoint | 9min | 2 (TDD: 2 commits) | 3 | 2026-05-08 |
+| Phase 19-config-schema P01 | 15 | 2 tasks | 4 files |
+| Phase 19-config-schema P02 | 50 | 2 tasks | 8 files |
+| Phase 20-info-selection-store P01 | 3min | 2 tasks | 2 files |
+| Phase 20 P02 | 3min | 2 tasks | 4 files |
+| 21-01 render-info-template | 1min | 1 task (TDD: 1 commit) | 2 | 2026-05-08 |
+| 21-02 info-popup-component | 5min | 2 tasks (TDD: 4 commits) | 4 | 2026-05-08 |
+| 21-03 map-renderer-integration | 95min | 2 tasks (TDD: 1 commit) | 4 | 2026-05-08 |
+| Phase 22 P01 | 3 | 3 tasks | 5 files |
+| Phase 22 P02 | 3 | 2 tasks | 2 files |
+| Phase 22 P03 | 6 | 4 tasks | 4 files |
+| Phase 23 P01 | 8 | 2 tasks | 5 files |
+| Phase 23-info-card P02 | 9 | 3 tasks | 8 files |
+| Phase 23 P03 | 12 | 2 tasks | 11 files |
+| Phase 23 P04 | 2 min | 3 tasks | 3 files |
+| Phase 24-verification P05 | 2 | 2 tasks | 3 files |
+| Phase 24-verification P04 | 7 | 3 tasks | 3 files |
+| Phase 24-verification P06 | 5min | 3 tasks | 2 files |
+| Phase 26 P1 | 3 | 2 tasks | 2 files |
+| Phase 26-server-spatial-where P26-02 | 2 | 1 tasks | 1 files |
+| Phase 26-server-spatial-where P26-03 | 5min | 1 task | 1 file |
+| Phase 27-spatial-filter-store P27-01 | 2min | 3 tasks | 3 files |
+| Phase 27 P02 | 5 | 3 tasks | 4 files |
+| Phase 28 P01 | 3 | 3 tasks | 3 files |
+| Phase 28 P02 | 4 | 3 tasks | 4 files |
+| Phase 29-draw-and-shape P01 | 8 | 2 tasks | 7 files |
+| Phase 29 P02 | 4min | 2 tasks | 3 files |
+| Phase 29 P03 | 30 | 1 tasks | 3 files |
+| Phase 29-draw-and-shape P04 | 8min | 2 tasks | 4 files |
+| Phase 29-draw-and-shape P05 | 15min | 1 task | 2 files |
+| Phase 30-materialize-and-chips P30-01 | 5min | 3 tasks | 9 files |
+| Phase 30-materialize-and-chips P30-02 | 7min | 2 tasks | 2 files |
+| Phase 30 P03 | 6 | 2 tasks | 2 files |
+| Phase 32 P01 | 9 | 3 tasks | 10 files |
+| Phase 32 P02 | 4 | 2 tasks | 2 files |
+| Phase 32 P03 | 8 | 2 tasks | 3 files |
+| Phase 33 P01 | 5 | 2 tasks | 4 files |
+| Phase 33-dynamic-view-store P02 | 4 | 2 tasks | 3 files |
+| Phase 33-dynamic-view-store P03 | 7 | 3 tasks | 6 files |
+| Phase 34 P01 | 5min | 2 tasks | 4 files |
+| Phase 34 P02 | 6 | 3 tasks | 3 files |
+| Phase 34 P03 | 9 | 1 tasks | 3 files |
+| Phase 34 P04 | 19min | 3 tasks | 4 files |
+| Phase 35 P02 | 5min | 2 (TDD: 3 commits) tasks | 2 files |
+| Phase 35-widget-binding-and-pipeline P01-layers-schema-migration | 8 | 2 (TDD: 4 commits) tasks | 13 files |
+| Phase 35-widget-binding-and-pipeline P03-orchestrator-hook | 16min | 2 (TDD: 4 commits) tasks | 7 files |
+| Phase 35 P04 | 37min | 2 (TDD: 3 commits) tasks tasks | 3 files files |
+| Phase 35 P05 | 40min | 2 tasks | 5 files |
+| Phase 35 P06-map-renderer-and-layer-picker | 41min | 3 tasks | 7 files |
+| Phase 36 P02 | 19 | 2 tasks | 1 files |
+| Phase 36 P01 | 70 | 2 tasks | 1 files |
+| Phase 36 P03 | 4 | 2 tasks | 4 files |
+| Phase 38 P01 | 6 | 3 tasks | 8 files |
+| Phase 38 P02 | 9min | 3 tasks | 12 files |
+| Phase 38 P03 | 4 | 3 tasks | 6 files |
+| Phase 39-01 foundation-palette-and-cleanup | 12min | 2 tasks | 5 files |
+| Phase 39 P02 | 7min | 1 tasks | 2 files |
+| Phase 39 P03 | 9min | 3 tasks | 3 files |
+| Phase 40 P01 | 6min | 2 tasks | 5 files |
+| Phase 40 P02 | 4 | 2 tasks | 3 files |
+| Phase 41 P01 | 6 | 3 tasks | 6 files |
+| Phase 41 P02 | 8 | 2 tasks | 4 files |
+| Phase 42 P01 | 6min | 3 tasks | 10 files |
+| Phase 42 P02 | 386 | 3 tasks | 9 files |
+| Phase 44 P01 | 9min | 3 tasks | 9 files |
+| Phase 44 P02 | 5min | 2 tasks | 4 files |
+| Phase 44 P03 | 7min | 2 tasks | 4 files |
+| Phase 45 P01 | 8 | 2 tasks | 4 files |
+| Phase 45 P02 | 4 | 2 tasks | 4 files |
+| Phase 45 P03 | 10min | 2 tasks | 3 files |
+| Phase 46-rbac-schema-data-layer P02 | 15 | 2 tasks | 3 files |
+| Phase 46-rbac-schema-data-layer P03 | 5 | 2 tasks | 6 files |
+| Phase 47 P02 | 3 | 2 tasks | 2 files |
+| Phase 47 P03 | 11min | 3 tasks | 8 files |
+| Phase 48 P01 | 6 | 4 tasks | 8 files |
+| Phase 48 P02 | 2 | 2 tasks | 3 files |
+| Phase 48 P04 | 2 | 2 tasks | 4 files |
+| Phase 48 P03 | 7 | 3 tasks | 4 files |
+| Phase 49 P01 | 3min | 2 tasks (TDD: 4 commits) | 2 files |
+| Phase 49 P02 | 6 | 3 tasks | 7 files |
+| Phase 49 P03 | 4min | 3 tasks | 3 files |
+| Phase 50-roles-management-ui-custom-roles-audit P01 | 10 | 3 tasks | 5 files |
+| Phase 50 P02 | 11 | 3 tasks | 7 files |
+| Phase 50 P03 | 8min | 2 tasks | 4 files |
+| Phase 50.1-profile-page-logout P01 | 10 | 3 tasks | 11 files |
+| Phase 50.2 P01 | 5 | 3 tasks | 9 files |
+| Phase 50.3 P01 | 4min | 3 tasks | 5 files |
+| Phase 51 P03 | 2 | 2 tasks | 2 files |
+| Phase 52-track-spatial-mode-foundation P01 | 7 | 3 tasks | 10 files |
+| Phase 52-track-spatial-mode-foundation P02 | 7 | 3 tasks | 8 files |
+| Phase 53-render-narrowing-param-surfaces-color-cutover P02 | 2min | 2 tasks | 2 files |
+| Phase 53 P01 | 5 | 3 tasks | 4 files |
+| Phase 54 P01 | 12 | 1 tasks | 1 files |
+| Phase 54 P02 | checkpoint-resolved | 2 tasks (1 auto + 1 checkpoint) | 1 file (54-UAT.md) | gaps_found |
+| Phase 54 P04 | 3 | 3 tasks | 3 files |
+| Phase 54 P06 | 5min | 2 tasks (TDD: 4 commits) | 6 files |
+| Phase 54 P07 | 7min | 2 tasks (TDD: 3 commits) + checkpoint | 5 files |
+| Phase 54 P08 (gap-54-08) | 8min | 2 tasks (TDD: 2 commits) | 4 files |
+| Phase 54 P09 (gap-54-09) | 15min | 2 tasks (TDD: 2 commits) | 2 files |
+| Phase 54 P10 (gap-54-10) | 5min | 2 tasks (TDD: 3 commits) + checkpoint | 3 files |
+| Phase 55 P01 | 20 | 3 tasks | 7 files |
+| Phase 55 P02 | 10min | 3 tasks | 3 files |
+| Phase 56-access-management-ui-list-open-ux P01 | 7 | 2 tasks | 9 files |
+| Phase 56-access-management-ui-list-open-ux P02 | 4 | 2 tasks | 2 files |
+| Phase 57-verification-live-uat P01 | 4 | 1 tasks | 1 files |
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260607-fk4 | Configurable CSV download on Records Table (filtered view, displayed columns, capped) | 2026-06-07 | 6bc394c | [260607-fk4-add-configurable-csv-download-to-records](./quick/260607-fk4-add-configurable-csv-download-to-records/) |
+| 260608-j5k | Map scale bar + fullscreen button (both opt-in config toggles; OL ScaleLine/FullScreen; live-toggle + CSS fix aabd7f7) | 2026-06-08 | aabd7f7 | [260608-j5k-add-a-map-scale-bar-config-option-to-sho](./quick/260608-j5k-add-a-map-scale-bar-config-option-to-sho/) |
+| 260608-rbq | Configurable WMS loading indicator on the map (per-layer imageloadstart tracker; default ON) | 2026-06-08 | 1059c88 | [260608-rbq-add-a-configurable-wms-loading-indicator](./quick/260608-rbq-add-a-configurable-wms-loading-indicator/) |
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- v1.10 roadmap created 2026-06-09: Phases 55-57 (Per-Dashboard View Permissions). 55 = access model + server enforcement (server-only), 56 = access-management UI + list/open UX (frontend-only), 57 = verification + live UAT. 15/15 requirements mapped, no orphans.
+
+- v1.9 roadmap created 2026-06-07: Phases 52-54 (Better Track Rendering)
+
+- Phase 50.3 inserted after Phase 50: Light-mode theming fixes (RolesPage non-existent CSS vars, role-chip hardcoded greens) + popover clipping (overflow container) + UAT light-mode pass (URGENT — operator screenshots pre-UAT 2026-06-06)
+- Phase 50.2 inserted after Phase 50: Users table layout fix (flexed-td bug) + UTC last-seen parsing fix + permission descriptions (URGENT — operator screenshots pre-UAT 2026-06-06)
+- Phase 50.1 inserted after Phase 50: Profile Page + Logout (URGENT — operator-requested pre-UAT 2026-06-06: no logout UI exists; Topbar role chips relocating to a Profile page)
+
+- Phase 44 added: Data Filter widget
+- Phase 45 added: Timeline Chart widget
+- v1.8 roadmap created 2026-06-05: Phases 46-51 (RBAC)
+
+### Key v1.9 Architecture Decisions (locked at roadmap creation 2026-06-07)
+
+- **TRACKFIX-V19-08 (GAP-54-09, 2026-06-08):** Track spatial-filter targets translate to `{spatialMode:"latlon", lonCol:xCol, latCol:yCol}` at all MapConfigPanel paths (new-row, changeTable already in Phase 52; changeMode repopulation + displayMode coercion added in Phase 54-09). `SpatialTarget` type and `isSpatialTargetEligible` remain byte-unchanged (3-mode wire union). Legacy stored `spatialMode:"track"` rows are coerced to `displayMode:"latlon"` for radio display; `changeMode("latlon")` on a track table repopulates columns from `isTrackTable`.
+- **SpatialMode union extension:** `"latlon" | "wkt" | "wkb" | "track"` — track added as a first-class member. All existing `autoSuggestSpatialMode` callers and `isSpatialTargetEligible` must handle the new value explicitly. Track is NOT eligible as a spatial-filter target (isSpatialTargetEligible returns false — mirrors WKB deferral gate; track rows are not lat/lon or geometry targets for bbox/lasso/circle spatial filtering).
+- **Column pickers for track mode:** Four fields — x (longitude of track point), y (latitude), track ID (defaults to `TRACKID` when present, case-insensitive), ordering (defaults to `TIMESTAMP` when present, case-insensitive). Defaults apply only at suggestion time; user can change any field.
+- **Auto-suggest:** `autoSuggestSpatialMode` extended to detect the track column shape (TRACKID + x + y + TIMESTAMP present, case-insensitive). Auto-suggest sets mode to "track" and pre-fills defaults. User can freely switch to any other mode (no lock-in).
+- **Render mode narrowing:** When spatialMode === "track", the render mode picker filters to ["raster", "classbreak"] only. Heatmap option is suppressed (not hidden post-selection — absent from the list entirely).
+- **Param surface gating:** Two render paths under track — (a) track+raster: show ONLY track styling params (head color/size/shape, trail color/width); point, shapeline, shapefill param groups rendered with `display:none` or conditional exclusion; (b) track+classbreak: show CB break builder + track params; per-break point/shape advanced fields suppressed.
+- **WMS emission:** Track+raster emits `DOTRACKS=TRUE` + `TRACK_*` params. Track+cb_raster emits comma-separated `TRACK_*` under `STYLES=cb_raster` per Phase 37 spike Decision Record. These are regression-locked with lastEmittedParamsRef fingerprint coverage (mirrors Phase 38/39 CB-V17-09 pattern).
+- **Color picker:** Replace raw AARRGGBB hex text inputs for track head and trail colors with a proper color picker component (with alpha channel support). The existing 8-char AARRGGBB standard is preserved at the WMS emission level — the picker converts to AARRGGBB internally.
+- **Cutover detection:** `track_config.enabled === true` with no `track` spatial mode = old-model layer. These layers show the `.widget-map-reconfigure` overlay (same component and pattern as v1.2 Phase 12 `.widget-map-reconfigure` for Phase 11 layers). Non-track layers and layers already on the new model are unaffected.
+- **TrackSubSection removal:** The v1.7 Phase 40 `TrackSubSection` component and `"Treat as track table"` override checkbox are deleted. No compatibility shim needed — the cutover overlay handles old-model layers.
+- **No new npm dependencies expected:** Color picker may be hand-rolled (alpha-aware AARRGGBB input) or a thin wrapper; decision deferred to Phase 53 planning. No new backend endpoints expected.
+- **Test baseline:** Frontend must remain at 100% green. Server failures must stay ⊆ TD-V16-TEST-ISOLATION known-flaky list. Phase 53 WMS emission regression lock will add targeted vitest specs for the Track+Raster and Track+CB_Raster emission paths.
+
+### Key v1.8 Architecture Decisions (locked at roadmap creation 2026-06-05)
+
+- **No new npm dependencies:** RBAC is pure TypeScript using existing `better-sqlite3` (synchronous reads = no async plumbing in the permission check path). CASL, casbin, accesscontrol all rejected.
+- **New server files:** `packages/server/src/lib/rbacDb.ts` (getEffectivePermissions + CRUD helpers), `packages/server/src/lib/rbacSeed.ts` (idempotent boot-time seed), `packages/server/src/rbac.ts` (requirePermission factory). `db.ts` + `index.ts` are the only existing files modified on the server side.
+- **requirePermission factory:** Returns `[requireAuth, rbacCheck]` — requireAuth populates `req.user`, rbacCheck reads effective permissions from SQLite and returns 403 with `code: "PERMISSION_DENIED"` or calls `next()`. Mirrors the REAUTH_REQUIRED pattern from v1.0.
+- **Analyst-passthrough boundary (GUARD-V18-03):** `POST/DELETE /api/filter/materialize`, `POST /api/info/query`, `GET /api/top-values`, column-stats, quantile, `POST /api/dynamic-view/materialize`, `POST /api/dynamic-view/:id/drop`, `/api/wms`, read-path SQL — all remain `requireAuth` ONLY. A comment block at the route registrations in `index.ts` documents this boundary. Gating any of these on write permissions breaks the core analyst experience.
+- **GUARD-V18-05 (test suite migration) is MANDATORY in Phase 47:** `createAdminSession(db)` seeds a session AND grants admin role before the middleware lands. Every spec file that creates sessions must use this helper. Without it, Phase 47 produces 403s on every existing route test. This is a phase-blocking prerequisite, NOT a follow-up task.
+- **Roles NOT in session rows:** `getEffectivePermissions(username)` reads from `user_roles` on every permissioned request. better-sqlite3 synchronous join is sub-millisecond at this data volume. No caching. A user whose roles are changed sees the new permissions on their very next request.
+- **`useAuthStore` extension (not a new store):** `AuthUser` and `MeResponse` widened with `roles: string[]` + `permissions: string[]`; `hasPermission(perm: string) => boolean` selector added to existing `useAuthStore`. No new store, no new fetch loop, no new reset chain entry.
+- **Permission string canonical constants:** A shared module exports a `PERMISSIONS` constants object; both server (requirePermission calls) and client (hasPermission calls) import from it. TypeScript catches typos at compile time. Prevents silent string drift between server enforcement and frontend gating.
+- **Bootstrap admin:** `APP_ADMIN_USERNAME` env var (default `"admin"`) always resolves all 15 permissions regardless of DB state — short-circuits before any DB lookup. Server boot emits a structured warning when `AUTH_MODE=oidc` and the var is at the default `"admin"` value (OIDC IdP claim may differ from "admin").
+- **SAFE-V18-01 placement:** Last-admin protection lives in Phase 49 with the assign/revoke API — the API rejects role revocations that would leave zero non-bootstrap admins. Bootstrap is always exempt.
+- **SAFE-V18-02 placement:** Escalation guards live in Phase 50 with the role management routes — user_admin cannot assign admin role, cannot edit admin role mappings, cannot grant custom role permissions beyond their own effective set.
+- **AUDIT-V18-01 placement:** Audit log extension lives in Phase 50 alongside the management routes that mutate state. Extends existing OBS-01 JSON log with actor, target, and before/after state. No new infrastructure.
+- **Username source for Users page (Phase 49):** Distinct usernames from the sessions table (session history) union with usernames from `user_roles` table (existing assignments). Phase 49 planning should validate the exact sessions table schema before implementation.
+- **Onboarding banner (USERS-V18-04):** Shown to admins when `user_roles` has zero rows for N authenticated usernames (i.e., they are on analyst default). Cleared when all users have explicit assignments.
+
+### Key v1.5 Architecture Decisions (locked at roadmap creation 2026-05-11)
+
+- **Spike is P1 gate (Phase 25):** No `spatialWhereClause.ts` code may be merged until SPIKE-V15-01 returns PASS for both latlon and WKT predicate forms. Mirrors v1.3 S1-S4 and v1.4 Phase 18 spike pattern. Runner script preserved at a known commit so future Kinetica-version re-runs are one-shot.
+- **Phase 29 first-task rule:** Effect 6 mode-guard (`if (drawMode !== 'pan' && drawMode !== 'info') return`) is the very first code change in Phase 29 before any OL Draw interaction is added. This prevents V15-P-01 (OL Draw + singleclick popup dual-fire). Mode is read via `useSpatialFilterStore.getState()` (imperative, never stale closure).
+- **V15-P-07 parenthesis lock (Phase 26):** `buildSpatialOrBlock` ALWAYS wraps the OR chain in outer parens: `(pred1 OR pred2)`. Unit test asserts exact paren structure for 2-shape + 1-column-filter input BEFORE any multi-shape UI exists. Single-shape bug is invisible; multi-shape breaks column filters silently.
+- **V15-P-09 Zustand re-render lock (Phase 27):** Store updates fire ONLY at `drawend` (committed shape). In-progress geometry stays entirely inside OL's native VectorSource during live drawing — never written to Zustand, never triggering cross-map re-renders on `pointermove`.
+- **V15-P-04 Mercator distortion lock (Phase 29):** ALL measurements (circle radius, bbox W×H, lasso area) use `ol/sphere.getDistance` / `getArea` (ellipsoidal). NEVER raw EPSG:3857 radius. WKT serialisation always uses `geom.clone()` then `writeGeometry({ dataProjection: 'EPSG:4326', featureProjection: 'EPSG:3857' })` — clone() is mandatory (transform mutates in place).
+- **Sole materialize trigger invariant preserved (Phase 30):** `AggregatedWidgetRenderer` remains the ONLY component that calls `POST /api/filter/materialize`. `MapChartRenderer` draws and writes to the store; it never calls materialize directly. N map widgets × M table widgets would produce N×M DDL calls if this invariant is broken.
+- **5th store reset block (Phase 27):** `useSpatialFilterStore.getState().reset()` is added as the 5th call (after filterViewStore → filterStore → infoSelectionStore → lastInfoClickContextStore) at both `App.tsx` UNAUTHORIZED and `DashboardsPage.tsx` DashboardOpen cleanup. No DROP loop needed — shapes are session-only (no server resource associated).
+- **Mixed chips in FilterBar (Phase 30):** Operator-locked decision — spatial chips appear in the SAME row as column-filter chips (not a separate row above). Chip label is `{Type} {N}` with measurement as secondary text: "Bbox 1 (5km × 3km)", "Circle 1 (2.5 km)", "Lasso 1 (12.4 km²)".
+- **WKB deferred again (Phase 26 + 28 + 30):** WKB-mode spatial filter targets return HTTP 501 at the server (mirrors v1.4 info-query WKB deferral). `isSpatialTargetEligible` returns false for WKB mode at all three eligibility gates: config-time warning in MapConfigPanel, client-side materialize skip, server-side 501. TD-V14-WKB-SPIKE carry-forward.
+- **Toolbar as React overlay, NOT ol/control/Control (Phase 29):** Anti-pattern locked — root-cause family of GAP-24-01-A and GAP-24-02-A. `MapDrawToolbar` is a React-rendered `<div>` absolutely positioned over the map canvas (`position: absolute; z-index: 1001`). CSS `pointer-events: none` on container, `pointer-events: auto` on buttons — prevents accidental OL event swallowing.
+- **Lasso simplification mandatory (Phase 29):** `geometry.simplify(map.getView().getResolution() * 2)` called on the cloned geometry BEFORE WKT serialisation at every `drawend`. Near-zero shapes (< 10 px² area) rejected with a toast. Prevents WHERE clause size bombs (V15-P-03).
+- **Selection state component-local (Phase 29 Plan 05):** `selectedShapeId` is component-local `useState` in `MapChartRenderer`, NOT in `useSpatialFilterStore`. Store stays unmodified (Phase 27 contract preserved). Selection is ephemeral UI state, not filter state.
+- **Selection halo via Style[] (Phase 29 Plan 05):** 4px stroke + 1px `rgba(255,255,255,0.6)` inner halo; implemented as `Style[]` return from the VectorLayer style function. Fill-lighten approach rejected to preserve overlap-additive fill semantics for multi-shape OR-composition.
+- **Phase 29 feature-complete (2026-05-12):** All 5 ROADMAP success criteria for v1.5 draw-and-shape satisfied. Phase 30 (materialize-trigger + chips) and Phase 31 (UAT) are unblocked.
+- **Phase 30-01: type-only circular import for SpatialTarget (2026-05-13):** `client.ts` imports `SpatialTarget` from `lib/spatialTargets.ts` (which imports `WidgetDto` from `client.ts`). TypeScript resolves type-only cycles safely — no runtime circular dep. `export type { SpatialTarget }` re-export alone does NOT bring the name into local scope; both the local import and the re-export are needed.
+- **Phase 30-01: DashboardContextProvider.widgets required, not optional (2026-05-13):** Chose required prop (not optional with default []) to make missing-context errors loud at compile time. Tests must supply `widgets={[]}` — this is cheap and makes the test surface explicit about the context shape.
+- **`spatialTargets` stored in `widget.config` JSON blob (Phase 28):** No new SQLite table. `widget.config.spatialTargets: SpatialTarget[]` persisted via existing `PATCH /api/widgets/:id`. Stale-target cleanup is UX-level (MapConfigPanel warns when target table is no longer associated with dashboard).
+
+### Key v1.4 Architecture Decisions (locked at roadmap creation)
+
+- **HTML template policy:** Full HTML allowed in `info_template` — no sanitization. Dashboard authors are privileged users (analogous to saved SQL queries). Risk documented in PROJECT.md Key Decisions. Both Phase 21 (popup) and Phase 23 (Info Card) must use the same shared `renderInfoTemplate` helper so rendering is consistent.
+- **Store-before-popup ordering:** `useInfoSelectionStore` (Phase 20) ships before popup (Phase 21) and Info Card (Phase 23) so both are pure view-layer consumers of the store. Store design is not influenced by either consumer's rendering needs.
+- **Info Card / popup co-fetch via shared `<InfoSelectionView />` (relaxed Phase 23 2026-05-09):** Both the popup and the Info Card mount `<InfoSelectionView />`, which calls `POST /api/info/query` on dropdown-switch (when `state[newLayerId]` is undefined) and on Load more — using replayed spatial coords from the new sibling `useLastInfoClickContextStore` slice. The map click handler in `MapChartRenderer` remains the SOLE entry point for the initial multi-layer fan-out and the SOLE writer of `useLastInfoClickContextStore`. Other widget types (bar / line / pie / scatter / table / records / bignumber / map) cannot fetch info-queries — only the popup and the card via the shared view can. Pre-Phase-23 lock language ("Info Card never calls POST /api/info/query directly") is OBSOLETE; future readers reference this entry instead. (XWIDGET-V2-01 deferred — non-popup-non-card widgets remain non-fetchers.)
+- **radiusPx→ground conversion is server-side:** `mapBbox`, `mapWidthPx`, `mapHeightPx` are sent in the request payload. Server computes the ground-distance threshold. Avoids client-side trigonometry duplication.
+- **WKB spike is a P1 gate for Phase 18:** Endpoint code for the WKB branch cannot land until the spike confirms function name, argument types, and whether a conversion wrapper is needed. Spike outcome is committed to `18-SPIKE-NOTES.md` first.
+- **Config schema split from config UI:** Phase 19 delivers only schema migrations and TS type updates (CONFIG-V14-01, CONFIG-V14-02). Phase 22 delivers the React UI panels (CONFIG-V14-03, CONFIG-V14-04). This prevents Phase 19 from growing to a two-week phase and keeps the schema stable before any UI work touches it.
+- **Lifecycle reset integration points:** `useInfoSelectionStore.reset()` must be added to the same two sites used by `useFilterViewStore`: (1) `DashboardOpen` cleanup effect in `DashboardsPage.tsx`, (2) `App.tsx` unauthenticated effect. These are the canonical reset sites established in v1.3 Phase 15 — not new patterns.
+- **Kill switch semantics:** Per-widget `infoEnabled: false` disables the OL click listener entirely (no listener registration). Per-layer `info_enabled = 0` removes the layer from the popup dropdown and skips its `POST /api/info/query` call.
+- **Session-only store:** `useInfoSelectionStore` state is not persisted to URL, localStorage, or SQLite. Lost on page refresh. Mirrors `useFilterStore` lifecycle. URL/DB persistence is PERSIST-V2-01/02 (deferred).
+
+### Key v1.3 Architecture Decisions (locked before Phase 13)
+
+- Spike findings (S1-S4) are coupled into Phase 13 with the endpoint — endpoint shape depends on spike outcomes (schema-qualification, permission model)
+- Endpoint is net-new `POST /api/filter/materialize` (NOT extending existing `/api/views/:id/materialize`) — stateless; no SQLite row for transient views; Kinetica TTL=5 (sliding) is sole cleanup
+- `useFilterViewStore` (new) paired with `useFilterStore` (unchanged) — chips in filterStore, view names in filterViewStore; two stores reset on logout + dashboard-switch
+- Dead-code deletion (`injectWhereClause`, `buildWhereClause`, `escapeKineticaStringLiteral`, `buildEqualityFilter`) is atomic with FROM-swap landing in Phase 15 — cannot coexist
+- `_mv` (materialize version) cache-buster retained in WMS params; `_v` and `QUERY` removed — same view name gets `CREATE OR REPLACE`'d on filter change, OL caches by URL
+
+### Phase 13 Plan 01 spike findings (locked 2026-05-06)
+
+- **S1 PASS** — WMS LAYERS=`<materialized_view_name>` renders PNG tiles; MAP-V13-* requirements stay in v1.3 scope; Phase 16 LAYERS-swap buildable as planned
+- **S2.a PASS (password)** — `CREATE OR REPLACE MATERIALIZED VIEW ... USING TABLE PROPERTIES (TTL = 5)` succeeded for BI-user `admin` (`info.X-Kinetica-Group: DDL`, `count_affected: 500000`, dispatched internally to `/create/jointable`); Plan 13-03 wires `kineticaSql(req, ddl, { op: "MATERIALIZE" })` directly with no service-account fallback
+- **S2.b N/A DEFERRED (OIDC)** — no OIDC token reachable in spike environment; Phase 15/17 must re-probe before v1.3 milestone close
+- **S2.c PASS** — `DROP TABLE IF EXISTS` succeeded; idempotent (returns OK with `count_affected: 0` on already-dropped view); endpoint DELETE handler safe to call fire-and-forget
+- **S3 RESOLVED** — verbatim error string captured: `SqlEngine: Object '<view-name>' not found (S/SDc:1513)` at HTTP 400. Phase 15 LIFE-V13-02 `isViewNotFoundError()` matches `/SqlEngine: Object '[^']+' not found/i` substring + `(S/SDc:1513)` Kinetica internal code
+- **S4 BOTH WORK** — both qualified (`ki_home._kbi_filt_spike_test`) and unqualified (`_kbi_filt_spike_test`) LAYERS forms render PNG tiles; endpoint returns UNQUALIFIED view name (Plan 13-02 view-name builder produces bare `_kbi_filt_u<userId>_d<dashId>_t<tableId>_s<sessionShort>`, no schema prefix, no `SHOW SCHEMAS` lookup needed)
+- **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
+
+## Decisions
+
+### Phase 54-verification-live-walk-through (gap-54-10)
+
+- [54-10 NON_TRIGGER_TYPES allow-list]: Pure-consumer set allow-listed (map/info-card/legend/datafilter/timeline/numericline); everything else treated as trigger — covers records + all AggregatedWidgetRenderer paths including future chart types via the else branch default
+- [54-10 TRACKFIX-V19-09]: useMapOnlySpatialMaterialize mounted once in DashboardOpen alongside useDynamicViewMaterializeChain; receives (dashboard.id, widgets); sole-trigger invariant preserved; 1665/1665 green; SERVER-CLEAN
+- [Phase 55-access-model-server-enforcement]: Explicit DELETE cascade in deleteDashboard() (not FK PRAGMA) — foreign_keys not globally ON; grant cleanup fires regardless of PRAGMA state
+- [Phase 55-access-model-server-enforcement]: Single dashboard_access_grants table with grantee_type discriminator; user grants stored LOWERCASED; role grants stored verbatim; no FK to known_users (pre-provisioning)
+- [Phase 55-access-model-server-enforcement]: rbacSeed.ts byte-unchanged — generic seed loop auto-carries DASHBOARDS_MANAGE_ACCESS via DEFAULT_ROLE_MAPPINGS.designer; history-gated once-only seeding preserved
+- [Phase 55-02 audit-on-change]: Grant add/remove emit rbac_audit only when row actually changed (inserted=true / removed=true) — idempotent no-ops produce no audit noise
+- [Phase 55-02 grant-route-placement]: GET/POST/DELETE /api/dashboards/:id/access placed in dashboard CRUD neighborhood (~line 539), immediately after DELETE /api/dashboards/:id, for locality
+- [Phase 55-02 delete-body]: DELETE /api/dashboards/:id/access reads grantee_type+grantee from req.body (not query) for symmetry with POST
+- [Phase 56-access-management-ui-list-open-ux]: delete-body-contract-enforced: removeDashboardGrant fires DELETE with JSON body {grantee_type, grantee} — symmetric with POST, mirroring 55-02 decision
+- [Phase 56-access-management-ui-list-open-ux]: pre-provisioning-via-free-text: user input is free-text with optional datalist; no gating on known users
+- [Phase 56-access-management-ui-list-open-ux]: manage-access-button-placement: button after Delete in .ds-actions, canManageAccess-gated (hide-don't-disable), accessModalDashboard state at DashboardsPage scope
+- [Phase 56-access-management-ui-list-open-ux]: no-access-early-return: noAccess detector before layouts in DashboardOpen; ChartCard+dashboard-list wrapper for visual consistency; onBack wires to existing callback
+- [Phase 57-verification-live-uat]: server vitest gate is SET-BASED: failing-file set evaluated as subset of TD-V16-TEST-ISOLATION known-flaky list; fixed pass-count never asserted (nondeterministic flakiness in 8 known files)
+
+### Phase 49-users-management-ui
+
+- [49-01 GET /api/users]: LEFT JOIN known_users ku2 (alias) used to add last_seen without disrupting the UNION de-dup subquery grouping
+- [49-01 bootstrapUsername]: Read at request time via process.env (not module-scope) — consistent with rbacDb.getAppAdminUsername and 46-03 decision
+- [49-01 bootstrap synthesis]: users.unshift() injects bootstrap row only when absent from both tables — handles fresh deployments where bootstrap has never logged in
+- [49-01 SAFE-V18-01]: Guard COUNT excludes bootstrap via 'username != lower(?)' — works whether or not bootstrap has an explicit user_roles row
+- [49-01 SAFE-V18-01]: Verbatim error string locked: "Cannot revoke: this is the last admin. At least one non-bootstrap user must hold the admin role." — single source of truth for 49-02/49-03 frontend
+- [Phase 49]: hide-don't-disable: assign/revoke controls absent from DOM when user lacks users:assign_roles
+- [Phase 49]: revokeRole/assignRole return parsed error body so verbatim SAFE-V18-01 400 can be surfaced as toast and inline popover error
+- [Phase 49]: Promise.allSettled for bulk assign — no short-circuit; aggregate toast counts fulfilled vs failed
+- [49-03 UsersPage import]: named export { UsersPage } not default — App.tsx import must use braces
+- [49-03 banner fetch]: standalone useEffect with AbortController; swallows all errors silently (banner is non-critical)
+- [49-03 bannerDismissed]: React state only — no sessionStorage; banner reappears on reload (matches session-dismissable spec)
+- [Phase 50]: before_json for role_assigned/revoked uses raw assigned-role-name list (not analyst-fallback) — reflects actual DB rows
+- [Phase 50]: createUserAdminSession creates session AFTER buildTestApp() call to avoid auth_mode_change_wipe deleting password sessions in oidc test env
+- [Phase 50]: Guard 3 catalog check (400) fires BEFORE escalation check (403) — unknown permission string is always 400 regardless of caller admin status
+- [Phase 50]: emitRbacAudit level=info (not warn): audit rows are expected success events, not anomalies
+- [Phase 50]: aria-label={perm} added to permission checkboxes for accessibility + vitest getByRole queries
+- [Phase 50]: vi.clearAllMocks() in beforeEach prevents updateRolePermissions call-count bleed across tests
+- [Phase 50]: holders_count: SELECT COUNT(*) per role in GET /api/roles map (computed on read, not stored); powers delete-blocked UX
+- [50-03 RolesPage import]: named export { RolesPage } — import uses braces, consistent with UsersPage pattern
+- [50-03 editorIsAdmin]: reads user.roles (not user.permissions) — role membership is the correct predicate; user_admin HAS users:assign_roles but must NOT see admin in assign surfaces
+- [50-03 assignableRoles]: derived at render time; chip display of already-assigned roles left untouched — filter applies only to NEW assignment surfaces (popover + bulk dropdown)
+- [50-03 bulk default init]: useAuthStore.getState() read synchronously inside fetchData (not stale closure) to pick correct first assignable role for non-admin editors
+- [Phase 50.1-01]: groupPermissionList() takes an arbitrary list (not the full catalog) so ProfilePage groups only the user's effective permissions
+- [Phase 50.1-01]: Topbar Log out calls useAuthStore.getState().logout() only — no duplicated reset logic; App.tsx UNAUTHORIZED effect is the canonical reset
+- [Phase 50.1-01]: ProfilePage reached via Topbar menu only (onNavigateProfile prop); NOT in Sidebar nav; 'profile' added to Page union and ReturnTo allowlist
+- [Phase 50.2]: users-cell-flex inner-wrapper pattern: flex moved off td onto inner div; gap:6px works for both username+lock and chips
+- [Phase 50.2]: UTC normalization: marker-less SQLite datetime strings appended with T+Z before Date.parse; non-positive diff clamped to 'just now'
+- [Phase 50.2]: PERMISSION_DESCRIPTIONS: 16-entry Record in permissionGroups.ts; imported by RolesPage; rendered as muted .roles-perm-desc span
+- [Phase 50.3]: Popover fix option (a): overflow: visible on .users-table-wrap — 5-col table needs no h-scroll at normal widths; CSS-only, preserves .users-popover class
+- [Phase 50.3]: [50.3-01 token mapping]: --color-selected → rgba(34,197,94,0.14) accent-tinted translucent readable on both themes; --color-danger → #ef4444 theme-neutral
+- [Phase 52-track-spatial-mode-foundation]: SpatialMode widened in columnTypes.ts only; wire contracts (spatialTargets.ts, InfoSpatialMode) remain 3-mode; track→latlon translation at all wire boundaries
+- [Phase 52-track-spatial-mode-foundation]: MapConfigPanel coerces autoSuggestSpatialMode 'track' to 'latlon' for SpatialTarget — track is not a valid spatial-filter target
+- [Phase 52-track-spatial-mode-foundation]: Track mode picker exempt from WMS capabilities gate (mirror classbreak exemption)
+- [Phase 52-track-spatial-mode-foundation]: TrackSubSection deleted; no compat shim — cutover overlay handles old-model layers in Phase 53
+- [Phase 52-track-spatial-mode-foundation]: MapConfigPanel both autoSuggest sites prefill lonCol/latCol from isTrackTable match (CHECKER ADVISORY FIX)
+- [Phase 53]: effectiveRenderMode derived locally for immediate UI update before onChange round-trip on heatmap coercion
+- [Phase 53]: TRACK STYLE section placed before RASTER PARAMS for top-to-bottom readability
+- [Phase 53]: trackContext gates both chevron button AND advanced panel with single !trackContext predicate
+- [Phase 54]: All 8 server failing files confirmed IN TD-V16-TEST-ISOLATION list — no new regressions since Phase 53
+- [Phase 54]: Track-spec group (6 files, 297 tests) all green — double-precision specs + Phase 53 WMS emission byte-locks confirmed at post-52/53 baseline
+- [54-02 UAT overall_result]: gaps_found — NOT pass, NOT failed; 4 gaps logged; §1/§5/§6 PASS; §2/§3 FAIL; §4 SKIPPED
+- [54-02 GAP-54-01]: CRITICAL/blocking — track WMS layer never renders (no WMS request fires); root cause pointer: wmsUrlBuilder.ts DOTRACKS gate (~432-434) or buildWmsParams returning null → MapChartRenderer skips layer; in-scope v1.9; 54.x fix plan required
+- [54-02 GAP-54-02]: major; Track+CB does not colorize per-break categorically; scope decision pending — may need live Kinetica WMS spike for cb_raster track coloring
+- [54-02 GAP-54-03]: minor/additive; no TRACKLINECOLOR/TRACKLINEWIDTH form controls; scope decision pending
+- [54-02 GAP-54-04]: minor/pre-existing; legend shows "Layer {id}" for unnamed layers; LayersLegendPanel.tsx ~213-218 fallback; separate from track work; scope decision pending
+- [54-02 5e3514b fix confirmed live]: DOUBLE X/Y columns visible and selectable in x/y pickers — §1.3 PASS; fix is live-attested
+- [54-03 status]: BLOCKED until GAP-54-01 resolved via 54.x inline fix plan + §2/§3 re-walk passes
+- [Phase 54]: GAP-54-01 fix: merge layer.track_config into isConfigComplete input at Effect 2 call site; builder was never at fault (buildWmsParams already reads top-level track_config correctly)
+- [54-06 TRACKFIX-V19-04]: delete params.POINT*/SHAPE* (7 keys) inside enabled-track block using delete operator — robust to both raster and classbreak lanes that may have set them
+- [54-06 TRACKFIX-V19-05]: headShape → TRACKHEADSHAPES (fixes OQ-9 misnaming); markerShape → TRACKMARKERSHAPES as distinct param; TRACK_DEFAULTS updated to Kinetica doc defaults (FFFFFFFF/FF00FF00/FF0000FF)
+- [54-06 RENDER-V19-04 byte-lock]: Updated to TRACKHEADSHAPES — the byte-lock was locking the old misnaming, which is exactly what this fix corrects
+- [54-07 TRACKFIX-V19-06]: cbColors = cb.breaks.map(b => normalizeAARRGGBB(b.color)) when CB configured; colorList() selects cbColors.join(',') or expand(single) fallback; one break color drives all 3 TRACK_* color params positionally
+- [54-07 form-gating]: effectiveRenderMode !== 'classbreak' gate wraps 3 color control pairs (head/line/marker); uses effectiveRenderMode not raw renderMode for heatmap-coercion consistency
+- [54-07 CbConfigForm confirmed]: trackContext gates only per-row advanced chevron/panel; column/method/auto-suggest/theme/per-break color picker all rendered regardless of trackContext (no code change needed)
+
+### Phase 53-render-narrowing-param-surfaces-color-cutover
+
+- [53-02 EMISSION-GATE]: gate kept on tc.enabled (not spatialMode==="track"); both legacy latlon+enabled and new track+enabled paths pass simultaneously; switching gate would break locked latlon+enabled specs
+- [53-02 fingerprint-proof]: fingerprint coverage verified via unit-level emission proxy (changed TRACKHEADCOLORS in wmsParams changes JSON.stringify({p,c,t})); no MapChartRenderer integration test needed
+- [53-02 CUTOVER-V19-01 amended]: no overlay or migration added; Phase 52 clean deletion + no-throw locks in spec satisfy the amended truth
+
+### Phase 51-verification-live-uat
+
+- [51-01 spec fix only]: DashboardsPage.tsx toolbar order (Tables → Dynamic Views → Map Layers → Visualizations) is correct; DashboardsPage.spec.tsx assertion was stale from a prior toolbar reorder — no product code changed
+- [51-01 rbac deterministic group]: auth.login-rbac.spec.ts included as 9th group per post-plan note (work landed in 50.1/50.2/50.3); all 9 groups pass 147/147
+- [51-01 vitest multi-filter]: pipe-separated pattern rejected by vitest — each RBAC spec group run individually; all 9 green
+- [51-02 §9.2 OIDC ReturnTo]: recorded as PASS per operator blanket attestation (2026-06-06); checklist wording permits PASS-or-SKIPPED; operator reported all sections pass including §9.2
+- [51-02 gaps block]: gaps: [] — operator attested full pass; no 51.x revision required; 51-03 compile unblocked
+- [51-02 attestation]: RPereira@kinetica.com blanket pass 2026-06-06; all 36 items (Sections 0-9) PASS; overall_result: PASS; ready_for_51_03: true
+- [51-03 overall_status]: passed (not gaps_found) — all 42 UAT items PASS, zero gaps, all 6 automated gates green; five pre-UAT fix rounds closed and re-verified
+- [51-03 VERIFY-V18-01]: checkbox and traceability row were pre-set [x]/Complete at phase creation; footer updated to 2026-06-06 milestone-gate-passed
+- [51-03 TD-V17-DASHPAGE-SPEC]: CLOSED in 51-01; remaining carried TDs: TD-V17-LIVE-UAT, TD-V16-TEST-ISOLATION, TD-V14-WKB-SPIKE, TD-V15-MAP-ONLY-TRIGGER
+
+### Phase 47-server-middleware-route-guards
+
+- [47-01 createAdminSession]: createAdminSession takes opts? only (no db param) — bootstrap short-circuit bypasses SQLite entirely; session created against module-singleton db using APP_ADMIN_USERNAME||'admin'
+- [47-01 test migration]: makeSessionCookie() body rewritten to delegate to createAdminSession(); seedOidcSession() kept with createSession for OIDC credential-type testing in dual-auth-mode specs
+- [47-01 datasets:manage]: 16th permission added to PERMISSIONS catalog and DEFAULT_ROLE_MAPPINGS.designer (now 9-permission role); admin auto-includes via ALL_PERMISSIONS spread
+- [47-01 datasets:manage]: rbac_seed_history mechanism seeds datasets:manage exactly once on first boot after upgrade; operator-removal of designer mapping survives restart (history contract proven in db.rbacMigration spec)
+- [Phase 47]: [47-02 requirePermission]: factory returns RequestHandler[] to force ...spread usage; requireAuth is element 0; test app avoids createApp() for isolation; denial log via console.log JSON.stringify OBS-01 pattern
+- [47-03 route guards]: 22 mutation routes gated; requireConfig kept first on materialize/dynamic-views routes (Pitfall 2); ANALYST-PASSTHROUGH BOUNDARY comment block inserted verbatim from research template; OIDC smoke tests updated to use APP_ADMIN_USERNAME for bootstrap short-circuit
+- [47-03 management routes]: 7 management routes with inline db.prepare() — no abstraction layer at this scale; PUT /api/roles/:id/permissions validates against Object.values(PERMISSIONS) catalog; SAFE-V18-01/02 deferral comments in handlers
+- [47-03 known_users]: Table added to SCHEMA_DDL; dual upsert (password + OIDC) on success path only; GET /api/users uses known_users UNION user_roles for comprehensive user list
+- [Phase 48]: 48-01 permissions mirror: zero imports, pure module, values VERBATIM from server catalog — byte-parity enforced by spec
+- [Phase 48]: 48-01 hasPermission: uses get().user?.permissions (current state read), never a closed-over variable — Pitfall 3 avoidance
+- [Phase 48]: 48-01 fetchMe coalesce: roles ?? [] and permissions ?? [] guards prevent crash on un-upgraded server responses
+- [Phase 48]: 48-01 AuthUser widening: existing test fixtures updated to { username, roles: [], permissions: [] } to satisfy TypeScript strict assignment
+- [Phase 48]: 48-02 PERMISSION_DENIED: debounced window-event + App.tsx re-sync mirrors REAUTH_REQUIRED/UNAUTHORIZED_EVENT pattern exactly; useToastStore called directly in client.ts (no cycle); raw fetchMe used to prevent 403 re-trigger loop
+- [Phase 48]: 48-04 Sidebar gating: filter(item => !item.permission || hasPermission(item.permission)) over static nav array; ungated items always pass; gated hidden when user null or permission absent
+- [Phase 48]: 48-04 Topbar identity: user.username.slice(0,2).toUpperCase() for initials (fallback '?'); user.roles.map for chips; user-identity block conditionally rendered only when user non-null
+- [Phase 48]: 48-04 useUserStore deletion: git rm after single consumer (Topbar) migrated; zero references remain in src/
+- [Phase 48]: 48-03 dragConfig.enabled:false: first-class boolean in react-grid-layout v2.2.2; no per-item fallback needed for grid inertness
+- [Phase 48]: 48-03 GATE-V18-04 unreachability: ChartConfigPanel needs NO read-only mode — canConfigure gates both gear button and onConfigureWidget prop; LegendRenderer Reconfigure also hidden
+- [Phase 48]: 48-03 LegendRenderer clean-hide: Reconfigure button rendered only when onConfigureWidget is defined (not no-op optional chain)
+
+### Phase 46-rbac-schema-data-layer
+
+- [46-01 permissions catalog]: PERMISSIONS uses SCREAMING_SNAKE_CASE keys with noun:verb string values; `as const` for full type inference; DEFAULT_ROLE_MAPPINGS references PERMISSIONS.* keys (not raw strings) so catalog renames caught at compile time
+- [46-01 permissions catalog]: roles:delete_custom defaults to admin only; user_admin explicitly excluded (6 permissions: 5 management + dashboards:view only)
+- [46-01 permissions catalog]: analyst has exactly 1 permission (dashboards:view); all filter/drill-down interaction is ungated by design (requireAuth-only territory per Phase 47 analyst-passthrough boundary)
+- [46-01 permissions catalog]: ALL_PERMISSIONS = Object.values(PERMISSIONS) — used by admin bootstrap short-circuit (returns new Set(ALL_PERMISSIONS))
+- [46-01 permissions catalog]: Spec independently hardcodes all 15 expected strings (never derived from source) to catch source typos — pattern established for all catalog specs
+- [Phase 46-02]: permission TEXT not FK: role_permissions.permission is code-catalog string from lib/permissions.ts, no permissions table in v1.8
+- [Phase 46-02]: SELECT id after INSERT OR IGNORE not lastInsertRowid — lastInsertRowid is 0 when row ignored by UNIQUE constraint
+- [Phase 46-02]: seed never touches user_roles — no bootstrap assignment needed; admin bootstrap short-circuit in Plan 46-03 handles APP_ADMIN_USERNAME
+- [Phase 46-rbac-schema-data-layer]: [46-03 rbacDb]: analyst fallback reads live DB role_permissions for analyst role (NOT DEFAULT_ROLE_MAPPINGS constant) — operator-edited analyst mappings take effect immediately for unassigned users
+- [Phase 46-rbac-schema-data-layer]: [46-03 rbacDb]: getAppAdminUsername reads process.env at call time (not module-level) — allows test mutation of process.env between cases
+- [Phase 46-rbac-schema-data-layer]: [46-03 boot spec]: Standalone boot.rbacAdminWarning.spec.ts uses self-contained constructable Issuer class mock — does NOT depend on pre-existing-red shared OIDC mock tests; fixes 'Issuer is not a constructor' for this spec only
+
+### Phase 45-timeline-chart-widget
+
+- [45-03 TimelineRenderer]: tableId cast to `number` in commitFilter — TypeScript cannot narrow past early-return gates into a nested function body; cast is safe because commitFilter is only callable when renderer is past the `if (tableId === undefined)` gate
+- [45-03 TimelineRenderer]: Static-grep test pattern used for Tests 4/5/8 (multi-axis, single-axis, ReferenceArea) — Recharts SVG DOM output is dimension-dependent and unreliable in JSDOM; source assertions verify architectural contract durably (RESEARCH.md §C-08)
+- [45-03 TimelineRenderer]: filterVersion in useEffect deps ensures re-fetch when BETWEEN filter is applied (self-narrowing zoom-in effect matches CONTEXT.md decision)
+
+### Phase 27-spatial-filter-store
+
+- [27-01 spatialFilterStore]: shapeCounter kept in Zustand state (not derived from shapes.length) — only way to honor monotonic no-recycle rule after removeShape; post-removal label sequence Bbox 1, Bbox 2, (remove first), Bbox 3 requires independent counter
+- [27-01 spatialFilterStore]: removeShape(non-existent id) and clearAll(empty shapes) both return s (state identity) — mirrors filterStore.ts:clearFilters early-return pattern; preserves shapes[] reference for Phase 29 PITFALL S-02 primitive-selector mitigation
+- [27-01 spatialFilterStore]: reset() hard-sets spatialFilterVersion=0 (lifecycle wipe, NOT an increment) — prevents spurious Phase 30 AggregatedWidgetRenderer dep-array re-fires on logout/dashboard-switch
+- [27-01 spatialFilterStore]: Store ships dormant in Phase 27 (zero production consumer imports); Plan 27-02 adds App.tsx UNAUTHORIZED + DashboardsPage.tsx DashboardOpen cleanup (STORE-V15-04)
+- [Phase 27]: No DROP loop for spatial shapes at either reset site: shapes have no server-side resource (session-only client state) — mirrors infoSelectionStore + lastInfoClickContextStore pattern
+- [Phase 27]: Canonical 5-store reset order locked at filterViewStore → filterStore → infoSelectionStore → lastInfoClickContextStore → spatialFilterStore; 5th position is final for v1.5 milestone
+- [Phase 28]: [28-01 spatial-targets-helper TARGET-V15-02]: SpatialMode declared locally in spatialTargets.ts (not imported from ./columnTypes) — mirrors server-side WHERE-V15-01 local declaration choice; zero cross-module import for trivial union; both columnTypes/spatialTargets unions coexist independently
+- [Phase 28]: [28-01 spatial-targets-helper]: SpatialTarget byte-parity with server lines 75-81 verified — same 5 fields (tableId, spatialMode, lonCol?, latCol?, spatialCol?), same optionality, no UI-only fields; Phase 30 materializeFilter sends type as-is over wire (zero projection)
+- [Phase 28]: [28-01 spatial-targets-helper]: isSpatialTargetEligible established as single source of truth across all 3 v1.5 gates (MAT-V15-03): config-time MapConfigPanel WKB warning (Plan 28-02), materialize-time AggregatedWidgetRenderer skip (Phase 30), server-time 501 (Phase 26). Empty-string columns treated as missing (falsy via Boolean())
+- [Phase 28]: [28-01 spatial-targets-helper]: No DEFAULT_SPATIAL_TARGETS constant — [] is inline literal at the one read site (getSpatialTargets), unlike DEFAULT_INFO_ENABLED which is reused across MapConfigPanel + tests. Plan 28-02 consumes isSpatialTargetEligible directly, not a defaults constant
+- [Phase 28]: [28-01 spatial-targets-helper]: getSpatialTargets returns same-array-reference passthrough (no defensive copy) — mirrors getInfoEnabled minimal-helper style; reference-equality lock asserted by spec (out === targets) to prevent regression to defensive .slice()
+- [Phase 28]: [28-01 spatial-targets-helper]: Tasks 1+3 form type-cycle (Pick<MapWidgetConfig,'spatialTargets'> needs field added by Task 3; MapWidgetConfig.spatialTargets needs SpatialTarget exported by Task 1) — TypeScript handles cyclic type-only imports cleanly once both files land; plan-level tsc verification deferred to after Task 3 commit
+- [Phase 28]: [28-01 spatial-targets-helper]: Plan 28-01 ships dormant — grep -r spatialTargets kinetica_bi/src/lib/ returns exactly 3 files (spatialTargets.ts, spatialTargets.spec.ts, wmsUrlBuilder.ts); Plan 28-02 is first UI consumer (MapConfigPanel section)
+- [Phase 28]: [28-02 map-config-panel-section TARGET-V15-03]: ConfigPanelProps.tables?: { id, name, schema, columns }[] added as additive optional field — non-map panels unaffected; MapConfigPanel destructures and renders dashboard-scoped table picker per row. Reuses local TableInfo shape from ChartConfigPanel for byte-parity.
+- [Phase 28]: [28-02 map-config-panel-section]: Auto-suggest-on-table-change LOCKED — changeTable always runs autoSuggestSpatialMode(newColumns) and writes the suggested mode (NEVER prior). Prior mode may be invalid for new column shape (e.g., latlon → wkt-only table). Mirrors LayersModal.tsx handleTableChange lines 147-165 verbatim. Spec T8b proves the mode-flip behavior.
+- [Phase 28]: [28-02 map-config-panel-section]: WKB row UI contract LOCKED — verbatim warning text 'WKB spatial mode not yet supported — deferred' (en-dash U+2014); NO column picker rendered; NO generic 'Incomplete — will not filter' indicator. Spec asserts via screen.getByText for regression catch.
+- [Phase 28]: [28-02 map-config-panel-section]: DashboardsPage NO edit needed — ChartConfigPanel was always invoked with tables={associatedTables} (tables?: TableInfo[] is part of Props line 24). New ConfigPanelProps.tables field just makes the threading from <Custom> slot to MapConfigPanel explicit. Persistence rides existing onChange → onSave → PATCH /api/widgets/:id flow; debounce upstream.
+- [Phase 28]: [28-02 map-config-panel-section]: SpecTableInfo helper type declared in MapConfigPanel.spec.tsx so makeTables() return type widens columns to Record<string,string>. Without it, TS narrows inline object literals and rejects assignment to ConfigPanelProps.tables?[number] (caught as Rule 3 blocking during tsc; fixed inline).
+- [Phase 28]: [28-02 map-config-panel-section]: Phase 28 complete — TARGET-V15-01 (persistence ride-along) + V15-02 (eligibility predicate, closed Plan 28-01) + V15-03 (UI editor with WKB warning + incomplete indicator + auto-suggest) all closed. 17 new spec tests; 570/570 full frontend suite green; tsc clean.
+- [Phase 29-draw-and-shape]: [29-01 shapeDraw]: DrawMode union + DRAW_MODES tuple in lib/shapeDraw.ts — avoids circular import with MapDrawToolbar; matches mapInfoConfig.ts minimal-helper pattern
+- [Phase 29-draw-and-shape]: [29-01 mode-guard]: drawModeRef.current imperative read in Effect 6 handler (NOT useState closure) — prevents stale-closure trap WITHOUT adding drawMode to Effect 6 deps array
+- [Phase 29-draw-and-shape]: [29-01 test-seam]: setdrawmode custom DOM event + data-testid span for vitest specs to drive drawMode before MapDrawToolbar ships; event listener in useEffect([]) ensures cleanup
+- [Phase 29]: [29-02 MapDrawToolbar]: faCropSimple used instead of faVectorSquare (not in installed FA solid version); semantic equivalent for bbox rectangle selection button
+- [Phase 29]: [29-02 MapDrawToolbar]: Active button icon color = white (#ffffff), not dark (#0b1224) — CONTEXT.md operator-locked decision overrides plan action; green accent on white is WCAG AA
+- [Phase 29]: [29-03 VectorLayer]: Tests V1-V18 landed in existing MapChartRenderer.spec.tsx — extended existing OL mocks rather than new sibling spec
+- [Phase 29]: [29-03 VectorLayer]: useSpatialFilterStore NOT mocked in spec — real Zustand store used so shapesKey triggers real React re-renders and Effect 7 fires correctly
+- [Phase 29-draw-and-shape]: [29-04 buildDrawInteraction]: bbox type:'Circle'+createBox(), circle type:'Circle'+createRegularPolygon(64), lasso type:'Polygon'+freehand:true — all yield Polygon at drawend; factory returns null for pan/info
+- [Phase 29-draw-and-shape]: [29-04 isDegenerateExtent]: OR threshold (width < 10×res OR height < 10×res) — rejects thin-sliver shapes; locked recommendation b from 29-RESEARCH.md Open Question 2
+- [Phase 29-draw-and-shape]: [29-04 toast kind]: 'Shape too small — try again' fires with kind='info' (ToastKind has no 'warning' — Pitfall 4 in 29-RESEARCH.md confirmed)
+- [Phase 30-02]: myTarget excluded from Effect 1 dep array — myTarget changes only when widgets changes, which triggers a re-render that re-creates the effect; adding myTarget to deps would be a redundant double-dep
+- [Phase 30-02]: shapes read imperatively via useSpatialFilterStore.getState().shapes inside setTimeout — avoids subscribing to the full shapes array; spatialFilterVersion is the stable primitive dep; stale-closure safe because Effect 1 re-creates on spatialFilterVersion change
+- [Phase 30-02]: MapChartRenderer.spec.tsx needed zero repair — it mocks all Zustand stores via factory overrides and never mounts DashboardContextProvider directly
+- [Phase 30]: ResizeObserver + OL mocks added to DashboardsPage.spec.tsx to enable JSDOM rendering of map widgets without crashing
+- [Phase 30]: Used exact name 'Clear all' in findByRole to distinguish filter-bar-clear from MapDrawToolbar's 'Clear all shapes' button
+- [Phase 32]: [32-01 db-schema] dashboard_dynamic_views columns_json stored as TEXT (JSON-encoded); null means never previewed yet; cleared on template_sql change to force re-preview (CONTEXT.md D3)
+- [Phase 32]: [32-01 db-schema] max_records DEFAULT 100000 (Claude's discretion); operator can override per row. updateDashboardDynamicView uses '"key" in attrs' discriminant for columns_json so explicit null clears the field but key-omission preserves (mirrors mapDashboardLayer info_* pattern)
+- [Phase 32]: [32-01 substituteViewToken] regex /\{\s*view\s*\}/gi resets lastIndex BEFORE .test() to defend against /g state leak across consecutive calls. Plan S7 corrected: backslash adjacent to closing brace breaks the regex match (does NOT silently still-match as plan claimed) — locked actual behaviour + S7b added for surrounding-context match
+- [Phase 32]: [32-01 createOrReplaceMaterialized] op typed as KineticaOp (imported from kinetica.ts) instead of bare string — preserves audit-log type safety. POST /api/filter/materialize 37-line inline try/catch replaced with 8-line helper call; 24 existing supertest tests still green (contract preserved before Plan 03 takes second consumer)
+- [Phase 32]: [32-02 routes] _dummy_validation_view_name_ placeholder passed to substituteViewToken at create+update time — underscored prefix/suffix makes leak-audit grep trivial; return value is discarded (presence-check only)
+- [Phase 32]: [32-02 PUT columns_json] 3-way precedence: caller-supplied (incl explicit null) wins → omit-with-template-change clears → omit-without-change preserves; matches CONTEXT.md D3 Preview-then-Save flow
+- [Phase 32]: [32-02 wave-2 anchor] new routes wrapped in '===== Plan 02 / Plan 03 routes append after this line =====' delimited block so Plan 03 preview/materialize/delete can insert directly above v1.4 info-query block without merge conflict
+- [Phase 32]: [32-02 OIDC spec scope] 1 happy-path smoke per route (3 oidc tests) — validation matrix is auth-mode-independent so password block carries the full coverage (mirrors routes.filter-materialize.spec.ts shape)
+- [Phase 32]: [32-02 updated_at test] real setTimeout(1100ms) — not vi.useFakeTimers — because better-sqlite3 datetime('now') reads OS clock, not Node timer
+- [Phase 32]: [32-03 no_filter detection] Session-scoped filter views from POST /api/filter/materialize are NEVER persisted to dashboard_table_views — they exist exclusively as Kinetica materialized views named by buildFilterViewName. So the only authoritative existence check is a Kinetica round-trip. Preview uses SELECT 1 FROM <view> LIMIT 0 as a probe; Materialize uses SELECT COUNT(*) as a combined existence-check + threshold-input (single round-trip). Plan attempted to detect via SQLite row with status === "ready" — incorrect on TWO counts (status enum is pending|created|error, AND no SQLite row exists for these session-scoped views)
+- [Phase 32]: [32-03 KineticaOp extension] Added DYNAMIC_PREVIEW + DYNAMIC_MATERIALIZE audit-log op tags so operators can grep dynamic-view workload from filter-view workload in the structured log. Existing MATERIALIZE tag preserved for filter-view route
+- [Phase 32]: [32-03 sample_limit clamp] Preview clamps sample_limit to [1, 1000], default 100. 1000 caps cost (oversize preview defeats the "one-shot probe" purpose); default matches CONTEXT.md endpoint example. Claude's discretion — plan unspecified
+- [Phase 32]: [32-03 DELETE 404 before DROP] Returning 404 BEFORE firing the Kinetica DROP preserves caller's ability to distinguish "never existed" from "drop failed". Test "returns 404 when id does not exist — no DROP fired" asserts the sequence
+- [Phase 32]: [32-03 column types] Kinetica /execute/sql encoded response has NO column-type metadata in any existing consumer (info-query, discovery). Preview decoder defaults column type to "unknown"; transparently picks up column_datatypes if Kinetica ever emits it. Phase 35 ChartConfigPanel can infer types from sampled values if needed
+- [Phase 32]: [32-03 isTableNotFoundError] Route-local helper duplicates lib/materializedView.ts § isReplaceRace 2-line predicate. Both consumers (Preview probe, Materialize COUNT) live in index.ts; lifting to a shared module deferred until a 3rd consumer appears
+- [Phase 33]: Plan 33-01: Frontend pure-helper byte-parity contract validated via spec round-trip pairs copied from server tests (no cross-tree imports). useDynamicViewStore action semantics locked: setView/markPending/setError always bump dynamicViewVersion; clearView non-existent is strict no-op; reset hard-sets to 0 (not increment). markPending on existing entry keeps prev viewName (locked rule preserves cached deterministic name for retry).
+- [Phase 33-dynamic-view-store]: Picked DYNAMIC_DROP audit-op tag (33-CONTEXT line 119) over reusing DYNAMIC_MATERIALIZE — finer audit-log filtering distinguishes lifecycle cleanup from materialize-housekeeping; required extending KineticaOp union.
+- [Phase 33-dynamic-view-store]: POST /api/dynamic-view/:id/drop is the missing lifecycle-cleanup primitive that distinguishes operator-initiated DELETE (destructive, removes SQLite row) from session-end DROP (DROP-only, row UNTOUCHED). Mirrors the implicit filter-view DROP semantics, which never needed this split because filter views have no SQLite row.
+- [Phase 33-dynamic-view-store]: Phase 33 Plan 03: 7 pure pass-through client helpers (zero useDynamicViewStore imports) + 6th-store reset wiring with materialized-only DROP loop at App.tsx UNAUTHORIZED + DashboardsPage.tsx DashboardOpen — canonical 6-store reset order locked: filterViewStore → filterStore → infoSelectionStore → lastInfoClickContextStore → spatialFilterStore → dynamicViewStore
+- [Phase 34]: throwForStatus generic 4xx/5xx throw now preserves server-extracted message (one-line client.ts fix, Phase 34 DV-V16-09/10). Backward compatible.
+- [Phase 34]: Replaced vitest .toMatchObject({message:/regex/}) false-positive in client.spec.ts with try/catch + expect(...).toBe(...) byte-exact assertions for error-message verbatim coverage.
+- [Phase 34]: [34-02 DynamicViewsModal] Modal ships dormant (Plan 34-03 wires DashboardsPage 4th button); per-row scoped useDynamicViewStore selectors via ViewListRow sub-component preserve PITFALL S-02/C-02 carry-forward
+- [Phase 34]: [34-02 toast kinds] Toast taxonomy locked at 'info'/'error' (no 'warning' — type union doesn't include it); over_threshold reasons surface via badge title attr ('No filter active' / 'Exceeds max records'), not toast kind
+- [Phase 34]: [34-02 dashboardId] Passed as PROP (not via DashboardContext) — Phase 30 provider wraps only the widget grid region, NOT modals; mirrors LayersModal mount pattern
+- [Phase 34]: [34-02 AbortController evolution] Plan 34-02 ships mount-time abortRef for listDynamicViews only; Plan 34-03 ADDS previewAbortRef + saveAbortRef; Plan 34-04 ADDS deleteAbortRef and migrates handleDelete — avoids cross-cancellation between operations (Pitfall 6)
+- [Phase 34]: [34-03 cursor-position insert] First CodeMirror 6 cursor-position dispatch implementation in this codebase — uses captured EditorView ref via onCreateEditor + view.dispatch({changes:{from:view.state.selection.main.head, insert:'{view}'}}). Phase 22's deferred 'insert-at-end' approach is superseded for future editors.
+- [Phase 34]: [34-03 previewRanSinceLastSave flag] LOCKED state flag — initialized false; flips true ONLY on Preview success; reset on + New / row select / (Save success in 34-04). Plan 34-04 Save body reads: if (templateChanged && previewRanSinceLastSave && formColumnsJson !== null) body.columns_json = formColumnsJson. Prevents stale columns_json from leaking on edit-template-without-Preview path (BLOCKER #1 resolution).
+- [Phase 34]: [34-03 PreviewState error source tag] Discriminated union has source: 'validation' | 'server' field. Validation errors auto-reset to idle when SQL becomes non-empty OR source_table_id becomes set. Server errors PERSIST until next Preview click. DOM data-error-source attr drives spec assertions (MAJOR #4 lock).
+- [Phase 34]: [34-03 Preview button stays enabled during loading] Button remains clickable (text flips to 'Running…') so second click aborts in-flight call (P6 requirement). aria-label + data-testid='preview-button' for stable spec selection regardless of visible text.
+- [Phase 34]: [34-03 draftSession counter] Lifecycle effect dep array includes a counter bumped on every + New click — guarantees form re-reset when isDraft is already true. Without it, two consecutive + New clicks don't trigger the effect because isDraft doesn't change.
+- [Phase 34]: Plan 34-04: BLOCKER #1 columns_json carry rule uses three ANDed predicates (templateChanged && previewRanSinceLastSave && formColumnsJson !== null) in Save UPDATE body; resets previewRanSinceLastSave on Save success
+- [Phase 34]: Plan 34-04: 4 AbortController scopes in DynamicViewsModal — mount-time (listDynamicViews) + previewAbortRef + saveAbortRef + deleteAbortRef; cleanup aborts all 3 operation-scoped on unmount
+- [Phase 34]: Plan 34-04: Save NOT gated on materialize success — CRUD persistence stays even when materialize fails (over_threshold or error); operator recovers without re-editing
+- [Phase 34]: Plan 34-04: DashboardsPage 4th action-bar button 'Dynamic Views' between 'Map Layers' and 'Back'; modal receives dashboardId + associatedTables as PROPS (no DashboardContext)
+- [Phase 35]: buildWmsParams: TypeScript overload signatures preserve legacy 2-arg non-null return while widening 4-arg form to Record<string,string>|null (DV-V16-13)
+- [Phase 35]: DynamicViewEntryInput (status + viewName only) is the WMS-boundary contract — expiresAt/reason/error stay renderer concerns
+- [Phase 35-widget-binding-and-pipeline]: dashboard_layers.dynamic_view_id is a nullable INTEGER soft-FK (no REFERENCES) — layer survives dv deletion, renderer detects orphan; table_id stays NOT NULL with table_id = dv.source_table_id for dv-bound layers
+- [Phase 35-widget-binding-and-pipeline]: Use 'dynamic_view_id' in attrs discriminant in updateDashboardLayer so PATCH { dynamic_view_id: null } explicitly clears the binding (consistent with info_* fields); ?? would silently ignore explicit null
+- [Phase 35-widget-binding-and-pipeline]: Frontend DashboardLayerDto.dynamic_view_id is non-optional (number | null) — strict contract forces all fixtures to populate the field; prevents silent undefined leakage into PATCH bodies that would skip the discriminant branch
+- [Phase 35-widget-binding-and-pipeline]: [35-03 orchestrator] Per-dv last-seen-matVer ref (useRef<Map<number, number>>) added on top of the locked AbortController Map — research skeleton said unnecessary but T7 (cross-dv isolation) requires it; without the guard, bumping table B re-fires every dv on table A — T7 is the authoritative plan contract; research said tracking was unnecessary but matVersionKey changes on ANY table bump and the effect iterates ALL dvs — without per-dv last-seen guard, cross-dv aborts would happen
+- [Phase 35-widget-binding-and-pipeline]: [35-03 orchestrator] Late-rejection guard at catch entry: if (ctrl.signal.aborted) return silences both native AbortError and unmount-during-rejection race — Unmount aborts the controller, but the materialize promise's rejection microtask can still fire after unmount; the signal-aborted check is the canonical guard rather than relying solely on err.name === AbortError
+- [Phase 35-widget-binding-and-pipeline]: [35-03 orchestrator] DashboardContext.dynamicViews is REQUIRED (not optional with []) — mirrors Phase 30 widgets-required lock; missing-context errors loud at compile time; 4 fixture updates absorbed across DashboardContext/InfoCard/WidgetRenderer specs — Phase 30 STATE.md locked widgets-required pattern with rationale "make missing-context errors loud at compile time"; orphan-detection consumer (Plan 35-05) cannot be silently undefined
+- [Phase 35-widget-binding-and-pipeline]: [35-03 orchestrator] WidgetConfigModal + LayersModal dynamicViews prop is OPTIONAL with [] default — downstream picker consumers ship in 35-04/35-06; existing test fixtures stay compile-clean — The conduit-only nature of this plan means modal-side fixtures (LayersModal.spec.tsx with 7 layer factories) shouldn't be forced to learn a prop until the consumer ships
+- [Phase 35-widget-binding-and-pipeline]: [35-03 orchestrator] retry(id) uses force=true semantics — skips both last-seen guard and cold-start gate, still uses AbortController Map for dedup; renderer Retry buttons (Plan 35-05) always re-fire even when nothing has changed — Error-state Retry is operator-initiated and represents intent to re-attempt regardless of state; AbortController dedup prevents rapid-click pile-up
+- [Phase 35]: [35-04 chartconfig-picker] dv:<id> option-value discriminator-prefix chosen over a parallel kind field on the option — single string, zero collision risk, branch on value.startsWith("dv:") without extra state lookup
+- [Phase 35]: [35-04 chartconfig-picker] Dual-write tableId + dynamicViewId on Apply (research correction #3 lock) — drill-down + filter-bar code paths read tableId unchanged; mutual exclusion enforced at picker layer (handleTableChange explicitly deletes dynamicViewId on plain-table pick)
+- [Phase 35]: [35-04 chartconfig-picker] JSON.parse(columns_json) happens INSIDE dataSourceOptions builder (not at server boundary or in a hook) — single coercion site, try/catch covers malformed wire-data (same disabled+hint UX as null)
+- [Phase 35]: [35-04 chartconfig-picker] Both CustomConfigPanel branch and standard branch get the third optgroup — map's usesDataSource !== false guard at line 220 suppresses entirely for map (Pitfall 8 preserved), but other future custom-panel charts inherit the picker for free
+- [Phase 35]: [35-04 chartconfig-picker] Stable hoisted-mock pattern + vi.mocked().mockImplementation re-bind (NOT vi.spyOn re-invocation) is the canonical pattern for ChartConfigPanel tests — third occurrence after Phase 11-10 + 23-03; avoids useEffect([config,chartDef]) infinite loop
+- [Phase 35]: Plan 35-05: dv-bound renderer 5-state + orphan + Retry context (DV-V16-13/14). Effect 1 untouched in both renderers (research finding #2 lock); Effect 2 suspend-gate extends to dvStatus=='pending'; render body adds orphan + 4-status gates BEFORE existing chain; DashboardContext extended with retryDynamicView from orchestrator hook.
+- [Phase 35]: Plan 35-06: replaced LayersModal standalone TABLE picker with unified Data Source picker inside KineticaWmsLayerForm (single-select enforces mutual exclusion; back-compat via optional prop rendering for MapConfigPanel)
+- [Phase 35]: Plan 35-06: dynamicViewsKey primitive selector mirrors viewsKey for Pitfall 7 lock — added to BOTH Effect 2 + Effect 3 dep arrays so MapChartRenderer re-fires on dv store changes (pending → materialized hand-off)
+- [Phase 35]: Plan 35-06: Effect 2 null-skip ALSO removes a previously-materialized OL ImageLayer when status flips mid-session (stack stays clean; no orphan tile loads); functional setState reconciles hasOverThresholdLayers boolean once per effect fire
+- [Phase 36]: gate_status: red — server vitest exits non-zero in both auth modes due to cross-mode test failures; Phase 32 dynamic-view specs all green (86/86)
+- [Phase 36]: 36-01 audit: 16/18 criteria PASS via source inspection; e2e.1-3 DEFERRED (live Kinetica UAT); e2e.4-5 PASS (deterministic reset path)
+- [Phase 36]: 36-VERIFICATION.md status: failed — SC2 FAIL due to server vitest cross-mode isolation (pre-existing); Phase 32 dynamic-view specs 86/86 green; VERIFY-V16-01 stays unchecked
+- [Phase 38]: Migration block appended after dynamic_view_id guard for chronological ordering; single PRAGMA table_info query reused (count stays 1)
+- [Phase 38]: Frontend DashboardLayerDto deferred to Plan 38-02 Task 3 paired with wmsUrlBuilder rewrite
+- [Phase 38]: coalesceCbConfig validates parsed JSON has both attr+breaks keys before accepting as CbConfig
+- [Phase 38]: trackDetect strict 4-name match only (TRACKID/x/y/TIMESTAMP), no aliases
+- [Phase 38]: STYLES_BY_MODE.classbreak='cb_raster' — Lane C single CB path per 37-SPIKE-NOTES.md
+- [Phase 38]: TrackConfig inline in wmsUrlBuilder.ts — single consumer; Phase 40 extracts if 2nd consumer surfaces
+- [Phase 38]: NTILE SQL template copied verbatim from 37-SPIKE-NOTES.md ## Decision (PARTITION BY 0 form) — no re-derivation; parseQuantileResponse validates finite-number per entry; quantileFn has no in-flight dedup (single-shot per click)
+- [Phase 39-01]: Unused imports removed from KineticaWmsLayerForm.tsx after ClassbreakParamsGroup deletion (probeCardinality, useToastStore, FontAwesomeIcon, faXmark, useCallback, useRef) — tsc clean confirms no breakage
+- [Phase 39-01]: CbConfigForm.tsx ships as skeleton with isValid(true) on mount — Plan 39-02 replaces with real validity rule (breaks.length >= 2); props tableRef/schema/tableName silenced via void for Plan 39-03 consumption
+- [Phase 39-01]: contour hidden from render-mode picker via m !== "contour" filter (CB-V17-01); RenderMode type unchanged; existing contour-mode layers still render contour params block below picker
+- [Phase 39-02]: WKB inline message shown whenever hasWkbColumns=true (not gated on eligibleColumns.length===0) — test wins as authoritative spec over plan action description
+- [Phase 39-02]: patchCb central write site: all cb_config mutations go through onChange({ ...config, cb_config: JSON.stringify(next) }) — never touches legacy cb-column/classbreak-array fields
+- [Phase 39-03]: cardinality loading hint placed OUTSIDE categorical section guard — controlled component timing: probe fires before parent propagates new valsType; hint must be visible during in-flight probe
+- [Phase 39-03]: aria-label removed from <other> chip span — non-interactive display element; aria-label causes queryByLabelText false-positive conflicts with the "no value input for <other> row" assertion
+- [Phase 39-03]: confirm-overwrite dialog is inline boolean state (showConfirm) — mirrors LayersModal.tsx confirmDeleteId pattern; NOT a portal modal
+- [Phase 39-03]: color/label/advanced preservation by index — old[i] fields preserved for i < oldBreaks.length; PALETTE_COLORS[i%len] fallback for new indices; open-ended last row: value='' + label='≥ {lastBoundary}'
+- [Phase 39-03]: CB-V17-09 regression test uses buildFingerprint pure-function pattern — does not require mounting MapChartRenderer; locks the {p,c,t} JSON.stringify shape via structural grep + pure-function assertions
+- [Phase 40-01]: TrackConfig + coalesceTrackConfig extraction: Phase 38 deferred until 2nd consumer; Phase 40 form UI is that consumer — lib/trackConfig.ts created; wmsUrlBuilder.ts re-exports for back-compat
+- [Phase 40-01]: Back-compat re-export requires both local import AND re-export: `export { } from "./trackConfig"` alone doesn't bind the symbol in local scope; separate `import { coalesceTrackConfig } from "./trackConfig"` needed for line-440 callsite
+- [Phase 40-01]: useEffect([columns]) dep array excludes patchTrack + config.track_config — auto-seed fires on columns-change only; persisted non-null track_config is the guard preventing overwrite; mirrors CbConfigForm cardinality probe pattern
+- [Phase 40-01]: TrackSubSection ships dormant (Plan 40-01); Plan 40-02 mounts in KineticaWmsLayerForm + adds TRACK-V17-03/05 coverage; pattern mirrors Phase 39-01 CbConfigForm skeleton
+- [Phase 40]: Single-gate wiring (Pitfall 5 lock): (renderMode === 'raster' || renderMode === 'classbreak') && <TrackSubSection/> as one expression — two separate gates would unmount/remount on mode swap, losing component state
+- [Phase 40]: Integration-level host-form spec: CbConfigForm not mocked → TrackSubSection not mocked; real selectors 'TRACK PARAMS' + 'Treat as track table' used for presence/absence assertions
+- [Phase 40]: TRACK-V17-05 fingerprint regression mirrors CB-V17-09 exactly: buildFingerprint local helper + fs.readFileSync grep asserts ≥2 production callsites; zero production code changes (Phase 38 t-slot locked)
+- [Phase 41]: useId() generates colon-containing IDs invalid for CSS querySelector; spec Test 12 uses document.getElementById() instead
+- [Phase 41]: [41-01 LayersLegendPanel] Component JSDoc must not mention store names to avoid grep-based Test 14 false-positive; aarrggbbToCssColor uses rgba() to handle alpha channel
+- [Phase 41]: [41-01 legendPanelConfig] getLegendPanelCorner uses LEGEND_PANEL_CORNERS.includes() not ?? so junk-strings fall back to default; chip text 'Class Break' two words matching KineticaWmsLayerForm label
+- [Phase 41]: Test 6 toolbar ordering uses role+aria-label selector — MapDrawToolbar mock renders without .map-draw-toolbar class
+- [Phase 41]: includedLayerIdsForLegend reads from widgetConfig (Record<string,unknown>) not MapWidgetConfig — the field is not a MapWidgetConfig member
+- [Phase 41]: getState() added to dashboardLayersStore mock so resolvedLegendLayers useMemo can call .getState().layers imperatively
+- [Phase 42]: [42-01 resolveLegendLayers]: ResolvedLegendLayer local import required alongside re-export — export type { X } from ... alone does NOT bring name into local scope for use in prop types (TypeScript scoping rule; confirmed by TS2304 error)
+- [Phase 42]: [42-01 WidgetConfigModal.widgets]: Required prop (not optional) — DashboardsPage always has widgets state; mirrors Phase 30 DashboardContextProvider.widgets required lock for loud compile-time failure on missing context
+- [Phase 42]: LegendConfigPanel reads widgets from props (not useDashboardContext) — WidgetConfigModal is outside DashboardContextProvider; hook would throw at runtime
+- [Phase 42]: mapWidgetIdsKey primitive string dep avoids referential re-fires on auto-pick useEffect (mirrors legendKey pattern)
+- [Phase 42]: void onConfigureWidget removed from WidgetRenderer atomically with legend branch addition (Plan 42-01 placeholder removed when consumer ships)
+- [Phase 44]: DataFilterRenderer uses tables-as-prop (DashboardContext does not expose tables) — mirrors InfoCardRenderer pattern
+- [Phase 44]: Sole-trigger invariant enforced: DataFilterRenderer never imports materializeFilter — static spec assertion on every CI run
+- [Phase 45]: pickInterval walks DATE_TRUNC-native entries only (dateTrunc !== null), returns finest that fits maxIntervals — sub-hour FLOOR-epoch entries in INTERVAL_LADDER for buildTimelineBucket use but not auto-selected by pickInterval
+- [Phase 45]: buildTimelineRangeQuery uses EXTRACT(EPOCH FROM MIN/MAX(col)) — NOT columnStatsFn (asserts Number.isFinite but Kinetica returns datetime MIN/MAX as date strings)
+- [Phase 45]: COUNT_DISTINCT → COUNT(DISTINCT col) rewrite in buildTimelineSql aggExpr; GROUP BY uses literal alias 'bucket' not full DATE_TRUNC expression
+- [Phase 45]: DEFAULT_COLOR_THEME = Set2 — ColorBrewer 8-color qualitative; Tableau-10 is not in the colorbrewer package
+- [Phase 45]: [45-02 config-panel] Column pickers use inferDataTypeFromColumn() — DATETIME_TYPES/NUMERIC_TYPES are not exported from columnTypes.ts
+- [Phase 45]: [45-02 registry] usesDataSource:false on timeline ChartTypeDefinition suppresses ChartConfigPanel generic Data Source section; TimelineConfigPanel renders its own picker
+
+### Phase 44-data-filter-widget
+
+- [44-01 filter-store]: FILTER_CAP_PER_TABLE exported constant raised 10→25; toast message uses constant interpolation (not literal "25") — single source of truth for cap value across addFilter + setBulkFilters branches
+- [44-01 filter-store]: setBulkFilters empty-array path increments filterVersion by 1 — valid "clear-and-apply" gesture; downstream Effect 1 re-fires to remove filter view
+- [44-01 where-builder]: empty IN array → "1=0" defensive guard in buildServerWhereClause; widget layer is expected to skip these before dispatch but WHERE builder is last line of defense
+- [44-01 chip-text]: buildChipText BETWEEN display does NOT quote strings/datetimes — display-only format matches RESEARCH §D (not SQL-escaped); SQL escaping is in whereClause.ts
+- [44-01 server]: /api/quantile n cap left at 256 — only /api/top-values raised to 1000 per FILTER-V17-06 scope; quantile buckets don't need 1000 entries
+- [44-02 chart-type]: usesDataSource:false on datafilter ChartTypeDefinition suppresses ChartConfigPanel's generic Data Source section; DataFilterConfigPanel renders its own base-table picker from props.tables
+- [44-02 config-panel]: Table change resets filterFields:[] — old column refs are invalid for a new table schema; operator must re-pick columns; this is the correct UX (prevents stale column refs)
+- [44-02 config-panel]: kind picker disabled attr when column is '' OR column is missing from the table — prevents committing an invalid kind for an unknown column type
+- [44-02 spec]: rerender() pattern used for tests 10-13 (kind-picker constraint assertions) to avoid duplicate DOM elements from multiple render() calls in the same test body — standard controlled-component test pattern
+
+### Phase 25-spatial-predicate-spike
+
+- [25-01 spike-close SPIKE-V15-01]: LATLON predicate locked to `STXY_WITHIN(lon_col, lat_col, ST_GEOMFROMTEXT(?)) = 1`. Both STXY_WITHIN and STXY_CONTAINS returned identical counts across all 3 shapes (490758/490753/490752); (lon, lat) appears first in STXY_WITHIN matching column-pair order; canonical Kinetica reference; Phase 18 confirmed the STXY_WITHIN family. STXY_CONTAINS rejected.
+- [25-01 spike-close SPIKE-V15-01]: WKT predicate locked to `ST_INTERSECTS(geom_col, ST_GEOMFROMTEXT(?)) = 1`. ST_WITHIN returned 0 rows — correct semantic (no US state fits inside a 1° NYC-area shape) but wrong for v1.5 user intent (features touching drawn shape, not features swallowed by it). ST_INTERSECTS returns 3 (NY, NJ, CT). ST_WITHIN 0-row result is NOT a Kinetica bug.
+- [25-01 spike-close]: Server version not captured during operator run. Follow-up via `SHOW SYSTEM PROPERTIES` before Phase 26 ships to record version pinning in Phase 26 PLAN frontmatter.
+- [25-01 spike-close]: Phase 26 buildSpatialOrBlock authorized. SPIKE-V15-01 PASS.
+- [Phase 26]: [26-01 spatial-where-builder WHERE-V15-01]: SpatialMode defined locally in spatialWhereClause.ts (not imported from spatialQuery.ts) — zero cross-lib import for trivial union; both modules coexist independently
+- [Phase 26]: [26-01 spatial-where-builder WHERE-V15-02]: composeWhereClause 4-case composition — (spatial AND col) / spatial-only / col-only / 1=1. Spatial first, column side wrapped in extra parens. V15-P-07 paren invariant locked by 17 unit tests (all .toBe full-string, no .toContain). ST_WITHIN rejected per 25-SPIKE-NOTES §3.2.
+- [Phase 26-02]: WKB 501 fires BEFORE composeWhereClause call — production early-return; throwing stub in spatialWhereClause.ts is static guarantee only; mirrors Phase 18 intent at index.ts:776-783
+- [Phase 26-02]: Empty-input backward compat: step 2 only fires when BOTH column AND spatial absent — v1.3 filters-only callers still receive 200 unchanged
+- [Phase 26-03]: WHERE-clause extraction pattern for OR-count assertions: `statement.slice(statement.indexOf("WHERE ") + 6)` isolates predicate body from DDL keywords — avoids `CREATE OR REPLACE` interference with ` OR ` count
+- [Phase 26-03]: Pair-completeness fixture ordering: test for "spatialFilters without spatialTarget" must include a column filter to bypass step-2 (empty-input check) and reach step-3 (pair-completeness check)
+- [Phase 26-03]: Phase 26 complete — 66 total spatial-or-spatial-adjacent tests: 23 (v1.3 routes spec) + 17 (Plan 01 unit) + 26 (Plan 03 supertest) all green
+
+### Phase 24-verification
+
+- [24-05 gap-closure GAP-24-01-B]: FIX B (useEffect re-sync with mid-type guard) chosen over FIX A (full controlled-input refactor) — Phase 22 clamp-on-blur pattern is locked; FIX B is minimal diff that honors the existing "Reset when stored config changes externally" line-comment promise. Three useRef(prior)+useEffect blocks (radius/width/height); mid-type guard `if (draft === String(priorRef.current))` is self-synchronizing — after blur, clamp handler writes setDraft(String(value)) which restores draft===String(prior) until next keystroke. No isTyping boolean needed. 5 W-GAP-24-01-B regression specs; vitest 509→514 (+5); tsc exit 0; commit 10721fb.
+- OIDC auth mode verified live at STEP 24-02/1.2 (full info-popup E2E under OIDC Authorization Code flow with Bearer-token auth); extends v1.3 OIDC S2.b closure to the v1.4 info-query endpoint.
+- Kinetica-GEOMETRY SQL path (ST_DISTANCE + ST_GEOMFROMTEXT) verified live at STEP 24-01/2.1 — Session Fix #1 confirmed working; this is the narrower sub-case of TD-V14-WKB-SPIKE (true WKB-binary still deferred).
+- TD-V12-04 CLOSED via STEP 24-02/2.3 evidence: viewName routing verified end-to-end (filter-active → _kbi_filt_... in POST payload; filter-cleared → raw table; rows correctly subset); STEP 24-02/2.4 confirmed sufficient closure without separate fixture materialization.
+- Three new gaps captured for v1.4 gap-closure cycle: GAP-24-01-A (HIGH — layer-visibility toggle blanks entire app), GAP-24-01-B (MEDIUM — MapConfigPanel INFO POPUP inputs don't echo saved dimensions), GAP-24-02-A (HIGH — dashboard-switch crash at MapChartRenderer.tsx:483, OL image-load vs React unmount race). All deferred without inline fix per Phase 24 no-fix-inline policy.
+- Criterion 3 (dashboard-switch + logout clear info selection) graded tech_debt: logout half PASS at STEP 24-02/2.2; dashboard-switch half DEFERRED at STEP 24-02/2.1 due to GAP-24-02-A (separate crash, not a reset-logic regression — four-store reset code was code-verified in Phase 23).
+- Frontend regression: 509/509 vitest green; tsc --noEmit clean (exit 0). Baseline was 496/496 at Phase 23 close; 13 additional tests added across Phases 23-24 gap-closure.
+- [Phase 24-verification]: [24-04 gap-closure]: GAP-24-01-A closed — FIX SHAPE A (per-layer sourceListenerCleanupRef capturing exact handler refs at attach time; source.un invoked BEFORE map.removeLayer in Effect 2 REMOVE branch + Effect 1 unmount cleanup). Root cause was stale OL ImageWMS source-listener race: imageloaderror / imageloadend handlers were never unsubscribed when Effect 2's REMOVE loop fired during a visibility-toggle, so in-flight image-loads completing post-removal invoked setTileLoadError against a half-detached source, throwing an uncaught exception that React (no ErrorBoundary in src/) handled by unmounting the root tree → blank dark-blue screen. Fix is orthogonal-and-complementary to GAP-24-02-A's planned mountedRef fix in 24-06. 519/519 vitest green; tsc clean.
+- [Phase 24-verification]: [24-06 gap-closure GAP-24-02-A]: mountedRef cleanup-gate (useRef<boolean>(true)) closes the OL async image-load vs React unmount race. Effect 1 cleanup flips ref to false FIRST (before map.setTarget+dispose); xhr.onreadystatechange + handleTileError + handleTileLoadEnd + Effect 6 singleclick (top-of-handler + post-await + catch) all guard with 'if (!mountedRef.current) return;' as first line. Orthogonal and complementary to GAP-24-01-A's sourceListenerCleanupRef (24-04): per-layer listener cleanup detaches eagerly; mountedRef short-circuits anything that still fires (in-flight XHR is unsubscribable). 3 GAP-24-02-A regression specs (Tests L, L2, L3); 522/522 vitest green; tsc clean; commit 7b21520. v1.4 last HIGH-severity gap closed; awaits gsd-verifier re-spawn to upgrade 24-VERIFICATION.md criterion_3 from tech_debt to passed (dashboard-switch half is now live-verifiable).
+
+### Phase 21
+
+- [21-03 map-renderer-integration]: ol/Overlay with autoPan:false, positioning:bottom-left, offset:[0,-8] — manual edge-clamp deferred to Phase 22
+- [21-03 map-renderer-integration]: eligibleLayers excludes WKB layers before fan-out — endpoint returns 501 (TD-V14-WKB-SPIKE); preventing error toasts on every click
+- [21-03 map-renderer-integration]: EPSG:3857 → EPSG:4326 via ol/proj.transform at click time (PITFALL M-03)
+- [21-03 map-renderer-integration]: Tasks 1 and 2 committed together — spec alone won't compile without handler implementations
+- [21-03 map-renderer-integration]: Dismiss calls reset() not setActiveLayer(null); setActiveLayer signature is (layerId: number) — null is forbidden
+- [21-02 info-popup-component]: infoQuery helper mirrors materializeFilter POST pattern exactly — apiFetch + throwForStatus + AbortSignal threading; 401/403/502 routed through typed-error chain
+- [21-02 info-popup-component]: InfoPopup uses two separate scoped selectors (activeLayerId + entry) to prevent PITFALL S-02 fan-out re-renders on unrelated layer mutations
+- [21-02 info-popup-component]: No setActiveLayer(null) anywhere in InfoPopup — dismiss calls reset() per locked activeLayerId invariant from Phase 20
+- [21-02 info-popup-component]: dangerouslySetInnerHTML with inline no-sanitize comment citing PROJECT.md Key Decision; no DOMPurify or sanitize-html imported
+- [21-01 render-info-template]: Empty string template ('') treated as configured template (mode=template, html='') — null is the sole kv-mode discriminator; empty-string is the author's choice to render an empty HTML node
+- [21-01 render-info-template]: info_columns empty array ('[]') falls back to all response columns — locked: 'if (Array.isArray(parsed) && parsed.length > 0)' is the guard; empty array, non-array, mixed-type array all fall through to args.columns
+- [21-01 render-info-template]: No HTML sanitization; inline docstring cites PROJECT.md no-sanitize lock + STATE.md shared-helper lock with exact file paths; Phase 23 Info Card imports same module with zero refactor
+- [21-01 render-info-template]: 13/13 vitest tests green; tsc --noEmit clean; helper 77 lines (< 80), spec 184 lines (> 80)
+
+### Phase 14
+
+- [14-01 filter-view-store]: Phase 14 ships dormant plumbing only — no AggregatedWidgetRenderer, App.tsx, or DashboardsPage.tsx modifications until Phase 15
+- [14-01 filter-view-store]: setView is POST-200 ONLY (V13-P-01 lock): markMaterializing is the pre-call action; no optimistic write path
+- [14-01 filter-view-store]: clearView uses delete-key semantics (key-absence, not empty-array) mirroring filterStore.clearFilters
+- [14-01 filter-view-store]: materializeVersion increments on same-name CREATE OR REPLACE; resets to 1 on new viewName
+- [14-01 filter-view-store]: markMaterializing creates placeholder entry if absent (viewName="", expiresAt=0, materializeVersion=0); preserves prior fields if entry exists
+- [Phase 14]: materializeFilter + dropFilterView ship DORMANT in Phase 14 — Phase 15 AggregatedWidgetRenderer is the designated first caller
+- [Phase 14]: [14-02 client-helpers]: ActiveFilter imported as type-only from filterStore — no client-side type duplication; DELETE returns 200 (not 204) per Phase 13 contract
+- [Phase 14]: Topbar.tsx working-tree modification is pre-existing (predates Phase 14); committed footprint uses 'git diff HEAD' form not working-tree form to verify exact 4-file scope
+- [Phase 14]: materializeAbortRef references in filterViewStore.ts and client.ts are comment-only (JSDoc pitfall references V13-P-10) — not executable code; dormant-plumbing scope holds
+
+### Phase 13
+
+- Plan 13-02 view-name builder returns UNQUALIFIED names (S4 PASS for both forms; bare is simpler)
+- Plan 13-03 endpoint uses `kineticaSql(req, ddl, { op: "MATERIALIZE" })` directly with per-user creds — no service-account fallback in v1.3 (S2.a password PASS)
+- Phase 15 LIFE-V13-02 `isViewNotFoundError()` pattern locked: `/SqlEngine: Object '[^']+' not found/i` + Kinetica code `S/SDc:1513` at HTTP 400 (S3 verbatim)
+- OIDC-mode DDL probe (S2.b) deferred to Phase 15 LIFE-V13-02 or Phase 17 verification — no token reachable in spike environment; not blocking Phase 13
+- [Phase 13-spikes-and-endpoint]: Plan 13-02 view-name builder takes no schema parameter — S4 spike showed both qualified and unqualified WMS LAYERS work; bare unqualified is simpler (no schema lookup, no schema field on response)
+- [Phase 13-spikes-and-endpoint]: Server-side ActiveFilter type duplicated in whereClause.ts (not imported from frontend filterStore.ts) — keeps server module frontend-import-free; field-shape parity locked by inline doc-comment
+- [Phase 13-spikes-and-endpoint]: Plan 13-03 handlers contain NO try/catch — typed Kinetica errors bubble through asyncHandler -> errorMiddleware. Distinct from /api/views/:id/materialize (persisted) which keeps try/catch only because it persists status='error' to SQLite. Transient views have no row to persist.
+- [Phase 13-spikes-and-endpoint]: Plan 13-03 OIDC supertest pattern — hoisted vi.mock("openid-client") with Issuer doubling as constructor + static-discover namespace; matches auth.oidc.spec.ts. resetOidcClientForTests() in beforeEach clears the singleton. OIDC sessions seeded directly via createSession({ credentialType: "oidc", secret: <fake_token>, idToken: <fake_jwt> }) AFTER buildTestApp().
+- [Phase 13-spikes-and-endpoint]: Plan 13-03 endpoint contract LOCKED for Phase 14: POST -> { viewName: string, expiresAt: number }; DELETE -> { dropped: true }; view-name regex /^_kbi_filt_u\w+_d\d+_t\w+_s\w{8}$/; both routes under /api requireAuth namespace.
+
+## Blockers/Concerns
+
+- ~~SPIKE-V13-01 P1 gate~~ → RESOLVED: PASS in 13-01 — WMS LAYERS=`<materialized_view_name>` renders PNG tiles; MAP-V13-* stays in v1.3
+- ~~SPIKE-V13-02 P1 gate (password mode)~~ → RESOLVED: PASS in 13-01 — per-user CREATE/DROP DDL works; no service-account fallback needed for v1.3
+- ~~**DEFERRED:** SPIKE-V13-02 OIDC-mode probe (S2.b)~~ → **CLOSED** — operator confirmed live OIDC end-to-end on 2026-05-07 (drill-down → POST materialize → DELETE clear succeeded under OIDC session creds). No service-account fallback needed.
+- v1.1 open (non-blocking): TD-V11-03 RFC 9207 iss-check workaround in `oidc.ts:75-82` — security-flagged; must resolve before production deploy
+- **TD-V11-04** (v1.3 surfaced, v1.4): OIDC test mocks (6 files) diverged from `new Issuer(meta)` in commit 22def0a; ~60 backend tests red. Not a v1.3 regression.
+- **TD-V13-01** (new, v1.4): Backend route test fetch-mock brittleness under Node 24 / vitest 4 — 6 files, ~44 tests. Pre-existing.
+- ~~**TD-V12-04** (confirmed-carried, v1.4): ki_home.v13_filter_fixture not materialized during UAT; operator used demo.nyctaxi. Reference SQL committed.~~ → **CLOSED (2026-05-11)** — viewName routing verified end-to-end at STEP 24-02/2.3; STEP 24-02/2.4 confirmed closure.
+- ~~**SPATIAL-V14-03 WKB spike gate (v1.4 Phase 18):**~~ → **RESOLVED → TECH_DEBT (2026-05-08)**: Spike outcome `NONE_ESCALATE` (operator has no WKB-binary column reachable; runner-bug-tainted first run + WKT-typed fixture column prevented productive characterization). SPATIAL-V14-03 deferred as **TD-V14-WKB-SPIKE**. Phase 18 unblocked: ships SPATIAL-V14-01 + V14-02 only. See 18-SPIKE-NOTES.md ## Decision and PROJECT.md "v1.4 carried tech debt".
+- **TD-V14-WKB-SPIKE** (carry-forward into v1.5): WKB spike re-run pending until a WKB-binary column becomes reachable. v1.5 WHERE-V15-01, TARGET-V15-03, and MAT-V15-03 all gate WKB at 501. Runner is production-parity (commit d458408); future re-run path documented in 18-SPIKE-NOTES.md.
+- ~~**SPIKE-V15-01 P1 gate (v1.5 Phase 25):** Kinetica spatial predicates not yet live-probed against deployed instance.~~ → **CLOSED (2026-05-11, Phase 25-01, commit c01794e)**: 12 probes PASS. LATLON locked: `STXY_WITHIN(lon_col, lat_col, ST_GEOMFROMTEXT(?)) = 1`. WKT locked: `ST_INTERSECTS(geom_col, ST_GEOMFROMTEXT(?)) = 1`. Phase 26 buildSpatialOrBlock authorized. ST_WITHIN 0-row result is correct semantic mismatch, not a Kinetica bug. See 25-SPIKE-NOTES.md.
+- ~~**GAP-24-01-A** (new, 2026-05-11 — outstanding v1.4 followup): HIGH — layer-visibility toggle blanks entire app. Deferred to v1.4 gap-closure cycle.~~ → **CLOSED (2026-05-11, Phase 24-04, commits 3f2520d/a83fc93/18387fa)**
+- ~~**GAP-24-01-B** (new, 2026-05-11 — outstanding v1.4 followup): MEDIUM — MapConfigPanel INFO POPUP inputs don't echo saved infoPopupWidthPx/infoPopupHeightPx.~~ → **CLOSED (2026-05-11, Phase 24-05, commit 10721fb)**
+- ~~**GAP-24-02-A** (new, 2026-05-11 — outstanding v1.4 followup): HIGH — dashboard-switch crash at MapChartRenderer.tsx:483.~~ → **CLOSED (2026-05-11, Phase 24-06, commit 7b21520)**
+- **TD-V17-LIVE-UAT** (new, v1.8 carry-in): Phase 43 milestone-level live walk-through never run (classbreak + track visual confirmation + legend parity). Pre-existing at v1.8 start.
+- **TD-V16-TEST-ISOLATION** (inherited): server cross-mode suite contamination (~106 red). v1.9 Phase 53 must not worsen this; all new regression specs are frontend-only (wmsUrlBuilder/KineticaWmsLayerForm vitest — no new server specs expected).
+
+## Session Continuity
+
+Last session: 2026-06-10T02:02:44.256Z
+Stopped at: Completed 57-01-PLAN.md
+Resume file: None
