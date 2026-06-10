@@ -32,12 +32,11 @@ type WidgetActionStoreState = {
 
   /**
    * Per-layer overlays: { [layerId]: Record<string, unknown> }.
-   * Top-level field merge at render time — covers:
-   *   - track_config / cb_config: TOP-LEVEL DashboardLayerDto fields (string | null)
-   *     (see [[track-config-toplevel-field]] memory and 58-CONTEXT.md)
-   *   - render_mode, visible, opacity: allow-list fields merged at the top level;
-   *     these land on the overlay-merged layer object for consumption by the
-   *     render pipeline.
+   * Phase 58.1: overlays are DTO-shaped — applyWidgetAction splits by allow-list location:
+   *   - { config?: { renderMode?, visible?, opacity? } } for nested layer.config fields
+   *   - { track_config?, cb_config? } for TOP-LEVEL DashboardLayerDto fields
+   * MapChartRenderer.effectiveLayers deep-merges: { ...l, ...topLevel, config: { ...l.config, ...cfgPatch } }
+   * See [[track-config-toplevel-field]] memory and 58.1-CONTEXT.md.
    */
   layerOverrides: Record<number, Record<string, unknown>>;
 
@@ -56,9 +55,9 @@ type WidgetActionStoreState = {
   applyWidgetOverride: (id: number, patch: Record<string, unknown>) => void;
 
   /**
-   * Merge `patch` (layer fields) into the existing layer override for `id`.
-   * Top-level merge — track_config/cb_config land at the DTO top level;
-   * other allow-listed fields (render_mode, visible, opacity) land as overlay keys.
+   * Merge `patch` (DTO-shaped layer overlay) into the existing layer override for `id`.
+   * Depth-1 merge: { config? } sub-object is replaced wholesale — applyWidgetAction
+   * deep-merges config before calling this to preserve prior nested config keys.
    */
   applyLayerOverride: (id: number, patch: Record<string, unknown>) => void;
 

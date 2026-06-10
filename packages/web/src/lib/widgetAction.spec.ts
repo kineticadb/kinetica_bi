@@ -19,7 +19,7 @@ describe("WidgetActionSchema", () => {
   it("parses a valid layer action envelope", () => {
     const action = {
       target: { kind: "layer", id: 7 },
-      configPatch: { render_mode: "heatmap" },
+      configPatch: { renderMode: "heatmap" },
     };
     const result = WidgetActionSchema.safeParse(action);
     expect(result.success).toBe(true);
@@ -38,7 +38,7 @@ describe("WidgetActionSchema", () => {
   it("deep-equals original action after JSON.parse(JSON.stringify(...))", () => {
     const action: WidgetAction = {
       target: { kind: "layer", id: 3 },
-      configPatch: { render_mode: "classbreak", visible: true, opacity: 0.8 },
+      configPatch: { renderMode: "classbreak", visible: true, opacity: 0.8 },
     };
     const roundTripped = JSON.parse(JSON.stringify(action)) as WidgetAction;
     expect(roundTripped).toEqual(action);
