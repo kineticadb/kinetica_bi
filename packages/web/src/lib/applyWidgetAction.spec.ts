@@ -1,5 +1,6 @@
 /**
- * applyWidgetAction.spec.ts — Phase 60 Plan 01 Task 2 (RADIO-V111-03).
+ * applyWidgetAction.spec.ts — Phase 60 Plan 01 Task 2 (RADIO-V111-03);
+ * Phase 60 Plan 03 Task 2 (SEAM-V111-01): MCP seam doc existence/content asserts.
  *
  * Phase 60.01 migration:
  *   - applyWidgetAction now accepts controlId: number as the 3rd argument.
@@ -30,6 +31,8 @@
  *   - Toast store is auto-reset between tests by the same shim.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import { applyWidgetAction, type ActionLookups } from "./applyWidgetAction";
 import { useWidgetActionStore } from "../store/widgetActionStore";
@@ -475,5 +478,63 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
       CONTROL_ID
     );
     expect(updateWidget).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. MCP action seam doc — existence + content asserts (SEAM-V111-01)
+// ---------------------------------------------------------------------------
+describe("MCP action seam doc (SEAM-V111-01)", () => {
+  // Resolve the doc relative to this spec file:
+  // packages/web/src/lib/ -> up 3 dirs -> packages/web/ -> docs/mcp-action-seam.md
+  const DOC_PATH = resolve(__dirname, "../../docs/mcp-action-seam.md");
+  const SRC_PATH = resolve(__dirname, "applyWidgetAction.ts");
+
+  let docContent: string;
+  let srcContent: string;
+
+  beforeEach(() => {
+    docContent = readFileSync(DOC_PATH, "utf-8");
+    srcContent = readFileSync(SRC_PATH, "utf-8");
+  });
+
+  it("mcp-action-seam.md exists and is non-empty", () => {
+    expect(docContent.length).toBeGreaterThan(0);
+  });
+
+  it("doc contains the envelope shape { target, configPatch }", () => {
+    expect(docContent).toMatch(/target.*configPatch|configPatch.*target/i);
+    expect(docContent).toContain("configPatch");
+    expect(docContent).toContain("target");
+  });
+
+  it("doc contains inputSchema (the MCP tool shape)", () => {
+    expect(docContent).toContain("inputSchema");
+  });
+
+  it("doc contains ALLOW_LIST_VERSION (the versioned safety boundary)", () => {
+    expect(docContent).toContain("ALLOW_LIST_VERSION");
+  });
+
+  it("doc references the allow-list as the safety boundary", () => {
+    expect(docContent.toLowerCase()).toContain("allow-list");
+  });
+
+  it("doc contains PATCH /api/widgets (the existing server route)", () => {
+    expect(docContent).toContain("PATCH /api/widgets");
+  });
+
+  it("doc explicitly states NO AI / MCP server is built this milestone", () => {
+    // Any of these patterns qualifies as the explicit not-built statement
+    const hasNotBuilt =
+      /no AI\b/i.test(docContent) ||
+      /NOT BUILT/i.test(docContent) ||
+      /NO MCP/i.test(docContent) ||
+      /design.*only/i.test(docContent);
+    expect(hasNotBuilt).toBe(true);
+  });
+
+  it("applyWidgetAction.ts source contains the mcp-action-seam pointer comment", () => {
+    expect(srcContent).toContain("mcp-action-seam");
   });
 });
