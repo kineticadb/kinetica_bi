@@ -1,23 +1,28 @@
 /**
- * widgetActionStore.spec.ts — Phase 58.1 Plan 01 Task 2 (ENGINE-V111-02).
+ * widgetActionStore.spec.ts — Phase 60 Plan 01 Task 1 (RADIO-V111-03).
  *
- * Phase 58.1 changes:
- *   - Layer override shapes updated to be consistent with how applyWidgetAction now writes:
- *       renderMode/visible/opacity → nested under `config` sub-object
- *       track_config/cb_config    → top-level (as before)
- *   - These are representative shapes matching the DTO-shaped overlay that
- *     applyWidgetAction produces after the location-aware split.
- *   - The store itself is generic (Record<string,unknown>) and unchanged —
- *     only the test data updated to use the corrected shapes.
+ * Phase 60.01 refactor:
+ *   - Store is now SOURCE-CONTROL-keyed: contributions keyed by controlId.
+ *   - setControlContribution(controlId, contribution) REPLACES that control's
+ *     prior contribution (switch-replace semantics).
+ *   - clearControl(controlId): removes a control's contribution entirely.
+ *   - reset(): clears contributions + derived maps (7th store lifecycle).
+ *   - Derived maps (widgetOverrides/layerOverrides/dynamicViewOverrides) are
+ *     recomputed on every write — consumer shape is UNCHANGED from Phase 58.
+ *   - Layer deep-merge: config sub-objects merge; top-level (track_config/cb_config)
+ *     shallow-merge across controls.
  *
  * Tests cover:
- *   - Initial state: all three override maps are empty
- *   - applyWidgetOverride: writes and merges into widgetOverrides keyed by id
- *   - applyLayerOverride: writes and merges into layerOverrides keyed by id
- *   - applyDynamicViewOverride: writes and merges into dynamicViewOverrides keyed by id
- *   - clearOverride: removes the keyed entry for a given kind+id
- *   - reset(): empties all three maps (canonical session-lifecycle reset)
- *   - Reference isolation: applying an override doesn't mutate a sibling entry
+ *   - Initial state: contributions empty, all three derived maps empty
+ *   - setControlContribution: writes a widget contribution → derived widgetOverrides
+ *   - setControlContribution: writes a layer contribution → derived layerOverrides (DTO-shaped)
+ *   - setControlContribution: writes a dynamicView contribution → derived dynamicViewOverrides
+ *   - SWITCH-REPLACE: control C1 sets renderMode + cb_config, then re-sets renderMode only
+ *     → derived layerOverrides no longer contains cb_config (reverted to baseline)
+ *   - Multi-control merge: C1 and C2 both target the same layer → last-writer-per-field
+ *   - clearControl: removes a control's contribution, derived maps recomputed
+ *   - reset(): empties contributions + all three derived maps
+ *   - Reference isolation: writing one control does not mutate another
  *
  * Test infra:
  *   - Zustand reset shim auto-resets between tests (vi.mock("zustand") in src/test/setup.ts).
@@ -27,14 +32,15 @@ import { describe, it, expect } from "vitest";
 import { useWidgetActionStore } from "./widgetActionStore";
 
 describe("useWidgetActionStore — initial state", () => {
-  it("starts with empty override maps", () => {
+  it("starts with empty contributions and empty derived maps", () => {
     const s = useWidgetActionStore.getState();
+    expect(s.contributions).toEqual({});
     expect(s.widgetOverrides).toEqual({});
     expect(s.layerOverrides).toEqual({});
     expect(s.dynamicViewOverrides).toEqual({});
   });
 
-  it("reading an unknown id returns undefined cleanly", () => {
+  it("reading an unknown id from derived maps returns undefined cleanly", () => {
     const s = useWidgetActionStore.getState();
     expect(s.widgetOverrides[999]).toBeUndefined();
     expect(s.layerOverrides[999]).toBeUndefined();
@@ -42,76 +48,143 @@ describe("useWidgetActionStore — initial state", () => {
   });
 });
 
-describe("applyWidgetOverride", () => {
-  it("writes a patch entry for the given widget id", () => {
-    useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
-    expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ page_size: 50 });
+describe("setControlContribution — widget", () => {
+  it("writes a widget contribution and derives widgetOverrides", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).toEqual({ page_size: 50 });
   });
 
-  it("merges a second patch into an existing entry (does not replace)", () => {
-    useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
-    useWidgetActionStore.getState().applyWidgetOverride(1, { metric: "count_col" });
-    expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({
+  it("REPLACE: re-calling with a new patch replaces the prior widget contribution", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50, metric: "col_a" } },
+    });
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 100 } },
+    });
+    // metric should be gone — the contribution was fully replaced
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).toEqual({ page_size: 100 });
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).not.toHaveProperty("metric");
+  });
+
+  it("two controls targeting the same widget merge (last-writer wins per field)", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      widget: { 42: { metric: "col_a" } },
+    });
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).toEqual({
       page_size: 50,
-      metric: "count_col",
+      metric: "col_a",
     });
   });
 
-  it("does not mutate a different widget's entry", () => {
-    useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
-    useWidgetActionStore.getState().applyWidgetOverride(2, { metric: "col" });
-    expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ page_size: 50 });
-    expect(useWidgetActionStore.getState().widgetOverrides[2]).toEqual({ metric: "col" });
+  it("does not touch another target's derived entry", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      widget: { 99: { metric: "col" } },
+    });
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).toEqual({ page_size: 50 });
+    expect(useWidgetActionStore.getState().widgetOverrides[99]).toEqual({ metric: "col" });
   });
 });
 
-describe("applyLayerOverride", () => {
-  it("writes a DTO-shaped config patch (renderMode nested under config)", () => {
-    // applyWidgetAction produces { config: { renderMode: "heatmap" } } for renderMode patches
-    useWidgetActionStore.getState().applyLayerOverride(10, { config: { renderMode: "heatmap" } });
-    expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({
+describe("setControlContribution — layer (DTO-shaped)", () => {
+  it("writes a nested config patch and derives layerOverrides with config sub-object", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "heatmap" } } },
+    });
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
       config: { renderMode: "heatmap" },
     });
   });
 
-  it("writes top-level track_config (not nested under config)", () => {
-    useWidgetActionStore.getState().applyLayerOverride(10, { track_config: '{"enabled":true}' });
-    expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({
+  it("writes a top-level track_config (not nested under config)", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { track_config: '{"enabled":true}' } },
+    });
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
       track_config: '{"enabled":true}',
     });
   });
 
-  it("supports top-level track_config as a string patch (TOP-LEVEL field, not nested)", () => {
-    useWidgetActionStore.getState().applyLayerOverride(10, { track_config: '{"enabled":true}' });
-    expect(useWidgetActionStore.getState().layerOverrides[10]).toEqual({
-      track_config: '{"enabled":true}',
+  it("writes mixed DTO patch (config nested + track_config top-level)", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: {
+        100: {
+          config: { renderMode: "classbreak" },
+          cb_config: '{"breaks":[]}',
+        },
+      },
     });
+    const overlay = useWidgetActionStore.getState().layerOverrides[100];
+    expect((overlay.config as Record<string, unknown>).renderMode).toBe("classbreak");
+    expect(overlay.cb_config).toBe('{"breaks":[]}');
   });
 
-  it("merges additional DTO-shaped patches (config sub-object + top-level)", () => {
-    // First patch: nested config
-    useWidgetActionStore.getState().applyLayerOverride(10, { config: { renderMode: "heatmap" } });
-    // Second patch: top-level
-    useWidgetActionStore.getState().applyLayerOverride(10, { track_config: '{"enabled":false}' });
-    // The store depth-1 merge keeps both (config object stays, track_config added)
-    expect(useWidgetActionStore.getState().layerOverrides[10]).toMatchObject({
-      track_config: '{"enabled":false}',
+  it("SWITCH-REPLACE: option A sets renderMode + cb_config; option B sets renderMode only → cb_config reverts to baseline (gone from derived overlay)", () => {
+    // Option A: renderMode + cb_config
+    useWidgetActionStore.getState().setControlContribution(10, {
+      layer: {
+        100: {
+          config: { renderMode: "classbreak" },
+          cb_config: '{"breaks":[{"label":"A","minValue":0,"maxValue":10,"color":"FF0000"}]}',
+        },
+      },
     });
-    // Note: depth-1 merge means the second applyLayerOverride replaces the whole
-    // config sub-object if both patches target config. applyWidgetAction handles this
-    // by deep-merging config before calling applyLayerOverride.
+    const afterA = useWidgetActionStore.getState().layerOverrides[100];
+    expect((afterA.config as Record<string, unknown>).renderMode).toBe("classbreak");
+    expect(afterA.cb_config).toBeDefined();
+
+    // Option B: renderMode only (no cb_config)
+    useWidgetActionStore.getState().setControlContribution(10, {
+      layer: {
+        100: {
+          config: { renderMode: "raster" },
+        },
+      },
+    });
+
+    const afterB = useWidgetActionStore.getState().layerOverrides[100];
+    // renderMode updated
+    expect((afterB.config as Record<string, unknown>).renderMode).toBe("raster");
+    // cb_config GONE — reverted to baseline (not set by option B)
+    expect(afterB.cb_config).toBeUndefined();
+  });
+
+  it("deep-merges config sub-objects across two controls for the same layer", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "heatmap" } } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      layer: { 100: { config: { visible: false } } },
+    });
+    const overlay = useWidgetActionStore.getState().layerOverrides[100];
+    // Both config fields present (deep-merged)
+    expect((overlay.config as Record<string, unknown>).renderMode).toBe("heatmap");
+    expect((overlay.config as Record<string, unknown>).visible).toBe(false);
   });
 });
 
-describe("applyDynamicViewOverride", () => {
-  it("writes an override for the given dynamic view id", () => {
-    useWidgetActionStore.getState().applyDynamicViewOverride(5, { enabled: true });
+describe("setControlContribution — dynamicView", () => {
+  it("writes a dynamicView contribution and derives dynamicViewOverrides", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      dynamicView: { 5: { enabled: true } },
+    });
     expect(useWidgetActionStore.getState().dynamicViewOverrides[5]).toEqual({ enabled: true });
   });
 
-  it("merges additional patches", () => {
-    useWidgetActionStore.getState().applyDynamicViewOverride(5, { enabled: true });
-    useWidgetActionStore.getState().applyDynamicViewOverride(5, { someFlag: false });
+  it("merges two controls targeting the same dynamicView", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      dynamicView: { 5: { enabled: true } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      dynamicView: { 5: { someFlag: false } },
+    });
     expect(useWidgetActionStore.getState().dynamicViewOverrides[5]).toEqual({
       enabled: true,
       someFlag: false,
@@ -119,46 +192,56 @@ describe("applyDynamicViewOverride", () => {
   });
 });
 
-describe("clearOverride", () => {
-  it("removes a widget override by kind+id", () => {
-    useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
-    useWidgetActionStore.getState().clearOverride("widget", 1);
-    expect(useWidgetActionStore.getState().widgetOverrides[1]).toBeUndefined();
+describe("clearControl", () => {
+  it("removes a control's widget contribution and recomputes derived maps", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    useWidgetActionStore.getState().clearControl(1);
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).toBeUndefined();
+    expect(useWidgetActionStore.getState().contributions[1]).toBeUndefined();
   });
 
-  it("removes a layer override by kind+id", () => {
-    useWidgetActionStore.getState().applyLayerOverride(10, { config: { visible: false } });
-    useWidgetActionStore.getState().clearOverride("layer", 10);
-    expect(useWidgetActionStore.getState().layerOverrides[10]).toBeUndefined();
+  it("removes a control's layer contribution and recomputes derived maps", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "heatmap" } } },
+    });
+    useWidgetActionStore.getState().clearControl(1);
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toBeUndefined();
   });
 
-  it("removes a dynamicView override by kind+id", () => {
-    useWidgetActionStore.getState().applyDynamicViewOverride(5, { enabled: false });
-    useWidgetActionStore.getState().clearOverride("dynamicView", 5);
-    expect(useWidgetActionStore.getState().dynamicViewOverrides[5]).toBeUndefined();
+  it("is a no-op when the control has no prior contribution (no throw)", () => {
+    useWidgetActionStore.getState().clearControl(999);
+    expect(useWidgetActionStore.getState().contributions[999]).toBeUndefined();
   });
 
-  it("is a no-op when the entry does not exist", () => {
-    // Should not throw
-    useWidgetActionStore.getState().clearOverride("widget", 999);
-    expect(useWidgetActionStore.getState().widgetOverrides[999]).toBeUndefined();
-  });
-
-  it("does not affect sibling entries of the same kind", () => {
-    useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 10 });
-    useWidgetActionStore.getState().applyWidgetOverride(2, { metric: "col" });
-    useWidgetActionStore.getState().clearOverride("widget", 1);
-    expect(useWidgetActionStore.getState().widgetOverrides[2]).toEqual({ metric: "col" });
+  it("does not affect sibling controls", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      widget: { 42: { metric: "col" } },
+    });
+    useWidgetActionStore.getState().clearControl(1);
+    // C2's contribution still present in derived map
+    expect(useWidgetActionStore.getState().widgetOverrides[42]).toEqual({ metric: "col" });
   });
 });
 
 describe("reset", () => {
-  it("empties all three override maps", () => {
-    useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
-    useWidgetActionStore.getState().applyLayerOverride(10, { config: { visible: false } });
-    useWidgetActionStore.getState().applyDynamicViewOverride(5, { enabled: true });
+  it("empties contributions and all three derived maps", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      layer: { 100: { config: { renderMode: "heatmap" } } },
+    });
+    useWidgetActionStore.getState().setControlContribution(3, {
+      dynamicView: { 5: { enabled: true } },
+    });
     useWidgetActionStore.getState().reset();
     const s = useWidgetActionStore.getState();
+    expect(s.contributions).toEqual({});
     expect(s.widgetOverrides).toEqual({});
     expect(s.layerOverrides).toEqual({});
     expect(s.dynamicViewOverrides).toEqual({});
@@ -167,8 +250,57 @@ describe("reset", () => {
   it("reset on already-empty store is a no-op (no throw)", () => {
     useWidgetActionStore.getState().reset();
     const s = useWidgetActionStore.getState();
+    expect(s.contributions).toEqual({});
     expect(s.widgetOverrides).toEqual({});
     expect(s.layerOverrides).toEqual({});
     expect(s.dynamicViewOverrides).toEqual({});
+  });
+});
+
+describe("reference isolation", () => {
+  it("writing control C1's contribution does not mutate C2's contribution", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 50 } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      widget: { 99: { metric: "col" } },
+    });
+    // Mutate C1
+    useWidgetActionStore.getState().setControlContribution(1, {
+      widget: { 42: { page_size: 200 } },
+    });
+    // C2 is unaffected
+    expect(useWidgetActionStore.getState().widgetOverrides[99]).toEqual({ metric: "col" });
+  });
+
+  it("clearing C1 does not affect C2's derived contribution", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "heatmap" } } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      layer: { 100: { track_config: '{"enabled":false}' } },
+    });
+    useWidgetActionStore.getState().clearControl(1);
+    // C2's top-level track_config contribution still present
+    expect(useWidgetActionStore.getState().layerOverrides[100]).toMatchObject({
+      track_config: '{"enabled":false}',
+    });
+    // C1's config.renderMode is gone
+    const cfg = useWidgetActionStore.getState().layerOverrides[100]?.config as
+      | Record<string, unknown>
+      | undefined;
+    expect(cfg?.renderMode).toBeUndefined();
+  });
+});
+
+describe("missing kinds normalize to {}", () => {
+  it("setControlContribution with only layer kind leaves widget/dynamicView empty", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "raster" } } },
+    });
+    const contrib = useWidgetActionStore.getState().contributions[1];
+    expect(contrib.widget).toEqual({});
+    expect(contrib.dynamicView).toEqual({});
+    expect(Object.keys(contrib.layer)).toHaveLength(1);
   });
 });
