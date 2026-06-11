@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: Completed 60-01-PLAN.md — widgetActionStore control-keyed refactor + applyWidgetAction controlId + spec migration; 1918/1918 vitest green + tsc clean
-last_updated: "2026-06-11T00:15:25.631Z"
+stopped_at: "Checkpoint: 61-02-PLAN.md Task 2 — 61-UAT.md authored (commit d404290), awaiting operator live walk-through attestation"
+last_updated: "2026-06-11T13:56:58.836Z"
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 6
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 9
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 60 — radio-renderer-wiring-persistence-mcp-seam-doc
+**Current focus:** Phase 61 — verification-live-uat
 
 ## Current Position
 
-Phase: 60 (radio-renderer-wiring-persistence-mcp-seam-doc) — EXECUTING
-Plan: 1 of 3
+Phase: 61 (verification-live-uat) — EXECUTING
+Plan: 2 of 3
 
 ## v1.11 Phase Map
 
@@ -251,6 +251,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 59-radio-group-widget-registry-def-config-panel P01 | 5min | 2 tasks | 4 files |
 | Phase 59 P02 | 4 | 2 tasks | 4 files |
 | Phase 60 P01 | 8 | 3 tasks | 7 files |
+| Phase 61-verification-live-uat P01 | 3 | 2 tasks | 1 files |
 
 ### Quick Tasks Completed
 
@@ -265,6 +266,10 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ### Roadmap Evolution
 
 - Phase 58.1 inserted after Phase 58 (2026-06-10, URGENT): Action-engine foundation fix — allow-list uses wrong field name (`render_mode` vs real nested `config.renderMode`) + the layer overlay flat-spread can't reach nested config; Phase 58 canary only tested top-level track_config/cb_config so the gap shipped. Discovered during Phase 59 planning. Phase 59 plans (59-01/59-02) are WRITTEN but ON HOLD (unverified/unexecuted) — to be re-planned against the corrected allow-list after 58.1.
+
+### Phase 61 Plan 01 Gate Results (recorded 2026-06-11)
+
+- **overall_verdict: ALL PASS** — HEAD 162e514; frontend vitest 1935/1935 (92 files, 0 failures), web tsc exit 0, server tsc exit 0, server set-gate 8 failing files all in TD-V16-TEST-ISOLATION (unchanged from Phase 57 baseline), targeted v1.11 specs 210/210 (10 files). v1.11 Phases 58-60 confirmed frontend-only (server diff guard empty).
 
 ### Key Phase 58 Plan 02 Decisions (locked 2026-06-10)
 
@@ -755,6 +760,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-11T00:15:25.623Z
-Stopped at: Completed 60-01-PLAN.md — widgetActionStore control-keyed refactor + applyWidgetAction controlId + spec migration; 1918/1918 vitest green + tsc clean
+Last session: 2026-06-11T13:56:58.828Z
+Stopped at: Checkpoint: 61-02-PLAN.md Task 2 — 61-UAT.md authored (commit d404290), awaiting operator live walk-through attestation
 Resume file: None
