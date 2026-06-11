@@ -10,8 +10,10 @@
  *   - defaultConfig: spread of RADIO_GROUP_DEFAULT_CONFIG as a plain Record
  *                    (orientation: "vertical", options: [])
  *
- * Phase 60 ships the runtime renderer (RadioGroupRenderer) that consumes the
- * persisted RadioGroupConfig and applies the selected option's action patch.
+ * Phase 60 Plan 02 ships RadioGroupRenderer and wires its runtime dispatch via
+ * WidgetRenderer.tsx (the `radiogroup` branch before AggregatedWidgetRenderer fallback).
+ * This mirrors the datafilter + legend pattern: the registry def has no `renderer` field
+ * because WidgetRenderer is the sole runtime dispatch point for these control widgets.
  */
 
 import { registerChartType, type ChartTypeDefinition } from "../registry";

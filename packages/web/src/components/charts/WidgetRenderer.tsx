@@ -4,6 +4,7 @@ import WidgetErrorBoundary from "../WidgetErrorBoundary";
 import InfoCardRenderer from "./InfoCardRenderer";
 import LegendRenderer from "./LegendRenderer";
 import DataFilterRenderer from "./DataFilterRenderer";
+import RadioGroupRenderer from "./RadioGroupRenderer";
 import TimelineRenderer from "./TimelineRenderer";
 import NumericLineRenderer from "./NumericLineRenderer";
 import {
@@ -285,6 +286,13 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // Numeric Line chart — numeric-X analog of timeline; owns multi-axis Recharts +
     // drag-to-filter lifecycle. Same sole-materialize-trigger invariant as TimelineRenderer.
     body = <NumericLineRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "radiogroup") {
+    // Phase 60 Plan 02 (RADIO-V111-03): radiogroup short-circuits BEFORE AggregatedWidgetRenderer
+    // — it is a pure action-engine consumer (no SQL, no filter-store contact). The renderer reads
+    // its RadioGroupConfig live and dispatches selections via applyWidgetAction(action, widget.id).
+    // Runtime wiring follows the same WidgetRenderer-dispatch pattern as datafilter + legend.
+    // (Registry def radio-group.ts has no renderer field — runtime dispatched here exclusively.)
+    body = <RadioGroupRenderer widget={effectiveWidget} />;
   } else {
     body = <AggregatedWidgetRenderer widget={effectiveWidget} />;
   }
