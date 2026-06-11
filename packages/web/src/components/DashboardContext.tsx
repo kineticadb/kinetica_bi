@@ -42,6 +42,13 @@ import type { WidgetAction, WidgetActionResult } from "../lib/widgetAction";
  *     Optional on the provider to avoid breaking many existing specs that mount
  *     renderers with the 4-prop provider — missing specs that never dispatch an
  *     action are unaffected by the safe no-op default.
+ *
+ * Phase 60 Plan 01 (RADIO-V111-03):
+ *   - applyWidgetAction signature widened to (action, controlId) — the radio
+ *     renderer passes its own widget.id as the controlId so the store records
+ *     a source-control-keyed contribution (switch-replace semantics).
+ *   - 60-02 RadioGroupRenderer consumes this widened signature via
+ *     useDashboardContext().applyWidgetAction(action, widget.id).
  */
 
 export type DashboardContextValue = {
@@ -50,11 +57,16 @@ export type DashboardContextValue = {
   dynamicViews: DynamicViewRow[];
   retryDynamicView: (dynamicViewId: number) => void;
   /**
-   * Phase 58 (ENGINE-V111-02): single dispatch entry for the widget action engine.
+   * Phase 58 (ENGINE-V111-02) / Phase 60 (RADIO-V111-03):
+   * Single dispatch entry for the widget action engine.
    * Applies a transient config overlay to the target widget/layer/dynamicView.
    * NEVER persists to server — session-only; resets on dashboard-switch/logout.
+   *
+   * controlId: the dispatching control's widget id (used for source-control-keyed
+   * contribution; switch-replace semantics — re-selecting an option fully replaces
+   * this control's prior contribution so dropped fields revert to baseline).
    */
-  applyWidgetAction: (action: WidgetAction) => WidgetActionResult;
+  applyWidgetAction: (action: WidgetAction, controlId: number) => WidgetActionResult;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -65,7 +77,7 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
  * fixtures that never dispatch actions). Returning target_not_found is the
  * safest possible no-op — callers handle it gracefully and no overlay is written.
  */
-const noopApplyWidgetAction = (action: WidgetAction): WidgetActionResult => ({
+const noopApplyWidgetAction = (action: WidgetAction, _controlId: number): WidgetActionResult => ({
   status: "target_not_found",
   target: action.target,
 });
@@ -82,8 +94,8 @@ export const DashboardContextProvider = ({
   widgets: WidgetDto[];
   dynamicViews: DynamicViewRow[];
   retryDynamicView: (dynamicViewId: number) => void;
-  /** Phase 58 (ENGINE-V111-02): optional — defaults to a safe no-op. */
-  applyWidgetAction?: (action: WidgetAction) => WidgetActionResult;
+  /** Phase 58 (ENGINE-V111-02) / Phase 60 (RADIO-V111-03): optional — defaults to a safe no-op. */
+  applyWidgetAction?: (action: WidgetAction, controlId: number) => WidgetActionResult;
   children: ReactNode;
 }) => {
   // Memoize so consumers don't see a new context object identity on every

@@ -1,25 +1,35 @@
 /**
  * Phase 58 Plan 02 — ACTION ENGINE LIVE-RE-RENDER CANARY
+ * Phase 60 Plan 01 — Migrated to control-keyed contribution API (RADIO-V111-03).
  *
  * Day-0 canary: proves that dispatching an action to a MOUNTED target re-renders
  * from the overlay-merged config with NO remount.
  *
+ * Phase 60.01 migration:
+ *   - Direct store writes use setControlContribution(controlId, { widget|layer: { [targetId]: patch } })
+ *     instead of the removed applyWidgetOverride/applyLayerOverride.
+ *   - Derived widgetOverrides/layerOverrides read shape is UNCHANGED — consumer assertions
+ *     read the same derived maps they always did.
+ *   - reset() assertions are unchanged.
+ *
  * CASE A (widget.config target):
  *   - Mount WidgetRenderer for a `records` widget whose page_size is in the allow-list.
- *   - Apply a widget overlay via useWidgetActionStore (the same path WidgetRenderer reads).
+ *   - Apply a widget overlay via setControlContribution (the same path WidgetRenderer reads
+ *     via the derived widgetOverrides map).
  *   - Assert the rendered output reflects the new page_size AND the widget was not remounted.
  *
  * CASE B (map-layer target):
  *   - Mount MapChartRenderer with a layer in useDashboardLayersStore.
- *   - Apply a layer overlay via useWidgetActionStore (the same path MapChartRenderer reads
- *     via effectiveLayers).
+ *   - Apply a layer overlay via setControlContribution (the same path MapChartRenderer reads
+ *     via the derived layerOverrides map in effectiveLayers).
  *   - Assert the overlay is picked up by the render path without remounting the map.
  *   - Assertion boundary: the widgetActionStore layerOverrides are non-empty AND the
  *     ImageWMS `updateParams` call count increases AFTER the overlay write (proving the
  *     render effect fired with the new effectiveLayers).
  *
- * The non-negotiable: no remount (map is not disposed/recreated), and the overlay path
- * actually reaches the render.
+ * CASE C (map-layer renderMode nested config deep-merge):
+ *   - Proves config.renderMode is correctly updated through the deep-merge path.
+ *   - No remount after overlay write.
  *
  * Both cases use the real useWidgetActionStore (auto-reset by the Zustand shim in setup.ts).
  */
@@ -345,6 +355,9 @@ const defaultTables: TableDto[] = [
   },
 ];
 
+// Canary test control id (the "radio widget" dispatching the action)
+const CANARY_CONTROL_ID = 99;
+
 /* ------------------------------------------------------------------ */
 /*  CASE A: widget.config target — WidgetRenderer live-re-render       */
 /* ------------------------------------------------------------------ */
@@ -381,12 +394,15 @@ describe("CANARY — CASE A: widget.config target (WidgetRenderer overlay re-ren
     // Store the widget body identity before overlay write
     const originalBodyRef = widgetBody;
 
-    // Apply widget overlay (page_size = 50)
+    // Apply widget overlay via setControlContribution (Phase 60.01 API)
+    // CANARY_CONTROL_ID = 99 (the radio widget dispatching this action)
     await act(async () => {
-      useWidgetActionStore.getState().applyWidgetOverride(1, { page_size: 50 });
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        widget: { 1: { page_size: 50 } },
+      });
     });
 
-    // Verify overlay is in the store (the render path reads it)
+    // Verify derived overlay is in the store (the render path reads widgetOverrides)
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ page_size: 50 });
 
     // Verify NO remount: the widget body element identity is preserved
@@ -414,10 +430,12 @@ describe("CANARY — CASE A: widget.config target (WidgetRenderer overlay re-ren
     expect(useWidgetActionStore.getState().widgetOverrides[2]).toBeUndefined();
 
     await act(async () => {
-      useWidgetActionStore.getState().applyWidgetOverride(2, { page_size: 99 });
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        widget: { 2: { page_size: 99 } },
+      });
     });
 
-    // The overlay is in the store — the render path merges it
+    // The derived overlay is in the store — the render path merges it
     expect(useWidgetActionStore.getState().widgetOverrides[2]).toEqual({ page_size: 99 });
   });
 
@@ -438,7 +456,9 @@ describe("CANARY — CASE A: widget.config target (WidgetRenderer overlay re-ren
     );
 
     await act(async () => {
-      useWidgetActionStore.getState().applyWidgetOverride(3, { page_size: 75 });
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        widget: { 3: { page_size: 75 } },
+      });
     });
     expect(useWidgetActionStore.getState().widgetOverrides[3]).toEqual({ page_size: 75 });
 
@@ -482,14 +502,17 @@ describe("CANARY — CASE B: map-layer target (MapChartRenderer effectiveLayers 
     const mapInstanceRef = lastMapInstance;
     const disposeCountAfterMount = disposeCallCount;
 
-    // Apply a layer overlay (track_config — top-level DashboardLayerDto field)
+    // Apply a layer overlay via setControlContribution (Phase 60.01 API)
+    // track_config is a TOP-LEVEL DashboardLayerDto field (not nested under config)
     await act(async () => {
-      useWidgetActionStore.getState().applyLayerOverride(100, {
-        track_config: '{"enabled":true,"xColumn":"lon","yColumn":"lat"}',
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        layer: {
+          100: { track_config: '{"enabled":true,"xColumn":"lon","yColumn":"lat"}' },
+        },
       });
     });
 
-    // The overlay is in the store
+    // The derived overlay is in the store
     expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
       track_config: '{"enabled":true,"xColumn":"lon","yColumn":"lat"}',
     });
@@ -512,12 +535,12 @@ describe("CANARY — CASE B: map-layer target (MapChartRenderer effectiveLayers 
     const disposeCountAfterMount = disposeCallCount;
 
     await act(async () => {
-      useWidgetActionStore.getState().applyLayerOverride(101, {
-        cb_config: '{"breaks":[]}',
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        layer: { 101: { cb_config: '{"breaks":[]}' } },
       });
     });
 
-    // Overlay stored — the effectiveLayers merge puts cb_config at the top level
+    // Derived overlay stored — the effectiveLayers merge puts cb_config at the top level
     expect(useWidgetActionStore.getState().layerOverrides[101]).toMatchObject({
       cb_config: '{"breaks":[]}',
     });
@@ -544,14 +567,14 @@ describe("CANARY — CASE B: map-layer target (MapChartRenderer effectiveLayers 
       0
     );
 
-    // Apply overlay — triggers effectiveLayers change → WMS Effect 3 re-fires
+    // Apply overlay via setControlContribution — triggers effectiveLayers change → WMS Effect 3 re-fires
     await act(async () => {
-      useWidgetActionStore.getState().applyLayerOverride(102, {
-        track_config: '{"enabled":false}',
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        layer: { 102: { track_config: '{"enabled":false}' } },
       });
     });
 
-    // After overlay write, the store has the overlay
+    // After overlay write, the derived store has the overlay
     expect(useWidgetActionStore.getState().layerOverrides[102]).toMatchObject({
       track_config: '{"enabled":false}',
     });
@@ -583,7 +606,7 @@ describe("CANARY — CASE B: map-layer target (MapChartRenderer effectiveLayers 
  *
  * Assertion boundary: same as CASE B — assert at the deterministic store boundary.
  * jsdom cannot render OL canvas, so we verify:
- *   1. The overlay in the store carries renderMode NESTED under config
+ *   1. The derived overlay in the store carries renderMode NESTED under config
  *      (i.e. layerOverrides[103].config.renderMode === "heatmap")
  *   2. The effective layer computed using effectiveLayers deep-merge logic
  *      has config.renderMode === "heatmap"
@@ -608,8 +631,8 @@ describe("CANARY — CASE C: map-layer renderMode (nested config deep-merge)", (
     // writing { renderMode: "heatmap" } directly to applyLayerOverride (flat top-level
     // would add renderMode to the layer object but not into config).
     //
-    // POST-FIX: applyWidgetAction writes { config: { renderMode: "heatmap" } } (DTO-shaped)
-    // and effectiveLayers deep-merges config: { ...l.config, ...cfgPatch } so
+    // POST-FIX: setControlContribution writes { layer: { [id]: { config: { renderMode: "heatmap" } } } }
+    // (DTO-shaped) and effectiveLayers deep-merges config: { ...l.config, ...cfgPatch } so
     // config.renderMode actually becomes "heatmap".
 
     // Set up a layer fixture starting with config.renderMode = "raster"
@@ -630,20 +653,15 @@ describe("CANARY — CASE C: map-layer renderMode (nested config deep-merge)", (
     const mapInstanceRef = lastMapInstance;
     const disposeCountAfterMount = disposeCallCount;
 
-    // Apply renderMode overlay via applyWidgetAction (the full path through the engine).
-    // This exercises: validateActionPatch → splitLayerPatch → applyLayerOverride with
-    // DTO-shaped patch { config: { renderMode: "heatmap" } }.
-    // Note: applyWidgetAction needs ActionLookups (layers array). We use the store
-    // directly here to match the boundary the canary spec uses (like CASE B).
-    // The stored overlay shape mirrors exactly what applyWidgetAction writes.
+    // Apply renderMode overlay via setControlContribution (the full Phase 60.01 API).
+    // The contribution is DTO-shaped: { config: { renderMode: "heatmap" } }
     await act(async () => {
-      useWidgetActionStore.getState().applyLayerOverride(103, {
-        config: { renderMode: "heatmap" },
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        layer: { 103: { config: { renderMode: "heatmap" } } },
       });
     });
 
-    // ASSERTION 1: The store carries renderMode NESTED under config.
-    // (This is the DTO-shaped overlay that applyWidgetAction writes after Task 1+2.)
+    // ASSERTION 1: The derived store carries renderMode NESTED under config.
     const overlay = useWidgetActionStore.getState().layerOverrides[103];
     expect(overlay).toBeDefined();
     const overlayConfig = (overlay?.config as Record<string, unknown> | undefined);
@@ -695,10 +713,10 @@ describe("CANARY — CASE C: map-layer renderMode (nested config deep-merge)", (
     const mapBefore = lastMapInstance;
     const disposeBefore = disposeCallCount;
 
-    // Apply renderMode change
+    // Apply renderMode change via setControlContribution (Phase 60.01 API)
     await act(async () => {
-      useWidgetActionStore.getState().applyLayerOverride(105, {
-        config: { renderMode: "classbreak" },
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        layer: { 105: { config: { renderMode: "classbreak" } } },
       });
     });
 

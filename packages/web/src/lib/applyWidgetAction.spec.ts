@@ -1,13 +1,21 @@
 /**
- * applyWidgetAction.spec.ts — Phase 58.1 Plan 01 Task 2 (ENGINE-V111-02/03/04).
+ * applyWidgetAction.spec.ts — Phase 60 Plan 01 Task 2 (RADIO-V111-03).
  *
- * Phase 58.1 changes:
+ * Phase 60.01 migration:
+ *   - applyWidgetAction now accepts controlId: number as the 3rd argument.
+ *   - Write-side calls store.setControlContribution(controlId, contribution)
+ *     instead of the removed applyWidgetOverride/applyLayerOverride/applyDynamicViewOverride.
+ *   - Idempotency guards against the per-control contribution for the target (not merged overlay).
+ *   - Consumer assertions still read the DERIVED maps (widgetOverrides/layerOverrides) —
+ *     same shape as Phase 58 since a single control's contribution == the derived overlay
+ *     when no other controls target the same entity.
+ *
+ * Phase 58.1 behaviors preserved:
  *   - renderMode (camelCase) is the correct allow-listed field name
- *   - Layer overlay for renderMode/visible/opacity now nests under `config` sub-object
- *     (e.g. { config: { renderMode: "heatmap" } }) not at top level
+ *   - Layer overlay for renderMode/visible/opacity nests under `config` sub-object
  *   - track_config / cb_config stay top-level in the overlay
  *   - Mixed-patch test: { renderMode, track_config } splits correctly
- *   - Idempotency compares against the deep-merged proposed/current layer
+ *   - Idempotency compares against the per-control contribution (deep-equal)
  *
  * Tests cover ALL behaviors:
  *   1. applied — each of the 3 target kinds (widget / layer / dynamicView)
@@ -68,6 +76,9 @@ const makeLookups = (overrides: Partial<ActionLookups> = {}): ActionLookups => (
   ...overrides,
 });
 
+// Control id used in all single-control tests
+const CONTROL_ID = 1;
+
 // ---------------------------------------------------------------------------
 // Mocking updateWidget / updateLayer to assert zero PATCH calls
 // ---------------------------------------------------------------------------
@@ -87,22 +98,21 @@ describe("applyWidgetAction — applied (widget)", () => {
   it("applies an allow-listed widget config patch and returns applied status", () => {
     const result = applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { page_size: 50 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     expect(result.target).toEqual({ kind: "widget", id: 1 });
+    // Derived widgetOverrides has the patch (single control)
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ page_size: 50 });
   });
 
-  it("merges overlay on repeated applies (partial patch accumulation)", () => {
-    applyWidgetAction(
-      { target: { kind: "widget", id: 1 }, configPatch: { page_size: 50 } },
-      makeLookups()
-    );
+  it("applying to widget id 2 records correctly in derived widgetOverrides", () => {
     const result = applyWidgetAction(
       // chart widget — need chart lookups
       { target: { kind: "widget", id: 2 }, configPatch: { metric: "col_a" } },
-      makeLookups({ widgets: [makeWidget({ id: 2, type: "chart", config: {} }) ] })
+      makeLookups({ widgets: [makeWidget({ id: 2, type: "chart", config: {} }) ] }),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     expect(useWidgetActionStore.getState().widgetOverrides[2]).toEqual({ metric: "col_a" });
@@ -116,10 +126,11 @@ describe("applyWidgetAction — applied (layer)", () => {
   it("applies a renderMode patch and stores it nested under config (not top-level)", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { renderMode: "heatmap" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
-    // renderMode is a layer.config field — overlay carries it under config
+    // renderMode is a layer.config field — derived overlay carries it under config
     expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
       config: { renderMode: "heatmap" },
     });
@@ -128,7 +139,8 @@ describe("applyWidgetAction — applied (layer)", () => {
   it("stores visible patch nested under config", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { visible: false } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
@@ -139,7 +151,8 @@ describe("applyWidgetAction — applied (layer)", () => {
   it("stores opacity patch nested under config", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { opacity: 0.5 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
@@ -150,7 +163,8 @@ describe("applyWidgetAction — applied (layer)", () => {
   it("stores track_config at top level (TOP-LEVEL DashboardLayerDto field)", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { track_config: '{"enabled":true}' } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     // track_config stays at top level (not nested under config)
@@ -165,7 +179,8 @@ describe("applyWidgetAction — applied (layer)", () => {
   it("stores cb_config at top level (TOP-LEVEL DashboardLayerDto field)", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { cb_config: '{"breaks":[]}' } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     expect(useWidgetActionStore.getState().layerOverrides[100]).toMatchObject({
@@ -179,7 +194,8 @@ describe("applyWidgetAction — applied (layer)", () => {
         target: { kind: "layer", id: 100 },
         configPatch: { renderMode: "classbreak", track_config: '{"enabled":true}' },
       },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     const overlay = useWidgetActionStore.getState().layerOverrides[100];
@@ -197,7 +213,8 @@ describe("applyWidgetAction — applied (dynamicView)", () => {
   it("applies an allow-listed patch to the dynamic view overlay", () => {
     const result = applyWidgetAction(
       { target: { kind: "dynamicView", id: 5 }, configPatch: { enabled: false } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("applied");
     expect(useWidgetActionStore.getState().dynamicViewOverrides[5]).toEqual({ enabled: false });
@@ -211,7 +228,8 @@ describe("applyWidgetAction — rejected", () => {
   it("returns rejected when the patch field is not on the allow-list", () => {
     const result = applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { unknown_field: "x" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("rejected");
     if (result.status === "rejected") {
@@ -222,7 +240,8 @@ describe("applyWidgetAction — rejected", () => {
   it("does NOT write to the overlay store on rejection", () => {
     applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { unknown_field: "x" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toBeUndefined();
   });
@@ -231,7 +250,8 @@ describe("applyWidgetAction — rejected", () => {
     const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
     applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { unknown_field: "x" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(showToastSpy).toHaveBeenCalled();
   });
@@ -244,7 +264,8 @@ describe("applyWidgetAction — rejected", () => {
     const configPatch = JSON.parse('{"__proto__": {}}') as Record<string, unknown>;
     const result = applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("rejected");
   });
@@ -253,7 +274,8 @@ describe("applyWidgetAction — rejected", () => {
     applyWidgetAction(
       // Use a permanently blocked key
       { target: { kind: "widget", id: 1 }, configPatch: { id: 99 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toBeUndefined();
   });
@@ -262,7 +284,8 @@ describe("applyWidgetAction — rejected", () => {
     const result = applyWidgetAction(
       // aggregation must be one of the allowed enum values
       { target: { kind: "widget", id: 1 }, configPatch: { aggregation: "median" } },
-      makeLookups({ widgets: [makeWidget({ id: 1, type: "chart" })] })
+      makeLookups({ widgets: [makeWidget({ id: 1, type: "chart" })] }),
+      CONTROL_ID
     );
     expect(result.status).toBe("rejected");
   });
@@ -273,7 +296,8 @@ describe("applyWidgetAction — rejected", () => {
     // confirms the correct key is accepted.
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { totally_unknown: "heatmap" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("rejected");
   });
@@ -286,7 +310,8 @@ describe("applyWidgetAction — target_not_found", () => {
   it("returns target_not_found for a widget id not in lookups", () => {
     const result = applyWidgetAction(
       { target: { kind: "widget", id: 999 }, configPatch: { page_size: 50 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("target_not_found");
     expect(result.target).toEqual({ kind: "widget", id: 999 });
@@ -295,7 +320,8 @@ describe("applyWidgetAction — target_not_found", () => {
   it("does NOT write to the overlay store when target is not found", () => {
     applyWidgetAction(
       { target: { kind: "widget", id: 999 }, configPatch: { page_size: 50 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(useWidgetActionStore.getState().widgetOverrides[999]).toBeUndefined();
   });
@@ -304,7 +330,8 @@ describe("applyWidgetAction — target_not_found", () => {
     const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
     applyWidgetAction(
       { target: { kind: "widget", id: 999 }, configPatch: { page_size: 50 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(showToastSpy).toHaveBeenCalled();
   });
@@ -312,7 +339,8 @@ describe("applyWidgetAction — target_not_found", () => {
   it("returns target_not_found for a layer id not in lookups", () => {
     const result = applyWidgetAction(
       { target: { kind: "layer", id: 999 }, configPatch: { renderMode: "heatmap" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("target_not_found");
   });
@@ -320,7 +348,8 @@ describe("applyWidgetAction — target_not_found", () => {
   it("returns target_not_found for a dynamicView id not in dynamicViewIds", () => {
     const result = applyWidgetAction(
       { target: { kind: "dynamicView", id: 999 }, configPatch: { enabled: true } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(result.status).toBe("target_not_found");
   });
@@ -335,17 +364,17 @@ describe("applyWidgetAction — idempotency", () => {
     const lookups = makeLookups();
 
     // First dispatch — should write
-    applyWidgetAction(action, lookups);
+    applyWidgetAction(action, lookups, CONTROL_ID);
     const overrideAfterFirst = useWidgetActionStore.getState().widgetOverrides[1];
 
     // Second dispatch — identical merged value → must NOT write (idempotency)
-    // To detect this, we spy on applyWidgetOverride
-    const applyOverrideSpy = vi.spyOn(useWidgetActionStore.getState(), "applyWidgetOverride");
+    // To detect this, we spy on setControlContribution
+    const setContribSpy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
 
-    const result = applyWidgetAction(action, lookups);
+    const result = applyWidgetAction(action, lookups, CONTROL_ID);
     expect(result.status).toBe("applied"); // still reports applied
-    expect(applyOverrideSpy).not.toHaveBeenCalled(); // no redundant write
-    // Store value unchanged
+    expect(setContribSpy).not.toHaveBeenCalled(); // no redundant write
+    // Derived store value unchanged
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual(overrideAfterFirst);
   });
 
@@ -356,32 +385,33 @@ describe("applyWidgetAction — idempotency", () => {
     };
     const lookups = makeLookups();
 
-    applyWidgetAction(action, lookups);
-    const applyOverrideSpy = vi.spyOn(useWidgetActionStore.getState(), "applyLayerOverride");
-    const result = applyWidgetAction(action, lookups);
+    applyWidgetAction(action, lookups, CONTROL_ID);
+    const setContribSpy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
+    const result = applyWidgetAction(action, lookups, CONTROL_ID);
     expect(result.status).toBe("applied");
-    expect(applyOverrideSpy).not.toHaveBeenCalled();
+    expect(setContribSpy).not.toHaveBeenCalled();
   });
 
   it("changed patch breaks idempotency — second dispatch with different value DOES write", () => {
     const lookups = makeLookups();
     applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { page_size: 50 } },
-      lookups
+      lookups,
+      CONTROL_ID
     );
-    const applyOverrideSpy = vi.spyOn(useWidgetActionStore.getState(), "applyWidgetOverride");
+    const setContribSpy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
     applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { page_size: 100 } },
-      lookups
+      lookups,
+      CONTROL_ID
     );
-    expect(applyOverrideSpy).toHaveBeenCalled();
+    expect(setContribSpy).toHaveBeenCalled();
     expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ page_size: 100 });
   });
 
   it("idempotency: dispatching same renderMode again after it was already applied does not write", () => {
     // Layer starts with config.renderMode = "raster"
-    // After first dispatch, overlay has config: { renderMode: "heatmap" }
-    // Effective config.renderMode = "heatmap"
+    // After first dispatch, control's layer contribution = { config: { renderMode: "heatmap" } }
     // Second dispatch of renderMode: "heatmap" should be idempotent (no write)
     const layer = makeLayer({ id: 100, config: { renderMode: "raster", visible: true } });
     const lookups = makeLookups({ layers: [layer] });
@@ -390,14 +420,14 @@ describe("applyWidgetAction — idempotency", () => {
       configPatch: { renderMode: "heatmap" as const },
     };
 
-    applyWidgetAction(action, lookups);
-    // After first dispatch: overlay = { config: { renderMode: "heatmap" } }
+    applyWidgetAction(action, lookups, CONTROL_ID);
+    // After first dispatch: derived overlay = { config: { renderMode: "heatmap" } }
     expect(useWidgetActionStore.getState().layerOverrides[100]).toEqual({
       config: { renderMode: "heatmap" },
     });
 
-    const spy = vi.spyOn(useWidgetActionStore.getState(), "applyLayerOverride");
-    const result = applyWidgetAction(action, lookups);
+    const spy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
+    const result = applyWidgetAction(action, lookups, CONTROL_ID);
     expect(result.status).toBe("applied");
     expect(spy).not.toHaveBeenCalled();
   });
@@ -411,7 +441,8 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
     const { updateWidget } = await import("../api/client");
     applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { page_size: 50 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(updateWidget).not.toHaveBeenCalled();
   });
@@ -420,7 +451,8 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
     const { updateLayer } = await import("../api/client");
     applyWidgetAction(
       { target: { kind: "layer", id: 100 }, configPatch: { renderMode: "heatmap" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(updateLayer).not.toHaveBeenCalled();
   });
@@ -429,7 +461,8 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
     const { updateWidget } = await import("../api/client");
     applyWidgetAction(
       { target: { kind: "widget", id: 1 }, configPatch: { unknown: "x" } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(updateWidget).not.toHaveBeenCalled();
   });
@@ -438,7 +471,8 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
     const { updateWidget } = await import("../api/client");
     applyWidgetAction(
       { target: { kind: "widget", id: 999 }, configPatch: { page_size: 50 } },
-      makeLookups()
+      makeLookups(),
+      CONTROL_ID
     );
     expect(updateWidget).not.toHaveBeenCalled();
   });

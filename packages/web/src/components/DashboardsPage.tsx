@@ -423,17 +423,19 @@ const DashboardOpen = ({
   const layers = useDashboardLayersStore((s) => s.layers);
   const setLayers = useDashboardLayersStore((s) => s.setLayers);
 
-  // Phase 58 Plan 02 (ENGINE-V111-02): applyWidgetAction dispatch closure.
+  // Phase 58 Plan 02 (ENGINE-V111-02) / Phase 60 Plan 01 (RADIO-V111-03):
+  // applyWidgetAction dispatch closure.
   // Constructs the same-dashboard ActionLookups from current in-scope state so
   // the dispatch function can detect dangling targets without importing React state.
   // dynamicViewIds derived from the current dynamicViews list.
+  // controlId: the dispatching control's widget id (threaded for switch-replace semantics).
   const applyAction = useCallback(
-    (action: Parameters<typeof applyWidgetAction>[0]) =>
+    (action: Parameters<typeof applyWidgetAction>[0], controlId: number) =>
       applyWidgetAction(action, {
         widgets,
         layers,
         dynamicViewIds: dynamicViews.map((dv) => dv.id),
-      }),
+      }, controlId),
     [widgets, layers, dynamicViews]
   );
   const [error, setError] = useState<string | null>(null);
