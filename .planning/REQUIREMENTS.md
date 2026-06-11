@@ -10,20 +10,20 @@
 ### Action Engine & Contract
 
 - [x] **ENGINE-V111-01**: A serializable widget-action contract — an envelope `{ target (kind + id), configPatch }` with NO closures or component refs (emittable by a non-human agent) — is defined and zod-validated; it is the single shape every caller (the radio widget now, a future AI/MCP layer) produces
-- [ ] **ENGINE-V111-02**: A single dispatch path applies an action to its target — optimistic transient update + persist via the existing config PATCH path — and the target widget re-renders LIVE from the changed config with NO remount (verified by a mounted-renderer re-render canary test)
-- [ ] **ENGINE-V111-03**: The engine routes actions to three target kinds: (a) a widget's `config` (widgets table), (b) a map layer's config via `useDashboardLayersStore` incl. the top-level `track_config`/`cb_config` fields, and (c) a dynamic-view's config (`dashboard_dynamic_views`); (a) and (b) are primary/verified, (c) is supported by the contract + router with lighter verification
-- [ ] **ENGINE-V111-04**: Targeting is same-dashboard only; an action whose target no longer exists (deleted widget/layer/dynamic-view) or whose field is absent fails safely — no crash, a no-op with a surfaced signal, no partial/corrupt write
+- [x] **ENGINE-V111-02**: A single dispatch path applies an action to its target — transient session-overlay update (no runtime PATCH per the Phase 58 transient-for-everyone decision) — and the target widget re-renders LIVE from the changed config with NO remount (verified by a mounted-renderer re-render canary test)
+- [x] **ENGINE-V111-03**: The engine routes actions to three target kinds: (a) a widget's `config` (widgets table), (b) a map layer's config via `useDashboardLayersStore` incl. the top-level `track_config`/`cb_config` fields, and (c) a dynamic-view's config (`dashboard_dynamic_views`); (a) and (b) are primary/verified, (c) is supported by the contract + router with lighter verification
+- [x] **ENGINE-V111-04**: Targeting is same-dashboard only; an action whose target no longer exists (deleted widget/layer/dynamic-view) or whose field is absent fails safely — no crash, a no-op with a surfaced signal, no partial/corrupt write
 
 ### Safety & Decoupling
 
 - [x] **SAFETY-V111-01**: A versioned allow-list defines exactly which config fields are patchable per target kind / widget type; an action patching any field outside it (or a prototype-polluting / meta key like `id`/`tableId`) is rejected by validation — no free-form `Object.assign`. The allow-list IS the contract a future AI/MCP layer is bound by (`ALLOW_LIST_VERSION` constant)
-- [ ] **SAFETY-V111-02**: The action engine never writes to the drill-down/filter stores or triggers materialize (no `filterVersion` bump, no `materializeFilter`) — the sole-materialize-trigger invariant is preserved, enforced by a static source-grep assertion (mirrors the `DataFilterRenderer` precedent)
+- [x] **SAFETY-V111-02**: The action engine never writes to the drill-down/filter stores or triggers materialize (no `filterVersion` bump, no `materializeFilter`) — the sole-materialize-trigger invariant is preserved, enforced by a static source-grep assertion (mirrors the `DataFilterRenderer` precedent)
 
 ### Radio Control Widget
 
-- [ ] **RADIO-V111-01**: A net-new "radio group" control widget type (registry definition + config panel + renderer) — the operator configures N options, each with a label and a bound action
-- [ ] **RADIO-V111-02**: The config panel lets the operator pick a same-dashboard target (widget / map layer / dynamic view) and an allowed field + value driven by the allow-list (no raw arbitrary JSON for unsafe fields); selecting an invalid/empty binding is prevented
-- [ ] **RADIO-V111-03**: Selecting a radio option applies its action — the target updates LIVE and the change persists across dashboard reload; the radio's own selected option persists (its `selectedIndex` is part of its config)
+- [x] **RADIO-V111-01**: A net-new "radio group" control widget type (registry definition + config panel + renderer) — the operator configures N options, each with a label and a bound action
+- [x] **RADIO-V111-02**: The config panel lets the operator pick a same-dashboard target (widget / map layer / dynamic view) and an allowed field + value driven by the allow-list (no raw arbitrary JSON for unsafe fields); selecting an invalid/empty binding is prevented
+- [x] **RADIO-V111-03**: Selecting a radio option applies its action — the target updates LIVE and the change persists across dashboard reload; the radio's own selected option persists (its `selectedIndex` is part of its config)
 
 ### AI/MCP Future Seam (design + document only)
 
@@ -68,14 +68,14 @@ Explicitly excluded for v1.11.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ENGINE-V111-01 | Phase 58 | Complete |
-| ENGINE-V111-02 | Phase 58 | Pending |
-| ENGINE-V111-03 | Phase 58 | Pending |
-| ENGINE-V111-04 | Phase 58 | Pending |
+| ENGINE-V111-02 | Phase 58 | Complete |
+| ENGINE-V111-03 | Phase 58 | Complete |
+| ENGINE-V111-04 | Phase 58 | Complete |
 | SAFETY-V111-01 | Phase 58 | Complete |
-| SAFETY-V111-02 | Phase 58 | Pending |
-| RADIO-V111-01 | Phase 59 | Pending |
-| RADIO-V111-02 | Phase 59 | Pending |
-| RADIO-V111-03 | Phase 60 | Pending |
+| SAFETY-V111-02 | Phase 58 | Complete |
+| RADIO-V111-01 | Phase 59 | Complete |
+| RADIO-V111-02 | Phase 59 | Complete |
+| RADIO-V111-03 | Phase 60 | Complete |
 | SEAM-V111-01 | Phase 60 | Pending |
 | VERIFY-V111-01 | Phase 61 | Pending |
 

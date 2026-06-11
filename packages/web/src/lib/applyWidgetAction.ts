@@ -12,6 +12,7 @@
  *
  * This is the MCP-future hook: the same envelope an AI/MCP layer produces is
  * consumed here — the allow-list in actionAllowList.ts is the binding contract.
+ * MCP/AI seam documentation: packages/web/docs/mcp-action-seam.md
  *
  * Phase 60.01 changes:
  *   - Accepts a `controlId: number` (the dispatching control's widget id).

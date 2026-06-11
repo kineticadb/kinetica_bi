@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: Completed 58-02 — runtime action engine (widgetActionStore + applyWidgetAction + overlay merges + canary + decoupling grep); 1828/1828 vitest + tsc clean; zero server diff
-last_updated: "2026-06-10T20:05:00Z"
+stopped_at: Completed 60-01-PLAN.md — widgetActionStore control-keyed refactor + applyWidgetAction controlId + spec migration; 1918/1918 vitest green + tsc clean
+last_updated: "2026-06-11T00:15:25.631Z"
 progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 2
-  completed_plans: 2
+  total_phases: 5
+  completed_phases: 3
+  total_plans: 8
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 58 — action-engine-contract-allow-list-canary
+**Current focus:** Phase 60 — radio-renderer-wiring-persistence-mcp-seam-doc
 
 ## Current Position
 
-Phase: 58 (action-engine-contract-allow-list-canary) — COMPLETE
-Plan: 2 of 2
+Phase: 60 (radio-renderer-wiring-persistence-mcp-seam-doc) — EXECUTING
+Plan: 1 of 3
 
 ## v1.11 Phase Map
 
@@ -247,6 +247,10 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 57 P03 | 8 | 2 tasks | 2 files |
 | Phase 58-action-engine-contract-allow-list-canary P01 | 7 | 2 tasks | 6 files |
 | Phase 58-action-engine-contract-allow-list-canary P02 | 14min | 3 tasks (+1 deviation fix) | 11 files |
+| Phase 58.1-action-engine-foundation-fix P01 | 10min | 3 tasks | 9 files |
+| Phase 59-radio-group-widget-registry-def-config-panel P01 | 5min | 2 tasks | 4 files |
+| Phase 59 P02 | 4 | 2 tasks | 4 files |
+| Phase 60 P01 | 8 | 3 tasks | 7 files |
 
 ### Quick Tasks Completed
 
@@ -259,6 +263,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- Phase 58.1 inserted after Phase 58 (2026-06-10, URGENT): Action-engine foundation fix — allow-list uses wrong field name (`render_mode` vs real nested `config.renderMode`) + the layer overlay flat-spread can't reach nested config; Phase 58 canary only tested top-level track_config/cb_config so the gap shipped. Discovered during Phase 59 planning. Phase 59 plans (59-01/59-02) are WRITTEN but ON HOLD (unverified/unexecuted) — to be re-planned against the corrected allow-list after 58.1.
 
 ### Key Phase 58 Plan 02 Decisions (locked 2026-06-10)
 
@@ -388,6 +394,15 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 57-03]: §1.3 re-scope: deep-linking by URL DEFERRED (out of v1.10 scope); no-access panel verified via revoke-then-open 404 path — LISTUX-V110-02 satisfied
 - [Phase 58-action-engine-contract-allow-list-canary]: zod@^3 in packages/web only — absent from packages/server; validateActionPatch uses Object.keys() enumeration (never spreads untrusted patch before validation) to prevent prototype pollution
 - [Phase 58-action-engine-contract-allow-list-canary]: Allow-list seed: map (show_popup/show_scale_bar/show_fullscreen), chart (metric/aggregation enum), records (page_size), layer (render_mode/visible/opacity/track_config TOP-LEVEL/cb_config TOP-LEVEL), dynamicView (enabled)
+- [Phase 58.1-action-engine-foundation-fix]: Per-field FieldDescriptor {schema, location} in allow-list — getFieldLocation as single source of truth for field routing (no hardcoded names in router)
+- [Phase 58.1-action-engine-foundation-fix]: Pre-write config deep-merge in applyWidgetAction (not in effectiveLayers) — guards against store depth-1 merge clobbering prior nested config keys on repeated patches
+- [Phase 58.1-action-engine-foundation-fix]: effectiveLayers DTO-shape split via { config: cfgPatch, ...topLevel } destructure — null-safe, handles overlays with only top-level or only config fields
+- [Phase 59-01]: validateRadioOption checks empty configPatch before delegating to validateActionPatch — the empty guard is radio-specific; allow-list handles all other validity
+- [Phase 59-01]: captureAllowListedSubset accepts pre-fetched sources (no Zustand reads) — pure function; config panel passes layer/widget/dynamicViewConfig in
+- [Phase 59-01]: captureAllowListedSubset derives each field location via getFieldLocation — no hardcoded field→location mapping; allow-list is the single source of truth
+- [Phase 59]: RadioGroupConfigPanel reads widgets from props (NOT useDashboardContext) — modal is outside DashboardContextProvider
+- [Phase 59]: Target change in config panel resets configPatch to {} — new target invalidates old patch (mirrors DataFilterConfigPanel reset-on-table-change)
+- [Phase 60]: widgetActionStore refactored to source-control-keyed contributions; derived overlay maps preserved as state fields for selector subscription compat; switch-replace semantics proven
 
 ### Phase 49-users-management-ui
 
@@ -740,6 +755,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-10T19:47:09.965Z
-Stopped at: Completed 58-01 — WidgetActionSchema + validateActionPatch + allow-list; both test gates green (1762/1762 vitest + tsc clean); zod web-only
+Last session: 2026-06-11T00:15:25.623Z
+Stopped at: Completed 60-01-PLAN.md — widgetActionStore control-keyed refactor + applyWidgetAction controlId + spec migration; 1918/1918 vitest green + tsc clean
 Resume file: None
