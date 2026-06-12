@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Phase 60.1 INSERTED (2026-06-12) before Phase 61 closes — Radio Config UX structured layer-target editor (RADIOUX-V111-01); NOT yet planned (run /gsd:plan-phase 60.1). Phase 61 PAUSED mid-walk: gates PASS, operator attested §0/§1/§2/§4, GAP-61-01 (f62da07) + GAP-61-02 (4afad81) fixed inline. 61 cannot close until: 60.1 shipped; operator re-walks §1.1/§1.2 (GAP-61-02) + walks P2/§3 (viewer-safe payoff); then finalize 61-UAT overall_result + run 61-03."
-last_updated: "2026-06-12T14:46:32.000Z"
+stopped_at: Completed 60.1-02-PLAN.md — RadioLayerConfigEditor + OptionRow wiring + panel spec (commits 48e98bf + 450d8dd + 7e43596)
+last_updated: "2026-06-12T17:55:52.398Z"
 progress:
-  total_phases: 5
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 9
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 13
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 61 — verification-live-uat
+**Current focus:** Phase 60.1 — radio-config-ux-structured-layer-target-editor-reuse-cbconfigform
 
 ## Current Position
 
-Phase: 60.1 (radio-config-ux-structured-layer-target-editor) — INSERTED, NOT PLANNED (next: /gsd:plan-phase 60.1)
-Phase 61 (verification-live-uat) — PAUSED mid-walk (resumes after 60.1 ships; see stopped_at)
+Phase: 60.1 (radio-config-ux-structured-layer-target-editor-reuse-cbconfigform) — EXECUTING
+Plan: 2 of 2
 
 ## v1.11 Phase Map
 
@@ -253,6 +253,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 59 P02 | 4 | 2 tasks | 4 files |
 | Phase 60 P01 | 8 | 3 tasks | 7 files |
 | Phase 61-verification-live-uat P01 | 3 | 2 tasks | 1 files |
+| Phase 60.1-02 P02 | 18 | 3 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -417,6 +418,11 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 59]: RadioGroupConfigPanel reads widgets from props (NOT useDashboardContext) — modal is outside DashboardContextProvider
 - [Phase 59]: Target change in config panel resets configPatch to {} — new target invalidates old patch (mirrors DataFilterConfigPanel reset-on-table-change)
 - [Phase 60]: widgetActionStore refactored to source-control-keyed contributions; derived overlay maps preserved as state fields for selector subscription compat; switch-replace semantics proven
+- [Phase 60.1-01]: cb_config placement move is a symmetric key-name pass-through (not a rename) — same key in flat patch and form blob; LAYER_FORM_PATCH_FIELDS loop handles both directions identically
+- [Phase 60.1-01]: track_config excluded from LAYER_FORM_PATCH_FIELDS — surfaced only via Advanced JSON (out of scope for structured editor)
+- [Phase 60.1-01]: layerFormConfigToPatch is the SC2 safety boundary — junk keys from CbConfigForm silently dropped; output always passes validateActionPatch("layer", undefined, patch)
+- [Phase 60.1-02]: MERGE onChange for structured layer editor: spread existing configPatch then overlay nextPatch so non-surfaced keys (track_config) survive writes
+- [Phase 60.1-02]: CbConfigForm mock uses async vi.mock factory + useEffect-based isValid signaling to avoid infinite render loops in controlled-component tests
 
 ### Phase 49-users-management-ui
 
@@ -769,6 +775,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-11T13:56:58.828Z
-Stopped at: Checkpoint: 61-02-PLAN.md Task 2 — 61-UAT.md authored (commit d404290), awaiting operator live walk-through attestation
+Last session: 2026-06-12T17:51:04.198Z
+Stopped at: Completed 60.1-02-PLAN.md — RadioLayerConfigEditor + OptionRow wiring + panel spec (commits 48e98bf + 450d8dd + 7e43596)
 Resume file: None
