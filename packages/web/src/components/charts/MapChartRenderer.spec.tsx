@@ -19,6 +19,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { WidgetDto, DashboardLayerDto, TableDto } from "../../api/client";
+// Phase 61 GAP-61-01: real widgetActionStore (NOT mocked) — drive a runtime layer
+// overlay to prove the in-map legend follows effectiveLayers, not the persisted store.
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 
 /* ------------------------------------------------------------------ */
 /*  Shared mutable state (module-level, mutated in beforeEach)         */
@@ -4805,11 +4808,15 @@ describe("LayersLegendPanel mount (Phase 41)", () => {
       path.resolve(__dirname, "MapChartRenderer.tsx"),
       "utf-8",
     );
-    // PITFALL S-02 lock: legendKey must be the joined primitive string
-    expect(src).toMatch(/legendKey\s*=\s*useDashboardLayersStore\(/);
+    // PITFALL S-02 lock (updated Phase 61 GAP-61-01): legendKey is now derived from
+    // effectiveLayers via useMemo (overlay-aware — see the GAP-61-01 suite) rather than a
+    // store selector. The PITFALL S-02 intent still holds: legendKey MUST resolve to a
+    // joined primitive string, never a bare array — a fresh array ref every render would
+    // thrash the resolvedLegendLayers memo (or loop a selector).
+    expect(src).toMatch(/const legendKey = useMemo\(/);
     expect(src).toMatch(/\.join\("\|"\)/);
-    // Forbid bare array selector: useDashboardLayersStore(s => s.layers) for legendKey
-    expect(src).not.toMatch(/legendKey\s*=\s*useDashboardLayersStore\(\(s\)\s*=>\s*s\.layers\)/);
+    // Forbid the pre-fix store-selector form (legendKey must no longer read the persisted store).
+    expect(src).not.toContain("const legendKey = useDashboardLayersStore");
   });
 });
 
@@ -5118,5 +5125,85 @@ describe("quick-260608-rbq: WMS loading indicator", () => {
     const newUnCalls = source.un.mock.calls.slice(unBefore);
     const events = newUnCalls.map((call: any[]) => call[0]);
     expect(events).toContain("imageloadstart");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 61 GAP-61-01 — in-map legend reflects radio-group overlay    */
+/* ------------------------------------------------------------------ */
+
+describe("Phase 61 GAP-61-01 — in-map legend follows the runtime overlay (effectiveLayers wiring)", () => {
+  // Live UAT (61-UAT.md §1/§2) surfaced this: a radio-group widget applies a
+  // transient layer overlay (renderMode/cb_config patch) via widgetActionStore.
+  // The MAP TILES switched live (effectiveLayers is overlay-merged), but the in-map
+  // Layers legend stayed frozen on the SAVED config — because legendKey and
+  // resolvedLegendLayers read the PERSISTED dashboardLayersStore instead of
+  // effectiveLayers. Fix: both derive from effectiveLayers so the legend tracks
+  // the active radio selection (matching the tiles). These tests fail on the
+  // pre-fix wiring and pass after.
+
+  // A class-break cb_config that passes isCbConfigConfigured (attr + >=1 break).
+  const CB_JSON =
+    '{"attr":"passenger_count","valsType":"numeric","breaks":[{"value":0,"min":0,"max":1,"color":"FF3B82F6","label":"","pointSize":5,"pointShape":"circle"}]}';
+
+  beforeEach(() => {
+    _layersState.layers = [];
+    useWidgetActionStore.getState().reset();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Real (un-mocked) store — must not leak the overlay into sibling tests.
+    useWidgetActionStore.getState().reset();
+  });
+
+  it("renders the class-break fold control when a radio overlay switches a raster layer to classbreak", () => {
+    // Persisted baseline: a plain RASTER layer with NO cb_config → no class-break legend.
+    _layersState.layers = [
+      makeLayer({ id: 1, table_id: 10, cb_config: null, config: {
+        spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+        renderMode: "raster", visible: true, POINTOPACITY: 100,
+      } }),
+    ];
+
+    // Radio control (id 777) contributes a transient overlay to layer 1:
+    // renderMode → classbreak (nested config) + a configured cb_config (top-level).
+    useWidgetActionStore.getState().setControlContribution(777, {
+      layer: { 1: { config: { renderMode: "classbreak", visible: true }, cb_config: CB_JSON } },
+    });
+
+    render(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);
+
+    // The legend must reflect the OVERLAID classbreak config (fold control present),
+    // not the persisted raster baseline (which would render no class-break breaks).
+    expect(document.querySelector(".layers-legend-panel-fold")).not.toBeNull();
+  });
+
+  it("discriminator: the same raster layer with NO overlay shows no class-break fold control", () => {
+    _layersState.layers = [
+      makeLayer({ id: 1, table_id: 10, cb_config: null, config: {
+        spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+        renderMode: "raster", visible: true, POINTOPACITY: 100,
+      } }),
+    ];
+
+    render(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);
+
+    expect(document.querySelector(".layers-legend-panel")).not.toBeNull();
+    expect(document.querySelector(".layers-legend-panel-fold")).toBeNull();
+  });
+
+  it("MapChartRenderer.tsx wires the legend (legendKey + resolveLegendLayers) to effectiveLayers, not the persisted store", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const src = fs.readFileSync(path.resolve(__dirname, "MapChartRenderer.tsx"), "utf-8");
+
+    // legendKey must be derived from effectiveLayers (overlay-merged), via useMemo.
+    expect(src).toMatch(/const legendKey = useMemo\(\s*\(\)\s*=>\s*\n?\s*effectiveLayers/);
+    // resolveLegendLayers must be called with effectiveLayers.
+    expect(src).toMatch(/resolveLegendLayers\(\s*\n?\s*effectiveLayers/);
+    // The pre-fix patterns (reading the persisted store for the legend) must be gone.
+    expect(src).not.toContain("const legendKey = useDashboardLayersStore");
+    expect(src).not.toContain("resolveLegendLayers(\n      useDashboardLayersStore.getState().layers");
   });
 });

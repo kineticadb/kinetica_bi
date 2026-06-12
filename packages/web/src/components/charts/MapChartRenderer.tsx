@@ -614,13 +614,22 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // Visibility is appended so toggling config.visible from the legend's eye button
   // recomputes resolvedLegendLayers (and flips the eye icon). Without it the key is
   // stable across a visibility change and the memo never re-runs.
-  const legendKey = useDashboardLayersStore((s) =>
-    s.layers
-      .map(
-        (l) =>
-          `${l.id}:${(l.config as { renderMode?: string })?.renderMode ?? "raster"}:${l.cb_config ?? "null"}:${(l.config as { visible?: boolean })?.visible !== false}`,
-      )
-      .join("|"),
+  // v1.11 Phase 61 (GAP-61-01 fix): derive the legend key from effectiveLayers
+  // (overlay-merged) rather than the raw persisted store. A radio-group runtime
+  // overlay patches renderMode/cb_config via widgetActionStore; effectiveLayers
+  // reflects that, so the key now moves on an overlay change and re-runs
+  // resolvedLegendLayers below. Previously this read s.layers directly, so the
+  // in-map legend stayed frozen on the SAVED config while the WMS tiles switched
+  // live — a visible inconsistency on every radio switch.
+  const legendKey = useMemo(
+    () =>
+      effectiveLayers
+        .map(
+          (l) =>
+            `${l.id}:${(l.config as { renderMode?: string })?.renderMode ?? "raster"}:${l.cb_config ?? "null"}:${(l.config as { visible?: boolean })?.visible !== false}`,
+        )
+        .join("|"),
+    [effectiveLayers],
   );
 
   // v1.7 Phase 41 (PANEL-V17-03 + Phase 12 includedLayerIds semantic):
@@ -629,8 +638,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // it's a top-level widget config field read from the raw blob.
   const includedLayerIdsForLegend = widgetConfig.includedLayerIds as number[] | undefined;
   const resolvedLegendLayers = useMemo<ResolvedLegendLayer[]>(() => {
+    // GAP-61-01 fix: resolve from effectiveLayers (overlay-merged) so the legend's
+    // renderMode/cb_config reflect the active radio-group overlay, matching the WMS
+    // tiles. legendKey (now effectiveLayers-derived) is the re-run trigger.
     const base = resolveLegendLayers(
-      useDashboardLayersStore.getState().layers,
+      effectiveLayers,
       includedLayerIdsForLegend,
     );
     // Phase 44 follow-up: enrich each entry with dv-materialization status so the
