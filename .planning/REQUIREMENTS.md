@@ -27,7 +27,7 @@
 
 ### AI/MCP Future Seam (design + document only)
 
-- [ ] **SEAM-V111-01**: The dispatch entry point (e.g. `applyWidgetAction`) and the action envelope are documented as the hook a future AI chat widget / MCP server reuses, with the concrete MCP tool shape noted (the envelope as zod `inputSchema`, calling the existing PATCH routes) — NO AI widget and NO MCP server are built this milestone
+- [x] **SEAM-V111-01**: The dispatch entry point (e.g. `applyWidgetAction`) and the action envelope are documented as the hook a future AI chat widget / MCP server reuses, with the concrete MCP tool shape noted (the envelope as zod `inputSchema`, calling the existing PATCH routes) — NO AI widget and NO MCP server are built this milestone
 
 ### Verification
 
@@ -76,7 +76,7 @@ Explicitly excluded for v1.11.
 | RADIO-V111-01 | Phase 59 | Complete |
 | RADIO-V111-02 | Phase 59 | Complete |
 | RADIO-V111-03 | Phase 60 | Complete |
-| SEAM-V111-01 | Phase 60 | Pending |
+| SEAM-V111-01 | Phase 60 | Complete |
 | VERIFY-V111-01 | Phase 61 | Pending |
 
 **Coverage:**
