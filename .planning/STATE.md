@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Checkpoint: 61-02-PLAN.md Task 2 — 61-UAT.md authored (commit d404290), awaiting operator live walk-through attestation"
-last_updated: "2026-06-11T13:56:58.836Z"
+stopped_at: "Checkpoint: 61 live walk PARTIAL — operator attested §0/§1/§2/§4 PASS; GAP-61-01 (in-map legend frozen on radio overlay) fixed inline + committed (f62da07). BLOCKED on operator: P2 (non-bypass analyst login) + §3 (viewer-safe payoff 3.1-3.3) not yet walked. Finalize 61-UAT overall_result + run 61-03 ONLY after §3 attested."
+last_updated: "2026-06-12T14:46:32.000Z"
 progress:
   total_phases: 5
   completed_phases: 4
@@ -266,6 +266,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ### Roadmap Evolution
 
 - Phase 58.1 inserted after Phase 58 (2026-06-10, URGENT): Action-engine foundation fix — allow-list uses wrong field name (`render_mode` vs real nested `config.renderMode`) + the layer overlay flat-spread can't reach nested config; Phase 58 canary only tested top-level track_config/cb_config so the gap shipped. Discovered during Phase 59 planning. Phase 59 plans (59-01/59-02) are WRITTEN but ON HOLD (unverified/unexecuted) — to be re-planned against the corrected allow-list after 58.1.
+
+### Phase 61 Live Walk — PARTIAL + GAP-61-01 (recorded 2026-06-12)
+
+- **Operator live walk-through partial:** §0 (P1/P3/P4), §1 (1.1-1.3), §2 (2.1-2.3), §4 (4.1) all attested PASS (2026-06-11). **NOT yet walked:** P2 (prepare a non-bypass analyst login) + entire §3 (3.1-3.3 — VIEWER-SAFE / TRANSIENT payoff, the headline v1.11 user story; requires the analyst login + a separate browser session). 61-UAT `overall_result` stays PENDING; 61-03 cannot compile `passed` until §3 is attested (gate requires §3 cited for SC1 + all sections PASS).
+- **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
+- **NEXT:** operator walks §3 (P2 analyst login first) → report 3.1/3.2/3.3 → finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
 
 ### Phase 61 Plan 01 Gate Results (recorded 2026-06-11)
 
