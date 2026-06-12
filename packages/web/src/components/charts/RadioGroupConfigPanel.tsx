@@ -12,11 +12,20 @@
  *
  * Authoring flow per option:
  *   label + 3-kind target picker (widget / layer / dynamicView) + "Capture from target"
- *   button (calls captureAllowListedSubset) + JSON textarea for configPatch editing
+ *   button (calls captureAllowListedSubset) + for layer targets: RadioLayerConfigEditor
+ *   (render-mode select + CbConfigForm for classbreak) + Advanced JSON textarea
+ *   (layer: collapsible <details>; widget/dv: visible as-is)
  *
  * Save-time validation: validateRadioOption / isRadioGroupConfigValid delegate to
  * Phase 58 validateActionPatch — out-of-list / wrong-type / meta-proto / empty binding
  * is rejected; isValid(false) disables Apply. isValid(true) when all options valid.
+ *
+ * Phase 60.1 Plan 02:
+ *   - RadioLayerConfigEditor renders for layer targets (SC1)
+ *   - tables prop destructured for columns resolution (SC3)
+ *   - Per-option CbConfigForm validity folded into isValid plumbing (CONTEXT line 50, LOCKED)
+ *   - JSON textarea wrapped in collapsible Advanced <details> for layer targets (SC4)
+ *   - Widget/dv targets unchanged (SC4)
  *
  * NO runtime apply/select/default-on-open — Phase 60. This is authoring only.
  *
@@ -38,6 +47,8 @@ import { captureAllowListedSubset } from "../../lib/radioGroupCapture";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { listDynamicViews } from "../../api/client";
 import type { DynamicViewRow } from "../../api/client";
+import type { Column } from "../../lib/columnTypes";
+import RadioLayerConfigEditor from "./RadioLayerConfigEditor";
 
 // ---------------------------------------------------------------------------
 // Helper: cast config prop to RadioGroupConfig with safe defaults
@@ -74,9 +85,12 @@ type OptionRowProps = {
   widgets: ConfigPanelProps["widgets"];
   layers: ReturnType<typeof useDashboardLayersStore.getState>["layers"];
   dynamicViews: DynamicViewRow[];
+  tables: ConfigPanelProps["tables"];
   widgetTypeFor: (id: number) => string | undefined;
   onChange: (updated: RadioOption) => void;
   onRemove: () => void;
+  /** Reports per-option CbConfigForm validity up to the panel so it can fold into isValid */
+  onCbValidChange: (idx: number, valid: boolean) => void;
 };
 
 function OptionRow({
@@ -85,11 +99,15 @@ function OptionRow({
   widgets,
   layers,
   dynamicViews,
+  tables,
   widgetTypeFor,
   onChange,
   onRemove,
+  onCbValidChange,
 }: OptionRowProps): JSX.Element {
   const [jsonError, setJsonError] = useState<string | null>(null);
+  // Track per-option CbConfigForm validity in local state
+  const [cbValid, setCbValid] = useState(true);
 
   const allWidgets = widgets ?? [];
   const { kind, id: targetId } = option.action.target;
@@ -153,12 +171,85 @@ function OptionRow({
     }
   };
 
+  // Handle CbConfigForm validity changes — propagate up to the panel
+  const handleCbValid = (valid: boolean) => {
+    setCbValid(valid);
+    onCbValidChange(idx, valid);
+  };
+
+  // Resolve columns for CbConfigForm (when kind === "layer")
+  let columns: Column[] = [];
+  let schema: string | undefined;
+  let tableName: string | undefined;
+  let tableRef: string | undefined;
+  let autoSuggestDisabledReason: string | undefined;
+
+  if (kind === "layer") {
+    const layer = layers.find((l) => l.id === targetId);
+    if (layer) {
+      if (layer.dynamic_view_id == null) {
+        // Table-bound: resolve columns from tables prop (LayersModal pattern)
+        const table = tables?.find((t) => t.id === layer.table_id);
+        columns = table
+          ? Object.entries(table.columns).map(([name, type]) => ({ name, type }))
+          : [];
+        schema = table?.schema;
+        tableName = table?.name;
+        tableRef = table ? `${table.schema}.${table.name}` : undefined;
+        autoSuggestDisabledReason = undefined;
+      } else {
+        // DV-bound: resolve columns from dv.columns_json
+        const dv = dynamicViews.find((d) => d.id === layer.dynamic_view_id);
+        if (dv?.columns_json != null) {
+          try {
+            // columns_json may be a parsed array or a JSON string
+            const parsed: unknown = typeof dv.columns_json === "string"
+              ? JSON.parse(dv.columns_json)
+              : dv.columns_json;
+            if (Array.isArray(parsed)) {
+              columns = (parsed as unknown[])
+                .filter(
+                  (c): c is Column =>
+                    typeof (c as Column)?.name === "string" &&
+                    typeof (c as Column)?.type === "string",
+                );
+            }
+          } catch {
+            columns = [];
+          }
+          autoSuggestDisabledReason = undefined;
+        } else {
+          // Not materialized or columns_json missing
+          columns = [];
+          autoSuggestDisabledReason =
+            "Materialize this dynamic view to enable auto-suggest";
+        }
+        schema = "";
+        tableName = dv?.name;
+        tableRef = undefined;
+      }
+    }
+  }
+
   // Per-option validation reasons (for display only — isValid handled in parent)
   const widgetType =
     kind === "widget" ? widgetTypeFor(targetId) : undefined;
   const validation = validateRadioOption(option, widgetType);
   const reasons = validation.valid ? [] : validation.reasons;
   const labelMissing = option.label.trim() === "";
+
+  // Zero-break invalidity (CONTEXT line 50, LOCKED): add a reason when kind==="layer"
+  // AND the current renderMode is "classbreak" AND cbValid is false.
+  const currentRenderMode =
+    kind === "layer"
+      ? ((option.action.configPatch.renderMode as string) ?? "raster")
+      : undefined;
+  const cbInvalidForClassbreak =
+    kind === "layer" && currentRenderMode === "classbreak" && !cbValid;
+
+  const allReasons = cbInvalidForClassbreak
+    ? [...reasons, "Class-break needs at least one break"]
+    : reasons;
 
   // Orphan-target detection: the configured target kind+id must resolve against available lists.
   // Only flag as orphaned when a specific target is set (id !== 0) and it is absent from all lists.
@@ -321,41 +412,107 @@ function OptionRow({
         )}
       </div>
 
-      {/* JSON editor for configPatch */}
-      <div className="ds-field" style={{ marginBottom: 4 }}>
-        <span className="ds-field-label">Config Patch (JSON)</span>
-        <textarea
-          aria-label={`Option ${idx + 1} config patch JSON`}
-          className="ds-select"
-          rows={4}
-          style={{
-            width: "100%",
-            fontFamily: "monospace",
-            fontSize: "0.8rem",
-            resize: "vertical",
-          }}
-          value={JSON.stringify(option.action.configPatch, null, 2)}
-          onChange={(e) => handleJsonChange(e.target.value)}
+      {/* Structured layer editor — only for layer targets */}
+      {kind === "layer" && (
+        <RadioLayerConfigEditor
+          configPatch={option.action.configPatch}
+          columns={columns}
+          schema={schema}
+          tableName={tableName}
+          tableRef={tableRef}
+          autoSuggestDisabledReason={autoSuggestDisabledReason}
+          idx={idx}
+          onCbValid={handleCbValid}
+          onChange={(nextPatch) =>
+            onChange({
+              ...option,
+              action: {
+                ...option.action,
+                // MERGE: overlay only the surfaced allow-listed keys; non-surfaced keys survive
+                configPatch: { ...option.action.configPatch, ...nextPatch },
+              },
+            })
+          }
         />
-        {jsonError && (
-          <div
-            className="config-hint"
-            style={{ color: "var(--danger, #c44)" }}
-            data-testid={`json-error-${idx}`}
-          >
-            {jsonError}
-          </div>
-        )}
-      </div>
+      )}
 
-      {/* Validation reasons */}
-      {reasons.length > 0 && (
+      {/* JSON editor for configPatch */}
+      {kind === "layer" ? (
+        /* Layer target: collapsible Advanced disclosure (escape hatch + back-compat) */
+        <details className="radio-advanced-json" style={{ marginBottom: 4 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: "0.75rem",
+              color: "var(--text-muted, #888)",
+              userSelect: "none",
+            }}
+          >
+            Advanced (raw JSON)
+          </summary>
+          <div className="ds-field" style={{ marginTop: 6 }}>
+            <span className="ds-field-label">Config Patch (JSON)</span>
+            <textarea
+              aria-label={`Option ${idx + 1} config patch JSON`}
+              className="ds-select"
+              rows={4}
+              style={{
+                width: "100%",
+                fontFamily: "monospace",
+                fontSize: "0.8rem",
+                resize: "vertical",
+              }}
+              value={JSON.stringify(option.action.configPatch, null, 2)}
+              onChange={(e) => handleJsonChange(e.target.value)}
+            />
+            {jsonError && (
+              <div
+                className="config-hint"
+                style={{ color: "var(--danger, #c44)" }}
+                data-testid={`json-error-${idx}`}
+              >
+                {jsonError}
+              </div>
+            )}
+          </div>
+        </details>
+      ) : (
+        /* Widget / dynamic-view target: JSON textarea EXACTLY as before (no disclosure) */
+        <div className="ds-field" style={{ marginBottom: 4 }}>
+          <span className="ds-field-label">Config Patch (JSON)</span>
+          <textarea
+            aria-label={`Option ${idx + 1} config patch JSON`}
+            className="ds-select"
+            rows={4}
+            style={{
+              width: "100%",
+              fontFamily: "monospace",
+              fontSize: "0.8rem",
+              resize: "vertical",
+            }}
+            value={JSON.stringify(option.action.configPatch, null, 2)}
+            onChange={(e) => handleJsonChange(e.target.value)}
+          />
+          {jsonError && (
+            <div
+              className="config-hint"
+              style={{ color: "var(--danger, #c44)" }}
+              data-testid={`json-error-${idx}`}
+            >
+              {jsonError}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Validation reasons (incl. cb-validity reason for zero-break classbreak) */}
+      {allReasons.length > 0 && (
         <div
           className="config-hint"
           style={{ color: "var(--danger, #c44)" }}
           data-testid={`validation-errors-${idx}`}
         >
-          {reasons.map((r, i) => (
+          {allReasons.map((r, i) => (
             <div key={i}>{r}</div>
           ))}
         </div>
@@ -373,11 +530,15 @@ export default function RadioGroupConfigPanel({
   onChange,
   widgets,
   isValid,
+  tables,
 }: ConfigPanelProps): JSX.Element {
   const cfg = parseConfig(config);
   const allWidgets = widgets ?? [];
   const layers = useDashboardLayersStore((s) => s.layers);
   const [dynamicViews, setDynamicViews] = useState<DynamicViewRow[]>([]);
+
+  // Per-option CbConfigForm validity map (idx → valid)
+  const [cbValidMap, setCbValidMap] = useState<Record<number, boolean>>({});
 
   // Derive dashboardId from the first widget (all same-dashboard)
   const dashboardId = allWidgets[0]?.dashboard_id;
@@ -402,12 +563,30 @@ export default function RadioGroupConfigPanel({
     [allWidgets],
   );
 
+  // Handle per-option CbConfigForm validity changes
+  const handleCbValidChange = (idx: number, valid: boolean) => {
+    setCbValidMap((prev) => ({ ...prev, [idx]: valid }));
+  };
+
   // Compute validity and signal isValid
-  const allValid = useMemo(
-    () => isRadioGroupConfigValid(cfg, widgetTypeFor),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(cfg), widgetTypeFor],
-  );
+  // Fold per-option cb validity into the overall validity:
+  // An option is cb-invalid when kind==="layer" AND renderMode==="classbreak" AND cbValid===false.
+  const allValid = useMemo(() => {
+    const baseValid = isRadioGroupConfigValid(cfg, widgetTypeFor);
+    if (!baseValid) return false;
+    // Additional check: any option with zero-break classbreak makes the whole config invalid
+    for (let i = 0; i < cfg.options.length; i++) {
+      const opt = cfg.options[i];
+      const optKind = opt.action.target.kind;
+      const optRenderMode = opt.action.configPatch.renderMode as string | undefined;
+      if (optKind === "layer" && optRenderMode === "classbreak") {
+        const cbOk = cbValidMap[i] !== false; // default true if not yet reported
+        if (!cbOk) return false;
+      }
+    }
+    return true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(cfg), widgetTypeFor, JSON.stringify(cbValidMap)]);
 
   useEffect(() => {
     isValid?.(allValid);
@@ -525,9 +704,11 @@ export default function RadioGroupConfigPanel({
           widgets={widgets}
           layers={layers}
           dynamicViews={dynamicViews}
+          tables={tables}
           widgetTypeFor={widgetTypeFor}
           onChange={(updated) => handleOptionChange(idx, updated)}
           onRemove={() => handleRemoveOption(idx)}
+          onCbValidChange={handleCbValidChange}
         />
       ))}
 
