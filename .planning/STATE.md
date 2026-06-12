@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Checkpoint: 61 live walk PARTIAL — operator attested §0/§1/§2/§4 PASS; GAP-61-01 (legend frozen on radio overlay, f62da07) + GAP-61-02 (eye toggle masked by radio overlay's pinned visible, 4afad81) both fixed inline + committed. BLOCKED on operator: (a) P2 (non-bypass analyst login) + §3 (viewer-safe payoff 3.1-3.3); (b) re-walk §1.1/§1.2 to confirm eye toggle works after a radio switch (GAP-61-02). Finalize 61-UAT overall_result + run 61-03 ONLY after those are attested."
+stopped_at: "Phase 60.1 INSERTED (2026-06-12) before Phase 61 closes — Radio Config UX structured layer-target editor (RADIOUX-V111-01); NOT yet planned (run /gsd:plan-phase 60.1). Phase 61 PAUSED mid-walk: gates PASS, operator attested §0/§1/§2/§4, GAP-61-01 (f62da07) + GAP-61-02 (4afad81) fixed inline. 61 cannot close until: 60.1 shipped; operator re-walks §1.1/§1.2 (GAP-61-02) + walks P2/§3 (viewer-safe payoff); then finalize 61-UAT overall_result + run 61-03."
 last_updated: "2026-06-12T14:46:32.000Z"
 progress:
   total_phases: 5
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 ## Current Position
 
-Phase: 61 (verification-live-uat) — EXECUTING
-Plan: 2 of 3
+Phase: 60.1 (radio-config-ux-structured-layer-target-editor) — INSERTED, NOT PLANNED (next: /gsd:plan-phase 60.1)
+Phase 61 (verification-live-uat) — PAUSED mid-walk (resumes after 60.1 ships; see stopped_at)
 
 ## v1.11 Phase Map
 
@@ -33,6 +33,7 @@ Plan: 2 of 3
 | 58 | Action Engine + Contract + Allow-List + Canary | ENGINE-V111-01..04, SAFETY-V111-01..02 |
 | 59 | Radio-Group Widget — Registry Def + Config Panel | RADIO-V111-01, RADIO-V111-02 |
 | 60 | Radio Renderer + Wiring + Persistence + MCP Seam Doc | RADIO-V111-03, SEAM-V111-01 |
+| 60.1 | Radio Config UX — Structured Layer-Target Editor (reuse CbConfigForm) (INSERTED) | RADIOUX-V111-01 |
 | 61 | Verification + Live UAT | VERIFY-V111-01 |
 
 Phases 58-60 are FRONTEND-HEAVY — likely zero server changes (new dep `zod@^3.23.8` in `packages/web` only; existing PATCH routes are the entire server surface). Flag any server diff. Frontend vitest must stay 100% (run from `packages/web`); web + server tsc clean as SEPARATE gates; server vitest is a SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky list — NEVER a fixed pass-count). Phase 61 verifies both stacks + a blocking live operator walk-through (mirrors v1.9 Phase 54 / v1.10 Phase 57).
@@ -265,6 +266,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ### Roadmap Evolution
 
+- Phase 60.1 inserted after Phase 60 (2026-06-12, INSERTED): Radio Config UX — Structured Layer-Target Editor (reuse CbConfigForm). Operator feedback during the Phase 61 walk: the per-option raw "Config Patch (JSON)" textarea is unusable for non-JSON authors, and class-break (`cb_config` nested JSON string) is effectively unauthorable. New req RADIOUX-V111-01. When a radio option targets a map layer, render a render-mode picker + reusable `CbConfigForm` (the LayersModal class-break builder) bridged to the flat allow-listed configPatch via an adapter (mirrors the cb_config top-level↔config.cb_config split in effectiveLayers/deriveOverlays); raw JSON kept as collapsible "Advanced" fallback; widget/dv targets unchanged. Frontend-only. Sequencing: 60.1 ships BEFORE Phase 61 closes — 61's live walk authors a class-break option via this editor. NOT yet planned (run /gsd:plan-phase 60.1).
 - Phase 58.1 inserted after Phase 58 (2026-06-10, URGENT): Action-engine foundation fix — allow-list uses wrong field name (`render_mode` vs real nested `config.renderMode`) + the layer overlay flat-spread can't reach nested config; Phase 58 canary only tested top-level track_config/cb_config so the gap shipped. Discovered during Phase 59 planning. Phase 59 plans (59-01/59-02) are WRITTEN but ON HOLD (unverified/unexecuted) — to be re-planned against the corrected allow-list after 58.1.
 
 ### Phase 61 Live Walk — PARTIAL + GAP-61-01 (recorded 2026-06-12)
