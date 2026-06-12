@@ -113,6 +113,24 @@ type WidgetActionStoreState = {
   clearControl: (controlId: number) => void;
 
   /**
+   * Phase 61 GAP-61-02 — release a single layer.config field from EVERY control's
+   * contribution, then recompute the derived overlays.
+   *
+   * Why: a radio option may pin a layer.config field (e.g. `visible` / `opacity`)
+   * that ALSO has a dedicated live control (the legend eye toggle writes
+   * config.visible to the persisted dashboardLayersStore). Once an overlay pins
+   * that field, effectiveLayers merges the overlay ON TOP of the persisted store,
+   * masking the user's live toggle. When the user explicitly toggles such a field,
+   * the live action must WIN — so we strip that field from the overlay ("release"
+   * the radio's hold), letting the persisted store value take over. Re-selecting a
+   * radio option re-applies its full patch (re-pinning the field) — most-recent
+   * explicit action wins.
+   *
+   * No-op if no contribution sets that layer/field.
+   */
+  releaseLayerConfigField: (layerId: number, field: string) => void;
+
+  /**
    * Reset all contributions AND derived maps to {}.
    * MUST be called as the 7th store reset in the DashboardOpen cleanup effect.
    */
@@ -223,6 +241,39 @@ export const useWidgetActionStore = create<WidgetActionStoreState>((set) => ({
       if (!(controlId in state.contributions)) return state;
       const nextContributions = { ...state.contributions };
       delete nextContributions[controlId];
+      return {
+        contributions: nextContributions,
+        ...deriveOverlays(nextContributions),
+      };
+    }),
+
+  releaseLayerConfigField: (layerId, field) =>
+    set((state) => {
+      let changed = false;
+      const nextContributions: Record<number, ControlContribution> = {};
+      for (const controlIdStr of Object.keys(state.contributions)) {
+        const controlId = Number(controlIdStr);
+        const contrib = state.contributions[controlId];
+        const layerPatch = contrib.layer[layerId] as
+          | { config?: Record<string, unknown>; [key: string]: unknown }
+          | undefined;
+        const cfg = layerPatch?.config;
+        if (cfg && field in cfg) {
+          changed = true;
+          const nextCfg = { ...cfg };
+          delete nextCfg[field];
+          const { config: _drop, ...topLevel } = layerPatch;
+          const nextLayerPatch: Record<string, unknown> = { ...topLevel };
+          if (Object.keys(nextCfg).length > 0) nextLayerPatch.config = nextCfg;
+          nextContributions[controlId] = {
+            ...contrib,
+            layer: { ...contrib.layer, [layerId]: nextLayerPatch },
+          };
+        } else {
+          nextContributions[controlId] = contrib;
+        }
+      }
+      if (!changed) return state;
       return {
         contributions: nextContributions,
         ...deriveOverlays(nextContributions),

@@ -286,6 +286,27 @@ gaps:
       184/184, full frontend suite 1938/1938, web tsc clean. The affected concern is covered by
       the regression specs in lieu of a re-walk (the tiles-switch-live behavior itself, §1.1/§2.1,
       already attested PASS — the gap was the legend lagging that switch, now corrected).
+  - id: GAP-61-02
+    severity: major
+    in_scope: v1.11
+    sections: [1.1, 1.2]
+    title: >-
+      Layer visibility toggle (legend eye button) stopped working after toggling a radio
+      group that changed the layer. A radio option captures ALL allow-listed layer fields —
+      including config.visible — so the active overlay pinned visible:true. effectiveLayers
+      merges the overlay ON TOP of the persisted dashboardLayersStore, so the eye toggle's
+      write (to the persisted store) was masked and the layer never hid/showed.
+    resolution: >-
+      RESOLVED — FIXED INLINE. Product decision (operator, 2026-06-12): "radio can hide, but a
+      live toggle releases it." New widgetActionStore.releaseLayerConfigField(layerId, field)
+      strips a field from every control's contribution + re-derives; useLayerVisibilityToggle
+      calls it for "visible" after the optimistic store write, so the explicit eye toggle wins
+      (persisted store owns visible until a radio option re-pins it — most-recent action wins).
+      Regression-locked by widgetActionStore.spec.ts (4 releaseLayerConfigField cases) +
+      new useLayerVisibilityToggle.spec.ts (hook releases overlay hold, renderMode survives).
+      Full frontend suite 1944/1944, web tsc clean. Discovered post-walk (not during the §1
+      attestation); §1.1/§1.2 should be re-walked to confirm the eye toggle now works after a
+      radio switch before 61-03 compiles.
 ```
 
 ---

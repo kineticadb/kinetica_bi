@@ -304,3 +304,63 @@ describe("missing kinds normalize to {}", () => {
     expect(Object.keys(contrib.layer)).toHaveLength(1);
   });
 });
+
+describe("Phase 61 GAP-61-02 — releaseLayerConfigField (live toggle releases overlay hold)", () => {
+  it("strips the released field from layerOverrides but keeps other config fields", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "classbreak", visible: true } } },
+    });
+    // Pre: overlay pins both renderMode and visible
+    expect(
+      (useWidgetActionStore.getState().layerOverrides[100]?.config as Record<string, unknown>),
+    ).toEqual({ renderMode: "classbreak", visible: true });
+
+    useWidgetActionStore.getState().releaseLayerConfigField(100, "visible");
+
+    // Post: visible released (so the persisted store now owns it); renderMode survives
+    const cfg = useWidgetActionStore.getState().layerOverrides[100]?.config as
+      | Record<string, unknown>
+      | undefined;
+    expect(cfg).toEqual({ renderMode: "classbreak" });
+    expect(cfg && "visible" in cfg).toBe(false);
+  });
+
+  it("releases the field across EVERY control that pinned it", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { visible: true } } },
+    });
+    useWidgetActionStore.getState().setControlContribution(2, {
+      layer: { 100: { config: { visible: true, opacity: 0.5 } } },
+    });
+    useWidgetActionStore.getState().releaseLayerConfigField(100, "visible");
+
+    const cfg = useWidgetActionStore.getState().layerOverrides[100]?.config as
+      | Record<string, unknown>
+      | undefined;
+    // visible gone from the merged overlay; opacity (from C2) preserved
+    expect(cfg && "visible" in cfg).toBe(false);
+    expect(cfg?.opacity).toBe(0.5);
+  });
+
+  it("drops the config sub-object entirely when the released field was its only key", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { visible: false }, cb_config: '{"attr":"x"}' } },
+    });
+    useWidgetActionStore.getState().releaseLayerConfigField(100, "visible");
+
+    const ov = useWidgetActionStore.getState().layerOverrides[100];
+    // config gone (was {visible} only); top-level cb_config still pinned
+    expect(ov?.config).toBeUndefined();
+    expect(ov?.cb_config).toBe('{"attr":"x"}');
+  });
+
+  it("is a no-op when no contribution pins that layer/field", () => {
+    useWidgetActionStore.getState().setControlContribution(1, {
+      layer: { 100: { config: { renderMode: "raster" } } },
+    });
+    const before = useWidgetActionStore.getState().contributions;
+    useWidgetActionStore.getState().releaseLayerConfigField(100, "visible");
+    // Same contributions object reference — set((s) => s) short-circuit
+    expect(useWidgetActionStore.getState().contributions).toBe(before);
+  });
+});

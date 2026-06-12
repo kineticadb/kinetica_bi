@@ -20,6 +20,7 @@ import {
   type DashboardLayerDto,
 } from "../api/client";
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
+import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useDashboardContextOptional } from "../components/DashboardContext";
 import { useToastStore } from "../store/toast";
 
@@ -45,6 +46,12 @@ export function useLayerVisibilityToggle(): (
 
       // 1. Optimistic store update — map + legend react synchronously.
       useDashboardLayersStore.getState().updateLayer(layerId, patch);
+
+      // Phase 61 GAP-61-02: release any radio-group overlay's hold on this layer's
+      // `visible` so the explicit toggle wins. Without this, a radio option that
+      // pinned config.visible would be merged on top of the store by effectiveLayers,
+      // masking the toggle and making the eye button appear dead after a radio switch.
+      useWidgetActionStore.getState().releaseLayerConfigField(layerId, "visible");
 
       // 2. Persist (only when we know which dashboard owns the layer).
       if (dashboardId === undefined) return;
