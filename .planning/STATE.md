@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: Completed 60.1-02-PLAN.md — RadioLayerConfigEditor + OptionRow wiring + panel spec (commits 48e98bf + 450d8dd + 7e43596)
+stopped_at: "Phase 60.1 COMPLETE + verified (RADIOUX-V111-01; commits 60941c0/71ef6cd/48e98bf/450d8dd/7e43596; frontend 1963/1963, web tsc clean). RESUME TARGET = Phase 61 (PAUSED mid-walk, NOT fresh): re-walk §1.1/§1.2 using the NEW structured class-break editor + GAP-61-02 eye-toggle fix; set up P2 (non-bypass analyst) + walk §3.1/§3.2/§3.3 (viewer-safe payoff); then finalize 61-UAT overall_result + run 61-03 (compile 61-VERIFICATION + tick VERIFY-V111-01 + close milestone)."
 last_updated: "2026-06-12T17:55:52.398Z"
 progress:
   total_phases: 6
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 60.1 — radio-config-ux-structured-layer-target-editor-reuse-cbconfigform
+**Current focus:** Phase 61 — verification-live-uat (PAUSED mid-walk; 60.1 just shipped before it)
 
 ## Current Position
 
-Phase: 60.1 (radio-config-ux-structured-layer-target-editor-reuse-cbconfigform) — EXECUTING
-Plan: 2 of 2
+Phase: 60.1 (radio-config-ux-structured-layer-target-editor-reuse-cbconfigform) — COMPLETE ✓ (verified passed 2026-06-12, RADIOUX-V111-01)
+Phase 61 (verification-live-uat) — PAUSED mid-walk, RESUME NEXT (see stopped_at: re-walk §1.1/§1.2 + P2/§3, then 61-03)
 
 ## v1.11 Phase Map
 
