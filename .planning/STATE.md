@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Checkpoint: 61 live walk PARTIAL — operator attested §0/§1/§2/§4 PASS; GAP-61-01 (in-map legend frozen on radio overlay) fixed inline + committed (f62da07). BLOCKED on operator: P2 (non-bypass analyst login) + §3 (viewer-safe payoff 3.1-3.3) not yet walked. Finalize 61-UAT overall_result + run 61-03 ONLY after §3 attested."
+stopped_at: "Checkpoint: 61 live walk PARTIAL — operator attested §0/§1/§2/§4 PASS; GAP-61-01 (legend frozen on radio overlay, f62da07) + GAP-61-02 (eye toggle masked by radio overlay's pinned visible, 4afad81) both fixed inline + committed. BLOCKED on operator: (a) P2 (non-bypass analyst login) + §3 (viewer-safe payoff 3.1-3.3); (b) re-walk §1.1/§1.2 to confirm eye toggle works after a radio switch (GAP-61-02). Finalize 61-UAT overall_result + run 61-03 ONLY after those are attested."
 last_updated: "2026-06-12T14:46:32.000Z"
 progress:
   total_phases: 5
@@ -271,7 +271,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 - **Operator live walk-through partial:** §0 (P1/P3/P4), §1 (1.1-1.3), §2 (2.1-2.3), §4 (4.1) all attested PASS (2026-06-11). **NOT yet walked:** P2 (prepare a non-bypass analyst login) + entire §3 (3.1-3.3 — VIEWER-SAFE / TRANSIENT payoff, the headline v1.11 user story; requires the analyst login + a separate browser session). 61-UAT `overall_result` stays PENDING; 61-03 cannot compile `passed` until §3 is attested (gate requires §3 cited for SC1 + all sections PASS).
 - **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
-- **NEXT:** operator walks §3 (P2 analyst login first) → report 3.1/3.2/3.3 → finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
+- **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
+- **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
 
 ### Phase 61 Plan 01 Gate Results (recorded 2026-06-11)
 
