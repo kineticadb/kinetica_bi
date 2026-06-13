@@ -26,7 +26,7 @@
 - [x] **RADIO-V111-03**: Selecting a radio option applies its action — the target updates LIVE and the change persists across dashboard reload; the radio's own selected option persists (its `selectedIndex` is part of its config)
 - [x] **RADIOUX-V111-01**: A radio-group option targeting a MAP LAYER is authored via a STRUCTURED editor instead of a hand-edited raw JSON textarea, reusing the FULL `KineticaWmsLayerForm` (the Map Layers config form) in a SIDE-BY-SIDE layout — render mode + all style params + opacity + info-popup details. The option captures a full-config snapshot (config + `cb_config`/`track_config` + `info_*`) that overlays the live layer; data-binding/spatial keys are stripped (denylist-validated); the strict field allow-list still governs widget/dv + AI/MCP paths. Raw JSON remains a collapsible "Advanced" fallback. Widget/dynamic-view targets keep their existing simple inputs. (RE-SCOPED 2026-06-12: first cut shipped a narrow render-mode+CbConfigForm editor; superseded by the full-form side-by-side design.)
 
-- [ ] **RADIOMULTI-V111-01**: A single Radio Dashboard Control option can drive MULTIPLE targets at once — `RadioOption` carries an ordered `actions: WidgetAction[]` (each an independent {target, configPatch}; targets may mix widget / map-layer / dynamic-view kinds). Selecting an option applies ALL its actions as one control contribution (one `setControlContribution` write); switching options is switch-replace at the OPTION level (targets the new option does not set revert to baseline). The config panel authors a per-option target LIST (add/remove), each target using its existing editor (layer → the full-form side-by-side from 60.1; widget/dv → simple inputs). Back-compat: legacy single-`action` options keep working (normalized to a 1-element `actions`). (Pulled forward from CTRL-V2-03, 2026-06-13.)
+- [x] **RADIOMULTI-V111-01**: A single Radio Dashboard Control option can drive MULTIPLE targets at once — `RadioOption` carries an ordered `actions: WidgetAction[]` (each an independent {target, configPatch}; targets may mix widget / map-layer / dynamic-view kinds). Selecting an option applies ALL its actions as one control contribution (one `setControlContribution` write); switching options is switch-replace at the OPTION level (targets the new option does not set revert to baseline). The config panel authors a per-option target LIST (add/remove), each target using its existing editor (layer → the full-form side-by-side from 60.1; widget/dv → simple inputs). Back-compat: legacy single-`action` options keep working (normalized to a 1-element `actions`). (Pulled forward from CTRL-V2-03, 2026-06-13.)
 
 ### AI/MCP Future Seam (design + document only)
 
@@ -80,7 +80,7 @@ Explicitly excluded for v1.11.
 | RADIO-V111-02 | Phase 59 | Complete |
 | RADIO-V111-03 | Phase 60 | Complete |
 | RADIOUX-V111-01 | Phase 60.1 | Complete |
-| RADIOMULTI-V111-01 | Phase 60.2 | Pending |
+| RADIOMULTI-V111-01 | Phase 60.2 | Complete |
 | SEAM-V111-01 | Phase 60 | Complete |
 | VERIFY-V111-01 | Phase 61 | Pending |
 

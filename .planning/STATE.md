@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Phase 60.2 INSERTED (2026-06-13) before Phase 61 — Radio Dashboard Control MULTI-TARGET options (RADIOMULTI-V111-01, pulled forward from CTRL-V2-03); NOT yet planned (run /gsd:plan-phase 60.2). 60.2-CONTEXT.md written. Sequencing: 60.2 ships before the 61 gate; 61's walk then exercises a multi-target option. Prior: 60.1 (full-form layer editor) COMPLETE+verified; 60 done. Phase 61 still PAUSED mid-walk (re-walk §1.1/§1.2 + P2/§3 + 61-03) — resumes AFTER 60.2 ships. NEXT: plan + execute 60.2, then resume 61."
-last_updated: "2026-06-13T02:54:36.825Z"
+stopped_at: "Phase 60.2 COMPLETE + verified passed 8/8 (RADIOMULTI-V111-01; multi-target radio options). 60.2-01 (model/dispatch/wiring: a079074/6acbd89/379de7d/f137033) + 60.2-02 (panel: d5d01a4/23fa2f6 — Task 1+2 then resumed after an API socket error to finish the spec). One option drives N targets via ONE setControlContribution; option-level switch-replace drops stale targets (tested); widgetActionStore byte-unchanged; back-compat normalizer. frontend 2036/2036, web tsc clean, no server diff. RESUME TARGET = Phase 61 (PAUSED mid-walk): re-walk §1.1/§1.2 (full-form editor + multi-target + green radios) + P2/§3 (viewer-safe) → finalize 61-UAT → 61-03 → close v1.11. ALL feature phases (58/58.1/59/60/60.1/60.2) now done; only the 61 verification gate remains."
+last_updated: "2026-06-13T05:56:43.354Z"
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 12
+  total_phases: 7
+  completed_phases: 6
+  total_plans: 16
+  completed_plans: 14
 ---
 
 # Project State
@@ -19,13 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 60.2 — Radio Dashboard Control multi-target options (INSERTED, not yet planned). Phase 61 paused behind it.
+**Current focus:** Phase 61 — verification-live-uat (PAUSED mid-walk; all v1.11 feature phases incl. 60.2 multi-target now complete)
 
 ## Current Position
 
-Phase: 60.2 (radio-dashboard-control-multi-target-options) — INSERTED, NOT PLANNED (next: /gsd:plan-phase 60.2)
-Phase 60.1 — COMPLETE ✓ (full-form side-by-side, RADIOUX-V111-01) · Phase 60 — COMPLETE
-Phase 61 (verification-live-uat) — PAUSED mid-walk, resumes after 60.2 ships (re-walk §1.1/§1.2 + P2/§3, then 61-03)
+Phase: 60.2 (radio-dashboard-control-multi-target-options) — COMPLETE ✓ (verified passed 8/8, 2026-06-13, RADIOMULTI-V111-01)
+Phase 61 (verification-live-uat) — PAUSED mid-walk, RESUME NEXT to close v1.11 (re-walk §1.1/§1.2 + P2/§3, then 61-03). Feature phases 58/58.1/59/60/60.1/60.2 all done.
 
 ## v1.11 Phase Map
 
@@ -259,6 +258,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 60.1 P01 | 3 | 3 tasks | 4 files |
 | Phase 60.1 P02 | 7 | 3 tasks | 6 files |
 | Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform P03 | 15 | 4 tasks | 5 files |
+| Phase 60.2 P01 | 15 | 4 tasks | 9 files |
 
 ### Quick Tasks Completed
 
@@ -434,6 +434,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 60.1]: validateLayerSnapshot (denylist) used for layer dispatch + save-time validity; validateActionPatch (strict allow-list) kept for widget/dv dispatch + AI/MCP path (SAFETY-V111-02 preserved)
 - [Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform]: hideSpatialMode placed on KineticaWmsLayerForm props (additive, default false) — existing callers unaffected
 - [Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform]: Modal widening via .modal-config:has(.radiogroup-has-layer-editor) CSS selector + marker class on panel root
+- [Phase 60.2]: RadioOption.actions/action both optional for back-compat; getOptionActions normalizes both shapes
+- [Phase 60.2]: applyWidgetActions builds ONE fresh combined contribution and calls setControlContribution ONCE (option-level switch-replace)
+- [Phase 60.2]: validateRadioOption 2nd param accepts string|(id=>string)|undefined union for panel back-compat transition
 
 ### Phase 49-users-management-ui
 
@@ -786,6 +789,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-13T02:49:16.846Z
-Stopped at: Completed 60.1-03-PLAN.md — full-form side-by-side layer editor (commits 6a3336c + 8447b9b + 7b4e980 + 12a4aed)
+Last session: 2026-06-13T04:04:54.303Z
+Stopped at: Completed 60.2-01-PLAN.md — multi-target radio option model + dispatch + wiring
 Resume file: None
