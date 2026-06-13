@@ -181,10 +181,26 @@ function TargetEditor({
   let tableName: string | undefined;
   let tableRef: string | undefined;
   let autoSuggestDisabledReason: string | undefined;
+  // Phase 60.2 follow-up: the target layer's CURRENT config, as a flat baseline snapshot.
+  // The editor merges the option's configPatch ON TOP so the form OPENS reflecting the
+  // layer's real appearance (render-mode radio checked, params populated) instead of blank.
+  let baseSnapshot: Record<string, unknown> = {};
 
   if (kind === "layer") {
     const layer = layers.find((l) => l.id === targetId);
     if (layer) {
+      // Build the flat baseline from the layer DTO: nested config keys (renderMode + style)
+      // spread flat, plus top-level cb_config/track_config/info_* (the snapshot shape the
+      // editor's adapter consumes). Data-binding/spatial keys are harmless for display
+      // (spatial section is hidden) and are stripped on write by layerFormToSnapshot.
+      baseSnapshot = {
+        ...((layer.config as Record<string, unknown> | undefined) ?? {}),
+        ...(layer.cb_config != null ? { cb_config: layer.cb_config } : {}),
+        ...(layer.track_config != null ? { track_config: layer.track_config } : {}),
+        ...(layer.info_enabled != null ? { info_enabled: layer.info_enabled } : {}),
+        ...(layer.info_columns != null ? { info_columns: layer.info_columns } : {}),
+        ...(layer.info_template != null ? { info_template: layer.info_template } : {}),
+      };
       if (layer.dynamic_view_id == null) {
         // Table-bound: resolve columns from tables prop (LayersModal pattern)
         const table = tables?.find((t) => t.id === layer.table_id);
@@ -423,6 +439,7 @@ function TargetEditor({
           <div className="radiogroup-layer-editor-right">
             <RadioLayerConfigEditor
               configPatch={action.configPatch}
+              baseSnapshot={baseSnapshot}
               columns={columns}
               schema={schema}
               tableName={tableName}

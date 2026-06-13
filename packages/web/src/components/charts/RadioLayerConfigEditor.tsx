@@ -38,6 +38,13 @@ import type { Column } from "../../lib/columnTypes";
 type RadioLayerConfigEditorProps = {
   /** The option's full-config snapshot (configPatch) — may carry any style/info keys */
   configPatch: Record<string, unknown>;
+  /**
+   * The target layer's CURRENT config as a flat baseline snapshot. The form is seeded from
+   * `{ ...baseSnapshot, ...configPatch }` so it OPENS reflecting the layer's real appearance
+   * (render-mode radio checked, params populated) even when the option's snapshot is still
+   * empty. configPatch (the option's own overrides) always wins. Defaults to {}.
+   */
+  baseSnapshot?: Record<string, unknown>;
   columns: Column[];
   schema?: string;
   tableName?: string;
@@ -60,14 +67,21 @@ type RadioLayerConfigEditorProps = {
 
 export default function RadioLayerConfigEditor({
   configPatch,
+  baseSnapshot = {},
   columns,
   onChange,
   onCbValid,
   idx,
 }: RadioLayerConfigEditorProps): JSX.Element {
-  // 1. Seed the full form from the option's snapshot.
+  // 1. Seed the full form from the target layer's CURRENT config (baseSnapshot) with the
+  //    option's own snapshot (configPatch) merged ON TOP. This makes the form open reflecting
+  //    the layer's real appearance — render-mode radio checked, params populated — instead of
+  //    blank when the option hasn't captured anything yet. configPatch keys win over baseline.
   //    snapshotToLayerForm lifts cb_config/track_config INTO formConfig and surfaces info_* separately.
-  const { config: formConfig, info } = snapshotToLayerForm(configPatch);
+  const { config: formConfig, info } = snapshotToLayerForm({
+    ...baseSnapshot,
+    ...configPatch,
+  });
 
   // 2. Render the FULL form.
   //    - hideSpatialMode={true}: suppresses SPATIAL MODE radios + column pickers

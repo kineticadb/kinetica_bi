@@ -111,6 +111,9 @@ vi.mock("./CbConfigForm", async () => {
 });
 
 import { captureAllowListedSubset } from "../../lib/radioGroupCapture";
+// Mocked above via vi.mock("./KineticaWmsLayerForm") — imported here so tests can inspect
+// the props it was rendered with (e.g. the seeded config).
+import KineticaWmsLayerForm from "./KineticaWmsLayerForm";
 
 // Mock KineticaWmsLayerForm — renders stable test markers and fires callbacks via user interactions.
 // Uses useEffect (NOT synchronously in render) to avoid the infinite-render loop pitfall.
@@ -1016,6 +1019,39 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     expect(document.querySelector(".radiogroup-layer-editor")).toBeTruthy();
     // Advanced JSON disclosure still present for layer targets
     expect(screen.getByText(/Advanced \(raw JSON\)/i)).toBeTruthy();
+  });
+
+  it("seeds the form from the target layer's CURRENT config when the option's configPatch is empty (render-mode pre-selected, not blank)", () => {
+    vi.mocked(KineticaWmsLayerForm).mockClear();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-empty",
+          label: "Roads",
+          // Fresh option: NO captured snapshot yet.
+          actions: [
+            { target: { kind: "layer", id: mockLayerForStructured.id }, configPatch: {} },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1]}
+        tables={mockTables}
+      />,
+    );
+
+    // The form must open SEEDED from the layer's current config (renderMode "raster" — so the
+    // radio is pre-selected), NOT blank — even though the option's configPatch is empty.
+    const calls = vi.mocked(KineticaWmsLayerForm).mock.calls;
+    const seededConfig = calls.at(-1)?.[0].config as Record<string, unknown>;
+    expect(seededConfig.renderMode).toBe("raster");
   });
 
   it("2. editing render mode updates the snapshot (no data-binding keys in emitted configPatch)", () => {
