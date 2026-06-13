@@ -11,14 +11,14 @@
  * Dynamic-view targets: listDynamicViews(dashboardId, signal) — fetched on mount
  *
  * Authoring flow per option:
- *   label + 3-kind target picker (widget / layer / dynamicView) + "Capture from target"
- *   button (calls captureAllowListedSubset) + for layer targets: RadioLayerConfigEditor
- *   (render-mode select + CbConfigForm for classbreak) + Advanced JSON textarea
- *   (layer: collapsible <details>; widget/dv: visible as-is)
+ *   label + per-option TARGET LIST (N targets with add/remove, each with 3-kind target picker,
+ *   Capture, layer → RadioLayerConfigEditor side-by-side, widget/dv → JSON textarea, Advanced JSON)
+ *   Single-target: no list chrome (identical to Phase 60.1). Multi-target: per-target headers
+ *   and remove affordances appear only when actions.length > 1.
  *
- * Save-time validation: validateRadioOption / isRadioGroupConfigValid delegate to
- * Phase 58 validateActionPatch — out-of-list / wrong-type / meta-proto / empty binding
- * is rejected; isValid(false) disables Apply. isValid(true) when all options valid.
+ * Save-time validation: validateRadioOption(option, widgetTypeFor) / isRadioGroupConfigValid
+ *   delegate to Phase 58 validateActionPatch — out-of-list / wrong-type / meta-proto / empty
+ *   binding is rejected; isValid(false) disables Apply. isValid(true) when all options valid.
  *
  * Phase 60.1 Plan 02:
  *   - RadioLayerConfigEditor renders for layer targets (SC1)
@@ -26,6 +26,15 @@
  *   - Per-option CbConfigForm validity folded into isValid plumbing (CONTEXT line 50, LOCKED)
  *   - JSON textarea wrapped in collapsible Advanced <details> for layer targets (SC4)
  *   - Widget/dv targets unchanged (SC4)
+ *
+ * Phase 60.2 Plan 02:
+ *   - OptionRow authors a PER-OPTION TARGET LIST over option.actions[] (add/remove).
+ *   - TargetEditor sub-component: one action's picker + editor + Advanced JSON.
+ *   - Single-target CLEAN: list chrome (target header, per-target Remove) only when actions.length > 1.
+ *   - Save writes actions[] + clears legacy action field on every write.
+ *   - handleAddOption seeds actions: [{...}] (not legacy action: {...}).
+ *   - validateRadioOption(option, widgetTypeFor) — new resolver signature from wave 1.
+ *   - cbValidMap keyed by "optionIdx:targetIdx" for per-target classbreak validity.
  *
  * NO runtime apply/select/default-on-open — Phase 60. This is authoring only.
  *
@@ -40,9 +49,11 @@ import type {
   RadioOrientation,
 } from "../../lib/radioGroupConfig";
 import {
+  getOptionActions,
   validateRadioOption,
   isRadioGroupConfigValid,
 } from "../../lib/radioGroupConfig";
+import type { WidgetAction } from "../../lib/widgetAction";
 import { captureAllowListedSubset } from "../../lib/radioGroupCapture";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { listDynamicViews } from "../../api/client";
@@ -76,42 +87,43 @@ function generateOptionId(): string {
 }
 
 // ---------------------------------------------------------------------------
-// OptionRow component
+// TargetEditor — renders ONE action within an OptionRow
 // ---------------------------------------------------------------------------
 
-type OptionRowProps = {
-  option: RadioOption;
-  idx: number;
+type TargetEditorProps = {
+  action: WidgetAction;
+  optionIdx: number;
+  targetIdx: number;
+  /** Total number of targets in this option — drives single-target-clean logic */
+  totalTargets: number;
   widgets: ConfigPanelProps["widgets"];
   layers: ReturnType<typeof useDashboardLayersStore.getState>["layers"];
   dynamicViews: DynamicViewRow[];
   tables: ConfigPanelProps["tables"];
   widgetTypeFor: (id: number) => string | undefined;
-  onChange: (updated: RadioOption) => void;
-  onRemove: () => void;
-  /** Reports per-option CbConfigForm validity up to the panel so it can fold into isValid */
-  onCbValidChange: (idx: number, valid: boolean) => void;
+  onChange: (next: WidgetAction) => void;
+  onCbValid: (valid: boolean) => void;
+  onRemove?: () => void;
 };
 
-function OptionRow({
-  option,
-  idx,
+function TargetEditor({
+  action,
+  optionIdx,
+  targetIdx,
+  totalTargets,
   widgets,
   layers,
   dynamicViews,
   tables,
   widgetTypeFor,
   onChange,
+  onCbValid,
   onRemove,
-  onCbValidChange,
-}: OptionRowProps): JSX.Element {
+}: TargetEditorProps): JSX.Element {
   const [jsonError, setJsonError] = useState<string | null>(null);
-  // Track per-option CbConfigForm validity in local state
-  const [cbValid, setCbValid] = useState(true);
 
   const allWidgets = widgets ?? [];
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const { kind, id: targetId } = option.action!.target;
+  const { kind, id: targetId } = action.target;
 
   // Encode target as "kind:id" for the <select> value
   const targetValue = `${kind}:${targetId}`;
@@ -123,18 +135,14 @@ function OptionRow({
     ];
     const newId = Number(newIdStr);
     onChange({
-      ...option,
-      action: {
-        target: { kind: newKind, id: newId },
-        configPatch: {}, // RESET — a new target invalidates the old patch
-      },
+      target: { kind: newKind, id: newId },
+      configPatch: {}, // RESET — a new target invalidates the old patch
     });
     setJsonError(null);
   };
 
   const handleCapture = () => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const target = option.action!.target;
+    const target = action.target;
     let patch: Record<string, unknown> = {};
 
     if (target.kind === "widget") {
@@ -153,11 +161,7 @@ function OptionRow({
       });
     }
 
-    onChange({
-      ...option,
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      action: { ...option.action!, configPatch: patch },
-    });
+    onChange({ ...action, configPatch: patch });
     setJsonError(null);
   };
 
@@ -165,20 +169,10 @@ function OptionRow({
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       setJsonError(null);
-      onChange({
-        ...option,
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        action: { ...option.action!, configPatch: parsed },
-      });
+      onChange({ ...action, configPatch: parsed });
     } catch {
       setJsonError("Invalid JSON — fix before saving");
     }
-  };
-
-  // Handle CbConfigForm validity changes — propagate up to the panel
-  const handleCbValid = (valid: boolean) => {
-    setCbValid(valid);
-    onCbValidChange(idx, valid);
   };
 
   // Resolve columns for CbConfigForm (when kind === "layer")
@@ -235,27 +229,6 @@ function OptionRow({
     }
   }
 
-  // Per-option validation reasons (for display only — isValid handled in parent)
-  const widgetType =
-    kind === "widget" ? widgetTypeFor(targetId) : undefined;
-  const validation = validateRadioOption(option, widgetType);
-  const reasons = validation.valid ? [] : validation.reasons;
-  const labelMissing = option.label.trim() === "";
-
-  // Zero-break invalidity (CONTEXT line 50, LOCKED): add a reason when kind==="layer"
-  // AND the current renderMode is "classbreak" AND cbValid is false.
-  const currentRenderMode =
-    kind === "layer"
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      ? ((option.action!.configPatch.renderMode as string) ?? "raster")
-      : undefined;
-  const cbInvalidForClassbreak =
-    kind === "layer" && currentRenderMode === "classbreak" && !cbValid;
-
-  const allReasons = cbInvalidForClassbreak
-    ? [...reasons, "Class-break needs at least one break"]
-    : reasons;
-
   // Orphan-target detection: the configured target kind+id must resolve against available lists.
   // Only flag as orphaned when a specific target is set (id !== 0) and it is absent from all lists.
   const targetIsSet = targetId !== 0;
@@ -267,11 +240,304 @@ function OptionRow({
   const isOrphanTarget = targetIsSet && !targetResolved;
 
   const captureEmpty =
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    Object.keys(option.action!.configPatch).length === 0 &&
-    !jsonError &&
-    !labelMissing &&
-    validation.valid;
+    Object.keys(action.configPatch).length === 0 &&
+    !jsonError;
+
+  // SINGLE-TARGET CLEAN (SC4): only show list chrome when more than one target
+  const showListChrome = totalTargets > 1;
+
+  return (
+    <div
+      data-testid={`radiogroup-target-${optionIdx}-${targetIdx}`}
+      style={showListChrome ? {
+        border: "1px solid var(--border-color, #3a3a4a)",
+        borderRadius: 4,
+        padding: "8px 10px",
+        marginBottom: 8,
+        background: "var(--bg-subtle, #18182a)",
+      } : undefined}
+    >
+      {/* Target header + per-target Remove — only when multi-target (SC4) */}
+      {showListChrome && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 6,
+          }}
+        >
+          <span
+            style={{
+              fontSize: "0.7rem",
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              color: "var(--text-muted, #888)",
+            }}
+          >
+            TARGET {targetIdx + 1}
+          </span>
+          {onRemove && (
+            <button
+              type="button"
+              className="ghost-sm ghost-danger"
+              aria-label={`Remove target ${targetIdx + 1} from option ${optionIdx + 1}`}
+              onClick={onRemove}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Target picker */}
+      <div className="ds-field" style={{ marginBottom: 8 }}>
+        <span className="ds-field-label">Target</span>
+        <select
+          className="ds-select"
+          aria-label={`Option ${optionIdx + 1} target`}
+          value={targetValue}
+          onChange={(e) => handleTargetChange(e.target.value)}
+          style={{ width: "100%" }}
+        >
+          {allWidgets.length > 0 && (
+            <optgroup label="Widgets">
+              {allWidgets.map((w) => (
+                <option key={`widget:${w.id}`} value={`widget:${w.id}`}>
+                  {w.title || `Widget #${w.id}`}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {layers.length > 0 && (
+            <optgroup label="Map Layers">
+              {layers.map((l) => (
+                <option key={`layer:${l.id}`} value={`layer:${l.id}`}>
+                  {(l.config?.title as string | undefined) ||
+                    `Layer #${l.id}`}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {dynamicViews.length > 0 && (
+            <optgroup label="Dynamic Views">
+              {dynamicViews.map((dv) => (
+                <option
+                  key={`dynamicView:${dv.id}`}
+                  value={`dynamicView:${dv.id}`}
+                >
+                  {dv.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {allWidgets.length === 0 &&
+            layers.length === 0 &&
+            dynamicViews.length === 0 && (
+              <option value={targetValue} disabled>
+                — no targets available —
+              </option>
+            )}
+        </select>
+        {isOrphanTarget && (
+          <div
+            className="config-hint"
+            style={{ color: "var(--warning, #d97706)" }}
+            data-testid={`orphan-target-warning-${optionIdx}`}
+          >
+            Target no longer available — pick a new target
+          </div>
+        )}
+      </div>
+
+      {/* Capture from target */}
+      <div style={{ marginBottom: 8 }}>
+        <button
+          type="button"
+          className="ghost-sm"
+          aria-label={`Capture from target for option ${optionIdx + 1}`}
+          onClick={handleCapture}
+          style={{ color: "var(--accent, #22c55e)" }}
+        >
+          Capture from target
+        </button>
+        {captureEmpty && (
+          <span
+            className="config-hint"
+            style={{ marginLeft: 8, color: "var(--text-muted, #888)" }}
+          >
+            no capturable fields on this target
+          </span>
+        )}
+      </div>
+
+      {/* Phase 60.1 Plan 03: two-pane side-by-side layout ONLY for layer targets.
+          LEFT = Advanced JSON (collapsible <details>).
+          RIGHT = full RadioLayerConfigEditor (KineticaWmsLayerForm, data-source + spatial suppressed).
+          Widget / dynamic-view targets keep the existing single-column layout unchanged. */}
+      {kind === "layer" ? (
+        <div className="radiogroup-layer-editor">
+          {/* ── LEFT PANE ── */}
+          <div className="radiogroup-layer-editor-left">
+            {/* Advanced JSON (escape hatch + back-compat for layer targets) */}
+            <details className="radio-advanced-json" style={{ marginBottom: 4 }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted, #888)",
+                  userSelect: "none",
+                }}
+              >
+                Advanced (raw JSON)
+              </summary>
+              <div className="ds-field" style={{ marginTop: 6 }}>
+                <span className="ds-field-label">Config Patch (JSON)</span>
+                <textarea
+                  aria-label={`Option ${optionIdx + 1} config patch JSON`}
+                  className="ds-select"
+                  rows={4}
+                  style={{
+                    width: "100%",
+                    fontFamily: "monospace",
+                    fontSize: "0.8rem",
+                    resize: "vertical",
+                  }}
+                  value={JSON.stringify(action.configPatch, null, 2)}
+                  onChange={(e) => handleJsonChange(e.target.value)}
+                />
+                {jsonError && (
+                  <div
+                    className="config-hint"
+                    style={{ color: "var(--danger, #c44)" }}
+                    data-testid={`json-error-${optionIdx}`}
+                  >
+                    {jsonError}
+                  </div>
+                )}
+              </div>
+            </details>
+          </div>
+
+          {/* ── RIGHT PANE ── full RadioLayerConfigEditor */}
+          <div className="radiogroup-layer-editor-right">
+            <RadioLayerConfigEditor
+              configPatch={action.configPatch}
+              columns={columns}
+              schema={schema}
+              tableName={tableName}
+              tableRef={tableRef}
+              autoSuggestDisabledReason={autoSuggestDisabledReason}
+              idx={optionIdx}
+              onCbValid={onCbValid}
+              onChange={(nextPatch) =>
+                onChange({
+                  ...action,
+                  // MERGE: full-snapshot write; non-surfaced keys in the existing patch survive
+                  configPatch: { ...action.configPatch, ...nextPatch },
+                })
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        /* Widget / dynamic-view target: JSON textarea EXACTLY as before (no two-pane, no disclosure) */
+        <div className="ds-field" style={{ marginBottom: 4 }}>
+          <span className="ds-field-label">Config Patch (JSON)</span>
+          <textarea
+            aria-label={`Option ${optionIdx + 1} config patch JSON`}
+            className="ds-select"
+            rows={4}
+            style={{
+              width: "100%",
+              fontFamily: "monospace",
+              fontSize: "0.8rem",
+              resize: "vertical",
+            }}
+            value={JSON.stringify(action.configPatch, null, 2)}
+            onChange={(e) => handleJsonChange(e.target.value)}
+          />
+          {jsonError && (
+            <div
+              className="config-hint"
+              style={{ color: "var(--danger, #c44)" }}
+              data-testid={`json-error-${optionIdx}`}
+            >
+              {jsonError}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OptionRow component
+// ---------------------------------------------------------------------------
+
+type OptionRowProps = {
+  option: RadioOption;
+  idx: number;
+  widgets: ConfigPanelProps["widgets"];
+  layers: ReturnType<typeof useDashboardLayersStore.getState>["layers"];
+  dynamicViews: DynamicViewRow[];
+  tables: ConfigPanelProps["tables"];
+  widgetTypeFor: (id: number) => string | undefined;
+  onChange: (updated: RadioOption) => void;
+  onRemove: () => void;
+  /** Reports per-target CbConfigForm validity up to the panel — keyed by "optionIdx:targetIdx" */
+  onCbValidChange: (optionIdx: number, targetIdx: number, valid: boolean) => void;
+};
+
+function OptionRow({
+  option,
+  idx,
+  widgets,
+  layers,
+  dynamicViews,
+  tables,
+  widgetTypeFor,
+  onChange,
+  onRemove,
+  onCbValidChange,
+}: OptionRowProps): JSX.Element {
+  const allWidgets = widgets ?? [];
+
+  // 1. Load normalization: derive working actions array via getOptionActions (back-compat path).
+  //    A legacy { action } option presents as a 1-element list and re-saves as actions.
+  const actions = getOptionActions(option);
+
+  // 2. Write-back helpers — every write clears the legacy action field (normalize-everywhere).
+  const commitActions = (next: WidgetAction[]) =>
+    onChange({ ...option, actions: next, action: undefined });
+
+  const updateActionAt = (i: number, next: WidgetAction) =>
+    commitActions(actions.map((a, j) => (j === i ? next : a)));
+
+  const addTarget = () => {
+    const defaultKind: "widget" | "layer" | "dynamicView" =
+      allWidgets.length > 0
+        ? "widget"
+        : layers.length > 0
+          ? "layer"
+          : "dynamicView";
+    const defaultId =
+      allWidgets.length > 0
+        ? allWidgets[0].id
+        : layers.length > 0
+          ? layers[0].id
+          : 0;
+    commitActions([...actions, { target: { kind: defaultKind, id: defaultId }, configPatch: {} }]);
+  };
+
+  const removeTarget = (i: number) =>
+    commitActions(actions.filter((_, j) => j !== i));
+
+  // Per-option validation reasons for the OPTION-LEVEL aggregate (used to gate save).
+  const validation = validateRadioOption(option, widgetTypeFor);
+  const reasons = validation.valid ? [] : validation.reasons;
+  const labelMissing = option.label.trim() === "";
 
   return (
     <div
@@ -337,201 +603,44 @@ function OptionRow({
         )}
       </div>
 
-      {/* Target picker */}
-      <div className="ds-field" style={{ marginBottom: 8 }}>
-        <span className="ds-field-label">Target</span>
-        <select
-          className="ds-select"
-          aria-label={`Option ${idx + 1} target`}
-          value={targetValue}
-          onChange={(e) => handleTargetChange(e.target.value)}
-          style={{ width: "100%" }}
-        >
-          {allWidgets.length > 0 && (
-            <optgroup label="Widgets">
-              {allWidgets.map((w) => (
-                <option key={`widget:${w.id}`} value={`widget:${w.id}`}>
-                  {w.title || `Widget #${w.id}`}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {layers.length > 0 && (
-            <optgroup label="Map Layers">
-              {layers.map((l) => (
-                <option key={`layer:${l.id}`} value={`layer:${l.id}`}>
-                  {(l.config?.title as string | undefined) ||
-                    `Layer #${l.id}`}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {dynamicViews.length > 0 && (
-            <optgroup label="Dynamic Views">
-              {dynamicViews.map((dv) => (
-                <option
-                  key={`dynamicView:${dv.id}`}
-                  value={`dynamicView:${dv.id}`}
-                >
-                  {dv.name}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {allWidgets.length === 0 &&
-            layers.length === 0 &&
-            dynamicViews.length === 0 && (
-              <option value={targetValue} disabled>
-                — no targets available —
-              </option>
-            )}
-        </select>
-        {isOrphanTarget && (
-          <div
-            className="config-hint"
-            style={{ color: "var(--warning, #d97706)" }}
-            data-testid={`orphan-target-warning-${idx}`}
-          >
-            Target no longer available — pick a new target
-          </div>
-        )}
-      </div>
+      {/* Per-option target list — each target rendered by TargetEditor */}
+      {actions.map((action, targetIdx) => (
+        <TargetEditor
+          key={targetIdx}
+          action={action}
+          optionIdx={idx}
+          targetIdx={targetIdx}
+          totalTargets={actions.length}
+          widgets={widgets}
+          layers={layers}
+          dynamicViews={dynamicViews}
+          tables={tables}
+          widgetTypeFor={widgetTypeFor}
+          onChange={(next) => updateActionAt(targetIdx, next)}
+          onCbValid={(valid) => onCbValidChange(idx, targetIdx, valid)}
+          onRemove={actions.length > 1 ? () => removeTarget(targetIdx) : undefined}
+        />
+      ))}
 
-      {/* Capture from target */}
-      <div style={{ marginBottom: 8 }}>
-        <button
-          type="button"
-          className="ghost-sm"
-          aria-label={`Capture from target for option ${idx + 1}`}
-          onClick={handleCapture}
-          style={{ color: "var(--accent, #22c55e)" }}
-        >
-          Capture from target
-        </button>
-        {captureEmpty && (
-          <span
-            className="config-hint"
-            style={{ marginLeft: 8, color: "var(--text-muted, #888)" }}
-          >
-            no capturable fields on this target
-          </span>
-        )}
-      </div>
+      {/* "+ Add target" button — mirror "+ Add option" affordance + theme tokens */}
+      <button
+        type="button"
+        className="ghost-sm"
+        aria-label={`Add target to option ${idx + 1}`}
+        onClick={addTarget}
+        style={{ color: "var(--accent, #22c55e)", marginBottom: 4 }}
+      >
+        + Add target
+      </button>
 
-      {/* Phase 60.1 Plan 03: two-pane side-by-side layout ONLY for layer targets.
-          LEFT = radio option config (label, target, capture, Advanced JSON).
-          RIGHT = full KineticaWmsLayerForm (seeded from snapshot, data-source + spatial suppressed).
-          Widget / dynamic-view targets keep the existing single-column layout unchanged. */}
-      {kind === "layer" ? (
-        <div className="radiogroup-layer-editor">
-          {/* ── LEFT PANE ── */}
-          <div className="radiogroup-layer-editor-left">
-            {/* Advanced JSON (escape hatch + back-compat for layer targets) */}
-            <details className="radio-advanced-json" style={{ marginBottom: 4 }}>
-              <summary
-                style={{
-                  cursor: "pointer",
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted, #888)",
-                  userSelect: "none",
-                }}
-              >
-                Advanced (raw JSON)
-              </summary>
-              <div className="ds-field" style={{ marginTop: 6 }}>
-                <span className="ds-field-label">Config Patch (JSON)</span>
-                <textarea
-                  aria-label={`Option ${idx + 1} config patch JSON`}
-                  className="ds-select"
-                  rows={4}
-                  style={{
-                    width: "100%",
-                    fontFamily: "monospace",
-                    fontSize: "0.8rem",
-                    resize: "vertical",
-                  }}
-                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                  value={JSON.stringify(option.action!.configPatch, null, 2)}
-                  onChange={(e) => handleJsonChange(e.target.value)}
-                />
-                {jsonError && (
-                  <div
-                    className="config-hint"
-                    style={{ color: "var(--danger, #c44)" }}
-                    data-testid={`json-error-${idx}`}
-                  >
-                    {jsonError}
-                  </div>
-                )}
-              </div>
-            </details>
-          </div>
-
-          {/* ── RIGHT PANE ── full KineticaWmsLayerForm */}
-          <div className="radiogroup-layer-editor-right">
-            <RadioLayerConfigEditor
-              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              configPatch={option.action!.configPatch}
-              columns={columns}
-              schema={schema}
-              tableName={tableName}
-              tableRef={tableRef}
-              autoSuggestDisabledReason={autoSuggestDisabledReason}
-              idx={idx}
-              onCbValid={handleCbValid}
-              onChange={(nextPatch) =>
-                onChange({
-                  ...option,
-                  action: {
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    ...option.action!,
-                    // MERGE: full-snapshot write; non-surfaced keys in the existing patch survive
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    configPatch: { ...option.action!.configPatch, ...nextPatch },
-                  },
-                })
-              }
-            />
-          </div>
-        </div>
-      ) : (
-        /* Widget / dynamic-view target: JSON textarea EXACTLY as before (no two-pane, no disclosure) */
-        <div className="ds-field" style={{ marginBottom: 4 }}>
-          <span className="ds-field-label">Config Patch (JSON)</span>
-          <textarea
-            aria-label={`Option ${idx + 1} config patch JSON`}
-            className="ds-select"
-            rows={4}
-            style={{
-              width: "100%",
-              fontFamily: "monospace",
-              fontSize: "0.8rem",
-              resize: "vertical",
-            }}
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            value={JSON.stringify(option.action!.configPatch, null, 2)}
-            onChange={(e) => handleJsonChange(e.target.value)}
-          />
-          {jsonError && (
-            <div
-              className="config-hint"
-              style={{ color: "var(--danger, #c44)" }}
-              data-testid={`json-error-${idx}`}
-            >
-              {jsonError}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Validation reasons (incl. cb-validity reason for zero-break classbreak) */}
-      {allReasons.length > 0 && (
+      {/* Validation reasons (option-level aggregate — incl. all targets) */}
+      {reasons.length > 0 && (
         <div
           className="config-hint"
           style={{ color: "var(--danger, #c44)" }}
           data-testid={`validation-errors-${idx}`}
         >
-          {allReasons.map((r, i) => (
+          {reasons.map((r, i) => (
             <div key={i}>{r}</div>
           ))}
         </div>
@@ -556,8 +665,8 @@ export default function RadioGroupConfigPanel({
   const layers = useDashboardLayersStore((s) => s.layers);
   const [dynamicViews, setDynamicViews] = useState<DynamicViewRow[]>([]);
 
-  // Per-option CbConfigForm validity map (idx → valid)
-  const [cbValidMap, setCbValidMap] = useState<Record<number, boolean>>({});
+  // Per-target CbConfigForm validity map keyed by "optionIdx:targetIdx"
+  const [cbValidMap, setCbValidMap] = useState<Record<string, boolean>>({});
 
   // Derive dashboardId from the first widget (all same-dashboard)
   const dashboardId = allWidgets[0]?.dashboard_id;
@@ -582,27 +691,30 @@ export default function RadioGroupConfigPanel({
     [allWidgets],
   );
 
-  // Handle per-option CbConfigForm validity changes
-  const handleCbValidChange = (idx: number, valid: boolean) => {
-    setCbValidMap((prev) => ({ ...prev, [idx]: valid }));
+  // Handle per-target CbConfigForm validity changes — keyed by optionIdx:targetIdx
+  const handleCbValidChange = (optionIdx: number, targetIdx: number, valid: boolean) => {
+    setCbValidMap((prev) => ({ ...prev, [`${optionIdx}:${targetIdx}`]: valid }));
   };
 
   // Compute validity and signal isValid
-  // Fold per-option cb validity into the overall validity:
-  // An option is cb-invalid when kind==="layer" AND renderMode==="classbreak" AND cbValid===false.
+  // Fold per-target cb validity into the overall validity:
+  // A target is cb-invalid when kind==="layer" AND renderMode==="classbreak" AND cbValid===false.
   const allValid = useMemo(() => {
     const baseValid = isRadioGroupConfigValid(cfg, widgetTypeFor);
     if (!baseValid) return false;
-    // Additional check: any option with zero-break classbreak makes the whole config invalid
-    for (let i = 0; i < cfg.options.length; i++) {
-      const opt = cfg.options[i];
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const optKind = opt.action!.target.kind;
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const optRenderMode = opt.action!.configPatch.renderMode as string | undefined;
-      if (optKind === "layer" && optRenderMode === "classbreak") {
-        const cbOk = cbValidMap[i] !== false; // default true if not yet reported
-        if (!cbOk) return false;
+    // Additional check: any layer target with zero-break classbreak makes the whole config invalid
+    for (let optIdx = 0; optIdx < cfg.options.length; optIdx++) {
+      const opt = cfg.options[optIdx];
+      const optActions = getOptionActions(opt);
+      for (let tgtIdx = 0; tgtIdx < optActions.length; tgtIdx++) {
+        const action = optActions[tgtIdx];
+        const optKind = action.target.kind;
+        const optRenderMode = action.configPatch.renderMode as string | undefined;
+        if (optKind === "layer" && optRenderMode === "classbreak") {
+          const key = `${optIdx}:${tgtIdx}`;
+          const cbOk = cbValidMap[key] !== false; // default true if not yet reported
+          if (!cbOk) return false;
+        }
       }
     }
     return true;
@@ -632,10 +744,7 @@ export default function RadioGroupConfigPanel({
     const newOption: RadioOption = {
       id: generateOptionId(),
       label: "",
-      action: {
-        target: { kind: firstTargetKind, id: firstTargetId },
-        configPatch: {},
-      },
+      actions: [{ target: { kind: firstTargetKind, id: firstTargetId }, configPatch: {} }],
     };
     onChange({ ...config, options: [...cfg.options, newOption] });
   };
@@ -657,9 +766,9 @@ export default function RadioGroupConfigPanel({
 
   // Phase 60.1 Plan 03: detect whether any option targets a layer — used to add a
   // marker class that the CSS uses to widen the modal for the two-pane layout.
-  const hasLayerOption = cfg.options.some(
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    (o) => o.action!.target.kind === "layer",
+  // Phase 60.2: recompute over ALL actions of ALL options via getOptionActions.
+  const hasLayerOption = cfg.options.some((o) =>
+    getOptionActions(o).some((a) => a.target.kind === "layer"),
   );
 
   return (
