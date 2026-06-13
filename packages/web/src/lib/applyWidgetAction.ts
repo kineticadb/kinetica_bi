@@ -46,7 +46,7 @@
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
 // DashboardLayerDto used for ActionLookups only; layer overlays are stored as generic Record
 import type { WidgetAction, WidgetActionResult, WidgetActionTarget } from "./widgetAction";
-import { validateActionPatch, splitLayerPatch } from "./actionAllowList";
+import { validateActionPatch, validateLayerSnapshot } from "./actionAllowList";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useToastStore } from "../store/toast";
 
@@ -66,6 +66,47 @@ export type ActionLookups = {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Top-level DTO fields for a layer-appearance snapshot (Phase 60.1 RE-SCOPE).
+ * These live at the top level of the layerOverride DTO (DashboardLayerDto top-level fields),
+ * not nested under `config`. Everything else (renderMode, all style keys) → nested in config.
+ * Consistent with effectiveLayers merge and radioGroupLayerPatch adapter.
+ */
+const LAYER_SNAPSHOT_TOP_LEVEL = [
+  "cb_config",
+  "track_config",
+  "info_enabled",
+  "info_columns",
+  "info_template",
+] as const;
+
+/**
+ * Snapshot-aware split for a FULL layer-appearance snapshot (Phase 60.1 RE-SCOPE).
+ * Unlike splitLayerPatch (which only knows the 5 strict LAYER_ALLOW_LIST keys), this split
+ * handles arbitrary style keys (colormap, BLUR_RADIUS, POINTCOLOR, etc.) from the snapshot.
+ *
+ * Rule: LAYER_SNAPSHOT_TOP_LEVEL keys → top-level; everything else → nested under config.
+ * Only call this after validateLayerSnapshot has returned { valid: true }.
+ */
+function splitLayerSnapshot(patch: Record<string, unknown>): {
+  config?: Record<string, unknown>;
+  topLevel: Record<string, unknown>;
+} {
+  const config: Record<string, unknown> = {};
+  const topLevel: Record<string, unknown> = {};
+  for (const k of Object.keys(patch)) {
+    if ((LAYER_SNAPSHOT_TOP_LEVEL as readonly string[]).includes(k)) {
+      topLevel[k] = patch[k];
+    } else {
+      config[k] = patch[k];
+    }
+  }
+  return {
+    ...(Object.keys(config).length > 0 ? { config } : {}),
+    topLevel,
+  };
+}
 
 /**
  * Stringify a value for idempotency fingerprinting.
@@ -99,10 +140,11 @@ function fingerprint(value: unknown): string {
  * This function is pure aside from side-effects on the overlay store and toast store.
  * It NEVER calls updateWidget, updateLayer, or any network route.
  *
- * Layer overlay shape (Phase 58.1):
- *   The split patch is DTO-shaped: { config?: {renderMode, visible, opacity, ...}, track_config?, cb_config? }
- *   - "layer.config" fields → nested under config sub-object
- *   - "layer" fields → top-level (track_config, cb_config)
+ * Layer overlay shape (Phase 60.1 RE-SCOPE):
+ *   Validated via validateLayerSnapshot (denylist: reject data-binding/spatial/meta; accept all render/style/info).
+ *   The split patch is DTO-shaped: { config?: {renderMode, colormap, style keys, ...}, cb_config?, track_config?, info_enabled?, info_columns?, info_template? }
+ *   - LAYER_SNAPSHOT_TOP_LEVEL fields (cb_config, track_config, info_*) → top-level
+ *   - all other render/style keys → nested under config sub-object
  */
 export function applyWidgetAction(
   action: WidgetAction,
@@ -133,8 +175,18 @@ export function applyWidgetAction(
   }
 
   // --- Step 2: Validate against allow-list ---
+  //
+  // Layer targets: use the DENYLIST validator (validateLayerSnapshot) — accepts any
+  // render/style/info key; rejects only data-binding/spatial/meta keys. This is the
+  // Phase 60.1 RE-SCOPE: a full-config snapshot is the contract for designer-UI layer options.
+  //
+  // Widget + dynamicView targets: keep the STRICT allow-list (validateActionPatch) unchanged.
+  // The AI/MCP path also uses validateActionPatch (SAFETY-V111-02 decoupling preserved).
 
-  const validation = validateActionPatch(target.kind, widgetType, configPatch);
+  const validation =
+    target.kind === "layer"
+      ? validateLayerSnapshot(configPatch)
+      : validateActionPatch(target.kind, widgetType, configPatch);
   if (!validation.valid) {
     const reasons = validation.reasons;
     const message = `Action rejected: ${reasons.join("; ")}`;
@@ -155,15 +207,17 @@ export function applyWidgetAction(
   let newTargetPatch: Record<string, unknown>;
 
   if (target.kind === "layer") {
-    // Phase 58.1: split the validated configPatch by allow-list location metadata.
-    // The allow-list is the SINGLE SOURCE OF TRUTH — no hardcoded field names here.
-    // - "layer.config" fields → split.config (nested)
-    // - "layer" fields        → split.topLevel (top-level: track_config, cb_config)
-    const split = splitLayerPatch(configPatch);
+    // Phase 60.1 RE-SCOPE: snapshot-aware split — LAYER_SNAPSHOT_TOP_LEVEL fields stay
+    // top-level (cb_config, track_config, info_enabled, info_columns, info_template);
+    // all other keys (renderMode + arbitrary style keys: colormap, BLUR_RADIUS, etc.)
+    // go nested under `config`. This DTO shape is exactly what effectiveLayers deep-merges.
+    // Unlike the old splitLayerPatch (knows only 5 strict allow-listed keys), this split
+    // handles the full appearance snapshot produced by KineticaWmsLayerForm.
+    const split = splitLayerSnapshot(configPatch);
     // Build DTO-shaped patch to record: top-level fields stay top-level; config nested.
     newTargetPatch = {
       ...split.topLevel,
-      ...(split.config && Object.keys(split.config).length > 0 ? { config: split.config } : {}),
+      ...(split.config ? { config: split.config } : {}),
     };
   } else {
     // widget / dynamicView: store configPatch directly

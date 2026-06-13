@@ -293,12 +293,23 @@ describe("applyWidgetAction — rejected", () => {
     expect(result.status).toBe("rejected");
   });
 
-  it("rejects an unknown layer field (old snake-case keys are unknown; use renderMode camelCase)", () => {
-    // The old Phase 58 snake-case key is not in the allow-list.
-    // Any unknown field should be rejected. The renderMode (camelCase) spec above
-    // confirms the correct key is accepted.
+  it("layer target with unknown style key is ACCEPTED (denylist: not blocked) — Phase 60.1 snapshot path", () => {
+    // Phase 60.1 RE-SCOPE: layer targets now use the DENYLIST (validateLayerSnapshot).
+    // Unknown style keys (colormap, BLUR_RADIUS, arbitrary form fields) are ACCEPTED —
+    // only data-binding/spatial/meta keys are rejected. This is intentional: the designer
+    // UI snapshot carries all style keys from KineticaWmsLayerForm.
     const result = applyWidgetAction(
-      { target: { kind: "layer", id: 100 }, configPatch: { totally_unknown: "heatmap" } },
+      { target: { kind: "layer", id: 100 }, configPatch: { totally_unknown_style_key: "viridis" } },
+      makeLookups(),
+      CONTROL_ID
+    );
+    expect(result.status).toBe("applied");
+  });
+
+  it("layer target with data-binding key (table_id) is REJECTED even with denylist", () => {
+    // Data-binding keys are always blocked for layer targets (safety boundary).
+    const result = applyWidgetAction(
+      { target: { kind: "layer", id: 100 }, configPatch: { table_id: 99 } as Record<string, unknown> },
       makeLookups(),
       CONTROL_ID
     );
@@ -482,7 +493,101 @@ describe("applyWidgetAction — zero PATCH (transient-only)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. MCP action seam doc — existence + content asserts (SEAM-V111-01)
+// 8. applyWidgetAction — layer snapshot (60.1)
+//    Validates routing through validateLayerSnapshot + DTO-shaped snapshot-aware split
+// ---------------------------------------------------------------------------
+describe("applyWidgetAction — layer snapshot (60.1)", () => {
+  const LAYER_ID = 100;
+
+  it("full snapshot accepted: DTO overlay has nested config (renderMode+colormap) + top-level cb_config + top-level info_enabled", () => {
+    const result = applyWidgetAction(
+      {
+        target: { kind: "layer", id: LAYER_ID },
+        configPatch: { renderMode: "classbreak", colormap: "viridis", cb_config: "{}", info_enabled: 0 },
+      },
+      makeLookups(),
+      CONTROL_ID
+    );
+    expect(result.status).toBe("applied");
+
+    const overlay = useWidgetActionStore.getState().layerOverrides[LAYER_ID];
+    // Style/render keys → nested under config
+    expect((overlay?.config as Record<string, unknown>)?.renderMode).toBe("classbreak");
+    expect((overlay?.config as Record<string, unknown>)?.colormap).toBe("viridis");
+    // Top-level fields NOT nested in config
+    expect(overlay?.cb_config).toBe("{}");
+    expect(overlay?.info_enabled).toBe(0);
+    // renderMode/colormap must NOT be at top-level
+    expect(overlay?.renderMode).toBeUndefined();
+    expect(overlay?.colormap).toBeUndefined();
+  });
+
+  it("snapshot with data-binding key (table_id) → rejected; no store write", () => {
+    const result = applyWidgetAction(
+      {
+        target: { kind: "layer", id: LAYER_ID },
+        configPatch: { renderMode: "raster", table_id: 9 } as Record<string, unknown>,
+      },
+      makeLookups(),
+      CONTROL_ID
+    );
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") {
+      expect(result.reasons.some((r) => r.includes("table_id"))).toBe(true);
+    }
+    expect(useWidgetActionStore.getState().layerOverrides[LAYER_ID]).toBeUndefined();
+  });
+
+  it("snapshot with spatialMode → rejected (spatial key blocked)", () => {
+    const result = applyWidgetAction(
+      {
+        target: { kind: "layer", id: LAYER_ID },
+        configPatch: { spatialMode: "latlon" } as Record<string, unknown>,
+      },
+      makeLookups(),
+      CONTROL_ID
+    );
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected") {
+      expect(result.reasons.some((r) => r.includes("spatialMode"))).toBe(true);
+    }
+  });
+
+  it("idempotency: dispatching the same full snapshot twice writes once (second call does not write to store)", () => {
+    const action = {
+      target: { kind: "layer" as const, id: LAYER_ID },
+      configPatch: { renderMode: "classbreak", colormap: "viridis", cb_config: "{}", info_enabled: 0 },
+    };
+    applyWidgetAction(action, makeLookups(), CONTROL_ID);
+    const spy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
+    const result = applyWidgetAction(action, makeLookups(), CONTROL_ID);
+    expect(result.status).toBe("applied");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("widget strict path (regression): map show_popup still validates via validateActionPatch + applies", () => {
+    const result = applyWidgetAction(
+      { target: { kind: "widget", id: 1 }, configPatch: { show_popup: true } },
+      makeLookups({ widgets: [makeWidget({ id: 1, type: "map", config: {} })] }),
+      CONTROL_ID
+    );
+    expect(result.status).toBe("applied");
+    expect(useWidgetActionStore.getState().widgetOverrides[1]).toEqual({ show_popup: true });
+  });
+
+  it("widget strict path (regression): out-of-list key still rejects via validateActionPatch (strict path intact)", () => {
+    const result = applyWidgetAction(
+      { target: { kind: "widget", id: 1 }, configPatch: { colormap: "viridis" } },
+      makeLookups({ widgets: [makeWidget({ id: 1, type: "map", config: {} })] }),
+      CONTROL_ID
+    );
+    expect(result.status).toBe("rejected");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. MCP action seam doc — existence + content asserts (SEAM-V111-01)
+// (formerly section 8; renumbered after adding layer-snapshot section above)
 // ---------------------------------------------------------------------------
 describe("MCP action seam doc (SEAM-V111-01)", () => {
   // Resolve the doc relative to this spec file:
