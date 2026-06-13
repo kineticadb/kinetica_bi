@@ -956,6 +956,52 @@ a {
   }
 }
 
+/* Radio Group widget RENDERER (Phase 60) — orientation + accent theming.
+   The renderer shipped without widget CSS: options flowed inline (so "vertical"
+   rendered horizontally) and native radios used the browser-default blue instead
+   of the app's green accent. */
+.widget-radiogroup {
+  padding: 4px 2px;
+}
+.radiogroup-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.radiogroup-options {
+  display: flex;
+  gap: 8px 18px;
+}
+.radiogroup--vertical {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.radiogroup--horizontal {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.radiogroup-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.radiogroup-label {
+  cursor: pointer;
+}
+.radiogroup-input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Native radios use the app's green accent — matches the accent-color convention
+   already applied to checkboxes app-wide (radios were previously missed → blue).
+   Also backs the .accent-green utility class referenced by RadioGroupRenderer. */
+input[type="radio"],
+.accent-green {
+  accent-color: var(--accent);
+}
+
 /* Config panel */
 .config-panel {
   display: flex;
