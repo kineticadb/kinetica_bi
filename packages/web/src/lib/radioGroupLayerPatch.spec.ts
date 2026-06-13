@@ -15,8 +15,8 @@
  *   - widgetActionStore.deriveOverlays (~line 179): const { config: patchConfig, ...patchTopLevel } = patch
  */
 import { describe, it, expect } from "vitest";
-import { patchToLayerFormConfig, layerFormConfigToPatch } from "./radioGroupLayerPatch";
-import { validateActionPatch } from "./actionAllowList";
+import { patchToLayerFormConfig, layerFormConfigToPatch, snapshotToLayerForm, layerFormToSnapshot, DATA_BINDING_KEYS } from "./radioGroupLayerPatch";
+import { validateActionPatch, validateLayerSnapshot } from "./actionAllowList";
 
 // ---------------------------------------------------------------------------
 // patchToLayerFormConfig — flat configPatch → form config blob
@@ -137,5 +137,171 @@ describe("allow-list safety", () => {
     const patch = layerFormConfigToPatch({ renderMode: "raster" });
     const result = validateActionPatch("layer", undefined, patch);
     expect(result.valid).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// radioGroupLayerPatch — full snapshot (60.1 re-scope)
+// ---------------------------------------------------------------------------
+
+describe("radioGroupLayerPatch — full snapshot (60.1 re-scope)", () => {
+  // ---------------------------------------------------------------------------
+  // snapshotToLayerForm
+  // ---------------------------------------------------------------------------
+
+  it("snapshotToLayerForm: lifts cb_config/track_config into config blob and surfaces info_* separately", () => {
+    const snapshot = {
+      renderMode: "classbreak",
+      colormap: "viridis",
+      cb_config: '{"breaks":[1]}',
+      track_config: "{}",
+      info_enabled: 1,
+      info_columns: '["a"]',
+      info_template: "<b/>",
+    };
+    const { config, info } = snapshotToLayerForm(snapshot);
+    // config blob has renderMode, colormap, cb_config, track_config (lifted into blob)
+    expect(config.renderMode).toBe("classbreak");
+    expect(config.colormap).toBe("viridis");
+    expect(config.cb_config).toBe('{"breaks":[1]}');
+    expect(config.track_config).toBe("{}");
+    // info_* are NOT in the config blob
+    expect("info_enabled" in config).toBe(false);
+    expect("info_columns" in config).toBe(false);
+    expect("info_template" in config).toBe(false);
+    // info_* surfaced separately
+    expect(info.info_enabled).toBe(1);
+    expect(info.info_columns).toBe('["a"]');
+    expect(info.info_template).toBe("<b/>");
+  });
+
+  it("snapshotToLayerForm: strips stray data-binding/spatial keys defensively", () => {
+    const snapshot = {
+      renderMode: "raster",
+      table_id: 7,
+      spatialMode: "latlon",
+      latColumn: "x",
+    };
+    const { config } = snapshotToLayerForm(snapshot);
+    expect(config.renderMode).toBe("raster");
+    expect("table_id" in config).toBe(false);
+    expect("spatialMode" in config).toBe(false);
+    expect("latColumn" in config).toBe(false);
+  });
+
+  it("snapshotToLayerForm: empty snapshot yields { config: {}, info: {} }", () => {
+    const { config, info } = snapshotToLayerForm({});
+    expect(Object.keys(config)).toHaveLength(0);
+    expect(Object.keys(info)).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------------------
+  // layerFormToSnapshot
+  // ---------------------------------------------------------------------------
+
+  it("layerFormToSnapshot: strips data-binding/spatial keys, keeps render/style + cb_config/track_config top-level", () => {
+    const formConfig = {
+      renderMode: "classbreak",
+      colormap: "viridis",
+      cb_config: "{}",
+      track_config: "{}",
+      spatialMode: "latlon",
+      latColumn: "x",
+      lonColumn: "y",
+      tableRef: "s.t",
+    };
+    const snapshot = layerFormToSnapshot(formConfig, { info_enabled: 1 });
+    expect(snapshot.renderMode).toBe("classbreak");
+    expect(snapshot.colormap).toBe("viridis");
+    expect(snapshot.cb_config).toBe("{}");
+    expect(snapshot.track_config).toBe("{}");
+    expect(snapshot.info_enabled).toBe(1);
+    // Stripped keys
+    expect("spatialMode" in snapshot).toBe(false);
+    expect("latColumn" in snapshot).toBe(false);
+    expect("lonColumn" in snapshot).toBe(false);
+    expect("tableRef" in snapshot).toBe(false);
+    // cb_config/track_config are TOP-LEVEL siblings of renderMode (not nested under "config")
+    expect("config" in snapshot).toBe(false);
+  });
+
+  it("layerFormToSnapshot: strips meta/permanently-blocked keys from form blob", () => {
+    const formConfig: Record<string, unknown> = {
+      renderMode: "raster",
+      id: 9,
+      type: "x",
+    };
+    // Inject __proto__ as own property via JSON parse
+    const withProto = JSON.parse('{"renderMode":"raster","id":9,"type":"x"}') as Record<string, unknown>;
+    const snapshot = layerFormToSnapshot(withProto, {});
+    expect(snapshot.renderMode).toBe("raster");
+    expect("id" in snapshot).toBe(false);
+    expect("type" in snapshot).toBe(false);
+  });
+
+  it("layerFormToSnapshot: infoPatch fields fold to flat top-level in snapshot", () => {
+    const snapshot = layerFormToSnapshot(
+      { renderMode: "raster" },
+      { info_enabled: 0, info_columns: null, info_template: "t" },
+    );
+    expect(snapshot.info_enabled).toBe(0);
+    expect(snapshot.info_columns).toBeNull();
+    expect(snapshot.info_template).toBe("t");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Round-trip
+  // ---------------------------------------------------------------------------
+
+  it("round-trip: snapshot → snapshotToLayerForm → layerFormToSnapshot → same snapshot", () => {
+    const S = {
+      renderMode: "classbreak",
+      colormap: "viridis",
+      cb_config: '{"breaks":[1]}',
+      track_config: "{}",
+      info_enabled: 1,
+      info_columns: '["a"]',
+      info_template: "<b/>",
+    };
+    const { config, info } = snapshotToLayerForm(S);
+    const roundTripped = layerFormToSnapshot(config, info);
+    expect(roundTripped).toEqual(S);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Safety: validateLayerSnapshot passes for all layerFormToSnapshot outputs
+  // ---------------------------------------------------------------------------
+
+  it("safety: layerFormToSnapshot output passes validateLayerSnapshot (no data-binding/meta leaks)", () => {
+    const formConfig = {
+      renderMode: "classbreak",
+      colormap: "viridis",
+      cb_config: "{}",
+      track_config: "{}",
+      spatialMode: "latlon",
+      latColumn: "x",
+      lonColumn: "y",
+      tableRef: "s.t",
+      table_id: 7,
+    };
+    const snapshot = layerFormToSnapshot(formConfig, { info_enabled: 1 });
+    const result = validateLayerSnapshot(snapshot);
+    expect(result.valid).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // DATA_BINDING_KEYS re-export
+  // ---------------------------------------------------------------------------
+
+  it("DATA_BINDING_KEYS contains table_id, dynamic_view_id, spatialMode, latColumn, lonColumn, wktColumn, wkbColumn, trackXColumn", () => {
+    const keys = DATA_BINDING_KEYS as readonly string[];
+    expect(keys).toContain("table_id");
+    expect(keys).toContain("dynamic_view_id");
+    expect(keys).toContain("spatialMode");
+    expect(keys).toContain("latColumn");
+    expect(keys).toContain("lonColumn");
+    expect(keys).toContain("wktColumn");
+    expect(keys).toContain("wkbColumn");
+    expect(keys).toContain("trackXColumn");
   });
 });
