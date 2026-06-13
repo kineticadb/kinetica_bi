@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Phase 60.1 (RE-SCOPED) COMPLETE + verified passed 4/4 (RADIOUX-V111-01; full-form side-by-side layer editor; commits 19dc06a/8c1c5bc/ce33a6a + 01e88d8/1c0f1ba/c7b91a0 + 6a3336c/8447b9b/7b4e980/12a4aed; frontend 2005/2005, web tsc clean, no server diff). The narrow first cut is superseded. RESUME TARGET = Phase 61 (PAUSED mid-walk, NOT fresh): re-walk §1.1/§1.2 using the NEW full-form editor + GAP-61-02 eye-toggle fix; set up P2 (non-bypass analyst) + walk §3.1/§3.2/§3.3 (viewer-safe payoff); then finalize 61-UAT overall_result + run 61-03 (compile 61-VERIFICATION + tick VERIFY-V111-01 + close milestone)."
+stopped_at: "Phase 60.2 INSERTED (2026-06-13) before Phase 61 — Radio Dashboard Control MULTI-TARGET options (RADIOMULTI-V111-01, pulled forward from CTRL-V2-03); NOT yet planned (run /gsd:plan-phase 60.2). 60.2-CONTEXT.md written. Sequencing: 60.2 ships before the 61 gate; 61's walk then exercises a multi-target option. Prior: 60.1 (full-form layer editor) COMPLETE+verified; 60 done. Phase 61 still PAUSED mid-walk (re-walk §1.1/§1.2 + P2/§3 + 61-03) — resumes AFTER 60.2 ships. NEXT: plan + execute 60.2, then resume 61."
 last_updated: "2026-06-13T02:54:36.825Z"
 progress:
   total_phases: 6
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 61 — verification-live-uat (PAUSED mid-walk; 60.1 re-scoped full-form editor just shipped before it)
+**Current focus:** Phase 60.2 — Radio Dashboard Control multi-target options (INSERTED, not yet planned). Phase 61 paused behind it.
 
 ## Current Position
 
-Phase: 60.1 (radio-config-ux-structured-layer-target-editor-reuse-cbconfigform) — COMPLETE ✓ (RE-SCOPED full-form side-by-side; verified passed 4/4, 2026-06-13, RADIOUX-V111-01)
-Phase 61 (verification-live-uat) — PAUSED mid-walk, RESUME NEXT (re-walk §1.1/§1.2 + P2/§3, then 61-03)
+Phase: 60.2 (radio-dashboard-control-multi-target-options) — INSERTED, NOT PLANNED (next: /gsd:plan-phase 60.2)
+Phase 60.1 — COMPLETE ✓ (full-form side-by-side, RADIOUX-V111-01) · Phase 60 — COMPLETE
+Phase 61 (verification-live-uat) — PAUSED mid-walk, resumes after 60.2 ships (re-walk §1.1/§1.2 + P2/§3, then 61-03)
 
 ## v1.11 Phase Map
 
@@ -34,6 +35,7 @@ Phase 61 (verification-live-uat) — PAUSED mid-walk, RESUME NEXT (re-walk §1.1
 | 59 | Radio-Group Widget — Registry Def + Config Panel | RADIO-V111-01, RADIO-V111-02 |
 | 60 | Radio Renderer + Wiring + Persistence + MCP Seam Doc | RADIO-V111-03, SEAM-V111-01 |
 | 60.1 | Radio Config UX — Structured Layer-Target Editor (reuse CbConfigForm) (INSERTED) | RADIOUX-V111-01 |
+| 60.2 | Radio Dashboard Control — Multi-Target Options (INSERTED, pulled fwd from CTRL-V2-03) | RADIOMULTI-V111-01 |
 | 61 | Verification + Live UAT | VERIFY-V111-01 |
 
 Phases 58-60 are FRONTEND-HEAVY — likely zero server changes (new dep `zod@^3.23.8` in `packages/web` only; existing PATCH routes are the entire server surface). Flag any server diff. Frontend vitest must stay 100% (run from `packages/web`); web + server tsc clean as SEPARATE gates; server vitest is a SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky list — NEVER a fixed pass-count). Phase 61 verifies both stacks + a blocking live operator walk-through (mirrors v1.9 Phase 54 / v1.10 Phase 57).
@@ -270,6 +272,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ### Roadmap Evolution
 
+- Phase 60.2 inserted after Phase 60.1 (2026-06-13, INSERTED — pulled forward from v2): Radio Dashboard Control MULTI-TARGET options (RADIOMULTI-V111-01, pulled forward from CTRL-V2-03). One radio option drives multiple targets at once: `RadioOption.action` → `actions: WidgetAction[]` (mixed widget/layer/dv); select applies all via ONE setControlContribution write; OPTION-level switch-replace (build the full contribution + wholesale replace = stale targets drop for free; do NOT loop per-target merge). Config panel grows a per-option target list (add/remove) reusing each target's editor (layer → 60.1 full form). Back-compat normalizer `getOptionActions` (legacy single `action` → 1-elem array; no DB migration). Overlay store was already multi-target/control-keyed → moderate, mostly-UI lift. Frontend-only. Ships before the 61 gate; 61 walk then exercises a multi-target option. NOT yet planned (run /gsd:plan-phase 60.2).
 - Phase 60.1 inserted after Phase 60 (2026-06-12, INSERTED): Radio Config UX — Structured Layer-Target Editor (reuse CbConfigForm). Operator feedback during the Phase 61 walk: the per-option raw "Config Patch (JSON)" textarea is unusable for non-JSON authors, and class-break (`cb_config` nested JSON string) is effectively unauthorable. New req RADIOUX-V111-01. When a radio option targets a map layer, render a render-mode picker + reusable `CbConfigForm` (the LayersModal class-break builder) bridged to the flat allow-listed configPatch via an adapter (mirrors the cb_config top-level↔config.cb_config split in effectiveLayers/deriveOverlays); raw JSON kept as collapsible "Advanced" fallback; widget/dv targets unchanged. Frontend-only. Sequencing: 60.1 ships BEFORE Phase 61 closes — 61's live walk authors a class-break option via this editor. NOT yet planned (run /gsd:plan-phase 60.1).
 - Phase 58.1 inserted after Phase 58 (2026-06-10, URGENT): Action-engine foundation fix — allow-list uses wrong field name (`render_mode` vs real nested `config.renderMode`) + the layer overlay flat-spread can't reach nested config; Phase 58 canary only tested top-level track_config/cb_config so the gap shipped. Discovered during Phase 59 planning. Phase 59 plans (59-01/59-02) are WRITTEN but ON HOLD (unverified/unexecuted) — to be re-planned against the corrected allow-list after 58.1.
 

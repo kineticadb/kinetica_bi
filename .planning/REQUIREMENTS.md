@@ -26,6 +26,8 @@
 - [x] **RADIO-V111-03**: Selecting a radio option applies its action — the target updates LIVE and the change persists across dashboard reload; the radio's own selected option persists (its `selectedIndex` is part of its config)
 - [x] **RADIOUX-V111-01**: A radio-group option targeting a MAP LAYER is authored via a STRUCTURED editor instead of a hand-edited raw JSON textarea, reusing the FULL `KineticaWmsLayerForm` (the Map Layers config form) in a SIDE-BY-SIDE layout — render mode + all style params + opacity + info-popup details. The option captures a full-config snapshot (config + `cb_config`/`track_config` + `info_*`) that overlays the live layer; data-binding/spatial keys are stripped (denylist-validated); the strict field allow-list still governs widget/dv + AI/MCP paths. Raw JSON remains a collapsible "Advanced" fallback. Widget/dynamic-view targets keep their existing simple inputs. (RE-SCOPED 2026-06-12: first cut shipped a narrow render-mode+CbConfigForm editor; superseded by the full-form side-by-side design.)
 
+- [ ] **RADIOMULTI-V111-01**: A single Radio Dashboard Control option can drive MULTIPLE targets at once — `RadioOption` carries an ordered `actions: WidgetAction[]` (each an independent {target, configPatch}; targets may mix widget / map-layer / dynamic-view kinds). Selecting an option applies ALL its actions as one control contribution (one `setControlContribution` write); switching options is switch-replace at the OPTION level (targets the new option does not set revert to baseline). The config panel authors a per-option target LIST (add/remove), each target using its existing editor (layer → the full-form side-by-side from 60.1; widget/dv → simple inputs). Back-compat: legacy single-`action` options keep working (normalized to a 1-element `actions`). (Pulled forward from CTRL-V2-03, 2026-06-13.)
+
 ### AI/MCP Future Seam (design + document only)
 
 - [x] **SEAM-V111-01**: The dispatch entry point (e.g. `applyWidgetAction`) and the action envelope are documented as the hook a future AI chat widget / MCP server reuses, with the concrete MCP tool shape noted (the envelope as zod `inputSchema`, calling the existing PATCH routes) — NO AI widget and NO MCP server are built this milestone
@@ -48,7 +50,7 @@ Deferred to a future milestone. Tracked but not in this roadmap.
 
 - **CTRL-V2-01**: Additional control widget types (dropdown, buttons, toggle, slider)
 - **CTRL-V2-02**: Actions that set data FILTERS (distinct from config; needs its own invariant analysis vs the existing drill-down/materialize pipeline)
-- **CTRL-V2-03**: One control driving multiple targets at once / dashboard-wide parameters
+- **CTRL-V2-03**: One control driving multiple targets at once / dashboard-wide parameters — *multi-target portion PULLED FORWARD to v1.11 as RADIOMULTI-V111-01 (Phase 60.2, 2026-06-13); "dashboard-wide parameters" remains v2.*
 
 ## Out of Scope
 
@@ -78,12 +80,13 @@ Explicitly excluded for v1.11.
 | RADIO-V111-02 | Phase 59 | Complete |
 | RADIO-V111-03 | Phase 60 | Complete |
 | RADIOUX-V111-01 | Phase 60.1 | Complete |
+| RADIOMULTI-V111-01 | Phase 60.2 | Pending |
 | SEAM-V111-01 | Phase 60 | Complete |
 | VERIFY-V111-01 | Phase 61 | Pending |
 
 **Coverage:**
-- v1 requirements: 12 total
-- Mapped to phases: 12 ✓
+- v1 requirements: 13 total
+- Mapped to phases: 13 ✓
 - Unmapped: 0 ✓
 
 **Phase distribution:**
@@ -91,6 +94,7 @@ Explicitly excluded for v1.11.
 - Phase 59 (Radio-Group Registry Def + Config Panel): RADIO-V111-01, RADIO-V111-02 (2)
 - Phase 60 (Radio Renderer + Wiring + Persistence + MCP Seam Doc): RADIO-V111-03, SEAM-V111-01 (2)
 - Phase 60.1 (Radio Config UX — Structured Layer-Target Editor): RADIOUX-V111-01 (1)
+- Phase 60.2 (Radio Dashboard Control — Multi-Target Options): RADIOMULTI-V111-01 (1)
 - Phase 61 (Verification + Live UAT): VERIFY-V111-01 (1)
 
 ---
