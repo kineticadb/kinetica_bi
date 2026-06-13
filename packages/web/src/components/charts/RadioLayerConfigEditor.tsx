@@ -1,62 +1,54 @@
 /**
- * Phase 60.1 Plan 02 — RadioLayerConfigEditor
+ * Phase 60.1 Plan 03 — RadioLayerConfigEditor (FULL-FORM SIDE-BY-SIDE)
  *
- * A CONTROLLED subcomponent rendered inside OptionRow when
- * option.action.target.kind === "layer".
+ * Replaces the narrow first-cut editor (render-mode <select> + standalone CbConfigForm)
+ * with the FULL KineticaWmsLayerForm, embedded directly.
  *
- * Surfaces:
- *   - A render-mode <select> (raster / heatmap / classbreak / contour)
- *   - For classbreak: the reusable CbConfigForm break builder
+ * Design (LOCKED by operator review, Phase 60.1 RE-SCOPE):
+ *   - Seeds the form from option.action.configPatch via snapshotToLayerForm (adapter from Plan 01)
+ *   - Every edit writes a full-config snapshot back via layerFormToSnapshot (adapter from Plan 01)
+ *   - DATA SOURCE auto-hides: do NOT pass layer/onDataSourceChange (form returns null for that section)
+ *   - SPATIAL MODE suppressed: pass hideSpatialMode={true}
+ *   - INFO POPUP wired: infoEnabled / infoColumns / infoTemplate + onChangeInfoConfig
+ *   - MERGE semantics: non-surfaced keys (e.g. track_config) preserved via the adapter's pass-through
  *
- * Reads via patchToLayerFormConfig; writes via layerFormConfigToPatch.
- * ALL field writes are routed through the adapter — no out-of-list keys ever
- * reach the configPatch (SC2 safety boundary).
+ * Prop surface is UNCHANGED from the first-cut (the panel passes the same set):
+ *   configPatch, columns, schema, tableName, tableRef, autoSuggestDisabledReason, onChange, onCbValid, idx
  *
- * CbConfigForm validity (zero breaks = invalid) surfaces via the onCbValid
- * callback (CONTEXT line 50, LOCKED). Non-classbreak modes reset to valid.
+ * onChange now emits a FULL snapshot (via layerFormToSnapshot), not just a 4-field allow-listed subset.
+ * The panel MERGES it onto option.action.configPatch using { ...option.action.configPatch, ...nextPatch }.
+ * The snapshot adapter (layerFormToSnapshot) already strips data-binding/spatial/meta keys (SC2).
  *
- * Do NOT embed KineticaWmsLayerForm. Allow-listed fields only:
- *   renderMode / cb_config / visible / opacity
+ * INFINITE-RENDER PITFALL (DO NOT REPEAT): Do NOT call onChange/onCbValid in the render body.
+ * The form's onChange / onChangeInfoConfig / isValid are event-driven. Compute formConfig + info
+ * once per render from props (pure); the form owns its own effects. Mirrors LayersModal.tsx.
  */
 
-import { useEffect } from "react";
-import type { Column } from "../../lib/columnTypes";
-import CbConfigForm from "./CbConfigForm";
+import KineticaWmsLayerForm from "./KineticaWmsLayerForm";
 import {
-  patchToLayerFormConfig,
-  layerFormConfigToPatch,
+  snapshotToLayerForm,
+  layerFormToSnapshot,
 } from "../../lib/radioGroupLayerPatch";
+import type { Column } from "../../lib/columnTypes";
 
 // ---------------------------------------------------------------------------
-// Local render-mode constants (mirrored from KineticaWmsLayerForm — not exported there)
-// ---------------------------------------------------------------------------
-
-type RenderMode = "raster" | "heatmap" | "classbreak" | "contour";
-
-const RENDER_MODE_LABELS: Record<RenderMode, string> = {
-  raster: "Raster (point markers)",
-  heatmap: "Heatmap (density)",
-  classbreak: "Classbreak (categorical)",
-  contour: "Contour (lines)",
-};
-
-const ALL_RENDER_MODES: RenderMode[] = ["raster", "heatmap", "classbreak", "contour"];
-
-// ---------------------------------------------------------------------------
-// Props
+// Props — UNCHANGED from first-cut; panel passes the same set
 // ---------------------------------------------------------------------------
 
 type RadioLayerConfigEditorProps = {
-  /** The option's FLAT allow-listed configPatch */
+  /** The option's full-config snapshot (configPatch) — may carry any style/info keys */
   configPatch: Record<string, unknown>;
   columns: Column[];
   schema?: string;
   tableName?: string;
   tableRef?: string;
   autoSuggestDisabledReason?: string;
-  /** Emits a FLAT allow-listed patch (only LAYER_FORM_PATCH_FIELDS keys) */
+  /**
+   * Emits a FULL layer-appearance snapshot (via layerFormToSnapshot).
+   * The panel merges it onto option.action.configPatch.
+   */
   onChange: (nextPatch: Record<string, unknown>) => void;
-  /** CbConfigForm validity — only meaningful in classbreak mode; non-classbreak always valid */
+  /** CbConfigForm validity callback — forwarded to KineticaWmsLayerForm.isValid */
   onCbValid?: (valid: boolean) => void;
   /** For stable aria-labels / data-testids */
   idx: number;
@@ -69,82 +61,42 @@ type RadioLayerConfigEditorProps = {
 export default function RadioLayerConfigEditor({
   configPatch,
   columns,
-  schema,
-  tableName,
-  tableRef,
-  autoSuggestDisabledReason,
   onChange,
   onCbValid,
   idx,
 }: RadioLayerConfigEditorProps): JSX.Element {
-  // Lift the flat patch into the form-blob CbConfigForm expects
-  const formConfig = patchToLayerFormConfig(configPatch);
-  const renderMode = (formConfig.renderMode as string) ?? "raster";
+  // 1. Seed the full form from the option's snapshot.
+  //    snapshotToLayerForm lifts cb_config/track_config INTO formConfig and surfaces info_* separately.
+  const { config: formConfig, info } = snapshotToLayerForm(configPatch);
 
-  // When the render mode is NOT classbreak, signal valid so the option is
-  // never left stuck-invalid after switching away from classbreak (CONTEXT line 50).
-  useEffect(() => {
-    if (renderMode !== "classbreak") {
-      onCbValid?.(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderMode]);
-
-  const handleRenderModeChange = (newMode: string) => {
-    const next = layerFormConfigToPatch({ ...formConfig, renderMode: newMode });
-    onChange(next);
-  };
-
-  const handleCbFormChange = (nextFormConfig: Record<string, unknown>) => {
-    onChange(layerFormConfigToPatch(nextFormConfig));
-  };
-
+  // 2. Render the FULL form.
+  //    - hideSpatialMode={true}: suppresses SPATIAL MODE radios + column pickers
+  //    - No layer / onDataSourceChange: DATA SOURCE section auto-hides (form returns null at ~line 468)
+  //    - INFO POPUP wired via infoEnabled/infoColumns/infoTemplate + onChangeInfoConfig
+  //    - onChange writes a full snapshot via layerFormToSnapshot (strips data-binding/meta keys)
+  //    - onChangeInfoConfig folds the info patch into the current info to produce a full snapshot
   return (
-    <div className="radio-layer-config-editor" style={{ marginBottom: 8 }}>
-      {/* Render-mode select */}
-      <div className="ds-field" style={{ marginBottom: 8 }}>
-        <span className="ds-field-label config-group-label" style={{ fontSize: "0.7rem", letterSpacing: "0.08em" }}>
-          RENDER MODE
-        </span>
-        <select
-          className="ds-select"
-          aria-label={`Option ${idx + 1} render mode`}
-          data-testid={`radio-layer-rendermode-${idx}`}
-          value={renderMode}
-          onChange={(e) => handleRenderModeChange(e.target.value)}
-          style={{ width: "100%" }}
-        >
-          {ALL_RENDER_MODES.map((mode) => (
-            <option key={mode} value={mode}>
-              {RENDER_MODE_LABELS[mode]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* CbConfigForm — only when classbreak is selected */}
-      {renderMode === "classbreak" && (
-        <div
-          data-testid={`radio-layer-cbform-${idx}`}
-          style={{
-            border: "1px solid var(--border-color, #3a3a4a)",
-            borderRadius: 4,
-            padding: "8px 10px",
-            marginBottom: 4,
-          }}
-        >
-          <CbConfigForm
-            config={formConfig}
-            columns={columns}
-            schema={schema}
-            tableName={tableName}
-            tableRef={tableRef}
-            autoSuggestDisabledReason={autoSuggestDisabledReason}
-            onChange={handleCbFormChange}
-            isValid={onCbValid}
-          />
-        </div>
-      )}
+    <div
+      data-testid={`radio-layer-form-${idx}`}
+      className="radiogroup-layer-form"
+    >
+      <KineticaWmsLayerForm
+        config={formConfig}
+        columns={columns}
+        onChange={(nextFormConfig) =>
+          onChange(layerFormToSnapshot(nextFormConfig, info))
+        }
+        isValid={onCbValid}
+        infoEnabled={(info.info_enabled as number | undefined) ?? 1}
+        infoColumns={(info.info_columns as string | null | undefined) ?? null}
+        infoTemplate={(info.info_template as string | null | undefined) ?? null}
+        onChangeInfoConfig={(patch) =>
+          onChange(layerFormToSnapshot(formConfig, { ...info, ...patch }))
+        }
+        hideSpatialMode={true}
+        // DATA SOURCE deliberately omitted — do NOT pass layer / onDataSourceChange / associatedTables.
+        // The form's renderDataSourcePicker returns null when those are absent (~line 468).
+      />
     </div>
   );
 }
