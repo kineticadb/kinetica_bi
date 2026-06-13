@@ -262,7 +262,7 @@ describe("radiogroup registry", () => {
 // ---------------------------------------------------------------------------
 
 describe("RadioGroupConfigPanel — option add/remove", () => {
-  it("clicking Add option calls onChange with one option appended", () => {
+  it("clicking Add option calls onChange with one option appended (actions[] shape)", () => {
     const onChange = vi.fn();
     render(
       <RadioGroupConfigPanel
@@ -282,12 +282,15 @@ describe("RadioGroupConfigPanel — option add/remove", () => {
     const opt = options[0] as {
       id: string;
       label: string;
-      action: { target: { kind: string; id: number }; configPatch: Record<string, unknown> };
+      actions: Array<{ target: { kind: string; id: number }; configPatch: Record<string, unknown> }>;
     };
     expect(opt.id).toBeTruthy();
     expect(opt.label).toBe("");
-    expect(opt.action.target.kind).toBe("widget");
-    expect(opt.action.configPatch).toEqual({});
+    // New-shape: option seeds actions[], NOT legacy action
+    expect(Array.isArray(opt.actions)).toBe(true);
+    expect(opt.actions).toHaveLength(1);
+    expect(opt.actions[0].target.kind).toBe("widget");
+    expect(opt.actions[0].configPatch).toEqual({});
   });
 
   it("clicking Remove on a row removes it via onChange", () => {
@@ -295,8 +298,8 @@ describe("RadioGroupConfigPanel — option add/remove", () => {
     const config: Record<string, unknown> = {
       orientation: "vertical",
       options: [
-        { id: "opt-a", label: "A", action: { target: { kind: "widget", id: 1 }, configPatch: { show_popup: true } } },
-        { id: "opt-b", label: "B", action: { target: { kind: "widget", id: 2 }, configPatch: { metric: "count" } } },
+        { id: "opt-a", label: "A", actions: [{ target: { kind: "widget", id: 1 }, configPatch: { show_popup: true } }] },
+        { id: "opt-b", label: "B", actions: [{ target: { kind: "widget", id: 2 }, configPatch: { metric: "count" } }] },
       ],
     };
 
@@ -376,7 +379,8 @@ describe("RadioGroupConfigPanel — target picker", () => {
         {
           id: "opt-1",
           label: "Test",
-          action: { target: { kind: "widget", id: 1 }, configPatch: { show_popup: true } },
+          // Use new actions[] shape
+          actions: [{ target: { kind: "widget", id: 1 }, configPatch: { show_popup: true } }],
         },
       ],
     };
@@ -395,8 +399,9 @@ describe("RadioGroupConfigPanel — target picker", () => {
     fireEvent.change(targetSelect, { target: { value: `layer:${mockLayer.id}` } });
 
     expect(onChange).toHaveBeenCalledOnce();
-    const next = onChange.mock.calls[0][0] as { options: Array<{ action: { configPatch: unknown } }> };
-    expect(next.options[0].action.configPatch).toEqual({});
+    const next = onChange.mock.calls[0][0] as { options: Array<{ actions: Array<{ configPatch: unknown }> }> };
+    // Panel writes actions[] on every change
+    expect(next.options[0].actions[0].configPatch).toEqual({});
   });
 });
 
@@ -426,7 +431,7 @@ describe("RadioGroupConfigPanel — Capture from target", () => {
         {
           id: "opt-1",
           label: "Class Break",
-          action: { target: { kind: "layer", id: mockLayer.id }, configPatch: {} },
+          actions: [{ target: { kind: "layer", id: mockLayer.id }, configPatch: {} }],
         },
       ],
     };
@@ -452,9 +457,10 @@ describe("RadioGroupConfigPanel — Capture from target", () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     const next = onChange.mock.calls[0][0] as {
-      options: Array<{ action: { configPatch: unknown } }>;
+      options: Array<{ actions: Array<{ configPatch: unknown }> }>;
     };
-    expect(next.options[0].action.configPatch).toEqual({ renderMode: "classbreak" });
+    // Panel writes actions[] on every change; configPatch updated by capture
+    expect(next.options[0].actions[0].configPatch).toEqual({ renderMode: "classbreak" });
   });
 });
 
@@ -471,7 +477,7 @@ describe("RadioGroupConfigPanel — JSON editor", () => {
         {
           id: "opt-1",
           label: "Test",
-          action: { target: { kind: "widget", id: 1 }, configPatch: {} },
+          actions: [{ target: { kind: "widget", id: 1 }, configPatch: {} }],
         },
       ],
     };
@@ -492,9 +498,10 @@ describe("RadioGroupConfigPanel — JSON editor", () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     const next = onChange.mock.calls[0][0] as {
-      options: Array<{ action: { configPatch: unknown } }>;
+      options: Array<{ actions: Array<{ configPatch: unknown }> }>;
     };
-    expect(next.options[0].action.configPatch).toEqual({ show_popup: true });
+    // Panel writes actions[] on every change
+    expect(next.options[0].actions[0].configPatch).toEqual({ show_popup: true });
   });
 
   it("editing JSON textarea with invalid JSON shows parse error and does NOT call onChange", () => {
@@ -1019,10 +1026,12 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
         {
           id: "opt-layer",
           label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "raster" },
-          },
+          actions: [
+            {
+              target: { kind: "layer", id: mockLayerForStructured.id },
+              configPatch: { renderMode: "raster" },
+            },
+          ],
         },
       ],
     };
@@ -1042,9 +1051,9 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as {
-      options: Array<{ action: { configPatch: Record<string, unknown> } }>;
+      options: Array<{ actions: Array<{ configPatch: Record<string, unknown> }> }>;
     };
-    const emittedPatch = lastCall.options[0].action.configPatch;
+    const emittedPatch = lastCall.options[0].actions[0].configPatch;
 
     // renderMode must be present in the emitted patch
     expect(emittedPatch.renderMode).toBe("classbreak");
@@ -1063,10 +1072,12 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
         {
           id: "opt-layer",
           label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "raster", info_enabled: 1 },
-          },
+          actions: [
+            {
+              target: { kind: "layer", id: mockLayerForStructured.id },
+              configPatch: { renderMode: "raster", info_enabled: 1 },
+            },
+          ],
         },
       ],
     };
@@ -1086,9 +1097,9 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as {
-      options: Array<{ action: { configPatch: Record<string, unknown> } }>;
+      options: Array<{ actions: Array<{ configPatch: Record<string, unknown> }> }>;
     };
-    const emittedPatch = lastCall.options[0].action.configPatch;
+    const emittedPatch = lastCall.options[0].actions[0].configPatch;
 
     // top-level info_enabled must be 0 (folded in by layerFormToSnapshot via the info patch)
     expect(emittedPatch.info_enabled).toBe(0);
@@ -1102,10 +1113,12 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
         {
           id: "opt-layer",
           label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "raster", track_config: "x" },
-          },
+          actions: [
+            {
+              target: { kind: "layer", id: mockLayerForStructured.id },
+              configPatch: { renderMode: "raster", track_config: "x" },
+            },
+          ],
         },
       ],
     };
@@ -1134,9 +1147,10 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     });
     expect(onChange).toHaveBeenCalledOnce();
     const nextCall = onChange.mock.calls[0][0] as {
-      options: Array<{ action: { configPatch: Record<string, unknown> } }>;
+      options: Array<{ actions: Array<{ configPatch: Record<string, unknown> }> }>;
     };
-    expect(nextCall.options[0].action.configPatch).toEqual({ renderMode: "raster", track_config: "x" });
+    // Panel writes actions[] on every change
+    expect(nextCall.options[0].actions[0].configPatch).toEqual({ renderMode: "raster", track_config: "x" });
 
     onChange.mockClear();
 
@@ -1157,10 +1171,12 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
         {
           id: "opt-layer",
           label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "raster", track_config: "keepme" },
-          },
+          actions: [
+            {
+              target: { kind: "layer", id: mockLayerForStructured.id },
+              configPatch: { renderMode: "raster", track_config: "keepme" },
+            },
+          ],
         },
       ],
     };
@@ -1180,12 +1196,12 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as {
-      options: Array<{ action: { configPatch: Record<string, unknown> } }>;
+      options: Array<{ actions: Array<{ configPatch: Record<string, unknown> }> }>;
     };
-    const emittedPatch = lastCall.options[0].action.configPatch;
+    const emittedPatch = lastCall.options[0].actions[0].configPatch;
 
     // track_config must survive — it's in the existing configPatch and the MERGE preserves it.
-    // The panel merges: { ...option.action.configPatch, ...nextPatch }
+    // The panel merges: { ...action.configPatch, ...nextPatch }
     // nextPatch from layerFormToSnapshot includes track_config (lifted by snapshotToLayerForm
     // and passed through the mock's config spread, then written back by layerFormToSnapshot).
     // Either way, the MERGE ensures track_config is present.
@@ -1259,5 +1275,304 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     expect(screen.getByRole("textbox", { name: /option 1 config patch json/i })).toBeTruthy();
     // No Advanced summary for dv targets
     expect(screen.queryByText(/Advanced \(raw JSON\)/i)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-option target list (Phase 60.2 Plan 02 additions)
+// ---------------------------------------------------------------------------
+
+describe("RadioGroupConfigPanel — per-option target list", () => {
+  beforeEach(() => {
+    useDashboardLayersStore.setState({ layers: [mockLayerForStructured, mockLayer] });
+  });
+
+  afterEach(() => {
+    useDashboardLayersStore.setState({ layers: [] });
+    cleanup();
+  });
+
+  it("single-target-clean: option with one action shows NO per-target Remove button and no 'TARGET N' header", () => {
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-single",
+          label: "Single",
+          actions: [{ target: { kind: "widget", id: mockWidget1.id }, configPatch: { show_popup: true } }],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    // The per-target wrapper must be present
+    expect(screen.getByTestId("radiogroup-target-0-0")).toBeTruthy();
+    // No per-target Remove button when only 1 target (single-target-clean)
+    expect(screen.queryByRole("button", { name: /remove target 1 from option 1/i })).toBeNull();
+    // No "TARGET 1" label chrome when only 1 target
+    expect(screen.queryByText(/TARGET 1/i)).toBeNull();
+  });
+
+  it("'+ Add target' grows option actions to length 2 and shows second target editor", () => {
+    const onChange = vi.fn();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-add",
+          label: "Add Target Test",
+          actions: [{ target: { kind: "widget", id: mockWidget1.id }, configPatch: {} }],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={onChange}
+        isValid={vi.fn()}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /add target to option 1/i }));
+
+    expect(onChange).toHaveBeenCalledOnce();
+    const next = onChange.mock.calls[0][0] as {
+      options: Array<{ actions: Array<{ target: { kind: string }; configPatch: Record<string, unknown> }> }>;
+    };
+    // actions array must now have 2 entries
+    expect(next.options[0].actions).toHaveLength(2);
+    // Second target seeded with empty patch
+    expect(next.options[0].actions[1].configPatch).toEqual({});
+    // Legacy action field must NOT be present
+    expect((next.options[0] as Record<string, unknown>).action).toBeUndefined();
+  });
+
+  it("per-target Remove shrinks actions back to 1 when starting with 2 targets", () => {
+    const onChange = vi.fn();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-multi",
+          label: "Multi",
+          actions: [
+            { target: { kind: "widget", id: mockWidget1.id }, configPatch: { show_popup: true } },
+            { target: { kind: "widget", id: mockWidget2.id }, configPatch: { metric: "count" } },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={onChange}
+        isValid={vi.fn()}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    // With 2 targets, per-target Remove buttons appear; remove the first one
+    fireEvent.click(screen.getByRole("button", { name: /remove target 1 from option 1/i }));
+
+    expect(onChange).toHaveBeenCalledOnce();
+    const next = onChange.mock.calls[0][0] as {
+      options: Array<{ actions: Array<{ target: { id: number } }> }>;
+    };
+    // Must be down to 1 action; the removed first target (id=1) is gone, second (id=2) remains
+    expect(next.options[0].actions).toHaveLength(1);
+    expect(next.options[0].actions[0].target.id).toBe(mockWidget2.id);
+    // Legacy action field must NOT be present
+    expect((next.options[0] as Record<string, unknown>).action).toBeUndefined();
+  });
+
+  it("multi-target: with 2 targets both TARGET chrome labels are shown", () => {
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-chrome",
+          label: "Chrome Test",
+          actions: [
+            { target: { kind: "widget", id: mockWidget1.id }, configPatch: {} },
+            { target: { kind: "widget", id: mockWidget2.id }, configPatch: {} },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    // Both target chrome labels should appear
+    expect(screen.getByText("TARGET 1")).toBeTruthy();
+    expect(screen.getByText("TARGET 2")).toBeTruthy();
+    // Both per-target wrappers are in the DOM
+    expect(screen.getByTestId("radiogroup-target-0-0")).toBeTruthy();
+    expect(screen.getByTestId("radiogroup-target-0-1")).toBeTruthy();
+  });
+
+  it("layer target within a multi-target option still renders the full RadioLayerConfigEditor (radio-layer-form-*)", () => {
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-mixed",
+          label: "Mixed",
+          actions: [
+            { target: { kind: "widget", id: mockWidget1.id }, configPatch: {} },
+            { target: { kind: "layer", id: mockLayerForStructured.id }, configPatch: { renderMode: "raster" } },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1]}
+        tables={mockTables}
+      />,
+    );
+
+    // RadioLayerConfigEditor (radio-layer-form-0) must be rendered for the layer target
+    expect(screen.getByTestId("radio-layer-form-0")).toBeTruthy();
+    // Two-pane layout class must be present (has a layer target → modal-widen marker)
+    expect(document.querySelector(".radiogroup-has-layer-editor")).toBeTruthy();
+    // Widget target section: JSON textareas present (widget + layer Advanced)
+    // Use queryAllByRole since the layer target also has an Advanced JSON textarea
+    const textareas = screen.getAllByRole("textbox", { name: /option 1 config patch json/i });
+    expect(textareas.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("legacy single-action option ({action:{}}) loads as 1 target and re-saves as actions[] with action undefined", () => {
+    const onChange = vi.fn();
+    // LEGACY FIXTURE — back-compat path via getOptionActions
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-legacy",
+          label: "Legacy",
+          // Legacy shape: no actions[], only action
+          action: { target: { kind: "widget", id: mockWidget1.id }, configPatch: { show_popup: true } },
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={onChange}
+        isValid={vi.fn()}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    // Must render one target editor (getOptionActions normalizes legacy action → [action])
+    expect(screen.getByTestId("radiogroup-target-0-0")).toBeTruthy();
+    // Editing the JSON textarea triggers a save in the new actions[] shape
+    const textarea = screen.getByRole("textbox", { name: /option 1 config patch json/i });
+    fireEvent.change(textarea, { target: { value: '{"show_popup":false}' } });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    const next = onChange.mock.calls[0][0] as {
+      options: Array<Record<string, unknown>>;
+    };
+    const savedOpt = next.options[0];
+    // Re-saved as actions[] (new shape)
+    expect(Array.isArray(savedOpt.actions)).toBe(true);
+    const savedActions = savedOpt.actions as Array<{ configPatch: Record<string, unknown> }>;
+    expect(savedActions[0].configPatch).toEqual({ show_popup: false });
+    // Legacy action field cleared on save
+    expect(savedOpt.action).toBeUndefined();
+  });
+
+  it("isValid(true) for multi-target option where all actions have valid configPatch", async () => {
+    const isValid = vi.fn();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-v",
+          label: "Valid Multi",
+          actions: [
+            { target: { kind: "widget", id: mockWidget1.id }, configPatch: { show_popup: true } },
+            { target: { kind: "widget", id: mockWidget2.id }, configPatch: { metric: "count" } },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={isValid}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    await waitFor(() => {
+      const calls = isValid.mock.calls.map((c) => c[0] as boolean);
+      expect(calls.some((v) => v === true)).toBe(true);
+    });
+  });
+
+  it("isValid(false) for multi-target option where one action has empty configPatch", async () => {
+    const isValid = vi.fn();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-iv",
+          label: "Invalid Multi",
+          actions: [
+            { target: { kind: "widget", id: mockWidget1.id }, configPatch: { show_popup: true } },
+            // Second target has EMPTY configPatch — should make whole config invalid
+            { target: { kind: "widget", id: mockWidget2.id }, configPatch: {} },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={isValid}
+        widgets={[mockWidget1, mockWidget2]}
+        tables={mockTables}
+      />,
+    );
+
+    await waitFor(() => {
+      const calls = isValid.mock.calls.map((c) => c[0] as boolean);
+      expect(calls.some((v) => v === false)).toBe(true);
+    });
   });
 });
