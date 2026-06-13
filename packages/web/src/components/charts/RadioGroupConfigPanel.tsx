@@ -110,7 +110,8 @@ function OptionRow({
   const [cbValid, setCbValid] = useState(true);
 
   const allWidgets = widgets ?? [];
-  const { kind, id: targetId } = option.action.target;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const { kind, id: targetId } = option.action!.target;
 
   // Encode target as "kind:id" for the <select> value
   const targetValue = `${kind}:${targetId}`;
@@ -132,7 +133,8 @@ function OptionRow({
   };
 
   const handleCapture = () => {
-    const target = option.action.target;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const target = option.action!.target;
     let patch: Record<string, unknown> = {};
 
     if (target.kind === "widget") {
@@ -153,7 +155,8 @@ function OptionRow({
 
     onChange({
       ...option,
-      action: { ...option.action, configPatch: patch },
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      action: { ...option.action!, configPatch: patch },
     });
     setJsonError(null);
   };
@@ -164,7 +167,8 @@ function OptionRow({
       setJsonError(null);
       onChange({
         ...option,
-        action: { ...option.action, configPatch: parsed },
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        action: { ...option.action!, configPatch: parsed },
       });
     } catch {
       setJsonError("Invalid JSON — fix before saving");
@@ -242,7 +246,8 @@ function OptionRow({
   // AND the current renderMode is "classbreak" AND cbValid is false.
   const currentRenderMode =
     kind === "layer"
-      ? ((option.action.configPatch.renderMode as string) ?? "raster")
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      ? ((option.action!.configPatch.renderMode as string) ?? "raster")
       : undefined;
   const cbInvalidForClassbreak =
     kind === "layer" && currentRenderMode === "classbreak" && !cbValid;
@@ -262,7 +267,8 @@ function OptionRow({
   const isOrphanTarget = targetIsSet && !targetResolved;
 
   const captureEmpty =
-    Object.keys(option.action.configPatch).length === 0 &&
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    Object.keys(option.action!.configPatch).length === 0 &&
     !jsonError &&
     !labelMissing &&
     validation.valid;
@@ -444,7 +450,8 @@ function OptionRow({
                     fontSize: "0.8rem",
                     resize: "vertical",
                   }}
-                  value={JSON.stringify(option.action.configPatch, null, 2)}
+                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                  value={JSON.stringify(option.action!.configPatch, null, 2)}
                   onChange={(e) => handleJsonChange(e.target.value)}
                 />
                 {jsonError && (
@@ -463,7 +470,8 @@ function OptionRow({
           {/* ── RIGHT PANE ── full KineticaWmsLayerForm */}
           <div className="radiogroup-layer-editor-right">
             <RadioLayerConfigEditor
-              configPatch={option.action.configPatch}
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              configPatch={option.action!.configPatch}
               columns={columns}
               schema={schema}
               tableName={tableName}
@@ -475,9 +483,11 @@ function OptionRow({
                 onChange({
                   ...option,
                   action: {
-                    ...option.action,
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    ...option.action!,
                     // MERGE: full-snapshot write; non-surfaced keys in the existing patch survive
-                    configPatch: { ...option.action.configPatch, ...nextPatch },
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    configPatch: { ...option.action!.configPatch, ...nextPatch },
                   },
                 })
               }
@@ -498,7 +508,8 @@ function OptionRow({
               fontSize: "0.8rem",
               resize: "vertical",
             }}
-            value={JSON.stringify(option.action.configPatch, null, 2)}
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            value={JSON.stringify(option.action!.configPatch, null, 2)}
             onChange={(e) => handleJsonChange(e.target.value)}
           />
           {jsonError && (
@@ -585,8 +596,10 @@ export default function RadioGroupConfigPanel({
     // Additional check: any option with zero-break classbreak makes the whole config invalid
     for (let i = 0; i < cfg.options.length; i++) {
       const opt = cfg.options[i];
-      const optKind = opt.action.target.kind;
-      const optRenderMode = opt.action.configPatch.renderMode as string | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const optKind = opt.action!.target.kind;
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const optRenderMode = opt.action!.configPatch.renderMode as string | undefined;
       if (optKind === "layer" && optRenderMode === "classbreak") {
         const cbOk = cbValidMap[i] !== false; // default true if not yet reported
         if (!cbOk) return false;
@@ -645,7 +658,8 @@ export default function RadioGroupConfigPanel({
   // Phase 60.1 Plan 03: detect whether any option targets a layer — used to add a
   // marker class that the CSS uses to widen the modal for the two-pane layout.
   const hasLayerOption = cfg.options.some(
-    (o) => o.action.target.kind === "layer",
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    (o) => o.action!.target.kind === "layer",
   );
 
   return (

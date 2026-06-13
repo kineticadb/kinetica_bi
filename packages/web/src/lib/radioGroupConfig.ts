@@ -39,19 +39,35 @@ export type RadioOrientation = "vertical" | "horizontal";
 
 /**
  * A single radio option.
- * `actions` is an ordered array of independent Phase 58 WidgetAction envelopes — each may
- * target any same-dashboard widget / map layer / dynamic-view, mixing target kinds freely.
- * Selecting the option applies ALL its actions as ONE combined contribution.
  *
- * @deprecated `action` — legacy single-action shape from pre-60.2 persisted blobs.
- *   Read via getOptionActions (normalizer). Never written on save. NO DB migration needed.
+ * Phase 60.2 multi-target shape: `actions` carries an ordered array of independent
+ * WidgetAction envelopes. Select the option → apply ALL actions as ONE combined contribution.
+ * Targets may mix widget / map-layer / dynamic-view kinds freely.
+ *
+ * Back-compat (pre-60.2 DB blobs): `action` (singular) is kept for legacy options that
+ * carry a single action. The normalizer `getOptionActions(option)` reads either shape.
+ * New options written by the panel (plan 60.2-02+) will use only `actions[]`.
+ * NO DB migration — every reader normalizes via getOptionActions.
+ *
+ * IMPORTANT: Never access `action` or `actions` directly on an option — always use
+ * `getOptionActions(option)`. Both fields are optional because:
+ *   - pre-60.2 options have `action` but not `actions`
+ *   - post-60.2 options have `actions` but not `action`
+ *   - plan 60.2-02 will update RadioGroupConfigPanel to author `actions[]`
  */
 export type RadioOption = {
   id: string;
   label: string;
-  /** Ordered, independent WidgetAction envelopes; targets may mix widget/layer/dynamicView. */
-  actions: WidgetAction[];
-  /** @deprecated legacy single-action shape — read via getOptionActions; never written on save. */
+  /**
+   * Ordered, independent WidgetAction envelopes; targets may mix widget/layer/dynamicView.
+   * Phase 60.2+ shape. Use getOptionActions() to read — handles both shapes.
+   */
+  actions?: WidgetAction[];
+  /**
+   * @deprecated Legacy single-action shape (pre-60.2 DB blobs). Read via getOptionActions.
+   * New options write only `actions[]`. Plan 60.2-02 will update the config panel to
+   * author `actions[]` directly and remove direct `action` access.
+   */
   action?: WidgetAction;
 };
 
@@ -117,13 +133,21 @@ export function getOptionActions(option: Pick<RadioOption, "actions" | "action">
  * @param widgetTypeFor   Maps a widget target id → widget type (e.g. "map", "records").
  *                        Required when any action targets a widget. Pass undefined for layer/dv
  *                        targets — validateRadioOption handles those without a widget type.
- *                        Changed from `widgetType?: string` (pre-60.2) to a resolver function
- *                        so different actions in the same option may target different widgets.
+ *
+ *                        Two accepted shapes (back-compat for panel callers transitioning to 60.2):
+ *                          - `(id: number) => string | undefined`  — new per-action resolver (Phase 60.2)
+ *                          - `string`                              — legacy single-widget-type caller (pre-60.2 panel)
+ *                            When a string is passed, it is used as the widget type for ALL widget-kind actions.
  */
 export function validateRadioOption(
   option: RadioOption,
-  widgetTypeFor?: (id: number) => string | undefined,
+  widgetTypeFor?: ((id: number) => string | undefined) | string,
 ): { valid: true } | { valid: false; reasons: string[] } {
+  // Normalize the second param: a string becomes a constant resolver; undefined stays undefined.
+  const resolveWidgetType: ((id: number) => string | undefined) | undefined =
+    typeof widgetTypeFor === "string"
+      ? () => widgetTypeFor as string
+      : widgetTypeFor;
   const actions = getOptionActions(option);
   const reasons: string[] = [];
 
@@ -141,7 +165,7 @@ export function validateRadioOption(
         ? validateLayerSnapshot(action.configPatch)
         : validateActionPatch(
             action.target.kind,
-            action.target.kind === "widget" ? widgetTypeFor?.(action.target.id) : undefined,
+            action.target.kind === "widget" ? resolveWidgetType?.(action.target.id) : undefined,
             action.configPatch,
           );
     if (!result.valid) reasons.push(...result.reasons);

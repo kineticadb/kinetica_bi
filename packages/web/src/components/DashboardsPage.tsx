@@ -33,7 +33,7 @@ import { useLastInfoClickContextStore } from "../store/lastInfoClickContextStore
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
-import { applyWidgetAction } from "../lib/applyWidgetAction";
+import { applyWidgetAction, applyWidgetActions } from "../lib/applyWidgetAction";
 import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
 import DashboardAccessModal from "./DashboardAccessModal";  // Phase 56 (GRANTUI-V110-03)
@@ -438,6 +438,20 @@ const DashboardOpen = ({
       }, controlId),
     [widgets, layers, dynamicViews]
   );
+
+  // Phase 60.2 Plan 01 (RADIOMULTI-V111-01): plural dispatch closure for multi-target options.
+  // Mirrors applyAction but calls applyWidgetActions (plural) so a RadioOption with N actions
+  // assembles ONE combined contribution and writes setControlContribution exactly once.
+  const applyActions = useCallback(
+    (actions: Parameters<typeof applyWidgetActions>[0], controlId: number) =>
+      applyWidgetActions(actions, {
+        widgets,
+        layers,
+        dynamicViewIds: dynamicViews.map((dv) => dv.id),
+      }, controlId),
+    [widgets, layers, dynamicViews]
+  );
+
   const [error, setError] = useState<string | null>(null);
   const { width, mounted, containerRef } = useContainerWidth();
 
@@ -975,6 +989,7 @@ const DashboardOpen = ({
         dynamicViews={dynamicViews}
         retryDynamicView={retryDynamicView}
         applyWidgetAction={applyAction}
+        applyWidgetActions={applyActions}
       >
         <div ref={containerRef as React.RefObject<HTMLDivElement>}>
         {widgets.length > 0 && mounted && (
