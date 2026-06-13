@@ -17,6 +17,7 @@ import {
   ALLOW_LIST_VERSION,
   validateActionPatch,
   getFieldLocation,
+  validateLayerSnapshot,
 } from "./actionAllowList";
 
 describe("ALLOW_LIST_VERSION", () => {
@@ -292,5 +293,159 @@ describe("validateActionPatch — rejection cases", () => {
     if (!result.valid) {
       expect(result.reasons.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateLayerSnapshot — layer-appearance denylist (60.1)
+// ---------------------------------------------------------------------------
+
+describe("validateLayerSnapshot — layer-appearance denylist (60.1)", () => {
+  // Positive: render/style/info keys accepted (denylist, not allow-list)
+  it("accepts a patch with render/style/info keys (denylist — all non-blocked keys pass)", () => {
+    const result = validateLayerSnapshot({
+      renderMode: "classbreak",
+      colormap: "viridis",
+      cb_config: "{}",
+      info_enabled: 1,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  // Positive: realistic full snapshot
+  it("accepts a realistic full snapshot with all render/style/info keys", () => {
+    const result = validateLayerSnapshot({
+      renderMode: "classbreak",
+      colormap: "viridis",
+      BLUR_RADIUS: 8,
+      POINTCOLOR: "#ff0000",
+      POINTSIZE: 3,
+      opacity: 0.8,
+      visible: true,
+      name: "My Layer",
+      minZoom: 0,
+      maxZoom: 28,
+      cb_config: '{"breaks":[]}',
+      track_config: "{}",
+      info_enabled: 1,
+      info_columns: '["lon","lat"]',
+      info_template: "<b>{name}</b>",
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  // Data-binding keys blocked
+  it("rejects a patch containing data-binding key table_id", () => {
+    const result = validateLayerSnapshot({ renderMode: "raster", table_id: 5 });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("table_id"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing data-binding key dynamic_view_id", () => {
+    const result = validateLayerSnapshot({ renderMode: "raster", dynamic_view_id: 3 });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("dynamic_view_id"))).toBe(true);
+    }
+  });
+
+  // Spatial keys blocked
+  it("rejects a patch containing spatial key spatialMode", () => {
+    const result = validateLayerSnapshot({ spatialMode: "latlon" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("spatialMode"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing spatial key latColumn", () => {
+    const result = validateLayerSnapshot({ latColumn: "x" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("latColumn"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing spatial key lonColumn", () => {
+    const result = validateLayerSnapshot({ lonColumn: "y" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("lonColumn"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing spatial key wktColumn", () => {
+    const result = validateLayerSnapshot({ wktColumn: "g" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("wktColumn"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing spatial key wkbColumn", () => {
+    const result = validateLayerSnapshot({ wkbColumn: "g" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("wkbColumn"))).toBe(true);
+    }
+  });
+
+  // Track spatial columns blocked
+  it("rejects a patch containing track spatial key trackXColumn", () => {
+    const result = validateLayerSnapshot({ trackXColumn: "x" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("trackXColumn"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing track spatial key trackIdColumn", () => {
+    const result = validateLayerSnapshot({ trackIdColumn: "id" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("trackIdColumn"))).toBe(true);
+    }
+  });
+
+  // PERMANENTLY_BLOCKED_KEYS blocked
+  it("rejects a patch containing permanently-blocked key __proto__", () => {
+    const patch = JSON.parse('{"__proto__": {}}') as Record<string, unknown>;
+    const result = validateLayerSnapshot(patch);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("__proto__"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing permanently-blocked key id", () => {
+    const result = validateLayerSnapshot({ id: 1 });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("id"))).toBe(true);
+    }
+  });
+
+  it("rejects a patch containing permanently-blocked key type", () => {
+    const result = validateLayerSnapshot({ type: "x" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("type"))).toBe(true);
+    }
+  });
+
+  // Unchanged-contract regression: validateActionPatch still strict
+  it("validateActionPatch('layer', undefined, { foo: 1 }) still returns valid:false (strict allow-list unchanged)", () => {
+    const result = validateActionPatch("layer", undefined, { foo: 1 });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("foo"))).toBe(true);
+    }
+  });
+
+  it("validateActionPatch('widget', 'map', { show_popup: true }) still returns valid:true (widget path intact)", () => {
+    const result = validateActionPatch("widget", "map", { show_popup: true });
+    expect(result.valid).toBe(true);
   });
 });

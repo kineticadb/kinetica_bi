@@ -238,6 +238,61 @@ export function splitLayerPatch(configPatch: Record<string, unknown>): {
 }
 
 // ---------------------------------------------------------------------------
+// Data-binding / spatial keys — denylist for layer-appearance snapshots (60.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Data-binding / spatial keys that a layer-appearance snapshot MUST NEVER carry.
+ * A radio option changes how a layer LOOKS, not which data it is bound to
+ * (CONTEXT lines 16/50 — "exclude Data Source and Spatial Mode").
+ * Used by validateLayerSnapshot (denylist path) and re-exported from
+ * radioGroupLayerPatch.ts for the adapter's STRIP set.
+ */
+export const DATA_BINDING_KEYS = [
+  "table_id",
+  "tableId",
+  "tableRef",
+  "dynamic_view_id",
+  "dynamicViewId",
+  "spatialMode",
+  "latColumn",
+  "lonColumn",
+  "wktColumn",
+  "wkbColumn",
+  "trackXColumn",
+  "trackYColumn",
+  "trackIdColumn",
+  "trackOrderColumn",
+] as const;
+
+function isDataBindingKey(key: string): boolean {
+  return (DATA_BINDING_KEYS as readonly string[]).includes(key);
+}
+
+/**
+ * DENYLIST validator for the DESIGNER-UI layer-appearance snapshot (Phase 60.1 RE-SCOPE).
+ * Rejects any key in PERMANENTLY_BLOCKED_KEYS ∪ DATA_BINDING_KEYS; ACCEPTS all other
+ * keys (render/style/info-popup fields). This is SEPARATE from validateActionPatch /
+ * LAYER_ALLOW_LIST, which remain the strict per-field contract for widget + dynamic-view
+ * targets and the future AI/MCP path.
+ *
+ * Uses Object.keys() — NEVER spreads the untrusted patch (proto-pollution boundary).
+ */
+export function validateLayerSnapshot(
+  patch: Record<string, unknown>,
+): { valid: true } | { valid: false; reasons: string[] } {
+  const reasons: string[] = [];
+  for (const key of Object.keys(patch)) {
+    if (isPermanentlyBlocked(key)) {
+      reasons.push(`blocked meta/proto key: ${key}`);
+    } else if (isDataBindingKey(key)) {
+      reasons.push(`blocked data-binding/spatial key: ${key}`);
+    }
+  }
+  return reasons.length > 0 ? { valid: false, reasons } : { valid: true };
+}
+
+// ---------------------------------------------------------------------------
 // validateActionPatch — the binding contract for the action engine
 // ---------------------------------------------------------------------------
 
