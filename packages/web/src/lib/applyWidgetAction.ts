@@ -1,6 +1,9 @@
 /**
- * Phase 58 Plan 02 / Phase 58.1 Plan 01 / Phase 60 Plan 01 —
- * applyWidgetAction: single dispatch entry for the widget action engine.
+ * Phase 58 Plan 02 / Phase 58.1 Plan 01 / Phase 60 Plan 01 / Phase 60.2 Plan 01 —
+ * applyWidgetAction:  single dispatch entry (one action → one target).
+ * applyWidgetActions: plural dispatch entry (N actions → ONE combined contribution,
+ *   ONE setControlContribution write, option-level switch-replace). Use this for
+ *   RadioOption selections; use the singular for legacy/internal single-action paths.
  *
  * TRANSIENT-ONLY: this function NEVER calls updateWidget, updateLayer, or any
  * server PATCH at runtime. It only writes the session overlay store and returns
@@ -46,6 +49,24 @@
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
 // DashboardLayerDto used for ActionLookups only; layer overlays are stored as generic Record
 import type { WidgetAction, WidgetActionResult, WidgetActionTarget } from "./widgetAction";
+
+// ---------------------------------------------------------------------------
+// WidgetActionsResult — plural dispatch aggregate result (Phase 60.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggregate result for applyWidgetActions (plural).
+ *   applied: targets that were found, validated, and written.
+ *   rejected: targets that were found but whose configPatch failed validation.
+ *   notFound: targets that were not in the provided ActionLookups.
+ *   status: "applied" = all valid, "partial" = some failed, "noop" = none valid.
+ */
+export type WidgetActionsResult = {
+  status: "applied" | "partial" | "noop";
+  applied: WidgetActionTarget[];
+  rejected: { target: WidgetActionTarget; reasons: string[] }[];
+  notFound: WidgetActionTarget[];
+};
 import { validateActionPatch, validateLayerSnapshot } from "./actionAllowList";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useToastStore } from "../store/toast";
@@ -261,6 +282,123 @@ export function applyWidgetAction(
   store.setControlContribution(controlId, nextContrib);
 
   return { status: "applied", target };
+}
+
+// ---------------------------------------------------------------------------
+// applyWidgetActions — plural dispatch (Phase 60.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dispatch N widget actions as ONE combined contribution → ONE setControlContribution write.
+ *
+ * This is the correct entry point for RadioOption selections (each option may now carry
+ * multiple targets). The function:
+ *   1. Resolves + validates each action independently (best-effort).
+ *   2. Assembles ONE combined contribution { widget, layer, dynamicView } from all valid actions.
+ *   3. Calls setControlContribution(controlId, combined) EXACTLY ONCE (or zero times if no
+ *      valid actions AND no prior contribution to overwrite).
+ *
+ * OPTION-LEVEL SWITCH-REPLACE:
+ *   Because setControlContribution REPLACES the control's ENTIRE contribution wholesale,
+ *   switching from Option A (targets L1+W2) to Option B (targets only L1) automatically
+ *   DROPS W2's overlay — it simply isn't included in the new combined contribution.
+ *   Do NOT loop the singular applyWidgetAction per target (that preserves stale targets).
+ *
+ * Best-effort on failures:
+ *   Valid actions are written; rejected/not-found are collected and surfaced as ONE combined
+ *   toast (mirrors the singular path's toast behavior). Returns a WidgetActionsResult with
+ *   applied/rejected/notFound arrays for callers that need the detail.
+ *
+ * INVARIANT: ACTION-ENGINE-NO-FILTER — same invariant as the singular path; no filter imports.
+ */
+export function applyWidgetActions(
+  actions: WidgetAction[],
+  lookups: ActionLookups,
+  controlId: number,
+): WidgetActionsResult {
+  // Build the combined contribution shape fresh (not merged with existing — this is the
+  // REPLACE semantics that gives switch-replace for free).
+  const combined: {
+    widget: Record<number, Record<string, unknown>>;
+    layer: Record<number, Record<string, unknown>>;
+    dynamicView: Record<number, Record<string, unknown>>;
+  } = { widget: {}, layer: {}, dynamicView: {} };
+
+  const applied: WidgetActionTarget[] = [];
+  const rejected: WidgetActionsResult["rejected"] = [];
+  const notFound: WidgetActionTarget[] = [];
+
+  for (const { target, configPatch } of actions) {
+    // --- Step 1: Resolve target ---
+    let widgetType: string | undefined;
+    if (target.kind === "widget") {
+      const w = lookups.widgets.find((x) => x.id === target.id);
+      if (!w) { notFound.push(target); continue; }
+      widgetType = w.type;
+    } else if (target.kind === "layer") {
+      if (!lookups.layers.find((x) => x.id === target.id)) { notFound.push(target); continue; }
+    } else if (!lookups.dynamicViewIds.includes(target.id)) {
+      notFound.push(target); continue;
+    }
+
+    // --- Step 2: Validate ---
+    const validation =
+      target.kind === "layer"
+        ? validateLayerSnapshot(configPatch)
+        : validateActionPatch(target.kind, widgetType, configPatch);
+    if (!validation.valid) {
+      rejected.push({ target, reasons: validation.reasons });
+      continue;
+    }
+
+    // --- Step 3: Build per-target patch + add to combined ---
+    if (target.kind === "layer") {
+      const split = splitLayerSnapshot(configPatch);
+      combined.layer[target.id] = {
+        ...split.topLevel,
+        ...(split.config ? { config: split.config } : {}),
+      };
+    } else if (target.kind === "widget") {
+      combined.widget[target.id] = configPatch;
+    } else {
+      combined.dynamicView[target.id] = configPatch;
+    }
+    applied.push(target);
+  }
+
+  // --- Best-effort toast: ONE combined message for any failures ---
+  if (rejected.length > 0 || notFound.length > 0) {
+    const parts: string[] = [];
+    if (rejected.length > 0) {
+      parts.push(`${rejected.length} rejected: ${rejected.flatMap((r) => r.reasons).join("; ")}`);
+    }
+    if (notFound.length > 0) {
+      parts.push(`${notFound.length} target(s) no longer available`);
+    }
+    useToastStore
+      .getState()
+      .showToast(`Some option targets were skipped — ${parts.join(" · ")}`, "info");
+  }
+
+  // --- ONE wholesale write (or zero if nothing to write) ---
+  if (applied.length === 0) {
+    // No valid actions: still REPLACE if the control had a prior contribution so stale
+    // targets from the previous option are dropped (switch-replace must hold even when
+    // the new option is all-invalid). Skip the write entirely if no prior contribution.
+    const had = controlId in useWidgetActionStore.getState().contributions;
+    if (had) {
+      useWidgetActionStore.getState().setControlContribution(controlId, combined);
+    }
+    return { status: "noop", applied, rejected, notFound };
+  }
+
+  useWidgetActionStore.getState().setControlContribution(controlId, combined);
+  return {
+    status: rejected.length > 0 || notFound.length > 0 ? "partial" : "applied",
+    applied,
+    rejected,
+    notFound,
+  };
 }
 
 // ---------------------------------------------------------------------------

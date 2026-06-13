@@ -34,7 +34,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
-import { applyWidgetAction, type ActionLookups } from "./applyWidgetAction";
+import { applyWidgetAction, applyWidgetActions, type ActionLookups } from "./applyWidgetAction";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useToastStore } from "../store/toast";
 
@@ -641,5 +641,170 @@ describe("MCP action seam doc (SEAM-V111-01)", () => {
 
   it("applyWidgetAction.ts source contains the mcp-action-seam pointer comment", () => {
     expect(srcContent).toContain("mcp-action-seam");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. applyWidgetActions — combined contribution + switch-replace (Phase 60.2)
+// ---------------------------------------------------------------------------
+
+describe("applyWidgetActions — combined contribution + switch-replace", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWidgetActionStore.getState().reset();
+  });
+
+  const L1_ID = 100;
+  const W2_ID = 1;
+  const CTRL = 99;
+
+  const layerAction = (id: number, patch: Record<string, unknown>) =>
+    ({ target: { kind: "layer" as const, id }, configPatch: patch });
+  const widgetAction = (id: number, patch: Record<string, unknown>) =>
+    ({ target: { kind: "widget" as const, id }, configPatch: patch });
+  const dvAction = (id: number, patch: Record<string, unknown>) =>
+    ({ target: { kind: "dynamicView" as const, id }, configPatch: patch });
+
+  const lookups = (wIds: number[] = [W2_ID], lIds: number[] = [L1_ID]): ActionLookups => ({
+    widgets: wIds.map((id) => makeWidget({ id, type: "records" })),
+    layers: lIds.map((id) => makeLayer({ id })),
+    dynamicViewIds: [5],
+  });
+
+  /* ---- multi-target applied: both targets appear in store ---- */
+  it("applyWidgetActions([layerAction→L1, widgetAction→W2]) writes ONE combined contribution", () => {
+    const result = applyWidgetActions(
+      [layerAction(L1_ID, { renderMode: "heatmap" }), widgetAction(W2_ID, { page_size: 50 })],
+      lookups(),
+      CTRL,
+    );
+    expect(result.status).toBe("applied");
+    expect(result.applied).toHaveLength(2);
+    // Both overlays are present
+    const state = useWidgetActionStore.getState();
+    expect((state.layerOverrides[L1_ID]?.config as Record<string, unknown>)?.renderMode).toBe("heatmap");
+    expect(state.widgetOverrides[W2_ID]).toEqual({ page_size: 50 });
+  });
+
+  it("setControlContribution called exactly ONCE for a 2-action batch", () => {
+    const spy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
+    applyWidgetActions(
+      [layerAction(L1_ID, { renderMode: "heatmap" }), widgetAction(W2_ID, { page_size: 50 })],
+      lookups(),
+      CTRL,
+    );
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  /* ---- THE critical switch-replace test (SC2) ---- */
+  it("SWITCH-REPLACE: Option A {L1+W2} then Option B {L1} → W2 overlay is GONE", () => {
+    // Option A: sets both L1 and W2
+    applyWidgetActions(
+      [layerAction(L1_ID, { renderMode: "heatmap" }), widgetAction(W2_ID, { page_size: 50 })],
+      lookups(),
+      CTRL,
+    );
+    const stateA = useWidgetActionStore.getState();
+    expect(stateA.widgetOverrides[W2_ID]).toBeDefined();
+    expect((stateA.layerOverrides[L1_ID]?.config as Record<string, unknown>)?.renderMode).toBe("heatmap");
+
+    // Option B: sets ONLY L1 (different value)
+    applyWidgetActions(
+      [layerAction(L1_ID, { renderMode: "classbreak" })],
+      lookups(),
+      CTRL,
+    );
+    const stateB = useWidgetActionStore.getState();
+    // W2 is GONE — switch-replace drops stale targets
+    expect(stateB.widgetOverrides[W2_ID]).toBeUndefined();
+    // L1 reflects Option B's value
+    expect((stateB.layerOverrides[L1_ID]?.config as Record<string, unknown>)?.renderMode).toBe("classbreak");
+  });
+
+  /* ---- empty actions array → noop, no write ---- */
+  it("empty actions array → noop status, setControlContribution NOT called", () => {
+    const spy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
+    const result = applyWidgetActions([], lookups(), CTRL);
+    expect(result.status).toBe("noop");
+    expect(result.applied).toHaveLength(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  /* ---- best-effort: valid + rejected → partial, ONE toast, ONE write ---- */
+  it("best-effort: valid widget + rejected widget(out-of-list) → partial status, ONE setControlContribution", () => {
+    const spy = vi.spyOn(useWidgetActionStore.getState(), "setControlContribution");
+    const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
+    const widgetId3 = 3;
+    const result = applyWidgetActions(
+      [
+        widgetAction(W2_ID, { page_size: 50 }),                    // valid
+        widgetAction(widgetId3, { unknown_field: "x" }),           // rejected (not in allow-list)
+      ],
+      lookups([W2_ID, widgetId3]),
+      CTRL,
+    );
+    expect(result.status).toBe("partial");
+    expect(result.applied).toHaveLength(1);
+    expect(result.rejected).toHaveLength(1);
+    // Only ONE write
+    expect(spy).toHaveBeenCalledTimes(1);
+    // ONE combined toast
+    expect(showToastSpy).toHaveBeenCalledTimes(1);
+    // Valid target is in the store
+    expect(useWidgetActionStore.getState().widgetOverrides[W2_ID]).toEqual({ page_size: 50 });
+  });
+
+  /* ---- best-effort: not-found target ---- */
+  it("target_not_found in batch: found target written, not-found collected, ONE combined toast", () => {
+    const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
+    const result = applyWidgetActions(
+      [
+        widgetAction(W2_ID, { page_size: 50 }),   // found + valid
+        widgetAction(999, { page_size: 100 }),     // not found
+      ],
+      lookups([W2_ID]),   // only W2_ID in lookups, 999 not present
+      CTRL,
+    );
+    expect(result.status).toBe("partial");
+    expect(result.applied).toHaveLength(1);
+    expect(result.notFound).toHaveLength(1);
+    expect(result.notFound[0]).toEqual({ kind: "widget", id: 999 });
+    // ONE combined toast
+    expect(showToastSpy).toHaveBeenCalledTimes(1);
+  });
+
+  /* ---- dynamicView target ---- */
+  it("dynamicView target applies correctly in a batch", () => {
+    const result = applyWidgetActions(
+      [dvAction(5, { enabled: false })],
+      lookups(),
+      CTRL,
+    );
+    expect(result.status).toBe("applied");
+    expect(useWidgetActionStore.getState().dynamicViewOverrides[5]).toEqual({ enabled: false });
+  });
+
+  /* ---- layer top-level fields stay top-level (snapshot split preserved) ---- */
+  it("layer action with cb_config: stays top-level in overlay", () => {
+    applyWidgetActions(
+      [layerAction(L1_ID, { renderMode: "classbreak", cb_config: '{"breaks":[]}' })],
+      lookups(),
+      CTRL,
+    );
+    const overlay = useWidgetActionStore.getState().layerOverrides[L1_ID];
+    expect(overlay?.cb_config).toBe('{"breaks":[]}');
+    expect((overlay?.config as Record<string, unknown>)?.renderMode).toBe("classbreak");
+  });
+
+  /* ---- no updateWidget/updateLayer calls (transient-only invariant) ---- */
+  it("never calls updateWidget or updateLayer (transient-only invariant)", async () => {
+    const { updateWidget, updateLayer } = await import("../api/client");
+    applyWidgetActions(
+      [widgetAction(W2_ID, { page_size: 50 })],
+      lookups(),
+      CTRL,
+    );
+    expect(updateWidget).not.toHaveBeenCalled();
+    expect(updateLayer).not.toHaveBeenCalled();
   });
 });
