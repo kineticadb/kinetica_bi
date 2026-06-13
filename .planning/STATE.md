@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Phase 60.1 RE-OPENED + RE-SCOPED (2026-06-12) after operator review. First cut (narrow render-mode+CbConfigForm editor, commits 48e98bf/450d8dd/7e43596) is SUPERSEDED — operator wants the FULL KineticaWmsLayerForm reused SIDE-BY-SIDE (render/style + info-popup; NO data-source/spatial), captured as a full-config snapshot overlay, denylist-validated (validateLayerSnapshot), strict allow-list unchanged for widget/dv + AI/MCP. 60.1-CONTEXT.md rewritten. radioGroupLayerPatch adapter (60941c0/71ef6cd) partly reused. NEXT: re-plan 60.1 (full-form side-by-side) → execute (replaces narrow editor) → THEN resume Phase 61 walk (re-walk §1.1/§1.2 + P2/§3 + 61-03)."
-last_updated: "2026-06-12T17:55:52.398Z"
+stopped_at: "Phase 60.1 (RE-SCOPED) COMPLETE + verified passed 4/4 (RADIOUX-V111-01; full-form side-by-side layer editor; commits 19dc06a/8c1c5bc/ce33a6a + 01e88d8/1c0f1ba/c7b91a0 + 6a3336c/8447b9b/7b4e980/12a4aed; frontend 2005/2005, web tsc clean, no server diff). The narrow first cut is superseded. RESUME TARGET = Phase 61 (PAUSED mid-walk, NOT fresh): re-walk §1.1/§1.2 using the NEW full-form editor + GAP-61-02 eye-toggle fix; set up P2 (non-bypass analyst) + walk §3.1/§3.2/§3.3 (viewer-safe payoff); then finalize 61-UAT overall_result + run 61-03 (compile 61-VERIFICATION + tick VERIFY-V111-01 + close milestone)."
+last_updated: "2026-06-13T02:54:36.825Z"
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 13
-  completed_plans: 11
+  total_plans: 14
+  completed_plans: 12
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 60.1 — RE-SCOPED (full-form side-by-side); re-planning. Phase 61 paused behind it.
+**Current focus:** Phase 61 — verification-live-uat (PAUSED mid-walk; 60.1 re-scoped full-form editor just shipped before it)
 
 ## Current Position
 
-Phase: 60.1 (radio-config-ux-structured-layer-target-editor-reuse-cbconfigform) — RE-OPENED / RE-SCOPED, re-planning (full KineticaWmsLayerForm side-by-side; first narrow cut superseded)
-Phase 61 (verification-live-uat) — PAUSED mid-walk, resumes after 60.1 re-ships (re-walk §1.1/§1.2 + P2/§3, then 61-03)
+Phase: 60.1 (radio-config-ux-structured-layer-target-editor-reuse-cbconfigform) — COMPLETE ✓ (RE-SCOPED full-form side-by-side; verified passed 4/4, 2026-06-13, RADIOUX-V111-01)
+Phase 61 (verification-live-uat) — PAUSED mid-walk, RESUME NEXT (re-walk §1.1/§1.2 + P2/§3, then 61-03)
 
 ## v1.11 Phase Map
 
@@ -254,6 +254,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 60 P01 | 8 | 3 tasks | 7 files |
 | Phase 61-verification-live-uat P01 | 3 | 2 tasks | 1 files |
 | Phase 60.1-02 P02 | 18 | 3 tasks | 3 files |
+| Phase 60.1 P01 | 3 | 3 tasks | 4 files |
+| Phase 60.1 P02 | 7 | 3 tasks | 6 files |
+| Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform P03 | 15 | 4 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -423,6 +426,11 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 60.1-01]: layerFormConfigToPatch is the SC2 safety boundary — junk keys from CbConfigForm silently dropped; output always passes validateActionPatch("layer", undefined, patch)
 - [Phase 60.1-02]: MERGE onChange for structured layer editor: spread existing configPatch then overlay nextPatch so non-surfaced keys (track_config) survive writes
 - [Phase 60.1-02]: CbConfigForm mock uses async vi.mock factory + useEffect-based isValid signaling to avoid infinite render loops in controlled-component tests
+- [Phase 60.1-01]: DATA_BINDING_KEYS in actionAllowList.ts; validateLayerSnapshot is separate denylist from validateActionPatch; snapshotToLayerForm lifts cb_config into blob matching LayersModal.tsx precedent; layerFormToSnapshot keeps cb_config/track_config top-level
+- [Phase 60.1]: splitLayerSnapshot in applyWidgetAction replaces splitLayerPatch for layer targets: LAYER_SNAPSHOT_TOP_LEVEL (cb_config/track_config/info_enabled/info_columns/info_template) top-level; all style keys nested under config
+- [Phase 60.1]: validateLayerSnapshot (denylist) used for layer dispatch + save-time validity; validateActionPatch (strict allow-list) kept for widget/dv dispatch + AI/MCP path (SAFETY-V111-02 preserved)
+- [Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform]: hideSpatialMode placed on KineticaWmsLayerForm props (additive, default false) — existing callers unaffected
+- [Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform]: Modal widening via .modal-config:has(.radiogroup-has-layer-editor) CSS selector + marker class on panel root
 
 ### Phase 49-users-management-ui
 
@@ -775,6 +783,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-12T17:51:04.198Z
-Stopped at: Completed 60.1-02-PLAN.md — RadioLayerConfigEditor + OptionRow wiring + panel spec (commits 48e98bf + 450d8dd + 7e43596)
+Last session: 2026-06-13T02:49:16.846Z
+Stopped at: Completed 60.1-03-PLAN.md — full-form side-by-side layer editor (commits 6a3336c + 8447b9b + 7b4e980 + 12a4aed)
 Resume file: None
