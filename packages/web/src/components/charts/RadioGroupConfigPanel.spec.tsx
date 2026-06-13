@@ -1055,6 +1055,41 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     expect(seededConfig.renderMode).toBe("raster");
   });
 
+  it("forwards the target layer's table context to the form (cbTableRef/cbSchema/cbTableName) so CbConfigForm queries the real table, not FROM unknown", () => {
+    vi.mocked(KineticaWmsLayerForm).mockClear();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-cb",
+          label: "Roads",
+          actions: [
+            {
+              target: { kind: "layer", id: mockLayerForStructured.id },
+              configPatch: { renderMode: "classbreak" },
+            },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={vi.fn()}
+        isValid={vi.fn()}
+        widgets={[mockWidget1]}
+        tables={mockTables}
+      />,
+    );
+
+    // mockTables maps table_id 20 → { schema: "demo", name: "roads" }
+    const props = vi.mocked(KineticaWmsLayerForm).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(props.cbTableRef).toBe("demo.roads");
+    expect(props.cbSchema).toBe("demo");
+    expect(props.cbTableName).toBe("roads");
+  });
+
   it("2. editing render mode updates the snapshot (no data-binding keys in emitted configPatch)", () => {
     const onChange = vi.fn();
     const config: Record<string, unknown> = {

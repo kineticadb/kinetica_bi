@@ -89,6 +89,17 @@ type KineticaWmsLayerFormProps = {
   /** When true, omit the SPATIAL MODE radios + spatial-column pickers (Phase 60.1 radio editor).
    *  Additive — default false; existing callers (LayersModal, MapConfigPanel) are unaffected. */
   hideSpatialMode?: boolean;
+  /**
+   * Phase 60.2 follow-up — explicit CbConfigForm table context, OVERRIDING the layer-derived
+   * `cbAutoSuggestTarget`. Used by the Radio Dashboard Control layer editor, which embeds this
+   * form WITHOUT a `layer` prop (to hide Data Source) — so the form can't derive the table for
+   * the distinct-count probe / quantile auto-suggest, and CbConfigForm would query `FROM unknown`.
+   * When provided, these win. Additive — default undefined; existing callers unaffected.
+   */
+  cbSchema?: string;
+  cbTableName?: string;
+  cbTableRef?: string;
+  cbAutoSuggestDisabledReason?: string;
 };
 
 // ─── RenderMode type ──────────────────────────────────────────────────────────
@@ -191,6 +202,10 @@ export default function KineticaWmsLayerForm({
   dynamicViews = [],
   onDataSourceChange,
   hideSpatialMode = false,
+  cbSchema,
+  cbTableName,
+  cbTableRef,
+  cbAutoSuggestDisabledReason,
 }: KineticaWmsLayerFormProps): JSX.Element {
   const capabilities = useWmsCapabilitiesStore((s) => s.capabilities);
 
@@ -1388,10 +1403,12 @@ export default function KineticaWmsLayerForm({
             onChange={onChange}
             columns={columns}
             isValid={isValid}
-            tableRef={(config.tableRef as string) || ""}
-            schema={cbAutoSuggestTarget.schema}
-            tableName={cbAutoSuggestTarget.tableName}
-            autoSuggestDisabledReason={cbAutoSuggestTarget.autoSuggestDisabledReason}
+            tableRef={cbTableRef ?? ((config.tableRef as string) || "")}
+            schema={cbSchema ?? cbAutoSuggestTarget.schema}
+            tableName={cbTableName ?? cbAutoSuggestTarget.tableName}
+            autoSuggestDisabledReason={
+              cbAutoSuggestDisabledReason ?? cbAutoSuggestTarget.autoSuggestDisabledReason
+            }
             trackContext={spatialMode === "track"}
           />
         )}

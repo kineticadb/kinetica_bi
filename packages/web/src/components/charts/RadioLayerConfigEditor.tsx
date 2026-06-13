@@ -69,6 +69,10 @@ export default function RadioLayerConfigEditor({
   configPatch,
   baseSnapshot = {},
   columns,
+  schema,
+  tableName,
+  tableRef,
+  autoSuggestDisabledReason,
   onChange,
   onCbValid,
   idx,
@@ -110,6 +114,14 @@ export default function RadioLayerConfigEditor({
         hideSpatialMode={true}
         // DATA SOURCE deliberately omitted — do NOT pass layer / onDataSourceChange / associatedTables.
         // The form's renderDataSourcePicker returns null when those are absent (~line 468).
+        // Phase 60.2 follow-up: forward the panel-resolved table context EXPLICITLY so
+        // CbConfigForm's distinct-count probe + quantile auto-suggest hit the real table.
+        // Without these, the form (which has no `layer`) derives no table → CbConfigForm
+        // queries `FROM unknown` (distinct-count fails) and quantile auto-suggest returns 0.
+        cbSchema={schema}
+        cbTableName={tableName}
+        cbTableRef={tableRef}
+        cbAutoSuggestDisabledReason={autoSuggestDisabledReason}
       />
     </div>
   );
