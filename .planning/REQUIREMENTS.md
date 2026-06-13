@@ -24,7 +24,7 @@
 - [x] **RADIO-V111-01**: A net-new "radio group" control widget type (registry definition + config panel + renderer) — the operator configures N options, each with a label and a bound action
 - [x] **RADIO-V111-02**: The config panel lets the operator pick a same-dashboard target (widget / map layer / dynamic view) and an allowed field + value driven by the allow-list (no raw arbitrary JSON for unsafe fields); selecting an invalid/empty binding is prevented
 - [x] **RADIO-V111-03**: Selecting a radio option applies its action — the target updates LIVE and the change persists across dashboard reload; the radio's own selected option persists (its `selectedIndex` is part of its config)
-- [x] **RADIOUX-V111-01**: A radio-group option targeting a MAP LAYER is authored via a STRUCTURED editor — a render-mode picker plus, for class-break, the reusable `CbConfigForm` break-builder — instead of a hand-edited raw JSON textarea. The structured editor reads/writes only allow-listed fields (`renderMode`/`cb_config`/`visible`/`opacity`) bridged to the flat `configPatch`; the raw JSON textarea remains a collapsible "Advanced" fallback. Widget/dynamic-view targets keep their existing simple inputs.
+- [ ] **RADIOUX-V111-01**: A radio-group option targeting a MAP LAYER is authored via a STRUCTURED editor instead of a hand-edited raw JSON textarea, reusing the FULL `KineticaWmsLayerForm` (the Map Layers config form) in a SIDE-BY-SIDE layout — render mode + all style params + opacity + info-popup details. The option captures a full-config snapshot (config + `cb_config`/`track_config` + `info_*`) that overlays the live layer; data-binding/spatial keys are stripped (denylist-validated); the strict field allow-list still governs widget/dv + AI/MCP paths. Raw JSON remains a collapsible "Advanced" fallback. Widget/dynamic-view targets keep their existing simple inputs. (RE-SCOPED 2026-06-12: first cut shipped a narrow render-mode+CbConfigForm editor; superseded by the full-form side-by-side design.)
 
 ### AI/MCP Future Seam (design + document only)
 
@@ -77,7 +77,7 @@ Explicitly excluded for v1.11.
 | RADIO-V111-01 | Phase 59 | Complete |
 | RADIO-V111-02 | Phase 59 | Complete |
 | RADIO-V111-03 | Phase 60 | Complete |
-| RADIOUX-V111-01 | Phase 60.1 | Complete |
+| RADIOUX-V111-01 | Phase 60.1 | In Progress (re-scoped) |
 | SEAM-V111-01 | Phase 60 | Complete |
 | VERIFY-V111-01 | Phase 61 | Pending |
 
