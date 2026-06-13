@@ -5207,3 +5207,122 @@ describe("Phase 61 GAP-61-01 — in-map legend follows the runtime overlay (effe
     expect(src).not.toContain("resolveLegendLayers(\n      useDashboardLayersStore.getState().layers");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 60.1 Plan 02 — overlaid info_enabled:0 read-live test        */
+/*  GAP-61-01/02 read-live class: closes the read-once-at-mount risk   */
+/*  for the newly-overlaid info-popup fields (snapshot path).          */
+/* ------------------------------------------------------------------ */
+
+describe("60.1 — overlaid info_enabled:0 drops layer from eligibleLayers (read-live)", () => {
+  // Uses the REAL widgetActionStore (NOT mocked — same pattern as GAP-61-01).
+  // Drives a layer overlay via setControlContribution and proves the info-eligibility
+  // gate (eligibleLayers = includedLayers.filter(l => l.info_enabled !== 0)) reacts
+  // live to the overlay without remounting.
+
+  beforeEach(() => {
+    // Reset all shared mutable state
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    lastMapInstance = null;
+    lastBasemapLayerInstance = null;
+    lastResizeObserverCallback = null;
+    lastResizeObserverInstance = null;
+    tileLoadListeners = {};
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    lastOverlayInstance = null;
+    capturedSingleclickHandler = null;
+    _infoSelectionState.state = {};
+    _infoSelectionState.activeLayerId = null;
+    _infoSelectionState.setSelection.mockReset?.() ?? (_infoSelectionState.setSelection = vi.fn());
+    _infoSelectionState.appendPage.mockReset?.() ?? (_infoSelectionState.appendPage = vi.fn());
+    _infoSelectionState.clearSelection.mockReset?.() ?? (_infoSelectionState.clearSelection = vi.fn());
+    _infoSelectionState.setActiveLayer.mockReset?.() ?? (_infoSelectionState.setActiveLayer = vi.fn());
+    _infoSelectionState.setLoading.mockReset?.() ?? (_infoSelectionState.setLoading = vi.fn());
+    _infoSelectionState.setError.mockReset?.() ?? (_infoSelectionState.setError = vi.fn());
+    _infoSelectionState.reset.mockReset?.() ?? (_infoSelectionState.reset = vi.fn());
+    _lastInfoClickContextState.context = null;
+    _lastInfoClickContextState.setContext.mockReset();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _lastInfoClickContextState.setContext.mockImplementation((ctx: any) => {
+      _lastInfoClickContextState.context = ctx;
+    });
+    _lastInfoClickContextState.reset.mockReset();
+    _lastInfoClickContextState.reset.mockImplementation(() => {
+      _lastInfoClickContextState.context = null;
+    });
+    _infoQueryMock.mockReset();
+    _infoQueryMock.mockResolvedValue({ rows: [], columns: [], hasMore: false, page: 0 });
+    _toastMock.mockReset();
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    // Reset the REAL widgetActionStore between tests — must not bleed into siblings.
+    useWidgetActionStore.getState().reset();
+  });
+
+  afterEach(() => {
+    useWidgetActionStore.getState().reset();
+    vi.restoreAllMocks();
+  });
+
+  it("overlaid info_enabled:0 drops the layer from eligibleLayers (read-live): not queried after overlay", async () => {
+    // Baseline: one latlon layer with info_enabled=1 (eligible per P5 harness pattern).
+    const layerId = 1;
+    const baselineLayer = makeLayer({
+      id: layerId,
+      position: 0,
+      table_id: 10,
+      info_enabled: 1,
+      config: {
+        spatialMode: "latlon",
+        latColumn: "lat",
+        lonColumn: "lon",
+        renderMode: "raster",
+        visible: true,
+        POINTOPACITY: 100,
+      },
+    });
+    _layersState.layers = [baselineLayer];
+
+    // Without overlay: the layer IS eligible and IS queried on singleclick.
+    _infoQueryMock.mockResolvedValueOnce({ rows: [{ id: 1 }], columns: ["id"], hasMore: false, page: 0 });
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    // Confirm singleclick handler registered (layer is eligible without overlay).
+    expect(capturedSingleclickHandler).not.toBeNull();
+    await act(async () => {
+      await capturedSingleclickHandler!({ coordinate: [0, 0] });
+    });
+    // Layer IS queried (baseline: info_enabled=1).
+    expect(_infoQueryMock).toHaveBeenCalledTimes(1);
+    expect(_infoQueryMock.mock.calls[0][0].layerId).toBe(layerId);
+
+    // Now apply an overlay via the REAL widgetActionStore (control id 999):
+    // DTO-shaped overlay: top-level info_enabled:0 (NOT nested in config — info_enabled is
+    // a top-level DashboardLayerDto field; effectiveLayers spreads top-level fields).
+    // This mirrors the DTO shape produced by applyWidgetAction after the Phase 60.1-02 split.
+    _infoQueryMock.mockReset();
+    _infoQueryMock.mockResolvedValue({ rows: [], columns: [], hasMore: false, page: 0 });
+
+    await act(async () => {
+      useWidgetActionStore.getState().setControlContribution(999, {
+        layer: { [layerId]: { info_enabled: 0 } },
+      });
+    });
+
+    // After overlay: eligibleLayers re-derives from effectiveLayers which now carries
+    // info_enabled:0 at top-level (spread by effectiveLayers merge). The layer must drop.
+    await act(async () => {
+      await capturedSingleclickHandler!({ coordinate: [0, 0] });
+    });
+
+    // Layer is NO LONGER queried — overlaid info_enabled:0 removed it from eligibleLayers.
+    expect(_infoQueryMock).not.toHaveBeenCalled();
+  });
+});

@@ -689,7 +689,10 @@ describe("RadioGroupConfigPanel — save-time validation", () => {
     });
   });
 
-  it("calls isValid(false) when configPatch contains out-of-list keys", async () => {
+  it("calls isValid(false) when configPatch contains a data-binding key (blocked by denylist)", async () => {
+    // Phase 60.1 RE-SCOPE: layer targets use the denylist validator (validateLayerSnapshot).
+    // Unknown style keys (e.g. nonexistent_field_xyz) are now ACCEPTED.
+    // Data-binding/spatial keys (e.g. table_id, spatialMode) are ALWAYS blocked.
     const isValid = vi.fn();
     const config: Record<string, unknown> = {
       orientation: "vertical",
@@ -699,7 +702,7 @@ describe("RadioGroupConfigPanel — save-time validation", () => {
           label: "Bad",
           action: {
             target: { kind: "layer", id: mockLayer.id },
-            configPatch: { nonexistent_field_xyz: true }, // out-of-list
+            configPatch: { table_id: 99 }, // data-binding key — blocked by denylist
           },
         },
       ],
@@ -720,7 +723,9 @@ describe("RadioGroupConfigPanel — save-time validation", () => {
     });
   });
 
-  it("shows inline validation reasons when option is invalid", async () => {
+  it("shows inline validation reasons when option has a data-binding key (denylist blocked)", async () => {
+    // Phase 60.1 RE-SCOPE: layer targets use denylist; data-binding keys (spatialMode, table_id, etc.)
+    // are always blocked and produce inline validation errors. Unknown style keys pass.
     useDashboardLayersStore.setState({ layers: [mockLayer] });
 
     const config: Record<string, unknown> = {
@@ -731,7 +736,7 @@ describe("RadioGroupConfigPanel — save-time validation", () => {
           label: "Bad",
           action: {
             target: { kind: "layer", id: mockLayer.id },
-            configPatch: { fake_key: 123 }, // out-of-list
+            configPatch: { spatialMode: "latlon" }, // spatial key — blocked by denylist
           },
         },
       ],
