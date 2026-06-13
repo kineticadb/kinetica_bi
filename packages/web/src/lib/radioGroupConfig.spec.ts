@@ -5,12 +5,16 @@
  *   - RADIO_GROUP_DEFAULT_CONFIG
  *   - validateRadioOption
  *   - isRadioGroupConfigValid
+ *
+ * Phase 60.2 Plan 01 — Task 1: added getOptionActions describe block + multi-action
+ *   validateRadioOption tests + back-compat single-action tests.
  */
 import { describe, it, expect } from "vitest";
 import {
   RADIO_GROUP_DEFAULT_CONFIG,
   validateRadioOption,
   isRadioGroupConfigValid,
+  getOptionActions,
 } from "./radioGroupConfig";
 import type { RadioOption, RadioGroupConfig } from "./radioGroupConfig";
 
@@ -22,11 +26,26 @@ function makeLayerOption(configPatch: Record<string, unknown>): RadioOption {
   return {
     id: "opt-1",
     label: "Option 1",
+    actions: [
+      {
+        target: { kind: "layer", id: 42 },
+        configPatch,
+      },
+    ],
+  };
+}
+
+/** Legacy single-action option (back-compat fixture — carries `action`, not `actions`) */
+function makeLegacyLayerOption(configPatch: Record<string, unknown>): RadioOption {
+  return {
+    id: "opt-legacy",
+    label: "Legacy Option",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     action: {
       target: { kind: "layer", id: 42 },
       configPatch,
     },
-  };
+  } as unknown as RadioOption;
 }
 
 function makeWidgetOption(
@@ -36,12 +55,62 @@ function makeWidgetOption(
   return {
     id: "opt-2",
     label: "Option 2",
-    action: {
-      target: { kind: "widget", id: widgetId },
-      configPatch,
-    },
+    actions: [
+      {
+        target: { kind: "widget", id: widgetId },
+        configPatch,
+      },
+    ],
   };
 }
+
+// ---------------------------------------------------------------------------
+// getOptionActions — normalizer (Phase 60.2)
+// ---------------------------------------------------------------------------
+
+describe("getOptionActions", () => {
+  it("returns actions array as-is when actions is present", () => {
+    const opt: RadioOption = {
+      id: "x",
+      label: "X",
+      actions: [
+        { target: { kind: "layer", id: 1 }, configPatch: { renderMode: "raster" } },
+        { target: { kind: "widget", id: 2 }, configPatch: { page_size: 50 } },
+      ],
+    };
+    const result = getOptionActions(opt);
+    expect(result).toHaveLength(2);
+    expect(result[0].target.id).toBe(1);
+    expect(result[1].target.id).toBe(2);
+  });
+
+  it("normalizes legacy single-action option (action field) to a 1-element array", () => {
+    const legacyOpt = makeLegacyLayerOption({ renderMode: "heatmap" });
+    const result = getOptionActions(legacyOpt);
+    expect(result).toHaveLength(1);
+    expect(result[0].configPatch).toEqual({ renderMode: "heatmap" });
+  });
+
+  it("returns [] when neither actions nor action is present", () => {
+    const emptyOpt = { id: "e", label: "E" } as unknown as RadioOption;
+    expect(getOptionActions(emptyOpt)).toEqual([]);
+  });
+
+  it("actions wins over action when both are present (even if actions is empty)", () => {
+    const opt = {
+      id: "x",
+      label: "X",
+      actions: [],
+      action: { target: { kind: "layer" as const, id: 1 }, configPatch: { renderMode: "raster" } },
+    } as unknown as RadioOption;
+    expect(getOptionActions(opt)).toEqual([]);
+  });
+
+  it("returns [] for an option with actions: []", () => {
+    const opt: RadioOption = { id: "e", label: "E", actions: [] };
+    expect(getOptionActions(opt)).toEqual([]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // RADIO_GROUP_DEFAULT_CONFIG
@@ -82,9 +151,9 @@ describe("validateRadioOption — valid cases", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("accepts a valid widget map option with widgetType", () => {
+  it("accepts a valid widget map option with widgetTypeFor", () => {
     const option = makeWidgetOption(10, { show_popup: true });
-    const result = validateRadioOption(option, "map");
+    const result = validateRadioOption(option, () => "map");
     expect(result.valid).toBe(true);
   });
 
@@ -99,6 +168,63 @@ describe("validateRadioOption — valid cases", () => {
     const result = validateRadioOption(option);
     expect(result.valid).toBe(true);
   });
+
+  it("back-compat: legacy single-action layer option (action field) validates identically", () => {
+    const legacyOpt = makeLegacyLayerOption({ renderMode: "raster" });
+    const result = validateRadioOption(legacyOpt);
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateRadioOption — multi-action (Phase 60.2)
+// ---------------------------------------------------------------------------
+
+describe("validateRadioOption — multi-action (Phase 60.2)", () => {
+  it("valid when BOTH actions (layer + widget) pass their respective validators", () => {
+    const opt: RadioOption = {
+      id: "multi",
+      label: "Multi",
+      actions: [
+        { target: { kind: "layer", id: 1 }, configPatch: { renderMode: "raster" } },
+        { target: { kind: "widget", id: 2 }, configPatch: { show_popup: true } },
+      ],
+    };
+    const result = validateRadioOption(opt, (id) => (id === 2 ? "map" : undefined));
+    expect(result.valid).toBe(true);
+  });
+
+  it("invalid when one action (widget) is invalid — reasons aggregate", () => {
+    const opt: RadioOption = {
+      id: "multi",
+      label: "Multi",
+      actions: [
+        { target: { kind: "layer", id: 1 }, configPatch: { renderMode: "raster" } },
+        { target: { kind: "widget", id: 2 }, configPatch: { page_size: "not-a-number" as unknown as number } },
+      ],
+    };
+    const result = validateRadioOption(opt, () => "records");
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("page_size"))).toBe(true);
+    }
+  });
+
+  it("invalid when the second action (layer) has a blocked key", () => {
+    const opt: RadioOption = {
+      id: "multi",
+      label: "Multi",
+      actions: [
+        { target: { kind: "widget", id: 2 }, configPatch: { show_popup: true } },
+        { target: { kind: "layer", id: 1 }, configPatch: { table_id: 99 } as Record<string, unknown> },
+      ],
+    };
+    const result = validateRadioOption(opt, (id) => (id === 2 ? "map" : undefined));
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("table_id"))).toBe(true);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -106,12 +232,30 @@ describe("validateRadioOption — valid cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("validateRadioOption — empty configPatch", () => {
-  it("rejects an empty configPatch", () => {
+  it("rejects an option whose first action has an empty configPatch", () => {
     const option = makeLayerOption({});
     const result = validateRadioOption(option);
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.reasons.some((r) => r.includes("empty configPatch"))).toBe(true);
+    }
+  });
+
+  it("rejects an option with no actions (normalized to [])", () => {
+    const opt = { id: "e", label: "E" } as unknown as RadioOption;
+    const result = validateRadioOption(opt);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("no targets"))).toBe(true);
+    }
+  });
+
+  it("rejects an option with actions: [] (no targets guard)", () => {
+    const opt: RadioOption = { id: "e", label: "E", actions: [] };
+    const result = validateRadioOption(opt);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("no targets"))).toBe(true);
     }
   });
 });
@@ -218,7 +362,7 @@ describe("validateRadioOption — type/value: layer denylist does NOT check valu
   it("widget target — wrong type still rejects via validateActionPatch (strict path unchanged)", () => {
     // Widget targets keep the strict allow-list with schema validation.
     const option = makeWidgetOption(10, { page_size: "not-a-number" } as Record<string, unknown>);
-    const result = validateRadioOption(option, "records");
+    const result = validateRadioOption(option, () => "records");
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.reasons.some((r) => r.includes("invalid value for page_size"))).toBe(true);
@@ -262,15 +406,15 @@ describe("validateRadioOption — layer snapshot (60.1)", () => {
     }
   });
 
-  it("WIDGET option { show_popup:true } with widgetType 'map' → valid via validateActionPatch (UNCHANGED)", () => {
+  it("WIDGET option { show_popup:true } with widgetTypeFor returning 'map' → valid via validateActionPatch (UNCHANGED)", () => {
     const option = makeWidgetOption(10, { show_popup: true });
-    const result = validateRadioOption(option, "map");
+    const result = validateRadioOption(option, () => "map");
     expect(result.valid).toBe(true);
   });
 
   it("WIDGET option with out-of-list key → invalid via validateActionPatch (strict path UNCHANGED)", () => {
     const option = makeWidgetOption(10, { colormap: "viridis" });
-    const result = validateRadioOption(option, "map");
+    const result = validateRadioOption(option, () => "map");
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.reasons.some((r) => r.includes("unknown field: colormap"))).toBe(true);
@@ -289,10 +433,12 @@ describe("isRadioGroupConfigValid — layer snapshot (60.1)", () => {
     const fullSnapshotOption: RadioOption = {
       id: "snap-1",
       label: "Class Break Viridis",
-      action: {
-        target: { kind: "layer", id: 1 },
-        configPatch: { renderMode: "classbreak", colormap: "viridis", cb_config: "{}", info_enabled: 1 },
-      },
+      actions: [
+        {
+          target: { kind: "layer", id: 1 },
+          configPatch: { renderMode: "classbreak", colormap: "viridis", cb_config: "{}", info_enabled: 1 },
+        },
+      ],
     };
     const config: RadioGroupConfig = { orientation: "vertical", options: [fullSnapshotOption] };
     expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(true);
@@ -310,13 +456,13 @@ describe("isRadioGroupConfigValid", () => {
   const validLayerOption: RadioOption = {
     id: "a",
     label: "Class Break",
-    action: { target: { kind: "layer", id: 1 }, configPatch: { renderMode: "classbreak" } },
+    actions: [{ target: { kind: "layer", id: 1 }, configPatch: { renderMode: "classbreak" } }],
   };
 
   const validWidgetOption: RadioOption = {
     id: "b",
     label: "Show Popup",
-    action: { target: { kind: "widget", id: 2 }, configPatch: { show_popup: true } },
+    actions: [{ target: { kind: "widget", id: 2 }, configPatch: { show_popup: true } }],
   };
 
   it("returns false when options array is empty", () => {
@@ -335,7 +481,7 @@ describe("isRadioGroupConfigValid", () => {
   it("returns false when an option has an empty configPatch", () => {
     const config: RadioGroupConfig = {
       orientation: "vertical",
-      options: [{ ...validLayerOption, action: { ...validLayerOption.action, configPatch: {} } }],
+      options: [{ ...validLayerOption, actions: [{ target: { kind: "layer", id: 1 }, configPatch: {} }] }],
     };
     expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(false);
   });
@@ -379,5 +525,18 @@ describe("isRadioGroupConfigValid", () => {
       options: [validLayerOption, badOption],
     };
     expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(false);
+  });
+
+  it("returns true for a multi-action option (layer + widget) when both actions are valid", () => {
+    const multiOpt: RadioOption = {
+      id: "multi",
+      label: "Multi",
+      actions: [
+        { target: { kind: "layer", id: 1 }, configPatch: { renderMode: "raster" } },
+        { target: { kind: "widget", id: 2 }, configPatch: { show_popup: true } },
+      ],
+    };
+    const config: RadioGroupConfig = { orientation: "vertical", options: [multiOpt] };
+    expect(isRadioGroupConfigValid(config, mapWidgetType)).toBe(true);
   });
 });

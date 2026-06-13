@@ -2,20 +2,25 @@
  * Phase 59 Plan 01 — Radio-group widget config data model + save-time validation helpers.
  * Phase 60.1 Plan 02 — Layer targets now validate via validateLayerSnapshot (denylist) instead
  * of validateActionPatch (strict allow-list). Widget + dynamic-view targets keep validateActionPatch.
+ * Phase 60.2 Plan 01 — RadioOption.action → actions: WidgetAction[] (ordered, multi-target).
+ *   Back-compat normalizer getOptionActions reads either actions[] OR legacy single action.
+ *   validateRadioOption validates EVERY action (layer → denylist, widget/dv → allow-list).
  *
  * Pure module — NO React, NO Zustand, NO filter-store imports.
  * Mirrors the lib/actionAllowList.ts helper-module style.
  *
  * Key types:
  *   RadioOrientation  — "vertical" | "horizontal"
- *   RadioOption       — { id, label, action: WidgetAction }
- *                       each option carries its OWN independent WidgetAction envelope
- *                       (different options may target different widgets/layers/dynamic-views)
+ *   RadioOption       — { id, label, actions: WidgetAction[] }
+ *                       each option carries an ordered list of independent WidgetAction envelopes
+ *                       (different actions may target different widgets/layers/dynamic-views)
  *   RadioGroupConfig  — { title?, orientation, defaultOptionId?, options: RadioOption[] }
  *
  * Helpers:
+ *   getOptionActions             — normalize new actions[] or legacy action to an ordered array
  *   RADIO_GROUP_DEFAULT_CONFIG   — default shape used when creating a new radio-group widget
- *   validateRadioOption          — for LAYER targets: denylist (validateLayerSnapshot); for widget/dv: strict allow-list (validateActionPatch)
+ *   validateRadioOption          — validates EVERY action: layer → denylist (validateLayerSnapshot);
+ *                                  widget/dv → strict allow-list (validateActionPatch)
  *   isRadioGroupConfigValid      — true only when all options are valid + non-empty labels
  *
  * IMPORTANT: renderMode (camelCase) is the ONLY render-mode key. The snake-case variant is not in the allow-list.
@@ -34,14 +39,20 @@ export type RadioOrientation = "vertical" | "horizontal";
 
 /**
  * A single radio option.
- * `action` is a full, independent Phase 58 WidgetAction envelope — it may target any
- * same-dashboard widget / map layer / dynamic-view, and its configPatch may set multiple
- * allow-listed fields at once (e.g. renderMode + cb_config together).
+ * `actions` is an ordered array of independent Phase 58 WidgetAction envelopes — each may
+ * target any same-dashboard widget / map layer / dynamic-view, mixing target kinds freely.
+ * Selecting the option applies ALL its actions as ONE combined contribution.
+ *
+ * @deprecated `action` — legacy single-action shape from pre-60.2 persisted blobs.
+ *   Read via getOptionActions (normalizer). Never written on save. NO DB migration needed.
  */
 export type RadioOption = {
   id: string;
   label: string;
-  action: WidgetAction;
+  /** Ordered, independent WidgetAction envelopes; targets may mix widget/layer/dynamicView. */
+  actions: WidgetAction[];
+  /** @deprecated legacy single-action shape — read via getOptionActions; never written on save. */
+  action?: WidgetAction;
 };
 
 /**
@@ -51,7 +62,7 @@ export type RadioOption = {
  * - title: optional display title above the group
  * - orientation: "vertical" (default) | "horizontal"
  * - defaultOptionId: optional; Phase 60 applies this option transiently on dashboard open
- * - options: ordered array of RadioOptions; each carries an independent WidgetAction
+ * - options: ordered array of RadioOptions; each carries independent WidgetAction envelopes
  */
 export type RadioGroupConfig = {
   title?: string;
@@ -74,51 +85,69 @@ export const RADIO_GROUP_DEFAULT_CONFIG: RadioGroupConfig = {
 };
 
 // ---------------------------------------------------------------------------
+// getOptionActions — back-compat normalizer (Phase 60.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a RadioOption's action(s) to an ordered array.
+ * New options carry `actions: WidgetAction[]`. Legacy persisted options carry a single
+ * `action` (pre-60.2). `actions` wins when present (even if empty). NO DB migration —
+ * every reader (renderer dispatch, validation) normalizes here.
+ */
+export function getOptionActions(option: Pick<RadioOption, "actions" | "action">): WidgetAction[] {
+  return option.actions ?? (option.action ? [option.action] : []);
+}
+
+// ---------------------------------------------------------------------------
 // validateRadioOption
 // ---------------------------------------------------------------------------
 
 /**
- * Validates a RadioOption's action.configPatch against the Phase 58 allow-list.
+ * Validates a RadioOption's actions against the Phase 58 allow-list.
  *
  * Rules:
- *   1. configPatch must not be empty — an empty binding carries no intent and cannot be saved.
- *   2. All keys in configPatch must pass validateActionPatch(kind, widgetType, configPatch):
- *      - No permanently-blocked meta/proto keys (id, __proto__, etc.)
- *      - All keys must be in the allow-list for (kind, widgetType)
- *      - All values must satisfy the field's schema validator
+ *   1. getOptionActions(option) must not be empty — no targets means no intent.
+ *   2. Each action's configPatch must not be empty — an empty binding carries no intent.
+ *   3. All keys in each action's configPatch must pass the appropriate validator:
+ *      - Layer targets  → validateLayerSnapshot (denylist: accept render/style/info; reject data-binding/spatial/meta)
+ *      - Widget targets → validateActionPatch (strict allow-list by widget type)
+ *      - DV targets     → validateActionPatch (strict allow-list)
  *
- * @param option     The RadioOption to validate.
- * @param widgetType The target widget's type (e.g. "map", "chart"). Required when
- *                   option.action.target.kind === "widget" — callers must supply this.
- *                   Pass undefined for layer / dynamicView targets.
+ * @param option          The RadioOption to validate.
+ * @param widgetTypeFor   Maps a widget target id → widget type (e.g. "map", "records").
+ *                        Required when any action targets a widget. Pass undefined for layer/dv
+ *                        targets — validateRadioOption handles those without a widget type.
+ *                        Changed from `widgetType?: string` (pre-60.2) to a resolver function
+ *                        so different actions in the same option may target different widgets.
  */
 export function validateRadioOption(
   option: RadioOption,
-  widgetType?: string,
+  widgetTypeFor?: (id: number) => string | undefined,
 ): { valid: true } | { valid: false; reasons: string[] } {
+  const actions = getOptionActions(option);
   const reasons: string[] = [];
 
-  // Rule 1: empty configPatch is not saveable
-  if (Object.keys(option.action.configPatch).length === 0) {
-    reasons.push("empty configPatch — capture or author at least one field");
+  if (actions.length === 0) {
+    reasons.push("no targets — add at least one target");
   }
 
-  // Rule 2: validate the configPatch.
-  //   LAYER targets → denylist (validateLayerSnapshot): accept render/style/info; reject data-binding/spatial/meta.
-  //     This is the Phase 60.1 RE-SCOPE: a full-config snapshot is the contract for designer-UI layer options.
-  //   WIDGET + DYNAMICVIEW targets → strict allow-list (validateActionPatch): unchanged contract.
-  const patchResult =
-    option.action.target.kind === "layer"
-      ? validateLayerSnapshot(option.action.configPatch)
-      : validateActionPatch(option.action.target.kind, widgetType, option.action.configPatch);
-  if (!patchResult.valid) {
-    reasons.push(...patchResult.reasons);
+  for (const action of actions) {
+    if (Object.keys(action.configPatch).length === 0) {
+      reasons.push("empty configPatch — capture or author at least one field");
+      continue;
+    }
+    const result =
+      action.target.kind === "layer"
+        ? validateLayerSnapshot(action.configPatch)
+        : validateActionPatch(
+            action.target.kind,
+            action.target.kind === "widget" ? widgetTypeFor?.(action.target.id) : undefined,
+            action.configPatch,
+          );
+    if (!result.valid) reasons.push(...result.reasons);
   }
 
-  if (reasons.length > 0) {
-    return { valid: false, reasons };
-  }
-  return { valid: true };
+  return reasons.length > 0 ? { valid: false, reasons } : { valid: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +158,7 @@ export function validateRadioOption(
  * Returns true only when:
  *   1. options.length > 0 (at least one option must exist)
  *   2. Every option has a non-empty label (after trimming)
- *   3. Every option passes validateRadioOption with the correct widgetType
+ *   3. Every option passes validateRadioOption with the correct widgetTypeFor resolver
  *
  * @param config          The RadioGroupConfig to validate.
  * @param widgetTypeFor   Maps a widget target id → widget type so the allow-list can
@@ -144,14 +173,7 @@ export function isRadioGroupConfigValid(
 
   for (const option of config.options) {
     if (option.label.trim() === "") return false;
-
-    const widgetType =
-      option.action.target.kind === "widget"
-        ? widgetTypeFor(option.action.target.id)
-        : undefined;
-
-    const result = validateRadioOption(option, widgetType);
-    if (!result.valid) return false;
+    if (!validateRadioOption(option, widgetTypeFor).valid) return false;
   }
 
   return true;
