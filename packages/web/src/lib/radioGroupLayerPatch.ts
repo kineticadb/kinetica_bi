@@ -1,30 +1,142 @@
 /**
- * Phase 60.1 Plan 01 — Bidirectional adapter: flat allow-listed configPatch ↔ CbConfigForm config blob.
+ * Phase 60.1 Plan 01 (RE-SCOPE) — Bidirectional adapter between:
+ *   (a) The FULL layer-config SNAPSHOT (option.action.configPatch for a layer target), and
+ *   (b) The inputs KineticaWmsLayerForm needs (config blob + separate info_* props).
  *
- * This module is the bridge between the FLAT radio-option configPatch (as captured by
- * captureAllowListedSubset / stored in RadioOption.action.configPatch) and the config-blob
- * shape that CbConfigForm + the render-mode picker expect.
+ * === SNAPSHOT SHAPE ===
+ *   { renderMode, colormap, BLUR_RADIUS, ..., name, minZoom, maxZoom, opacity, visible,
+ *     cb_config: "{...}", track_config: "{...}",          // TOP-LEVEL JSON strings
+ *     info_enabled: 1, info_columns: "[...]", info_template: "..." }  // TOP-LEVEL info_*
  *
- * The cb_config "location move" (placement, NOT a rename):
- *   In the flat patch:  { cb_config: "...", renderMode: "classbreak", visible: true, opacity: 0.8 }
- *                        └── cb_config is a TOP-LEVEL key (allow-list location "layer")
- *   In the form blob:   { cb_config: "...", renderMode: "classbreak", visible: true, opacity: 0.8 }
- *                        └── cb_config is INSIDE the config blob (CbConfigForm reads config.cb_config)
- *   Because the key name is the same on both sides, the adapter simply filters the four
- *   surfaced fields into/out of the config blob using the same key names.
+ * === cb_config / track_config placement ===
+ *   In the SNAPSHOT (DTO-like): cb_config / track_config are SIBLINGS of renderMode (flat).
+ *   In the FORM BLOB: cb_config / track_config are also INSIDE the blob (same key name).
+ *   LayersModal.tsx (~line 557-574) uses this same lift/split: it merges { ...layer.config,
+ *   cb_config, track_config } into the config prop and on change splits them back out.
+ *   This adapter mirrors that precedent exactly.
  *
- * Canonical split contract (DO NOT diverge):
- *   MapChartRenderer.effectiveLayers (~line 482): const { config: cfgPatch, ...topLevel } = ov
- *   widgetActionStore.deriveOverlays (~line 179): const { config: patchConfig, ...patchTopLevel } = patch
- * Both treat cb_config as TOP-LEVEL in the overlay and renderMode/visible/opacity as config-nested.
- * The FORM, however, edits everything inside one flat config blob — this adapter bridges the two.
+ * === MapChartRenderer effectiveLayers split (canonical, DO NOT diverge) ===
+ *   const { config: cfgPatch, ...topLevel } = ov;   // (~line 482)
+ *   return cfgPatch ? { ...l, ...topLevel, config: { ...l.config, ...cfgPatch } } : { ...l, ...topLevel };
+ *   The OVERLAY stored in widgetActionStore.layerOverrides is DTO-shaped:
+ *     { config: { renderMode, colormap, ... }, cb_config, track_config, info_enabled, ... }
+ *   Plan 02's engine produces that DTO-shaped overlay. THIS adapter is for the FORM side.
+ *
+ * === Data-binding / spatial key stripping (SC2) ===
+ *   Keys in DATA_BINDING_KEYS (table_id/dynamic_view_id/spatialMode/lat+lon+wkt+wkbColumn/
+ *   track spatial cols) and PERMANENTLY_BLOCKED_KEYS (id/type/__proto__/...) are STRIPPED
+ *   from both directions. Output of layerFormToSnapshot always passes validateLayerSnapshot.
+ *
+ * === info_* fields ===
+ *   info_enabled / info_columns / info_template are TOP-LEVEL DashboardLayerDto fields
+ *   (NOT in the config blob). snapshotToLayerForm surfaces them in a separate `info` return
+ *   value for the form's infoEnabled/infoColumns/infoTemplate props. layerFormToSnapshot
+ *   folds them back to flat top-level.
  *
  * Pure module — NO React, NO Zustand, NO filter-store imports.
- * Mirrors the lib/radioGroupCapture.ts helper-module style.
  */
 
+import { DATA_BINDING_KEYS, PERMANENTLY_BLOCKED_KEYS } from "./actionAllowList";
+
+// Re-export DATA_BINDING_KEYS so the spec (and other modules) can import from this module.
+export { DATA_BINDING_KEYS } from "./actionAllowList";
+
 // ---------------------------------------------------------------------------
-// Surfaced fields
+// Internal constants
+// ---------------------------------------------------------------------------
+
+/** info_* fields live at the snapshot top-level; the form surfaces them as separate props. */
+const INFO_FIELDS = ["info_enabled", "info_columns", "info_template"] as const;
+
+/**
+ * Keys stripped from form config → snapshot and from snapshot → form config.
+ * Includes data-binding/spatial, permanently-blocked meta/proto, and info_*
+ * (info_* ride separate props, never in the form's config blob).
+ */
+const STRIP = new Set<string>([
+  ...(DATA_BINDING_KEYS as readonly string[]),
+  ...(PERMANENTLY_BLOCKED_KEYS as readonly string[]),
+  ...INFO_FIELDS,
+]);
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type LayerSnapshot = Record<string, unknown>;
+export type InfoPatch = {
+  info_enabled?: number;
+  info_columns?: string | null;
+  info_template?: string | null;
+};
+
+// ---------------------------------------------------------------------------
+// Full-snapshot bidirectional adapter (60.1 RE-SCOPE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Snapshot → the inputs KineticaWmsLayerForm needs:
+ *   - config: ONE blob with renderMode + ALL style keys + cb_config + track_config (lifted IN),
+ *     data-binding/spatial/meta keys STRIPPED, info_* removed.
+ *   - info: the top-level info_* fields surfaced for the form's
+ *     infoEnabled / infoColumns / infoTemplate props.
+ *
+ * Mirrors the LayersModal.tsx lift (line 557-574):
+ *   config={{ ...layer.config, cb_config: layer.cb_config, track_config: layer.track_config }}
+ *
+ * Defensive: stray data-binding/spatial/meta keys in the snapshot are silently stripped.
+ */
+export function snapshotToLayerForm(snapshot: LayerSnapshot): {
+  config: Record<string, unknown>;
+  info: InfoPatch;
+} {
+  const config: Record<string, unknown> = {};
+  const info: InfoPatch = {};
+  for (const [k, v] of Object.entries(snapshot)) {
+    if ((INFO_FIELDS as readonly string[]).includes(k)) {
+      // info_* → surfaced as separate props
+      (info as Record<string, unknown>)[k] = v;
+    } else if (STRIP.has(k)) {
+      // data-binding/meta stripped defensively
+      continue;
+    } else {
+      // renderMode + style keys + cb_config + track_config lifted into the blob
+      config[k] = v;
+    }
+  }
+  return { config, info };
+}
+
+/**
+ * Form config blob (+ the info patch) → a FLAT layer-appearance snapshot.
+ *
+ * cb_config / track_config stay TOP-LEVEL siblings of renderMode in the output
+ * (they are already at the form-blob top level — LayersModal injects them there;
+ * Plan 02's engine will split the stored DTO-shaped overlay at apply time).
+ *
+ * Data-binding/spatial + meta keys are STRIPPED (SC2).
+ * info_* fold to flat top-level from the separate infoPatch argument.
+ * Output is guaranteed to pass validateLayerSnapshot.
+ */
+export function layerFormToSnapshot(
+  formConfig: Record<string, unknown>,
+  infoPatch: InfoPatch = {},
+): LayerSnapshot {
+  const out: LayerSnapshot = {};
+  for (const [k, v] of Object.entries(formConfig)) {
+    if (STRIP.has(k)) continue; // strip data-binding/meta (+ stray info_*)
+    out[k] = v; // renderMode + style + cb_config + track_config (all top-level)
+  }
+  for (const f of INFO_FIELDS) {
+    if (infoPatch[f as keyof InfoPatch] !== undefined) {
+      out[f] = infoPatch[f as keyof InfoPatch];
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Surfaced fields (first-cut / back-compat)
 // ---------------------------------------------------------------------------
 
 /**
