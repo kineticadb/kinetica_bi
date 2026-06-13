@@ -22,7 +22,7 @@ import { RADIO_GROUP_DEFAULT_CONFIG } from "../../../lib/radioGroupConfig";
 
 const radioGroup: ChartTypeDefinition = {
   type: "radiogroup",
-  label: "Radio Group",
+  label: "Radio Dashboard Control",
   icon: "RG",
   fields: [],
   defaultConfig: {

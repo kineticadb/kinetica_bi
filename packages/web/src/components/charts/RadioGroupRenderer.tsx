@@ -102,7 +102,7 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
       <div
         className={`radiogroup-options radiogroup--${orientation}`}
         role="radiogroup"
-        aria-label={title ?? "Radio group"}
+        aria-label={title ?? "Radio Dashboard Control"}
       >
         {options.map((opt) => {
           const isSelected = selectedOptionId === opt.id;

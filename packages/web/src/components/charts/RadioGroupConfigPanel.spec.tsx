@@ -253,7 +253,7 @@ describe("radiogroup registry", () => {
     expect(def?.CustomConfigPanel).toBeDefined();
     expect(def?.usesDataSource).toBe(false);
     expect(def?.type).toBe("radiogroup");
-    expect(def?.label).toBe("Radio Group");
+    expect(def?.label).toBe("Radio Dashboard Control");
   });
 });
 
@@ -545,7 +545,7 @@ describe("RadioGroupConfigPanel — orientation toggle", () => {
       />,
     );
 
-    const select = screen.getByRole("combobox", { name: /radio group orientation/i });
+    const select = screen.getByRole("combobox", { name: /radio dashboard control orientation/i });
     fireEvent.change(select, { target: { value: "horizontal" } });
 
     expect(onChange).toHaveBeenCalledOnce();
@@ -630,7 +630,7 @@ describe("RadioGroupConfigPanel — title", () => {
       />,
     );
 
-    const titleInput = screen.getByRole("textbox", { name: /radio group title/i });
+    const titleInput = screen.getByRole("textbox", { name: /radio dashboard control title/i });
     fireEvent.change(titleInput, { target: { value: "View Mode" } });
 
     expect(onChange).toHaveBeenCalledOnce();

@@ -655,7 +655,7 @@ export default function RadioGroupConfigPanel({
       aria-labelledby="radiogroup-config-label"
     >
       <label id="radiogroup-config-label" className="config-group-label">
-        RADIO GROUP CONFIG
+        DASHBOARD CONTROL CONFIG
       </label>
 
       {/* Optional title */}
@@ -664,7 +664,7 @@ export default function RadioGroupConfigPanel({
         <input
           className="ds-select"
           type="text"
-          aria-label="Radio group title"
+          aria-label="Radio Dashboard Control title"
           value={cfg.title ?? ""}
           placeholder="e.g. View Mode"
           onChange={(e) =>
@@ -682,7 +682,7 @@ export default function RadioGroupConfigPanel({
         <span className="ds-field-label">Orientation</span>
         <select
           className="ds-select"
-          aria-label="Radio group orientation"
+          aria-label="Radio Dashboard Control orientation"
           value={cfg.orientation}
           onChange={(e) =>
             onChange({
