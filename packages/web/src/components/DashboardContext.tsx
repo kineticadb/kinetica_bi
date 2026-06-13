@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { WidgetDto, DynamicViewRow } from "../api/client";
 import type { WidgetAction, WidgetActionResult } from "../lib/widgetAction";
+import type { WidgetActionsResult } from "../lib/applyWidgetAction";
 
 /**
  * Phase 15 + Phase 30 + Phase 35.
@@ -49,6 +50,12 @@ import type { WidgetAction, WidgetActionResult } from "../lib/widgetAction";
  *     a source-control-keyed contribution (switch-replace semantics).
  *   - 60-02 RadioGroupRenderer consumes this widened signature via
  *     useDashboardContext().applyWidgetAction(action, widget.id).
+ *
+ * Phase 60.2 Plan 01 (RADIOMULTI-V111-01):
+ *   - applyWidgetActions (plural): dispatches N actions as ONE combined contribution.
+ *     RadioGroupRenderer now calls applyWidgetActions(getOptionActions(option), widget.id).
+ *     Optional on the provider — safe no-op default for specs that don't supply it.
+ *   - applyWidgetAction (singular) kept unchanged for legacy/internal paths.
  */
 
 export type DashboardContextValue = {
@@ -67,6 +74,14 @@ export type DashboardContextValue = {
    * this control's prior contribution so dropped fields revert to baseline).
    */
   applyWidgetAction: (action: WidgetAction, controlId: number) => WidgetActionResult;
+  /**
+   * Phase 60.2 (RADIOMULTI-V111-01):
+   * Plural dispatch entry — dispatches N actions as ONE combined contribution,
+   * with ONE setControlContribution write. Gives option-level switch-replace:
+   * switching options drops targets the new option doesn't set.
+   * Use for RadioGroupRenderer select dispatch.
+   */
+  applyWidgetActions: (actions: WidgetAction[], controlId: number) => WidgetActionsResult;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -82,12 +97,28 @@ const noopApplyWidgetAction = (action: WidgetAction, _controlId: number): Widget
   target: action.target,
 });
 
+/**
+ * Safe no-op default for applyWidgetActions (plural).
+ * Returns a noop aggregate result so specs/renderers that don't supply a real
+ * closure don't crash when an option is selected.
+ */
+const noopApplyWidgetActions = (
+  _actions: WidgetAction[],
+  _controlId: number,
+): WidgetActionsResult => ({
+  status: "noop",
+  applied: [],
+  rejected: [],
+  notFound: [],
+});
+
 export const DashboardContextProvider = ({
   dashboardId,
   widgets,
   dynamicViews,
   retryDynamicView,
   applyWidgetAction = noopApplyWidgetAction,
+  applyWidgetActions = noopApplyWidgetActions,
   children,
 }: {
   dashboardId: number;
@@ -96,14 +127,23 @@ export const DashboardContextProvider = ({
   retryDynamicView: (dynamicViewId: number) => void;
   /** Phase 58 (ENGINE-V111-02) / Phase 60 (RADIO-V111-03): optional — defaults to a safe no-op. */
   applyWidgetAction?: (action: WidgetAction, controlId: number) => WidgetActionResult;
+  /** Phase 60.2 (RADIOMULTI-V111-01): optional — defaults to a safe no-op. */
+  applyWidgetActions?: (actions: WidgetAction[], controlId: number) => WidgetActionsResult;
   children: ReactNode;
 }) => {
   // Memoize so consumers don't see a new context object identity on every
   // parent re-render when underlying props are unchanged.
   const value = useMemo(
-    () => ({ dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction }),
+    () => ({
+      dashboardId,
+      widgets,
+      dynamicViews,
+      retryDynamicView,
+      applyWidgetAction,
+      applyWidgetActions,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction],
+    [dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction, applyWidgetActions],
   );
   return (
     <DashboardContext.Provider value={value}>

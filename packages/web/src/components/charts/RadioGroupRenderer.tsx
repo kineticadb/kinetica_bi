@@ -1,16 +1,18 @@
 /**
  * Phase 60 Plan 02 (RADIO-V111-03): Radio Group widget runtime renderer.
+ * Phase 60.2 Plan 01 (RADIOMULTI-V111-01): Dispatch via applyWidgetActions (plural) +
+ *   getOptionActions normalizer. Legacy single-action options normalized transparently.
  *
  * Short-circuits in WidgetRenderer.tsx BEFORE AggregatedWidgetRenderer, exactly
  * like DataFilterRenderer, LegendRenderer, and TimelineRenderer.
  *
  * SOLE-MATERIALIZE-TRIGGER + ACTION-ENGINE DECOUPLING INVARIANT:
  *   This file is a PURE ACTION-ENGINE CONSUMER — it dispatches option selections
- *   through useDashboardContext().applyWidgetAction(action, widget.id) and nothing more.
- *   It imports ZERO filter-store symbols and NEVER bumps the filter version counter.
- *   The transient overlay store (widgetActionStore) records the contribution;
- *   the existing render path in WidgetRenderer / MapChartRenderer deep-merges it
- *   at render time. No filter-system contact. Mirror of DataFilterRenderer.tsx lock.
+ *   through useDashboardContext().applyWidgetActions(getOptionActions(option), widget.id)
+ *   and nothing more. It imports ZERO filter-store symbols and NEVER bumps the filter
+ *   version counter. The transient overlay store (widgetActionStore) records the
+ *   contribution; the existing render path in WidgetRenderer / MapChartRenderer
+ *   deep-merges it at render time. No filter-system contact. Mirror of DataFilterRenderer.tsx lock.
  *
  * Transient semantics (CONTEXT.md lock):
  *   selectedOptionId is component-local transient state — NOT written to the widget's
@@ -19,13 +21,14 @@
  *
  * Live-config read (GAP-24-01-A / 54-01..09 / 58.1 lineage):
  *   widget.config is cast to RadioGroupConfig in the component body EACH render.
- *   The effect that calls applyWidgetAction is keyed on [selectedOptionId] and reads
+ *   The effect that calls applyWidgetActions is keyed on [selectedOptionId] and reads
  *   options from a ref synced every render — NEVER a mount snapshot.
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { WidgetDto } from "../../api/client";
 import type { RadioGroupConfig, RadioOption } from "../../lib/radioGroupConfig";
+import { getOptionActions } from "../../lib/radioGroupConfig";
 import { useDashboardContext } from "../DashboardContext";
 
 type Props = {
@@ -55,18 +58,20 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
   const optionsRef = useRef<RadioOption[]>(options);
   optionsRef.current = options;
 
-  // ---- applyWidgetAction from context ----
-  // Signature (widened by 60-01): (action, controlId) => WidgetActionResult.
+  // ---- applyWidgetActions (plural) from context ----
+  // Phase 60.2: calls applyWidgetActions(getOptionActions(option), widget.id) so a
+  // multi-target option dispatches ALL its actions as ONE combined contribution.
+  // getOptionActions normalizes legacy single-action options (action field) transparently.
   // widget.id is this control's id (source-control-keyed contribution for switch-replace).
-  const { applyWidgetAction } = useDashboardContext();
+  const { applyWidgetActions } = useDashboardContext();
 
-  // Keep applyWidgetAction in a ref too so the effect doesn't need it as a dep
+  // Keep applyWidgetActions in a ref too so the effect doesn't need it as a dep
   // (the function identity may change on provider re-render; ref avoids re-applying on
   // every provider update while still calling the latest version).
-  const applyRef = useRef(applyWidgetAction);
-  applyRef.current = applyWidgetAction;
+  const applyRef = useRef(applyWidgetActions);
+  applyRef.current = applyWidgetActions;
 
-  // ---- Effect: apply action on selectedOptionId change ----
+  // ---- Effect: apply actions on selectedOptionId change ----
   // Keyed on [selectedOptionId, widget.id]. Runs on mount (applies default) and on
   // every user select. Reads options from optionsRef so it always sees the latest config.
   // NOT a mount-only [] effect — the plan requires re-firing when selectedOptionId changes.
@@ -75,10 +80,10 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
     const currentOptions = optionsRef.current;
     const option = currentOptions.find((o) => o.id === selectedOptionId);
     if (!option) return;
-    // Dispatch: controlId = widget.id (source-control-keyed; switch-replace semantics).
-    // Dangling target / rejected → applyWidgetAction already fires the toast (Phase 58);
-    // the renderer does not crash — it still shows the option as selected.
-    applyRef.current(option.action, widget.id);
+    // Dispatch via plural path: controlId = widget.id (source-control-keyed; switch-replace semantics).
+    // getOptionActions normalizes: new options with actions[] dispatched directly; legacy single-action
+    // options normalized to [action]. Dangling targets / rejections surface as a combined toast.
+    applyRef.current(getOptionActions(option), widget.id);
   }, [selectedOptionId, widget.id]);
 
   // ---- Empty state gate ----

@@ -1,5 +1,6 @@
 /**
  * Phase 60 Plan 02 — RadioGroupRenderer spec.
+ * Phase 60.2 Plan 01 — updated to use applyWidgetActions plural path + getOptionActions.
  *
  * Covers:
  *   1. default-on-open: mount with defaultOptionId → derived widgetOverrides/layerOverrides
@@ -9,17 +10,19 @@
  *   3. switch-replace reverts unset fields: option A sets { renderMode + cb_config } on a
  *      layer; select option B that sets only { renderMode } → derived layerOverrides[targetId]
  *      no longer contains cb_config (reverted to baseline). Ties to 60-01.
- *   4. dangling/rejected: option targets a non-existent layer → applyWidgetAction returns
- *      target_not_found, toast fires (spy useToastStore.showToast), renderer does not crash.
+ *   4. dangling/rejected: option targets a non-existent layer → applyWidgetActions returns
+ *      notFound result, toast fires (spy useToastStore.showToast), renderer does not crash.
  *   5. reset clears: after a selection writes an overlay, call reset() → derived overlays empty.
  *   6. orientation + title render: vertical and horizontal produce the expected class;
  *      title renders when set.
  *   7. decoupling grep: readFileSync RadioGroupRenderer.tsx and assert no
  *      materializeFilter/setBulkFilters/addFilter/filterVersion/dashboardLayersStore import strings.
+ *   8. back-compat: legacy single-action option (action field) still dispatches via getOptionActions.
+ *   9. multi-target: option with 2 actions → both overlays written in one dispatch.
  *
  * Uses the real widgetActionStore (auto-reset by zustand shim in setup.ts).
- * applyWidgetAction is wired via DashboardContextProvider with a real closure
- * that calls the lib's applyWidgetAction(action, lookups, controlId).
+ * applyWidgetActions is wired via DashboardContextProvider with a real closure
+ * that calls the lib's applyWidgetActions(actions, lookups, controlId).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -30,7 +33,7 @@ import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import { DashboardContextProvider } from "../DashboardContext";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { useToastStore } from "../../store/toast";
-import { applyWidgetAction } from "../../lib/applyWidgetAction";
+import { applyWidgetActions } from "../../lib/applyWidgetAction";
 import type { WidgetAction } from "../../lib/widgetAction";
 import type { RadioGroupConfig } from "../../lib/radioGroupConfig";
 
@@ -66,7 +69,18 @@ const makeLayer = (id: number): DashboardLayerDto => ({
   updated_at: "",
 } as DashboardLayerDto);
 
-/** Build a RadioGroupConfig targeting a layer */
+const makeWidget = (id: number, type = "records"): WidgetDto => ({
+  id,
+  dashboard_id: 1,
+  title: "Widget",
+  type,
+  position: 0,
+  config: {},
+  created_at: "",
+  updated_at: "",
+});
+
+/** Build a RadioGroupConfig targeting a layer (new actions[] shape) */
 function layerTargetConfig(
   layerId: number,
   opts: {
@@ -78,18 +92,22 @@ function layerTargetConfig(
   const optA: RadioGroupConfig["options"][0] = {
     id: "opt-a",
     label: "Option A",
-    action: {
-      target: { kind: "layer", id: layerId },
-      configPatch: { renderMode: "heatmap", cb_config: '{"breaks":[]}' },
-    } as WidgetAction,
+    actions: [
+      {
+        target: { kind: "layer", id: layerId },
+        configPatch: { renderMode: "heatmap", cb_config: '{"breaks":[]}' },
+      },
+    ],
   };
   const optB: RadioGroupConfig["options"][0] = {
     id: "opt-b",
     label: "Option B",
-    action: {
-      target: { kind: "layer", id: layerId },
-      configPatch: { renderMode: "classbreak" },
-    } as WidgetAction,
+    actions: [
+      {
+        target: { kind: "layer", id: layerId },
+        configPatch: { renderMode: "classbreak" },
+      },
+    ],
   };
   return {
     orientation: opts.orientation ?? "vertical",
@@ -99,22 +117,22 @@ function layerTargetConfig(
   };
 }
 
-/** Wrap a radio widget in a DashboardContextProvider with a REAL applyWidgetAction closure. */
+/** Wrap a radio widget in a DashboardContextProvider with a REAL applyWidgetActions closure. */
 function wrapWithProvider(
   children: React.ReactNode,
   lookupLayers: DashboardLayerDto[] = [],
+  lookupWidgets: WidgetDto[] = [],
 ) {
-  const widgets: WidgetDto[] = [];
-  const applyAction = (action: WidgetAction, controlId: number) =>
-    applyWidgetAction(action, { widgets, layers: lookupLayers, dynamicViewIds: [] }, controlId);
+  const applyActions = (actions: Parameters<typeof applyWidgetActions>[0], controlId: number) =>
+    applyWidgetActions(actions, { widgets: lookupWidgets, layers: lookupLayers, dynamicViewIds: [] }, controlId);
 
   return (
     <DashboardContextProvider
       dashboardId={1}
-      widgets={widgets}
+      widgets={lookupWidgets}
       dynamicViews={[]}
       retryDynamicView={() => {}}
-      applyWidgetAction={applyAction}
+      applyWidgetActions={applyActions}
     >
       {children}
     </DashboardContextProvider>
@@ -324,5 +342,76 @@ describe("RadioGroupRenderer", () => {
     expect(src).not.toMatch(/addFilter/);
     expect(src).not.toMatch(/filterVersion/);
     expect(src).not.toMatch(/dashboardLayersStore/);
+  });
+
+  /* ---- 8. back-compat: legacy single-action option dispatches ---- */
+
+  it("8. back-compat: legacy option with `action` field (not actions) still dispatches via getOptionActions", async () => {
+    const { default: RadioGroupRenderer } = await import("./RadioGroupRenderer");
+    const LAYER_ID = 207;
+    const layer = makeLayer(LAYER_ID);
+
+    // Legacy option: carries `action` (singular, pre-60.2 shape) — NOT `actions`
+    const legacyCfg: RadioGroupConfig = {
+      orientation: "vertical",
+      defaultOptionId: "legacy",
+      options: [
+        {
+          id: "legacy",
+          label: "Legacy Option",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          action: {
+            target: { kind: "layer", id: LAYER_ID },
+            configPatch: { renderMode: "heatmap" },
+          } as unknown as WidgetAction,
+          actions: undefined as unknown as WidgetAction[],
+        },
+      ],
+    };
+    const widget = makeRadioWidget(legacyCfg);
+
+    await act(async () => {
+      render(wrapWithProvider(<RadioGroupRenderer widget={widget} />, [layer]));
+    });
+
+    // The legacy option's action should dispatch via getOptionActions normalization
+    const layerOverride = useWidgetActionStore.getState().layerOverrides[LAYER_ID];
+    expect(layerOverride).toBeDefined();
+    expect((layerOverride?.config as Record<string, unknown>)?.renderMode).toBe("heatmap");
+  });
+
+  /* ---- 9. multi-target: option with 2 actions → both overlays written ---- */
+
+  it("9. multi-target: option with layer + widget actions → both overlays written in one dispatch", async () => {
+    const { default: RadioGroupRenderer } = await import("./RadioGroupRenderer");
+    const LAYER_ID = 208;
+    const WIDGET_ID = 300;
+    const layer = makeLayer(LAYER_ID);
+    const targetWidget = makeWidget(WIDGET_ID, "map");
+
+    const multiCfg: RadioGroupConfig = {
+      orientation: "vertical",
+      defaultOptionId: "multi",
+      options: [
+        {
+          id: "multi",
+          label: "Multi Target",
+          actions: [
+            { target: { kind: "layer", id: LAYER_ID }, configPatch: { renderMode: "classbreak" } },
+            { target: { kind: "widget", id: WIDGET_ID }, configPatch: { show_popup: true } },
+          ],
+        },
+      ],
+    };
+    const widget = makeRadioWidget(multiCfg);
+
+    await act(async () => {
+      render(wrapWithProvider(<RadioGroupRenderer widget={widget} />, [layer], [targetWidget]));
+    });
+
+    const state = useWidgetActionStore.getState();
+    // Both overlays should be present
+    expect((state.layerOverrides[LAYER_ID]?.config as Record<string, unknown>)?.renderMode).toBe("classbreak");
+    expect(state.widgetOverrides[WIDGET_ID]).toEqual({ show_popup: true });
   });
 });
