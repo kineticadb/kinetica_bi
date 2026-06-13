@@ -14,13 +14,13 @@
  *   - save-time validation: valid config calls isValid(true); empty/out-of-list calls isValid(false)
  *   - props.widgets (NOT useDashboardContext): widgets come from props
  *
- * Phase 60.1 Plan 02 additions — structured layer editor (60.1):
- *   - layer target shows render-mode select + Advanced (raw JSON) disclosure
- *   - classbreak renders CbConfigForm (real selector asserted via mock stub)
- *   - edits write flat top-level cb_config (no nested config key)
+ * Phase 60.1 Plan 03 additions — full-form side-by-side layer editor (60.1 RE-SCOPE):
+ *   - layer target renders full KineticaWmsLayerForm side-by-side (RENDER MODE present,
+ *     SPATIAL MODE + DATA SOURCE absent); radio-layer-form-${idx} wrapper asserted
+ *   - editing render mode updates the snapshot (no data-binding keys in emitted configPatch)
+ *   - editing INFO POPUP updates top-level info_enabled in the snapshot
  *   - Advanced JSON still present + round-trips; invalid JSON shows error
- *   - non-surfaced keys like track_config survive a structured-editor write (MERGE)
- *   - zero-break classbreak is invalid: validation reason shown + isValid(false) (CONTEXT line 50)
+ *   - non-surfaced keys like track_config survive a structured-editor write (MERGE / adapter round-trip)
  *   - widget/dv targets: JSON textarea rendered directly (unchanged, no structured editor)
  */
 
@@ -111,6 +111,71 @@ vi.mock("./CbConfigForm", async () => {
 });
 
 import { captureAllowListedSubset } from "../../lib/radioGroupCapture";
+
+// Mock KineticaWmsLayerForm — renders stable test markers and fires callbacks via user interactions.
+// Uses useEffect (NOT synchronously in render) to avoid the infinite-render loop pitfall.
+// The mock renders:
+//   - id="map-render-mode-label" marker → asserts RENDER MODE is shown
+//   - a button to trigger onChange (simulates render mode change to "classbreak")
+//   - a button to trigger onChangeInfoConfig (simulates info_enabled toggle)
+//   - "SPATIAL MODE" marker only if !hideSpatialMode (to assert it's absent when hideSpatialMode=true)
+//   - "DATA SOURCE" marker only if props.layer && props.onDataSourceChange (absent when suppressed)
+vi.mock("./KineticaWmsLayerForm", async () => {
+  const { useEffect } = await import("react");
+  return {
+    default: vi.fn((props: {
+      config: Record<string, unknown>;
+      onChange: (c: Record<string, unknown>) => void;
+      onChangeInfoConfig?: (patch: Record<string, unknown>) => void;
+      isValid?: (v: boolean) => void;
+      hideSpatialMode?: boolean;
+      layer?: Record<string, unknown> | null;
+      onDataSourceChange?: ((patch: unknown) => void) | null;
+      infoEnabled?: number;
+    }) => {
+      // Signal validity in an effect (not render-time) to avoid infinite loops
+      useEffect(() => {
+        props.isValid?.(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+
+      return (
+        <div data-testid="kinetica-wms-layer-form-mock">
+          {/* RENDER MODE marker — always present */}
+          <span id="map-render-mode-label">RENDER MODE</span>
+          {/* SPATIAL MODE marker — only when NOT suppressed */}
+          {!props.hideSpatialMode && (
+            <span id="map-spatial-mode-label">SPATIAL MODE</span>
+          )}
+          {/* DATA SOURCE marker — only when both layer + onDataSourceChange are passed */}
+          {props.layer && props.onDataSourceChange && (
+            <span>DATA SOURCE</span>
+          )}
+          {/* Button to simulate a render mode change */}
+          <button
+            type="button"
+            aria-label="mock-change-rendermode"
+            onClick={() =>
+              props.onChange({ ...props.config, renderMode: "classbreak" })
+            }
+          >
+            Change render mode
+          </button>
+          {/* Button to simulate an INFO POPUP toggle */}
+          <button
+            type="button"
+            aria-label="mock-change-info"
+            onClick={() =>
+              props.onChangeInfoConfig?.({ info_enabled: 0 })
+            }
+          >
+            Toggle info
+          </button>
+        </div>
+      );
+    }),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -872,7 +937,7 @@ describe("RadioGroupConfigPanel — orphan-target warning", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Structured layer editor (Phase 60.1)
+// Structured layer editor (Phase 60.1 Plan 03 — full-form side-by-side)
 // ---------------------------------------------------------------------------
 
 const mockLayerForStructured: DashboardLayerDto = {
@@ -904,9 +969,10 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
 
   afterEach(() => {
     useDashboardLayersStore.setState({ layers: [] });
+    cleanup();
   });
 
-  it("1. layer target shows the render-mode select and Advanced disclosure (not plain JSON textarea)", () => {
+  it("1. layer target renders the full form side-by-side (RENDER MODE present, SPATIAL MODE + DATA SOURCE absent)", () => {
     const config: Record<string, unknown> = {
       orientation: "vertical",
       options: [
@@ -931,80 +997,21 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
       />,
     );
 
-    // Render-mode select must be present
-    expect(screen.getByTestId("radio-layer-rendermode-0")).toBeTruthy();
-    // Advanced disclosure summary must be present (JSON is inside collapsed details)
+    // Full-form wrapper must be present (data-testid from RadioLayerConfigEditor)
+    expect(screen.getByTestId("radio-layer-form-0")).toBeTruthy();
+    // RENDER MODE must be shown (mock renders id="map-render-mode-label")
+    expect(document.getElementById("map-render-mode-label")).toBeTruthy();
+    // SPATIAL MODE must be ABSENT (hideSpatialMode=true — mock does NOT render it)
+    expect(document.getElementById("map-spatial-mode-label")).toBeNull();
+    // DATA SOURCE must be ABSENT (no layer/onDataSourceChange passed — mock does NOT render it)
+    expect(screen.queryByText("DATA SOURCE")).toBeNull();
+    // Two-pane wrapper is in the DOM
+    expect(document.querySelector(".radiogroup-layer-editor")).toBeTruthy();
+    // Advanced JSON disclosure still present for layer targets
     expect(screen.getByText(/Advanced \(raw JSON\)/i)).toBeTruthy();
-    // The "Config Patch (JSON)" label must be inside a <details> element (not directly visible)
-    const details = document.querySelector("details.radio-advanced-json");
-    expect(details).toBeTruthy();
-    const configPatchLabel = details?.querySelector(".ds-field-label");
-    expect(configPatchLabel?.textContent).toBe("Config Patch (JSON)");
   });
 
-  it("2. choosing classbreak renders CbConfigForm; raster hides it", () => {
-    // Part A: raster mode — cbform testid absent
-    const rasterConfig: Record<string, unknown> = {
-      orientation: "vertical",
-      options: [
-        {
-          id: "opt-layer",
-          label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "raster" },
-          },
-        },
-      ],
-    };
-
-    const { unmount: unmountA } = render(
-      <RadioGroupConfigPanel
-        config={rasterConfig}
-        onChange={vi.fn()}
-        isValid={vi.fn()}
-        widgets={[mockWidget1]}
-        tables={mockTables}
-      />,
-    );
-
-    // For raster, cbform testid is absent
-    expect(screen.queryByTestId("radio-layer-cbform-0")).toBeNull();
-    unmountA();
-
-    // Part B: classbreak mode — CbConfigForm stub renders
-    const cbConfig: Record<string, unknown> = {
-      orientation: "vertical",
-      options: [
-        {
-          id: "opt-layer",
-          label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "classbreak", cb_config: '{"breaks":[]}' },
-          },
-        },
-      ],
-    };
-
-    render(
-      <RadioGroupConfigPanel
-        config={cbConfig}
-        onChange={vi.fn()}
-        isValid={vi.fn()}
-        widgets={[mockWidget1]}
-        tables={mockTables}
-      />,
-    );
-
-    // CbConfigForm container appears — and the real CbConfigForm selectors are present
-    // (our stub renders aria-label="CB column" and aria-label="+ Add break")
-    expect(screen.getByTestId("radio-layer-cbform-0")).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "CB column" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ Add break" })).toBeTruthy();
-  });
-
-  it("3. editing breaks updates configPatch.cb_config at flat top-level (no nested config key)", () => {
+  it("2. editing render mode updates the snapshot (no data-binding keys in emitted configPatch)", () => {
     const onChange = vi.fn();
     const config: Record<string, unknown> = {
       orientation: "vertical",
@@ -1014,7 +1021,7 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
           label: "Roads",
           action: {
             target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "classbreak", cb_config: '{"breaks":[]}' },
+            configPatch: { renderMode: "raster" },
           },
         },
       ],
@@ -1030,28 +1037,61 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
       />,
     );
 
-    // CbConfigForm stub is rendered (classbreak is the initial render mode)
-    expect(screen.getByTestId("radio-layer-cbform-0")).toBeTruthy();
+    // Click the mock's render-mode button (triggers onChange with renderMode: "classbreak")
+    fireEvent.click(screen.getByRole("button", { name: /mock-change-rendermode/i }));
 
-    // Click "+ Add break" on the stub — triggers onChange
-    fireEvent.click(screen.getByRole("button", { name: "+ Add break" }));
-
-    // The last onChange call should have an option with cb_config at TOP-LEVEL
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as {
       options: Array<{ action: { configPatch: Record<string, unknown> } }>;
     };
     const emittedPatch = lastCall.options[0].action.configPatch;
 
-    // cb_config must be a top-level string key (not nested inside a config key)
-    expect(typeof emittedPatch.cb_config).toBe("string");
-    expect(emittedPatch.config).toBeUndefined(); // NO nested config key
-    // Only allow-listed keys present — no spatialMode, lonColumn, etc.
-    const patchKeys = Object.keys(emittedPatch);
-    const allowListed = ["renderMode", "cb_config", "visible", "opacity"];
-    for (const key of patchKeys) {
-      expect(allowListed).toContain(key);
-    }
+    // renderMode must be present in the emitted patch
+    expect(emittedPatch.renderMode).toBe("classbreak");
+    // NO data-binding / spatial keys in the snapshot (layerFormToSnapshot strips them)
+    expect(emittedPatch.table_id).toBeUndefined();
+    expect(emittedPatch.dynamic_view_id).toBeUndefined();
+    expect((emittedPatch as Record<string, unknown>).spatialMode).toBeUndefined();
+    expect((emittedPatch as Record<string, unknown>).latColumn).toBeUndefined();
+  });
+
+  it("3. editing INFO POPUP updates the snapshot's top-level info_enabled", () => {
+    const onChange = vi.fn();
+    const config: Record<string, unknown> = {
+      orientation: "vertical",
+      options: [
+        {
+          id: "opt-layer",
+          label: "Roads",
+          action: {
+            target: { kind: "layer", id: mockLayerForStructured.id },
+            configPatch: { renderMode: "raster", info_enabled: 1 },
+          },
+        },
+      ],
+    };
+
+    render(
+      <RadioGroupConfigPanel
+        config={config}
+        onChange={onChange}
+        isValid={vi.fn()}
+        widgets={[mockWidget1]}
+        tables={mockTables}
+      />,
+    );
+
+    // Click the mock's info button (triggers onChangeInfoConfig with { info_enabled: 0 })
+    fireEvent.click(screen.getByRole("button", { name: /mock-change-info/i }));
+
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as {
+      options: Array<{ action: { configPatch: Record<string, unknown> } }>;
+    };
+    const emittedPatch = lastCall.options[0].action.configPatch;
+
+    // top-level info_enabled must be 0 (folded in by layerFormToSnapshot via the info patch)
+    expect(emittedPatch.info_enabled).toBe(0);
   });
 
   it("4. Advanced JSON present and round-trips; invalid JSON shows error and does not call onChange", () => {
@@ -1081,7 +1121,7 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     );
 
     // Open the Advanced disclosure by clicking summary
-    const summaryEl = screen.getByText(/Advanced/i);
+    const summaryEl = screen.getByText(/Advanced \(raw JSON\)/i);
     fireEvent.click(summaryEl);
 
     // JSON textarea is now reachable
@@ -1106,9 +1146,11 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("5. non-surfaced keys like track_config survive a structured-editor write (MERGE)", () => {
+  it("5. non-surfaced key track_config survives a structured-editor write (MERGE + adapter round-trip)", () => {
     const onChange = vi.fn();
     // Start with a configPatch that already carries track_config (non-surfaced key)
+    // snapshotToLayerForm lifts track_config into the form config blob, so layerFormToSnapshot
+    // will write it back to the snapshot top-level (not stripped by STRIP set).
     const config: Record<string, unknown> = {
       orientation: "vertical",
       options: [
@@ -1117,7 +1159,7 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
           label: "Roads",
           action: {
             target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "classbreak", cb_config: "{}", track_config: "keepme" },
+            configPatch: { renderMode: "raster", track_config: "keepme" },
           },
         },
       ],
@@ -1133,9 +1175,8 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
       />,
     );
 
-    // Drive a render-mode change via the select (from classbreak to raster)
-    const rmSelect = screen.getByTestId("radio-layer-rendermode-0");
-    fireEvent.change(rmSelect, { target: { value: "raster" } });
+    // Drive a structured change (the mock emits onChange with config that includes track_config)
+    fireEvent.click(screen.getByRole("button", { name: /mock-change-rendermode/i }));
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as {
@@ -1143,92 +1184,17 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
     };
     const emittedPatch = lastCall.options[0].action.configPatch;
 
-    // track_config (non-surfaced key) MUST survive the structured write (MERGE behaviour)
+    // track_config must survive — it's in the existing configPatch and the MERGE preserves it.
+    // The panel merges: { ...option.action.configPatch, ...nextPatch }
+    // nextPatch from layerFormToSnapshot includes track_config (lifted by snapshotToLayerForm
+    // and passed through the mock's config spread, then written back by layerFormToSnapshot).
+    // Either way, the MERGE ensures track_config is present.
     expect(emittedPatch.track_config).toBe("keepme");
-    // The new renderMode is also present
-    expect(emittedPatch.renderMode).toBe("raster");
+    // renderMode also updated
+    expect(emittedPatch.renderMode).toBe("classbreak");
   });
 
-  it("6. zero-break classbreak option is invalid — shows validation reason AND signals isValid(false)", async () => {
-    const isValid = vi.fn();
-    // Start with a classbreak option with zero breaks (cb_config has empty breaks array)
-    const config: Record<string, unknown> = {
-      orientation: "vertical",
-      options: [
-        {
-          id: "opt-layer",
-          label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: { renderMode: "classbreak", cb_config: '{"breaks":[]}' },
-          },
-        },
-      ],
-    };
-
-    render(
-      <RadioGroupConfigPanel
-        config={config}
-        onChange={vi.fn()}
-        isValid={isValid}
-        widgets={[mockWidget1]}
-        tables={mockTables}
-      />,
-    );
-
-    // (a) Validation reason shown: the option row must display the zero-break reason
-    await waitFor(() => {
-      expect(screen.getByTestId("validation-errors-0")).toBeTruthy();
-    });
-    expect(screen.getByText(/at least one break/i)).toBeTruthy();
-
-    // (b) The panel's isValid prop must have been called with false (Apply disabled)
-    await waitFor(() => {
-      const calls = isValid.mock.calls.map((c) => c[0] as boolean);
-      expect(calls.some((v) => v === false)).toBe(true);
-    });
-
-    // Conversely: a classbreak with ≥2 breaks (stub fires isValid(true)) does NOT add
-    // that reason — render with 2 breaks to verify (in a fresh DOM)
-    cleanup(); // remove previous render so its DOM nodes don't bleed through
-    isValid.mockClear();
-    const configValid: Record<string, unknown> = {
-      orientation: "vertical",
-      options: [
-        {
-          id: "opt-layer2",
-          label: "Roads",
-          action: {
-            target: { kind: "layer", id: mockLayerForStructured.id },
-            configPatch: {
-              renderMode: "classbreak",
-              cb_config: JSON.stringify({ breaks: [{ value: "a" }, { value: "b" }] }),
-            },
-          },
-        },
-      ],
-    };
-
-    render(
-      <RadioGroupConfigPanel
-        config={configValid}
-        onChange={vi.fn()}
-        isValid={isValid}
-        widgets={[mockWidget1]}
-        tables={mockTables}
-      />,
-    );
-
-    await waitFor(() => {
-      const calls = isValid.mock.calls.map((c) => c[0] as boolean);
-      // Should have called isValid(true) at some point (≥2 breaks, cb is valid)
-      expect(calls.some((v) => v === true)).toBe(true);
-    });
-    // The zero-break reason must not appear for the second (valid) render
-    expect(screen.queryAllByText(/at least one break/i)).toHaveLength(0);
-  });
-
-  it("7. widget target unchanged — JSON textarea rendered directly (no Advanced disclosure, no render-mode select)", () => {
+  it("6. widget target unchanged — JSON textarea rendered directly (no Advanced disclosure, no radio-layer-form)", () => {
     const config: Record<string, unknown> = {
       orientation: "vertical",
       options: [
@@ -1250,15 +1216,17 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
       />,
     );
 
-    // No render-mode select for widget targets
-    expect(screen.queryByTestId("radio-layer-rendermode-0")).toBeNull();
+    // No radio-layer-form wrapper for widget targets
+    expect(screen.queryByTestId("radio-layer-form-0")).toBeNull();
     // JSON textarea is rendered directly (NOT inside an Advanced disclosure)
     expect(screen.getByRole("textbox", { name: /option 1 config patch json/i })).toBeTruthy();
     // No Advanced summary for widget targets
     expect(screen.queryByText(/Advanced \(raw JSON\)/i)).toBeNull();
+    // No two-pane wrapper
+    expect(document.querySelector(".radiogroup-layer-editor")).toBeNull();
   });
 
-  it("7b. dynamicView target unchanged — JSON textarea rendered directly (no Advanced disclosure, no render-mode select)", async () => {
+  it("7. dynamicView target unchanged — JSON textarea rendered directly (no Advanced disclosure)", async () => {
     const config: Record<string, unknown> = {
       orientation: "vertical",
       options: [
@@ -1285,8 +1253,8 @@ describe("RadioGroupConfigPanel — structured layer editor (60.1)", () => {
       expect(screen.getByText("My DV")).toBeTruthy();
     });
 
-    // No render-mode select for dv targets
-    expect(screen.queryByTestId("radio-layer-rendermode-0")).toBeNull();
+    // No radio-layer-form wrapper for dv targets
+    expect(screen.queryByTestId("radio-layer-form-0")).toBeNull();
     // JSON textarea is rendered directly
     expect(screen.getByRole("textbox", { name: /option 1 config patch json/i })).toBeTruthy();
     // No Advanced summary for dv targets
