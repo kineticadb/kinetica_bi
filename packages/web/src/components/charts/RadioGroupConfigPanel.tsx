@@ -412,72 +412,80 @@ function OptionRow({
         )}
       </div>
 
-      {/* Structured layer editor — only for layer targets */}
-      {kind === "layer" && (
-        <RadioLayerConfigEditor
-          configPatch={option.action.configPatch}
-          columns={columns}
-          schema={schema}
-          tableName={tableName}
-          tableRef={tableRef}
-          autoSuggestDisabledReason={autoSuggestDisabledReason}
-          idx={idx}
-          onCbValid={handleCbValid}
-          onChange={(nextPatch) =>
-            onChange({
-              ...option,
-              action: {
-                ...option.action,
-                // MERGE: overlay only the surfaced allow-listed keys; non-surfaced keys survive
-                configPatch: { ...option.action.configPatch, ...nextPatch },
-              },
-            })
-          }
-        />
-      )}
-
-      {/* JSON editor for configPatch */}
+      {/* Phase 60.1 Plan 03: two-pane side-by-side layout ONLY for layer targets.
+          LEFT = radio option config (label, target, capture, Advanced JSON).
+          RIGHT = full KineticaWmsLayerForm (seeded from snapshot, data-source + spatial suppressed).
+          Widget / dynamic-view targets keep the existing single-column layout unchanged. */}
       {kind === "layer" ? (
-        /* Layer target: collapsible Advanced disclosure (escape hatch + back-compat) */
-        <details className="radio-advanced-json" style={{ marginBottom: 4 }}>
-          <summary
-            style={{
-              cursor: "pointer",
-              fontSize: "0.75rem",
-              color: "var(--text-muted, #888)",
-              userSelect: "none",
-            }}
-          >
-            Advanced (raw JSON)
-          </summary>
-          <div className="ds-field" style={{ marginTop: 6 }}>
-            <span className="ds-field-label">Config Patch (JSON)</span>
-            <textarea
-              aria-label={`Option ${idx + 1} config patch JSON`}
-              className="ds-select"
-              rows={4}
-              style={{
-                width: "100%",
-                fontFamily: "monospace",
-                fontSize: "0.8rem",
-                resize: "vertical",
-              }}
-              value={JSON.stringify(option.action.configPatch, null, 2)}
-              onChange={(e) => handleJsonChange(e.target.value)}
-            />
-            {jsonError && (
-              <div
-                className="config-hint"
-                style={{ color: "var(--danger, #c44)" }}
-                data-testid={`json-error-${idx}`}
+        <div className="radiogroup-layer-editor">
+          {/* ── LEFT PANE ── */}
+          <div className="radiogroup-layer-editor-left">
+            {/* Advanced JSON (escape hatch + back-compat for layer targets) */}
+            <details className="radio-advanced-json" style={{ marginBottom: 4 }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted, #888)",
+                  userSelect: "none",
+                }}
               >
-                {jsonError}
+                Advanced (raw JSON)
+              </summary>
+              <div className="ds-field" style={{ marginTop: 6 }}>
+                <span className="ds-field-label">Config Patch (JSON)</span>
+                <textarea
+                  aria-label={`Option ${idx + 1} config patch JSON`}
+                  className="ds-select"
+                  rows={4}
+                  style={{
+                    width: "100%",
+                    fontFamily: "monospace",
+                    fontSize: "0.8rem",
+                    resize: "vertical",
+                  }}
+                  value={JSON.stringify(option.action.configPatch, null, 2)}
+                  onChange={(e) => handleJsonChange(e.target.value)}
+                />
+                {jsonError && (
+                  <div
+                    className="config-hint"
+                    style={{ color: "var(--danger, #c44)" }}
+                    data-testid={`json-error-${idx}`}
+                  >
+                    {jsonError}
+                  </div>
+                )}
               </div>
-            )}
+            </details>
           </div>
-        </details>
+
+          {/* ── RIGHT PANE ── full KineticaWmsLayerForm */}
+          <div className="radiogroup-layer-editor-right">
+            <RadioLayerConfigEditor
+              configPatch={option.action.configPatch}
+              columns={columns}
+              schema={schema}
+              tableName={tableName}
+              tableRef={tableRef}
+              autoSuggestDisabledReason={autoSuggestDisabledReason}
+              idx={idx}
+              onCbValid={handleCbValid}
+              onChange={(nextPatch) =>
+                onChange({
+                  ...option,
+                  action: {
+                    ...option.action,
+                    // MERGE: full-snapshot write; non-surfaced keys in the existing patch survive
+                    configPatch: { ...option.action.configPatch, ...nextPatch },
+                  },
+                })
+              }
+            />
+          </div>
+        </div>
       ) : (
-        /* Widget / dynamic-view target: JSON textarea EXACTLY as before (no disclosure) */
+        /* Widget / dynamic-view target: JSON textarea EXACTLY as before (no two-pane, no disclosure) */
         <div className="ds-field" style={{ marginBottom: 4 }}>
           <span className="ds-field-label">Config Patch (JSON)</span>
           <textarea
@@ -634,9 +642,15 @@ export default function RadioGroupConfigPanel({
     onChange({ ...config, options: next });
   };
 
+  // Phase 60.1 Plan 03: detect whether any option targets a layer — used to add a
+  // marker class that the CSS uses to widen the modal for the two-pane layout.
+  const hasLayerOption = cfg.options.some(
+    (o) => o.action.target.kind === "layer",
+  );
+
   return (
     <div
-      className="config-group"
+      className={`config-group${hasLayerOption ? " radiogroup-has-layer-editor" : ""}`}
       role="group"
       aria-labelledby="radiogroup-config-label"
     >

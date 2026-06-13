@@ -920,6 +920,42 @@ a {
   max-width: 520px;
 }
 
+/* Phase 60.1 Plan 03: radio config widens to a two-pane layout ONLY when a layer-target
+   option is edited. .radiogroup-has-layer-editor is added to the panel root by
+   RadioGroupConfigPanel when any option.action.target.kind === "layer".
+   :has() is supported in all evergreen browsers (Chrome 105+, Safari 15.4+, FF 121+). */
+.modal-config:has(.radiogroup-has-layer-editor) { max-width: min(960px, 92vw); }
+
+/* Two-pane grid: left (radio option config) | right (full KineticaWmsLayerForm) */
+.radiogroup-layer-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.radiogroup-layer-editor-right {
+  border-left: 1px solid var(--border-color, var(--border, #3a3a4a));
+  padding-left: 16px;
+  min-width: 0;
+}
+
+/* Safety net: ensure the panel itself fills available width when the marker class is present */
+.radiogroup-has-layer-editor {
+  width: 100%;
+}
+
+/* Responsive: collapse to single column on narrow viewports */
+@media (max-width: 720px) {
+  .radiogroup-layer-editor {
+    grid-template-columns: 1fr;
+  }
+  .radiogroup-layer-editor-right {
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
 /* Config panel */
 .config-panel {
   display: flex;
