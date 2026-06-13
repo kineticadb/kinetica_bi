@@ -86,6 +86,9 @@ type KineticaWmsLayerFormProps = {
   associatedTables?: TableDto[];
   dynamicViews?: DynamicViewRow[];
   onDataSourceChange?: (patch: { table_id: number; dynamic_view_id: number | null }) => void;
+  /** When true, omit the SPATIAL MODE radios + spatial-column pickers (Phase 60.1 radio editor).
+   *  Additive — default false; existing callers (LayersModal, MapConfigPanel) are unaffected. */
+  hideSpatialMode?: boolean;
 };
 
 // ─── RenderMode type ──────────────────────────────────────────────────────────
@@ -187,6 +190,7 @@ export default function KineticaWmsLayerForm({
   associatedTables = [],
   dynamicViews = [],
   onDataSourceChange,
+  hideSpatialMode = false,
 }: KineticaWmsLayerFormProps): JSX.Element {
   const capabilities = useWmsCapabilitiesStore((s) => s.capabilities);
 
@@ -544,6 +548,7 @@ export default function KineticaWmsLayerForm({
         {renderDataSourcePicker()}
 
         {/* ─── SPATIAL MODE ─────────────────────────────────────────────────── */}
+        {!hideSpatialMode && (
         <div
           className="config-group config-spatial-mode"
           role="radiogroup"
@@ -706,6 +711,7 @@ export default function KineticaWmsLayerForm({
             </>
           )}
         </div>
+        )} {/* end hideSpatialMode gate */}
 
         {/* ─── RENDER MODE ──────────────────────────────────────────────────── */}
         <div
