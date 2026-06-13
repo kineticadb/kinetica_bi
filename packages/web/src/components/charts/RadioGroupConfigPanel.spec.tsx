@@ -212,7 +212,8 @@ const mockLayer: DashboardLayerDto = {
   table_id: 1,
   layer_type: "KineticaWms",
   position: 0,
-  config: { renderMode: "classbreak", title: "Streets" },
+  // Operator-set display name lives in config.name (same key the legend/LayersModal use).
+  config: { renderMode: "classbreak", name: "Streets" },
   info_enabled: 0,
   info_columns: null,
   info_template: null,

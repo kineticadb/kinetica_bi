@@ -57,7 +57,7 @@ import type { WidgetAction } from "../../lib/widgetAction";
 import { captureAllowListedSubset } from "../../lib/radioGroupCapture";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { listDynamicViews } from "../../api/client";
-import type { DynamicViewRow } from "../../api/client";
+import type { DynamicViewRow, DashboardLayerDto } from "../../api/client";
 import type { Column } from "../../lib/columnTypes";
 import RadioLayerConfigEditor from "./RadioLayerConfigEditor";
 
@@ -84,6 +84,38 @@ function generateOptionId(): string {
     return crypto.randomUUID();
   }
   return `opt-${Date.now()}-${_idCounter++}`;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: layer display name for the target picker
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a map layer's display name — mirrors LayersModal.layerName / the legend:
+ * operator-set `config.name` wins; otherwise `{source} — {renderMode}` where source is the
+ * dynamic-view's name (dv-bound) or `{schema}.{table}` (table-bound); final fallback `Layer #{id}`.
+ * (The old picker read `config.title`, which layers don't use, so it always showed "Layer #N".)
+ */
+function resolveLayerLabel(
+  layer: DashboardLayerDto,
+  tables: ConfigPanelProps["tables"],
+  dynamicViews: DynamicViewRow[],
+): string {
+  const custom = (layer.config as { name?: string } | undefined)?.name;
+  if (typeof custom === "string" && custom.trim().length > 0) return custom.trim();
+  let sourceName: string | undefined;
+  if (layer.dynamic_view_id != null) {
+    sourceName = dynamicViews.find((d) => d.id === layer.dynamic_view_id)?.name;
+  } else {
+    const t = tables?.find((tb) => tb.id === layer.table_id);
+    sourceName = t ? (t.schema ? `${t.schema}.${t.name}` : t.name) : undefined;
+  }
+  if (sourceName) {
+    const renderMode =
+      (layer.config as { renderMode?: string } | undefined)?.renderMode ?? "raster";
+    return `${sourceName} — ${renderMode}`;
+  }
+  return `Layer #${layer.id}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -329,8 +361,7 @@ function TargetEditor({
             <optgroup label="Map Layers">
               {layers.map((l) => (
                 <option key={`layer:${l.id}`} value={`layer:${l.id}`}>
-                  {(l.config?.title as string | undefined) ||
-                    `Layer #${l.id}`}
+                  {resolveLayerLabel(l, tables, dynamicViews)}
                 </option>
               ))}
             </optgroup>
