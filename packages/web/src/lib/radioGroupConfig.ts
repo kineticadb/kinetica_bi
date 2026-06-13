@@ -1,5 +1,7 @@
 /**
  * Phase 59 Plan 01 — Radio-group widget config data model + save-time validation helpers.
+ * Phase 60.1 Plan 02 — Layer targets now validate via validateLayerSnapshot (denylist) instead
+ * of validateActionPatch (strict allow-list). Widget + dynamic-view targets keep validateActionPatch.
  *
  * Pure module — NO React, NO Zustand, NO filter-store imports.
  * Mirrors the lib/actionAllowList.ts helper-module style.
@@ -13,13 +15,15 @@
  *
  * Helpers:
  *   RADIO_GROUP_DEFAULT_CONFIG   — default shape used when creating a new radio-group widget
- *   validateRadioOption          — delegates to Phase 58 validateActionPatch; enforces non-empty
+ *   validateRadioOption          — for LAYER targets: denylist (validateLayerSnapshot); for widget/dv: strict allow-list (validateActionPatch)
  *   isRadioGroupConfigValid      — true only when all options are valid + non-empty labels
  *
  * IMPORTANT: renderMode (camelCase) is the ONLY render-mode key. The snake-case variant is not in the allow-list.
+ * IMPORTANT: Layer-target options use the snapshot denylist (accept render/style/info; reject data-binding/spatial/meta).
+ *            Widget/dv-target options use the strict allow-list — these paths are UNCHANGED.
  */
 import type { WidgetAction } from "./widgetAction";
-import { validateActionPatch } from "./actionAllowList";
+import { validateActionPatch, validateLayerSnapshot } from "./actionAllowList";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -99,12 +103,14 @@ export function validateRadioOption(
     reasons.push("empty configPatch — capture or author at least one field");
   }
 
-  // Rule 2: delegate to the Phase 58 allow-list contract
-  const patchResult = validateActionPatch(
-    option.action.target.kind,
-    widgetType,
-    option.action.configPatch,
-  );
+  // Rule 2: validate the configPatch.
+  //   LAYER targets → denylist (validateLayerSnapshot): accept render/style/info; reject data-binding/spatial/meta.
+  //     This is the Phase 60.1 RE-SCOPE: a full-config snapshot is the contract for designer-UI layer options.
+  //   WIDGET + DYNAMICVIEW targets → strict allow-list (validateActionPatch): unchanged contract.
+  const patchResult =
+    option.action.target.kind === "layer"
+      ? validateLayerSnapshot(option.action.configPatch)
+      : validateActionPatch(option.action.target.kind, widgetType, option.action.configPatch);
   if (!patchResult.valid) {
     reasons.push(...patchResult.reasons);
   }

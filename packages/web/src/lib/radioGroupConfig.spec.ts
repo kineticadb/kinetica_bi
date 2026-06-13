@@ -117,26 +117,42 @@ describe("validateRadioOption — empty configPatch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateRadioOption — rejected: out-of-list field
+// validateRadioOption — out-of-list / unknown style keys (Phase 60.1 RE-SCOPE)
 // ---------------------------------------------------------------------------
 
-describe("validateRadioOption — out-of-list field", () => {
-  it("rejects a field not in the allow-list (layer: foo)", () => {
+describe("validateRadioOption — layer: unknown style keys accepted by denylist (Phase 60.1)", () => {
+  it("accepts a layer option with unknown style key 'foo' via denylist (not blocked)", () => {
+    // Phase 60.1 RE-SCOPE: layer targets use the denylist — only data-binding/spatial/meta keys
+    // are blocked. Unknown style keys (foo, colormap, BLUR_RADIUS, etc.) are accepted.
     const option = makeLayerOption({ foo: 1 });
+    const result = validateRadioOption(option);
+    // foo is accepted because it's not in PERMANENTLY_BLOCKED_KEYS ∪ DATA_BINDING_KEYS
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts render_mode (snake_case) — denylist does not check camelCase-vs-snake-case style keys", () => {
+    // Phase 60.1 RE-SCOPE: the denylist only blocks data-binding/spatial/meta keys.
+    // render_mode passes (it's just an unrecognized style key, not a blocked key).
+    const option = makeLayerOption({ render_mode: "raster" } as Record<string, unknown>);
+    const result = validateRadioOption(option);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects a layer option with data-binding key table_id (always blocked by denylist)", () => {
+    const option = makeLayerOption({ table_id: 99 } as Record<string, unknown>);
     const result = validateRadioOption(option);
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.reasons.some((r) => r.includes("unknown field: foo"))).toBe(true);
+      expect(result.reasons.some((r) => r.includes("table_id"))).toBe(true);
     }
   });
 
-  it("rejects render_mode (snake_case) — only renderMode (camelCase) is valid", () => {
-    // render_mode is NOT in the allow-list — only renderMode
-    const option = makeLayerOption({ render_mode: "raster" } as Record<string, unknown>);
+  it("rejects a layer option with spatialMode (spatial key always blocked by denylist)", () => {
+    const option = makeLayerOption({ spatialMode: "latlon" } as Record<string, unknown>);
     const result = validateRadioOption(option);
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.reasons.some((r) => r.includes("unknown field: render_mode"))).toBe(true);
+      expect(result.reasons.some((r) => r.includes("spatialMode"))).toBe(true);
     }
   });
 });
@@ -175,35 +191,111 @@ describe("validateRadioOption — meta/proto key", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateRadioOption — rejected: wrong type / enum violation
+// validateRadioOption — type/value validation (Phase 60.1 RE-SCOPE behavior note)
 // ---------------------------------------------------------------------------
 
-describe("validateRadioOption — wrong type", () => {
-  it("rejects renderMode with a bogus value not in the enum", () => {
+describe("validateRadioOption — type/value: layer denylist does NOT check value types (Phase 60.1)", () => {
+  it("accepts renderMode with any value (denylist does not validate enum; the form constrains input)", () => {
+    // Phase 60.1 RE-SCOPE: the denylist only checks KEY names, not value schemas.
+    // The form (KineticaWmsLayerForm) is the authoritative UI source — it produces valid enums.
     const option = makeLayerOption({ renderMode: "bogus" });
     const result = validateRadioOption(option);
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.reasons.some((r) => r.includes("invalid value for renderMode"))).toBe(true);
-    }
+    expect(result.valid).toBe(true);
   });
 
-  it("rejects opacity out of 0-1 range", () => {
+  it("accepts opacity: 5 (denylist does not range-check; form constrains 0-1 range)", () => {
     const option = makeLayerOption({ opacity: 5 });
     const result = validateRadioOption(option);
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.reasons.some((r) => r.includes("invalid value for opacity"))).toBe(true);
-    }
+    expect(result.valid).toBe(true);
   });
 
-  it("rejects visible with a non-boolean", () => {
+  it("accepts visible:'yes' (denylist does not type-check; form provides boolean toggles)", () => {
     const option = makeLayerOption({ visible: "yes" } as Record<string, unknown>);
+    const result = validateRadioOption(option);
+    expect(result.valid).toBe(true);
+  });
+
+  it("widget target — wrong type still rejects via validateActionPatch (strict path unchanged)", () => {
+    // Widget targets keep the strict allow-list with schema validation.
+    const option = makeWidgetOption(10, { page_size: "not-a-number" } as Record<string, unknown>);
+    const result = validateRadioOption(option, "records");
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("invalid value for page_size"))).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateRadioOption — layer snapshot (60.1)
+//    Layer targets validate via the denylist (validateLayerSnapshot); widget/dv keep validateActionPatch.
+// ---------------------------------------------------------------------------
+
+describe("validateRadioOption — layer snapshot (60.1)", () => {
+  it("accepts a LAYER option with a full snapshot (renderMode + colormap + cb_config + info_enabled) via denylist", () => {
+    // Previously validateActionPatch would reject colormap/info_enabled as out-of-list.
+    const option = makeLayerOption({
+      renderMode: "classbreak",
+      colormap: "viridis",
+      cb_config: "{}",
+      info_enabled: 1,
+    });
+    const result = validateRadioOption(option);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects a LAYER option whose configPatch carries table_id (data-binding key)", () => {
+    const option = makeLayerOption({ renderMode: "raster", table_id: 9 } as Record<string, unknown>);
     const result = validateRadioOption(option);
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.reasons.some((r) => r.includes("invalid value for visible"))).toBe(true);
+      expect(result.reasons.some((r) => r.includes("table_id"))).toBe(true);
     }
+  });
+
+  it("rejects a LAYER option with EMPTY configPatch {} (empty-patch rule still applies)", () => {
+    const option = makeLayerOption({});
+    const result = validateRadioOption(option);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("empty configPatch"))).toBe(true);
+    }
+  });
+
+  it("WIDGET option { show_popup:true } with widgetType 'map' → valid via validateActionPatch (UNCHANGED)", () => {
+    const option = makeWidgetOption(10, { show_popup: true });
+    const result = validateRadioOption(option, "map");
+    expect(result.valid).toBe(true);
+  });
+
+  it("WIDGET option with out-of-list key → invalid via validateActionPatch (strict path UNCHANGED)", () => {
+    const option = makeWidgetOption(10, { colormap: "viridis" });
+    const result = validateRadioOption(option, "map");
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reasons.some((r) => r.includes("unknown field: colormap"))).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isRadioGroupConfigValid — layer snapshot (60.1)
+// ---------------------------------------------------------------------------
+
+describe("isRadioGroupConfigValid — layer snapshot (60.1)", () => {
+  const noWidgetType = (_id: number): string | undefined => undefined;
+
+  it("returns true for a config whose single layer option is a valid full snapshot", () => {
+    const fullSnapshotOption: RadioOption = {
+      id: "snap-1",
+      label: "Class Break Viridis",
+      action: {
+        target: { kind: "layer", id: 1 },
+        configPatch: { renderMode: "classbreak", colormap: "viridis", cb_config: "{}", info_enabled: 1 },
+      },
+    };
+    const config: RadioGroupConfig = { orientation: "vertical", options: [fullSnapshotOption] };
+    expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(true);
   });
 });
 
@@ -248,10 +340,19 @@ describe("isRadioGroupConfigValid", () => {
     expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(false);
   });
 
-  it("returns false when an option has an out-of-list field", () => {
+  it("returns true when an option has an unknown style key (denylist accepts it for layer targets)", () => {
+    // Phase 60.1 RE-SCOPE: layer-target options use denylist; 'foo' is not a blocked key.
     const config: RadioGroupConfig = {
       orientation: "vertical",
       options: [makeLayerOption({ foo: 1 })],
+    };
+    expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(true);
+  });
+
+  it("returns false when a layer option has a data-binding key (always blocked by denylist)", () => {
+    const config: RadioGroupConfig = {
+      orientation: "vertical",
+      options: [makeLayerOption({ table_id: 99 } as Record<string, unknown>)],
     };
     expect(isRadioGroupConfigValid(config, noWidgetType)).toBe(false);
   });
