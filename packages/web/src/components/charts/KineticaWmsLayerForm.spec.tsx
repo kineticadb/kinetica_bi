@@ -1733,4 +1733,26 @@ describe("Track + Class Break — TRACK STYLE color gating (TRACKFIX-V19-06)", (
     expect(screen.getByLabelText("Track line color (RGB)")).toBeInTheDocument();
     expect(screen.getByLabelText("Track marker color (RGB)")).toBeInTheDocument();
   });
+
+  it("uses a unique radio-group name per instance — multiple forms don't collide into one group", () => {
+    // Two forms on screen at once (the Radio Dashboard Control multi-option editor case).
+    // Pre-fix: both shared name="map-render-mode" → the browser groups them globally and only
+    // the LAST instance's checked render-mode radio shows selected. useId() makes them independent.
+    render(
+      <>
+        <KineticaWmsLayerForm config={{ renderMode: "heatmap" }} onChange={vi.fn()} columns={[]} />
+        <KineticaWmsLayerForm config={{ renderMode: "raster" }} onChange={vi.fn()} columns={[]} />
+      </>,
+    );
+
+    const rasterRadios = screen.getAllByLabelText("Raster (point markers)") as HTMLInputElement[];
+    expect(rasterRadios).toHaveLength(2);
+    // The two instances must NOT share a radio-group name.
+    expect(rasterRadios[0].name).not.toBe(rasterRadios[1].name);
+
+    // Each instance reflects its OWN render mode (not just the last one).
+    const heatmapRadios = screen.getAllByLabelText("Heatmap (density)") as HTMLInputElement[];
+    expect(heatmapRadios[0].checked).toBe(true); // instance 0 = heatmap
+    expect(rasterRadios[1].checked).toBe(true); // instance 1 = raster
+  });
 });

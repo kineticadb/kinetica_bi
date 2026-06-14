@@ -22,7 +22,7 @@
  * - PITFALL M-06 — classbreak cardinality probe; warn at >100, hard cap at 256
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   getValidSpatialColumns,
   getTrackIdColumns,
@@ -222,6 +222,12 @@ export default function KineticaWmsLayerForm({
 
   // Capability gating with graceful fallback (null = loading → show all modes)
   const allowedSpatialModes: SpatialMode[] = capabilities?.spatialModes ?? ALL_SPATIAL_MODES;
+  // Unique per-instance prefix for native radio-group `name`s. Without this, multiple
+  // KineticaWmsLayerForm instances on screen at once (e.g. the Radio Dashboard Control
+  // multi-option editor) share one global radio group — so only the LAST option's checked
+  // render-mode radio renders as selected. useId() makes each instance's groups independent.
+  const uid = useId();
+
   const allowedRenderModes: RenderMode[] = (capabilities?.renderModes as RenderMode[]) ?? ALL_RENDER_MODES;
 
   // Resolve the auto-suggest target (schema / tableName / disabled-reason) based on
@@ -577,7 +583,7 @@ export default function KineticaWmsLayerForm({
             <label key={m}>
               <input
                 type="radio"
-                name="map-spatial-mode"
+                name={`${uid}-map-spatial-mode`}
                 value={m}
                 checked={spatialMode === m}
                 aria-label={SPATIAL_MODE_LABELS[m]}
@@ -759,7 +765,7 @@ export default function KineticaWmsLayerForm({
             <label key={m}>
               <input
                 type="radio"
-                name="map-render-mode"
+                name={`${uid}-map-render-mode`}
                 value={m}
                 checked={effectiveRenderMode === m}
                 aria-label={RENDER_MODE_LABELS[m]}
