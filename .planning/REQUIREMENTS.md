@@ -51,18 +51,23 @@ Explicitly excluded for v1.12.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DVDRILL-V112-01 | TBD | Pending |
-| DVDRILL-V112-02 | TBD | Pending |
-| DVDRILL-V112-03 | TBD | Pending |
-| DVDRILL-V112-04 | TBD | Pending |
-| DVDRILL-V112-05 | TBD | Pending |
-| VERIFY-V112-01 | TBD | Pending |
+| DVDRILL-V112-01 | Phase 63 | Pending |
+| DVDRILL-V112-02 | Phase 63 | Pending |
+| DVDRILL-V112-03 | Phase 62 (server) + Phase 63 (client) | Pending |
+| DVDRILL-V112-04 | Phase 63 | Pending |
+| DVDRILL-V112-05 | Phase 63 | Pending |
+| VERIFY-V112-01 | Phase 64 | Pending |
 
 **Coverage:**
 - v1 requirements: 6 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 6 (roadmap will map)
+- Mapped to phases: 6 (roadmap created 2026-06-15 — Phases 62-64)
+- Unmapped: 0
+
+**Phase mapping notes:**
+- Phase 62 (SERVER-ONLY) — DVDRILL-V112-03 server portion (extend `POST /api/filter/materialize` to accept a dv source; `FROM <dv_view> WHERE <filter>`).
+- Phase 63 (FRONTEND-ONLY) — DVDRILL-V112-01/02/04/05 + the client side of -03 (dv-safe filter keying, dv-aware drill dispatch, filtered-dv read-path swap, chips + lifecycle reset).
+- Phase 64 (VERIFICATION + LIVE UAT) — VERIFY-V112-01.
 
 ---
 *Requirements defined: 2026-06-15*
-*Last updated: 2026-06-15 — v1.12 milestone definition*
+*Last updated: 2026-06-15 — v1.12 roadmap created (Phases 62-64); traceability mapped*

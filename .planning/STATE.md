@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Drill-Down on Dynamic-View-Backed Widgets
-status: defining_requirements
-stopped_at: "v1.12 milestone STARTED 2026-06-15 — drilling a dynamic-view-backed widget must filter the DV's data (not the source table). Scope locked: DV-isolated (same-dv widgets only). Research skipped. NEXT: define REQUIREMENTS.md → roadmap (phases continue from 61 → start at 62)."
-last_updated: "2026-06-15T20:00:00.000Z"
+status: roadmap_complete
+stopped_at: "v1.12 ROADMAP created 2026-06-15 — Phases 62-64. 62 = server materialize-from-dv-view (DVDRILL-V112-03 server, SERVER-ONLY); 63 = client dv drill-down — keying + routing + read-path + chips/lifecycle (DVDRILL-V112-01/02/04/05 + client -03, FRONTEND-ONLY); 64 = verification + live UAT (VERIFY-V112-01). 6/6 requirements mapped, no orphans. NEXT: /gsd:plan-phase 62."
+last_updated: "2026-06-15T21:30:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,12 +19,36 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-15 — v1.12 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.12 — Drill-Down on Dynamic-View-Backed Widgets (defining requirements). v1.11 shipped 2026-06-15.
+**Current focus:** v1.12 — Drill-Down on Dynamic-View-Backed Widgets (roadmap complete; Phases 62-64). v1.11 shipped 2026-06-15.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Status: Defining v1.12 requirements → roadmap. Phase numbering continues from 61 (v1.12 starts at Phase 62).
+Phase: 62 (Server — Materialize From DV View) — not started
+Status: v1.12 roadmap complete (Phases 62-64). Next action: /gsd:plan-phase 62.
+
+## v1.12 Phase Map
+
+| Phase | Name | Stack | Key Requirements |
+|-------|------|-------|------------------|
+| 62 | Server — Materialize From DV View | SERVER-ONLY | DVDRILL-V112-03 (server portion) |
+| 63 | Client — DV Drill-Down (keying + routing + read-path + chips/lifecycle) | FRONTEND-ONLY | DVDRILL-V112-01, -02, -04, -05 (+ client -03) |
+| 64 | Verification + Live UAT | BOTH + operator | VERIFY-V112-01 |
+
+Phase 62 is SERVER-ONLY (`packages/server`): targeted supertests in both auth modes + server tsc + server vitest SET-BASED known-flaky gate (failing files ⊆ TD-V16-TEST-ISOLATION — NEVER a fixed pass-count). No frontend constraint applies to 62. Phase 63 is FRONTEND-ONLY (`packages/web`): frontend vitest 100% (run from `packages/web`) + web tsc clean; no server constraint applies to 63. Phase 64 verifies BOTH stacks + a blocking live operator walk-through (mirrors v1.9 Phase 54 / v1.10 Phase 57 / v1.11 Phase 61), then compiles the verification record.
+
+### v1.12 Locked Decisions (from milestone definition, 2026-06-15)
+
+- **DV-isolated scope:** drilling a dv-backed widget filters ONLY that dynamic view — clicked + same-dv widgets update; source-table + other-dv widgets untouched (a dv is its own data scope, mirroring table-backed drilling).
+- **Filter the dv's materialized view in place:** materialize `FROM <dv materialized-view name> WHERE <clicked filter>` — a filtered sub-view of the dv's OWN materialized view, NOT a new filter on the source table.
+- **One server piece:** extend `POST /api/filter/materialize` to accept a dynamic-view source — NO new route, NO new infra.
+- **Filter-store keying** must make a dv id un-collidable with a table id (composite / kind-scoped key or a dv-scoped slice) — root cause of the bug (`dispatchDrillDown` always keyed by `tableId`).
+- **Read-path precedence** filtered-dv → dv: a dv-bound widget FROM-swaps to the filtered-dv view when a dv filter is active, falls back to the raw dv view when cleared; the dv-bound widget's materialize trigger (today gated OFF when `dynamicViewId` is set) must be re-enabled for the dv path.
+- **Preserved invariants:** `AggregatedWidgetRenderer` remains the SOLE materialize trigger; the table-backed drill-down path is UNCHANGED; decoupled from the v1.11 action engine.
+- **No new domain research** — root-caused this session in our own filter/dynamic-view pipeline.
+
+### v1.12 Open Tech Debt (carried)
+
+TD-V16-TEST-ISOLATION (server set-based gate in use), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names → quick task).
 
 ## v1.11 Phase Map
 
@@ -271,6 +295,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- v1.12 roadmap created 2026-06-15: Phases 62-64 (Drill-Down on Dynamic-View-Backed Widgets). 62 = server materialize-from-dv-view (DVDRILL-V112-03 server portion; SERVER-ONLY — extend `POST /api/filter/materialize`, no new route). 63 = client dv drill-down — dv-safe filter keying + dv-aware drill dispatch + filtered-dv read-path FROM-swap + removable chips + lifecycle reset (DVDRILL-V112-01/02/04/05 + client side of -03; FRONTEND-ONLY). 64 = verification + live UAT (VERIFY-V112-01; mirrors v1.9 P54 / v1.10 P57 / v1.11 P61). 6/6 requirements mapped, no orphans. Starts at 62 (v1.11 ended at 61). Standard granularity → 3 phases (focused bug-fix-as-feature; server / client / verification split). Locked invariants carried into success criteria: sole-materialize-trigger preserved, dv-isolated scope, table-backed path unchanged, no new server routes.
 
 - Phase 60.2 inserted after Phase 60.1 (2026-06-13, INSERTED — pulled forward from v2): Radio Dashboard Control MULTI-TARGET options (RADIOMULTI-V111-01, pulled forward from CTRL-V2-03). One radio option drives multiple targets at once: `RadioOption.action` → `actions: WidgetAction[]` (mixed widget/layer/dv); select applies all via ONE setControlContribution write; OPTION-level switch-replace (build the full contribution + wholesale replace = stale targets drop for free; do NOT loop per-target merge). Config panel grows a per-option target list (add/remove) reusing each target's editor (layer → 60.1 full form). Back-compat normalizer `getOptionActions` (legacy single `action` → 1-elem array; no DB migration). Overlay store was already multi-target/control-keyed → moderate, mostly-UI lift. Frontend-only. Ships before the 61 gate; 61 walk then exercises a multi-target option. NOT yet planned (run /gsd:plan-phase 60.2).
 - Phase 60.1 inserted after Phase 60 (2026-06-12, INSERTED): Radio Config UX — Structured Layer-Target Editor (reuse CbConfigForm). Operator feedback during the Phase 61 walk: the per-option raw "Config Patch (JSON)" textarea is unusable for non-JSON authors, and class-break (`cb_config` nested JSON string) is effectively unauthorable. New req RADIOUX-V111-01. When a radio option targets a map layer, render a render-mode picker + reusable `CbConfigForm` (the LayersModal class-break builder) bridged to the flat allow-listed configPatch via an adapter (mirrors the cb_config top-level↔config.cb_config split in effectiveLayers/deriveOverlays); raw JSON kept as collapsible "Advanced" fallback; widget/dv targets unchanged. Frontend-only. Sequencing: 60.1 ships BEFORE Phase 61 closes — 61's live walk authors a class-break option via this editor. NOT yet planned (run /gsd:plan-phase 60.1).
