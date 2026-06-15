@@ -262,6 +262,74 @@ describe("materializeFilter", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     fetchSpy.mockRestore();
   });
+
+  // v1.12 Phase 63 (DVDRILL-V112-03 client side): dynamic-view materialize path.
+  // The dv-bound widget materializes FROM its OWN dv materialized view (the Phase 62 server
+  // path) by sending `dynamicViewId` in the body — no tableId. The in-flight cache key is
+  // kind-scoped (`dv<id>` vs `t<id>`) so a dv call and a table call sharing the same numeric
+  // id never collapse into one HTTP request.
+  it("sends dynamicViewId in the POST body (dv path — no tableId)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ viewName: "_kbi_filt_dv", expiresAt: 1 }), { status: 200 }),
+    );
+    await materializeFilter({ dashboardId: 1, dynamicViewId: 7, filters: [sampleFilter] });
+    const body = JSON.parse((fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body).toEqual({ dashboardId: 1, dynamicViewId: 7, filters: [sampleFilter] });
+    expect(body.dynamicViewId).toBe(7);
+    expect("tableId" in body).toBe(false);
+    fetchSpy.mockRestore();
+  });
+
+  it("post-VERIFY: a dv call and a table call sharing the same numeric id do NOT collapse (kind-scoped cache key)", async () => {
+    // THE cache-key test: materializeFilter({dashboardId:5, tableId:7}) and
+    // materializeFilter({dashboardId:5, dynamicViewId:7}) fire CONCURRENTLY with the same
+    // dashboardId + numeric id 7. They must fire TWO separate HTTP requests because the
+    // cache key incorporates the kind (`t7` vs `dv7`) — a dv-filter materialize must never
+    // collapse into a table materialize on the same numbers.
+    let resolveA: (response: Response) => void = () => {};
+    let resolveB: (response: Response) => void = () => {};
+    const promiseA = new Promise<Response>((res) => { resolveA = res; });
+    const promiseB = new Promise<Response>((res) => { resolveB = res; });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(promiseA)
+      .mockReturnValueOnce(promiseB);
+
+    const tableCall = materializeFilter({ dashboardId: 5, tableId: 7, filters: [sampleFilter] });
+    const dvCall = materializeFilter({ dashboardId: 5, dynamicViewId: 7, filters: [sampleFilter] });
+
+    // Two distinct cache keys → two fetches, no collapse.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    resolveA(new Response(JSON.stringify({ viewName: "_kbi_filt_t7", expiresAt: 1 }), { status: 200 }));
+    resolveB(new Response(JSON.stringify({ viewName: "_kbi_filt_dv7", expiresAt: 1 }), { status: 200 }));
+    const [resTable, resDv] = await Promise.all([tableCall, dvCall]);
+    expect(resTable.viewName).toBe("_kbi_filt_t7");
+    expect(resDv.viewName).toBe("_kbi_filt_dv7");
+    fetchSpy.mockRestore();
+  });
+
+  it("post-VERIFY: two concurrent identical dv calls collapse to ONE fetch (dedup preserved within kind)", async () => {
+    let resolveFetch: (response: Response) => void = () => {};
+    const fetchPromise = new Promise<Response>((res) => { resolveFetch = res; });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise);
+
+    const args = { dashboardId: 5, dynamicViewId: 7, filters: [sampleFilter] };
+    const callA = materializeFilter(args);
+    const callB = materializeFilter(args);
+
+    // Both join the same in-flight dv promise — only ONE fetch.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    resolveFetch(
+      new Response(JSON.stringify({ viewName: "_kbi_filt_dv_dedup", expiresAt: 1 }), { status: 200 }),
+    );
+    const [resA, resB] = await Promise.all([callA, callB]);
+    expect(resA).toEqual(resB);
+    expect(resA.viewName).toBe("_kbi_filt_dv_dedup");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
+  });
 });
 
 describe("dropFilterView", () => {
