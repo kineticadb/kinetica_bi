@@ -475,8 +475,46 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // every successful resolve — fires identically for column-only and spatial-triggered
   // materializes; no new wiring needed in this effect for _mv.
   useEffect(() => {
-    if (tableId === undefined) return;
+    // Phase 63: a dv-bound widget runs this effect even with no tableId — the dv branch
+    // below materializes the dv-filter. Only short-circuit when BOTH bindings are absent.
+    if (tableId === undefined && dynamicViewId === undefined) return;
     const timer = setTimeout(async () => {
+      // ── Phase 63 (DVDRILL-V112-02) dv-filter materialize trigger ─────────────
+      // When this widget is dv-bound, materialize a filtered sub-view FROM the dv view
+      // (Phase 62 server path) and store it in dvViews[dvId]. Gate on a materialized dv
+      // (mirrors the dvStatus === "pending" early-return in Effect 2): a not-yet-materialized
+      // / over-threshold dv has no FROM view to filter against. dvFilters is read imperatively
+      // (mirrors `shapes`) — filterVersion is the dep that drives re-fire.
+      if (dynamicViewId !== undefined) {
+        if (dvStatus !== "materialized") return;
+        materializeAbortRef.current?.abort();
+        const controller = new AbortController();
+        materializeAbortRef.current = controller;
+        const dvFilters = useFilterStore.getState().dvFilters[dynamicViewId] ?? [];
+        if (dvFilters.length === 0) {
+          // No dv filter → drop any stale dv-filter view, revert to the raw dv view.
+          dropFilterView({ dashboardId, dynamicViewId }).catch(() => {});
+          useFilterViewStore.getState().clearDvView(dynamicViewId);
+          return;
+        }
+        useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
+        try {
+          const result = await materializeFilter(
+            { dashboardId, dynamicViewId, filters: dvFilters },
+            controller.signal,
+          );
+          useFilterViewStore.getState().setDvView(dynamicViewId, result, dashboardId);
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") return;
+          useFilterViewStore.getState().clearDvView(dynamicViewId);
+          useToastStore.getState().showToast((err as Error).message, "error");
+        }
+        return;
+      }
+
+      // ── Table path (UNCHANGED) ───────────────────────────────────────────────
+      // Defensive: the table path requires a tableId (dv-only widgets returned above).
+      if (tableId === undefined) return;
       // Abort prior in-flight materialize before firing a new one.
       materializeAbortRef.current?.abort();
       const controller = new AbortController();
@@ -535,8 +573,11 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // PITFALL S-02: filterVersion + spatialFilterVersion are primitive deps; tableFilters
     // and shapes references are unstable when empty. myTarget is NOT in deps — it changes
     // only when widgets changes, which triggers a render that re-creates this effect anyway.
+    // Phase 63: dvStatus + dynamicViewId added so the dv-filter materialize branch re-fires
+    // when the dv becomes materialized or the binding changes. filterVersion (bumped by
+    // addDvFilter) already covers add/remove/clear of dv filters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sql, filterVersion, dashboardId, tableId, spatialFilterVersion]);
+  }, [sql, filterVersion, dashboardId, tableId, spatialFilterVersion, dvStatus, dynamicViewId]);
 
   // Phase 15-04 (LIFE-V13-02): retry tracking — max 1 reactive retry per chart-query invocation.
   // useRef survives effect re-creates within the same component instance; reset on viewName change
@@ -1709,8 +1750,41 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   // converge on the SAME viewName via the server's CREATE OR REPLACE — slightly
   // redundant but correct (last-write-wins per V13-P-09 lock).
   useEffect(() => {
-    if (tableId === undefined) return;
+    // Phase 63: a dv-bound records widget runs this effect even with no tableId.
+    if (tableId === undefined && dynamicViewId === undefined) return;
     const timer = setTimeout(async () => {
+      // ── Phase 63 (DVDRILL-V112-02) dv-filter materialize trigger (records) ────
+      // Symmetric to AggregatedWidgetRenderer Effect 1's dv branch. Both renderers firing
+      // for the same dv converge on the same dv-filter view via the server's CREATE OR
+      // REPLACE (redundant-but-correct duplicate-trigger note already covers the table path).
+      if (dynamicViewId !== undefined) {
+        if (recordsDvStatus !== "materialized") return;
+        recordsMaterializeAbortRef.current?.abort();
+        const controller = new AbortController();
+        recordsMaterializeAbortRef.current = controller;
+        const dvFilters = useFilterStore.getState().dvFilters[dynamicViewId] ?? [];
+        if (dvFilters.length === 0) {
+          dropFilterView({ dashboardId, dynamicViewId }).catch(() => {});
+          useFilterViewStore.getState().clearDvView(dynamicViewId);
+          return;
+        }
+        useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
+        try {
+          const result = await materializeFilter(
+            { dashboardId, dynamicViewId, filters: dvFilters },
+            controller.signal,
+          );
+          useFilterViewStore.getState().setDvView(dynamicViewId, result, dashboardId);
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") return;
+          useFilterViewStore.getState().clearDvView(dynamicViewId);
+          useToastStore.getState().showToast((err as Error).message, "error");
+        }
+        return;
+      }
+
+      // ── Table path (UNCHANGED) ───────────────────────────────────────────────
+      if (tableId === undefined) return;
       recordsMaterializeAbortRef.current?.abort();
       const controller = new AbortController();
       recordsMaterializeAbortRef.current = controller;
@@ -1751,8 +1825,11 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     return () => clearTimeout(timer);
     // PITFALL S-02 deps: recordsFilterVersion + recordsSpatialFilterVersion are the primitive
     // re-fire signals; tableFilters / shapes references would be unstable when empty.
+    // Phase 63: recordsDvStatus + dynamicViewId added so the dv-filter materialize branch
+    // re-fires when the dv becomes materialized or the binding changes (recordsFilterVersion,
+    // bumped by addDvFilter, covers dv-filter add/remove/clear).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordsFilterVersion, recordsSpatialFilterVersion, dashboardId, tableId]);
+  }, [recordsFilterVersion, recordsSpatialFilterVersion, dashboardId, tableId, recordsDvStatus, dynamicViewId]);
 
   // Effective columns: user-configured list, or empty (SELECT * — Kinetica always
   // returns positional keys column_N, but parseKineticaResponse remaps them via

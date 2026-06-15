@@ -1918,10 +1918,14 @@ describe("AggregatedWidgetRenderer — Phase 35 dynamic-view branches (DV-V16-13
     expect(swappedToFv).toBe(true);
   });
 
-  it("Effect 1 regression: filter-view materializeFilter still fires (Effect 1 deps unchanged)", async () => {
-    // Locked from research finding #2: Effect 1 (filter-view materialize trigger) MUST still fire
-    // for dv-bound widgets — the filter view is the `{view}` substitution source for the dv template.
-    // dvStatus changes must NOT cause Effect 1 to re-fire (verifying its dep array is unchanged).
+  it("Phase 63: dv-bound widget's Effect 1 does NOT fire a TABLE-keyed materialize off filters[sourceTableId]", async () => {
+    // v1.12 semantic change (63-CONTEXT § "Materialize trigger + dv read-path swap"):
+    // pre-v1.12, a dv-bound widget's Effect 1 was conceived to materialize a TABLE-keyed
+    // filter view (the old `{view}` substitution model). v1.12 replaces that: the dv-bound
+    // widget's Effect 1 takes the dv branch — it materializes a dv-filter view FROM the dv
+    // (off dvFilters[dvId]), NOT a table-keyed view off filters[sourceTableId]. A stray
+    // table filter on the source table id must NOT trigger a materialize from this dv widget
+    // (dv-isolated scope; the source table's filters are owned by source-table widgets).
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
       viewName: "_kbi_filt_for_dv",
@@ -1930,27 +1934,10 @@ describe("AggregatedWidgetRenderer — Phase 35 dynamic-view branches (DV-V16-13
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
 
     act(() => {
+      // A table filter on the SOURCE table id (99) — should be ignored by the dv widget.
       useFilterStore.getState().addFilter(99, {
         column: "g", value: "A", dataType: "string", addedAt: Date.now(),
       });
-      useDynamicViewStore.getState().markPending(7, "_kbi_dv_u1_d1_7");
-    });
-
-    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
-
-    // Wait for Effect 1's 300ms debounce — materializeFilter fires for the filter-view path.
-    await waitFor(
-      () => {
-        expect(clientModule.materializeFilter).toHaveBeenCalledTimes(1);
-      },
-      { timeout: 1500 }
-    );
-
-    const initialCallCount = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls.length;
-
-    // Now transition the dynamic-view: pending → materialized. Effect 1 must NOT re-fire
-    // since dvStatus is NOT in its dep array.
-    act(() => {
       useDynamicViewStore.getState().setView(7, {
         viewName: "_kbi_dv_u1_d1_7",
         status: "materialized",
@@ -1958,9 +1945,18 @@ describe("AggregatedWidgetRenderer — Phase 35 dynamic-view branches (DV-V16-13
       });
     });
 
-    // Wait long enough for any debounce to have fired.
-    await new Promise((r) => setTimeout(r, 400));
-    expect(clientModule.materializeFilter).toHaveBeenCalledTimes(initialCallCount);
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    // Wait through Effect 1's 300ms debounce.
+    await new Promise((r) => setTimeout(r, 450));
+
+    // No materialize fired: the dv has NO dv filter (dvFilters[7] empty) so the dv branch
+    // drops/clears; and the table filter on filters[99] is NOT consumed by the dv widget.
+    const matCalls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls;
+    // No table-keyed materialize (tableId-bearing call) fired by the dv widget.
+    expect(matCalls.find(([args]) => (args as { tableId?: number }).tableId === 99)).toBeUndefined();
+    // No dv materialize either (no dv filter present).
+    expect(matCalls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7)).toBeUndefined();
   });
 
   it("suspend-gate: chart-query (runSql) does NOT fire when dvStatus = pending even with filter view ready", async () => {
@@ -2692,5 +2688,144 @@ describe("WidgetRenderer Phase 63 — dv-aware drill dispatch (DVDRILL-V112-01/0
     // Table filter-view store flipped (markMaterializing), dv view store untouched.
     expect(useFilterViewStore.getState().views[42]?.materializing).toBe(true);
     expect(useFilterViewStore.getState().dvViews[7]).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Phase 63 Plan 03 (DVDRILL-V112-02): dv-filter materialize trigger in Effect 1
+// ============================================================================
+//
+// When a dv-bound widget has a materialized dv AND dvFilters[dvId] is non-empty,
+// the existing per-renderer Effect 1 gains a branch that materializes the dv-filter
+// FROM the dv view: materializeFilter({ dashboardId, dynamicViewId, filters }) →
+// setDvView. Empty dvFilters → dropFilterView({ dashboardId, dynamicViewId }) +
+// clearDvView. Gated on dvStatus === "materialized" (mirrors the pending early-return).
+// ============================================================================
+
+describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", () => {
+  beforeEach(() => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockReset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+  });
+
+  const dvBoundWidget: WidgetDto = makeAggregatedWidget({
+    id: 1,
+    config: {
+      sql: "SELECT g, COUNT(*) AS value FROM ki_home.taxi GROUP BY g LIMIT 100",
+      tableId: 99,
+      dynamicViewId: 7,
+    },
+  });
+
+  it("materializes the dv-filter (materializeFilter with dynamicViewId, NOT tableId) when a dv filter is active + dv materialized", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
+      viewName: "_kbi_filt_dv7_sX",
+      expiresAt: Date.now() + 300000,
+    });
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_u1_d1_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+      // dv filter present (the drill landed here)
+      useFilterStore.getState().addDvFilter(7, {
+        column: "g", value: "A", dataType: "string", addedAt: Date.now(),
+      });
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    await waitFor(
+      () => {
+        expect(clientModule.materializeFilter).toHaveBeenCalled();
+      },
+      { timeout: 1500 },
+    );
+
+    const calls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls;
+    const dvCall = calls.find(
+      ([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7,
+    );
+    expect(dvCall).toBeDefined();
+    const arg = dvCall![0] as { dashboardId: number; dynamicViewId: number; filters: unknown[]; tableId?: number };
+    expect(arg.dashboardId).toBe(1);
+    expect(arg.dynamicViewId).toBe(7);
+    expect(arg.tableId).toBeUndefined();
+    expect(arg.filters).toHaveLength(1);
+
+    // setDvView populated dvViews[7] from the result.
+    await waitFor(() => {
+      expect(useFilterViewStore.getState().dvViews[7]?.viewName).toBe("_kbi_filt_dv7_sX");
+    });
+  });
+
+  it("drops the dv-filter view + clears dvViews[7] when dvFilters[7] is empty", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
+      viewName: "_kbi_filt_dv7_sX",
+      expiresAt: Date.now() + 300000,
+    });
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_u1_d1_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+      // Seed a stale dv-filter view, then clear the dv filters (drill removed).
+      useFilterViewStore.getState().setDvView(7, { viewName: "_kbi_filt_dv7_sX", expiresAt: Date.now() + 300000 }, 1);
+      useFilterStore.getState().addDvFilter(7, { column: "g", value: "A", dataType: "string", addedAt: Date.now() });
+      useFilterStore.getState().clearDvFilters(7);
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    await waitFor(
+      () => {
+        const calls = (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mock.calls;
+        const dvDrop = calls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7);
+        expect(dvDrop).toBeDefined();
+      },
+      { timeout: 1500 },
+    );
+    // dvViews[7] cleared.
+    await waitFor(() => {
+      expect(useFilterViewStore.getState().dvViews[7]).toBeUndefined();
+    });
+    // materializeFilter must NOT have been called for the dv (empty filters → drop only).
+    const matCalls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls;
+    expect(matCalls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7)).toBeUndefined();
+  });
+
+  it("gate holds: dvStatus !== materialized + a dv filter → materializeFilter NOT called for the dv", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
+      viewName: "_kbi_filt_dv7_sX",
+      expiresAt: Date.now() + 300000,
+    });
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+
+    act(() => {
+      // dv NOT materialized (pending) — the gate must block a dv-filter materialize.
+      useDynamicViewStore.getState().markPending(7, "_kbi_dv_u1_d1_7");
+      useFilterStore.getState().addDvFilter(7, { column: "g", value: "A", dataType: "string", addedAt: Date.now() });
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    // Give the 300ms debounce time to (not) fire.
+    await new Promise((r) => setTimeout(r, 500));
+
+    const matCalls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls;
+    expect(matCalls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7)).toBeUndefined();
   });
 });
