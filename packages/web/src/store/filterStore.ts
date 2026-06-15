@@ -42,6 +42,16 @@ export type ActiveFilter = {
 export type FilterState = {
   filters: Record<number, ActiveFilter[]>;
   filterVersion: number;
+  // Phase 63 (DVDRILL-V112-05): dv-scoped PARALLEL slice keyed by dynamicViewId.
+  // A dv id and a table id are BOTH numbers — filters[dvId] would COLLIDE with filters[tableId].
+  // The LOCKED approach (63-CONTEXT.md <decisions>) is a parallel dv-keyed map, NOT re-keying
+  // the existing one: the table path (filters + addFilter/removeFilter/clearFilters/setBulkFilters)
+  // stays byte-unchanged. The dv actions below mirror the table-keyed ones verbatim and reuse the
+  // SAME filterVersion counter (WidgetRenderer Effect 1 keys re-fire off it).
+  dvFilters: Record<number, ActiveFilter[]>; // keyed by dynamicViewId — un-collidable with filters (tableId)
+  addDvFilter: (dynamicViewId: number, filter: ActiveFilter) => void;
+  removeDvFilter: (dynamicViewId: number, column: string) => void;
+  clearDvFilters: (dynamicViewId: number) => void;
   // Open Question #1 resolution (RESEARCH.md): tableId is a SEPARATE param, not on ActiveFilter.
   addFilter: (tableId: number, filter: ActiveFilter) => void;
   // Phase 44 (FILTER-V17-02): Apply button on Data Filter widget calls this to batch
@@ -59,6 +69,7 @@ export type FilterState = {
 
 export const useFilterStore = create<FilterState>((set) => ({
   filters: {},
+  dvFilters: {},
   filterVersion: 0,
 
   addFilter: (tableId, filter) =>
@@ -156,7 +167,72 @@ export const useFilterStore = create<FilterState>((set) => ({
       };
     }),
 
+  // Phase 63 (DVDRILL-V112-05): dv-scoped actions — mirror addFilter/removeFilter/clearFilters
+  // VERBATIM, swapping state.filters → state.dvFilters and the key to dynamicViewId. Same cap,
+  // same toast string, same dedupe/replace/version-bump rules, shared filterVersion counter.
+  addDvFilter: (dynamicViewId, filter) =>
+    set((state) => {
+      const existing = state.dvFilters[dynamicViewId] ?? [];
+
+      // PITFALL D-04: cap. If we'd exceed, no-op + toast.
+      // Note: REPLACE on same column is allowed even at cap (count doesn't increase).
+      const sameColumnIdx = existing.findIndex((f) => f.column === filter.column);
+      if (sameColumnIdx === -1 && existing.length >= FILTER_CAP_PER_TABLE) {
+        useToastStore.getState().showToast(
+          `Filter limit reached (${FILTER_CAP_PER_TABLE} per table). Clear some first.`,
+          "info"
+        );
+        return state; // no state change, no version bump
+      }
+
+      // Exact-duplicate dedupe (same column AND same value) — silent no-op.
+      if (
+        sameColumnIdx !== -1 &&
+        existing[sameColumnIdx].value === filter.value
+      ) {
+        return state; // silent — no toast, no version bump
+      }
+
+      // PITFALL D-05 lock: same-column-different-value REPLACES, never appends.
+      let newDvFilters: ActiveFilter[];
+      if (sameColumnIdx !== -1) {
+        newDvFilters = [...existing];
+        newDvFilters[sameColumnIdx] = filter;
+      } else {
+        newDvFilters = [...existing, filter];
+      }
+
+      return {
+        dvFilters: { ...state.dvFilters, [dynamicViewId]: newDvFilters },
+        filterVersion: state.filterVersion + 1, // shared counter — Effect 1 re-fire dep
+      };
+    }),
+
+  removeDvFilter: (dynamicViewId, column) =>
+    set((state) => {
+      const existing = state.dvFilters[dynamicViewId] ?? [];
+      const next = existing.filter((f) => f.column !== column);
+      if (next.length === existing.length) return state; // nothing removed — no version bump
+      return {
+        dvFilters: { ...state.dvFilters, [dynamicViewId]: next },
+        filterVersion: state.filterVersion + 1,
+      };
+    }),
+
+  clearDvFilters: (dynamicViewId) =>
+    set((state) => {
+      const existing = state.dvFilters[dynamicViewId] ?? [];
+      if (existing.length === 0) return state; // nothing to clear — no version bump
+      const next = { ...state.dvFilters };
+      delete next[dynamicViewId]; // delete-key semantics — mirrors clearFilters
+      return {
+        dvFilters: next,
+        filterVersion: state.filterVersion + 1,
+      };
+    }),
+
   // Internal-only — called from App.tsx on logout and DashboardsPage on dashboard switch.
-  // NOT exposed as a user action.
-  reset: () => set({ filters: {}, filterVersion: 0 }),
+  // NOT exposed as a user action. Phase 63: zeroes the dv slice too (DVDRILL-V112-05 lifecycle —
+  // no new reset call sites needed; existing reset() chain clears dvFilters for free).
+  reset: () => set({ filters: {}, dvFilters: {}, filterVersion: 0 }),
 }));
