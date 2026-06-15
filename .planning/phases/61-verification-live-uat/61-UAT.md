@@ -2,235 +2,266 @@
 plan: 61-02
 operator: RPereira@kinetica.com
 started_on: 2026-06-11
+rewalk_on: 2026-06-15
 automated_gates_ref: .planning/phases/61-verification-live-uat/61-01-AUTOMATED-GATES.md
-automated_gates_verdict: ALL PASS (commit 162e514, 2026-06-11T13:50:35Z — frontend vitest 1935/1935 green, web tsc clean, server tsc clean, server set-gate pass (8 failing files all ⊆ TD-V16-TEST-ISOLATION known-flaky list), targeted v1.11 specs 210/210 (10 files))
+automated_gates_verdict: ALL PASS (refreshed at HEAD 0834447, 2026-06-15 — frontend vitest 2087/2087 (95 files), web tsc clean, server tsc clean, server set-gate UNCHANGED (zero server diff since 162e514, failing files ⊆ TD-V16-TEST-ISOLATION), v1.11 engine+radio specs green. Original record at 162e514.)
 ---
 
 # 61 UAT — Live v1.11 Programmable-Widget Chain Walk-Through
 
-**Purpose:** Operator-executed end-to-end verification of the v1.11 programmable-widget chain against the running app. This document is self-contained — no other planning files need to be read to execute the walk.
+**Purpose:** Operator-executed end-to-end verification of the v1.11 programmable-widget chain against the running app. Self-contained — no other planning files need to be read to execute the walk.
 
 **Pre-reading required:** None. All context is below.
 
-**Outcome routing:** Any `status: FAIL` item halts this UAT. A 61.x repro-test-driven gap plan is spun per defect (failing RED reproduction first, then fix, then the affected section is re-walked before 61-03 may compile). This is the v1.11 milestone gate — gaps are NOT accepted as tech debt. Trivial fixes may ride as inline follow-ups at the executor's discretion; anything non-trivial gets a 61.x plan.
+> **RE-WALK NOTE (2026-06-15):** This walk was paused after the original §1/§2 attestations, then the milestone GREW: Phase 60.1 (re-scoped the layer editor to the FULL `KineticaWmsLayerForm` side-by-side — new req **RADIOUX-V111-01**), Phase 60.2 (one option drives MULTIPLE targets — new req **RADIOMULTI-V111-01**), plus ~8 polish/bug fixes (green radios, vertical orientation, real layer names, class-break table-context, pie tooltip, full-form seeding) and a theming-hardening pass. Because the authoring UI + dispatch changed materially, the live items (§1, §2, §3) are RESET to PENDING for a fresh walk against the current build, and two new sections (§2A RADIOUX, §2B RADIOMULTI) were added. Automated gates (§0 P4, §4) are refreshed to HEAD 0834447.
+
+**Outcome routing:** Any `status: FAIL` halts this UAT — a 61.x repro-test-driven gap plan per defect (failing RED repro first, then fix, then re-walk the affected item before 61-03 compiles). This is the v1.11 milestone gate; gaps are NOT accepted as tech debt. Trivial fixes may ride as inline follow-ups.
+
+**How to fill this in:** For each item, set `status:` to PASS or FAIL and write one line of `evidence:` (what you saw). Leave PENDING only if not yet walked.
 
 ---
 
 ## Section 0 — Preconditions
 
-Operator confirms ALL of the following BEFORE beginning the walk. Each item must be PASS before continuing.
+Confirm ALL before beginning. Each must be PASS before continuing.
 
 ```
 id: P1
 check: App is running (web + server) against the deployed Kinetica instance in password mode.
-status: PASS
-evidence: Operator ran the live walk against the deployed app (password mode); §1 and §2 executed successfully, confirming app + server reachable. Attested 2026-06-11.
+  (Launch: `npm run dev` for web, `npm run dev:server` for server — or your usual setup.)
+status: PENDING
+evidence:
 ```
 
 ```
 id: P2
-check: A non-bypass ANALYST-role login is ready for §3 (record the lowercased username here: _____________).
-  Confirm this login is NOT admin, NOT designer — it does NOT hold any bypass role. It must be a pure
-  analyst (or equivalent restricted-view role). The §3 viewer-safe payoff depends on this identity
-  exercising the radio widget with no PATCH privilege — confirming the transient overlay approach
-  causes zero permission friction.
+check: A non-bypass ANALYST-role login is ready for §3 (record the lowercased username: _____________).
+  NOT admin, NOT designer — no bypass role. The §3 viewer-safe payoff exercises the radio widget with
+  no PATCH privilege, proving the transient overlay causes zero permission friction.
 status: PENDING
 evidence:
 ```
 
 ```
 id: P3
-check: A dashboard exists in the app with the following authored fixtures (via the Phase 59 config panel):
-  (a) A MAP widget bound to a real class-break-capable Kinetica layer (one that supports STYLES=cb_raster
-      or equivalent class-break WMS rendering).
-  (b) A RADIO-GROUP widget with at least 2 options, authored via the Phase 59 panel:
-        Option A — patches the map layer's class-break render mode (e.g. renderMode field in the
-                   allow-listed layer config, OR cb_config to a specific class-break scheme). This is
-                   the SC1/§1 render-mode switch option.
-        Option B — patches the same (or a different) allow-listed field of the map layer, OR
-                   patches a widget.config field of a separate widget. Used in §1.2 (widget.config
-                   live switch) and/or §2.1 (switch-replace isolation).
-        Ideally: one option sets BOTH renderMode + cb_config (for the §2.1 switch-replace test);
-                   a second option sets ONLY renderMode. If this is not available, note it and use
-                   the closest two-field vs one-field pair available.
-  (c) A defaultOptionId is configured on the radio group (used in §1.3 / §3.2 reload-resets-to-default
-      attest). Record the dashboard name, layer name, and option names used: _____________
-status: PASS
-evidence: Dashboard with class-break-capable map layer + authored radio group (render-mode option + second target option, configured defaultOptionId) confirmed present — exercised live in §1.1/§1.2/§2.1. Attested 2026-06-11.
+check: A dashboard exists with these authored fixtures (authored via the CURRENT "Radio Dashboard Control"
+  config panel — the full-form side-by-side editor):
+  (a) A MAP widget bound to a real class-break-capable Kinetica layer (e.g. demo.nyctaxi). Give the layer
+      an operator display name (config name) so the picker shows it (e.g. "Main NYC taxi").
+  (b) A RADIO DASHBOARD CONTROL widget with at least 3 options authored via the full-form editor:
+        Option A — layer target, renderMode classbreak with a configured cb_config (a class-break scheme).
+        Option B — layer target, renderMode heatmap (or raster) — a DIFFERENT render mode (for §1.1 switch
+                   + §2.1 switch-replace: A sets renderMode+cb_config, B sets renderMode only).
+        Option C — (for §2B RADIOMULTI) an option with TWO targets: the map layer AND a second target
+                   (another widget's config, or a second layer).
+  (c) A defaultOptionId configured (for §1.3 / §3.2 reload-resets-to-default).
+  Record dashboard name + layer name + option labels: _____________
+status: PENDING
+evidence:
 ```
 
 ```
 id: P4
-check: 61-01 automated gates recorded ALL PASS — see header above and
-  .planning/phases/61-verification-live-uat/61-01-AUTOMATED-GATES.md (commit 162e514, recorded
-  2026-06-11T13:50:35Z). Outcomes: frontend vitest 1935/1935 green (92 files, 0 failures);
-  web tsc clean (exit 0); server tsc clean (exit 0); server set-gate pass (8 failing files
-  ⊆ TD-V16-TEST-ISOLATION known-flaky list, identical to the Phase 57 baseline — zero server
-  regression from v1.11 which is confirmed frontend-only); targeted v1.11 specs 210/210 (10 files,
-  engine + radio chain all green). Record-only — no manual rerun required.
+check: 61-01 automated gates — ALL PASS, refreshed at HEAD 0834447 (2026-06-15). See
+  61-01-AUTOMATED-GATES.md "GATE REFRESH" block: frontend vitest 2087/2087 (95 files), web tsc clean,
+  server tsc clean, server set-gate UNCHANGED (zero server diff since 162e514 → failing files still
+  ⊆ TD-V16-TEST-ISOLATION), v1.11 engine+radio specs green. Record-only — no manual rerun required.
 status: PASS
-evidence: Record-only. 61-01-AUTOMATED-GATES.md overall_verdict ALL PASS (commit 162e514). No manual rerun. Attested 2026-06-11.
+evidence: Record-only. 61-01-AUTOMATED-GATES.md refreshed verdict ALL PASS at HEAD 0834447 (frontend 2087/2087, web+server tsc clean, zero server diff). Re-confirmed 2026-06-15.
 ```
 
 ---
 
 ## Section 1 — Live Config Switch [ROADMAP SC1] (DESIGNER)
 
-**Setup:** Log in as the designer/admin (RPereira@kinetica.com). Open the dashboard from P3.
+**Setup:** Log in as designer/admin. Open the P3 dashboard.
 
-**Transient model reminder:** In v1.11 the radio widget operates a session-only overlay. A viewer's runtime selection is NEVER PATCHed to the server. On reload (or dashboard-switch), the radio re-applies its designer-configured `defaultOptionId`. The operator attests **reload-resets-to-configured-default** in §1.3. Do NOT expect the live click to survive reload — that would be a false fail against the locked design.
+**Transient model reminder:** the radio widget operates a session-only overlay; a runtime selection is NEVER PATCHed. On reload it re-applies the designer-configured `defaultOptionId`. §1.3 attests reload-resets-to-default — the live click is NOT expected to survive reload.
 
 ```
 id: 1.1
-check: RENDER-MODE LIVE SWITCH (SC1 — class-break rendering changes in place).
-  Click the radio option that patches the map layer's class-break render mode (Option A from P3).
-  The MAP must update LIVE — class-break rendering changes in place — with NO remount or full reload.
-  Specifically: the map must NOT blank-and-rebuild (no full canvas teardown); WMS tiles re-request
-  with the new STYLES/rendering params and render without a manual refresh. The switch is immediate
-  (no page reload needed).
-  Confirm the render-mode change is visible (different class-break colour scheme, or the visual
-  change expected for the configured option).
-status: PASS
-evidence: Operator confirmed live render-mode switch — class-break rendering changed in place, no remount/reload, no manual refresh. Attested 2026-06-11.
+check: RENDER-MODE LIVE SWITCH (SC1). Click Option A (classbreak). The MAP updates LIVE — class-break
+  rendering changes in place, NO remount/full reload, no manual refresh (WMS tiles re-request with new
+  STYLES). Confirm the visual change. Also confirm the in-map Layers legend updates to match (GAP-61-01).
+status: PENDING
+evidence:
 ```
 
 ```
 id: 1.2
-check: widget.config-FIELD LIVE SWITCH.
-  Click the radio option that patches a widget.config field of another widget (Option B from P3,
-  or the equivalent option configured for a widget.config target).
-  That widget must reflect the new config value LIVE — updating in place without a page reload.
-  (If Option B targets a layer field rather than widget.config, note that and confirm the layer
-  reflects the new value LIVE instead. The key attestation is: the target updates live, no remount.)
-status: PASS
-evidence: Operator confirmed target updates LIVE on option click — no page reload, no remount. Attested 2026-06-11.
+check: SECOND-TARGET LIVE SWITCH. Click Option B (different render mode, or a widget.config target).
+  The target updates LIVE in place, no reload, no remount. (If Option B targets a layer field, confirm
+  the layer reflects it live; if widget.config, the widget updates live.)
+status: PENDING
+evidence:
 ```
 
 ```
 id: 1.3
-check: RELOAD RESETS TO DEFAULT (TRANSIENT — the corrected SC1/SC4 behavior; reload-resets-to-configured-default).
-  After selecting a non-default option (any option other than the configured defaultOptionId),
-  RELOAD the dashboard (browser refresh or navigate away and back).
-  The radio must re-apply its configured defaultOptionId — the control shows the DEFAULT option
-  active and the target reflects the default, NOT the option selected before reload.
-  ATTEST: reload-resets-to-configured-default.
-  NOTE: The live click is transient by design (session-only overlay, no PATCH). Expecting the
-  live selection to survive reload would be a false fail against the locked v1.11 transient model.
-  The authored radio config + the defaultOptionId persist (they are the saved dashboard state);
-  the viewer's runtime click does not.
-status: PASS
-evidence: After selecting a non-default option and reloading, the radio re-applied the configured defaultOptionId — control + target reflected the default, not the pre-reload click. Reload-resets-to-configured-default confirmed (transient model holds). Attested 2026-06-11.
+check: RELOAD RESETS TO DEFAULT (transient). Select a non-default option, then RELOAD the dashboard.
+  The radio re-applies its configured defaultOptionId — control + target show the DEFAULT, not the
+  pre-reload click. ATTEST: reload-resets-to-configured-default.
+status: PENDING
+evidence:
 ```
 
 ---
 
 ## Section 2 — Switch-Replace + Isolation [ROADMAP SC2] (DESIGNER)
 
-**Setup:** Remain as designer/admin. Use the same dashboard from P3.
-
 ```
 id: 2.1
-check: SWITCH-REPLACE ISOLATION (renderMode+cb_config option → renderMode-only option reverts cb_config).
-  If Option A sets BOTH renderMode + cb_config (and Option B sets ONLY renderMode), perform the
-  following sequence:
-    1. Select Option A — observe the map shows the renderMode AND cb_config from Option A.
-    2. Select Option B — observe the map shows the renderMode from Option B AND the cb_config
-       reverts to the layer's saved baseline (the prior option's cb_config does NOT linger).
-  Attest that cb_config reverts to baseline on the option switch (the overlay applies a clean
-  replace, not a deep-merge that preserves stale keys from the previous option).
-  If P3 did not author a cb_config-setting option, note it here and exercise the closest
-  two-field vs one-field pair available; attest the analogous field isolation behaviour.
-status: PASS
-evidence: Switch-replace isolation confirmed — switching from the multi-field option to the single-field option reverted the prior option's extra field(s) to the saved baseline (clean replace, no stale-key linger). Attested 2026-06-11.
+check: SWITCH-REPLACE ISOLATION. With Option A = renderMode+cb_config and Option B = renderMode only:
+  1. Select A → map shows A's renderMode AND cb_config.
+  2. Select B → map shows B's renderMode AND cb_config reverts to the layer's saved baseline (A's
+     cb_config does NOT linger). Attest the clean replace (not a stale-key deep-merge).
+status: PENDING
+evidence:
 ```
 
 ```
 id: 2.2
-check: OUT-OF-ALLOW-LIST PATCH REJECTED AT SAVE (operator-visible validation).
-  In the Phase 59 config panel (radio group config editor), hand-edit an option's JSON binding
-  to include an unknown/meta key — for example:
-    - a field name not in the v1.11 allow-list (e.g. "id", "__proto__", "tableId", "type",
-      or any other non-allow-listed key)
-  Attempt to SAVE the option.
-  Save must be REJECTED with an operator-visible validation message (an error banner, inline
-  field error, or toast that identifies the rejected key/field). The bad binding must not persist
-  to the dashboard state.
-  Attest the rejection is visible and the panel does not save the invalid config.
-status: PASS
-evidence: Out-of-allow-list key rejected with an operator-visible validation error; bad binding did not persist.
-  DEVIATION (non-blocking): the config panel has NO explicit Save button — bindings validate live/inline,
-  so the error surfaces immediately on edit rather than on a save action. The criterion intent
-  (rejection is operator-visible AND the invalid binding cannot persist) is satisfied; the UAT text
-  assuming a discrete SAVE step is stale vs the live-validation UX. Attested 2026-06-11.
+check: OUT-OF-ALLOW-LIST PATCH REJECTED (operator-visible). In an option's "Advanced (raw JSON)" editor,
+  add a meta/forbidden key (e.g. "id", "__proto__", "tableId", "type", or — for a layer target — a
+  data-binding key like "table_id"/"spatialMode"). The panel must reject it with an operator-visible
+  error and NOT persist the bad binding. (Validation is live/inline — no separate Save button.)
+status: PENDING
+evidence:
 ```
 
 ```
 id: 2.3
-check: NO FILTER CHIPS / NO MATERIALIZE DURING DISPATCH (engine fully decoupled from filter pipeline).
-  While clicking radio options during §1 and §2 above, confirm:
-    (a) NO filter chips appear in the filter bar during or after option dispatch.
-    (b) NO materialize network call fires (open DevTools Network tab — confirm no POST to
-        /api/dynamic-view/materialize or equivalent materialize/drop endpoint during dispatch).
-    (c) filterVersion is UNCHANGED — the dashboard's filtered data is not disturbed.
-  The action engine is fully decoupled from the filter/materialize system (confirmed by the
-  targeted v1.11 actionEngineDecoupling.spec.ts gate in 61-01). The sole-materialize-trigger
-  contract is intact — radio switches must never invoke materialize.
-status: PASS
-evidence: During §1/§2 dispatch — no filter chips appeared, no materialize/drop network call fired, filterVersion unchanged. Engine confirmed decoupled from the filter/materialize pipeline. Attested 2026-06-11.
+check: NO FILTER CHIPS / NO MATERIALIZE during dispatch (engine decoupled). While clicking options in
+  §1/§2, confirm in DevTools: (a) no filter chips appear; (b) no POST to /api/.../materialize|drop fires;
+  (c) the dashboard's filtered data is undisturbed. (Automated-gated by actionEngineDecoupling.spec.ts.)
+status: PENDING
+evidence:
+```
+
+---
+
+## Section 2A — Full-Form Layer Editor [RADIOUX-V111-01] (DESIGNER)
+
+**What this proves:** a layer-target option is authored via the FULL `KineticaWmsLayerForm` side-by-side (the same form as Map Layers), not hand-edited JSON — and the embedded form actually works.
+
+```
+id: RX.1
+check: SIDE-BY-SIDE FULL FORM. Add/edit a radio option, set its target to the MAP LAYER. The modal widens
+  to two panes: left = radio config, right = the full layer form (RENDER MODE + style params + opacity +
+  INFO POPUP). DATA SOURCE and SPATIAL MODE sections are ABSENT. No raw JSON needed to author the option.
+status: PENDING
+evidence:
+```
+
+```
+id: RX.2
+check: FORM SEEDED FROM LAYER + REAL LAYER NAME. On opening a layer-target option, the render-mode radio
+  is PRE-SELECTED to the layer's current mode (not blank), params populated. The Target picker shows the
+  layer's real name (e.g. "Main NYC taxi"), NOT "Layer #N".
+status: PENDING
+evidence:
+```
+
+```
+id: RX.3
+check: CLASS-BREAK AUTHORING WORKS (the table-context fix). Set render mode = Classbreak. Pick a VARCHAR
+  column (e.g. payment_type) → distinct-count succeeds (NO "Could not count distinct values" / no
+  "FROM unknown"). Pick a NUMERIC column (e.g. pickup_longitude), Method = Equal Interval → Auto-suggest
+  breaks returns REAL break values (not all 0).
+status: PENDING
+evidence:
+```
+
+```
+id: RX.4
+check: RADIO THEMING. The radio widget on the dashboard renders with GREEN-accented radios (not browser
+  blue) and VERTICAL orientation actually stacks vertically. With 3+ options, EACH option's render-mode
+  radio in the config editor shows its OWN selection (not only the last option selected).
+status: PENDING
+evidence:
+```
+
+```
+id: RX.5
+check: ADVANCED JSON FALLBACK + WIDGET/DV UNCHANGED. The raw-JSON editor is still available under a
+  collapsible "Advanced (raw JSON)" for layer targets. Widget and dynamic-view targets keep their
+  simple inputs (no full-form pane).
+status: PENDING
+evidence:
+```
+
+---
+
+## Section 2B — Multi-Target Options [RADIOMULTI-V111-01] (DESIGNER)
+
+**What this proves:** one radio option can drive MULTIPLE targets at once; switching options is switch-replace at the option level (stale targets revert).
+
+```
+id: RM.1
+check: AUTHOR MULTIPLE TARGETS. On Option C, click "+ Add target" and configure a SECOND target (a
+  different widget/layer than the first). Both target editors are present and independently editable.
+  (Single-target options stay clean — no list chrome until a 2nd target is added.)
+status: PENDING
+evidence:
+```
+
+```
+id: RM.2
+check: ONE OPTION → MANY TARGETS LIVE. Select Option C. BOTH targets update LIVE in the same action
+  (e.g. the map layer changes AND the second widget/layer changes), no reload/remount.
+status: PENDING
+evidence:
+```
+
+```
+id: RM.3
+check: OPTION-LEVEL SWITCH-REPLACE (stale targets drop). After selecting Option C (targets {map, widget2}),
+  select an option that targets ONLY the map (e.g. Option A). The second widget/layer must REVERT to its
+  baseline — Option C's effect on it does NOT linger. (This is the key multi-target correctness check.)
+status: PENDING
+evidence:
+```
+
+```
+id: RM.4
+check: BACK-COMPAT. Any radio option authored BEFORE this milestone (legacy single-target) still loads,
+  edits, and dispatches correctly. (If none exist, note N/A.)
+status: PENDING
+evidence:
 ```
 
 ---
 
 ## Section 3 — Viewer-Safe / Transient [ROADMAP SC1 Payoff] (VIEWER = non-bypass ANALYST)
 
-**Setup:** Switch to the non-bypass ANALYST-role login from P2. Open the same dashboard from P3 in a separate browser session (or use incognito). Keep the designer/admin session available in a second window for §3.2 confirmation.
+**Setup:** Switch to the P2 analyst login (separate session / incognito). Keep the designer session in a 2nd window for §3.2.
 
-**Headline payoff:** This section proves the primary v1.11 user story: a viewer (analyst) can click the radio widget to interactively explore different map renderings — live, with zero permission friction — and their exploration leaves no trace on the shared dashboard. Enabled by the transient session-only overlay (no PATCH from viewer sessions).
+**Headline payoff:** a viewer (analyst) clicks the radio widget to explore renderings — live, zero permission friction — leaving no trace on the shared dashboard (transient session-only overlay, no PATCH).
 
 ```
 id: 3.1
-check: VIEWER LIVE SWITCH, NO PERMISSION ERROR.
-  As the non-bypass analyst (P2), open the dashboard. Click the radio render-mode option
-  (Option A from P3 — the one that switches class-break rendering).
-  The map must switch LIVE — the class-break rendering changes in place — with:
-    (a) NO permission error (no 403 response, no "Insufficient permissions" toast, no denial
-        banner). The switch proceeds silently and successfully.
-    (b) NO remount/reload (same live-switch behaviour as §1.1).
-  The transient model is why this works: the dispatch is a session-only overlay write with NO
-  PATCH to the server, so the analyst's read-only role is never challenged.
+check: VIEWER LIVE SWITCH, NO PERMISSION ERROR. As the analyst, click Option A. The map switches LIVE
+  with (a) NO 403 / no "Insufficient permissions" toast / no denial banner; (b) no remount/reload.
 status: PENDING
 evidence:
 ```
 
 ```
 id: 3.2
-check: NO SHARED-DASHBOARD MUTATION (viewer's selection does not persist to the shared dashboard).
-  After the analyst clicks a non-default radio option in §3.1, verify BOTH of the following:
-    (a) In the DESIGNER/ADMIN session (second window): reload the dashboard. The saved dashboard
-        state must reflect the configured defaultOptionId — NOT the option the analyst clicked.
-        The analyst's runtime pick must be invisible to the designer session.
-    (b) In the ANALYST session: reload the dashboard. The radio resets to the configured
-        defaultOptionId (transient — same reload-resets-to-default behaviour as §1.3). The
-        analyst's own selection does not persist even within their own session across reload.
-  Attest that the shared dashboard is unmutated and the viewer's exploration is fully transient.
+check: NO SHARED-DASHBOARD MUTATION. After the analyst clicks a non-default option:
+  (a) DESIGNER session (2nd window): reload → saved state reflects the configured defaultOptionId, NOT
+      the analyst's pick (analyst's runtime choice is invisible to the designer session).
+  (b) ANALYST session: reload → radio resets to defaultOptionId (transient even within their own session).
+  Attest the shared dashboard is unmutated and the viewer's exploration is fully transient.
 status: PENDING
 evidence:
 ```
 
 ```
 id: 3.3
-check: ORPHAN TARGET SAFETY (warning / typed no-op + toast; no crash).
-  Exercise an orphan target scenario. Two equivalent paths:
-    Path A (config side): In the radio group config panel, author an option bound to a target
-    widget/layer, then DELETE that target widget/layer. Reopen the config panel — the orphan
-    warning from Phase 59 must be visible (an indicator that the binding points to a missing
-    target). No crash or silent corruption.
-    Path B (runtime side): Click a radio option whose target has been deleted (e.g. author an
-    option, save, delete the target, then click the option as the analyst or designer). The
-    dispatch must produce a typed no-op (no partial write, no crash) + a toast notification
-    indicating the target is missing.
-  Attest that at least one orphan path surfaces the appropriate signal (warning or typed no-op
-  + toast) and nothing is corrupted.
+check: ORPHAN TARGET SAFETY. Author an option bound to a target, then DELETE that target widget/layer.
+  Reopen the config panel → orphan warning visible (no crash). OR click the option whose target was
+  deleted → typed no-op + toast (no partial write, no crash). Attest one orphan path surfaces the signal.
 status: PENDING
 evidence:
 ```
@@ -239,27 +270,24 @@ evidence:
 
 ## Section 4 — Automated Gates Reference [ROADMAP SC3/SC4]
 
-SC3/SC4 are covered by the automated gates recorded in `61-01-AUTOMATED-GATES.md` (cited in §0 P4). No live re-run is required in this walk-through.
+SC3/SC4 covered by `61-01-AUTOMATED-GATES.md` (cited in §0 P4) — refreshed at HEAD 0834447. No live re-run required.
 
-Gate outcomes (from 61-01-AUTOMATED-GATES.md, commit 162e514, recorded 2026-06-11T13:50:35Z):
-
-| Gate | Result | Detail |
-|------|--------|--------|
-| frontend_vitest | PASS | 1935/1935 tests, 92/92 files, 0 failures (>= 1935 baseline, 100% green) |
-| web_tsc | PASS | Clean — exit 0, zero errors |
-| server_tsc | PASS | Clean — exit 0, zero errors |
-| server_vitest_setgate | PASS | 8 failing files ⊆ TD-V16-TEST-ISOLATION known-flaky set (unchanged from Phase 57 baseline; zero server regression from v1.11 frontend-only changes) |
-| targeted_v111_specs | PASS | 210/210 tests, 10/10 files (engine + radio chain: widgetAction, actionAllowList, applyWidgetAction, actionEngineDecoupling, widgetActionStore, actionEngine.canary, radioGroupConfig, radioGroupCapture, RadioGroupConfigPanel, RadioGroupRenderer) |
+| Gate | Result | Detail (HEAD 0834447) |
+|------|--------|------------------------|
+| frontend_vitest | PASS | 2087/2087 tests, 95/95 files, 0 failures |
+| web_tsc | PASS | clean, exit 0 |
+| server_tsc | PASS | clean, exit 0 |
+| server_vitest_setgate | PASS | UNCHANGED — zero server diff since 162e514; failing files ⊆ TD-V16-TEST-ISOLATION |
+| targeted_v111_specs | PASS | engine + radio chain green (now incl. radioGroupLayerPatch, theme-guard) |
+| server_diff_guard | PASS | `git diff 162e514..HEAD -- packages/server` empty — v1.11 frontend-only across all phases |
 
 ```
 id: 4.1
-check: SC3/SC4 automated gates record — ALL PASS per 61-01-AUTOMATED-GATES.md (commit 162e514,
-  2026-06-11T13:50:35Z). Record-only, no manual rerun required. The targeted
-  actionEngineDecoupling.spec.ts gate confirms SAFETY-V111-02: static source grep proves the
-  engine contains zero references to materializeFilter, dropFilterView, addFilter,
-  setBulkFilters, or filterVersion — fully decoupled from the filter/materialize pipeline.
+check: SC3/SC4 automated gates — ALL PASS per 61-01-AUTOMATED-GATES.md (refreshed HEAD 0834447,
+  2026-06-15). Record-only. actionEngineDecoupling.spec.ts confirms SAFETY-V111-02 (engine has zero
+  references to materializeFilter/dropFilterView/addFilter/setBulkFilters/filterVersion).
 status: PASS
-evidence: Record-only — SC3/SC4 gates ALL PASS per 61-01-AUTOMATED-GATES.md (commit 162e514). actionEngineDecoupling.spec.ts confirms SAFETY-V111-02 zero-coupling. Attested 2026-06-11.
+evidence: Record-only — SC3/SC4 gates ALL PASS per refreshed 61-01-AUTOMATED-GATES.md (HEAD 0834447). Re-confirmed 2026-06-15.
 ```
 
 ---
@@ -273,40 +301,25 @@ gaps:
     in_scope: v1.11
     sections: [1.1, 2.1]
     title: >-
-      In-map Layers legend stayed frozen on the SAVED layer config during a radio-group
-      overlay switch — the WMS tiles switched live (effectiveLayers is overlay-merged) but
-      the legend's renderMode/cb_config kept reading the persisted dashboardLayersStore, so
-      the legend and the tiles disagreed on every radio click.
+      In-map Layers legend stayed frozen on the SAVED layer config during a radio overlay switch
+      (legend read the persisted store while WMS tiles used overlay-merged effectiveLayers).
     resolution: >-
-      RESOLVED — FIXED INLINE (not deferred to a 61.x phase). MapChartRenderer legendKey and
-      resolveLegendLayers now derive from effectiveLayers (overlay-merged) via useMemo, so the
-      in-map legend tracks the active radio selection and matches the tiles. Regression-locked
-      by 3 new specs in MapChartRenderer.spec.tsx ("Phase 61 GAP-61-01 — in-map legend follows
-      the runtime overlay") + the updated PITFALL S-02 source lock; full MapChartRenderer suite
-      184/184, full frontend suite 1938/1938, web tsc clean. The affected concern is covered by
-      the regression specs in lieu of a re-walk (the tiles-switch-live behavior itself, §1.1/§2.1,
-      already attested PASS — the gap was the legend lagging that switch, now corrected).
+      RESOLVED — FIXED INLINE (commit f62da07). legendKey + resolveLegendLayers now derive from
+      effectiveLayers; regression-locked by 3 specs. Re-confirm in §1.1.
   - id: GAP-61-02
     severity: major
     in_scope: v1.11
     sections: [1.1, 1.2]
     title: >-
-      Layer visibility toggle (legend eye button) stopped working after toggling a radio
-      group that changed the layer. A radio option captures ALL allow-listed layer fields —
-      including config.visible — so the active overlay pinned visible:true. effectiveLayers
-      merges the overlay ON TOP of the persisted dashboardLayersStore, so the eye toggle's
-      write (to the persisted store) was masked and the layer never hid/showed.
+      Layer visibility toggle (legend eye) stopped working after a radio switch — a captured
+      config.visible overlay masked the persisted-store toggle write.
     resolution: >-
-      RESOLVED — FIXED INLINE. Product decision (operator, 2026-06-12): "radio can hide, but a
-      live toggle releases it." New widgetActionStore.releaseLayerConfigField(layerId, field)
-      strips a field from every control's contribution + re-derives; useLayerVisibilityToggle
-      calls it for "visible" after the optimistic store write, so the explicit eye toggle wins
-      (persisted store owns visible until a radio option re-pins it — most-recent action wins).
-      Regression-locked by widgetActionStore.spec.ts (4 releaseLayerConfigField cases) +
-      new useLayerVisibilityToggle.spec.ts (hook releases overlay hold, renderMode survives).
-      Full frontend suite 1944/1944, web tsc clean. Discovered post-walk (not during the §1
-      attestation); §1.1/§1.2 should be re-walked to confirm the eye toggle now works after a
-      radio switch before 61-03 compiles.
+      RESOLVED — FIXED INLINE (commit 4afad81). widgetActionStore.releaseLayerConfigField + the
+      visibility hook release the overlay's hold so the live toggle wins. Re-confirm in §1.1/§1.2.
+# Post-pause UI/UX fixes (also fixed inline, regression-tested; re-confirm during the re-walk):
+#   green radios + vertical orientation (de1cbfd), real layer names in picker (f2155bc),
+#   class-break table-context FROM-unknown (2a6c668), full-form seeding (1b837ba),
+#   pie tooltip dark-theme (b91fc1a), per-instance radio-group name collision (de1cbfd).
 ```
 
 ---
@@ -328,13 +341,12 @@ attested_on:
 
 ## Traceability
 
-| ROADMAP SC | Success Criterion | Covered by sections |
+| ROADMAP SC / Req | Success Criterion | Covered by |
 |---|---|---|
-| SC1 | Radio option switches map layer class-break render mode LIVE (no remount); reload resets to configured default (transient); viewer clicks LIVE with no permission error; nothing persists to shared dashboard | §1 (1.1, 1.2, 1.3) + §3 (3.1, 3.2) |
-| SC2 | Switch-replace isolation (renderMode+cb_config → renderMode-only reverts cb_config to baseline); out-of-allow-list patch rejected at save (operator-visible); NO filter chips + NO materialize during dispatch | §2 (2.1, 2.2, 2.3) |
-| SC3 | Frontend vitest 100% (deterministic), web+server tsc clean — automated gates | §0 P4 + §4 (4.1) → 61-01-AUTOMATED-GATES.md |
-| SC4 | Server vitest set-based gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky set); targeted v1.11 engine+radio specs 210/210; reload-resets-to-default (transient model confirmed) — automated gates | §0 P4 + §4 (4.1) → 61-01-AUTOMATED-GATES.md |
-
-| Requirement ID | Description | Sections |
-|---|---|---|
-| VERIFY-V111-01 | Live operator walk-through — prove the v1.11 programmable-widget chain end-to-end against the deployed system; all 4 SCs attested | §0–§5 (all) |
+| SC1 | Radio switches map layer render mode LIVE (no remount); reload resets to default (transient); viewer clicks LIVE, no permission error; nothing persists to shared dashboard | §1 (1.1-1.3) + §3 (3.1, 3.2) |
+| SC2 | Switch-replace isolation; out-of-allow-list patch rejected (operator-visible); NO filter chips + NO materialize during dispatch | §2 (2.1-2.3) |
+| SC3 | Frontend vitest 100%, web+server tsc clean — automated gates | §0 P4 + §4 (4.1) |
+| SC4 | Server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION; targeted v1.11 specs green; reload-resets-to-default | §0 P4 + §4 (4.1) |
+| RADIOUX-V111-01 | Layer-target option authored via the full-form side-by-side editor (not raw JSON); class-break authoring works; real layer name; themed radios | §2A (RX.1-RX.5) |
+| RADIOMULTI-V111-01 | One option drives multiple targets; option-level switch-replace drops stale targets; back-compat | §2B (RM.1-RM.4) |
+| VERIFY-V111-01 | Live operator walk-through — prove the v1.11 chain end-to-end; all SCs + new reqs attested | §0–§5 (all) |

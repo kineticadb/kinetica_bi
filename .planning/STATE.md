@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
 status: unknown
-stopped_at: "Phase 60.2 COMPLETE + verified passed 8/8 (RADIOMULTI-V111-01; multi-target radio options). 60.2-01 (model/dispatch/wiring: a079074/6acbd89/379de7d/f137033) + 60.2-02 (panel: d5d01a4/23fa2f6 — Task 1+2 then resumed after an API socket error to finish the spec). One option drives N targets via ONE setControlContribution; option-level switch-replace drops stale targets (tested); widgetActionStore byte-unchanged; back-compat normalizer. frontend 2036/2036, web tsc clean, no server diff. RESUME TARGET = Phase 61 (PAUSED mid-walk): re-walk §1.1/§1.2 (full-form editor + multi-target + green radios) + P2/§3 (viewer-safe) → finalize 61-UAT → 61-03 → close v1.11. ALL feature phases (58/58.1/59/60/60.1/60.2) now done; only the 61 verification gate remains."
-last_updated: "2026-06-13T05:56:43.354Z"
+stopped_at: "Phase 61 PREPPED for solo operator walk (2026-06-15). Automated gates REFRESHED at HEAD 0834447 — ALL PASS (frontend 2087/2087 [95 files], web+server tsc clean, ZERO server diff since 162e514 so server set-gate unchanged ⊆ TD-V16). 61-UAT.md rewritten into a turnkey checklist: live items (§1/§2/§3) RESET to PENDING (UI changed materially since the original walk) + NEW §2A RADIOUX-V111-01 (full-form editor: side-by-side, real layer name, class-break authoring works, themed radios) + NEW §2B RADIOMULTI-V111-01 (multi-target: add target, one-option-many-targets, option-level switch-replace, back-compat). All feature phases (58/58.1/59/60/60.1/60.2) done + theming-hardening pass. BLOCKED on operator: walk §0 P1-P3 + §1 + §2 + §2A + §2B + §3, fill 61-UAT statuses/overall_result. THEN: run 61-03 (compile 61-VERIFICATION, tick VERIFY-V111-01, mark Phase 61 + v1.11 COMPLETE)."
+last_updated: "2026-06-15T18:31:41Z"
 progress:
   total_phases: 7
   completed_phases: 6
