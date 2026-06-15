@@ -24,6 +24,9 @@
   --danger: #ef4444;
   --warning: #f59e0b;
   --success: var(--accent);
+  /* Readable text/icon color ON an --accent-filled surface (buttons, badges, avatar).
+     White reads on both the dark and light accent greens; flip here if --accent ever lightens. */
+  --on-accent: #ffffff;
   font-family: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 

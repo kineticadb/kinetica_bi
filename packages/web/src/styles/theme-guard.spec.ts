@@ -2,9 +2,10 @@
  * Theme guard — static-source assertion preventing hardcoded hex colors from
  * creeping back into components after the theming-hardening refactor.
  *
- * Scans every src/components/**\/*.tsx (excluding *.spec.tsx) for raw hex color
- * literals (#RGB / #RRGGBB). Components must use theme tokens (var(--accent),
- * var(--text), var(--danger), ...) or the text-* utility classes instead.
+ * Scans every src/components/**\/*.tsx (excluding *.spec.tsx) AND every component
+ * *.css for raw hex color literals (#RGB / #RRGGBB). Components/stylesheets must use
+ * theme tokens (var(--accent), var(--text), var(--danger), var(--on-accent), ...) or
+ * the text-* utility classes instead.
  *
  * Path resolution mirrors the existing static-assertion specs (e.g.
  * DataFilterRenderer.spec.tsx): paths resolve against process.cwd(), which vitest
@@ -44,17 +45,20 @@ const ALLOWLIST: ReadonlyArray<string> = [
   "charts/NumericLineConfigPanel.tsx",
 ];
 
-/** Recursively collect all *.tsx files under dir, excluding *.spec.tsx. */
-function collectTsx(dir: string): string[] {
+/**
+ * Recursively collect themed source files under dir: *.tsx (excluding *.spec.tsx)
+ * AND component *.css (component stylesheets must use tokens too, e.g. RolesPage.css).
+ */
+function collectThemed(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      out.push(...collectTsx(full));
+      out.push(...collectThemed(full));
     } else if (
       entry.isFile() &&
-      entry.name.endsWith(".tsx") &&
-      !entry.name.endsWith(".spec.tsx")
+      ((entry.name.endsWith(".tsx") && !entry.name.endsWith(".spec.tsx")) ||
+        entry.name.endsWith(".css"))
     ) {
       out.push(full);
     }
@@ -67,7 +71,7 @@ function collectTsx(dir: string): string[] {
 const HEX_RE = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/;
 
 describe("theme guard: no hardcoded hex colors in components", () => {
-  const files = collectTsx(COMPONENTS_DIR);
+  const files = collectThemed(COMPONENTS_DIR);
 
   it("finds component source files to scan", () => {
     expect(files.length).toBeGreaterThan(0);
