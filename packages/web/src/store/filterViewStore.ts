@@ -41,16 +41,26 @@ export type FilterViewState = {
   // dep in Effect 2 to trigger re-fire specifically on materialize-error clearance, without
   // triggering re-fire on markMaterializing (gate up) or setView (viewName dep handles that).
   clearMaterializingVersion: number;
+  // Phase 63 (DVDRILL-V112-05): dv-scoped PARALLEL views slice keyed by dynamicViewId.
+  // A dv id and a table id are BOTH numbers — views[dvId] would COLLIDE with views[tableId].
+  // The dv actions below mirror setView/markMaterializing/clearView; the table path stays
+  // byte-unchanged. NOTE: no clearDvMaterializing — the dv-bound widget gates its chart query
+  // on dvStatus, not on this materializing flag (see 63-03).
+  dvViews: Record<number, FilterViewEntry>; // keyed by dynamicViewId — un-collidable with views (tableId)
   setView: (tableId: number, view: { viewName: string; expiresAt: number }, dashboardId: number) => void;
   clearView: (tableId: number) => void;
   markMaterializing: (tableId: number, dashboardId: number) => void;
   clearMaterializing: (tableId: number) => void;
   bumpMaterializeVersion: (tableId: number) => void;
+  setDvView: (dynamicViewId: number, view: { viewName: string; expiresAt: number }, dashboardId: number) => void;
+  markDvMaterializing: (dynamicViewId: number, dashboardId: number) => void;
+  clearDvView: (dynamicViewId: number) => void;
   reset: () => void;
 };
 
 export const useFilterViewStore = create<FilterViewState>((set) => ({
   views: {},
+  dvViews: {},
   clearMaterializingVersion: 0,
 
   // V13-P-01 lock: setView is the POST-200 ONLY action. Phase 15 caller pattern is:
@@ -122,8 +132,42 @@ export const useFilterViewStore = create<FilterViewState>((set) => ({
       return { views: { ...state.views, [tableId]: nextEntry } };
     }),
 
+  // Phase 63 (DVDRILL-V112-05): dv-scoped actions — mirror setView/markMaterializing/clearView
+  // VERBATIM, swapping state.views → state.dvViews and the key to dynamicViewId. Reuse FilterViewEntry.
+  setDvView: (dynamicViewId, { viewName, expiresAt }, dashboardId) =>
+    set((state) => {
+      const prev = state.dvViews[dynamicViewId];
+      const sameName = prev?.viewName === viewName;
+      const nextEntry: FilterViewEntry = {
+        viewName,
+        expiresAt,
+        materializing: false,
+        materializeVersion: sameName ? prev!.materializeVersion + 1 : 1,
+        dashboardId,
+      };
+      return { dvViews: { ...state.dvViews, [dynamicViewId]: nextEntry } };
+    }),
+
+  markDvMaterializing: (dynamicViewId, dashboardId) =>
+    set((state) => {
+      const prev = state.dvViews[dynamicViewId];
+      const nextEntry: FilterViewEntry = prev
+        ? { ...prev, materializing: true, dashboardId }
+        : { viewName: "", expiresAt: 0, materializing: true, materializeVersion: 0, dashboardId };
+      return { dvViews: { ...state.dvViews, [dynamicViewId]: nextEntry } };
+    }),
+
+  clearDvView: (dynamicViewId) =>
+    set((state) => {
+      if (!(dynamicViewId in state.dvViews)) return state; // no-op (delete-key semantics, mirrors clearView)
+      const next = { ...state.dvViews };
+      delete next[dynamicViewId];
+      return { dvViews: next };
+    }),
+
   // Internal-only — Phase 15 LIFE-V13-03 / LIFE-V13-04 will wire reset() into App.tsx and
   // DashboardsPage.tsx alongside the existing useFilterStore.reset() calls. Phase 14 ships
   // the action; no Phase 14 wiring (CONTEXT.md § "Reset wiring scope" lock).
-  reset: () => set({ views: {}, clearMaterializingVersion: 0 }),
+  // Phase 63: zeroes the dvViews slice too (DVDRILL-V112-05 lifecycle — no new reset call sites).
+  reset: () => set({ views: {}, dvViews: {}, clearMaterializingVersion: 0 }),
 }));
