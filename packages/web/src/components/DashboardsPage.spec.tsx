@@ -578,6 +578,155 @@ describe("Phase 30 — spatial chips in FilterBar (CHIP-V15-01/02)", () => {
 });
 
 // ===========================================================================
+// Phase 63 Plan 04 (DVDRILL-V112-05): dv-filter chips in the FilterBar.
+// A dv drill lands in dvFilters[dynamicViewId] (63-01). It must surface as a
+// removable chip labeled by the dynamic-view NAME (resolved from dynamicViews)
+// + the clicked value, in the SAME filter bar as table-filter + spatial chips.
+// Removing the chip calls removeDvFilter(dvId, column). Table-filter + spatial
+// chips remain unchanged (regression).
+// ===========================================================================
+describe("Phase 63 — dv-filter chips in FilterBar (DVDRILL-V112-05)", () => {
+  const dashboardId = 1;
+  const tableId = 42;
+  const dvId = 7;
+  const dashboard = {
+    id: dashboardId,
+    name: "Test Dashboard",
+    created_at: "2026-05-12T00:00:00Z",
+    updated_at: "2026-05-12T00:00:00Z",
+  };
+  const dashboardTable = {
+    id: tableId,
+    schema_name: "demo",
+    table_name: "trips",
+    columns: { region: "string", zone: "string" },
+  };
+  const sampleDv: DynamicViewRow = {
+    id: dvId,
+    dashboard_id: dashboardId,
+    source_table_id: tableId,
+    name: "My DV",
+    template_sql: "SELECT region FROM {view} GROUP BY region",
+    max_records: 10000,
+    columns_json: null,
+    created_at: "",
+    updated_at: "",
+  };
+
+  beforeEach(() => {
+    seedDesignerStore();
+    useSpatialFilterStore.getState().reset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([dashboardTable]);
+    (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listDynamicViews as ReturnType<typeof vi.fn>).mockReset();
+    (listDynamicViews as ReturnType<typeof vi.fn>).mockResolvedValue({
+      dynamic_views: [sampleDv],
+    });
+  });
+
+  const openDashboard = async () => {
+    const utils = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const openBtn = await screen.findByRole("button", { name: /^open$/i });
+    await userEvent.click(openBtn);
+    await waitFor(() => expect(listWidgets).toHaveBeenCalled());
+    // Wait for the dynamic-view list to settle so the dv-name lookup resolves.
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    return utils;
+  };
+
+  it("renders a dv-filter chip labeled by the dynamic-view NAME + the clicked value", async () => {
+    act(() => {
+      useFilterStore.getState().addDvFilter(dvId, {
+        column: "region", value: "EAST", dataType: "string", addedAt: Date.now(),
+      });
+    });
+    await openDashboard();
+    // The dv chip group's label is the dv NAME ("My DV"), not "table 7" / "dynamic view 7".
+    const dvNameLabel = await screen.findByText("My DV");
+    expect(dvNameLabel).toBeInTheDocument();
+    expect(dvNameLabel.className).toContain("filter-bar-table");
+    // The chip text carries the clicked value (buildChipText output includes the value).
+    const chipText = await screen.findByText(/EAST/);
+    const chipSpan = chipText.closest(".filter-bar-chip");
+    expect(chipSpan).not.toBeNull();
+    // Dismiss button uses the shared chip-dismiss class (theme-token parity with table chips).
+    const dismissBtn = await screen.findByLabelText("Remove filter region");
+    expect(dismissBtn.className).toContain("filter-bar-chip-dismiss");
+  });
+
+  it("clicking the dv chip × calls removeDvFilter → dvFilters[dvId] becomes empty", async () => {
+    act(() => {
+      useFilterStore.getState().addDvFilter(dvId, {
+        column: "region", value: "EAST", dataType: "string", addedAt: Date.now(),
+      });
+    });
+    await openDashboard();
+    expect(useFilterStore.getState().dvFilters[dvId]).toHaveLength(1);
+    const dismissBtn = await screen.findByLabelText("Remove filter region");
+    await userEvent.click(dismissBtn);
+    await waitFor(() => {
+      const dvFilters = useFilterStore.getState().dvFilters[dvId] ?? [];
+      expect(dvFilters).toHaveLength(0);
+    });
+    // Chip gone from the DOM after the store update propagates.
+    await waitFor(() => {
+      expect(screen.queryByText("My DV")).toBeNull();
+    });
+  });
+
+  it("dv chip group 'Clear all' calls clearDvFilters → dvFilters[dvId] empties", async () => {
+    act(() => {
+      useFilterStore.getState().addDvFilter(dvId, {
+        column: "region", value: "EAST", dataType: "string", addedAt: Date.now(),
+      });
+    });
+    await openDashboard();
+    expect(useFilterStore.getState().dvFilters[dvId]).toHaveLength(1);
+    const clearAllBtn = await screen.findByRole("button", { name: "Clear all" });
+    await userEvent.click(clearAllBtn);
+    await waitFor(() => {
+      const dvFilters = useFilterStore.getState().dvFilters[dvId] ?? [];
+      expect(dvFilters).toHaveLength(0);
+    });
+  });
+
+  it("falls back to a generic label when the dv id is not in dynamicViews", async () => {
+    const orphanDvId = 999;
+    act(() => {
+      useFilterStore.getState().addDvFilter(orphanDvId, {
+        column: "region", value: "WEST", dataType: "string", addedAt: Date.now(),
+      });
+    });
+    await openDashboard();
+    // Generic fallback label per the dv-name lookup `?? \`dynamic view ${dvId}\``.
+    expect(await screen.findByText(`dynamic view ${orphanDvId}`)).toBeInTheDocument();
+  });
+
+  it("regression: a table-filter chip (filters[tableId]) still renders + dismisses unchanged", async () => {
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, {
+        column: "zone", value: "North", dataType: "string", addedAt: Date.now(),
+      });
+    });
+    await openDashboard();
+    // The source-table name resolves (schema.table) for the table-filter row.
+    expect(await screen.findByText("demo.trips")).toBeInTheDocument();
+    const dismissBtn = await screen.findByLabelText("Remove filter zone");
+    expect(dismissBtn.className).toContain("filter-bar-chip-dismiss");
+    await userEvent.click(dismissBtn);
+    await waitFor(() => {
+      const colFilters = useFilterStore.getState().filters[tableId] ?? [];
+      expect(colFilters).toHaveLength(0);
+    });
+  });
+});
+
+// ===========================================================================
 // Phase 34 Plan 04 (DV-V16-08): "Dynamic Views" action-bar button + modal mount
 // ===========================================================================
 describe("Phase 34 — Dynamic Views action-bar button (DV-V16-08)", () => {
