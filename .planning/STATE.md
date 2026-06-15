@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
-status: milestone_complete
-stopped_at: "v1.11 (Programmable Widgets — Cross-Widget Control) COMPLETE. Phase 61 verification PASSED (last phase): 61-UAT live operator walk overall_result=passed (23/23 items, 2026-06-15) + 61-01 gates refreshed ALL PASS at HEAD 0834447 (frontend 2087/2087, web+server tsc clean, zero server diff). 61-VERIFICATION.md compiled (overall_status=passed, 4/4 SCs + RADIOUX + RADIOMULTI). VERIFY-V111-01 ticked Complete. All 13 v1.11 requirements satisfied; GAP-61-01/02 resolved; no open gaps. NEXT: /gsd:complete-milestone 1.11 (archive milestone, prep next). Optional: push (shared remote — fetch first, never force; 60+ local commits ahead)."
-last_updated: "2026-06-15T19:54:18.938Z"
+status: unknown
+stopped_at: Completed 60.2-01-PLAN.md — multi-target radio option model + dispatch + wiring
+last_updated: "2026-06-15T19:58:31.289Z"
 progress:
   total_phases: 7
   completed_phases: 6
