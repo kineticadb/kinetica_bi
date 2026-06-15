@@ -1152,7 +1152,10 @@ const PieRenderer = ({
             />
           ))}
         </Pie>
-        {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />}
+        {/* itemStyle/labelStyle force the "name : value" line to the theme text color — for a pie the
+            Cell fills don't flow into the tooltip item color, so it would default to dark (unreadable
+            on the dark --panel). bar/line tooltips inherit the bright series color and don't need this. */}
+        {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} itemStyle={{ color: "var(--text)" }} labelStyle={{ color: "var(--text)" }} />}
         {showLegend && <Legend />}
       </PieChart>
     </ResponsiveContainer>
