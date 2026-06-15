@@ -532,6 +532,11 @@ const DashboardOpen = ({
   // (not a hot widget) so the cross-table re-render cost is acceptable here. Hot widgets
   // continue using the table-scoped selector at filters[tableId] (AggregatedWidgetRenderer).
   const allStoreFilters = useFilterStore((s) => s.filters);
+  // Phase 63 (DVDRILL-V112-05): subscribe to the dv-scoped slice so the FilterBar
+  // renders removable chips for dv drill-down filters. Whole-map subscribe is acceptable
+  // here for the same reason as allStoreFilters — DashboardOpen is the page-level component,
+  // not a hot widget; filterVersion (subscribed below) drives the re-render on mutation.
+  const allDvFilters = useFilterStore((s) => s.dvFilters);
   const filterVersion = useFilterStore((s) => s.filterVersion);
   void filterVersion; // referenced for dep tracking; not directly used in JSX
 
@@ -863,7 +868,9 @@ const DashboardOpen = ({
         const hasAnyStaticClause = views.some((v) => !!v.filter_clause?.trim());
         const hasAnyStoreFilters = Object.values(allStoreFilters).some((arr) => arr.length > 0);
         const hasAnySpatialChips = tableIdsWithSpatialChips.size > 0;
-        if (!hasAnyStaticClause && !hasAnyStoreFilters && !hasAnySpatialChips) return null;
+        // Phase 63 (DVDRILL-V112-05): also show the bar when any dv has active drill filters.
+        const hasAnyDvFilters = Object.values(allDvFilters).some((arr) => arr.length > 0);
+        if (!hasAnyStaticClause && !hasAnyStoreFilters && !hasAnySpatialChips && !hasAnyDvFilters) return null;
 
         // Build a map keyed by tableId so each table renders exactly once even if it has both
         // a `views` row AND active store filters.
@@ -970,6 +977,45 @@ const DashboardOpen = ({
                       Clear all
                     </button>
                   )}
+                </div>
+              );
+            })}
+            {/* Phase 63 (DVDRILL-V112-05): dv-filter chip group — a SIBLING block to the
+                table-keyed items above (NOT mixed into them, because a dvId and a tableId
+                are both numbers and would collide). Keyed by dynamicViewId, labeled by the
+                dynamic-view NAME (resolved from the in-scope `dynamicViews` list), removable
+                via removeDvFilter / clearDvFilters. Reuses the EXISTING chip classes so the
+                styling / theme tokens match the table + spatial chips (UI-consistency lock). */}
+            {Object.entries(allDvFilters).map(([dvIdStr, dvFilters]) => {
+              if (dvFilters.length === 0) return null;
+              const dvId = Number(dvIdStr);
+              const dvName =
+                dynamicViews.find((dv) => dv.id === dvId)?.name ?? `dynamic view ${dvId}`;
+              return (
+                <div key={`dv-${dvId}`} className="filter-bar-item">
+                  <span className="filter-bar-table">{dvName}</span>
+                  <div className="filter-bar-chips">
+                    {dvFilters.map((f) => (
+                      <span key={`dv-${dvId}-${f.column}`} className="filter-bar-chip">
+                        {buildChipText(f.column, f.value, f.dataType, f.operator)}
+                        <button
+                          type="button"
+                          className="filter-bar-chip-dismiss"
+                          aria-label={`Remove filter ${f.column}`}
+                          onClick={() => useFilterStore.getState().removeDvFilter(dvId, f.column)}
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="filter-bar-clear"
+                    onClick={() => useFilterStore.getState().clearDvFilters(dvId)}
+                  >
+                    Clear all
+                  </button>
                 </div>
               );
             })}

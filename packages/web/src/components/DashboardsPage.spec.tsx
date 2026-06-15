@@ -597,9 +597,11 @@ describe("Phase 63 — dv-filter chips in FilterBar (DVDRILL-V112-05)", () => {
   };
   const dashboardTable = {
     id: tableId,
-    schema_name: "demo",
-    table_name: "trips",
+    schema: "demo",
+    name: "trips",
     columns: { region: "string", zone: "string" },
+    created_at: "",
+    updated_at: "",
   };
   const sampleDv: DynamicViewRow = {
     id: dvId,
