@@ -1065,19 +1065,40 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.delete("/api/filter/materialize", requireConfig, asyncHandler(async (req, res) => {
     const dashboardId = Number(req.query.dashboardId);
-    const tableId = Number(req.query.tableId);
+    // v1.12 DVDRILL-V112-03 (server): optional dynamicViewId query param selects
+    // the dv path — drop the dv-filter view (_kbi_filt_..._dv<id>_s...). Absent →
+    // the table path, byte-unchanged.
+    const dynamicViewIdRaw = req.query.dynamicViewId;
+    const hasDvId = dynamicViewIdRaw !== undefined && dynamicViewIdRaw !== "";
+    const dynamicViewId = hasDvId ? Number(dynamicViewIdRaw) : undefined;
 
-    if (!Number.isFinite(dashboardId) || !Number.isFinite(tableId)) {
-      return res.status(400).json({ error: "dashboardId and tableId query params are required numbers." });
+    if (!Number.isFinite(dashboardId)) {
+      return res.status(400).json({ error: "dashboardId query param is required (number)." });
     }
 
     const authedReq = req as AuthedRequest;
-    const viewName = buildFilterViewName({
-      username: authedReq.user!.creds.username,
-      sessionId: authedReq.user!.sid,
-      dashboardId,
-      tableId,
-    });
+    let viewName: string;
+    if (dynamicViewId !== undefined && Number.isFinite(dynamicViewId)) {
+      // dv path — drop the dv-filter view.
+      viewName = buildFilterViewName({
+        username: authedReq.user!.creds.username,
+        sessionId: authedReq.user!.sid,
+        dashboardId,
+        dynamicViewId,
+      });
+    } else {
+      // table path — UNCHANGED.
+      const tableId = Number(req.query.tableId);
+      if (!Number.isFinite(tableId)) {
+        return res.status(400).json({ error: "dashboardId and tableId query params are required numbers." });
+      }
+      viewName = buildFilterViewName({
+        username: authedReq.user!.creds.username,
+        sessionId: authedReq.user!.sid,
+        dashboardId,
+        tableId,
+      });
+    }
 
     await kineticaSqlHelper(authedReq, `DROP TABLE IF EXISTS ${viewName}`, {
       route: "DELETE /api/filter/materialize",
