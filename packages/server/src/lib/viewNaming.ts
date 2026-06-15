@@ -42,20 +42,50 @@ export type FilterViewNameArgs = {
   username: string;
   sessionId: string;
   dashboardId: number;
-  tableId: number;
+  /**
+   * Table-path source id. Required UNLESS `dynamicViewId` is supplied.
+   * When present (and `dynamicViewId` absent), emits the byte-unchanged
+   * `_t<tableId>` segment.
+   */
+  tableId?: number;
+  /**
+   * Dynamic-view-path source id (DVDRILL-V112-03). When present, swaps the
+   * `_t<tableId>` segment for `_dv<dynamicViewId>` so the dv-filter view name
+   * is distinct from BOTH the table-filter view (`_t<id>`) and the dv's own
+   * materialized view (`_kbi_dv_..._<id>`). Exactly one of `tableId` /
+   * `dynamicViewId` must be provided (both-undefined throws — no silent
+   * `_tundefined`).
+   */
+  dynamicViewId?: number;
 };
 
 /**
  * Build the deterministic transient-view name for a given
- * (user, session, dashboard, table) tuple.
+ * (user, session, dashboard, source) tuple.
  *
- * Shape: `_kbi_filt_u<sanitizedUserId>_d<dashId>_t<tableId>_s<sessionShort>`
+ * Shape (table path):  `_kbi_filt_u<sanitizedUserId>_d<dashId>_t<tableId>_s<sessionShort>`
+ * Shape (dv path):     `_kbi_filt_u<sanitizedUserId>_d<dashId>_dv<dynamicViewId>_s<sessionShort>`
+ *
+ * Exactly one of `tableId` / `dynamicViewId` is required — supplying neither
+ * throws (a runtime guard; since both fields are optional, tsc can no longer
+ * catch a caller that supplies neither, which would silently emit
+ * `_tundefined`). When `dynamicViewId` is absent the output is byte-identical
+ * to the original table-path form (back-compat regression-locked).
  *
  * Pure / deterministic: same input always produces the same output.
  * No Date.now, no random, no env reads.
  */
 export function buildFilterViewName(args: FilterViewNameArgs): string {
+  if (args.dynamicViewId === undefined && args.tableId === undefined) {
+    throw new Error(
+      "buildFilterViewName: tableId or dynamicViewId required"
+    );
+  }
   const u = sanitizeForViewName(args.username);
   const s = args.sessionId.slice(0, 8);
-  return `_kbi_filt_u${u}_d${args.dashboardId}_t${args.tableId}_s${s}`;
+  const segment =
+    args.dynamicViewId !== undefined
+      ? `dv${args.dynamicViewId}`
+      : `t${args.tableId}`;
+  return `_kbi_filt_u${u}_d${args.dashboardId}_${segment}_s${s}`;
 }
