@@ -439,6 +439,56 @@ describe("dropFilterView", () => {
     ]);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
+
+  // v1.12 Phase 63 (DVDRILL-V112-03 client side): dv-variant DELETE. The Phase 62 server
+  // reads ?dynamicViewId= and drops the dv-filter view. Cache key mirrors materializeFilter
+  // (kind-scoped) so a dv drop and a table drop on the same numeric id never collapse.
+  it("DELETEs with dynamicViewId in the query string (dv path — no tableId)", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ dropped: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await dropFilterView({ dashboardId: 2, dynamicViewId: 7 });
+    expect(result).toEqual({ dropped: true });
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toMatch(/\/api\/filter\/materialize\?dashboardId=2&dynamicViewId=7$/);
+    expect(String(url)).not.toMatch(/tableId=/);
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("table-path DELETE remains byte-unchanged (tableId in query, no dynamicViewId)", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ dropped: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await dropFilterView({ dashboardId: 4, tableId: 7 });
+    const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toMatch(/\/api\/filter\/materialize\?dashboardId=4&tableId=7$/);
+    expect(String(url)).not.toMatch(/dynamicViewId=/);
+  });
+
+  it("post-VERIFY: a dv drop and a table drop sharing the same numeric id do NOT collapse (kind-scoped cache key)", async () => {
+    let resolveA: (response: Response) => void = () => {};
+    let resolveB: (response: Response) => void = () => {};
+    const promiseA = new Promise<Response>((res) => { resolveA = res; });
+    const promiseB = new Promise<Response>((res) => { resolveB = res; });
+    fetchSpy.mockReturnValueOnce(promiseA).mockReturnValueOnce(promiseB);
+
+    const tableDrop = dropFilterView({ dashboardId: 5, tableId: 7 });
+    const dvDrop = dropFilterView({ dashboardId: 5, dynamicViewId: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    resolveA(new Response(JSON.stringify({ dropped: true }), { status: 200 }));
+    resolveB(new Response(JSON.stringify({ dropped: true }), { status: 200 }));
+    await Promise.all([tableDrop, dvDrop]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 // POPUP-V14-02..05 — infoQuery client helper spec.
