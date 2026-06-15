@@ -45,6 +45,7 @@ import {
 import { buildNumericLineSql } from "../../lib/buildNumericLineSql";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import { DEFAULT_COLOR_THEME, MAX_METRICS } from "./TimelineConfigPanel";
 import type { NumericLineConfig } from "./NumericLineConfigPanel";
 
@@ -417,7 +418,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
             />
           ))}
           {showTooltip && (
-            <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />
+            <Tooltip {...RECHARTS_TOOLTIP_PROPS} />
           )}
           {showLegend && metrics.length > 1 && <Legend verticalAlign="bottom" />}
 

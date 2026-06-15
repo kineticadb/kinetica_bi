@@ -54,6 +54,7 @@ import {
 import { buildTimelineSql } from "../../lib/buildTimelineSql";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import { DEFAULT_COLOR_THEME, MAX_METRICS, type TimelineConfig } from "./TimelineConfigPanel";
 
 type Props = {
@@ -459,7 +460,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
             />
           ))}
           {showTooltip && (
-            <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />
+            <Tooltip {...RECHARTS_TOOLTIP_PROPS} />
           )}
           {showLegend && metrics.length > 1 && <Legend verticalAlign="bottom" />}
 

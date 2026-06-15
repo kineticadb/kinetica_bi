@@ -51,6 +51,15 @@ import { formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } fro
 import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
+import {
+  RECHARTS_TOOLTIP_PROPS,
+  DEFAULT_CHART_PALETTE,
+  DEFAULT_BAR_COLOR,
+  DEFAULT_LINE_COLOR,
+  DEFAULT_SCATTER_COLOR,
+  DEFAULT_TABLE_BAR_COLOR,
+  DEFAULT_BIGNUMBER_COLOR,
+} from "../../lib/chartTheme";
 
 type Props = {
   widget: WidgetDto;
@@ -848,7 +857,7 @@ const BarRenderer = ({
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   const { x, y } = resolveKeys(data, config);
-  const color = (config.color as string) || "#22c55e";
+  const color = (config.color as string) || DEFAULT_BAR_COLOR;
   const radius = (config.barRadius as number) ?? 4;
   const showGrid = config.showGrid !== false;
   const showLegend = config.showLegend !== false;
@@ -924,7 +933,7 @@ const BarRenderer = ({
             <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={yLabelObj} />
           </>
         )}
-        {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />}
+        {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
         {showLegend && <Legend />}
         <Bar
           dataKey={y}
@@ -973,7 +982,7 @@ const LineRenderer = ({
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   const { x, y } = resolveKeys(data, config);
-  const color = (config.color as string) || "#38bdf8";
+  const color = (config.color as string) || DEFAULT_LINE_COLOR;
   const strokeWidth = (config.strokeWidth as number) ?? 2;
   const curved = config.curved !== false;
   const showDots = config.showDots !== false;
@@ -1033,7 +1042,7 @@ const LineRenderer = ({
           {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
           <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
           <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />}
+          {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
           {showLegend && <Legend />}
           <Area
             type={curved ? "monotone" : "linear"}
@@ -1055,7 +1064,7 @@ const LineRenderer = ({
           {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
           <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
           <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />}
+          {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
           {showLegend && <Legend />}
           <Line
             type={curved ? "monotone" : "linear"}
@@ -1071,7 +1080,6 @@ const LineRenderer = ({
   );
 };
 
-const DEFAULT_PALETTE = ["#22c55e", "#38bdf8", "#a855f7", "#f59e0b", "#f97316", "#ef4444"];
 
 const PieRenderer = ({
   data,
@@ -1092,7 +1100,7 @@ const PieRenderer = ({
     config.color1, config.color2, config.color3,
     config.color4, config.color5, config.color6,
   ].filter(Boolean) as string[];
-  const palette = colors.length > 0 ? colors : DEFAULT_PALETTE;
+  const palette = colors.length > 0 ? colors : DEFAULT_CHART_PALETTE;
 
   // Phase 10 DRILL-04: dim-peers transient via per-Cell fillOpacity comparison
   // against clickedElement (the nameKey value of the clicked slice).
@@ -1155,7 +1163,7 @@ const PieRenderer = ({
         {/* itemStyle/labelStyle force the "name : value" line to the theme text color — for a pie the
             Cell fills don't flow into the tooltip item color, so it would default to dark (unreadable
             on the dark --panel). bar/line tooltips inherit the bright series color and don't need this. */}
-        {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} itemStyle={{ color: "var(--text)" }} labelStyle={{ color: "var(--text)" }} />}
+        {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} itemStyle={{ color: "var(--text)" }} labelStyle={{ color: "var(--text)" }} />}
         {showLegend && <Legend />}
       </PieChart>
     </ResponsiveContainer>
@@ -1173,7 +1181,7 @@ const ScatterRenderer = ({
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   const { x, y } = resolveKeys(data, config);
-  const color = (config.color as string) || "#a855f7";
+  const color = (config.color as string) || DEFAULT_SCATTER_COLOR;
   const dotSize = (config.dotSize as number) ?? 6;
   const showGrid = config.showGrid !== false;
   const showTooltip = config.showTooltip !== false;
@@ -1230,7 +1238,7 @@ const ScatterRenderer = ({
           name={(config.yLabel as string) || y}
           type="number"
         />
-        {showTooltip && <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }} />}
+        {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
         <Scatter data={data} fill={color}>
           {data.map((row, i) => (
             <Cell
@@ -1265,7 +1273,7 @@ const TableRenderer = ({
   const compact = config.compact === true;
   const striped = config.striped !== false;
   const showValueBars = config.showValueBars !== false; // default ON
-  const barColor = (config.barColor as string) || "#8b5cf6";
+  const barColor = (config.barColor as string) || DEFAULT_TABLE_BAR_COLOR;
 
   // Aggregated-only contract: ChartConfigPanel emits SQL of the form
   //   SELECT <groupByColumn>, AGG(<metricColumn>) AS value FROM ... GROUP BY ...
@@ -1404,7 +1412,7 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
   const rawValue = data[0]?.[valueField];
   const prefix = (config.prefix as string) || "";
   const suffix = (config.suffix as string) || "";
-  const color = (config.color as string) || "#22c55e";
+  const color = (config.color as string) || DEFAULT_BIGNUMBER_COLOR;
   const label = (config.label as string) || valueField;
   const subLabel = (config.subLabel as string) || "";
 
