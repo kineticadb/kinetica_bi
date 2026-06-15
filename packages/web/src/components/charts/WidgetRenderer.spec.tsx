@@ -2829,3 +2829,195 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
     expect(matCalls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7)).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Phase 63 Plan 03 (DVDRILL-V112-04): dv read-path FROM-swap precedence
+// ============================================================================
+//
+// A dv-bound widget's data query FROM-swaps to the filtered-dv view
+// (dvViews[dvId].viewName) when a dv filter is active; falls back to the raw dv
+// view (dynamicViewStore viewName) when cleared. Precedence filtered-dv → dv.
+// Over-threshold / pending dv states preserve the existing UX (no runSql crash).
+// ============================================================================
+
+describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedence", () => {
+  beforeEach(() => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockReset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+  });
+
+  const dvBoundWidget: WidgetDto = makeAggregatedWidget({
+    id: 1,
+    config: {
+      sql: "SELECT g, COUNT(*) AS value FROM ki_home.taxi GROUP BY g LIMIT 100",
+      tableId: 99,
+      dynamicViewId: 7,
+    },
+  });
+
+  it("FROM-swaps to the filtered-dv view name when a dv-filter view is present", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_u1_d1_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+      // Filtered-dv view present (the dv-filter materialize completed).
+      useFilterViewStore.getState().setDvView(
+        7,
+        { viewName: "_kbi_filt_d1_dv7_sABC", expiresAt: Date.now() + 300000 },
+        1,
+      );
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    await waitFor(() => expect(clientModule.runSql).toHaveBeenCalled());
+    const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    const usedFiltered = calls.some(
+      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_filt_d1_dv7_sABC"),
+    );
+    const usedRaw = calls.some(
+      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_dv_u1_d1_7"),
+    );
+    expect(usedFiltered).toBe(true);
+    // Precedence: the filtered-dv view wins over the raw dv view.
+    expect(usedRaw).toBe(false);
+  });
+
+  it("reverts to the raw dv view when the dv-filter view is cleared", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_u1_d1_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+      // No dv-filter view (cleared) → falls back to the raw dv view.
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    await waitFor(() => expect(clientModule.runSql).toHaveBeenCalled());
+    const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    const usedRaw = calls.some(
+      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_dv_u1_d1_7"),
+    );
+    expect(usedRaw).toBe(true);
+  });
+
+  it("over_threshold dv with a dv filter present → existing empty-state UX, no runSql crash", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_u1_d1_7",
+        status: "over_threshold",
+        reason: "exceeds_max_records",
+      });
+      // Stray dv filter present — must not cause a runSql against a non-existent FROM.
+      useFilterStore.getState().addDvFilter(7, { column: "g", value: "A", dataType: "string", addedAt: Date.now() });
+    });
+
+    const { container } = render(
+      wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]),
+    );
+
+    expect(container.querySelector(".widget-over-threshold")).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(clientModule.runSql).not.toHaveBeenCalled();
+  });
+});
+
+describe("RecordsTableRenderer Phase 63 — dv read-path FROM-swap precedence", () => {
+  beforeEach(() => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockReset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+  });
+
+  const dvBoundRecordsWidget: WidgetDto = makeRecordsWidget({
+    id: 2,
+    config: { table: "ki_home.taxi", tableId: 99, columns: "g,value", pageSize: 25, dynamicViewId: 7 },
+  });
+
+  it("page-fetch + count FROM-swap to the filtered-dv view when present", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      column_headers: ["g", "value"],
+      column_1: ["A"],
+      column_2: [10],
+    });
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_records_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+      useFilterViewStore.getState().setDvView(
+        7,
+        { viewName: "_kbi_filt_records_dv7", expiresAt: Date.now() + 300000 },
+        1,
+      );
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundRecordsWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const swappedPage = calls.some(
+        (args) => typeof args[0] === "string"
+          && (args[0] as string).includes("FROM _kbi_filt_records_dv7")
+          && (args[0] as string).includes("LIMIT 25"),
+      );
+      const swappedCount = calls.some(
+        (args) => typeof args[0] === "string"
+          && (args[0] as string) === "SELECT COUNT(*) AS total FROM _kbi_filt_records_dv7",
+      );
+      expect(swappedPage).toBe(true);
+      expect(swappedCount).toBe(true);
+    });
+    // Raw dv view must NOT be used while the filtered-dv view is present.
+    const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    const usedRaw = calls.some(
+      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_dv_records_7"),
+    );
+    expect(usedRaw).toBe(false);
+  });
+
+  it("page-fetch reverts to raw dv view when the dv-filter view is cleared", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      column_headers: ["g", "value"],
+      column_1: ["A"],
+      column_2: [10],
+    });
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_records_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundRecordsWidget} />, 1, [], [makeDvRow({ id: 7 })]));
+
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const usedRaw = calls.some(
+        (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_dv_records_7"),
+      );
+      expect(usedRaw).toBe(true);
+    });
+  });
+});

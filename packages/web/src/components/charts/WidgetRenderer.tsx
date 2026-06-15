@@ -424,6 +424,17 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // narrow-your-filters message (a filter IS applied but its result is too large).
   const dvReason = dvEntry?.reason;
 
+  // Phase 63 (DVDRILL-V112-04): the FILTERED-dv view entry (the dv-filter sub-view materialized
+  // off dvFilters[dvId]). PITFALL C-02 lock — scope to s.dvViews[dynamicViewId], NEVER the whole
+  // dvViews map. The read-path FROM-swap prefers this view over the raw dv view (precedence
+  // filtered-dv → dv). dvFilterMaterializing suspends the chart query while the dv-filter
+  // materialize is in flight (mirrors the table-path materializing suspend gate).
+  const dvFilterEntry = useFilterViewStore((s) =>
+    dynamicViewId !== undefined ? s.dvViews[dynamicViewId] : undefined,
+  );
+  const dvFilterViewName = dvFilterEntry?.viewName;
+  const dvFilterMaterializing = dvFilterEntry?.materializing ?? false;
+
   // Phase 15-02: dashboardId from DashboardContext (15-01 ships the provider).
   // Throws if no provider — tests MUST wrap in <DashboardContextProvider dashboardId={N}>.
   // Phase 30 (MAT-V15-02): read both dashboardId and widgets from context. widgets feeds
@@ -617,6 +628,11 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // dv viewName during cascade re-materialize.
     if (dynamicViewId !== undefined && dvStatus === "pending") return;
 
+    // Phase 63 (DVDRILL-V112-04): suspend the chart query while a dv-FILTER materialize is in
+    // flight (mirrors the table-path `materializing` gate) so the chart doesn't race against a
+    // stale dv-filter view name.
+    if (dynamicViewId !== undefined && dvFilterMaterializing) return;
+
     // Phase 35 Plan 05: short-circuit for non-materialized dv statuses. Render-body status
     // gates below render the appropriate empty/error JSX; here we just skip runSql.
     if (dynamicViewId !== undefined) {
@@ -648,13 +664,17 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // Pitfall 4 defense-in-depth: materialized with empty viewName is an internal error.
     let effectiveViewName: string | undefined;
     if (dynamicViewId !== undefined) {
-      if (!dvViewName) {
+      // Phase 63 (DVDRILL-V112-04): precedence filtered-dv → dv. Prefer the filtered-dv view
+      // (dvFilterViewName) when a dv filter is active; fall back to the raw dv view.
+      // `||` not `??` — the markDvMaterializing empty-string placeholder must fall through.
+      const dvSource = dvFilterViewName || dvViewName;
+      if (!dvSource) {
         setData([]);
         setLoading(false);
         setError("Internal error: materialized dynamic view has no viewName");
         return;
       }
-      effectiveViewName = dvViewName;
+      effectiveViewName = dvSource;
     } else {
       effectiveViewName = viewName;
     }
@@ -756,6 +776,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // re-fires when the dv-binding flips OR when the dynamic-view's status/viewName changes
     // (e.g., pending → materialized after orchestrator cascade completes).
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Phase 63 (DVDRILL-V112-04): dvFilterViewName + dvFilterMaterializing are deps so the chart
+    // re-queries when the dv-filter view appears / is cleared, and the suspend gate engages/lifts.
   }, [
     sql,
     filterVersion,
@@ -765,6 +787,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     dynamicViewId,
     dvStatus,
     dvViewName,
+    dvFilterViewName,
+    dvFilterMaterializing,
   ]);
 
   if (!sql?.trim()) {
@@ -1634,6 +1658,14 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const recordsDvViewName = recordsDvEntry?.viewName;
   const recordsDvError = recordsDvEntry?.error;
   const recordsDvReason = recordsDvEntry?.reason;
+  // Phase 63 (DVDRILL-V112-04): the FILTERED-dv view entry for this records widget. PITFALL C-02
+  // lock — scope to s.dvViews[dynamicViewId]. Read-path prefers this over the raw dv view
+  // (precedence filtered-dv → dv); recordsDvFilterMaterializing suspends fetch during materialize.
+  const recordsDvFilterEntry = useFilterViewStore((s) =>
+    dynamicViewId !== undefined ? s.dvViews[dynamicViewId] : undefined,
+  );
+  const recordsDvFilterViewName = recordsDvFilterEntry?.viewName;
+  const recordsDvFilterMaterializing = recordsDvFilterEntry?.materializing ?? false;
   // Phase 35 Plan 05: orphan detection — dynamicViewId set + no entry + not in dashboard list.
   const isOrphanRecordsDynamicView =
     dynamicViewId !== undefined &&
@@ -1668,9 +1700,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     const controller = new AbortController();
     exportAbortRef.current = controller;
 
-    // Resolve source — REUSE existing view-name logic (same as the fetch effects)
+    // Resolve source — REUSE existing view-name logic (same as the fetch effects).
+    // Phase 63 (DVDRILL-V112-04): CSV honors the active dv filter — precedence filtered-dv → dv.
     const effectiveViewNameCsv =
-      dynamicViewId !== undefined ? recordsDvViewName : viewName;
+      dynamicViewId !== undefined ? (recordsDvFilterViewName || recordsDvViewName) : viewName;
     const fromSourceCsv = effectiveViewNameCsv || table;
 
     // Columns: use columnOrder if non-empty (on-screen order), else fall back to effectiveColumns
@@ -1857,6 +1890,9 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     // Phase 35 Plan 05 (research finding #7): extend suspend-gate to dv pending status.
     if (dynamicViewId !== undefined && recordsDvStatus === "pending") return;
 
+    // Phase 63 (DVDRILL-V112-04): suspend the page fetch while a dv-FILTER materialize is in flight.
+    if (dynamicViewId !== undefined && recordsDvFilterMaterializing) return;
+
     // Phase 35 Plan 05: short-circuit for non-materialized dv statuses.
     if (dynamicViewId !== undefined) {
       if (isOrphanRecordsDynamicView) return;
@@ -1887,8 +1923,9 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     // FILT-V13-02 + Phase 35 Plan 05: FROM-swap viewName source — dv-bound widget uses
     // recordsDvViewName; legacy widget uses viewName. `||` (not `??`) — empty-string
     // placeholder from markMaterializing must fall through to `table` (Phase 17-03 lock).
+    // Phase 63 (DVDRILL-V112-04): precedence filtered-dv → dv for the dv-bound widget.
     const effectiveViewName =
-      dynamicViewId !== undefined ? recordsDvViewName : viewName;
+      dynamicViewId !== undefined ? (recordsDvFilterViewName || recordsDvViewName) : viewName;
     const fromSource = effectiveViewName || table;
     const sql = `SELECT ${colsClause} FROM ${fromSource}${orderBy} LIMIT ${pageSize} OFFSET ${offset}`;
 
@@ -1909,6 +1946,8 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     // Phase 35 Plan 05: dynamicViewId + recordsDvStatus + recordsDvViewName are the primitive
     // deps that drive re-fire when dv binding / status / viewName changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Phase 63 (DVDRILL-V112-04): recordsDvFilterViewName + recordsDvFilterMaterializing deps so
+    // the page re-fetches when the dv-filter view appears / is cleared and the gate engages/lifts.
   }, [
     table,
     viewName,
@@ -1922,6 +1961,8 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     dynamicViewId,
     recordsDvStatus,
     recordsDvViewName,
+    recordsDvFilterViewName,
+    recordsDvFilterMaterializing,
   ]);
 
   // Fetch total count — Phase 15-03 (FILT-V13-02 success criterion #2): re-fires on viewName change
@@ -1938,6 +1979,9 @@ const RecordsTableRenderer = ({ widget }: Props) => {
 
     // Phase 35 Plan 05 (research finding #7): extend suspend-gate to dv pending status.
     if (dynamicViewId !== undefined && recordsDvStatus === "pending") return;
+
+    // Phase 63 (DVDRILL-V112-04): suspend the count fetch while a dv-FILTER materialize is in flight.
+    if (dynamicViewId !== undefined && recordsDvFilterMaterializing) return;
 
     // Phase 35 Plan 05: short-circuit for non-materialized dv statuses.
     if (dynamicViewId !== undefined) {
@@ -1963,8 +2007,9 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     }
     // Phase 17-03 + Phase 35 Plan 05: `||` not `??` — empty-string placeholder must fall through.
     // viewName source flips per dynamicViewId binding.
+    // Phase 63 (DVDRILL-V112-04): precedence filtered-dv → dv so the count narrows to the slice.
     const effectiveViewName =
-      dynamicViewId !== undefined ? recordsDvViewName : viewName;
+      dynamicViewId !== undefined ? (recordsDvFilterViewName || recordsDvViewName) : viewName;
     const fromSource = effectiveViewName || table;
     runSql<Record<string, unknown>>(`SELECT COUNT(*) AS total FROM ${fromSource}`)
       .then((res) => {
@@ -1983,6 +2028,8 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     dynamicViewId,
     recordsDvStatus,
     recordsDvViewName,
+    recordsDvFilterViewName,
+    recordsDvFilterMaterializing,
   ]);
 
   const handleHeaderClick = (col: string) => {
