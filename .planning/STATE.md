@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Programmable Widgets (Cross-Widget Control)
-status: unknown
-stopped_at: "Phase 61 PREPPED for solo operator walk (2026-06-15). Automated gates REFRESHED at HEAD 0834447 — ALL PASS (frontend 2087/2087 [95 files], web+server tsc clean, ZERO server diff since 162e514 so server set-gate unchanged ⊆ TD-V16). 61-UAT.md rewritten into a turnkey checklist: live items (§1/§2/§3) RESET to PENDING (UI changed materially since the original walk) + NEW §2A RADIOUX-V111-01 (full-form editor: side-by-side, real layer name, class-break authoring works, themed radios) + NEW §2B RADIOMULTI-V111-01 (multi-target: add target, one-option-many-targets, option-level switch-replace, back-compat). All feature phases (58/58.1/59/60/60.1/60.2) done + theming-hardening pass. BLOCKED on operator: walk §0 P1-P3 + §1 + §2 + §2A + §2B + §3, fill 61-UAT statuses/overall_result. THEN: run 61-03 (compile 61-VERIFICATION, tick VERIFY-V111-01, mark Phase 61 + v1.11 COMPLETE)."
-last_updated: "2026-06-15T18:31:41Z"
+status: milestone_complete
+stopped_at: "v1.11 (Programmable Widgets — Cross-Widget Control) COMPLETE. Phase 61 verification PASSED (last phase): 61-UAT live operator walk overall_result=passed (23/23 items, 2026-06-15) + 61-01 gates refreshed ALL PASS at HEAD 0834447 (frontend 2087/2087, web+server tsc clean, zero server diff). 61-VERIFICATION.md compiled (overall_status=passed, 4/4 SCs + RADIOUX + RADIOMULTI). VERIFY-V111-01 ticked Complete. All 13 v1.11 requirements satisfied; GAP-61-01/02 resolved; no open gaps. NEXT: /gsd:complete-milestone 1.11 (archive milestone, prep next). Optional: push (shared remote — fetch first, never force; 60+ local commits ahead)."
+last_updated: "2026-06-15T19:54:18.938Z"
 progress:
   total_phases: 7
   completed_phases: 6
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 61 — verification-live-uat (PAUSED mid-walk; all v1.11 feature phases incl. 60.2 multi-target now complete)
+**Current focus:** v1.11 COMPLETE ✓ — all phases done + verified. Next: `/gsd:complete-milestone 1.11`.
 
 ## Current Position
 
-Phase: 60.2 (radio-dashboard-control-multi-target-options) — COMPLETE ✓ (verified passed 8/8, 2026-06-13, RADIOMULTI-V111-01)
-Phase 61 (verification-live-uat) — PAUSED mid-walk, RESUME NEXT to close v1.11 (re-walk §1.1/§1.2 + P2/§3, then 61-03). Feature phases 58/58.1/59/60/60.1/60.2 all done.
+Phase 61 (verification-live-uat) — COMPLETE ✓ (last phase; verification PASSED 2026-06-15, VERIFY-V111-01).
+v1.11 milestone COMPLETE — all phases 58/58.1/59/60/60.1/60.2/61 done; 13/13 requirements satisfied.
 
 ## v1.11 Phase Map
 
@@ -396,6 +396,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Decisions
 
 ### Theming hardening (2026-06-15, tech-debt — recurring theme-drift bugs)
+
 - Root cause of recurring theme bugs (blue radios, dark pie tooltip, RadioGroupConfigPanel referencing non-existent `--text-muted`/`--border-color` tokens via literal fallbacks): tokens existed but were applied inconsistently + no guardrail. Full hardening pass (commits 8418faf/4bcab02/6171b51/646135b + 762ed3e):
   - Added semantic tokens `--danger`/`--warning`/`--success`/`--on-accent` to global.css (dark + light) + `.text-danger/.text-warning/.text-muted/.text-accent` utility classes + global `input[type=radio],input[type=checkbox]{accent-color:var(--accent)}` normalization.
   - `lib/chartTheme.ts` = single home for data-viz literals: `DEFAULT_CHART_PALETTE`, per-chart `DEFAULT_*_COLOR`, `RECHARTS_TOOLTIP_PROPS` (contentStyle). WidgetRenderer/Timeline/NumericLine import it (deduped 5+ inline tooltip copies).

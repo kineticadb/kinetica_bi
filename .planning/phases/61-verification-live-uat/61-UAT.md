@@ -29,8 +29,8 @@ Confirm ALL before beginning. Each must be PASS before continuing.
 id: P1
 check: App is running (web + server) against the deployed Kinetica instance in password mode.
   (Launch: `npm run dev` for web, `npm run dev:server` for server — or your usual setup.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -38,8 +38,8 @@ id: P2
 check: A non-bypass ANALYST-role login is ready for §3 (record the lowercased username: _____________).
   NOT admin, NOT designer — no bypass role. The §3 viewer-safe payoff exercises the radio widget with
   no PATCH privilege, proving the transient overlay causes zero permission friction.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -56,8 +56,8 @@ check: A dashboard exists with these authored fixtures (authored via the CURRENT
                    (another widget's config, or a second layer).
   (c) A defaultOptionId configured (for §1.3 / §3.2 reload-resets-to-default).
   Record dashboard name + layer name + option labels: _____________
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -83,8 +83,8 @@ id: 1.1
 check: RENDER-MODE LIVE SWITCH (SC1). Click Option A (classbreak). The MAP updates LIVE — class-break
   rendering changes in place, NO remount/full reload, no manual refresh (WMS tiles re-request with new
   STYLES). Confirm the visual change. Also confirm the in-map Layers legend updates to match (GAP-61-01).
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -92,8 +92,8 @@ id: 1.2
 check: SECOND-TARGET LIVE SWITCH. Click Option B (different render mode, or a widget.config target).
   The target updates LIVE in place, no reload, no remount. (If Option B targets a layer field, confirm
   the layer reflects it live; if widget.config, the widget updates live.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -101,8 +101,8 @@ id: 1.3
 check: RELOAD RESETS TO DEFAULT (transient). Select a non-default option, then RELOAD the dashboard.
   The radio re-applies its configured defaultOptionId — control + target show the DEFAULT, not the
   pre-reload click. ATTEST: reload-resets-to-configured-default.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ---
@@ -115,8 +115,8 @@ check: SWITCH-REPLACE ISOLATION. With Option A = renderMode+cb_config and Option
   1. Select A → map shows A's renderMode AND cb_config.
   2. Select B → map shows B's renderMode AND cb_config reverts to the layer's saved baseline (A's
      cb_config does NOT linger). Attest the clean replace (not a stale-key deep-merge).
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -125,8 +125,8 @@ check: OUT-OF-ALLOW-LIST PATCH REJECTED (operator-visible). In an option's "Adva
   add a meta/forbidden key (e.g. "id", "__proto__", "tableId", "type", or — for a layer target — a
   data-binding key like "table_id"/"spatialMode"). The panel must reject it with an operator-visible
   error and NOT persist the bad binding. (Validation is live/inline — no separate Save button.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -134,8 +134,8 @@ id: 2.3
 check: NO FILTER CHIPS / NO MATERIALIZE during dispatch (engine decoupled). While clicking options in
   §1/§2, confirm in DevTools: (a) no filter chips appear; (b) no POST to /api/.../materialize|drop fires;
   (c) the dashboard's filtered data is undisturbed. (Automated-gated by actionEngineDecoupling.spec.ts.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ---
@@ -149,8 +149,8 @@ id: RX.1
 check: SIDE-BY-SIDE FULL FORM. Add/edit a radio option, set its target to the MAP LAYER. The modal widens
   to two panes: left = radio config, right = the full layer form (RENDER MODE + style params + opacity +
   INFO POPUP). DATA SOURCE and SPATIAL MODE sections are ABSENT. No raw JSON needed to author the option.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -158,8 +158,8 @@ id: RX.2
 check: FORM SEEDED FROM LAYER + REAL LAYER NAME. On opening a layer-target option, the render-mode radio
   is PRE-SELECTED to the layer's current mode (not blank), params populated. The Target picker shows the
   layer's real name (e.g. "Main NYC taxi"), NOT "Layer #N".
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -168,8 +168,8 @@ check: CLASS-BREAK AUTHORING WORKS (the table-context fix). Set render mode = Cl
   column (e.g. payment_type) → distinct-count succeeds (NO "Could not count distinct values" / no
   "FROM unknown"). Pick a NUMERIC column (e.g. pickup_longitude), Method = Equal Interval → Auto-suggest
   breaks returns REAL break values (not all 0).
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -177,8 +177,8 @@ id: RX.4
 check: RADIO THEMING. The radio widget on the dashboard renders with GREEN-accented radios (not browser
   blue) and VERTICAL orientation actually stacks vertically. With 3+ options, EACH option's render-mode
   radio in the config editor shows its OWN selection (not only the last option selected).
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -186,8 +186,8 @@ id: RX.5
 check: ADVANCED JSON FALLBACK + WIDGET/DV UNCHANGED. The raw-JSON editor is still available under a
   collapsible "Advanced (raw JSON)" for layer targets. Widget and dynamic-view targets keep their
   simple inputs (no full-form pane).
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ---
@@ -201,16 +201,16 @@ id: RM.1
 check: AUTHOR MULTIPLE TARGETS. On Option C, click "+ Add target" and configure a SECOND target (a
   different widget/layer than the first). Both target editors are present and independently editable.
   (Single-target options stay clean — no list chrome until a 2nd target is added.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
 id: RM.2
 check: ONE OPTION → MANY TARGETS LIVE. Select Option C. BOTH targets update LIVE in the same action
   (e.g. the map layer changes AND the second widget/layer changes), no reload/remount.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -218,16 +218,16 @@ id: RM.3
 check: OPTION-LEVEL SWITCH-REPLACE (stale targets drop). After selecting Option C (targets {map, widget2}),
   select an option that targets ONLY the map (e.g. Option A). The second widget/layer must REVERT to its
   baseline — Option C's effect on it does NOT linger. (This is the key multi-target correctness check.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
 id: RM.4
 check: BACK-COMPAT. Any radio option authored BEFORE this milestone (legacy single-target) still loads,
   edits, and dispatches correctly. (If none exist, note N/A.)
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ---
@@ -242,8 +242,8 @@ evidence:
 id: 3.1
 check: VIEWER LIVE SWITCH, NO PERMISSION ERROR. As the analyst, click Option A. The map switches LIVE
   with (a) NO 403 / no "Insufficient permissions" toast / no denial banner; (b) no remount/reload.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -253,8 +253,8 @@ check: NO SHARED-DASHBOARD MUTATION. After the analyst clicks a non-default opti
       the analyst's pick (analyst's runtime choice is invisible to the designer session).
   (b) ANALYST session: reload → radio resets to defaultOptionId (transient even within their own session).
   Attest the shared dashboard is unmutated and the viewer's exploration is fully transient.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ```
@@ -262,8 +262,8 @@ id: 3.3
 check: ORPHAN TARGET SAFETY. Author an option bound to a target, then DELETE that target widget/layer.
   Reopen the config panel → orphan warning visible (no crash). OR click the option whose target was
   deleted → typed no-op + toast (no partial write, no crash). Attest one orphan path surfaces the signal.
-status: PENDING
-evidence:
+status: PASS
+evidence: Attested PASS by operator (RPereira@kinetica.com) — live solo walk 2026-06-15.
 ```
 
 ---
@@ -327,14 +327,20 @@ gaps:
 ## Attestation Summary
 
 ```
-overall_result: PENDING
-sections_passed:
-sections_failed:
-sections_skipped:
+overall_result: passed
+sections_passed: §0 (P1-P4), §1 (1.1-1.3), §2 (2.1-2.3), §2A RADIOUX (RX.1-RX.5), §2B RADIOMULTI (RM.1-RM.4), §3 (3.1-3.3), §4 (4.1) — all 23 items PASS
+sections_failed: none
+sections_skipped: none
 operator_notes: |
-  (operator fills at walk-through time)
-attested_by:
-attested_on:
+  Live solo walk 2026-06-15 (RPereira@kinetica.com) — everything passed. Full-form side-by-side
+  layer editor (RADIOUX-V111-01) + multi-target options with option-level switch-replace
+  (RADIOMULTI-V111-01) verified live; viewer-safe transient payoff (§3) confirmed with a non-bypass
+  analyst login (no permission error, no shared-dashboard mutation, orphan-safe). GAP-61-01/02 and
+  the post-pause UI fixes (green radios, vertical orientation, real layer names, class-break
+  table-context, full-form seeding, pie tooltip, per-instance radio name) all confirmed resolved
+  in-walk. No new gaps.
+attested_by: RPereira@kinetica.com
+attested_on: 2026-06-15
 ```
 
 ---

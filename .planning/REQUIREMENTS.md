@@ -34,7 +34,7 @@
 
 ### Verification
 
-- [ ] **VERIFY-V111-01**: Live operator UAT — a radio group switches a map layer's class-break render mode AND a widget.config field live + persisted across reload; an out-of-allow-list patch is rejected; no filter chips appear and no materialize fires; automated gates green (frontend 100%, web + server tsc clean, server set-based known-flaky gate)
+- [x] **VERIFY-V111-01**: Live operator UAT — a radio group switches a map layer's class-break render mode AND a widget.config field live + persisted across reload; an out-of-allow-list patch is rejected; no filter chips appear and no materialize fires; automated gates green (frontend 100%, web + server tsc clean, server set-based known-flaky gate)
 
 ## v2 Requirements
 
@@ -82,7 +82,7 @@ Explicitly excluded for v1.11.
 | RADIOUX-V111-01 | Phase 60.1 | Complete |
 | RADIOMULTI-V111-01 | Phase 60.2 | Complete |
 | SEAM-V111-01 | Phase 60 | Complete |
-| VERIFY-V111-01 | Phase 61 | Pending |
+| VERIFY-V111-01 | Phase 61 | Complete |
 
 **Coverage:**
 - v1 requirements: 13 total
