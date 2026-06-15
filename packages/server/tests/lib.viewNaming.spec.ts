@@ -3,6 +3,7 @@ import {
   sanitizeForViewName,
   buildFilterViewName,
 } from "../src/lib/viewNaming";
+import { buildDynamicViewName } from "../src/lib/dynamicViewName";
 
 describe("sanitizeForViewName", () => {
   it("returns alphanumeric input unchanged", () => {
@@ -111,5 +112,70 @@ describe("buildFilterViewName", () => {
     // Should NOT contain a dot before the prefix (no "ki_home._kbi_filt_..." form)
     expect(out.startsWith("_kbi_filt_u")).toBe(true);
     expect(out.includes(".")).toBe(false);
+  });
+});
+
+describe("buildFilterViewName with dynamicViewId (dv drill-down path — DVDRILL-V112-03)", () => {
+  it("emits a _dv<id> segment (not _t<id>) when dynamicViewId is present", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      dynamicViewId: 7,
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_dv7_sabcd1234");
+  });
+
+  it("REGRESSION LOCK: the table path (tableId, no dynamicViewId) is byte-unchanged", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      tableId: 7,
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_t7_sabcd1234");
+  });
+
+  it("dv-filter name is distinct from BOTH the table-filter view AND the dv view", () => {
+    const tablePath = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      tableId: 7,
+    });
+    const dvPath = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      dynamicViewId: 7,
+    });
+    const dvView = buildDynamicViewName({
+      userId: "alice",
+      dashboardId: 42,
+      dynamicViewId: 7,
+    });
+    expect(dvView).toBe("_kbi_dv_ualice_d42_7");
+    expect(dvPath).not.toBe(tablePath);
+    expect(dvPath).not.toBe(dvView);
+  });
+
+  it("sanitizes OIDC-style username on the dv path identically to the table path", () => {
+    const out = buildFilterViewName({
+      username: "john.doe@kinetica.com",
+      sessionId: "1aef8b3c0000000000",
+      dashboardId: 1,
+      dynamicViewId: 5,
+    });
+    expect(out).toBe("_kbi_filt_ujohn_doe_kinetica_com_d1_dv5_s1aef8b3c");
+  });
+
+  it("GUARD: throws when NEITHER tableId NOR dynamicViewId is supplied (no silent _tundefined)", () => {
+    expect(() =>
+      buildFilterViewName({
+        username: "alice",
+        sessionId: "abcd1234ef",
+        dashboardId: 42,
+      })
+    ).toThrow(/tableId or dynamicViewId required/);
   });
 });
