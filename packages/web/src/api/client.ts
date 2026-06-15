@@ -689,7 +689,16 @@ export type { SpatialTarget } from "../lib/spatialTargets";
 
 export type MaterializeFilterArgs = {
   dashboardId: number;
-  tableId: number;
+  // Table path: server builds FROM the source table. Optional because the dv path
+  // (dynamicViewId) carries no tableId. Exactly one of tableId / dynamicViewId is set
+  // in practice — a table-backed widget sets tableId; a dv-backed widget sets dynamicViewId.
+  tableId?: number;
+  // v1.12 Phase 63 (DVDRILL-V112-03 client side): dynamic-view path. When present, the
+  // Phase 62 server builds FROM the dynamic view's OWN materialized view (FROM <dv_view>
+  // WHERE <filter>) instead of the source table — a filtered sub-view of the dv. The
+  // server rejects dynamicViewId + spatial together with 400 (mutually exclusive in
+  // practice). Flows through automatically via JSON.stringify(args) below.
+  dynamicViewId?: number;
   // ActiveFilter shape is duplicated server-side at packages/server/src/lib/whereClause.ts:35-42
   // to keep the server module frontend-import-free. Field-shape parity is the contract —
   // any change to the client ActiveFilter MUST be mirrored in whereClause.ts atomically.
@@ -715,10 +724,16 @@ export type MaterializeFilterResponse = {
 // apart). The server's CREATE OR REPLACE is correct but the redundant DDL load is wasteful
 // and surfaces as user-visible "2 materialize calls per filter."
 //
-// Cache key = `${dashboardId}:${tableId}` (NOT the full args — different filters/shapes on
-// the SAME (dashboardId, tableId) should still collapse: the first call materializes one
-// canonical view name for that pair, and stale args would be re-fired on the next debounce
-// tick anyway. The server's last-write-wins (V13-P-09) handles content drift.)
+// Cache key = `${dashboardId}:t${tableId}` for the table path, `${dashboardId}:dv${dynamicViewId}`
+// for the dv path (NOT the full args — different filters/shapes on the SAME (dashboardId, kind+id)
+// should still collapse: the first call materializes one canonical view name for that pair, and
+// stale args would be re-fired on the next debounce tick anyway. The server's last-write-wins
+// (V13-P-09) handles content drift.)
+//
+// v1.12 Phase 63 (DVDRILL-V112-03): the `t`/`dv` kind prefix is LOAD-BEARING — a dynamic-view id
+// and a table id are both numbers, so a dv-filter call {dashboardId:5, dynamicViewId:7} must NOT
+// collapse into a table call {dashboardId:5, tableId:7} that shares the numeric id. The prefix
+// keeps them in separate cache buckets (mirrors the parallel dv-keyed store slices).
 //
 // On abort: dropped from the cache so a subsequent call re-fires. On any settle (resolve or
 // reject), entry is removed via promise.finally so transient failures don't poison the cache.
@@ -728,7 +743,9 @@ export const materializeFilter = async (
   args: MaterializeFilterArgs,
   signal?: AbortSignal
 ): Promise<MaterializeFilterResponse> => {
-  const cacheKey = `${args.dashboardId}:${args.tableId}`;
+  const cacheKey = args.dynamicViewId !== undefined
+    ? `${args.dashboardId}:dv${args.dynamicViewId}`
+    : `${args.dashboardId}:t${args.tableId}`;
   const existing = inFlightMaterialize.get(cacheKey);
   if (existing) {
     // Concurrent caller (e.g. RecordsTableRenderer trigger firing alongside
