@@ -1,30 +1,30 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.11
-milestone_name: Programmable Widgets (Cross-Widget Control)
-status: unknown
-stopped_at: Completed 60.2-01-PLAN.md — multi-target radio option model + dispatch + wiring
-last_updated: "2026-06-15T19:58:31.289Z"
+milestone: v1.12
+milestone_name: Drill-Down on Dynamic-View-Backed Widgets
+status: defining_requirements
+stopped_at: "v1.12 milestone STARTED 2026-06-15 — drilling a dynamic-view-backed widget must filter the DV's data (not the source table). Scope locked: DV-isolated (same-dv widgets only). Research skipped. NEXT: define REQUIREMENTS.md → roadmap (phases continue from 61 → start at 62)."
+last_updated: "2026-06-15T20:00:00.000Z"
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 16
-  completed_plans: 14
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-10 — v1.11 milestone started)
+See: .planning/PROJECT.md (updated 2026-06-15 — v1.12 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.11 COMPLETE ✓ — all phases done + verified. Next: `/gsd:complete-milestone 1.11`.
+**Current focus:** v1.12 — Drill-Down on Dynamic-View-Backed Widgets (defining requirements). v1.11 shipped 2026-06-15.
 
 ## Current Position
 
-Phase 61 (verification-live-uat) — COMPLETE ✓ (last phase; verification PASSED 2026-06-15, VERIFY-V111-01).
-v1.11 milestone COMPLETE — all phases 58/58.1/59/60/60.1/60.2/61 done; 13/13 requirements satisfied.
+Phase: Not started (defining requirements)
+Status: Defining v1.12 requirements → roadmap. Phase numbering continues from 61 (v1.12 starts at Phase 62).
 
 ## v1.11 Phase Map
 
