@@ -25,7 +25,7 @@ import { buildDynamicViewName } from "./lib/dynamicViewName";
 import { buildQuantileSql, parseQuantileResponse } from "./lib/quantileSql";
 import { buildTopValuesSql, parseTopValuesResponse } from "./lib/topValuesSql";
 import { buildColumnStatsSql, parseColumnStatsResponse } from "./lib/columnStatsSql";
-import type { ActiveFilter } from "./lib/whereClause";
+import { buildServerWhereClause, type ActiveFilter } from "./lib/whereClause";
 import { composeWhereClause, type SpatialFilter, type SpatialTarget } from "./lib/spatialWhereClause";
 // v1.4 Phase 18 — Map info popup spatial-proximity SQL builders + radius conversion.
 // All three modes (latlon, wkt, wkb=Kinetica geometry column) are live. The
@@ -894,6 +894,10 @@ export const createApp = async (): Promise<express.Express> => {
     const body = (req.body ?? {}) as {
       dashboardId?: number;
       tableId?: number;
+      // v1.12 DVDRILL-V112-03 (server): the dv-source contract Phase 63 consumes.
+      // When present → the dv path (filter the dv's OWN materialized view). When
+      // absent → the existing table path, byte-unchanged.
+      dynamicViewId?: number;
       filters?: ActiveFilter[];
       spatialFilters?: SpatialFilter[];
       spatialTarget?: SpatialTarget;
@@ -901,13 +905,81 @@ export const createApp = async (): Promise<express.Express> => {
     const {
       dashboardId,
       tableId,
+      dynamicViewId,
       filters = [],
       spatialFilters,
       spatialTarget,
     } = body;
 
-    // ── Validation step 1: dashboardId / tableId numeric (existing v1.3 check) ──
-    if (typeof dashboardId !== "number" || typeof tableId !== "number") {
+    // ── Validation step 1: dashboardId numeric (always); tableId numeric only on
+    // the table path. v1.12: the dv path requires dynamicViewId + dashboardId instead. ──
+    if (typeof dashboardId !== "number") {
+      return res.status(400).json({ error: "dashboardId is required (number)." });
+    }
+    const isDvPath = typeof dynamicViewId === "number";
+    if (!isDvPath && typeof tableId !== "number") {
+      return res.status(400).json({ error: "dashboardId and tableId are required numbers." });
+    }
+
+    // ── v1.12 DV PATH (DVDRILL-V112-03 server) ──────────────────────────
+    // Materialize a filtered sub-view of the dynamic view's OWN materialized
+    // view: CREATE OR REPLACE MATERIALIZED VIEW <dv-filter-view> AS
+    //   SELECT * FROM <buildDynamicViewName(...)> WHERE <column filters>.
+    // Column-filters only (spatial-on-dv is v2 / DVX-V2-01). The table path
+    // below runs UNCHANGED when dynamicViewId is absent.
+    if (isDvPath) {
+      const dvFiltersArr: ActiveFilter[] = Array.isArray(filters) ? filters : [];
+      // dv path is COLUMN-FILTERS ONLY — reject spatial combined with dynamicViewId.
+      const hasSpatialReq =
+        (Array.isArray(spatialFilters) && spatialFilters.length > 0) || !!spatialTarget;
+      if (hasSpatialReq) {
+        return res.status(400).json({
+          error: "Spatial filtering is not supported on a dynamic-view source (dynamicViewId).",
+        });
+      }
+      // empty filters → 400 (use DELETE to clear), mirrors the table path.
+      if (dvFiltersArr.length === 0) {
+        return res.status(400).json({
+          error: "filters must be non-empty on the dynamic-view path (use DELETE to clear).",
+        });
+      }
+      // dv row must exist AND belong to dashboardId (same-dashboard scoping).
+      const dvRow = getDashboardDynamicView(dynamicViewId as number);
+      if (!dvRow || dvRow.dashboard_id !== dashboardId) {
+        return res.status(404).json({ error: "Dynamic view not found." });
+      }
+      const dvAuthedReq = req as AuthedRequest;
+      const dvViewName = buildDynamicViewName({
+        userId: dvAuthedReq.user!.creds.username,
+        dashboardId,
+        dynamicViewId: dynamicViewId as number,
+      });
+      const dvFilterViewName = buildFilterViewName({
+        username: dvAuthedReq.user!.creds.username,
+        sessionId: dvAuthedReq.user!.sid,
+        dashboardId,
+        dynamicViewId: dynamicViewId as number,
+      });
+      const dvWhereClause = buildServerWhereClause(dvFiltersArr);
+      // FROM the dv's OWN materialized view. If that view isn't materialized yet,
+      // Kinetica's "object not found" bubbles through asyncHandler → errorMiddleware
+      // (fail-safe; NO opaque 500 constructed here). Client (Phase 63) gates on dv status first.
+      await createOrReplaceMaterialized({
+        req: dvAuthedReq,
+        view: dvFilterViewName,
+        sqlBody: `SELECT * FROM ${dvViewName} WHERE ${dvWhereClause}`,
+        ttl: 5,
+        route: "POST /api/filter/materialize",
+        op: "MATERIALIZE",
+      });
+      const dvExpiresAt = Date.now() + 5 * 60 * 1000;
+      return res.json({ viewName: dvFilterViewName, expiresAt: dvExpiresAt });
+    }
+
+    // Table path (non-dv): the relaxed step-1 guard above already enforced
+    // `typeof tableId === "number"` when !isDvPath, but TS can't carry that
+    // narrowing past the dv early-return — re-narrow here (same 400 shape).
+    if (typeof tableId !== "number") {
       return res.status(400).json({ error: "dashboardId and tableId are required numbers." });
     }
 
