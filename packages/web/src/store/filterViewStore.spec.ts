@@ -201,6 +201,111 @@ describe("useFilterViewStore — reset", () => {
   });
 });
 
+// Phase 63 (DVDRILL-V112-05): dv-scoped parallel views slice keyed by dynamicViewId.
+// Mirrors setView/markMaterializing/clearView; a dv id and a table id never collide.
+// NOTE: no clearDvMaterializing — the dv-bound widget gates its chart query on dvStatus,
+// not on the filter-view materializing flag (see 63-03).
+describe("useFilterViewStore — setDvView", () => {
+  it("creates a new dvViews entry on first call (materializeVersion=1, materializing=false)", () => {
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1000 }, 100);
+    expect(useFilterViewStore.getState().dvViews[1]).toEqual({
+      viewName: "_kbi_dvfilt_v1",
+      expiresAt: 1000,
+      materializing: false,
+      materializeVersion: 1,
+      dashboardId: 100,
+    });
+  });
+
+  // THE ISOLATION TEST: setDvView(7, …) writes ONLY dvViews[7], leaves views[7] untouched.
+  it("ISOLATION: setDvView(7, …) writes dvViews[7] AND views[7] stays undefined (no collision)", () => {
+    useFilterViewStore.getState().setDvView(7, { viewName: "_kbi_dvfilt_v7", expiresAt: 1000 }, 100);
+    const { dvViews, views } = useFilterViewStore.getState();
+    expect(dvViews[7]).toBeDefined();
+    expect(views[7]).toBeUndefined();
+  });
+
+  it("ISOLATION (reverse): setView(7, …) writes views[7] AND dvViews[7] stays undefined", () => {
+    useFilterViewStore.getState().setView(7, { viewName: "_kbi_filt_v7", expiresAt: 1000 }, 100);
+    const { dvViews, views } = useFilterViewStore.getState();
+    expect(views[7]).toBeDefined();
+    expect(dvViews[7]).toBeUndefined();
+  });
+
+  it("bumps materializeVersion when overwriting same viewName", () => {
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1000 }, 100);
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 2000 }, 100);
+    const entry = useFilterViewStore.getState().dvViews[1];
+    expect(entry.materializeVersion).toBe(2);
+    expect(entry.expiresAt).toBe(2000);
+    expect(entry.materializing).toBe(false);
+  });
+
+  it("resets materializeVersion to 1 on new viewName", () => {
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1000 }, 100);
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1500 }, 100);
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1_new", expiresAt: 2000 }, 100);
+    expect(useFilterViewStore.getState().dvViews[1].materializeVersion).toBe(1);
+  });
+
+  it("clears materializing flag if it was set by markDvMaterializing", () => {
+    useFilterViewStore.getState().markDvMaterializing(1, 100);
+    expect(useFilterViewStore.getState().dvViews[1].materializing).toBe(true);
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1000 }, 100);
+    expect(useFilterViewStore.getState().dvViews[1].materializing).toBe(false);
+  });
+});
+
+describe("useFilterViewStore — markDvMaterializing", () => {
+  it("creates dvViews entry with materializing=true when key absent", () => {
+    useFilterViewStore.getState().markDvMaterializing(1, 100);
+    expect(useFilterViewStore.getState().dvViews[1]).toEqual({
+      viewName: "",
+      expiresAt: 0,
+      materializing: true,
+      materializeVersion: 0,
+      dashboardId: 100,
+    });
+  });
+
+  it("flips materializing=true on an existing entry, preserving prior fields", () => {
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1000 }, 100);
+    useFilterViewStore.getState().markDvMaterializing(1, 100);
+    const entry = useFilterViewStore.getState().dvViews[1];
+    expect(entry.viewName).toBe("_kbi_dvfilt_v1");
+    expect(entry.expiresAt).toBe(1000);
+    expect(entry.materializeVersion).toBe(1);
+    expect(entry.materializing).toBe(true);
+  });
+});
+
+describe("useFilterViewStore — clearDvView", () => {
+  it("deletes the key (dvId in dvViews becomes false)", () => {
+    useFilterViewStore.getState().setDvView(1, { viewName: "_kbi_dvfilt_v1", expiresAt: 1000 }, 100);
+    useFilterViewStore.getState().clearDvView(1);
+    expect(1 in useFilterViewStore.getState().dvViews).toBe(false);
+  });
+
+  it("no-op when key absent (returns same dvViews reference)", () => {
+    useFilterViewStore.getState().setDvView(2, { viewName: "_kbi_dvfilt_v2", expiresAt: 2000 }, 100);
+    const before = useFilterViewStore.getState().dvViews;
+    useFilterViewStore.getState().clearDvView(999);
+    expect(useFilterViewStore.getState().dvViews).toBe(before);
+  });
+});
+
+describe("useFilterViewStore — reset — dv slice (DVDRILL-V112-05 lifecycle)", () => {
+  it("reset() zeroes BOTH dvViews AND views and clearMaterializingVersion to 0", () => {
+    useFilterViewStore.getState().setDvView(7, { viewName: "_kbi_dvfilt_v7", expiresAt: 1000 }, 100);
+    useFilterViewStore.getState().setView(3, { viewName: "_kbi_filt_v3", expiresAt: 2000 }, 100);
+    useFilterViewStore.getState().reset();
+    const { dvViews, views, clearMaterializingVersion } = useFilterViewStore.getState();
+    expect(dvViews).toEqual({});
+    expect(views).toEqual({});
+    expect(clearMaterializingVersion).toBe(0);
+  });
+});
+
 describe("useFilterViewStore — dashboardId field (Phase 15-02 extension)", () => {
   it("setView persists dashboardId on the entry", () => {
     useFilterViewStore.getState().setView(1, { viewName: "v1", expiresAt: 1000 }, 42);
