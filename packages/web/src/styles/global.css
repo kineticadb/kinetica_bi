@@ -20,6 +20,10 @@
   /* Subtle chip fill + swatch border (light tint on dark; dark tint on light). */
   --chip-bg: rgba(255, 255, 255, 0.08);
   --swatch-border: rgba(255, 255, 255, 0.2);
+  /* Status/semantic colors — single source of truth (components reference via var()). */
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: var(--accent);
   font-family: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
@@ -52,6 +56,23 @@
   --map-surface-hover: rgba(255, 255, 255, 1);
   --chip-bg: rgba(15, 23, 42, 0.06);
   --swatch-border: rgba(15, 23, 42, 0.25);
+  /* Status colors darken for contrast on light surfaces; --success inherits --accent. */
+  --danger: #dc2626;
+  --warning: #d97706;
+}
+
+/* ── Text-color utility classes — single-token color helpers for components ── */
+.text-danger {
+  color: var(--danger);
+}
+.text-warning {
+  color: var(--warning);
+}
+.text-muted {
+  color: var(--muted);
+}
+.text-accent {
+  color: var(--accent);
 }
 
 *,
@@ -994,10 +1015,12 @@ a {
   cursor: pointer;
 }
 
-/* Native radios use the app's green accent — matches the accent-color convention
-   already applied to checkboxes app-wide (radios were previously missed → blue).
-   Also backs the .accent-green utility class referenced by RadioGroupRenderer. */
+/* Native radios AND checkboxes use the app's green accent app-wide (radios were
+   previously missed → blue). Single global rule so individual components don't need
+   per-element accent-color overrides. Also backs the .accent-green utility class
+   referenced by RadioGroupRenderer. */
 input[type="radio"],
+input[type="checkbox"],
 .accent-green {
   accent-color: var(--accent);
 }
@@ -1052,7 +1075,6 @@ input[type="radio"],
 .config-toggle input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -2485,7 +2507,6 @@ input[type="radio"],
 .config-layer-toggle-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -3009,7 +3030,6 @@ input[type="radio"],
 }
 
 .config-spatial-target-mode-option input[type="radio"] {
-  accent-color: var(--accent);
   width: 14px;
   height: 14px;
   margin: 0;
@@ -3916,7 +3936,6 @@ input[type="radio"],
 .datafilter-mschips-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 .datafilter-mschips-empty {
@@ -4048,7 +4067,6 @@ input[type="radio"],
 .users-td-check input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -4234,7 +4252,6 @@ input[type="radio"],
 .users-popover-row input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
   margin-top: 2px;
