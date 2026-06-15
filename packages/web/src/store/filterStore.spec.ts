@@ -261,3 +261,128 @@ describe("useFilterStore.reset", () => {
     expect(filterVersion).toBe(0);
   });
 });
+
+// Phase 63 (DVDRILL-V112-05): dv-scoped parallel slice keyed by dynamicViewId.
+// A dv id and a table id are BOTH numbers — these tests prove they never collide
+// (separate maps). Mirrors the table-keyed addFilter/removeFilter/clearFilters semantics,
+// sharing the SAME filterVersion counter (WidgetRenderer Effect 1 keys re-fire off it).
+describe("useFilterStore.addDvFilter", () => {
+  it("adds a dv filter to dvFilters[dvId] and bumps filterVersion (shared counter)", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    const { dvFilters, filterVersion } = useFilterStore.getState();
+    expect(dvFilters[1]).toHaveLength(1);
+    expect(dvFilters[1][0].value).toBe("EAST");
+    expect(filterVersion).toBe(1);
+  });
+
+  // THE ISOLATION / BUG-FIX TEST: a dv id and a table id with the same number must NOT collide.
+  // The original v1.12 bug: a dv drill landed in filters[tableId]. addDvFilter(7,…) must write
+  // ONLY dvFilters[7] and leave filters[7] empty/undefined (and vice-versa).
+  it("ISOLATION: addDvFilter(7, …) writes ONLY dvFilters[7] — filters[7] stays empty (no-collision bug-fix lock)", () => {
+    useFilterStore.getState().addDvFilter(7, f({ column: "region", value: "EAST", dataType: "string" }));
+    const { dvFilters, filters } = useFilterStore.getState();
+    expect(dvFilters[7]).toHaveLength(1);
+    expect(filters[7] ?? []).toHaveLength(0); // the dv drill must NOT touch the table-keyed map
+  });
+
+  it("ISOLATION (reverse): addFilter(7, …) writes ONLY filters[7] — dvFilters[7] untouched", () => {
+    useFilterStore.getState().addFilter(7, f({ column: "region", value: "WEST", dataType: "string" }));
+    const { dvFilters, filters } = useFilterStore.getState();
+    expect(filters[7]).toHaveLength(1);
+    expect(dvFilters[7] ?? []).toHaveLength(0);
+  });
+
+  it("REPLACES same-column dv filter with new value (mirrors D-05 lock)", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "WEST", dataType: "string" }));
+    const { dvFilters, filterVersion } = useFilterStore.getState();
+    expect(dvFilters[1]).toHaveLength(1);
+    expect(dvFilters[1][0].value).toBe("WEST");
+    expect(filterVersion).toBe(2);
+  });
+
+  it("EXACT duplicate (same column AND value) is silent no-op — no version bump", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    const versionBefore = useFilterStore.getState().filterVersion;
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    const { dvFilters, filterVersion } = useFilterStore.getState();
+    expect(dvFilters[1]).toHaveLength(1);
+    expect(filterVersion).toBe(versionBefore);
+  });
+
+  it("APPENDS for different columns on same dv", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    useFilterStore.getState().addDvFilter(1, f({ column: "status", value: "ACTIVE", dataType: "string" }));
+    expect(useFilterStore.getState().dvFilters[1]).toHaveLength(2);
+  });
+
+  it("at 25-cap, NEW column is no-op + toast (same FILTER_CAP_PER_TABLE)", () => {
+    const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
+    for (let i = 0; i < 25; i++) {
+      useFilterStore.getState().addDvFilter(1, f({ column: `col${i}`, value: `v${i}`, dataType: "string" }));
+    }
+    const versionBefore = useFilterStore.getState().filterVersion;
+    useFilterStore.getState().addDvFilter(1, f({ column: "col25", value: "v25", dataType: "string" }));
+    const { dvFilters, filterVersion } = useFilterStore.getState();
+    expect(dvFilters[1]).toHaveLength(25);
+    expect(filterVersion).toBe(versionBefore);
+    expect(showToastSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Filter limit reached"),
+      "info"
+    );
+  });
+});
+
+describe("useFilterStore.removeDvFilter", () => {
+  it("removes the named column from dvFilters[dvId] and increments filterVersion", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    const versionBefore = useFilterStore.getState().filterVersion;
+    useFilterStore.getState().removeDvFilter(1, "region");
+    const { dvFilters, filterVersion } = useFilterStore.getState();
+    expect(dvFilters[1] ?? []).toHaveLength(0);
+    expect(filterVersion).toBe(versionBefore + 1);
+  });
+
+  it("removeDvFilter on absent column is no-op (no version bump)", () => {
+    const versionBefore = useFilterStore.getState().filterVersion;
+    useFilterStore.getState().removeDvFilter(1, "nonexistent");
+    expect(useFilterStore.getState().filterVersion).toBe(versionBefore);
+  });
+});
+
+describe("useFilterStore.clearDvFilters", () => {
+  it("wipes only the named dv (delete-key semantics)", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    useFilterStore.getState().addDvFilter(2, f({ column: "region", value: "WEST", dataType: "string" }));
+    useFilterStore.getState().clearDvFilters(1);
+    const { dvFilters } = useFilterStore.getState();
+    expect(dvFilters[1] ?? []).toHaveLength(0);
+    expect(dvFilters[2]).toHaveLength(1);
+    expect(dvFilters[2][0].value).toBe("WEST");
+  });
+
+  it("clearDvFilters increments filterVersion (mirrors S-02 lock)", () => {
+    useFilterStore.getState().addDvFilter(1, f({ column: "region", value: "EAST", dataType: "string" }));
+    const versionBefore = useFilterStore.getState().filterVersion;
+    useFilterStore.getState().clearDvFilters(1);
+    expect(useFilterStore.getState().filterVersion).toBe(versionBefore + 1);
+  });
+
+  it("clearDvFilters on already-empty dv is no-op (no version bump)", () => {
+    const versionBefore = useFilterStore.getState().filterVersion;
+    useFilterStore.getState().clearDvFilters(99);
+    expect(useFilterStore.getState().filterVersion).toBe(versionBefore);
+  });
+});
+
+describe("useFilterStore.reset — dv slice (DVDRILL-V112-05 lifecycle)", () => {
+  it("reset() zeroes BOTH dvFilters AND filters and filterVersion to 0", () => {
+    useFilterStore.getState().addDvFilter(7, f({ column: "a", value: "1", dataType: "string" }));
+    useFilterStore.getState().addFilter(3, f({ column: "b", value: "2", dataType: "string" }));
+    useFilterStore.getState().reset();
+    const { dvFilters, filters, filterVersion } = useFilterStore.getState();
+    expect(Object.keys(dvFilters)).toHaveLength(0);
+    expect(Object.keys(filters)).toHaveLength(0);
+    expect(filterVersion).toBe(0);
+  });
+});
