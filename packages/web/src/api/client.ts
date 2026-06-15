@@ -792,7 +792,12 @@ export const materializeFilter = async (
 
 export type DropFilterViewArgs = {
   dashboardId: number;
-  tableId: number;
+  // Table path. Optional because the dv path (dynamicViewId) carries no tableId.
+  tableId?: number;
+  // v1.12 Phase 63 (DVDRILL-V112-03 client side): dv path. When present, the DELETE
+  // sends ?dynamicViewId= and the Phase 62 server drops the dv-filter view (not a
+  // table-keyed view). Exactly one of tableId / dynamicViewId is set in practice.
+  dynamicViewId?: number;
 };
 
 export type DropFilterViewResponse = {
@@ -813,7 +818,11 @@ export const dropFilterView = async (
   args: DropFilterViewArgs,
   signal?: AbortSignal
 ): Promise<DropFilterViewResponse> => {
-  const cacheKey = `${args.dashboardId}:${args.tableId}`;
+  // Kind-scoped cache key mirrors materializeFilter (Phase 63): a dv drop and a table
+  // drop sharing the same numeric id must never collapse into one DELETE.
+  const cacheKey = args.dynamicViewId !== undefined
+    ? `${args.dashboardId}:dv${args.dynamicViewId}`
+    : `${args.dashboardId}:t${args.tableId}`;
   const existing = inFlightDrop.get(cacheKey);
   if (existing) {
     // Concurrent caller (e.g. RecordsTableRenderer drop firing alongside
@@ -825,7 +834,11 @@ export const dropFilterView = async (
   }
   // Inline template literal for the query string — matches the existing convention used by
   // deleteDashboard at client.ts:183. URLSearchParams is overkill for two known number params.
-  const url = `${API_BASE}/api/filter/materialize?dashboardId=${args.dashboardId}&tableId=${args.tableId}`;
+  // Phase 63: dv path sends ?dynamicViewId= so the server drops the dv-filter view; table path
+  // sends ?tableId= byte-unchanged.
+  const url = args.dynamicViewId !== undefined
+    ? `${API_BASE}/api/filter/materialize?dashboardId=${args.dashboardId}&dynamicViewId=${args.dynamicViewId}`
+    : `${API_BASE}/api/filter/materialize?dashboardId=${args.dashboardId}&tableId=${args.tableId}`;
   const promise = (async () => {
     const response = await apiFetch(url, {
       method: "DELETE",
