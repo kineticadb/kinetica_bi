@@ -101,14 +101,56 @@ type Row = Record<string, unknown>;
  * the server-built view name. Never bypass server-side escaping.
  */
 function dispatchDrillDown(args: {
-  tableId: number;
+  // Phase 63 (DVDRILL-V112-01): tableId optional — a dv-backed widget may carry no tableId.
+  tableId?: number;
+  // Phase 63 (DVDRILL-V112-01): when present, route the drill into the dv-scoped slice
+  // (dvFilters[dynamicViewId]) INSTEAD of the table-keyed slice. This is the root-cause fix —
+  // pre-v1.12 the drill always keyed by tableId, so a dv drill mis-landed in filters[sourceTableId].
+  dynamicViewId?: number;
   dashboardId: number;
   column: string;
   value: unknown;
   dataType: DrillDownDataType;
   widgetId: number;
 }): void {
-  const { tableId, dashboardId, column, value, dataType, widgetId } = args;
+  const { tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId } = args;
+
+  // ── Phase 63 dv branch ────────────────────────────────────────────────────
+  // When the widget is dv-bound, the drill filters THAT dynamic view's data (dv-isolated
+  // scope, LOCKED). Mirrors the table path VERBATIM but reads/writes the dv slices:
+  // dvFilters[dvId] for dedupe + addDvFilter; markDvMaterializing for the sync gate.
+  // The source table's filters[tableId] is NEVER touched (the bug was exactly that).
+  if (dynamicViewId !== undefined) {
+    const existing = useFilterStore.getState().dvFilters[dynamicViewId] ?? [];
+    const sameCol = existing.find((f) => f.column === column);
+    const isDedupe =
+      sameCol !== undefined && sameCol.value === (value as ActiveFilter["value"]);
+    const isReplace = sameCol !== undefined && !isDedupe;
+
+    if (!isDedupe && !isReplace) {
+      const chipText = buildChipText(column, value, dataType);
+      useToastStore.getState().showToast(chipText, "info");
+    }
+
+    useFilterStore.getState().addDvFilter(dynamicViewId, {
+      column,
+      value: value as ActiveFilter["value"],
+      dataType,
+      sourceWidgetId: widgetId,
+      addedAt: Date.now(),
+    });
+
+    // Sync materializing flag on the dv slice (mirrors the table path's markMaterializing).
+    // Skip on dedupe: filterVersion does NOT tick on dedupe, so no Effect 1 re-fire.
+    if (!isDedupe) {
+      useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
+    }
+    return;
+  }
+
+  // ── Table path (UNCHANGED) ────────────────────────────────────────────────
+  // A dv widget may have no tableId; the table path requires one. Defensive guard.
+  if (tableId === undefined) return;
   const existing = useFilterStore.getState().filters[tableId] ?? [];
   const sameCol = existing.find((f) => f.column === column);
   const isDedupe =
@@ -780,6 +822,9 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   const drillProps = {
     widgetId: widget.id,
     tableId,
+    // Phase 63 (DVDRILL-V112-01): thread the dv binding so each chart renderer's drill
+    // handler routes to the dv slice when set.
+    dynamicViewId,
     dashboardId,
     drillDownColumn,
     drillDownColumnType,
@@ -825,6 +870,9 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
 type DrillProps = {
   widgetId: number;
   tableId: number | undefined;
+  // Phase 63 (DVDRILL-V112-01): dv binding. When set, the renderer's drill handler routes
+  // the click into dvFilters[dynamicViewId] instead of filters[tableId].
+  dynamicViewId: number | undefined;
   dashboardId: number;
   drillDownColumn: string;
   drillDownColumnType: DrillDownDataType;
@@ -851,6 +899,7 @@ const BarRenderer = ({
   config,
   widgetId,
   tableId,
+  dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
@@ -882,7 +931,8 @@ const BarRenderer = ({
     setClickedElement(null);
   }, [data]);
 
-  const drillEnabled = !!drillDownColumn && tableId !== undefined;
+  const drillEnabled =
+    !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   const wrapperStyle = { cursor: drillEnabled ? "pointer" : "default" };
 
   const handleChartClick = (nextState: unknown) => {
@@ -897,7 +947,8 @@ const BarRenderer = ({
     //    Phase 9 data-clear → loading state takes over.
     setTimeout(() => {
       dispatchDrillDown({
-        tableId: tableId as number,
+        tableId,
+        dynamicViewId,
         dashboardId,
         column: drillDownColumn,
         value,
@@ -976,6 +1027,7 @@ const LineRenderer = ({
   config,
   widgetId,
   tableId,
+  dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
@@ -1001,7 +1053,8 @@ const LineRenderer = ({
     setClickedElement(null);
   }, [data]);
 
-  const drillEnabled = !!drillDownColumn && tableId !== undefined;
+  const drillEnabled =
+    !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   const wrapperStyle = { cursor: drillEnabled ? "pointer" : "default" };
 
   const handleChartClick = (nextState: unknown) => {
@@ -1014,7 +1067,8 @@ const LineRenderer = ({
     // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
     setTimeout(() => {
       dispatchDrillDown({
-        tableId: tableId as number,
+        tableId,
+        dynamicViewId,
         dashboardId,
         column: drillDownColumn,
         value,
@@ -1086,6 +1140,7 @@ const PieRenderer = ({
   config,
   widgetId,
   tableId,
+  dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
@@ -1109,7 +1164,8 @@ const PieRenderer = ({
     setClickedElement(null);
   }, [data]);
 
-  const drillEnabled = !!drillDownColumn && tableId !== undefined;
+  const drillEnabled =
+    !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   const wrapperStyle = { cursor: drillEnabled ? "pointer" : "default" };
 
   // RESEARCH.md Pitfall 1: Pie click signature differs — slice.payload is the
@@ -1123,7 +1179,8 @@ const PieRenderer = ({
     // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
     setTimeout(() => {
       dispatchDrillDown({
-        tableId: tableId as number,
+        tableId,
+        dynamicViewId,
         dashboardId,
         column: drillDownColumn,
         value,
@@ -1175,6 +1232,7 @@ const ScatterRenderer = ({
   config,
   widgetId,
   tableId,
+  dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
@@ -1193,7 +1251,8 @@ const ScatterRenderer = ({
     setClickedElement(null);
   }, [data]);
 
-  const drillEnabled = !!drillDownColumn && tableId !== undefined;
+  const drillEnabled =
+    !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   const wrapperStyle = { cursor: drillEnabled ? "pointer" : "default" };
 
   const handleChartClick = (nextState: unknown) => {
@@ -1206,7 +1265,8 @@ const ScatterRenderer = ({
     // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
     setTimeout(() => {
       dispatchDrillDown({
-        tableId: tableId as number,
+        tableId,
+        dynamicViewId,
         dashboardId,
         column: drillDownColumn,
         value,
@@ -1264,6 +1324,7 @@ const TableRenderer = ({
   config,
   widgetId,
   tableId,
+  dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
@@ -1323,7 +1384,8 @@ const TableRenderer = ({
         : `${aggregation}(${metricColumn})`)
     : "value";
 
-  const drillEnabled = !!drillDownColumn && tableId !== undefined;
+  const drillEnabled =
+    !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   // Phase 10 DRILL-04: row-tint — find the active filter value for the
   // configured drillDownColumn (if any) so matching rows get the highlight class.
   const activeFilterValue = tableFilters.find((f) => f.column === drillDownColumn)?.value;
@@ -1336,7 +1398,8 @@ const TableRenderer = ({
     // (PITFALL C-03 sequencing — same across chart types).
     setTimeout(() => {
       dispatchDrillDown({
-        tableId: tableId as number,
+        tableId,
+        dynamicViewId,
         dashboardId,
         column: drillDownColumn,
         value,
@@ -1467,7 +1530,8 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const drillDownColumn = (cfg.drillDownColumn as string) || "";
   const drillDownColumnType =
     (cfg.drillDownColumnType as DrillDownDataType) || "string";
-  const drillEnabled = !!drillDownColumn && tableId !== undefined;
+  const drillEnabled =
+    !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   // Phase 17-03: dashboardId from DashboardContext for synchronous markMaterializing in row-click drill.
   // Phase 30 follow-up: also read widgets so this renderer can fire spatial materialize for its
   // own tableId when no sibling AggregatedWidgetRenderer exists. Without this, a dashboard with
@@ -1969,7 +2033,8 @@ const RecordsTableRenderer = ({ widget }: Props) => {
                 // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
                 setTimeout(() => {
                   dispatchDrillDown({
-                    tableId: tableId as number,
+                    tableId,
+                    dynamicViewId,
                     dashboardId,
                     column: drillDownColumn,
                     value,

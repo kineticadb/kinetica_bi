@@ -2549,3 +2549,148 @@ describe("RecordsTableRenderer CSV download", () => {
     expect(capturedSignal!.aborted).toBe(true);
   });
 });
+
+// ============================================================================
+// Phase 63 Plan 03 (DVDRILL-V112-01/02/04): dv-aware drill dispatch + isolation
+// ============================================================================
+//
+// THE v1.12 bug fix: drilling a dynamic-view-backed widget must route the filter
+// into dvFilters[dynamicViewId] — NOT filters[sourceTableId] (the reported bug).
+// Covers:
+//   - isolation/bug-fix: dv drill populates dvFilters[7], leaves filters[42] EMPTY
+//   - markDvMaterializing flips dvViews[7].materializing = true synchronously
+//   - table-backed drill still lands in filters[tableId] (regression — path unchanged)
+//   - dv-isolated scope: a dv drill does NOT touch a same-source source-table widget
+// ============================================================================
+
+describe("WidgetRenderer Phase 63 — dv-aware drill dispatch (DVDRILL-V112-01/02)", () => {
+  beforeEach(() => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockReset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // A dv-backed TABLE widget (config.dynamicViewId = 7, config.tableId = 42) with a
+  // materialized dv view + drillDownColumn configured.
+  const makeDvDrillWidget = (): WidgetDto =>
+    makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT region, COUNT(*) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
+        tableId: 42,
+        dynamicViewId: 7,
+        drillDownColumn: "region",
+        drillDownColumnType: "string",
+      },
+    });
+
+  const renderDvDrillRows = async () => {
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(["region", "value"], [["EAST", "WEST"], [10, 20]]) as Record<string, unknown>,
+    );
+    vi.spyOn(clientModule, "materializeFilter").mockImplementation(
+      () => new Promise(() => {}), // never resolves — keeps materializing observable
+    );
+    vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
+
+    // dv must be materialized so the dv-bound widget renders its data + drillEnabled is active.
+    act(() => {
+      useDynamicViewStore.getState().setView(7, {
+        viewName: "_kbi_dv_u1_d1_7",
+        status: "materialized",
+        expiresAt: Date.now() + 300000,
+      });
+    });
+
+    const { container } = render(
+      wrap(<WidgetRenderer widget={makeDvDrillWidget()} />, 1, [], [makeDvRow({ id: 7 })]),
+    );
+    await waitFor(() => {
+      const rows = container.querySelectorAll("tbody tr");
+      expect(rows.length).toBe(2);
+    });
+    return container;
+  };
+
+  it("THE BUG-FIX: dv drill populates dvFilters[7] AND leaves filters[42] EMPTY", async () => {
+    const container = await renderDvDrillRows();
+
+    const firstRow = container.querySelectorAll("tbody tr")[0] as HTMLTableRowElement;
+    await act(async () => {
+      firstRow.click();
+      await new Promise((r) => setTimeout(r, 350)); // through the 300ms dim setTimeout
+    });
+
+    // dv slice has the filter…
+    const dvFilters = useFilterStore.getState().dvFilters[7] ?? [];
+    expect(dvFilters).toHaveLength(1);
+    expect(dvFilters[0].column).toBe("region");
+    expect(dvFilters[0].value).toBe("EAST");
+
+    // …and the source table slice STAYS EMPTY (the reported bug is killed).
+    const tableFilters = useFilterStore.getState().filters[42] ?? [];
+    expect(tableFilters).toHaveLength(0);
+  });
+
+  it("dv drill flips dvViews[7].materializing = true synchronously with addDvFilter", async () => {
+    const container = await renderDvDrillRows();
+
+    // No dv-filter view entry pre-click.
+    expect(useFilterViewStore.getState().dvViews[7]).toBeUndefined();
+
+    const firstRow = container.querySelectorAll("tbody tr")[0] as HTMLTableRowElement;
+    await act(async () => {
+      firstRow.click();
+      await new Promise((r) => setTimeout(r, 350));
+    });
+
+    const dvEntry = useFilterViewStore.getState().dvViews[7];
+    expect(dvEntry).toBeDefined();
+    expect(dvEntry!.materializing).toBe(true);
+    // Table-keyed filter-view store must NOT have been touched by a dv drill.
+    expect(useFilterViewStore.getState().views[42]).toBeUndefined();
+  });
+
+  it("table-backed drill still lands in filters[tableId] (regression — table path unchanged)", async () => {
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(["region", "value"], [["EAST", "WEST"], [10, 20]]) as Record<string, unknown>,
+    );
+    vi.spyOn(clientModule, "materializeFilter").mockImplementation(() => new Promise(() => {}));
+    vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
+
+    // No dynamicViewId — pure table-backed widget.
+    const widget = makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT region, COUNT(*) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
+        tableId: 42,
+        drillDownColumn: "region",
+        drillDownColumnType: "string",
+      },
+    });
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(2));
+
+    const firstRow = container.querySelectorAll("tbody tr")[0] as HTMLTableRowElement;
+    await act(async () => {
+      firstRow.click();
+      await new Promise((r) => setTimeout(r, 350));
+    });
+
+    // Table path: filter lands in filters[42]; dvFilters untouched.
+    const tableFilters = useFilterStore.getState().filters[42] ?? [];
+    expect(tableFilters).toHaveLength(1);
+    expect(tableFilters[0].value).toBe("EAST");
+    expect(useFilterStore.getState().dvFilters[7] ?? []).toHaveLength(0);
+    // Table filter-view store flipped (markMaterializing), dv view store untouched.
+    expect(useFilterViewStore.getState().views[42]?.materializing).toBe(true);
+    expect(useFilterViewStore.getState().dvViews[7]).toBeUndefined();
+  });
+});
