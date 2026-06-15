@@ -15,11 +15,11 @@
 
 ### Dynamic-View Drill-Down
 
-- [ ] **DVDRILL-V112-01**: Clicking a drill-eligible element (pie slice / bar / line or scatter point / table or records row) on a widget bound to a dynamic view applies a drill-down filter to the **dynamic view's data** — NOT a filter on the underlying source table. Works for all drill-capable widget types.
-- [ ] **DVDRILL-V112-02**: A dynamic-view drill-down updates LIVE — the clicked widget AND every other widget bound to the SAME dynamic view re-render to the filtered slice. Widgets bound to the source table or to a DIFFERENT dynamic view are NOT affected (dv-isolated scope).
-- [ ] **DVDRILL-V112-03**: The dv drill-down materializes a filtered view `FROM <dynamic-view materialized view> WHERE <filter>` via the existing `POST /api/filter/materialize` path extended to accept a dynamic-view source (no new route); `AggregatedWidgetRenderer` remains the sole materialize trigger. *(Server portion done in Phase 62; client wiring in Phase 63.)*
-- [ ] **DVDRILL-V112-04**: A dv-backed widget's data read FROM-swaps to the **filtered-dv view** when a dv filter is active and falls back to the raw dynamic-view view when it is cleared (precedence: filtered-dv → dv); over-threshold / not-yet-materialized dv states still behave safely (no crash, existing empty/pending UX preserved).
-- [ ] **DVDRILL-V112-05**: Filter state is keyed so a dynamic-view id can NEVER collide with a table id (composite / kind-scoped key or a dv-scoped slice); a dv drill-down shows a removable filter chip identifying the dynamic view + clicked value, removing it reverts the dv widgets to the unfiltered dynamic view, and dv filters reset on dashboard-switch + logout (consistent with the table-filter lifecycle).
+- [x] **DVDRILL-V112-01**: Clicking a drill-eligible element (pie slice / bar / line or scatter point / table or records row) on a widget bound to a dynamic view applies a drill-down filter to the **dynamic view's data** — NOT a filter on the underlying source table. Works for all drill-capable widget types.
+- [x] **DVDRILL-V112-02**: A dynamic-view drill-down updates LIVE — the clicked widget AND every other widget bound to the SAME dynamic view re-render to the filtered slice. Widgets bound to the source table or to a DIFFERENT dynamic view are NOT affected (dv-isolated scope).
+- [x] **DVDRILL-V112-03**: The dv drill-down materializes a filtered view `FROM <dynamic-view materialized view> WHERE <filter>` via the existing `POST /api/filter/materialize` path extended to accept a dynamic-view source (no new route); `AggregatedWidgetRenderer` remains the sole materialize trigger. *(Server portion done in Phase 62; client wiring in Phase 63.)*
+- [x] **DVDRILL-V112-04**: A dv-backed widget's data read FROM-swaps to the **filtered-dv view** when a dv filter is active and falls back to the raw dynamic-view view when it is cleared (precedence: filtered-dv → dv); over-threshold / not-yet-materialized dv states still behave safely (no crash, existing empty/pending UX preserved).
+- [x] **DVDRILL-V112-05**: Filter state is keyed so a dynamic-view id can NEVER collide with a table id (composite / kind-scoped key or a dv-scoped slice); a dv drill-down shows a removable filter chip identifying the dynamic view + clicked value, removing it reverts the dv widgets to the unfiltered dynamic view, and dv filters reset on dashboard-switch + logout (consistent with the table-filter lifecycle).
 
 ### Verification
 
@@ -51,11 +51,11 @@ Explicitly excluded for v1.12.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DVDRILL-V112-01 | Phase 63 | Pending |
-| DVDRILL-V112-02 | Phase 63 | Pending |
+| DVDRILL-V112-01 | Phase 63 | Complete |
+| DVDRILL-V112-02 | Phase 63 | Complete |
 | DVDRILL-V112-03 | Phase 62 (server) + Phase 63 (client) | In Progress (server done; client → Phase 63) |
-| DVDRILL-V112-04 | Phase 63 | Pending |
-| DVDRILL-V112-05 | Phase 63 | Pending |
+| DVDRILL-V112-04 | Phase 63 | Complete |
+| DVDRILL-V112-05 | Phase 63 | In Progress (keying + lifecycle foundation done in 63-01; chips → 63-04) |
 | VERIFY-V112-01 | Phase 64 | Pending |
 
 **Coverage:**
