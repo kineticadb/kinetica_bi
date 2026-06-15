@@ -298,11 +298,11 @@ function TargetEditor({
     <div
       data-testid={`radiogroup-target-${optionIdx}-${targetIdx}`}
       style={showListChrome ? {
-        border: "1px solid var(--border-color, #3a3a4a)",
+        border: "1px solid var(--border)",
         borderRadius: 4,
         padding: "8px 10px",
         marginBottom: 8,
-        background: "var(--bg-subtle, #18182a)",
+        background: "var(--card)",
       } : undefined}
     >
       {/* Target header + per-target Remove — only when multi-target (SC4) */}
@@ -320,7 +320,7 @@ function TargetEditor({
               fontSize: "0.7rem",
               fontWeight: 600,
               letterSpacing: "0.08em",
-              color: "var(--text-muted, #888)",
+              color: "var(--muted)",
             }}
           >
             TARGET {targetIdx + 1}
@@ -389,7 +389,7 @@ function TargetEditor({
         {isOrphanTarget && (
           <div
             className="config-hint"
-            style={{ color: "var(--warning, #d97706)" }}
+            style={{ color: "var(--warning)" }}
             data-testid={`orphan-target-warning-${optionIdx}`}
           >
             Target no longer available — pick a new target
@@ -404,14 +404,14 @@ function TargetEditor({
           className="ghost-sm"
           aria-label={`Capture from target for option ${optionIdx + 1}`}
           onClick={handleCapture}
-          style={{ color: "var(--accent, #22c55e)" }}
+          style={{ color: "var(--accent)" }}
         >
           Capture from target
         </button>
         {captureEmpty && (
           <span
             className="config-hint"
-            style={{ marginLeft: 8, color: "var(--text-muted, #888)" }}
+            style={{ marginLeft: 8, color: "var(--muted)" }}
           >
             no capturable fields on this target
           </span>
@@ -432,7 +432,7 @@ function TargetEditor({
                 style={{
                   cursor: "pointer",
                   fontSize: "0.75rem",
-                  color: "var(--text-muted, #888)",
+                  color: "var(--muted)",
                   userSelect: "none",
                 }}
               >
@@ -456,7 +456,7 @@ function TargetEditor({
                 {jsonError && (
                   <div
                     className="config-hint"
-                    style={{ color: "var(--danger, #c44)" }}
+                    style={{ color: "var(--danger)" }}
                     data-testid={`json-error-${optionIdx}`}
                   >
                     {jsonError}
@@ -508,7 +508,7 @@ function TargetEditor({
           {jsonError && (
             <div
               className="config-hint"
-              style={{ color: "var(--danger, #c44)" }}
+              style={{ color: "var(--danger)" }}
               data-testid={`json-error-${optionIdx}`}
             >
               {jsonError}
@@ -592,11 +592,11 @@ function OptionRow({
       className="radiogroup-option-row"
       data-testid={`radiogroup-option-row-${idx}`}
       style={{
-        border: "1px solid var(--border-color, #3a3a4a)",
+        border: "1px solid var(--border)",
         borderRadius: 6,
         padding: "10px 12px",
         marginBottom: 10,
-        background: "var(--panel-bg, #1e1e2e)",
+        background: "var(--panel)",
       }}
     >
       {/* Row header: option number + remove */}
@@ -613,7 +613,7 @@ function OptionRow({
             fontSize: "0.75rem",
             fontWeight: 600,
             letterSpacing: "0.08em",
-            color: "var(--text-muted, #888)",
+            color: "var(--muted)",
           }}
         >
           OPTION {idx + 1}
@@ -643,7 +643,7 @@ function OptionRow({
         {labelMissing && (
           <div
             className="config-hint"
-            style={{ color: "var(--danger, #c44)" }}
+            style={{ color: "var(--danger)" }}
             data-testid={`label-error-${idx}`}
           >
             Label is required
@@ -676,7 +676,7 @@ function OptionRow({
         className="ghost-sm"
         aria-label={`Add target to option ${idx + 1}`}
         onClick={addTarget}
-        style={{ color: "var(--accent, #22c55e)", marginBottom: 4 }}
+        style={{ color: "var(--accent)", marginBottom: 4 }}
       >
         + Add target
       </button>
@@ -685,7 +685,7 @@ function OptionRow({
       {reasons.length > 0 && (
         <div
           className="config-hint"
-          style={{ color: "var(--danger, #c44)" }}
+          style={{ color: "var(--danger)" }}
           data-testid={`validation-errors-${idx}`}
         >
           {reasons.map((r, i) => (
@@ -902,7 +902,7 @@ export default function RadioGroupConfigPanel({
         className="ghost-sm radiogroup-add-option"
         aria-label="Add option"
         onClick={handleAddOption}
-        style={{ color: "var(--accent, #22c55e)", marginBottom: 12 }}
+        style={{ color: "var(--accent)", marginBottom: 12 }}
       >
         + Add option
       </button>

@@ -287,7 +287,7 @@ export default function DataFilterConfigPanel({
                 </button>
 
                 {columnMissing && (
-                  <span className="config-hint" style={{ color: "#c44" }}>
+                  <span className="config-hint" style={{ color: "var(--danger)" }}>
                     Column &apos;{row.column}&apos; not found on base table
                   </span>
                 )}

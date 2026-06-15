@@ -339,7 +339,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
     return <div className="widget-timeline widget-timeline--loading" data-testid="timeline-loading">Loading timeline…</div>;
   }
   if (error) {
-    return <div className="widget-timeline widget-timeline--error" data-testid="timeline-error" style={{ color: "#c44" }}>Timeline error: {error}</div>;
+    return <div className="widget-timeline widget-timeline--error" data-testid="timeline-error" style={{ color: "var(--danger)" }}>Timeline error: {error}</div>;
   }
   if (data.length === 0) {
     return <div className="widget-timeline widget-timeline--empty"><div className="config-hint">No data for the selected range.</div></div>;

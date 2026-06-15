@@ -303,7 +303,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
     return <div className="widget-timeline widget-timeline--loading" data-testid="numericline-loading">Loading chart…</div>;
   }
   if (error) {
-    return <div className="widget-timeline widget-timeline--error" data-testid="numericline-error" style={{ color: "#c44" }}>Numeric line error: {error}</div>;
+    return <div className="widget-timeline widget-timeline--error" data-testid="numericline-error" style={{ color: "var(--danger)" }}>Numeric line error: {error}</div>;
   }
   if (data.length === 0) {
     return <div className="widget-timeline widget-timeline--empty"><div className="config-hint">No data for the selected range.</div></div>;

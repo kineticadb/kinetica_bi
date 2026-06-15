@@ -640,7 +640,7 @@ export default function CbConfigForm({
         <div className="cb-categorical-section">
           {/* Cardinality probe state hints (non-loading) */}
           {cardinality?.state === "ok" && cardinality.count > 256 && (
-            <div className="config-hint config-cardinality-warn" style={{ color: "#ef4444" }}>
+            <div className="config-hint config-cardinality-warn" style={{ color: "var(--danger)" }}>
               <strong>Too many distinct values</strong>
               <div>Kinetica&apos;s classbreak mode supports up to 256 categories.</div>
             </div>
@@ -651,7 +651,7 @@ export default function CbConfigForm({
             </div>
           )}
           {cardinality?.state === "error" && (
-            <div className="config-hint" style={{ color: "#ef4444" }}>
+            <div className="config-hint" style={{ color: "var(--danger)" }}>
               Could not count distinct values. Try again.
             </div>
           )}
@@ -731,7 +731,7 @@ export default function CbConfigForm({
             <div
               className="cb-autosuggest-error"
               data-testid="cb-autosuggest-error"
-              style={{ color: "#ef4444", fontSize: "0.85em" }}
+              style={{ color: "var(--danger)", fontSize: "0.85em" }}
             >
               {autoSuggestError}
             </div>
@@ -937,7 +937,7 @@ export default function CbConfigForm({
             {breakErrors[i] && (
               <div
                 className="cb-row-error"
-                style={{ color: "#ef4444", fontSize: "0.85em" }}
+                style={{ color: "var(--danger)", fontSize: "0.85em" }}
                 data-testid={`cb-row-error-${i}`}
               >
                 {breakErrors[i]}

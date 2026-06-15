@@ -384,7 +384,7 @@ export default function DataFilterRenderer({ widget, tables }: Props): JSX.Eleme
   return (
     <div className="widget-datafilter" data-testid="datafilter-renderer">
       {universeError !== null && (
-        <div className="config-hint datafilter-error" style={{ color: "#c44" }}>
+        <div className="config-hint datafilter-error" style={{ color: "var(--danger)" }}>
           Failed to load value universes: {universeError}
         </div>
       )}
@@ -400,7 +400,7 @@ export default function DataFilterRenderer({ widget, tables }: Props): JSX.Eleme
               className="datafilter-field datafilter-field--missing"
               data-testid={`datafilter-field-${idx}`}
             >
-              <span style={{ color: "#c44" }}>
+              <span style={{ color: "var(--danger)" }}>
                 Column &apos;{f.column}&apos; not found on base table — skipped
               </span>
             </div>

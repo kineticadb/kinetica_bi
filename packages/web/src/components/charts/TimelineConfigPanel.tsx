@@ -336,7 +336,7 @@ export default function TimelineConfigPanel({
                 </button>
 
                 {columnMissing && (
-                  <span className="config-hint" style={{ color: "#c44" }}>
+                  <span className="config-hint" style={{ color: "var(--danger)" }}>
                     Column &apos;{m.column}&apos; not found on base table
                   </span>
                 )}
