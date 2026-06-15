@@ -395,6 +395,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Decisions
 
+### Theming hardening (2026-06-15, tech-debt — recurring theme-drift bugs)
+- Root cause of recurring theme bugs (blue radios, dark pie tooltip, RadioGroupConfigPanel referencing non-existent `--text-muted`/`--border-color` tokens via literal fallbacks): tokens existed but were applied inconsistently + no guardrail. Full hardening pass (commits 8418faf/4bcab02/6171b51/646135b + 762ed3e):
+  - Added semantic tokens `--danger`/`--warning`/`--success`/`--on-accent` to global.css (dark + light) + `.text-danger/.text-warning/.text-muted/.text-accent` utility classes + global `input[type=radio],input[type=checkbox]{accent-color:var(--accent)}` normalization.
+  - `lib/chartTheme.ts` = single home for data-viz literals: `DEFAULT_CHART_PALETTE`, per-chart `DEFAULT_*_COLOR`, `RECHARTS_TOOLTIP_PROPS` (contentStyle). WidgetRenderer/Timeline/NumericLine import it (deduped 5+ inline tooltip copies).
+  - Converted all status/chrome hardcoded hex (incl. component .css) → tokens.
+  - GUARDRAIL: `src/styles/theme-guard.spec.ts` fails CI on any raw `#hex` in `src/components/**/*.{tsx,css}` outside a minimal justified ALLOWLIST (data-viz/color-tooling: chart definitions, color pickers, draw overlays). Turns "operator catches it in screenshots" → "CI catches it." See [[ui-consistency-conventions]].
+  - Frontend-only; full suite 2087/2087, web tsc clean, no server diff.
+
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
 - [54-10 NON_TRIGGER_TYPES allow-list]: Pure-consumer set allow-listed (map/info-card/legend/datafilter/timeline/numericline); everything else treated as trigger — covers records + all AggregatedWidgetRenderer paths including future chart types via the else branch default
