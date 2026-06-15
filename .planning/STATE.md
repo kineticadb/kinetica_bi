@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Drill-Down on Dynamic-View-Backed Widgets
-status: roadmap_complete
-stopped_at: "v1.12 ROADMAP created 2026-06-15 — Phases 62-64. 62 = server materialize-from-dv-view (DVDRILL-V112-03 server, SERVER-ONLY); 63 = client dv drill-down — keying + routing + read-path + chips/lifecycle (DVDRILL-V112-01/02/04/05 + client -03, FRONTEND-ONLY); 64 = verification + live UAT (VERIFY-V112-01). 6/6 requirements mapped, no orphans. NEXT: /gsd:plan-phase 62."
-last_updated: "2026-06-15T21:30:00.000Z"
+status: phase_complete
+stopped_at: "Phase 62 (server: materialize FROM dv view) COMPLETE + verified passed 3/3 (DVDRILL-V112-03 SERVER portion). buildFilterViewName gained optional dynamicViewId → distinct _dv<id> view (commits d0414dc/bd9bef5); POST+DELETE /api/filter/materialize dv branch FROM buildDynamicViewName WHERE buildServerWhereClause, spatial+dv→400/empty→400/missing-dv→404/fail-safe (commits 87e3827/17d93f4/7f36989). server tsc clean; server set-gate held (failing files = exactly the 8 TD-V16 known-flaky); no packages/web diff; route count 2. DVDRILL-V112-03 left IN PROGRESS (server done; client wiring is Phase 63 — do NOT mark Complete until 63). NEXT: /gsd:plan-phase 63 (client dv drill-down: filter keying + dv-aware dispatch + filtered-dv read-path + chips/lifecycle)."
+last_updated: "2026-06-15T21:33:43.070Z"
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
 ---
 
 # Project State
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-15 — v1.12 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.12 — Drill-Down on Dynamic-View-Backed Widgets (roadmap complete; Phases 62-64). v1.11 shipped 2026-06-15.
+**Current focus:** Phase 62 — server-materialize-from-dv-view
 
 ## Current Position
 
-Phase: 62 (Server — Materialize From DV View) — not started
-Status: v1.12 roadmap complete (Phases 62-64). Next action: /gsd:plan-phase 62.
+Phase: 62 (server-materialize-from-dv-view) — COMPLETE (2/2 plans)
+Plan: 2 of 2 complete (62-02 — POST/DELETE /api/filter/materialize dv path; DVDRILL-V112-03 met)
+Next: Phase 63 (client dv drill-down) — run /gsd:plan-phase 63
 
 ## v1.12 Phase Map
 
@@ -283,6 +284,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 60.1 P02 | 7 | 3 tasks | 6 files |
 | Phase 60.1-radio-config-ux-structured-layer-target-editor-reuse-cbconfigform P03 | 15 | 4 tasks | 5 files |
 | Phase 60.2 P01 | 15 | 4 tasks | 9 files |
+| Phase 62 P01 | 2min | 2 tasks | 2 files |
+| Phase 62 P02 | 6min | 3 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -429,6 +432,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
   - Converted all status/chrome hardcoded hex (incl. component .css) → tokens.
   - GUARDRAIL: `src/styles/theme-guard.spec.ts` fails CI on any raw `#hex` in `src/components/**/*.{tsx,css}` outside a minimal justified ALLOWLIST (data-viz/color-tooling: chart definitions, color pickers, draw overlays). Turns "operator catches it in screenshots" → "CI catches it." See [[ui-consistency-conventions]].
   - Frontend-only; full suite 2087/2087, web tsc clean, no server diff.
+- [Phase 62]: 62-01: buildFilterViewName gains optional dynamicViewId -> _dv<id> segment (distinct from _t<id> + dv view); both-undefined throws (no silent _tundefined); table path byte-unchanged
+- [Phase 62]: POST/DELETE /api/filter/materialize dv path: body/query dynamicViewId materializes FROM the dv's own materialized view (buildDynamicViewName) WHERE column-filters into a distinct _kbi_filt_..._dv<id>_s view; table path byte-unchanged; spatial+dv→400, empty→400, missing/other-dash dv→404; fail-safe on unmaterialized dv; no new route
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -824,6 +829,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-13T04:04:54.303Z
-Stopped at: Completed 60.2-01-PLAN.md — multi-target radio option model + dispatch + wiring
+Last session: 2026-06-15T21:29:02.185Z
+Stopped at: Completed 62-02-PLAN.md
 Resume file: None
