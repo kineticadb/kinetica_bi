@@ -602,6 +602,21 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       .join('|')
   );
 
+  // Phase 63.1 (DVDRILL-V112-02/-04): dv-FILTER re-render subscription. The existing
+  // dynamicViewsKey tracks the RAW dv store only — it does NOT move when the filter store's
+  // dvViews slice changes, so a dv-filter apply/clear left the map stuck. Mirror viewsKey
+  // but over useFilterViewStore.dvViews, scoped to includedLayers' dv ids, sorted ascending.
+  const dvFilterViewsKey = useFilterViewStore((s) =>
+    includedLayers
+      .filter((l) => l.dynamic_view_id !== null && l.dynamic_view_id !== undefined)
+      .map((l) => l.dynamic_view_id!)
+      .sort((a, b) => a - b)
+      .map((id) =>
+        `${id}:${s.dvViews[id]?.viewName ?? ''}:${s.dvViews[id]?.materializeVersion ?? 0}:${s.dvViews[id]?.materializing ? '1' : '0'}`
+      )
+      .join('|')
+  );
+
   // PITFALL S-02 lock: primitive shapesKey selector (joined ids) — Effect 7's dep array key.
   // Reads as string — never the array reference, never the whole store state.
   const shapesKey = useSpatialFilterStore((s) => s.shapes.map((sh) => sh.id).join("|"));
@@ -1192,6 +1207,21 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           ? useDynamicViewStore.getState().dynamicViewVersion
           : undefined;
 
+      // Phase 63.1: filtered-dv → raw-dv → skip precedence. When this layer's dv has an active
+      // materialized dv-filter (materializing===false + non-empty viewName), FROM-swap to the
+      // filtered-dv view (a regular Kinetica view → buildWmsParams Case 1) with the filter's
+      // materializeVersion as the _mv cache-buster (the filtered-dv NAME is session-stable across
+      // re-drills). Else fall through to the raw-dv dvEntry/dvVersion computed above (unchanged).
+      let resolvedDvEntry = dvEntry !== undefined ? { status: dvEntry.status, viewName: dvEntry.viewName } : undefined;
+      let resolvedDvVersion = dvVersion;
+      if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) {
+        const dvFilter = useFilterViewStore.getState().dvViews[layer.dynamic_view_id];
+        if (dvFilter && dvFilter.materializing === false && typeof dvFilter.viewName === "string" && dvFilter.viewName.length > 0) {
+          resolvedDvEntry = { status: "materialized", viewName: dvFilter.viewName };
+          resolvedDvVersion = dvFilter.materializeVersion;
+        }
+      }
+
       // Phase 16 (PITFALL C-02): per-layer view-store snapshot at effect-fire time.
       const entry = useFilterViewStore.getState().views[tableId];
       const expired = isViewExpired(entry);
@@ -1208,8 +1238,8 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       const wmsParams = buildWmsParams(
         wmsConfigInput,
         materializeVersion,
-        dvEntry !== undefined ? { status: dvEntry.status, viewName: dvEntry.viewName } : undefined,
-        dvVersion,
+        resolvedDvEntry,
+        resolvedDvVersion,
         { cb_config: layer.cb_config, track_config: layer.track_config },
       );
 
@@ -1395,8 +1425,9 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // PITFALL S-02 + Pitfall 7 (35-RESEARCH.md): dynamicViewsKey added so Effect 2 re-fires
     // when any bound dv's viewName or status changes (e.g. pending → materialized after
     // orchestrator cascade completes).
+    // Phase 63.1: dvFilterViewsKey added so Effect 2 re-fires when a dv-filter is applied/cleared.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includedLayers, widgetConfig, imageLoadFunctionFor, tables, viewsKey, dynamicViewsKey]);
+  }, [includedLayers, widgetConfig, imageLoadFunctionFor, tables, viewsKey, dynamicViewsKey, dvFilterViewsKey]);
 
   // ── Effect 3: Per-layer filter subscription (M-02 lock; fires on filterVersion + viewsKey) ──
   // PT16-E: filterVersion stays in dep array (300ms debounce window before view-store writes).
@@ -1424,6 +1455,20 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           ? useDynamicViewStore.getState().dynamicViewVersion
           : undefined;
 
+      // Phase 63.1: filtered-dv → raw-dv → skip precedence. Same logic as Effect 2's dv-filter
+      // resolution block. NOTE: the table suspend gate below (entry?.materializing) is orthogonal —
+      // it gates on the TABLE entry for table-backed layers; the dv-filter check is a SEPARATE
+      // guard inside the dv branch and does not affect the table suspend gate.
+      let resolvedDvEntry = dvEntry !== undefined ? { status: dvEntry.status, viewName: dvEntry.viewName } : undefined;
+      let resolvedDvVersion = dvVersion;
+      if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) {
+        const dvFilter = useFilterViewStore.getState().dvViews[layer.dynamic_view_id];
+        if (dvFilter && dvFilter.materializing === false && typeof dvFilter.viewName === "string" && dvFilter.viewName.length > 0) {
+          resolvedDvEntry = { status: "materialized", viewName: dvFilter.viewName };
+          resolvedDvVersion = dvFilter.materializeVersion;
+        }
+      }
+
       // Phase 16 (PITFALL C-02): per-layer view-store snapshot. viewsKey at top is re-render trigger.
       const entry = useFilterViewStore.getState().views[tableId];
       // Phase 17-02 suspend gate: skip updateParams while materializing (C-02 per-tableId check).
@@ -1441,8 +1486,8 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       const wmsParams = buildWmsParams(
         wmsConfigInput,
         materializeVersion,
-        dvEntry !== undefined ? { status: dvEntry.status, viewName: dvEntry.viewName } : undefined,
-        dvVersion,
+        resolvedDvEntry,
+        resolvedDvVersion,
         { cb_config: layer.cb_config, track_config: layer.track_config },
       );
       if (wmsParams === null) continue;
@@ -1457,8 +1502,9 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     }
     // PITFALL S-02 + PT16-E + Pitfall 7: filterVersion (chip-state) + viewsKey (post-materialize)
     // + dynamicViewsKey (dv re-materialize / status flip).
+    // Phase 63.1: dvFilterViewsKey added so Effect 3 re-fires when a dv-filter is applied/cleared.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, viewsKey, dynamicViewsKey, includedLayers, tables]);
+  }, [filterVersion, viewsKey, dynamicViewsKey, dvFilterViewsKey, includedLayers, tables]);
 
   // ── Effect 4: Basemap swap — swap source, NOT Map rebuild ─────────────────
   // Fires on a basemap config change OR an app-theme toggle (both move
