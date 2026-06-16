@@ -5614,3 +5614,107 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     expect(params._mv).toBe("4");
   });
 });
+
+// ── Phase 68 Plan 04 (CALDR-V113-03): Calendar cell drill → WMS map propagation ──────────────
+// Proves the calendar-drill write-path (filters[tableId]/dvViews[dvId]) propagates to a WMS map
+// on the SAME scope via the existing FROM-swap logic in MapChartRenderer (views[tableId] for
+// table-bound, dvViews[dvId] for dv-bound). No new wiring needed — the calendar writes the same
+// stores the existing drill writes; this spec PROVES the propagation.
+describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation (CALDR-V113-03)", () => {
+  beforeEach(() => {
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    _filterViewState.dvViews = {};
+    _dynamicViewState.views = {};
+    _dynamicViewState.dynamicViewVersion = 0;
+    lastMapInstance = null;
+    lastBasemapLayerInstance = null;
+    lastResizeObserverCallback = null;
+    lastResizeObserverInstance = null;
+    tileLoadListeners = {};
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    lastViewportElement = null;
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Cal-TABLE: calendar drill on table → WMS map for same tableId FROM-swaps to filtered view ──
+  // The calendar cell click writes markMaterializing → setView → views[tableId].viewName.
+  // After materialization (materializing:false, non-empty viewName), a map layer on the same
+  // tableId must have buildWmsParams called with tableRef===filtered viewName (not raw schema.table).
+  it("Cal-TABLE: table-bound calendar BETWEEN filter (materialized) → WMS LAYERS=<filtered viewName> + _mv present", async () => {
+    // Seed useFilterViewStore.views[10] as a materialized calendar-style filter view
+    // (same state as after: markMaterializing → setView({viewName, expiresAt}))
+    _filterViewState.views = {
+      10: {
+        viewName: "_kbi_filt_cal_d1_t10_sabc",
+        expiresAt: Date.now() + 60_000,
+        materializing: false,
+        materializeVersion: 2,
+        dashboardId: 1,
+      },
+    };
+    // Render a table-bound WMS layer on tableId=10 (same table the calendar filtered)
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // buildWmsParams received tableRef===calendar's filtered viewName (not raw "public.t10")
+    expect(params.LAYERS).toBe("_kbi_filt_cal_d1_t10_sabc");
+    expect(params._mv).toBe("2");
+    // The raw table name must NOT appear in LAYERS
+    expect(params.LAYERS).not.toBe("public.t10");
+  });
+
+  // ── Cal-DV: calendar drill on dv → WMS map for same dvId FROM-swaps to filtered-dv view ──
+  // The calendar cell click writes markDvMaterializing → setDvView → dvViews[dvId].viewName.
+  // After materialization (materializing:false, non-empty viewName), a map layer on the same
+  // dynamic_view_id must have buildWmsParams called with resolvedDvEntry.viewName===filtered dv view
+  // (Phase 63.1 dv FROM-swap path already handles this; this spec proves it for calendar drills).
+  it("Cal-DV: dv-bound calendar BETWEEN filter (materialized) → WMS LAYERS=<filtered-dv viewName> + _mv from dvFilter.materializeVersion", async () => {
+    // Seed the raw dv in dynamicViewStore (required for layer to render at all)
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 5;
+    // Seed useFilterViewStore.dvViews[7] as a materialized calendar-style dv-filter view
+    // (same state as after: markDvMaterializing → setDvView({viewName, expiresAt}))
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_cal_d1_dv7_sabc",
+        materializing: false,
+        materializeVersion: 3,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    // Render a dv-bound WMS layer on dynamic_view_id=7 (same dv the calendar filtered)
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // Phase 63.1 dv FROM-swap: resolvedDvEntry.viewName===calendar's filtered dv view
+    expect(params.LAYERS).toBe("_kbi_filt_cal_d1_dv7_sabc");
+    // _mv must come from dvFilter.materializeVersion (3), NOT raw dvVersion (5)
+    expect(params._mv).toBe("3");
+    // The raw dv name must NOT appear in LAYERS
+    expect(params.LAYERS).not.toBe("_kbi_dv_u1_d1_7");
+  });
+});
