@@ -77,7 +77,7 @@ Restored click-through exploration for dynamic-view-backed widgets: drilling a d
 ### Phases
 
 - [x] **Phase 65: Calendar SQL Builder + Kinetica Spike** — Pure `buildCalendarSql.ts` + `computeCellBounds` + Kinetica `DATE_TRUNC` unit verification spike
-- [ ] **Phase 66: Chart-Type Definition + Config Panel** — `definitions/calendar.ts` + `CalendarConfigPanel.tsx` with domain/subdomain dependent pickers + cell-count cap
+- [x] **Phase 66: Chart-Type Definition + Config Panel** — `definitions/calendar.ts` + `CalendarConfigPanel.tsx` with domain/subdomain dependent pickers + cell-count cap (completed 2026-06-16)
 - [ ] **Phase 67: SVG Calendar Renderer (read-only)** — `CalendarRenderer.tsx` short-circuited in `WidgetRenderer`, data fetch, domain/subdomain pivot, gap-fill, color scale, tooltips, filter-aware re-fetch
 - [ ] **Phase 68: Cell-Drill Integration** — Cell click → BETWEEN range filter via `setBulkFilters`/`addDvFilter` + `markMaterializing`/`markDvMaterializing`; chips; dv-isolated routing; WMS propagation verified
 - [ ] **Phase 69: Verification + Live UAT** — Automated gates + blocking live operator walk-through + compiled verification record
@@ -170,7 +170,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 65. calendar-sql-builder-kinetica-spike | 1/2 | Complete    | 2026-06-16 |
-| 66. chart-type-definition-config-panel | 3/4 | In Progress|  |
+| 66. chart-type-definition-config-panel | 4/4 | Complete   | 2026-06-16 |
 | 67. svg-calendar-renderer-read-only | 0/TBD | Not started | - |
 | 68. cell-drill-integration | 0/TBD | Not started | - |
 | 69. verification-live-uat | 0/3 | Not started | - |

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: "Completed 66-03-PLAN.md"
-last_updated: "2026-06-16T14:32:02Z"
+stopped_at: Completed 66-04-PLAN.md
+last_updated: "2026-06-16T14:37:43.947Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 6
 ---
 
 # Project State
@@ -326,6 +326,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 65 P01 | 6 | 2 tasks | 4 files |
 | Phase 65 P02 | 3min | 1 task (NOT-RUN fallback) | 2 files (65-02-SUMMARY.md + calendarBin.ts annotation) |
 | Phase 66 P02 | 5min | 1 task | 2 files |
+| Phase 66 P04 | 2 | 2 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -510,6 +511,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 66-03]: CalendarConfigPanel subdomain dropdown renders only VALID_DOMAIN_SUBDOMAIN[domain] options (invalid ones hidden, not greyed); isValidCombo is defense-in-depth for direct config injection
 - [Phase 66-03]: Cap probe uses tableRef (source table) as fromTarget for both table-bound AND dv-bound configs at config time; dv view is narrower so source-table span is a safe conservative upper bound; documented in code comment
 - [Phase 66-03]: Cap probe failure (network/SQL error) resets capState to idle — cap is a UX guard, not a hard requirement; probe never blocks save on error
+- [Phase 66]: usesAggregation:false is a locked invariant for calendar — keeps it out of AggregatedWidgetRenderer (sole-materialize-trigger); never flip this
+- [Phase 66]: WidgetRenderer placeholder branch ships in Phase 66; real SVG CalendarRenderer deferred to Phase 67 — short-circuit already in place
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -906,6 +909,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T13:57:24.401Z
-Stopped at: Phase 66 context gathered
-Resume file: .planning/phases/66-chart-type-definition-config-panel/66-CONTEXT.md
+Last session: 2026-06-16T14:37:43.939Z
+Stopped at: Completed 66-04-PLAN.md
+Resume file: None
