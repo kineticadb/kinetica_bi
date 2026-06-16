@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: Completed 67-03-PLAN.md
-last_updated: "2026-06-16T17:25:00.000Z"
+stopped_at: "Completed 68-01-PLAN.md"
+last_updated: "2026-06-16T18:08:28.861Z"
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 9
+  completed_phases: 3
+  total_plans: 13
   completed_plans: 9
 ---
 
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 67 — svg-calendar-renderer-read-only
+**Current focus:** Phase 68 — cell-drill-integration
 
 ## Current Position
 
-Phase: 67 (svg-calendar-renderer-read-only) — COMPLETE
-Plan: 3 of 3
+Phase: 68 (cell-drill-integration) — EXECUTING
+Plan: 2 of 4
 
 ## v1.13 Phase Map
 
@@ -330,6 +330,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 67 P01 | 4min | 3 tasks | 5 files |
 | Phase 67 P02 | 5min | 2 tasks | 2 files |
 | Phase 67 P03 | 3min | 2 tasks | 2 files |
+| Phase 68 P01 | 2min | 1 task (TDD: 2 commits) | 2 files |
 
 ### Quick Tasks Completed
 
@@ -355,6 +356,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
 - **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
 - **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
+
+### Phase 68 Plan 01 — Datetime-Between Chip Human-Readable Formatting (2026-06-16)
+
+- **formatDatetimeRange added to columnTypes.ts:** pure UTC helper, no imports, no React. Formats datetime BETWEEN bounds as human-readable inclusive range (e.g. "Mar 2 – Mar 8, 2026").
+- **sameDay check precedes sub-day logic:** full-day cells (00:00 → 23:59:59.999) collapse to date-only; partial-day cells show hour granularity; multi-day cells show en-dash range.
+- **Only the datetime arm of the between branch is changed:** numeric/string between paths verbatim unchanged; eq datetime path unchanged.
+- **5 new spec cases green:** no T/Z chars in output, week range has en-dash + both dates + year, single-day collapses, hour range shows "HH:00", numeric between unchanged.
+- **CALDR-V113-01 chip-copy half complete:** Plan 68-02 (cell-click dispatch) can now write between datetime filters whose chips display correctly.
 
 ### Phase 67 Plan 03 — WidgetRenderer Wiring Complete (2026-06-16)
 
@@ -921,6 +930,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T16:13:30.788Z
-Stopped at: Completed 67-01-PLAN.md
-Resume file: None
+Last session: 2026-06-16T17:48:09.013Z
+Stopped at: Phase 68 context gathered
+Resume file: .planning/phases/68-cell-drill-integration/68-CONTEXT.md
