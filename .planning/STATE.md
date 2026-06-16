@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: "Completed 66-01-PLAN.md (retroactive execution — lib was missing from repo)"
-last_updated: "2026-06-16T14:24:47Z"
+stopped_at: "Completed 66-03-PLAN.md"
+last_updated: "2026-06-16T14:32:02Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 ## Current Position
 
 Phase: 66 (chart-type-definition-config-panel) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## v1.13 Phase Map
 
@@ -507,6 +507,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 66-01]: SUBDOMAIN_GRANULARITY_MS[month] = 2_419_200_000 (28d) — smallest real month used as divisor to give conservative UPPER BOUND on cell count (more cells estimated, safer for cap enforcement)
 - [Phase 66-01]: estimateCalendarCells({rangeMs, subdomain}) only — domain param not needed because subdomain bucket count IS the worst-case cell count; domain re-arranges cells into rows but does not multiply them
 - [Phase 66-01]: buildCalendarRangeQuery accepts pre-resolved fromTarget (same contract as buildCalendarSql) — NO schema-prefixing logic inside; EXTRACT(EPOCH FROM ...) returns seconds, caller x1000 for ms
+- [Phase 66-03]: CalendarConfigPanel subdomain dropdown renders only VALID_DOMAIN_SUBDOMAIN[domain] options (invalid ones hidden, not greyed); isValidCombo is defense-in-depth for direct config injection
+- [Phase 66-03]: Cap probe uses tableRef (source table) as fromTarget for both table-bound AND dv-bound configs at config time; dv view is narrower so source-table span is a safe conservative upper bound; documented in code comment
+- [Phase 66-03]: Cap probe failure (network/SQL error) resets capState to idle — cap is a UX guard, not a hard requirement; probe never blocks save on error
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
