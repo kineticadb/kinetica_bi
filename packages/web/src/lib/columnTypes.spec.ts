@@ -162,10 +162,70 @@ describe("buildChipText (DRILL-04 success criterion #5 + Phase 44 FILTER-V17-05)
     expect(buildChipText("fare", [5, 50], "number", "between")).toBe("fare between 5 and 50");
   });
 
-  it("buildChipText with operator 'between' on datetime tuple formats as `col between 2024-01-01 and 2024-12-31`", () => {
-    expect(buildChipText("ts", ["2024-01-01", "2024-12-31"], "datetime", "between")).toBe(
-      "ts between 2024-01-01 and 2024-12-31"
+  // Phase 68-01: datetime BETWEEN → human-readable range (CALDR-V113-01)
+  // The old raw-value spec is replaced by the human-readable assertions below.
+
+  it("datetime between chip: week range renders human-readable — no ISO T or Z chars", () => {
+    const text = buildChipText(
+      "ts",
+      ["2026-03-02T00:00:00.000Z", "2026-03-08T23:59:59.999Z"],
+      "datetime",
+      "between",
     );
+    expect(text).not.toMatch(/[TZ]/);
+    expect(text).not.toMatch(/000/);
+    expect(text).toContain("Mar 2");
+    expect(text).toContain("Mar 8");
+    expect(text).toContain("2026");
+  });
+
+  it("datetime between chip: week range contains both start and end dates with en-dash separator", () => {
+    const text = buildChipText(
+      "ts",
+      ["2026-03-02T00:00:00.000Z", "2026-03-08T23:59:59.999Z"],
+      "datetime",
+      "between",
+    );
+    // Must contain an en-dash (U+2013) separating the two dates
+    expect(text).toContain("–");
+    expect(text).toContain("Mar 2");
+    expect(text).toContain("Mar 8");
+  });
+
+  it("datetime between chip: single-day range collapses to one date with no en-dash", () => {
+    const text = buildChipText(
+      "ts",
+      ["2026-03-03T00:00:00.000Z", "2026-03-03T23:59:59.999Z"],
+      "datetime",
+      "between",
+    );
+    expect(text).toContain("Mar 3");
+    expect(text).toContain("2026");
+    expect(text).not.toContain("–");
+    expect(text).not.toMatch(/[TZ]/);
+  });
+
+  it("datetime between chip: hour range shows the hour (sub-day granularity)", () => {
+    // 14:00 to 14:59:59.999Z — sub-day range, should show the hour
+    const text = buildChipText(
+      "ts",
+      ["2026-03-03T14:00:00.000Z", "2026-03-03T14:59:59.999Z"],
+      "datetime",
+      "between",
+    );
+    expect(text).toContain("Mar 3");
+    expect(text).toContain("2026");
+    expect(text).toContain("14:00");
+    expect(text).not.toMatch(/[TZ]/);
+  });
+
+  it("datetime between chip: numeric between is UNCHANGED (no human formatting)", () => {
+    expect(buildChipText("fare", [5, 50], "number", "between")).toBe("fare between 5 and 50");
+  });
+
+  it("datetime between chip: operator 'eq' datetime path UNCHANGED (still raw ISO with quotes)", () => {
+    const d = new Date("2026-05-04T00:00:00.000Z");
+    expect(buildChipText("ts", d, "datetime")).toBe("ts = '2026-05-04T00:00:00.000Z'");
   });
 
   it("buildChipText without operator falls back to existing eq behavior — back-compat", () => {
