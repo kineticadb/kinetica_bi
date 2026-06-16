@@ -344,6 +344,16 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // Runtime wiring follows the same WidgetRenderer-dispatch pattern as datafilter + legend.
     // (Registry def radio-group.ts has no renderer field — runtime dispatched here exclusively.)
     body = <RadioGroupRenderer widget={effectiveWidget} />;
+  } else if (effectiveWidget.type === "calendar") {
+    // Phase 66 (CAL-V113-01): calendar short-circuits BEFORE AggregatedWidgetRenderer
+    // (usesAggregation:false → sole-materialize-trigger invariant preserved). The real
+    // SVG CalendarRenderer ships in Phase 67; Phase 66 renders a placeholder so adding
+    // a configured calendar widget does NOT route through AggregatedWidgetRenderer.
+    body = (
+      <div className="widget-placeholder" style={{ padding: 12, color: "var(--text-muted)" }} role="note">
+        Calendar Heatmap — renderer coming in Phase 67.
+      </div>
+    );
   } else {
     body = <AggregatedWidgetRenderer widget={effectiveWidget} />;
   }
