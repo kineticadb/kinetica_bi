@@ -35,7 +35,13 @@ export type CalendarSubdomain = "month" | "week" | "day" | "hour";
 
 /**
  * DATE_TRUNC units supported by this Kinetica instance.
- * Documented-assumption default; Plan 65-02 confirms/annotates against the live instance.
+ * NOT YET VERIFIED against live Kinetica — spike could not run in this env
+ * (the /api/sql route on localhost:4000 requires a valid Kinetica session obtained
+ * via POST /api/auth/login with Kinetica password credentials; credentials are not
+ * accessible to the executor without reading packages/server/.env, which is
+ * security-prohibited); FLAGGED for Phase 69 UAT (CAL-V113-03).
+ * See .planning/phases/65-calendar-sql-builder-kinetica-spike/65-02-SUMMARY.md for
+ * the exact spike queries to run during Phase 69 UAT.
  */
 export const KINETICA_DATE_TRUNC_UNITS = [
   "year",
