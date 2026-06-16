@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { WidgetDto } from "../../api/client";
+import type { WidgetDto, DynamicViewRow } from "../../api/client";
 
 /* ------------------------------------------------------------------ */
 /*  Config‑field descriptor – drives the generic config form          */
@@ -75,6 +75,15 @@ export type ConfigPanelProps = {
    * Optional — non-legend panels ignore.
    */
   widgets?: WidgetDto[];
+  /**
+   * Phase 66 (CAL-V113-01): dashboard-scoped dynamic-view list, forwarded from
+   * ChartConfigPanel's own `dynamicViews` prop into the CustomConfigPanel slot.
+   * CalendarConfigPanel uses this to render a dv-aware data-source dropdown
+   * (table OR dynamic view) — TimelineConfigPanel never built a dv binding so
+   * this prop was previously absent from ConfigPanelProps. Optional — panels
+   * that bind base-table-only (Timeline) ignore it.
+   */
+  dynamicViews?: DynamicViewRow[];
 };
 
 export type ChartTypeDefinition = {
