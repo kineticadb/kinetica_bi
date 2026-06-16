@@ -172,6 +172,6 @@ Plans:
 |-------|----------------|--------|-----------|
 | 65. calendar-sql-builder-kinetica-spike | 1/2 | Complete    | 2026-06-16 |
 | 66. chart-type-definition-config-panel | 4/4 | Complete    | 2026-06-16 |
-| 67. svg-calendar-renderer-read-only | 1/3 | In Progress|  |
+| 67. svg-calendar-renderer-read-only | 2/3 | In Progress|  |
 | 68. cell-drill-integration | 0/TBD | Not started | - |
 | 69. verification-live-uat | 0/3 | Not started | - |
