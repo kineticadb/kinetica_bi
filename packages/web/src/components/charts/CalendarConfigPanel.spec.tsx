@@ -295,4 +295,49 @@ describe("CalendarConfigPanel", () => {
 
     expect(isValid).toHaveBeenCalledWith(false);
   });
+
+  /* ------------------------------------------------------------------ */
+  /*  Phase 68-03: respondToFilters checkbox tests                       */
+  /* ------------------------------------------------------------------ */
+
+  it("Test 12 (respondToFilters renders): 'Respond to dashboard filters' checkbox is present when source is configured", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    expect(screen.getByText("Respond to dashboard filters")).toBeInTheDocument();
+  });
+
+  it("Test 13 (respondToFilters default OFF): checkbox is unchecked when respondToFilters is absent/false", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const checkbox = screen.getByRole("checkbox", { name: /respond to dashboard filters/i });
+    expect(checkbox).toBeInTheDocument();
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("Test 14 (respondToFilters toggle ON): toggling the checkbox calls onChange with respondToFilters:true", () => {
+    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const checkbox = screen.getByRole("checkbox", { name: /respond to dashboard filters/i });
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ respondToFilters: true }),
+    );
+  });
+
+  it("Test 15 (respondToFilters toggle OFF): checking then unchecking calls onChange with respondToFilters:false", () => {
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      respondToFilters: true,
+    } as Partial<CalendarConfig>);
+    const checkbox = screen.getByRole("checkbox", { name: /respond to dashboard filters/i });
+    // starts ON (true)
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    // toggle OFF
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ respondToFilters: false }),
+    );
+  });
+
+  it("Test 16 (DEFAULT_CALENDAR_CONFIG has respondToFilters:false): default includes respondToFilters:false", () => {
+    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("respondToFilters", false);
+  });
 });

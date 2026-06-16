@@ -50,6 +50,7 @@ export type CalendarConfig = {
   domain: CalendarDomain;
   subdomain: CalendarSubdomain;
   colorTheme: string;          // ColorBrewer Sequential scheme id
+  respondToFilters?: boolean;  // Phase 68-03: OFF = always read unfiltered source (default). ON = Phase 67 filter-aware behavior.
 };
 
 export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
@@ -59,6 +60,7 @@ export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
   domain: "month",
   subdomain: "day",
   colorTheme: "Greens",
+  respondToFilters: false,
 };
 
 /* ------------------------------------------------------------------ */
@@ -118,6 +120,7 @@ export default function CalendarConfigPanel({
   const domain = (cfg.domain ?? DEFAULT_CALENDAR_CONFIG.domain) as CalendarDomain;
   const subdomain = (cfg.subdomain ?? DEFAULT_CALENDAR_CONFIG.subdomain) as CalendarSubdomain;
   const colorTheme = cfg.colorTheme ?? DEFAULT_CALENDAR_CONFIG.colorTheme;
+  const respondToFilters = cfg.respondToFilters ?? false;
 
   const allTables = tables ?? [];
 
@@ -510,6 +513,21 @@ export default function CalendarConfigPanel({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* ---- Respond to dashboard filters toggle (Phase 68-03) ---- */}
+          <div className="ds-field">
+            <label className="ds-field-label" htmlFor="calendar-respond-to-filters">
+              Respond to dashboard filters
+            </label>
+            <input
+              id="calendar-respond-to-filters"
+              type="checkbox"
+              className="accent-checkbox"
+              checked={respondToFilters}
+              onChange={(e) => patch({ respondToFilters: e.target.checked })}
+              aria-label="Respond to dashboard filters"
+            />
           </div>
 
           {/* ---- Cap probe status ---- */}
