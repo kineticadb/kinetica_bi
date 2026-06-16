@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Drill-Down on Dynamic-View-Backed Widgets
 status: unknown
-stopped_at: Completed 63-04-PLAN.md
-last_updated: "2026-06-15T22:45:06.443Z"
+stopped_at: Completed 64-02-PLAN.md (64-UAT.md authored — pending attestation)
+last_updated: "2026-06-16T01:55:00Z"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,13 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-15 — v1.12 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 63 — client-dv-drill-down
+**Current focus:** Phase 64 — verification-live-uat
 
 ## Current Position
 
-Phase: 63 (client-dv-drill-down) — COMPLETE (4/4 plans)
-Plan: 4 of 4 — DONE
-Next: Phase 64 (Verification + Live UAT)
+Phase: 64 (verification-live-uat) — EXECUTING
+Plan: 3 of 3
 
 ## v1.12 Phase Map
 
@@ -290,6 +289,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 63 P02 | 3 min | 2 tasks | 2 files |
 | Phase 63 P03 | 11 min | 3 tasks | 2 files |
 | Phase 63 P04 | 7 min | 1 tasks | 2 files |
+| Phase 64 P01 | 8min | 2 tasks | 1 files |
 
 ### Quick Tasks Completed
 
@@ -315,6 +315,10 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
 - **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
 - **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
+
+### Phase 64 Plan 01 Gate Results (recorded 2026-06-16)
+
+- **overall_verdict: ALL PASS** — HEAD 408259d; frontend vitest 2133/2133 (95 files, 0 failures), web tsc exit 0, server tsc exit 0, server set-gate 8 failing files all in TD-V16-TEST-ISOLATION (identical to Phase 61 baseline — no new server regressions from Phase 62 dv extension), targeted v1.12 web specs 257/257 (5 files), targeted v1.12 server specs 55/55 (3 files). Source tree clean — Phases 62 + 63 committed.
 
 ### Phase 61 Plan 01 Gate Results (recorded 2026-06-11)
 
@@ -482,6 +486,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 60.2]: RadioOption.actions/action both optional for back-compat; getOptionActions normalizes both shapes
 - [Phase 60.2]: applyWidgetActions builds ONE fresh combined contribution and calls setControlContribution ONCE (option-level switch-replace)
 - [Phase 60.2]: validateRadioOption 2nd param accepts string|(id=>string)|undefined union for panel back-compat transition
+- [64-02 UAT authored]: 64-UAT.md shipped in "pending attestation" status — §1.3 explicitly names the killed-bug check (source-table widget unaffected during dv drill); §3.2 mandates DevTools Network inspection for dv/table scope separation; gates verdict transcribed from 64-01-AUTOMATED-GATES.md (ALL PASS at HEAD 408259d)
 
 ### Phase 49-users-management-ui
 

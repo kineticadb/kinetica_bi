@@ -56,7 +56,7 @@ Explicitly excluded for v1.12.
 | DVDRILL-V112-03 | Phase 62 (server) + Phase 63 (client) | In Progress (server done; client → Phase 63) |
 | DVDRILL-V112-04 | Phase 63 | Complete |
 | DVDRILL-V112-05 | Phase 63 | In Progress (keying + lifecycle foundation done in 63-01; chips → 63-04) |
-| VERIFY-V112-01 | Phase 64 | Pending |
+| VERIFY-V112-01 | Phase 64 | In Progress (64-UAT.md authored — pending operator walk at 64-03 checkpoint) |
 
 **Coverage:**
 - v1 requirements: 6 total
@@ -70,4 +70,4 @@ Explicitly excluded for v1.12.
 
 ---
 *Requirements defined: 2026-06-15*
-*Last updated: 2026-06-15 — v1.12 roadmap created (Phases 62-64); traceability mapped*
+*Last updated: 2026-06-16 — VERIFY-V112-01 in progress (64-UAT.md authored pending operator walk at 64-03)*
