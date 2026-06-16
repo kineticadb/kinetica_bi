@@ -1,30 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.12
-milestone_name: Drill-Down on Dynamic-View-Backed Widgets
-status: unknown
-stopped_at: "Completed 64-03-PLAN.md (v1.12 milestone gate: overall_status passed; VERIFY-V112-01 satisfied; Phase 64 Complete 2026-06-15)"
-last_updated: "2026-06-16T02:48:29.261Z"
+milestone: v1.13
+milestone_name: Calendar Heatmap Visualization
+status: defining_requirements
+stopped_at: "v1.13 started — defining requirements (Calendar Heatmap; domain+subdomain, click-to-drill, table+dv, configurable colors)"
+last_updated: "2026-06-16T03:00:00.000Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-15 — v1.12 milestone started)
+See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 64 — verification-live-uat
+**Current focus:** v1.13 Calendar Heatmap — defining requirements
 
 ## Current Position
 
-Phase: 64 (verification-live-uat) — EXECUTING
-Plan: 3 of 3
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-16 — Milestone v1.13 (Calendar Heatmap Visualization) started
 
 ## v1.12 Phase Map
 
