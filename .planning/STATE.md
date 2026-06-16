@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: Completed 65-01-PLAN.md
-last_updated: "2026-06-16T04:32:21.622Z"
+stopped_at: "Completed 66-01-PLAN.md (retroactive execution — lib was missing from repo)"
+last_updated: "2026-06-16T14:24:47Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 6
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 65 — calendar-sql-builder-kinetica-spike
+**Current focus:** Phase 66 — chart-type-definition-config-panel
 
 ## Current Position
 
-Phase: 65 (calendar-sql-builder-kinetica-spike) — COMPLETE
-Plan: 2 of 2
+Phase: 66 (chart-type-definition-config-panel) — EXECUTING
+Plan: 2 of 4
 
 ## v1.13 Phase Map
 
@@ -325,6 +325,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 64 P03 | checkpoint-resolved | 3 tasks | 4 files |
 | Phase 65 P01 | 6 | 2 tasks | 4 files |
 | Phase 65 P02 | 3min | 1 task (NOT-RUN fallback) | 2 files (65-02-SUMMARY.md + calendarBin.ts annotation) |
+| Phase 66 P02 | 5min | 1 task | 2 files |
 
 ### Quick Tasks Completed
 
@@ -350,6 +351,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
 - **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
 - **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
+
+### Phase 66 Plan 02 — dynamicViews Threading (2026-06-16)
+
+- **ConfigPanelProps.dynamicViews added as optional:** existing panels (Timeline/DataFilter/Legend/Map) are unaffected — field is optional so no forced prop threading; mirrors the `widgets?` and `tables?` optional pattern.
+- **ChartConfigPanel `<Custom>` slot now forwards dynamicViews:** Plan 66-03 CalendarConfigPanel can consume it directly from props to render a dv-aware data-source picker (CAL-V113-01).
+- Pre-existing tsc error (`estimateCalendarCells.spec.ts` cannot find module) confirmed as Phase 66-03 spec written ahead of implementation — not caused by these changes.
 
 ### Phase 65 Plan 02 — DATE_TRUNC Spike NOT-RUN (2026-06-16)
 
@@ -893,6 +900,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T04:22:30.495Z
-Stopped at: Completed 65-01-PLAN.md
-Resume file: None
+Last session: 2026-06-16T13:57:24.401Z
+Stopped at: Phase 66 context gathered
+Resume file: .planning/phases/66-chart-type-definition-config-panel/66-CONTEXT.md

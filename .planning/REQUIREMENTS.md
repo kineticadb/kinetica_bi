@@ -17,7 +17,7 @@
 
 ### Calendar Chart Type & Data
 
-- [ ] **CAL-V113-01**: A new `calendar` chart type is registered and selectable when creating/editing a widget; it binds to a base table OR a dynamic view (consistent with other widget types) and renders through its own short-circuit renderer in `WidgetRenderer` (it does NOT go through `AggregatedWidgetRenderer`).
+- [x] **CAL-V113-01**: A new `calendar` chart type is registered and selectable when creating/editing a widget; it binds to a base table OR a dynamic view (consistent with other widget types) and renders through its own short-circuit renderer in `WidgetRenderer` (it does NOT go through `AggregatedWidgetRenderer`).
 - [ ] **CAL-V113-02**: The calendar config panel lets the operator pick a timestamp column, a metric column + aggregation (reusing the existing aggregation set), a Domain time unit, and a dependent Subdomain time unit (only valid combos selectable: year×{month,week,day}, month×{week,day}, week×{day,hour}, day×hour), plus a color-palette choice.
 - [x] **CAL-V113-03**: The calendar fetches a time-bucketed aggregation — `AGG(metric)` grouped by `DATE_TRUNC(domain, ts)` and `DATE_TRUNC(subdomain, ts)` over the bound table or dv view — via a pure `buildCalendarSql` builder run through the existing SQL path; bucketing is UTC-consistent and uses Kinetica `DATE_TRUNC` units verified against the live instance (incl. the `week` start-day anchor).
 - [ ] **CAL-V113-04**: The calendar renders as a grid of Domain groups, each containing its Subdomain cells colored by the metric on a sequential scale (default + selected palette); missing/empty buckets render as muted/grey (gap-fill, not collapsed); the grid shows time-axis labels and a per-cell hover tooltip (time slice + metric value). All colors come from theme tokens / a `chartTheme` palette (no raw hex).
@@ -60,7 +60,7 @@ Explicitly excluded for v1.13.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CAL-V113-01 | Phase 66 | Pending |
+| CAL-V113-01 | Phase 66 | Complete |
 | CAL-V113-02 | Phase 66 | Pending |
 | CAL-V113-03 | Phase 65 | Complete |
 | CAL-V113-04 | Phase 67 | Pending |
