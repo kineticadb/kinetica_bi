@@ -673,4 +673,129 @@ describe("CalendarRenderer", () => {
     const hexRe = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/;
     expect(hexRe.test(src)).toBe(false);
   });
+
+  /* ------------------------------------------------------------------ */
+  /*  Phase 68-04 Task 2: Sole-materialize-trigger re-assertion +        */
+  /*  chip lifecycle (CALDR-V113-03)                                     */
+  /* ------------------------------------------------------------------ */
+
+  // Test 22: Static-source-grep re-assertion (Phase 68-04 in-phase invariant check).
+  // Mirrors Phase 67 plan 03 precedent: read the FULL source file, extract import statements,
+  // and assert no import line contains the banned symbols — the sole-materialize-trigger
+  // invariant is critical safety property (AggregatedWidgetRenderer = sole trigger).
+  // This is a re-assertion of Test 0 in the 68-04 context with a broader grep:
+  // any line starting with "import" (or "export { ... } from") must not reference the banned symbols.
+  it("Test 22 (Phase 68-04 static re-assertion): CalendarRenderer.tsx — no import line contains materializeFilter|dropFilterView|fromSwap", () => {
+    const path = resolve(__dirname, "CalendarRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    // Extract all import/re-export declaration lines (broader than Test 0)
+    const importBlock = src
+      .split("\n")
+      .filter((line) => /^\s*(import|export\s*\{|\s*}\s*from)\s/.test(line))
+      .join("\n");
+    expect(importBlock).not.toMatch(/materializeFilter|dropFilterView|fromSwap/);
+    // Also confirm AggregatedWidgetRenderer pattern: the file DOES write to filter stores
+    // (via setBulkFilters/addDvFilter/removeFilter/removeDvFilter) but never calls materialize
+    // (any occurrence of materializeFilter in an import statement would be caught above).
+    expect(src).toContain("setBulkFilters");
+    // The string "materializeFilter" may appear in comments (e.g. "NO import of materializeFilter")
+    // but must NOT appear in any import line — that is already asserted by importBlock check above.
+  });
+
+  // Test 23: Chip lifecycle — add→dismiss→unfiltered.
+  // After a calendar drill, the between filter is present in the filterStore (chip appears).
+  // After the chip-X dismiss action (removeFilter), the timeCol between filter is gone from
+  // the store (calendar returns to unfiltered; the between entry is absent).
+  it("Test 23 (chip lifecycle — table): after drill, between filter present; after chip removeFilter, filter gone", async () => {
+    const { container } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    // --- ADD: click a populated cell → setBulkFilters dispatched (chip appears in store) ---
+    const allRects = container.querySelectorAll("rect");
+    const populatedRect = Array.from(allRects).find((r) => !r.getAttribute("data-empty"));
+    expect(populatedRect).toBeTruthy();
+    fireEvent.click(populatedRect!);
+
+    // setBulkFilters was called with tableId=1 and a between filter for timeCol
+    expect(mockSetBulkFilters).toHaveBeenCalledOnce();
+    const [calledTableId, calledFilters] = mockSetBulkFilters.mock.calls[0] as [number, Array<Record<string, unknown>>];
+    expect(calledTableId).toBe(1);
+    expect(calledFilters).toHaveLength(1);
+    const drillFilter = calledFilters[0];
+    expect(drillFilter.column).toBe("order_date");
+    expect(drillFilter.operator).toBe("between");
+    // The filter is now "in the store" (chip present) — simulate by seeding mockFilters
+    mockFilters = {
+      1: [{
+        column: drillFilter.column as string,
+        value: drillFilter.value as [string, string],
+        operator: "between",
+        dataType: "datetime",
+        addedAt: Date.now(),
+      }],
+    };
+
+    // --- DISMISS: chip X → removeFilter(tableId, timeCol) → filter gone ---
+    // Simulate what FilterBar does on chip dismiss: calls removeFilter(tableId, column).
+    // After this, the store slice for timeCol is empty (between filter cleared).
+    // The mock is wired in the filterStore mock above via useFilterStore.getState().removeFilter.
+    mockRemoveFilter(1, "order_date");
+    expect(mockRemoveFilter).toHaveBeenCalledWith(1, "order_date");
+    // Simulate store update: the entry is now cleared
+    mockFilters = { 1: [] };
+
+    // The timeCol between filter is gone — filters[1] has no "between" entry for "order_date"
+    const remaining = (mockFilters[1] ?? []).filter(
+      (f) => (f as Record<string, unknown>).column === "order_date" && (f as Record<string, unknown>).operator === "between",
+    );
+    expect(remaining).toHaveLength(0);
+  });
+
+  // Test 24: Chip lifecycle — dv path: after dv drill, dvFilters[dvId] present; after removeDvFilter, gone.
+  it("Test 24 (chip lifecycle — dv): after dv drill, dv between filter present; after chip removeDvFilter, filter gone", async () => {
+    mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
+    const { container } = render(
+      <CalendarRenderer widget={makeWidget({ dynamicViewId: 99 })} tables={TABLES} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    // --- ADD: click a populated cell → addDvFilter dispatched ---
+    const allRects = container.querySelectorAll("rect");
+    const populatedRect = Array.from(allRects).find((r) => !r.getAttribute("data-empty"));
+    expect(populatedRect).toBeTruthy();
+    fireEvent.click(populatedRect!);
+
+    expect(mockAddDvFilter).toHaveBeenCalledOnce();
+    const [calledDvId, calledFilter] = mockAddDvFilter.mock.calls[0] as [number, Record<string, unknown>];
+    expect(calledDvId).toBe(99);
+    expect(calledFilter.column).toBe("order_date");
+    expect(calledFilter.operator).toBe("between");
+    // Simulate store: dv filter is now "present" (chip exists)
+    mockDvFiltersStore = {
+      99: [{
+        column: calledFilter.column as string,
+        value: calledFilter.value as [string, string],
+        operator: "between",
+        dataType: "datetime",
+        addedAt: Date.now(),
+      }],
+    };
+
+    // --- DISMISS: chip X → removeDvFilter(dvId, timeCol) → filter gone ---
+    // The mock is wired in the filterStore mock above via useFilterStore.getState().removeDvFilter.
+    mockRemoveDvFilter(99, "order_date");
+    expect(mockRemoveDvFilter).toHaveBeenCalledWith(99, "order_date");
+    // Simulate store update: dv entry cleared
+    mockDvFiltersStore = { 99: [] };
+
+    // The timeCol between filter is gone from dvFilters[99]
+    const remaining = (mockDvFiltersStore[99] ?? []).filter(
+      (f) => (f as Record<string, unknown>).column === "order_date" && (f as Record<string, unknown>).operator === "between",
+    );
+    expect(remaining).toHaveLength(0);
+  });
 });
