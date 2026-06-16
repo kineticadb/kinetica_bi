@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: Completed 67-02-PLAN.md
+stopped_at: Completed 67-03-PLAN.md
 last_updated: "2026-06-16T17:25:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 ## Current Position
 
-Phase: 67 (svg-calendar-renderer-read-only) — EXECUTING
-Plan: 2 of 3
+Phase: 67 (svg-calendar-renderer-read-only) — COMPLETE
+Plan: 3 of 3
 
 ## v1.13 Phase Map
 
@@ -329,6 +329,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 66 P04 | 2 | 2 tasks | 3 files |
 | Phase 67 P01 | 4min | 3 tasks | 5 files |
 | Phase 67 P02 | 5min | 2 tasks | 2 files |
+| Phase 67 P03 | 3min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -354,6 +355,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
 - **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
 - **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
+
+### Phase 67 Plan 03 — WidgetRenderer Wiring Complete (2026-06-16)
+
+- **CalendarRenderer wired:** Phase 66 placeholder `<div>` replaced with `<CalendarRenderer widget={effectiveWidget} tables={tables} />`. Import added alongside sibling renderer imports. Branch stays before AggregatedWidgetRenderer fallthrough (sole-materialize-trigger invariant preserved).
+- **4 new spec assertions:** routes to CalendarRenderer (sentinel mock), no AggregatedWidgetRenderer fallthrough, tables prop threaded, static-grep confirms CalendarRenderer.tsx has no materializeFilter/dropFilterView imports.
+- **Phase 67 complete:** 3/3 plans done; full suite 2255/2255; web tsc clean. CAL-V113-04 integration wired.
 
 ### Phase 66 Plan 02 — dynamicViews Threading (2026-06-16)
 

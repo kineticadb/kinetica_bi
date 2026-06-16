@@ -40,7 +40,7 @@
 | 64. verification-live-uat | 3/3 | Complete   | 2026-06-16 |
 | 65. calendar-sql-builder-kinetica-spike | v1.13 | Not started | - |
 | 66. chart-type-definition-config-panel | v1.13 | Not started | - |
-| 67. svg-calendar-renderer-read-only | v1.13 | Not started | - |
+| 67. svg-calendar-renderer-read-only | v1.13 | Complete | 2026-06-16 |
 | 68. cell-drill-integration | v1.13 | Not started | - |
 | 69. verification-live-uat | v1.13 | Not started | - |
 
@@ -78,7 +78,7 @@ Restored click-through exploration for dynamic-view-backed widgets: drilling a d
 
 - [x] **Phase 65: Calendar SQL Builder + Kinetica Spike** — Pure `buildCalendarSql.ts` + `computeCellBounds` + Kinetica `DATE_TRUNC` unit verification spike
 - [x] **Phase 66: Chart-Type Definition + Config Panel** — `definitions/calendar.ts` + `CalendarConfigPanel.tsx` with domain/subdomain dependent pickers + cell-count cap (completed 2026-06-16)
-- [ ] **Phase 67: SVG Calendar Renderer (read-only)** — `CalendarRenderer.tsx` short-circuited in `WidgetRenderer`, data fetch, domain/subdomain pivot, gap-fill, color scale, tooltips, filter-aware re-fetch
+- [x] **Phase 67: SVG Calendar Renderer (read-only)** — `CalendarRenderer.tsx` short-circuited in `WidgetRenderer`, data fetch, domain/subdomain pivot, gap-fill, color scale, tooltips, filter-aware re-fetch
 - [ ] **Phase 68: Cell-Drill Integration** — Cell click → BETWEEN range filter via `setBulkFilters`/`addDvFilter` + `markMaterializing`/`markDvMaterializing`; chips; dv-isolated routing; WMS propagation verified
 - [ ] **Phase 69: Verification + Live UAT** — Automated gates + blocking live operator walk-through + compiled verification record
 
@@ -129,9 +129,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 67-01-PLAN.md — Pure helpers (TDD): `calendarColorScale.ts` (computeDomain + 5-bucket linear quantize + palette resolver) + `calendarGapFill.ts` (2D domain×subdomain dense gap-fill) + `useChartAxisColors` emptyCell extension
-- [ ] 67-02-PLAN.md — `CalendarRenderer.tsx` — fetch lifecycle (single `runSql(buildCalendarSql)`, FROM precedence resolved before SQL, filter-aware re-fetch) + SVG grid render (gap-fill, reactive color domain, Less→More legend, both-axis sparse labels, per-cell tooltip, non-interactive greys) + `CalendarRenderer.spec.tsx`
-- [ ] 67-03-PLAN.md — Wire `<CalendarRenderer>` into `WidgetRenderer.tsx` (replace Phase 66 placeholder, branch before AggregatedWidgetRenderer) + spec routing assertion + re-assert no-materialize-import invariant
+- [x] 67-01-PLAN.md — Pure helpers (TDD): `calendarColorScale.ts` (computeDomain + 5-bucket linear quantize + palette resolver) + `calendarGapFill.ts` (2D domain×subdomain dense gap-fill) + `useChartAxisColors` emptyCell extension
+- [x] 67-02-PLAN.md — `CalendarRenderer.tsx` — fetch lifecycle (single `runSql(buildCalendarSql)`, FROM precedence resolved before SQL, filter-aware re-fetch) + SVG grid render (gap-fill, reactive color domain, Less→More legend, both-axis sparse labels, per-cell tooltip, non-interactive greys) + `CalendarRenderer.spec.tsx`
+- [x] 67-03-PLAN.md — Wire `<CalendarRenderer>` into `WidgetRenderer.tsx` (replace Phase 66 placeholder, branch before AggregatedWidgetRenderer) + spec routing assertion + re-assert no-materialize-import invariant
 
 ### Phase 68: Cell-Drill Integration
 **Goal**: Clicking a calendar cell applies a timestamp BETWEEN range filter to the dashboard (or the dv scope), shows a removable chip, propagates to all consumer read-paths including WMS map tiles, and the `AggregatedWidgetRenderer`-as-sole-materialize-trigger invariant is preserved and statically asserted.
@@ -172,6 +172,6 @@ Plans:
 |-------|----------------|--------|-----------|
 | 65. calendar-sql-builder-kinetica-spike | 1/2 | Complete    | 2026-06-16 |
 | 66. chart-type-definition-config-panel | 4/4 | Complete    | 2026-06-16 |
-| 67. svg-calendar-renderer-read-only | 2/3 | In Progress|  |
+| 67. svg-calendar-renderer-read-only | 3/3 | Complete | 2026-06-16 |
 | 68. cell-drill-integration | 0/TBD | Not started | - |
 | 69. verification-live-uat | 0/3 | Not started | - |
