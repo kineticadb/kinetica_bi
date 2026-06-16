@@ -2,6 +2,9 @@
  * Phase 67 Plan 02 (CAL-V113-04 + CAL-V113-05):
  * CalendarRenderer — read-only SVG calendar heatmap.
  *
+ * Phase 68 Plan 02 (CALDR-V113-01 + CALDR-V113-02):
+ * Added cell-click BETWEEN drill dispatch + reactive selected-cell highlight.
+ *
  * Owns its full data lifecycle (mirrors TimelineRenderer):
  *   - Resolves the FROM target via precedence (fvViewName || dvFilterViewName ||
  *     dvViewName || schema.table) BEFORE building the SQL string — no fromSwap.
@@ -13,6 +16,9 @@
  *   - Discrete Less→More legend.
  *   - Both-axis sparse labels via formatTimelineTick.
  *   - Per-cell tooltip (populated cells only).
+ *   - Cell-click BETWEEN drill (table-bound → filters[tableId]; dv-bound → dvFilters[dvId]).
+ *   - Toggle-off: re-clicking the active cell clears its BETWEEN filter.
+ *   - Reactive selected-cell outline via appliedCell memo (mirrors TimelineRenderer appliedBand).
  *
  * NO raw hex — all colors via calendarBucketColors / useChartAxisColors.
  * NO import of materializeFilter / dropFilterView / fromSwap.
@@ -31,11 +37,15 @@ import {
 import { gapFillCalendar } from "../../lib/calendarGapFill";
 import { useChartAxisColors } from "../../lib/chartColors";
 import type { CalendarDomain, CalendarSubdomain } from "../../lib/calendarBin";
+import { computeCellBounds } from "../../lib/calendarBin";
 import type { TimelineAggregation, TimelineIntervalKey } from "../../lib/timelineBin";
 import { formatTimelineTick } from "../../lib/timelineBin";
-import { useFilterStore } from "../../store/filterStore";
+import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
+import { useToastStore } from "../../store/toast";
+import { buildChipText } from "../../lib/columnTypes";
+import { useDashboardContext } from "../DashboardContext";
 import type { CalendarConfig } from "./CalendarConfigPanel";
 
 /* ------------------------------------------------------------------ */
@@ -124,9 +134,21 @@ export default function CalendarRenderer({
   const effectiveSchema = dynamicViewId !== undefined ? "" : (schemaName ?? "");
   const effectiveTable = baseTableName ?? "";
 
+  // ---- Dashboard context (for markMaterializing / markDvMaterializing) ----
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { dashboardId } = useDashboardContext();
+
   // ---- Scoped store selectors (PITFALL C-02 — never the whole map) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const filterVersion = useFilterStore((s) => s.filterVersion);
+
+  // Active filters for the applied-cell memo (table path vs dv path)
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const activeFilters = useFilterStore((s) =>
+    dynamicViewId !== undefined
+      ? (s.dvFilters[dynamicViewId] ?? [])
+      : (s.filters[tableId] ?? []),
+  );
 
   // Table path selectors
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -150,6 +172,23 @@ export default function CalendarRenderer({
   );
   const dvFilterViewName = dvFilterEntry?.viewName;
   const dvFilterMaterializing = dvFilterEntry?.materializing ?? false;
+
+  // ---- Reactive appliedCell memo (mirrors TimelineRenderer appliedBand, §173-180) ----
+  // Finds the active BETWEEN filter on timeCol; captures [lo, hi] as the active bounds.
+  // Used for: (1) selected-cell outline, (2) toggle-off equality test.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const appliedCell: [string, string] | null = useMemo(() => {
+    const f = activeFilters.find(
+      (af) =>
+        af.column === timeCol &&
+        af.operator === "between" &&
+        Array.isArray(af.value) &&
+        af.value.length === 2,
+    );
+    if (!f) return null;
+    const [lo, hi] = f.value as [unknown, unknown];
+    return [String(lo), String(hi)];
+  }, [activeFilters, timeCol]);
 
   // ---- Data fetch state ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -263,7 +302,7 @@ export default function CalendarRenderer({
 
   // Theme-aware axis/empty cell colors (concrete strings for SVG attributes)
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { axis, emptyCell } = useChartAxisColors();
+  const { axis, emptyCell, accent } = useChartAxisColors();
 
   // ---- Render states ----
   if (loading) {
@@ -286,6 +325,58 @@ export default function CalendarRenderer({
         No data for this time range
       </div>
     );
+  }
+
+  // ---- Cell-click handler (CALDR-V113-01 + CALDR-V113-02) ----
+  // SOLE-TRIGGER INVARIANT: only writes filter stores; AggregatedWidgetRenderer Effect 1 materializes.
+  // Does NOT import materializeFilter / dropFilterView / fromSwap.
+  // Note: tableId is guaranteed non-undefined at this point (early-return guard above the hooks),
+  // but TypeScript cannot narrow through closures, so we cast to number where needed.
+  function handleCellClick(cell: { value: number | null; subdomainKey: string; domainKey: string }) {
+    // Guard: empty/grey cells are inert
+    if (cell.value === null) return;
+
+    const tid = tableId as number; // narrowed by the early-return guard above hooks
+    const [cellStart, cellEnd] = computeCellBounds(cell.subdomainKey, subdomain);
+
+    // Toggle-off: if the active filter matches this exact cell, clear it
+    if (
+      appliedCell !== null &&
+      appliedCell[0] === cellStart &&
+      appliedCell[1] === cellEnd
+    ) {
+      if (dynamicViewId !== undefined) {
+        useFilterStore.getState().removeDvFilter(dynamicViewId, timeCol);
+        useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
+      } else {
+        useFilterStore.getState().removeFilter(tid, timeCol);
+        useFilterViewStore.getState().markMaterializing(tid, dashboardId);
+      }
+      return;
+    }
+
+    // Build the BETWEEN ActiveFilter
+    const filter: ActiveFilter = {
+      column: timeCol,
+      value: [cellStart, cellEnd] as [string, string],
+      operator: "between",
+      dataType: "datetime",
+      sourceWidgetId: widget.id,
+      addedAt: Date.now(),
+    };
+
+    // Dispatch — table-bound vs dv-bound routing (CALDR-V113-02 dv-isolation)
+    if (dynamicViewId !== undefined) {
+      useFilterStore.getState().addDvFilter(dynamicViewId, filter);
+      useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
+    } else {
+      useFilterStore.getState().setBulkFilters(tid, [filter]);
+      useFilterViewStore.getState().markMaterializing(tid, dashboardId);
+    }
+
+    // Toast: show human-readable slice label on a new drill
+    const chipText = buildChipText(timeCol, [cellStart, cellEnd], "datetime", "between");
+    useToastStore.getState().showToast(chipText, "info");
   }
 
   // ---- SVG layout ----
@@ -368,6 +459,13 @@ export default function CalendarRenderer({
               const timeSlice = `${formatTimelineTick(cell.domainKey, domain as TimelineIntervalKey)} / ${formatTimelineTick(cell.subdomainKey, subdomain as TimelineIntervalKey)}`;
               const tooltipText = `${timeSlice} · ${aggLabel}: ${numValue.toLocaleString()}`;
 
+              // Reactive selected-cell outline: match this cell's bounds against the active BETWEEN filter
+              const [cellStart, cellEnd] = computeCellBounds(cell.subdomainKey, subdomain);
+              const isActive =
+                appliedCell !== null &&
+                appliedCell[0] === cellStart &&
+                appliedCell[1] === cellEnd;
+
               return (
                 <rect
                   key={`${ci}-${ri}`}
@@ -376,6 +474,10 @@ export default function CalendarRenderer({
                   width={CELL_PX}
                   height={CELL_PX}
                   fill={fill}
+                  stroke={isActive ? accent : "none"}
+                  strokeWidth={isActive ? 2 : 0}
+                  onClick={() => handleCellClick(cell)}
+                  style={{ cursor: "pointer" }}
                 >
                   <title>{tooltipText}</title>
                 </rect>

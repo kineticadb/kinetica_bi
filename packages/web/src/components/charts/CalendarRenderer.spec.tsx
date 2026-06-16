@@ -49,7 +49,8 @@ let mockFilters: Record<number, unknown[]> = {};
 let mockDvFiltersStore: Record<number, unknown[]> = {};
 const mockSetBulkFilters = vi.fn();
 const mockAddDvFilter = vi.fn();
-const mockClearDvFilters = vi.fn();
+const mockRemoveDvFilter = vi.fn();
+const mockRemoveFilter = vi.fn();
 
 vi.mock("../../store/filterStore", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -67,7 +68,8 @@ vi.mock("../../store/filterStore", async (importOriginal) => {
     filterVersion: mockFilterVersion,
     setBulkFilters: mockSetBulkFilters,
     addDvFilter: mockAddDvFilter,
-    clearDvFilters: mockClearDvFilters,
+    removeDvFilter: mockRemoveDvFilter,
+    removeFilter: mockRemoveFilter,
   });
   return { ...actual, useFilterStore };
 });
@@ -201,7 +203,8 @@ beforeEach(() => {
   mockMarkDvMaterializing.mockClear();
   mockSetBulkFilters.mockClear();
   mockAddDvFilter.mockClear();
-  mockClearDvFilters.mockClear();
+  mockRemoveDvFilter.mockClear();
+  mockRemoveFilter.mockClear();
   mockShowToast.mockClear();
   (runSql as unknown as ReturnType<typeof vi.fn>).mockReset();
   (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(CANNED_ROWS));
@@ -514,13 +517,16 @@ describe("CalendarRenderer", () => {
     const populatedRect = Array.from(allRects).find((r) => !r.getAttribute("data-empty"));
     fireEvent.click(populatedRect!);
 
-    // Toggle-off: setBulkFilters called with empty array to clear the calendar's timeCol filter
-    expect(mockSetBulkFilters).toHaveBeenCalledOnce();
-    const [, calledFilters] = mockSetBulkFilters.mock.calls[0] as [number, unknown[]];
-    expect(calledFilters).toHaveLength(0);
+    // Toggle-off: removeFilter called to clear the calendar's timeCol filter (targeted remove)
+    expect(mockRemoveFilter).toHaveBeenCalledOnce();
+    const [calledTableId, calledColumn] = mockRemoveFilter.mock.calls[0] as [number, string];
+    expect(calledTableId).toBe(1);
+    expect(calledColumn).toBe("order_date");
     expect(mockMarkMaterializing).toHaveBeenCalledOnce();
     // No toast on toggle-off
     expect(mockShowToast).not.toHaveBeenCalled();
+    // setBulkFilters should NOT be called (not the clear path)
+    expect(mockSetBulkFilters).not.toHaveBeenCalled();
   });
 
   it("Test 17 (toast on new drill): a toast fires when drilling a new cell", async () => {
