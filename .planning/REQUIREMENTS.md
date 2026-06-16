@@ -1,73 +1,80 @@
-# Requirements: Kinetica BI — v1.12 Drill-Down on Dynamic-View-Backed Widgets
+# Requirements: Kinetica BI — v1.13 Calendar Heatmap Visualization
 
-**Defined:** 2026-06-15
+**Defined:** 2026-06-16
 **Core Value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, without writing SQL.
 
-**Milestone goal:** Restore click-through exploration for widgets bound to a **dynamic view**. Today, drilling on a dv-backed chart/table mis-applies the filter to the underlying SOURCE TABLE (`dispatchDrillDown` keys by `tableId`; the dv-bound widget reads the raw dv view and never reflects the click). Make a drill-down filter the **dynamic view's data**, isolated to widgets bound to that same dv.
+**Milestone goal:** Add a new `calendar` chart/widget type (Superset-style Calendar Heatmap) that visualizes a metric aggregated over a timestamp column as a grid of color-scaled blocks, configured with a Domain + Subdomain time model, with click-to-drill that filters the dashboard to the clicked time slice.
 
-**Locked decisions (2026-06-15):**
-- **DV-isolated scope:** drilling a dv-backed widget filters ONLY that dynamic view — the clicked widget + other widgets bound to the SAME dv update; source-table widgets and other dvs are untouched (a dv is its own data scope, mirroring how table-backed drilling filters all widgets on that table).
-- **Filter the dv's materialized view in place:** the drill-down filter materializes `FROM <dv_view> WHERE <clicked filter>` — a filtered sub-view of the dynamic view's own materialized view — NOT a new filter on the source table.
-- **Preserve invariants:** `AggregatedWidgetRenderer` remains the SOLE materialize trigger; the existing table-backed drill-down path is unchanged; no new server routes (extend `POST /api/filter/materialize`); frontend-vitest 100% + web/server tsc clean + server set-based known-flaky gate (⊆ TD-V16-TEST-ISOLATION); decoupled from the v1.11 action engine.
-- **No new domain research** — fix in our own filter/dynamic-view pipeline, root-caused this session.
+**Locked decisions (2026-06-16):**
+- **Domain + Subdomain time model:** two dropdowns — Domain = the time unit blocks are grouped by; Subdomain = each cell's unit, a SMALLER unit than the domain (subdomain dropdown is dependent on the domain). Valid combos: year×{month, week, day}, month×{week, day}, week×{day, hour}, day×hour.
+- **Metric colors the cells:** an aggregated metric (reuse the existing aggregation set) over a timestamp column; sequential color scale (default purple-like, palette selectable); empty/missing buckets render muted/grey (client-side gap-fill).
+- **Cell click = drill-down range filter:** clicking a cell applies a timestamp range filter `BETWEEN cell_start AND cell_end` (where `cell_end = nextBucketStart − 1ms`, reconciling half-open `DATE_TRUNC` buckets with inclusive `BETWEEN`), reusing the v1.7 `between` operator; removable chip; consistent with the v1.3 core value.
+- **Table + dynamic-view binding:** the calendar binds to a base table OR a dynamic view; a dv-bound cell drill is dv-isolated (routes to `dvFilters[dvId]`, reuses the v1.12 dv drill path).
+- **Implementation shape (from research):** custom SVG renderer (no new npm deps; `colorbrewer` already bundled); a near-clone of the existing `TimelineRenderer` — short-circuit in `WidgetRenderer`, `usesAggregation:false`, runs its own `runSql` via a pure `buildCalendarSql` (mirrors `buildTimelineSql`/`timelineBin`); **NO new server routes** (uses the existing `/api/sql` + `/api/filter/materialize`).
+- **Invariants:** `AggregatedWidgetRenderer` remains the SOLE materialize trigger (the calendar never imports `materializeFilter`; it is a read-only consumer that re-fetches on `filterVersion`/dv-view changes); theme tokens only (no raw hex — `theme-guard` CI); test gates — frontend vitest 100% from `packages/web`, web + server `tsc` clean, server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION.
 
 ## v1 Requirements
 
-### Dynamic-View Drill-Down
+### Calendar Chart Type & Data
 
-- [x] **DVDRILL-V112-01**: Clicking a drill-eligible element (pie slice / bar / line or scatter point / table or records row) on a widget bound to a dynamic view applies a drill-down filter to the **dynamic view's data** — NOT a filter on the underlying source table. Works for all drill-capable widget types.
-- [x] **DVDRILL-V112-02**: A dynamic-view drill-down updates LIVE — the clicked widget AND every other widget bound to the SAME dynamic view re-render to the filtered slice. Widgets bound to the source table or to a DIFFERENT dynamic view are NOT affected (dv-isolated scope).
-- [x] **DVDRILL-V112-03**: The dv drill-down materializes a filtered view `FROM <dynamic-view materialized view> WHERE <filter>` via the existing `POST /api/filter/materialize` path extended to accept a dynamic-view source (no new route); `AggregatedWidgetRenderer` remains the sole materialize trigger. *(Server portion done in Phase 62; client wiring in Phase 63.)*
-- [x] **DVDRILL-V112-04**: A dv-backed widget's data read FROM-swaps to the **filtered-dv view** when a dv filter is active and falls back to the raw dynamic-view view when it is cleared (precedence: filtered-dv → dv); over-threshold / not-yet-materialized dv states still behave safely (no crash, existing empty/pending UX preserved).
-- [x] **DVDRILL-V112-05**: Filter state is keyed so a dynamic-view id can NEVER collide with a table id (composite / kind-scoped key or a dv-scoped slice); a dv drill-down shows a removable filter chip identifying the dynamic view + clicked value, removing it reverts the dv widgets to the unfiltered dynamic view, and dv filters reset on dashboard-switch + logout (consistent with the table-filter lifecycle).
+- [ ] **CAL-V113-01**: A new `calendar` chart type is registered and selectable when creating/editing a widget; it binds to a base table OR a dynamic view (consistent with other widget types) and renders through its own short-circuit renderer in `WidgetRenderer` (it does NOT go through `AggregatedWidgetRenderer`).
+- [ ] **CAL-V113-02**: The calendar config panel lets the operator pick a timestamp column, a metric column + aggregation (reusing the existing aggregation set), a Domain time unit, and a dependent Subdomain time unit (only valid combos selectable: year×{month,week,day}, month×{week,day}, week×{day,hour}, day×hour), plus a color-palette choice.
+- [ ] **CAL-V113-03**: The calendar fetches a time-bucketed aggregation — `AGG(metric)` grouped by `DATE_TRUNC(domain, ts)` and `DATE_TRUNC(subdomain, ts)` over the bound table or dv view — via a pure `buildCalendarSql` builder run through the existing SQL path; bucketing is UTC-consistent and uses Kinetica `DATE_TRUNC` units verified against the live instance (incl. the `week` start-day anchor).
+- [ ] **CAL-V113-04**: The calendar renders as a grid of Domain groups, each containing its Subdomain cells colored by the metric on a sequential scale (default + selected palette); missing/empty buckets render as muted/grey (gap-fill, not collapsed); the grid shows time-axis labels and a per-cell hover tooltip (time slice + metric value). All colors come from theme tokens / a `chartTheme` palette (no raw hex).
+- [ ] **CAL-V113-05**: The calendar is a filter-aware consumer — it re-fetches and re-renders when another widget applies a filter to its bound table/dv (watches `filterVersion` / dv-view changes) — and guards against runaway grids over wide time ranges with a sane cell-count cap + sensible defaults (oversized configs are prevented or surfaced, not silently rendered huge).
+
+### Cell Drill-Down (Click-Through)
+
+- [ ] **CALDR-V113-01**: Clicking a calendar cell applies a timestamp range filter (`between`, value `[cell_start, cell_end]` with `cell_end = nextBucketStart − 1ms`) that filters the dashboard to that cell's time slice, shows a removable chip identifying the time range, and clears back to unfiltered on chip removal — consistent with the existing drill-down lifecycle (reset on dashboard-switch/logout).
+- [ ] **CALDR-V113-02**: For a dv-bound calendar, the cell drill is dv-isolated — it routes to `dvFilters[dynamicViewId]` (NOT `filters[sourceTableId]`); same-dv widgets update while source-table and other-dv widgets stay unaffected. A table-bound calendar routes to `filters[tableId]`. (Reuses the v1.12 dv-isolation path; named explicitly to prevent the Phase 63 root-cause recurring.)
+- [ ] **CALDR-V113-03**: A calendar cell drill propagates to ALL consumer read-paths on the same scope — charts, records tables, AND map WMS layers (verified in-phase, per the v1.12 Phase 63.1 lesson) — and the `AggregatedWidgetRenderer`-as-sole-materialize-trigger invariant is preserved (the calendar never calls `materializeFilter`/`dropFilterView`; static-grep asserted).
 
 ### Verification
 
-- [x] **VERIFY-V112-01**: Live operator UAT — drilling a dv-backed pie (and at least one other chart type) filters the dynamic view's data live; same-dv widgets update while source-table widgets stay unaffected; the chip clears back to the unfiltered dv; the sole-materialize-trigger invariant holds; automated gates green (frontend vitest 100% from `packages/web`, web + server `tsc` clean, server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION).
+- [ ] **VERIFY-V113-01**: Live operator UAT — create a calendar widget on a table (and a dv), configure domain/subdomain + metric, see the color-scaled grid with correct labels and gap-filled empties; click a cell → the dashboard (incl. a map widget on the same scope) filters to that time slice live, the chip clears back to unfiltered, dv drill stays dv-isolated; automated gates green (frontend vitest 100% from `packages/web`, web + server `tsc` clean, server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION).
 
 ## v2 Requirements
 
 Deferred to a future milestone.
 
-### Broader dynamic-view interactivity
+### Calendar enhancements
 
-- **DVX-V2-01**: Spatial (bbox/lasso/circle) filtering of a dynamic-view-backed MAP layer (this milestone is chart/table drill-down only).
-- **DVX-V2-02**: Cross-scope propagation — a dv drill-down also filtering source-table or sibling-dv widgets (explicitly rejected for v1.12 as semantically muddy).
-- **DVX-V2-03**: Drill-down across nested dynamic views (a dv whose source is another dv).
+- **CALX-V2-01**: Full per-threshold custom color editor (explicit value breakpoints + per-bucket colors, like the class-break editor) — v1 ships a sequential scale + palette choice only.
+- **CALX-V2-02**: Sub-hour subdomains (15/30-min) and quarter domain — v1 covers hour…year.
+- **CALX-V2-03**: Multi-metric / metric-switcher calendars; cell annotations/labels inside cells.
+- **CALX-V2-04**: Time-zone selection (v1 buckets in a single consistent zone — UTC contract).
 
 ## Out of Scope
 
-Explicitly excluded for v1.12.
+Explicitly excluded for v1.13.
 
 | Feature | Reason |
 |---------|--------|
-| Changing the table-backed drill-down path | It works; v1.12 only adds the dv-backed path alongside it. |
-| New server routes / WebSocket | Extend the existing `POST /api/filter/materialize` to accept a dv source; no new infra. |
-| DV drill filtering source-table or other-dv widgets | Locked scope decision: dv drill is isolated to the same dynamic view. |
-| Spatial filter on dv-backed map layers | Chart/table drill-down only this milestone (→ DVX-V2-01). |
-| Editing the dynamic-view template via drill-down | Drill-down filters the dv's data; it never mutates the dv definition. |
+| New server routes / endpoints | Calendar runs through the existing `/api/sql` + `/api/filter/materialize`; no new infra (per research). |
+| A calendar-heatmap npm dependency | Libraries hard-wire GitHub's year/week/day layout; a custom SVG renderer is required for arbitrary domain×subdomain. |
+| Per-threshold custom color breakpoints | v1 ships a sequential scale + palette choice (→ CALX-V2-01). |
+| Sub-hour subdomains / quarter domain / timezone picker | v1 covers hour…year, UTC bucketing (→ CALX-V2-02/04). |
+| Editing data via the calendar | It's a read + drill visualization, never mutates data. |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DVDRILL-V112-01 | Phase 63 | Complete |
-| DVDRILL-V112-02 | Phase 63 + Phase 63.1 (map render path) | Complete |
-| DVDRILL-V112-03 | Phase 62 (server) + Phase 63 (client) | Complete |
-| DVDRILL-V112-04 | Phase 63 + Phase 63.1 (map render path) | Complete |
-| DVDRILL-V112-05 | Phase 63 | Complete |
-| VERIFY-V112-01 | Phase 64 | Complete (64-VERIFICATION.md overall_status: passed; attested RPereira 2026-06-15; final vitest 2141/2141 post-63.1) |
+| CAL-V113-01 | TBD | Pending |
+| CAL-V113-02 | TBD | Pending |
+| CAL-V113-03 | TBD | Pending |
+| CAL-V113-04 | TBD | Pending |
+| CAL-V113-05 | TBD | Pending |
+| CALDR-V113-01 | TBD | Pending |
+| CALDR-V113-02 | TBD | Pending |
+| CALDR-V113-03 | TBD | Pending |
+| VERIFY-V113-01 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 6 total
-- Mapped to phases: 6 (roadmap created 2026-06-15 — Phases 62-64)
-- Unmapped: 0
-
-**Phase mapping notes:**
-- Phase 62 (SERVER-ONLY) — DVDRILL-V112-03 server portion (extend `POST /api/filter/materialize` to accept a dv source; `FROM <dv_view> WHERE <filter>`).
-- Phase 63 (FRONTEND-ONLY) — DVDRILL-V112-01/02/04/05 + the client side of -03 (dv-safe filter keying, dv-aware drill dispatch, filtered-dv read-path swap, chips + lifecycle reset).
-- Phase 64 (VERIFICATION + LIVE UAT) — VERIFY-V112-01.
+- v1 requirements: 9 total
+- Mapped to phases: 0 (roadmap pending)
+- Unmapped: 9 ⚠️ (filled by roadmap)
 
 ---
-*Requirements defined: 2026-06-15*
-*Last updated: 2026-06-15 — VERIFY-V112-01 satisfied (64-VERIFICATION.md overall_status: passed; Phase 64 Complete)*
+*Requirements defined: 2026-06-16*
+*Last updated: 2026-06-16 — v1.13 requirements defined (post-research)*
