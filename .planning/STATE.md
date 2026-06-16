@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Drill-Down on Dynamic-View-Backed Widgets
-status: unknown
-stopped_at: Completed 63.1-01-PLAN.md (dv-filter FROM-swap for WMS map layers — DVDRILL-V112-02/-04 closed)
-last_updated: "2026-06-16T02:24:39.055Z"
+status: phase_complete
+stopped_at: Completed 64-03-PLAN.md (v1.12 milestone gate: 64-VERIFICATION.md compiled overall_status passed; VERIFY-V112-01 satisfied; Phase 64 Complete 2026-06-15)
+last_updated: "2026-06-15T23:59:00Z"
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -291,6 +291,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 63 P04 | 7 min | 1 tasks | 2 files |
 | Phase 64 P01 | 8min | 2 tasks | 1 files |
 | Phase 63.1 P01 | 5 | 3 tasks | 2 files |
+| Phase 64 P03 | checkpoint-resolved | 3 tasks (Task 1 attestation + Task 2 compile + Task 3 tick/complete) | 4 files (64-UAT.md, 64-VERIFICATION.md, REQUIREMENTS.md, ROADMAP.md) — overall_status: passed (2026-06-15) |
 
 ### Quick Tasks Completed
 
@@ -317,9 +318,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
 - **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
 
+### Phase 64 Plan 03 — Milestone Gate Compiled (2026-06-15)
+
+- **64-VERIFICATION.md overall_status: passed** — RPereira 2026-06-15. 4/4 ROADMAP SCs verified. SC1: dv-isolated live drill confirmed (dv-backed pie + bar chart); SOURCE-TABLE widget UNAFFECTED (killed bug proven fixed). SC2: table-backed path unchanged; sole-materialize-trigger held; scopes never crossed. SC3/SC4: automated gates ALL PASS (post-63.1 vitest 2141/2141). VERIFY-V112-01 satisfied. ROADMAP Phase 64 Complete. v1.12 ready for /gsd:complete-milestone 1.12.
+- **GAP-64-MAP (RESOLVED, Phase 63.1):** UAT found a dv-backed WMS map layer did not FROM-swap to the filtered-dv view on a chart drill. Closed by Phase 63.1 (commits 7751e1e + 0e4c9b3, 63.1-VERIFICATION.md PASS 4/4) before attestation. DVDRILL-V112-02/-04 map path now satisfied.
+
 ### Phase 64 Plan 01 Gate Results (recorded 2026-06-16)
 
-- **overall_verdict: ALL PASS** — HEAD 408259d; frontend vitest 2133/2133 (95 files, 0 failures), web tsc exit 0, server tsc exit 0, server set-gate 8 failing files all in TD-V16-TEST-ISOLATION (identical to Phase 61 baseline — no new server regressions from Phase 62 dv extension), targeted v1.12 web specs 257/257 (5 files), targeted v1.12 server specs 55/55 (3 files). Source tree clean — Phases 62 + 63 committed.
+- **overall_verdict: ALL PASS** — HEAD 408259d; frontend vitest 2133/2133 (95 files, 0 failures), web tsc exit 0, server tsc exit 0, server set-gate 8 failing files all in TD-V16-TEST-ISOLATION (identical to Phase 61 baseline — no new server regressions from Phase 62 dv extension), targeted v1.12 web specs 257/257 (5 files), targeted v1.12 server specs 55/55 (3 files). Source tree clean — Phases 62 + 63 committed. NOTE: post-63.1 authoritative count is 2141/2141.
 
 ### Phase 61 Plan 01 Gate Results (recorded 2026-06-11)
 

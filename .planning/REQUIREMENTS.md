@@ -23,7 +23,7 @@
 
 ### Verification
 
-- [ ] **VERIFY-V112-01**: Live operator UAT — drilling a dv-backed pie (and at least one other chart type) filters the dynamic view's data live; same-dv widgets update while source-table widgets stay unaffected; the chip clears back to the unfiltered dv; the sole-materialize-trigger invariant holds; automated gates green (frontend vitest 100% from `packages/web`, web + server `tsc` clean, server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION).
+- [x] **VERIFY-V112-01**: Live operator UAT — drilling a dv-backed pie (and at least one other chart type) filters the dynamic view's data live; same-dv widgets update while source-table widgets stay unaffected; the chip clears back to the unfiltered dv; the sole-materialize-trigger invariant holds; automated gates green (frontend vitest 100% from `packages/web`, web + server `tsc` clean, server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION).
 
 ## v2 Requirements
 
@@ -52,11 +52,11 @@ Explicitly excluded for v1.12.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | DVDRILL-V112-01 | Phase 63 | Complete |
-| DVDRILL-V112-02 | Phase 63 | Complete |
-| DVDRILL-V112-03 | Phase 62 (server) + Phase 63 (client) | In Progress (server done; client → Phase 63) |
-| DVDRILL-V112-04 | Phase 63 | Complete |
-| DVDRILL-V112-05 | Phase 63 | In Progress (keying + lifecycle foundation done in 63-01; chips → 63-04) |
-| VERIFY-V112-01 | Phase 64 | In Progress (64-UAT.md authored — pending operator walk at 64-03 checkpoint) |
+| DVDRILL-V112-02 | Phase 63 + Phase 63.1 (map render path) | Complete |
+| DVDRILL-V112-03 | Phase 62 (server) + Phase 63 (client) | Complete |
+| DVDRILL-V112-04 | Phase 63 + Phase 63.1 (map render path) | Complete |
+| DVDRILL-V112-05 | Phase 63 | Complete |
+| VERIFY-V112-01 | Phase 64 | Complete (64-VERIFICATION.md overall_status: passed; attested RPereira 2026-06-15; final vitest 2141/2141 post-63.1) |
 
 **Coverage:**
 - v1 requirements: 6 total
@@ -70,4 +70,4 @@ Explicitly excluded for v1.12.
 
 ---
 *Requirements defined: 2026-06-15*
-*Last updated: 2026-06-16 — VERIFY-V112-01 in progress (64-UAT.md authored pending operator walk at 64-03)*
+*Last updated: 2026-06-15 — VERIFY-V112-01 satisfied (64-VERIFICATION.md overall_status: passed; Phase 64 Complete)*
