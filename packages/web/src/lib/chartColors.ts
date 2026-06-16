@@ -11,11 +11,11 @@
  */
 import { useThemeStore } from "../store/theme";
 
-export type ChartAxisColors = { grid: string; axis: string };
+export type ChartAxisColors = { grid: string; axis: string; emptyCell: string };
 
 export function useChartAxisColors(): ChartAxisColors {
   const theme = useThemeStore((s) => s.theme);
   return theme === "light"
-    ? { grid: "#e2e8f0", axis: "#64748b" } // slate-200 gridlines, slate-500 ticks
-    : { grid: "#1f2937", axis: "#94a3b8" }; // original dark values
+    ? { grid: "#e2e8f0", axis: "#64748b", emptyCell: "#e2e8f0" } // slate-200 gridlines, slate-500 ticks; emptyCell matches light grid
+    : { grid: "#1f2937", axis: "#94a3b8", emptyCell: "#1f2937" }; // original dark values; emptyCell matches dark grid
 }
