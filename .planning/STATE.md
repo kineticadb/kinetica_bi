@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Drill-Down on Dynamic-View-Backed Widgets
 status: unknown
-stopped_at: Completed 64-02-PLAN.md (64-UAT.md authored — pending attestation)
-last_updated: "2026-06-16T01:55:00Z"
+stopped_at: Completed 63.1-01-PLAN.md (dv-filter FROM-swap for WMS map layers — DVDRILL-V112-02/-04 closed)
+last_updated: "2026-06-16T02:24:39.055Z"
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 8
+  total_phases: 4
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 9
 ---
 
 # Project State
@@ -290,6 +290,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 63 P03 | 11 min | 3 tasks | 2 files |
 | Phase 63 P04 | 7 min | 1 tasks | 2 files |
 | Phase 64 P01 | 8min | 2 tasks | 1 files |
+| Phase 63.1 P01 | 5 | 3 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -443,6 +444,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 62]: 62-01: buildFilterViewName gains optional dynamicViewId -> _dv<id> segment (distinct from _t<id> + dv view); both-undefined throws (no silent _tundefined); table path byte-unchanged
 - [Phase 62]: POST/DELETE /api/filter/materialize dv path: body/query dynamicViewId materializes FROM the dv's own materialized view (buildDynamicViewName) WHERE column-filters into a distinct _kbi_filt_..._dv<id>_s view; table path byte-unchanged; spatial+dv→400, empty→400, missing/other-dash dv→404; fail-safe on unmaterialized dv; no new route
 - [Phase 63]: Parallel dv-keyed filter-store slices (NOT composite re-keying) — table path byte-unchanged, dv/table ids never collide
+- [Phase 63.1]: Filtered-dv precedence applied at BOTH Effect 2 + Effect 3 call sites in MapChartRenderer so both OL layer construction AND updateParams re-fire paths emit LAYERS=filtered-dv + _mv=dvFilter.materializeVersion when active dv-filter present
+- [Phase 63.1]: dvFilterViewsKey selector mirrors viewsKey but over useFilterViewStore.dvViews — raw dynamicViewsKey does not move on dv-filter apply/clear, so a new subscription was required to unblock the stuck map
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -839,6 +842,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-15T22:45:06.435Z
-Stopped at: Completed 63-04-PLAN.md
+Last session: 2026-06-16T02:24:26.707Z
+Stopped at: Completed 63.1-01-PLAN.md (dv-filter FROM-swap for WMS map layers — DVDRILL-V112-02/-04 closed)
 Resume file: None
