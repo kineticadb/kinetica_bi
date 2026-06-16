@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
-status: roadmap_ready
-stopped_at: "v1.13 roadmap created — Phases 65-69 defined; ready to plan Phase 65"
-last_updated: "2026-06-16T04:00:00.000Z"
+status: unknown
+stopped_at: Completed 65-01-PLAN.md
+last_updated: "2026-06-16T04:32:21.622Z"
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
 ---
 
 # Project State
@@ -19,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.13 Calendar Heatmap — Phase 65 ready to plan
+**Current focus:** Phase 65 — calendar-sql-builder-kinetica-spike
 
 ## Current Position
 
-Phase: 65 of 69 — Calendar SQL Builder + Kinetica Spike (not started)
-Plan: —
-Status: Roadmap ready — Phase 65 ready to plan
-Last activity: 2026-06-16 — v1.13 roadmap created (Phases 65-69)
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 65 (calendar-sql-builder-kinetica-spike) — COMPLETE
+Plan: 2 of 2
 
 ## v1.13 Phase Map
 
@@ -327,6 +323,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 63.1 P01 | 5 | 3 tasks | 2 files |
 | Phase 64 P03 | checkpoint-resolved | 3 tasks (Task 1 attestation + Task 2 compile + Task 3 tick/complete) | 4 files (64-UAT.md, 64-VERIFICATION.md, REQUIREMENTS.md, ROADMAP.md) — overall_status: passed (2026-06-15) |
 | Phase 64 P03 | checkpoint-resolved | 3 tasks | 4 files |
+| Phase 65 P01 | 6 | 2 tasks | 4 files |
+| Phase 65 P02 | 3min | 1 task (NOT-RUN fallback) | 2 files (65-02-SUMMARY.md + calendarBin.ts annotation) |
 
 ### Quick Tasks Completed
 
@@ -352,6 +350,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **GAP-61-01 (minor, FIXED INLINE, commit f62da07):** in-map Layers legend stayed frozen on the SAVED layer config during a radio-group overlay switch — `legendKey`/`resolveLegendLayers` read the persisted `dashboardLayersStore` while the WMS tiles used overlay-merged `effectiveLayers`. Fix: both now derive from `effectiveLayers` (legendKey via useMemo). Regression-locked (3 new GAP-61-01 specs + updated PITFALL S-02 lock); MapChartRenderer 184/184, frontend 1938/1938, web tsc clean. Recorded RESOLVED in 61-UAT §5 (not deferred to a 61.x phase).
 - **GAP-61-02 (major, FIXED INLINE, commit 4afad81):** layer visibility toggle (legend eye button) stopped working after a radio switch. A radio option captures ALL allow-listed layer fields (LAYER_CAPTURE_FIELDS incl. `config.visible`), so the active overlay pinned visible:true; `effectiveLayers` merges the overlay on top of the persisted `dashboardLayersStore`, masking the eye toggle's store write. Operator product decision (2026-06-12): "radio CAN hide a layer, but a live toggle RELEASES it." Fix: new `widgetActionStore.releaseLayerConfigField(layerId, field)` strips a field from every control contribution + re-derives; `useLayerVisibilityToggle` calls it for `"visible"` after the optimistic write so the explicit toggle wins (re-selecting a radio option re-pins — most-recent action wins). Regression-locked (4 store cases + new useLayerVisibilityToggle.spec.ts); frontend 1944/1944, web tsc clean.
 - **NEXT (operator):** (1) re-walk §1.1/§1.2 — confirm the eye toggle hides/shows a layer after a radio switch (GAP-61-02); (2) set up P2 (non-bypass analyst login) + walk §3.1/§3.2/§3.3 (viewer-safe payoff). Then finalize 61-UAT overall_result → run 61-03 to compile 61-VERIFICATION.md + tick VERIFY-V111-01 + mark ROADMAP Phase 61 Complete.
+
+### Phase 65 Plan 02 — DATE_TRUNC Spike NOT-RUN (2026-06-16)
+
+- **Spike NOT-RUN:** `/api/sql` on `localhost:4000` requires a valid Kinetica session; executor cannot authenticate without reading `packages/server/.env` (security-prohibited). Fallback path executed per plan spec.
+- **calendarBin.ts annotated:** `KINETICA_DATE_TRUNC_UNITS` comment updated to NOT YET VERIFIED, FLAGGED for Phase 69 UAT (CAL-V113-03).
+- **Exact spike queries recorded** in 65-02-SUMMARY.md for operator to run during Phase 69 live walk-through.
+- **Documented assumptions remain in force:** UTC bucketing; Monday/ISO week start (`offset = (getUTCDay() + 6) % 7`).
+- **All gates passed:** 2185/2185 vitest green; web tsc clean; no server/components diff.
 
 ### Phase 64 Plan 03 — Milestone Gate Compiled (2026-06-15)
 
@@ -488,6 +494,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 63.1]: Filtered-dv precedence applied at BOTH Effect 2 + Effect 3 call sites in MapChartRenderer so both OL layer construction AND updateParams re-fire paths emit LAYERS=filtered-dv + _mv=dvFilter.materializeVersion when active dv-filter present
 - [Phase 63.1]: dvFilterViewsKey selector mirrors viewsKey but over useFilterViewStore.dvViews — raw dynamicViewsKey does not move on dv-filter apply/clear, so a new subscription was required to unblock the stuck map
 - [Phase 64]: 64-VERIFICATION.md overall_status: passed (all 64-01 deterministic gates green + 64-UAT.md overall_result: passed); GAP-64-MAP closed by Phase 63.1 before attestation; final vitest 2141/2141 post-63.1; VERIFY-V112-01 satisfied; Phase 64 Complete
+- [Phase 65]: computeCellBounds ISO output = toISOString() YYYY-MM-DDTHH:mm:ss.SSSZ; whereClause BETWEEN-compatible, single-quote-safe
+- [Phase 65]: Week start = Monday/ISO (offset=(getUTCDay()+6)%7); documented assumption — Plan 65-02 confirms against live Kinetica
+- [Phase 65]: buildCalendarSql: fromTarget pre-resolved by caller; no first-FROM regex swap; combo validation left to Phase 66 config panel
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -884,6 +893,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T02:45:19.019Z
-Stopped at: Completed 64-03-PLAN.md (v1.12 milestone gate: overall_status passed; VERIFY-V112-01 satisfied; Phase 64 Complete 2026-06-15)
+Last session: 2026-06-16T04:22:30.495Z
+Stopped at: Completed 65-01-PLAN.md
 Resume file: None
