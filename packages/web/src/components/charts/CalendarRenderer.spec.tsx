@@ -246,7 +246,8 @@ describe("CalendarRenderer", () => {
     expect(sql).toContain("FROM demo.sales");
   });
 
-  it("Test 3 (table FROM resolution): with an active filter-view, SQL FROM = view name (unprefixed)", async () => {
+  it("Test 3 (table FROM resolution — respondToFilters OFF default): with filter-view present but respondToFilters absent/false, SQL FROM = BASE TABLE (not filter view)", async () => {
+    // Phase 68-03: default is OFF → calendar always reads unfiltered source
     mockViews = {
       1: { viewName: "_kbi_filt_abc", materializing: false, expiresAt: Date.now() + 60_000 },
     };
@@ -255,11 +256,32 @@ describe("CalendarRenderer", () => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    // respondToFilters OFF: ignore fvViewName, use base table
+    expect(sql).toContain("FROM demo.sales");
+    expect(sql).not.toContain("FROM _kbi_filt_abc");
+  });
+
+  it("Test 3a (table FROM resolution — respondToFilters ON): with filter-view present and respondToFilters:true, SQL FROM = filter view name", async () => {
+    mockViews = {
+      1: { viewName: "_kbi_filt_abc", materializing: false, expiresAt: Date.now() + 60_000 },
+    };
+    render(
+      <CalendarRenderer
+        widget={makeWidget({ respondToFilters: true })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    // respondToFilters ON: use filter view name (Phase 67 behavior)
     expect(sql).toContain("FROM _kbi_filt_abc");
     expect(sql).not.toContain("FROM demo.sales");
   });
 
-  it("Test 4a (DV FROM resolution — filtered-dv): with dvFilterViewName set, FROM = filtered-dv view", async () => {
+  it("Test 4a (DV FROM resolution — respondToFilters OFF): with dvFilterViewName set but respondToFilters=false, FROM = raw dvViewName", async () => {
+    // Phase 68-03: OFF → ignore dvFilterViewName, use raw dvViewName
     mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
     mockDvViews = { 99: { viewName: "_kbi_dv_filt_v99", materializing: false } };
     render(
@@ -272,12 +294,32 @@ describe("CalendarRenderer", () => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    // OFF: uses raw dv view, NOT filtered-dv view
+    expect(sql).toContain("FROM _kbi_dv_raw_v99");
+    expect(sql).not.toContain("FROM _kbi_dv_filt_v99");
+    expect(sql).not.toContain("FROM demo.sales");
+  });
+
+  it("Test 4a-on (DV FROM resolution — respondToFilters ON): with dvFilterViewName set and respondToFilters:true, FROM = filtered-dv view", async () => {
+    mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
+    mockDvViews = { 99: { viewName: "_kbi_dv_filt_v99", materializing: false } };
+    render(
+      <CalendarRenderer
+        widget={makeWidget({ dynamicViewId: 99, tableRef: "demo.sales", respondToFilters: true })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    // ON: uses filtered-dv view (Phase 67 behavior)
     expect(sql).toContain("FROM _kbi_dv_filt_v99");
     expect(sql).not.toContain("FROM demo.sales");
     expect(sql).not.toContain("FROM _kbi_dv_raw_v99");
   });
 
-  it("Test 4b (DV FROM resolution — raw dv): with dvViewName only (no filter), FROM = raw dv view", async () => {
+  it("Test 4b (DV FROM resolution — raw dv): with dvViewName only (no filter), FROM = raw dv view (same for ON/OFF)", async () => {
     mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
     mockDvViews = {}; // no dv filter view active
     render(
@@ -357,9 +399,13 @@ describe("CalendarRenderer", () => {
     expect(screen.queryByTestId("calendar-loading")).toBeNull();
   });
 
-  it("Test 9 (suspend during materializing): while fvMaterializing, runSql is not called", async () => {
+  it("Test 9 (suspend during materializing — respondToFilters ON): while fvMaterializing and respondToFilters:true, runSql is not called", async () => {
+    // Phase 68-03: suspend gate only applies when respondToFilters=ON (filter-aware mode).
+    // With OFF (default), the base table fetch ignores fvMaterializing.
     mockViews = { 1: { viewName: undefined, materializing: true, expiresAt: 0 } };
-    render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    render(
+      <CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />,
+    );
     await new Promise((r) => setTimeout(r, 50));
     expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
@@ -585,6 +631,27 @@ describe("CalendarRenderer", () => {
       (r) => r.getAttribute("stroke") && r.getAttribute("stroke") !== "none" && r.getAttribute("stroke") !== "",
     );
     expect(outlined).toBeUndefined();
+  });
+
+  it("Test 19b (respondToFilters OFF — cell click still dispatches): with respondToFilters false, clicking a cell still calls setBulkFilters", async () => {
+    // Cell clicks ALWAYS drive filters regardless of the toggle
+    const { container } = render(
+      <CalendarRenderer widget={makeWidget({ respondToFilters: false })} tables={TABLES} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const allRects = container.querySelectorAll("rect");
+    const populatedRect = Array.from(allRects).find((r) => !r.getAttribute("data-empty"));
+    expect(populatedRect).toBeTruthy();
+    fireEvent.click(populatedRect!);
+    expect(mockSetBulkFilters).toHaveBeenCalledOnce();
+  });
+
+  it("Test 19c (respondToFilters in dep array): CalendarRenderer.tsx includes respondToFilters in the useEffect dependency array", () => {
+    const path = resolve(__dirname, "CalendarRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    expect(src).toContain("respondToFilters");
   });
 
   it("Test 20 (source contains appliedCell useMemo): CalendarRenderer.tsx has a useMemo deriving active between bounds", () => {

@@ -110,6 +110,8 @@ export default function CalendarRenderer({
   const domain: CalendarDomain = cfg.domain ?? "month";
   const subdomain: CalendarSubdomain = cfg.subdomain ?? "day";
   const colorTheme = cfg.colorTheme ?? "Greens";
+  // Phase 68-03: OFF (default) = always read unfiltered source; ON = Phase 67 filter-aware behavior.
+  const respondToFilters = cfg.respondToFilters ?? false;
 
   // ---- Empty-state gates (before hooks — mirroring TimelineRenderer eslint-disable pattern) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -201,31 +203,56 @@ export default function CalendarRenderer({
   // ---- useEffect fetch: resolve FROM target BEFORE building SQL (NO fromSwap) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
-    // Resolve the FROM view: table path uses fvViewName, dv path uses dvFilterViewName || dvViewName
-    const fromView =
-      dynamicViewId === undefined ? fvViewName : (dvFilterViewName ?? dvViewName);
+    // Phase 68-03: gate FROM resolution on respondToFilters.
+    //   OFF (default): ignore filter views → always read unfiltered source.
+    //   ON: Phase 67 full filter-aware precedence.
+    let fromTarget: string;
 
-    // Table path suspend/expiry gates
-    if (dynamicViewId === undefined) {
-      if (fvMaterializing) return;
-      if (fvViewName && fvExpiresAt > 0 && Date.now() >= fvExpiresAt) {
-        useFilterViewStore.getState().clearView(tableId);
-        return;
+    if (respondToFilters) {
+      // ON: Phase 67 filter-aware precedence —
+      //   table path: fvViewName || schema.table
+      //   dv path: dvFilterViewName ?? dvViewName
+      const fromView =
+        dynamicViewId === undefined ? fvViewName : (dvFilterViewName ?? dvViewName);
+
+      // Table path suspend/expiry gates
+      if (dynamicViewId === undefined) {
+        if (fvMaterializing) return;
+        if (fvViewName && fvExpiresAt > 0 && Date.now() >= fvExpiresAt) {
+          useFilterViewStore.getState().clearView(tableId);
+          return;
+        }
+      }
+
+      // DV path gates
+      if (dynamicViewId !== undefined) {
+        if (dvFilterMaterializing) return;
+        if (dvStatus !== "materialized") return;
+      }
+
+      // Resolve fromTarget with filter-aware view precedence
+      fromTarget = fromView
+        ? fromView
+        : effectiveSchema
+        ? `${effectiveSchema}.${effectiveTable}`
+        : effectiveTable;
+    } else {
+      // OFF (default): skip filter views entirely; read the unfiltered source.
+      //   table-bound: schema.table (base table)
+      //   dv-bound: raw dvViewName (not dvFilterViewName)
+
+      // DV path gate: raw dv view must still be materialized and present
+      if (dynamicViewId !== undefined) {
+        if (dvStatus !== "materialized") return;
+        if (!dvViewName) return;
+        fromTarget = dvViewName;
+      } else {
+        // Table path: base table always available, no materializing wait needed
+        fromTarget = effectiveSchema
+          ? `${effectiveSchema}.${effectiveTable}`
+          : effectiveTable;
       }
     }
-
-    // DV path gates
-    if (dynamicViewId !== undefined) {
-      if (dvFilterMaterializing) return;
-      if (dvStatus !== "materialized") return;
-    }
-
-    // Resolve fromTarget: view name is unprefixed (empty schema); else schema.table
-    const fromTarget = fromView
-      ? fromView
-      : effectiveSchema
-      ? `${effectiveSchema}.${effectiveTable}`
-      : effectiveTable;
 
     const ctrl = new AbortController();
     let cancelled = false;
@@ -271,6 +298,7 @@ export default function CalendarRenderer({
       ctrl.abort();
     };
     // Re-fetch when config or filter-aware deps change (CAL-V113-05).
+    // respondToFilters in dep array: toggling re-resolves the FROM target.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effectiveSchema,
@@ -280,6 +308,7 @@ export default function CalendarRenderer({
     aggregation,
     domain,
     subdomain,
+    respondToFilters,
     filterVersion,
     fvViewName,
     fvExpiresAt,
