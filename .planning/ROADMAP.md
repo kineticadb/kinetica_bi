@@ -142,11 +142,13 @@ Plans:
   2. For a dv-bound calendar, the cell click routes to `addDvFilter(dynamicViewId, filter)` + `markDvMaterializing(dynamicViewId, dashboardId)` — `dvFilters[dvId]` receives the BETWEEN filter; `filters[tableId]` is unchanged; same-dv widgets update while source-table and other-dv widgets stay unaffected
   3. A WMS map widget on the same table or dv updates its tiles after a calendar cell click — verified by a dedicated checklist item in-phase (not deferred to live UAT), per the v1.12 Phase 63.1 lesson
   4. A static source-grep assertion confirms `CalendarRenderer.tsx` does NOT import `materializeFilter` or `dropFilterView` — sole-materialize-trigger invariant preserved; a removable filter chip appears and clears on dismiss, resetting back to unfiltered
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 68-01: Cell click handler — `computeCellBounds` → `setBulkFilters`/`addDvFilter` + `markMaterializing`/`markDvMaterializing`; dv-routing unit test; sole-trigger static grep assertion; spec: dv-bound click dispatches to `dvFilters[dvId]` BETWEEN, `filters[tableId]` unchanged
-- [ ] 68-02: Integration verification — WMS map propagation checklist + chip lifecycle (add on click, clear on dismiss, reset on dashboard-switch/logout)
+- [ ] 68-01-PLAN.md — `buildChipText` datetime-between human-readable range (columnTypes.ts) + spec [Wave 1]
+- [ ] 68-02-PLAN.md — Cell-click BETWEEN drill dispatch (table+dv routing) + reactive selected-cell highlight + toast (CalendarRenderer) + spec [Wave 1]
+- [ ] 68-03-PLAN.md — "Respond to dashboard filters" toggle (CalendarConfigPanel field+checkbox, default OFF; CalendarRenderer FROM-gating) + updated specs [Wave 2]
+- [ ] 68-04-PLAN.md — WMS propagation spec (table+dv) + sole-materialize static-grep + chip lifecycle [Wave 3]
 
 ### Phase 69: Verification + Live UAT
 **Goal**: The v1.13 milestone is fully verified: automated gates are green, a live operator walk-through confirms the calendar end-to-end (table-bound and dv-bound, including a WMS map on the same scope), and the verification record is compiled and committed.
