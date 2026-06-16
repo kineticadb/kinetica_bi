@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.12
 milestone_name: Drill-Down on Dynamic-View-Backed Widgets
-status: phase_complete
-stopped_at: Completed 64-03-PLAN.md (v1.12 milestone gate: 64-VERIFICATION.md compiled overall_status passed; VERIFY-V112-01 satisfied; Phase 64 Complete 2026-06-15)
-last_updated: "2026-06-15T23:59:00Z"
+status: unknown
+stopped_at: "Completed 64-03-PLAN.md (v1.12 milestone gate: overall_status passed; VERIFY-V112-01 satisfied; Phase 64 Complete 2026-06-15)"
+last_updated: "2026-06-16T02:45:19.027Z"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -292,6 +292,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 64 P01 | 8min | 2 tasks | 1 files |
 | Phase 63.1 P01 | 5 | 3 tasks | 2 files |
 | Phase 64 P03 | checkpoint-resolved | 3 tasks (Task 1 attestation + Task 2 compile + Task 3 tick/complete) | 4 files (64-UAT.md, 64-VERIFICATION.md, REQUIREMENTS.md, ROADMAP.md) — overall_status: passed (2026-06-15) |
+| Phase 64 P03 | checkpoint-resolved | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -452,6 +453,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 63]: Parallel dv-keyed filter-store slices (NOT composite re-keying) — table path byte-unchanged, dv/table ids never collide
 - [Phase 63.1]: Filtered-dv precedence applied at BOTH Effect 2 + Effect 3 call sites in MapChartRenderer so both OL layer construction AND updateParams re-fire paths emit LAYERS=filtered-dv + _mv=dvFilter.materializeVersion when active dv-filter present
 - [Phase 63.1]: dvFilterViewsKey selector mirrors viewsKey but over useFilterViewStore.dvViews — raw dynamicViewsKey does not move on dv-filter apply/clear, so a new subscription was required to unblock the stuck map
+- [Phase 64]: 64-VERIFICATION.md overall_status: passed (all 64-01 deterministic gates green + 64-UAT.md overall_result: passed); GAP-64-MAP closed by Phase 63.1 before attestation; final vitest 2141/2141 post-63.1; VERIFY-V112-01 satisfied; Phase 64 Complete
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -848,6 +850,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T02:24:26.707Z
-Stopped at: Completed 63.1-01-PLAN.md (dv-filter FROM-swap for WMS map layers — DVDRILL-V112-02/-04 closed)
+Last session: 2026-06-16T02:45:19.019Z
+Stopped at: Completed 64-03-PLAN.md (v1.12 milestone gate: overall_status passed; VERIFY-V112-01 satisfied; Phase 64 Complete 2026-06-15)
 Resume file: None
