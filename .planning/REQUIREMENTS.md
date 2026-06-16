@@ -60,21 +60,21 @@ Explicitly excluded for v1.13.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CAL-V113-01 | TBD | Pending |
-| CAL-V113-02 | TBD | Pending |
-| CAL-V113-03 | TBD | Pending |
-| CAL-V113-04 | TBD | Pending |
-| CAL-V113-05 | TBD | Pending |
-| CALDR-V113-01 | TBD | Pending |
-| CALDR-V113-02 | TBD | Pending |
-| CALDR-V113-03 | TBD | Pending |
-| VERIFY-V113-01 | TBD | Pending |
+| CAL-V113-01 | Phase 66 | Pending |
+| CAL-V113-02 | Phase 66 | Pending |
+| CAL-V113-03 | Phase 65 | Pending |
+| CAL-V113-04 | Phase 67 | Pending |
+| CAL-V113-05 | Phase 66+67 | Pending |
+| CALDR-V113-01 | Phase 68 | Pending |
+| CALDR-V113-02 | Phase 68 | Pending |
+| CALDR-V113-03 | Phase 68 | Pending |
+| VERIFY-V113-01 | Phase 69 | Pending |
 
 **Coverage:**
 - v1 requirements: 9 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 9 ⚠️ (filled by roadmap)
+- Mapped to phases: 9 (Phases 65-69)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-16*
-*Last updated: 2026-06-16 — v1.13 requirements defined (post-research)*
+*Last updated: 2026-06-16 — v1.13 roadmap created; traceability filled (Phases 65-69)*

@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
-status: defining_requirements
-stopped_at: "v1.13 started — defining requirements (Calendar Heatmap; domain+subdomain, click-to-drill, table+dv, configurable colors)"
-last_updated: "2026-06-16T03:00:00.000Z"
+status: roadmap_ready
+stopped_at: "v1.13 roadmap created — Phases 65-69 defined; ready to plan Phase 65"
+last_updated: "2026-06-16T04:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,14 +19,46 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.13 Calendar Heatmap — defining requirements
+**Current focus:** v1.13 Calendar Heatmap — Phase 65 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 65 of 69 — Calendar SQL Builder + Kinetica Spike (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-16 — Milestone v1.13 (Calendar Heatmap Visualization) started
+Status: Roadmap ready — Phase 65 ready to plan
+Last activity: 2026-06-16 — v1.13 roadmap created (Phases 65-69)
+
+Progress: [░░░░░░░░░░] 0%
+
+## v1.13 Phase Map
+
+| Phase | Name | Stack | Key Requirements |
+|-------|------|-------|-----------------|
+| 65 | Calendar SQL Builder + Kinetica Spike | FRONTEND-ONLY (pure lib) | CAL-V113-03 |
+| 66 | Chart-Type Definition + Config Panel | FRONTEND-ONLY | CAL-V113-01, CAL-V113-02, CAL-V113-05 (cap) |
+| 67 | SVG Calendar Renderer (read-only) | FRONTEND-ONLY | CAL-V113-04, CAL-V113-05 (re-fetch) |
+| 68 | Cell-Drill Integration | FRONTEND-ONLY | CALDR-V113-01, CALDR-V113-02, CALDR-V113-03 |
+| 69 | Verification + Live UAT | BOTH + operator | VERIFY-V113-01 |
+
+All phases 65-68 are FRONTEND-ONLY (packages/web): frontend vitest 100% + web tsc clean; no server constraint applies. Phase 69 verifies BOTH stacks + a blocking live operator walk-through (mirrors v1.12 Phase 64 / v1.11 Phase 61), then compiles the verification record.
+
+### v1.13 Locked Decisions (from milestone definition + research, 2026-06-16)
+
+- **No new server routes:** calendar uses existing /api/sql + /api/filter/materialize; zero server diff expected through Phase 68.
+- **SQL builder before renderer:** buildCalendarSql + computeCellBounds (Phase 65) must be complete and spike-verified before the renderer (Phase 67) is built.
+- **No fromSwap() inside CalendarRenderer:** resolve fromTarget before building the SQL string — DATE_TRUNC SQL can contain FROM tokens that a first-FROM regex would clobber (same gotcha as TimelineRenderer line 202).
+- **AggregatedWidgetRenderer = SOLE materialize trigger:** CalendarRenderer never imports materializeFilter; static grep asserted in Phase 68 and re-asserted in Phase 69.
+- **computeCellBounds returns [cellStartIso, cellEnd = nextBucketStart minus 1ms]:** half-open DATE_TRUNC buckets + inclusive BETWEEN semantics; UTC only (never local-time constructors).
+- **Client-side gap-fill via useMemo:** DATE_TRUNC + GROUP BY returns only populated rows; renderer must compute the full expected bucket set and fill missing positions with null (grey cells) — not collapse neighbors.
+- **Color scale domain derived reactively:** useMemo(() => computeDomain(data), [data]) — never initialized once at mount; correctly rescales after filter changes.
+- **Theme tokens only:** sequential palette exported from chartTheme.ts; empty-cell grey via CSS custom property; no hardcoded hex in CalendarRenderer.tsx or CalendarConfigPanel.tsx — theme-guard.spec.ts gate.
+- **dv-isolated drill routing:** dv-bound cell click routes to addDvFilter(dynamicViewId) + markDvMaterializing; table-bound routes to setBulkFilters(tableId) + markMaterializing. Do NOT use dispatchDrillDown for BETWEEN (eq-only).
+- **WMS map propagation verified in Phase 68 (not deferred to UAT):** per the v1.12 Phase 63.1 lesson.
+- **Cell-count cap enforced at config-save (Phase 66):** guards against domain=year + subdomain=hour on wide datasets.
+
+### v1.13 Open Tech Debt (carried from v1.12)
+
+TD-V16-TEST-ISOLATION (server set-based gate in use), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names).
 
 ## v1.12 Phase Map
 
