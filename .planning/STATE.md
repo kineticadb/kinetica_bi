@@ -504,6 +504,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 65]: computeCellBounds ISO output = toISOString() YYYY-MM-DDTHH:mm:ss.SSSZ; whereClause BETWEEN-compatible, single-quote-safe
 - [Phase 65]: Week start = Monday/ISO (offset=(getUTCDay()+6)%7); documented assumption — Plan 65-02 confirms against live Kinetica
 - [Phase 65]: buildCalendarSql: fromTarget pre-resolved by caller; no first-FROM regex swap; combo validation left to Phase 66 config panel
+- [Phase 66-01]: SUBDOMAIN_GRANULARITY_MS[month] = 2_419_200_000 (28d) — smallest real month used as divisor to give conservative UPPER BOUND on cell count (more cells estimated, safer for cap enforcement)
+- [Phase 66-01]: estimateCalendarCells({rangeMs, subdomain}) only — domain param not needed because subdomain bucket count IS the worst-case cell count; domain re-arranges cells into rows but does not multiply them
+- [Phase 66-01]: buildCalendarRangeQuery accepts pre-resolved fromTarget (same contract as buildCalendarSql) — NO schema-prefixing logic inside; EXTRACT(EPOCH FROM ...) returns seconds, caller x1000 for ms
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 

@@ -21,7 +21,7 @@
 - [ ] **CAL-V113-02**: The calendar config panel lets the operator pick a timestamp column, a metric column + aggregation (reusing the existing aggregation set), a Domain time unit, and a dependent Subdomain time unit (only valid combos selectable: year×{month,week,day}, month×{week,day}, week×{day,hour}, day×hour), plus a color-palette choice.
 - [x] **CAL-V113-03**: The calendar fetches a time-bucketed aggregation — `AGG(metric)` grouped by `DATE_TRUNC(domain, ts)` and `DATE_TRUNC(subdomain, ts)` over the bound table or dv view — via a pure `buildCalendarSql` builder run through the existing SQL path; bucketing is UTC-consistent and uses Kinetica `DATE_TRUNC` units verified against the live instance (incl. the `week` start-day anchor).
 - [ ] **CAL-V113-04**: The calendar renders as a grid of Domain groups, each containing its Subdomain cells colored by the metric on a sequential scale (default + selected palette); missing/empty buckets render as muted/grey (gap-fill, not collapsed); the grid shows time-axis labels and a per-cell hover tooltip (time slice + metric value). All colors come from theme tokens / a `chartTheme` palette (no raw hex).
-- [ ] **CAL-V113-05**: The calendar is a filter-aware consumer — it re-fetches and re-renders when another widget applies a filter to its bound table/dv (watches `filterVersion` / dv-view changes) — and guards against runaway grids over wide time ranges with a sane cell-count cap + sensible defaults (oversized configs are prevented or surfaced, not silently rendered huge).
+- [x] **CAL-V113-05**: The calendar is a filter-aware consumer — it re-fetches and re-renders when another widget applies a filter to its bound table/dv (watches `filterVersion` / dv-view changes) — and guards against runaway grids over wide time ranges with a sane cell-count cap + sensible defaults (oversized configs are prevented or surfaced, not silently rendered huge).
 
 ### Cell Drill-Down (Click-Through)
 
@@ -64,7 +64,7 @@ Explicitly excluded for v1.13.
 | CAL-V113-02 | Phase 66 | Pending |
 | CAL-V113-03 | Phase 65 | Complete |
 | CAL-V113-04 | Phase 67 | Pending |
-| CAL-V113-05 | Phase 66+67 | Pending |
+| CAL-V113-05 | Phase 66+67 | Complete |
 | CALDR-V113-01 | Phase 68 | Pending |
 | CALDR-V113-02 | Phase 68 | Pending |
 | CALDR-V113-03 | Phase 68 | Pending |
