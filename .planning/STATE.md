@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: "Completed 68-01-PLAN.md"
-last_updated: "2026-06-16T18:08:28.861Z"
+stopped_at: Completed 68-03-PLAN.md
+last_updated: "2026-06-16T20:03:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 12
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 ## Current Position
 
 Phase: 68 (cell-drill-integration) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## v1.13 Phase Map
 
@@ -331,6 +331,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 67 P02 | 5min | 2 tasks | 2 files |
 | Phase 67 P03 | 3min | 2 tasks | 2 files |
 | Phase 68 P01 | 2min | 1 task (TDD: 2 commits) | 2 files |
+| Phase 68-cell-drill-integration P02 | 8 | 2 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -534,6 +535,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 67]: toCssColor replicated inside calendarColorScale.ts (not imported from TimelineRenderer) to keep lib pure
 - [Phase 67]: emptyCell token uses same concrete hex as grid token on both themes (#e2e8f0 light / #1f2937 dark)
 - [Phase 67]: gapFillCalendar exposes cellAt(d,s) O(1) helper for Phase-68 click guard (value === null test)
+- [Phase 68-cell-drill-integration]: Toggle-off uses removeFilter/removeDvFilter (targeted column remove), not setBulkFilters with empty batch (which is a store no-op)
+- [Phase 68-cell-drill-integration]: CalendarRenderer active-cell accent stroke derived from useChartAxisColors().accent — hex in chartColors.ts (lib/) keeps CalendarRenderer.tsx hex-free for theme-guard
+- [Phase 68-cell-drill-integration]: appliedCell useMemo (mirrors TimelineRenderer appliedBand) is the single source of truth for both selected-cell highlight and toggle-off equality test
+- [Phase 68-03]: respondToFilters defaults to false (OFF) — calendar is a drill CONTROL; stable full-grid by default; filter-awareness is opt-in via checkbox
+- [Phase 68-03]: CalendarRenderer FROM resolution gated: OFF=base-table/raw-dvViewName (ignores fvViewName/dvFilterViewName); ON=Phase-67 full precedence; fvMaterializing suspend gate inside ON branch only
+- [Phase 68-03]: Cell clicks (handleCellClick) NOT gated on respondToFilters — clicks always drive filters into stores regardless of toggle
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -930,6 +937,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T17:48:09.013Z
-Stopped at: Phase 68 context gathered
-Resume file: .planning/phases/68-cell-drill-integration/68-CONTEXT.md
+Last session: 2026-06-16T18:19:13.949Z
+Stopped at: Completed 68-02-PLAN.md
+Resume file: None
