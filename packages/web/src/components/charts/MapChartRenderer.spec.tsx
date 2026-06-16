@@ -47,7 +47,14 @@ const _filterViewState: {
     materializeVersion: number;
     dashboardId: number;
   }>;
-} = { views: {} };
+  dvViews: Record<number, {
+    viewName: string;
+    expiresAt: number;
+    materializing: boolean;
+    materializeVersion: number;
+    dashboardId: number;
+  }>;
+} = { views: {}, dvViews: {} };
 
 // Phase 35 (DV-V16-13): per-layer dynamic-view store state. Shared between vi.mock factory
 // and tests so tests can mutate dvEntry shape (viewName, status) + dynamicViewVersion and the
@@ -382,8 +389,8 @@ vi.mock("../../store/dashboardLayersStore", () => {
 });
 
 vi.mock("../../store/filterViewStore", () => {
-  const hook = (selector: (s: any) => any) => selector({ views: _filterViewState.views });
-  (hook as any).getState = () => ({ views: _filterViewState.views });
+  const hook = (selector: (s: any) => any) => selector({ views: _filterViewState.views, dvViews: _filterViewState.dvViews });
+  (hook as any).getState = () => ({ views: _filterViewState.views, dvViews: _filterViewState.dvViews });
   return { useFilterViewStore: hook };
 });
 
@@ -4200,6 +4207,7 @@ describe("MapChartRenderer — Phase 35 per-layer dynamic-view binding (DV-V16-1
     _filterState.filterVersion = 0;
     _layersState.layers = [];
     _filterViewState.views = {};
+    _filterViewState.dvViews = {};
     _dynamicViewState.views = {};
     _dynamicViewState.dynamicViewVersion = 0;
     lastMapInstance = null;
@@ -5324,5 +5332,285 @@ describe("60.1 — overlaid info_enabled:0 drops layer from eligibleLayers (read
 
     // Layer is NO LONGER queried — overlaid info_enabled:0 removed it from eligibleLayers.
     expect(_infoQueryMock).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-04)              */
+/* ------------------------------------------------------------------ */
+
+describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-04)", () => {
+  beforeEach(() => {
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    _filterViewState.dvViews = {};
+    _dynamicViewState.views = {};
+    _dynamicViewState.dynamicViewVersion = 0;
+    lastMapInstance = null;
+    lastBasemapLayerInstance = null;
+    lastResizeObserverCallback = null;
+    lastResizeObserverInstance = null;
+    tileLoadListeners = {};
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    lastViewportElement = null;
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Test A (bug-fix): active dv-filter → LAYERS=filtered-dv + _mv from dvFilter.materializeVersion ──
+  it("Test A: dv-backed layer with active materialized dv-filter → LAYERS=<filtered-dv viewName> + _mv=<dvFilter.materializeVersion>", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_u1_d1_dv7_sabc",
+        materializing: false,
+        materializeVersion: 9,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // Active dv-filter → LAYERS=<filtered-dv view name>, NOT the raw _kbi_dv_ name.
+    expect(params.LAYERS).toBe("_kbi_filt_u1_d1_dv7_sabc");
+    // _mv must come from dvFilter.materializeVersion (9), NOT raw dvVersion (4).
+    expect(params._mv).toBe("9");
+  });
+
+  // ── Test B (clear/revert): dvViews={} → raw dv path restored ─────────────
+  it("Test B: dv-backed layer with dvViews={} (no active dv-filter) → LAYERS=<raw dv viewName> + _mv=<raw dvVersion>", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {};
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // No dv-filter → falls through to raw dv view name.
+    expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
+    expect(params._mv).toBe("4");
+  });
+
+  // ── Test C (still-materializing guard): materializing=true → falls through to raw dv ──
+  it("Test C: dvViews[7].materializing=true (still materializing) → falls through to raw dv path, not filtered-dv", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_u1_d1_dv7_sabc",
+        materializing: true,
+        materializeVersion: 0,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // materializing=true → not yet active; falls through to raw dv.
+    expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
+    expect(params._mv).toBe("4");
+  });
+
+  // ── Test D (empty-viewName guard): viewName="" → falls through to raw dv ──
+  it("Test D: dvViews[7].viewName='' (empty) → falls through to raw dv path (empty viewName not active)", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "",
+        materializing: false,
+        materializeVersion: 0,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // empty viewName → not active; falls through to raw dv.
+    expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
+    expect(params._mv).toBe("4");
+  });
+
+  // ── Test E (dv-isolation): two dv layers; filter for dv 7 ONLY → each swaps independently ──
+  it("Test E: two dv-backed layers (dv 7 + dv 8), active filter only for dv 7 → layer-7 uses filtered-dv; layer-8 uses raw dv", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+      8: { viewName: "_kbi_dv_u1_d1_8", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_u1_d1_dv7_sabc",
+        materializing: false,
+        materializeVersion: 9,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+      // dv 8 has NO filter entry
+    };
+    _layersState.layers = [
+      makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 }),
+      makeLayer({ id: 2, position: 1, table_id: 11, dynamic_view_id: 8 }),
+    ];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(2);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    // First call is for layer id=1 (dv 7) — should use filtered-dv.
+    const params1 = ImageWmsCtor.mock.calls[0][0].params;
+    expect(params1.LAYERS).toBe("_kbi_filt_u1_d1_dv7_sabc");
+    expect(params1._mv).toBe("9");
+    // Second call is for layer id=2 (dv 8) — should use raw dv (no filter).
+    const params2 = ImageWmsCtor.mock.calls[1][0].params;
+    expect(params2.LAYERS).toBe("_kbi_dv_u1_d1_8");
+    expect(params2._mv).toBe("4");
+  });
+
+  // ── Test F (table-backed isolation): table-backed layer unaffected by dvViews ──
+  it("Test F: table-backed layer (dynamic_view_id=null) with unrelated dvViews present → LAYERS=<schema.table>, byte-unchanged", async () => {
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_u1_d1_dv7_sabc",
+        materializing: false,
+        materializeVersion: 9,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: null })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // Table-backed → LAYERS=<schema.table>, unaffected by dvViews.
+    expect(params.LAYERS).toBe("public.t10");
+    expect(params).not.toHaveProperty("_mv");
+  });
+
+  // ── Test G (re-render on apply): dvViews changes from {} to active filter → Effect 3 re-fires ──
+  it("Test G: applying a dv-filter (dvViews goes from {} to active) moves dvFilterViewsKey → Effect 3 re-fires with LAYERS=filtered-dv + _mv=9", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {};
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const source = allImageWmsInstances[0];
+    source.updateParams.mockClear();
+
+    // Apply a dv-filter (simulate setDvView): set dvViews and trigger re-render.
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_u1_d1_dv7_sabc",
+        materializing: false,
+        materializeVersion: 9,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    // Effect 3 must have re-fired with LAYERS=filtered-dv + _mv=9.
+    expect(source.updateParams).toHaveBeenCalled();
+    const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
+    const params = lastCall[0];
+    expect(params.LAYERS).toBe("_kbi_filt_u1_d1_dv7_sabc");
+    expect(params._mv).toBe("9");
+  });
+
+  // ── Test H (re-render on clear): dvViews goes from active to {} → Effect 3 reverts to raw dv ──
+  it("Test H: clearing a dv-filter (dvViews goes from active to {}) moves dvFilterViewsKey → Effect 3 re-fires with LAYERS=raw-dv + _mv=4", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    _filterViewState.dvViews = {
+      7: {
+        viewName: "_kbi_filt_u1_d1_dv7_sabc",
+        materializing: false,
+        materializeVersion: 9,
+        expiresAt: Date.now() + 60_000,
+        dashboardId: 1,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const source = allImageWmsInstances[0];
+    source.updateParams.mockClear();
+
+    // Clear the dv-filter (simulate clearDvView): empty dvViews and trigger re-render.
+    _filterViewState.dvViews = {};
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    // Effect 3 must have re-fired with LAYERS reverting to raw dv + _mv=4.
+    expect(source.updateParams).toHaveBeenCalled();
+    const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
+    const params = lastCall[0];
+    expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
+    expect(params._mv).toBe("4");
   });
 });
