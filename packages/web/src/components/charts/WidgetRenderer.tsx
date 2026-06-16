@@ -6,6 +6,7 @@ import LegendRenderer from "./LegendRenderer";
 import DataFilterRenderer from "./DataFilterRenderer";
 import RadioGroupRenderer from "./RadioGroupRenderer";
 import TimelineRenderer from "./TimelineRenderer";
+import CalendarRenderer from "./CalendarRenderer";
 import NumericLineRenderer from "./NumericLineRenderer";
 import {
   Area,
@@ -345,15 +346,12 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // (Registry def radio-group.ts has no renderer field — runtime dispatched here exclusively.)
     body = <RadioGroupRenderer widget={effectiveWidget} />;
   } else if (effectiveWidget.type === "calendar") {
-    // Phase 66 (CAL-V113-01): calendar short-circuits BEFORE AggregatedWidgetRenderer
+    // Phase 67 (CAL-V113-04): calendar short-circuits BEFORE AggregatedWidgetRenderer
     // (usesAggregation:false → sole-materialize-trigger invariant preserved). The real
-    // SVG CalendarRenderer ships in Phase 67; Phase 66 renders a placeholder so adding
-    // a configured calendar widget does NOT route through AggregatedWidgetRenderer.
-    body = (
-      <div className="widget-placeholder" style={{ padding: 12, color: "var(--text-muted)" }} role="note">
-        Calendar Heatmap — renderer coming in Phase 67.
-      </div>
-    );
+    // SVG CalendarRenderer is live as of Phase 67; CalendarRenderer owns its own data
+    // lifecycle (no materializeFilter / dropFilterView) — AggregatedWidgetRenderer is
+    // NOT called, preserving the sole-materialize-trigger invariant.
+    body = <CalendarRenderer widget={effectiveWidget} tables={tables} />;
   } else {
     body = <AggregatedWidgetRenderer widget={effectiveWidget} />;
   }
