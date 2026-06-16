@@ -96,6 +96,87 @@ export function inferDataTypeFromColumn(
   return "string";
 }
 
+// Phase 68-01: Month abbreviation table (UTC, consistent with CalendarRenderer tooltip).
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+/**
+ * Formats a datetime BETWEEN range as a human-readable inclusive string.
+ * Used exclusively by buildChipText when dataType==="datetime" + operator==="between".
+ *
+ * Rules:
+ *  - Always uses UTC getters (getUTCFullYear/Month/Date/Hours) — NEVER local getters.
+ *  - The stored `hiIso` is nextBucketStart − 1ms (e.g. "…23:59:59.999Z"). The inclusive
+ *    human end is the day/hour that CONTAINS hiMs, not the next one.
+ *  - Single day (lo and hi fall on the same UTC calendar day) → "Mon D, YYYY" (no en-dash).
+ *  - Sub-day range (hiMs − loMs < 24 h) → "Mon D, YYYY HH:00 – Mon D, YYYY HH:00"
+ *    (or collapsed if same day+hour on both ends).
+ *  - Multi-day range → "Mon D – Mon D, YYYY" (year omitted on start if same year).
+ *
+ * The en-dash separator is U+2013, matching the Phase 68 chip-copy spec.
+ */
+function formatDatetimeRange(loIso: string, hiIso: string): string {
+  const loMs = new Date(loIso).getTime();
+  const hiMs = new Date(hiIso).getTime();
+
+  const rangeMs = hiMs - loMs;
+
+  // Helper: UTC date parts
+  const parts = (ms: number) => {
+    const d = new Date(ms);
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth(), // 0-indexed
+      day: d.getUTCDate(),
+      hour: d.getUTCHours(),
+    };
+  };
+
+  const lo = parts(loMs);
+  const hi = parts(hiMs); // the day/hour that contains hiMs (inclusive human end)
+
+  const fmtDay = (p: { year: number; month: number; day: number }) =>
+    `${MONTH_NAMES[p.month]} ${p.day}, ${p.year}`;
+
+  const fmtHour = (p: { year: number; month: number; day: number; hour: number }) =>
+    `${MONTH_NAMES[p.month]} ${p.day}, ${p.year} ${String(p.hour).padStart(2, "0")}:00`;
+
+  const sameDay =
+    lo.year === hi.year && lo.month === hi.month && lo.day === hi.day;
+
+  // Single calendar day: lo and hi land on the same UTC calendar day.
+  // This covers both a full-day cell (00:00 → 23:59:59.999) and any sub-day
+  // cell whose endpoints share the same date — collapse to a single date.
+  if (sameDay) {
+    // Sub-day range on the same day: show the hour granularity.
+    if (rangeMs < 60 * 60 * 1000) {
+      // Single-hour cell (< 1 h, same day and hour)
+      return fmtHour(lo);
+    }
+    if (lo.hour !== 0 || hi.hour !== 23) {
+      // Partial-day range (e.g. 14:00–14:59 shows hours)
+      return `${fmtDay(lo)} ${String(lo.hour).padStart(2, "0")}:00 – ${String(hi.hour).padStart(2, "0")}:00`;
+    }
+    // Full-day cell (lo=00:00, hi=23:xx): collapse to date only.
+    return fmtDay(lo);
+  }
+
+  // Sub-day range that crosses midnight (rare but handled)
+  if (rangeMs < 24 * 60 * 60 * 1000) {
+    return `${fmtHour(lo)} – ${fmtHour(hi)}`;
+  }
+
+  // Multi-day range — omit year from start if same year
+  if (lo.year === hi.year) {
+    const loStr = `${MONTH_NAMES[lo.month]} ${lo.day}`;
+    return `${loStr} – ${MONTH_NAMES[hi.month]} ${hi.day}, ${hi.year}`;
+  }
+
+  return `${fmtDay(lo)} – ${fmtDay(hi)}`;
+}
+
 /**
  * Produces the filter chip / toast text for a (column, value, dataType, operator?) tuple.
  * DISPLAY ONLY — does NOT SQL-escape. SQL safety is in packages/server/src/lib/whereClause.ts.
@@ -135,7 +216,11 @@ export function buildChipText(
   if (operator === "between") {
     const tup = Array.isArray(value) && value.length === 2 ? value : [undefined, undefined];
     const [lo, hi] = tup as [unknown, unknown];
-    // Numbers display unquoted; strings/datetimes display unquoted in chips (RESEARCH §D format).
+    // Phase 68-01: datetime BETWEEN renders as a human-readable inclusive range.
+    if (dataType === "datetime") {
+      return `${column} between ${formatDatetimeRange(String(lo), String(hi))}`;
+    }
+    // Numbers display unquoted; strings display unquoted in chips (RESEARCH §D format).
     return `${column} between ${String(lo)} and ${String(hi)}`;
   }
 
