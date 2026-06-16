@@ -3021,3 +3021,97 @@ describe("RecordsTableRenderer Phase 63 — dv read-path FROM-swap precedence", 
     });
   });
 });
+
+// ─── Phase 67 Plan 03: calendar branch wired to CalendarRenderer ───────────────
+
+// Mock CalendarRenderer so WidgetRenderer tests don't need its full fetch/SVG setup.
+vi.mock("./CalendarRenderer", () => ({
+  default: (props: { widget: WidgetDto; tables: any[] }) => (
+    <div
+      data-testid="calendar-renderer"
+      data-widget-id={String(props.widget.id)}
+      data-tables-count={String((props.tables ?? []).length)}
+    />
+  ),
+}));
+
+function makeCalendarWidget(overrides: Partial<WidgetDto> = {}): WidgetDto {
+  return {
+    id: 55,
+    dashboard_id: 1,
+    title: "Sales Heatmap",
+    type: "calendar",
+    position: 0,
+    config: { tableId: 7, tableRef: "demo.sales", timeCol: "ts" },
+    created_at: "",
+    updated_at: "",
+    ...overrides,
+  };
+}
+
+function renderCalendarInContext(
+  widget: WidgetDto,
+  tables: import("../../api/client").TableDto[] = [],
+) {
+  return render(
+    <DashboardContextProvider
+      dashboardId={1}
+      widgets={[widget]}
+      dynamicViews={[]}
+      retryDynamicView={() => {}}
+    >
+      <WidgetRenderer widget={widget} tables={tables} />
+    </DashboardContextProvider>,
+  );
+}
+
+describe("WidgetRenderer Phase 67 — calendar short-circuit to CalendarRenderer (CAL-V113-04)", () => {
+  it("short-circuits to <CalendarRenderer /> for widget.type === 'calendar'", () => {
+    const w = makeCalendarWidget({ id: 55 });
+    renderCalendarInContext(w, []);
+    expect(screen.getByTestId("calendar-renderer")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("calendar-renderer").getAttribute("data-widget-id"),
+    ).toBe("55");
+    // Old placeholder must NOT appear
+    expect(screen.queryByText(/Calendar Heatmap — renderer coming in Phase 67/)).toBeNull();
+    // AggregatedWidgetRenderer would render "Select a table..." for a widget with no SQL
+    expect(screen.queryByText(/Select a table/)).toBeNull();
+  });
+
+  it("calendar type does NOT fall through to AggregatedWidgetRenderer", () => {
+    const w = makeCalendarWidget();
+    renderCalendarInContext(w, []);
+    expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    // No SQL loading state (AggregatedWidgetRenderer renders this for unconfigured widgets)
+    expect(screen.queryByText(/Select a table/)).toBeNull();
+  });
+
+  it("passes the tables prop through to CalendarRenderer", () => {
+    const tables: import("../../api/client").TableDto[] = [
+      { id: 7, name: "sales", schema: "demo", columns: { ts: "timestamp" } } as any,
+    ];
+    const w = makeCalendarWidget({ id: 55 });
+    renderCalendarInContext(w, tables);
+    expect(
+      screen.getByTestId("calendar-renderer").getAttribute("data-tables-count"),
+    ).toBe("1");
+  });
+
+  it("CalendarRenderer.tsx does NOT import materializeFilter or dropFilterView (sole-materialize-trigger invariant — static assertion)", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const filePath = path.resolve(
+      process.cwd(),
+      "src/components/charts/CalendarRenderer.tsx",
+    );
+    const source = await fs.readFile(filePath, "utf-8");
+    // Assert on import lines only (comments may mention these names for documentation).
+    // Mirrors DataFilterRenderer.spec.tsx static assertion pattern.
+    const importLines = source
+      .split("\n")
+      .filter((line) => line.trimStart().startsWith("import"))
+      .join("\n");
+    expect(importLines).not.toMatch(/materializeFilter|dropFilterView/);
+  });
+});
