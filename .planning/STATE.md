@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: Completed 66-04-PLAN.md
-last_updated: "2026-06-16T14:37:43.947Z"
+stopped_at: Completed 67-01-PLAN.md
+last_updated: "2026-06-16T16:13:30.797Z"
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 66 — chart-type-definition-config-panel
+**Current focus:** Phase 67 — svg-calendar-renderer-read-only
 
 ## Current Position
 
-Phase: 66 (chart-type-definition-config-panel) — EXECUTING
-Plan: 3 of 4
+Phase: 67 (svg-calendar-renderer-read-only) — EXECUTING
+Plan: 1 of 3
 
 ## v1.13 Phase Map
 
@@ -327,6 +327,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 65 P02 | 3min | 1 task (NOT-RUN fallback) | 2 files (65-02-SUMMARY.md + calendarBin.ts annotation) |
 | Phase 66 P02 | 5min | 1 task | 2 files |
 | Phase 66 P04 | 2 | 2 tasks | 3 files |
+| Phase 67 P01 | 4min | 3 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -513,6 +514,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 66-03]: Cap probe failure (network/SQL error) resets capState to idle — cap is a UX guard, not a hard requirement; probe never blocks save on error
 - [Phase 66]: usesAggregation:false is a locked invariant for calendar — keeps it out of AggregatedWidgetRenderer (sole-materialize-trigger); never flip this
 - [Phase 66]: WidgetRenderer placeholder branch ships in Phase 66; real SVG CalendarRenderer deferred to Phase 67 — short-circuit already in place
+- [Phase 67]: toCssColor replicated inside calendarColorScale.ts (not imported from TimelineRenderer) to keep lib pure
+- [Phase 67]: emptyCell token uses same concrete hex as grid token on both themes (#e2e8f0 light / #1f2937 dark)
+- [Phase 67]: gapFillCalendar exposes cellAt(d,s) O(1) helper for Phase-68 click guard (value === null test)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -909,6 +913,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T14:37:43.939Z
-Stopped at: Completed 66-04-PLAN.md
+Last session: 2026-06-16T16:13:30.788Z
+Stopped at: Completed 67-01-PLAN.md
 Resume file: None

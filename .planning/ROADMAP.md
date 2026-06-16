@@ -126,11 +126,12 @@ Plans:
   3. All cell colors are sourced from `chartTheme.ts` palette exports or CSS custom properties — no hardcoded hex literals; `theme-guard.spec.ts` passes with `CalendarRenderer.tsx` in scope
   4. The color scale domain is derived reactively: `useMemo(() => computeDomain(data), [data])` — applying and clearing an external filter produces a correctly rescaled palette matching the current data's min/max
   5. When `filterVersion` or `fvViewName` (or `dvFilterViewName`/`dvStatus` for dv-bound) changes, the calendar re-fetches and re-renders — the widget responds to external drill-down filters from other widgets on the same scope
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 67-01: `CalendarRenderer.tsx` — data fetch lifecycle (buildCalendarSql, runSql, table/dv FROM-target resolution, filter-version re-fetch watcher), `CalendarRenderer.spec.tsx`
-- [ ] 67-02: SVG grid render — domain groups, subdomain cells, gap-fill (`useMemo`), color scale (chartTheme tokens), time-axis labels, hover tooltip, empty-cell non-interactivity
+- [ ] 67-01-PLAN.md — Pure helpers (TDD): `calendarColorScale.ts` (computeDomain + 5-bucket linear quantize + palette resolver) + `calendarGapFill.ts` (2D domain×subdomain dense gap-fill) + `useChartAxisColors` emptyCell extension
+- [ ] 67-02-PLAN.md — `CalendarRenderer.tsx` — fetch lifecycle (single `runSql(buildCalendarSql)`, FROM precedence resolved before SQL, filter-aware re-fetch) + SVG grid render (gap-fill, reactive color domain, Less→More legend, both-axis sparse labels, per-cell tooltip, non-interactive greys) + `CalendarRenderer.spec.tsx`
+- [ ] 67-03-PLAN.md — Wire `<CalendarRenderer>` into `WidgetRenderer.tsx` (replace Phase 66 placeholder, branch before AggregatedWidgetRenderer) + spec routing assertion + re-assert no-materialize-import invariant
 
 ### Phase 68: Cell-Drill Integration
 **Goal**: Clicking a calendar cell applies a timestamp BETWEEN range filter to the dashboard (or the dv scope), shows a removable chip, propagates to all consumer read-paths including WMS map tiles, and the `AggregatedWidgetRenderer`-as-sole-materialize-trigger invariant is preserved and statically asserted.
@@ -170,7 +171,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 65. calendar-sql-builder-kinetica-spike | 1/2 | Complete    | 2026-06-16 |
-| 66. chart-type-definition-config-panel | 4/4 | Complete   | 2026-06-16 |
-| 67. svg-calendar-renderer-read-only | 0/TBD | Not started | - |
+| 66. chart-type-definition-config-panel | 4/4 | Complete    | 2026-06-16 |
+| 67. svg-calendar-renderer-read-only | 1/3 | In Progress|  |
 | 68. cell-drill-integration | 0/TBD | Not started | - |
 | 69. verification-live-uat | 0/3 | Not started | - |
