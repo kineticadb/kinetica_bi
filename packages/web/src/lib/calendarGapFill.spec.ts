@@ -1,148 +1,280 @@
 /**
- * Phase 67 Plan 01 (CAL-V113-04): vitest coverage for calendarGapFill —
- * 2D domain×subdomain dense-grid gap-fill.
+ * Phase 68.2 Plan 03 (CALUX-V113-03): per-group gap-fill spec.
  *
- * RED phase: all tests written before implementation exists.
+ * Replaces the Phase-67 global-axis tests with per-domain-group, date-range-aware
+ * assertions. Key changes:
+ *   - gapFillCalendar now takes (rows, domain, subdomain)
+ *   - Each group's cells are ONLY its own expected buckets (no cross-fill)
+ *   - In-range missing buckets → value: null (grey tile)
+ *   - Out-of-range buckets → no cell at all (blank)
+ *   - week×day group → exactly 7 cells, one column (no phantom month-shaped block)
+ *   - day×hour group → exactly 24 cells, no cross-day hours
  */
 import { describe, it, expect } from "vitest";
 import { gapFillCalendar } from "./calendarGapFill";
 import type { CalendarCell, CalendarRow } from "./calendarGapFill";
 
-describe("gapFillCalendar", () => {
+describe("gapFillCalendar — per-group date-range-aware gap-fill", () => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Empty input
+  // ─────────────────────────────────────────────────────────────────────────
   it("returns empty structure for empty input", () => {
-    const result = gapFillCalendar([]);
+    const result = gapFillCalendar([], "month", "day");
     expect(result.rows).toEqual([]);
     expect(result.domainKeys).toEqual([]);
     expect(result.subdomainKeys).toEqual([]);
   });
 
-  it("produces a dense 2×2 grid from a sparse 2-row input (gap-fill)", () => {
-    // Two populated cells at opposite corners; the other two must be null
+  // ─────────────────────────────────────────────────────────────────────────
+  // Single-cell trivial 1×1
+  // ─────────────────────────────────────────────────────────────────────────
+  it("handles single domain, single subdomain — trivial 1×1 (month×day)", () => {
+    // Jan 2026, only Jan 5 has data
     const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: 10 },
-      { domain_bucket: "D2", subdomain_bucket: "S2", value: 20 },
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-05 00:00:00", value: 7 },
     ];
-    const result = gapFillCalendar(input);
-
-    // 2 distinct domain keys, 2 distinct subdomain keys
-    expect(result.domainKeys).toEqual(["D1", "D2"]);
-    expect(result.subdomainKeys).toEqual(["S1", "S2"]);
-
-    // 2 rows (one per domain)
-    expect(result.rows).toHaveLength(2);
-
-    // Each row has 2 cells (one per subdomain)
-    for (const row of result.rows) {
-      expect(row.cells).toHaveLength(2);
-    }
-
-    // Total cells = 4 (dense grid — gap positions get value: null)
-    const allCells = result.rows.flatMap((r) => r.cells);
-    expect(allCells).toHaveLength(4);
+    const result = gapFillCalendar(input, "month", "day");
+    expect(result.domainKeys).toEqual(["2026-01-01 00:00:00"]);
+    // Jan has 31 days → 31 cells
+    const row = result.rows[0];
+    expect(row.cells).toHaveLength(31);
+    // Jan 5 has value 7
+    const jan5 = row.cells.find((c) => c.subdomainKey === "2026-01-05 00:00:00");
+    expect(jan5?.value).toBe(7);
+    // Jan 10 (missing) → null
+    const jan10 = row.cells.find((c) => c.subdomainKey === "2026-01-10 00:00:00");
+    expect(jan10?.value).toBeNull();
   });
 
-  it("preserves populated values at their correct (domain, subdomain) coordinates", () => {
-    const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: 10 },
-      { domain_bucket: "D2", subdomain_bucket: "S2", value: 20 },
-    ];
-    const result = gapFillCalendar(input);
-
-    // D1 row
-    const d1Row = result.rows.find((r) => r.domainKey === "D1")!;
-    expect(d1Row).toBeDefined();
-    const d1s1 = d1Row.cells.find((c) => c.subdomainKey === "S1");
-    expect(d1s1?.value).toBe(10);
-
-    // D2 row
-    const d2Row = result.rows.find((r) => r.domainKey === "D2")!;
-    expect(d2Row).toBeDefined();
-    const d2s2 = d2Row.cells.find((c) => c.subdomainKey === "S2");
-    expect(d2s2?.value).toBe(20);
-  });
-
-  it("fills unpopulated (domain×subdomain) positions with value: null — never collapses neighbors", () => {
-    const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: 10 },
-      { domain_bucket: "D2", subdomain_bucket: "S2", value: 20 },
-    ];
-    const result = gapFillCalendar(input);
-
-    // D1×S2 and D2×S1 must be null (gap positions)
-    const d1Row = result.rows.find((r) => r.domainKey === "D1")!;
-    const d1s2 = d1Row.cells.find((c) => c.subdomainKey === "S2");
-    expect(d1s2?.value).toBeNull();
-
-    const d2Row = result.rows.find((r) => r.domainKey === "D2")!;
-    const d2s1 = d2Row.cells.find((c) => c.subdomainKey === "S1");
-    expect(d2s1?.value).toBeNull();
-  });
-
-  it("sorts domain keys ascending (matching buildCalendarSql ORDER BY)", () => {
-    const input = [
-      { domain_bucket: "2024-03", subdomain_bucket: "W01", value: 5 },
-      { domain_bucket: "2024-01", subdomain_bucket: "W01", value: 3 },
-      { domain_bucket: "2024-02", subdomain_bucket: "W01", value: 8 },
-    ];
-    const result = gapFillCalendar(input);
-    expect(result.domainKeys).toEqual(["2024-01", "2024-02", "2024-03"]);
-  });
-
-  it("sorts subdomain keys ascending (matching buildCalendarSql ORDER BY)", () => {
-    const input = [
-      { domain_bucket: "2024", subdomain_bucket: "2024-12", value: 5 },
-      { domain_bucket: "2024", subdomain_bucket: "2024-01", value: 3 },
-      { domain_bucket: "2024", subdomain_bucket: "2024-06", value: 8 },
-    ];
-    const result = gapFillCalendar(input);
-    expect(result.subdomainKeys).toEqual(["2024-01", "2024-06", "2024-12"]);
-  });
-
-  it("each cell carries its source coordinates (domainKey, subdomainKey)", () => {
-    const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: 42 },
-    ];
-    const result = gapFillCalendar(input);
-    const cell = result.rows[0].cells[0];
-    expect(cell.domainKey).toBe("D1");
-    expect(cell.subdomainKey).toBe("S1");
-  });
-
-  it("cellAt helper returns correct value for a populated cell", () => {
-    const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: 99 },
-      { domain_bucket: "D1", subdomain_bucket: "S2", value: null },
-    ];
-    const result = gapFillCalendar(input);
-    expect(result.cellAt("D1", "S1")).toBe(99);
-  });
-
-  it("cellAt helper returns null for a gap cell", () => {
-    const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: 10 },
-      { domain_bucket: "D2", subdomain_bucket: "S2", value: 20 },
-    ];
-    const result = gapFillCalendar(input);
-    expect(result.cellAt("D1", "S2")).toBeNull();
-    expect(result.cellAt("D2", "S1")).toBeNull();
-  });
-
-  it("handles single domain, single subdomain — trivial 1×1 grid", () => {
-    const input = [{ domain_bucket: "2024", subdomain_bucket: "2024-01", value: 7 }];
-    const result = gapFillCalendar(input);
-    expect(result.domainKeys).toEqual(["2024"]);
-    expect(result.subdomainKeys).toEqual(["2024-01"]);
-    expect(result.rows).toHaveLength(1);
-    expect(result.rows[0].cells).toHaveLength(1);
-    expect(result.rows[0].cells[0].value).toBe(7);
-  });
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // value: null passthrough
+  // ─────────────────────────────────────────────────────────────────────────
   it("handles value: null in input (explicitly empty bucket from query)", () => {
     const input = [
-      { domain_bucket: "D1", subdomain_bucket: "S1", value: null },
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-01 00:00:00", value: null },
     ];
-    const result = gapFillCalendar(input);
-    expect(result.rows[0].cells[0].value).toBeNull();
+    const result = gapFillCalendar(input, "month", "day");
+    const jan1 = result.rows[0].cells.find((c) => c.subdomainKey === "2026-01-01 00:00:00");
+    expect(jan1?.value).toBeNull();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // cellAt helper
+  // ─────────────────────────────────────────────────────────────────────────
+  it("cellAt helper returns correct value for a populated cell", () => {
+    const input = [
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-03 00:00:00", value: 99 },
+    ];
+    const result = gapFillCalendar(input, "month", "day");
+    expect(result.cellAt("2026-01-01 00:00:00", "2026-01-03 00:00:00")).toBe(99);
+  });
+
+  it("cellAt helper returns null for a gap cell (key exists in data but no value)", () => {
+    const input = [
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-03 00:00:00", value: 10 },
+    ];
+    const result = gapFillCalendar(input, "month", "day");
+    // Jan 5 is in-range but no data → null
+    expect(result.cellAt("2026-01-01 00:00:00", "2026-01-05 00:00:00")).toBeNull();
+    // Out-of-range → null
+    expect(result.cellAt("2026-01-01 00:00:00", "2026-02-01 00:00:00")).toBeNull();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Domain keys sorting
+  // ─────────────────────────────────────────────────────────────────────────
+  it("sorts domain keys ascending (matching buildCalendarSql ORDER BY)", () => {
+    const input = [
+      { domain_bucket: "2026-03-01 00:00:00", subdomain_bucket: "2026-03-05 00:00:00", value: 5 },
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-10 00:00:00", value: 3 },
+      { domain_bucket: "2026-02-01 00:00:00", subdomain_bucket: "2026-02-07 00:00:00", value: 8 },
+    ];
+    const result = gapFillCalendar(input, "month", "day");
+    expect(result.domainKeys).toEqual([
+      "2026-01-01 00:00:00",
+      "2026-02-01 00:00:00",
+      "2026-03-01 00:00:00",
+    ]);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Each cell carries its source coordinates
+  // ─────────────────────────────────────────────────────────────────────────
+  it("each cell carries its source coordinates (domainKey, subdomainKey)", () => {
+    const input = [
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-03 00:00:00", value: 42 },
+    ];
+    const result = gapFillCalendar(input, "month", "day");
+    const jan3 = result.rows[0].cells.find((c) => c.subdomainKey === "2026-01-03 00:00:00");
+    expect(jan3?.domainKey).toBe("2026-01-01 00:00:00");
+    expect(jan3?.subdomainKey).toBe("2026-01-03 00:00:00");
+    expect(jan3?.value).toBe(42);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // THE CORE BUG FIX: week×day no-cross-fill
+  //
+  // Old behavior: two week groups both got ALL distinct subdomain days (from
+  // both weeks) → phantom month-shaped block.
+  // New behavior: each week group gets ONLY its OWN 7 days.
+  // ─────────────────────────────────────────────────────────────────────────
+  it("week×day no-cross-fill: week A's cells contain ONLY week A's 7 days", () => {
+    // Week A starts Mon 2024-10-07; data only on 2024-10-09 (Wed)
+    // Week B starts Mon 2024-10-14; data only on 2024-10-16 (Wed)
+    const input = [
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-09 00:00:00", value: 5 },
+      { domain_bucket: "2024-10-14 00:00:00", subdomain_bucket: "2024-10-16 00:00:00", value: 8 },
+    ];
+    const result = gapFillCalendar(input, "week", "day");
+
+    const weekA = result.rows.find((r) => r.domainKey === "2024-10-07 00:00:00")!;
+    expect(weekA).toBeDefined();
+
+    // Week A gets exactly 7 days (Oct 7..13)
+    expect(weekA.cells).toHaveLength(7);
+
+    // Week A's Oct-09 (Wed) has value 5
+    const oct9 = weekA.cells.find((c) => c.subdomainKey === "2024-10-09 00:00:00");
+    expect(oct9?.value).toBe(5);
+
+    // The other 6 days of week A are in-range but missing → null (grey)
+    const weekANullCells = weekA.cells.filter((c) => c.value === null);
+    expect(weekANullCells).toHaveLength(6);
+
+    // CRITICAL: none of week B's days appear in week A's cells
+    const weekBDayInWeekA = weekA.cells.find((c) => c.subdomainKey === "2024-10-16 00:00:00");
+    expect(weekBDayInWeekA).toBeUndefined();
+
+    // Confirm week B also gets only its own 7 days
+    const weekB = result.rows.find((r) => r.domainKey === "2024-10-14 00:00:00")!;
+    expect(weekB.cells).toHaveLength(7);
+    const oct16 = weekB.cells.find((c) => c.subdomainKey === "2024-10-16 00:00:00");
+    expect(oct16?.value).toBe(8);
+
+    // Week A's days must NOT appear in week B's cells
+    const weekADayInWeekB = weekB.cells.find((c) => c.subdomainKey === "2024-10-09 00:00:00");
+    expect(weekADayInWeekB).toBeUndefined();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // in-range grey: 5-of-7 data days → 7 cells, 2 null
+  // ─────────────────────────────────────────────────────────────────────────
+  it("in-range grey: a week group with data on 5 of 7 days yields 7 cells with exactly 2 null", () => {
+    // Week of 2024-10-07 (Mon). Only Mon/Tue/Wed/Thu/Fri have data (5 days). Sat/Sun missing.
+    const input = [
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-07 00:00:00", value: 1 }, // Mon
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-08 00:00:00", value: 2 }, // Tue
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-09 00:00:00", value: 3 }, // Wed
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-10 00:00:00", value: 4 }, // Thu
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-11 00:00:00", value: 5 }, // Fri
+      // Sat 2024-10-12 and Sun 2024-10-13 are missing
+    ];
+    const result = gapFillCalendar(input, "week", "day");
+    const weekRow = result.rows[0];
+    expect(weekRow.cells).toHaveLength(7);
+    const nullCells = weekRow.cells.filter((c) => c.value === null);
+    expect(nullCells).toHaveLength(2);
+    // Sat and Sun are the grey ones
+    const sat = weekRow.cells.find((c) => c.subdomainKey === "2024-10-12 00:00:00");
+    const sun = weekRow.cells.find((c) => c.subdomainKey === "2024-10-13 00:00:00");
+    expect(sat?.value).toBeNull();
+    expect(sun?.value).toBeNull();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // month×day: March group → 31 cells, missing days null
+  // ─────────────────────────────────────────────────────────────────────────
+  it("month×day: March group with sparse data → 31 cells, missing days null", () => {
+    const input = [
+      { domain_bucket: "2024-03-01 00:00:00", subdomain_bucket: "2024-03-01 00:00:00", value: 10 },
+      { domain_bucket: "2024-03-01 00:00:00", subdomain_bucket: "2024-03-15 00:00:00", value: 20 },
+    ];
+    const result = gapFillCalendar(input, "month", "day");
+    const marchRow = result.rows.find((r) => r.domainKey === "2024-03-01 00:00:00")!;
+    expect(marchRow).toBeDefined();
+    expect(marchRow.cells).toHaveLength(31);
+    // Populated cells
+    expect(marchRow.cells.find((c) => c.subdomainKey === "2024-03-01 00:00:00")?.value).toBe(10);
+    expect(marchRow.cells.find((c) => c.subdomainKey === "2024-03-15 00:00:00")?.value).toBe(20);
+    // Missing day (Mar 10) → null
+    expect(marchRow.cells.find((c) => c.subdomainKey === "2024-03-10 00:00:00")?.value).toBeNull();
+    // Verify no cross-month cells (Apr 1 must not exist)
+    const apr1 = marchRow.cells.find((c) => c.subdomainKey === "2024-04-01 00:00:00");
+    expect(apr1).toBeUndefined();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // day×hour no-cross-fill: each day gets exactly its own 24 hours
+  // ─────────────────────────────────────────────────────────────────────────
+  it("day×hour no-cross-fill: two day groups each get exactly 24 hours; no cross-day hours", () => {
+    const input = [
+      { domain_bucket: "2024-03-01 00:00:00", subdomain_bucket: "2024-03-01 09:00:00", value: 5 },
+      { domain_bucket: "2024-03-02 00:00:00", subdomain_bucket: "2024-03-02 14:00:00", value: 8 },
+    ];
+    const result = gapFillCalendar(input, "day", "hour");
+
+    const day1 = result.rows.find((r) => r.domainKey === "2024-03-01 00:00:00")!;
+    const day2 = result.rows.find((r) => r.domainKey === "2024-03-02 00:00:00")!;
+    expect(day1).toBeDefined();
+    expect(day2).toBeDefined();
+
+    // Each day gets exactly 24 hours
+    expect(day1.cells).toHaveLength(24);
+    expect(day2.cells).toHaveLength(24);
+
+    // Correct values at expected positions
+    expect(day1.cells.find((c) => c.subdomainKey === "2024-03-01 09:00:00")?.value).toBe(5);
+    expect(day2.cells.find((c) => c.subdomainKey === "2024-03-02 14:00:00")?.value).toBe(8);
+
+    // CRITICAL: day 1's cells contain NO hours from day 2
+    const day2HourInDay1 = day1.cells.find((c) => c.subdomainKey === "2024-03-02 14:00:00");
+    expect(day2HourInDay1).toBeUndefined();
+
+    // day 2's cells contain NO hours from day 1
+    const day1HourInDay2 = day2.cells.find((c) => c.subdomainKey === "2024-03-01 09:00:00");
+    expect(day1HourInDay2).toBeUndefined();
+
+    // All in-range missing hours → null
+    const day1NullCells = day1.cells.filter((c) => c.value === null);
+    expect(day1NullCells).toHaveLength(23); // only 1 hour populated
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // out-of-range: assert NO cell for a subdomain key outside the group range
+  // ─────────────────────────────────────────────────────────────────────────
+  it("out-of-range: week A has no cell whose subdomainKey is a day from week B", () => {
+    const input = [
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-09 00:00:00", value: 3 },
+      { domain_bucket: "2024-10-14 00:00:00", subdomain_bucket: "2024-10-16 00:00:00", value: 7 },
+    ];
+    const result = gapFillCalendar(input, "week", "day");
+
+    const weekACells = result.rows.find((r) => r.domainKey === "2024-10-07 00:00:00")!.cells;
+
+    // Oct 16 is in week B, not week A — must not appear in week A's cells
+    expect(weekACells.find((c) => c.subdomainKey === "2024-10-16 00:00:00")).toBeUndefined();
+    // Oct 14 (Monday of week B) also must not appear
+    expect(weekACells.find((c) => c.subdomainKey === "2024-10-14 00:00:00")).toBeUndefined();
+    // Oct 17-20 (rest of week B) also must not appear
+    expect(weekACells.find((c) => c.subdomainKey === "2024-10-17 00:00:00")).toBeUndefined();
+    expect(weekACells.find((c) => c.subdomainKey === "2024-10-20 00:00:00")).toBeUndefined();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Populated values preserved at correct coordinates
+  // ─────────────────────────────────────────────────────────────────────────
+  it("preserves populated values at their correct (domain, subdomain) coordinates", () => {
+    const input = [
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-03 00:00:00", value: 10 },
+      { domain_bucket: "2026-02-01 00:00:00", subdomain_bucket: "2026-02-10 00:00:00", value: 20 },
+    ];
+    const result = gapFillCalendar(input, "month", "day");
+
+    const jan = result.rows.find((r) => r.domainKey === "2026-01-01 00:00:00")!;
+    const feb = result.rows.find((r) => r.domainKey === "2026-02-01 00:00:00")!;
+
+    expect(jan.cells.find((c) => c.subdomainKey === "2026-01-03 00:00:00")?.value).toBe(10);
+    expect(feb.cells.find((c) => c.subdomainKey === "2026-02-10 00:00:00")?.value).toBe(20);
   });
 });
 
