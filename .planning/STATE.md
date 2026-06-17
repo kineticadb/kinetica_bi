@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: "Completed 68.1-02-PLAN.md (Display section: layoutMode + showDomainSubdomainControls)"
-last_updated: "2026-06-17T15:46:00Z"
+stopped_at: "Completed 68.1-03-PLAN.md (CalendarRenderer wrapped layout + viewer control bar)"
+last_updated: "2026-06-17T15:59:54Z"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -58,6 +58,14 @@ All phases 65-68 are FRONTEND-ONLY (packages/web): frontend vitest 100% + web ts
 - **DISPLAY section position:** inserted after respondToFilters row, before cap-probe hints — all inside the `tableId !== undefined` fragment; section uses `config-group-label` header (mirrors TimelineConfigPanel OPTIONS)
 - **Info tooltip pattern:** native `title=` on `<span aria-label="About show domain/subdomain controls">ⓘ</span>` — no shared InfoIcon component (MapConfigPanel §643 precedent)
 - **showDomainSubdomainControls default OFF:** opt-in; viewer gets live domain/subdomain dropdowns only when designer explicitly enables the feature
+
+### Phase 68.1-03 Decisions (locked 2026-06-17)
+
+- **`blocks` useMemo before early returns:** `layoutCalendar()` useMemo must precede all early-return render states (loading/error/empty) to prevent React hooks-count violation across conditional renders
+- **View-local override pattern:** `const effX = viewerX ?? configX` — effDomain/effSubdomain thread through ALL downstream consumers (SQL, computeCellBounds, formatTimelineTick, handleCellClick); never calls patch/onChange
+- **Dependent dropdown reset:** when viewer domain changes, reset viewer subdomain to `VALID_DOMAIN_SUBDOMAIN[newDomain][0]` if current subdomain invalid — mirrors CalendarConfigPanel.handleDomainChange
+- **WRAP_WIDTH = 800px:** wrap mode breakpoint; scrollable overflow wrapper handles content wider than container
+- **WEEK_START in renderer:** imported from calendarLayout.ts but used only in comment — actual DOW positioning is done by layoutCalendar; Phase 69 flips WEEK_START in calendarLayout.ts in a single edit
 
 ### v1.13 Open Tech Debt (carried from v1.12)
 

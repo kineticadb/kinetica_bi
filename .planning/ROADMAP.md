@@ -42,7 +42,7 @@
 | 66. chart-type-definition-config-panel | v1.13 | Complete | 2026-06-16 |
 | 67. svg-calendar-renderer-read-only | v1.13 | Complete | 2026-06-16 |
 | 68. cell-drill-integration | v1.13 | Complete | 2026-06-16 |
-| 68.1. calendar-ux-wrapped-layout-on-widget-controls (INSERTED) | v1.13 | Planned | - |
+| 68.1. calendar-ux-wrapped-layout-on-widget-controls (INSERTED) | v1.13 | Complete (3/3) | 2026-06-17 |
 | 69. verification-live-uat | v1.13 | Not started | - |
 
 ---
