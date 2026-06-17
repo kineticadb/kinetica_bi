@@ -30,6 +30,27 @@
 import { enumerateGroupBuckets } from "./calendarBuckets";
 import type { CalendarDomain, CalendarSubdomain } from "./calendarBin";
 
+/**
+ * Normalize a DATE_TRUNC bucket string to a canonical UTC-epoch key for value lookups.
+ *
+ * Kinetica's DATE_TRUNC output format is NOT guaranteed identical to the format
+ * enumerateGroupBuckets generates ("YYYY-MM-DD HH:mm:ss"). It may be date-only
+ * ("2022-10-05"), carry milliseconds, or use a 'T' separator. Keying the lookup by
+ * raw strings made every generated key miss the raw SQL key → an all-grey grid.
+ * Parsing both sides to epoch-ms makes the lookup format-agnostic.
+ *
+ * Falls back to the trimmed raw string if unparseable, so an exact-string match
+ * can still succeed.
+ */
+function normKey(raw: string): string {
+  let s = raw.trim();
+  if (!s.includes("T")) s = s.replace(" ", "T"); // "YYYY-MM-DD HH:mm:ss" → ISO
+  if (!s.includes("T")) s += "T00:00:00"; // pure date with no time component
+  if (!/[zZ]$/.test(s) && !/[+-]\d\d:?\d\d$/.test(s)) s += "Z"; // assume UTC
+  const ms = new Date(s).getTime();
+  return Number.isNaN(ms) ? raw.trim() : String(ms);
+}
+
 /** One cell in the 2D calendar grid. */
 export type CalendarCell = {
   /** The domain_bucket key this cell belongs to (e.g. "2024", "2024-01"). */
@@ -100,10 +121,11 @@ export function gapFillCalendar(
 
   const domainKeys = Array.from(domainSet).sort();
 
-  // Build lookup map: "domainKey|subdomainKey" → value (for populated rows only)
+  // Build lookup map keyed by NORMALIZED (epoch) domain|subdomain → value, so the
+  // generated bucket keys match regardless of Kinetica's exact DATE_TRUNC string format.
   const lookup = new Map<string, number | null>();
   for (const row of rows) {
-    lookup.set(`${row.domain_bucket}|${row.subdomain_bucket}`, row.value);
+    lookup.set(`${normKey(row.domain_bucket)}|${normKey(row.subdomain_bucket)}`, row.value);
   }
 
   // Build per-group rows: each group's cells are ONLY the expected in-range
@@ -118,7 +140,7 @@ export function gapFillCalendar(
     // Map each expected key to a cell: populated → its value; missing → null (GREY)
     // No cell is created for out-of-range keys (they never enter `expected`)
     const cells: CalendarCell[] = expected.map((subdomainKey) => {
-      const lookupKey = `${domainKey}|${subdomainKey}`;
+      const lookupKey = `${normKey(domainKey)}|${normKey(subdomainKey)}`;
       const value = lookup.has(lookupKey) ? (lookup.get(lookupKey) ?? null) : null;
       return { domainKey, subdomainKey, value };
     });
@@ -129,7 +151,7 @@ export function gapFillCalendar(
   const subdomainKeys = Array.from(allSubdomainKeys).sort();
 
   const cellAt = (d: string, s: string): number | null => {
-    const key = `${d}|${s}`;
+    const key = `${normKey(d)}|${normKey(s)}`;
     if (!lookup.has(key)) return null;
     return lookup.get(key) ?? null;
   };

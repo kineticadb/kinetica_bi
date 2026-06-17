@@ -295,4 +295,47 @@ describe("CalendarCell and CalendarRow type exports", () => {
     expect(row.domainKey).toBe("D1");
     expect(row.cells).toHaveLength(1);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Bucket-key FORMAT robustness (regression: all-grey grid when Kinetica's
+  // DATE_TRUNC string format differs from enumerateGroupBuckets' output).
+  // The enumerator emits "YYYY-MM-DD HH:mm:ss"; the value lookup must still
+  // match populated rows whose buckets are date-only, millisecond, or ISO 'T'/Z.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe("bucket-key format robustness (all-grey regression)", () => {
+    function valueForJan5(subdomainBucket: string): number | null {
+      const result = gapFillCalendar(
+        [{ domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: subdomainBucket, value: 42 }],
+        "month",
+        "day",
+      );
+      const jan5 = result.rows[0].cells.find((c) => c.subdomainKey === "2026-01-05 00:00:00");
+      return jan5 ? jan5.value : (undefined as never);
+    }
+
+    it("matches a date-only subdomain bucket (2026-01-05)", () => {
+      expect(valueForJan5("2026-01-05")).toBe(42);
+    });
+
+    it("matches a millisecond subdomain bucket (2026-01-05 00:00:00.000)", () => {
+      expect(valueForJan5("2026-01-05 00:00:00.000")).toBe(42);
+    });
+
+    it("matches an ISO T/Z subdomain bucket (2026-01-05T00:00:00Z)", () => {
+      expect(valueForJan5("2026-01-05T00:00:00Z")).toBe(42);
+    });
+
+    it("still matches the canonical space format (2026-01-05 00:00:00)", () => {
+      expect(valueForJan5("2026-01-05 00:00:00")).toBe(42);
+    });
+
+    it("cellAt is also format-agnostic", () => {
+      const result = gapFillCalendar(
+        [{ domain_bucket: "2026-01-01", subdomain_bucket: "2026-01-05", value: 42 }],
+        "month",
+        "day",
+      );
+      expect(result.cellAt("2026-01-01 00:00:00", "2026-01-05 00:00:00")).toBe(42);
+    });
+  });
 });
