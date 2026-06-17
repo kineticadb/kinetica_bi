@@ -536,6 +536,43 @@ export default function CalendarConfigPanel({
             />
           </div>
 
+          {/* ---- Display section ---- */}
+          <div className="config-group-label" style={{ marginTop: 16 }}>DISPLAY</div>
+
+          {/* Layout mode */}
+          <div className="ds-field">
+            <span className="ds-field-label">Layout</span>
+            <select
+              className="ds-select"
+              aria-label="Layout"
+              value={layoutMode}
+              onChange={(e) => patch({ layoutMode: e.target.value as "wrap" | "strip" })}
+            >
+              <option value="wrap">Wrap</option>
+              <option value="strip">Continuous strip</option>
+            </select>
+          </div>
+
+          {/* Show domain/subdomain controls */}
+          <div className="ds-field">
+            <label className="ds-field-label" htmlFor="calendar-show-controls">
+              Show domain/subdomain controls
+              <span
+                title="When on, viewers get dropdowns on the widget to change the time grouping live, without editing the widget. The viewer's choice is not saved and resets on reload."
+                aria-label="About show domain/subdomain controls"
+                style={{ marginLeft: 4, cursor: "help" }}
+              >ⓘ</span>
+            </label>
+            <input
+              id="calendar-show-controls"
+              type="checkbox"
+              className="accent-checkbox"
+              checked={showDomainSubdomainControls}
+              onChange={(e) => patch({ showDomainSubdomainControls: e.target.checked })}
+              aria-label="Show domain/subdomain controls"
+            />
+          </div>
+
           {/* ---- Cap probe status ---- */}
           {capState === "checking" && (
             <div className="config-hint">Checking cell count...</div>
