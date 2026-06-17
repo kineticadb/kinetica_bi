@@ -340,4 +340,68 @@ describe("CalendarConfigPanel", () => {
   it("Test 16 (DEFAULT_CALENDAR_CONFIG has respondToFilters:false): default includes respondToFilters:false", () => {
     expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("respondToFilters", false);
   });
+
+  /* ------------------------------------------------------------------ */
+  /*  Phase 68.1-02: Display section tests                               */
+  /* ------------------------------------------------------------------ */
+
+  it("Test 17 (Display layout default): Layout select defaults to 'wrap' when layoutMode is absent", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const sel = screen.getByLabelText("Layout") as HTMLSelectElement;
+    expect(sel.value).toBe("wrap");
+  });
+
+  it("Test 18 (Display layout options): Layout select lists both 'Wrap' and 'Continuous strip' options", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const sel = screen.getByLabelText("Layout") as HTMLSelectElement;
+    const opts = Array.from(sel.querySelectorAll("option")).map((o) => o.value);
+    expect(opts).toContain("wrap");
+    expect(opts).toContain("strip");
+    // Verify displayed labels
+    const labels = Array.from(sel.querySelectorAll("option")).map((o) => o.textContent);
+    expect(labels).toContain("Wrap");
+    expect(labels).toContain("Continuous strip");
+  });
+
+  it("Test 19 (layout change): changing Layout to 'strip' calls onChange with layoutMode:'strip'", () => {
+    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const sel = screen.getByLabelText("Layout");
+    fireEvent.change(sel, { target: { value: "strip" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ layoutMode: "strip" }),
+    );
+  });
+
+  it("Test 20 (controls toggle present + default OFF): 'Show domain/subdomain controls' checkbox is present and unchecked", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /show domain.subdomain controls/i,
+    });
+    expect(checkbox).toBeInTheDocument();
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("Test 21 (controls toggle ON): clicking the checkbox calls onChange with showDomainSubdomainControls:true", () => {
+    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /show domain.subdomain controls/i,
+    });
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ showDomainSubdomainControls: true }),
+    );
+  });
+
+  it("Test 22 (info icon): info glyph with aria-label 'About show domain/subdomain controls' is present", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const infoEl = screen.getByLabelText(/about show domain.subdomain controls/i);
+    expect(infoEl).toBeInTheDocument();
+    // Native title= tooltip must be set
+    expect(infoEl.getAttribute("title")).toBeTruthy();
+  });
+
+  it("Test 23 (defaults object): DEFAULT_CALENDAR_CONFIG has layoutMode:'wrap' and showDomainSubdomainControls:false", () => {
+    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("layoutMode", "wrap");
+    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("showDomainSubdomainControls", false);
+  });
 });
