@@ -35,6 +35,7 @@ import {
   quantizeToBucket,
 } from "../../lib/calendarColorScale";
 import { gapFillCalendar } from "../../lib/calendarGapFill";
+import { inferWeekAnchorDow } from "../../lib/calendarBuckets";
 import { useChartAxisColors } from "../../lib/chartColors";
 import type { CalendarDomain, CalendarSubdomain } from "../../lib/calendarBin";
 import { computeCellBounds, VALID_DOMAIN_SUBDOMAIN } from "../../lib/calendarBin";
@@ -337,11 +338,19 @@ export default function CalendarRenderer({
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const grid = useMemo(() => gapFillCalendar(data, effDomain, effSubdomain), [data, effDomain, effSubdomain]);
 
+  // Infer Kinetica's actual week anchor from the data (anchor-agnostic — never assume Monday).
+  // Same inference gapFillCalendar uses internally, so the layout's DOW rows stay in sync.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const weekAnchorDow = useMemo(
+    () => inferWeekAnchorDow(data, effDomain, effSubdomain) ?? WEEK_START,
+    [data, effDomain, effSubdomain],
+  );
+
   // ---- Wrapped / strip block layout (CALUX-V113-01) — MUST be before early returns ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const blocks = useMemo(
-    () => layoutCalendar({ rows: grid.rows, domain: effDomain, subdomain: effSubdomain }),
-    [grid, effDomain, effSubdomain],
+    () => layoutCalendar({ rows: grid.rows, domain: effDomain, subdomain: effSubdomain, weekAnchorDow }),
+    [grid, effDomain, effSubdomain, weekAnchorDow],
   );
 
   // ---- Reactive color domain (useMemo — NOT init-once) ----

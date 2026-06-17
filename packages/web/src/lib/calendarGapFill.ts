@@ -27,7 +27,7 @@
  * nothing there — giving the true GitHub/calendar blank appearance.
  */
 
-import { enumerateGroupBuckets } from "./calendarBuckets";
+import { enumerateGroupBuckets, inferWeekAnchorDow } from "./calendarBuckets";
 import type { CalendarDomain, CalendarSubdomain } from "./calendarBin";
 
 /**
@@ -128,12 +128,16 @@ export function gapFillCalendar(
     lookup.set(`${normKey(row.domain_bucket)}|${normKey(row.subdomain_bucket)}`, row.value);
   }
 
+  // Infer Kinetica's actual week anchor from the data (anchor-agnostic — never assume
+  // Monday). Only relevant when a week bucket is involved; null → enumerator's default.
+  const weekAnchorDow = inferWeekAnchorDow(rows, domain, subdomain) ?? 1;
+
   // Build per-group rows: each group's cells are ONLY the expected in-range
   // subdomain buckets for that group's own time range.
   const allSubdomainKeys = new Set<string>();
   const calendarRows: CalendarRow[] = domainKeys.map((domainKey) => {
     // Get the expected in-range subdomain keys for this group
-    const expected = enumerateGroupBuckets(domainKey, domain, subdomain);
+    const expected = enumerateGroupBuckets(domainKey, domain, subdomain, weekAnchorDow);
     for (const sub of expected) {
       allSubdomainKeys.add(sub);
     }

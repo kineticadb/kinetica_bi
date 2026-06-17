@@ -293,4 +293,51 @@ describe("layoutCalendar — multiple domain groups", () => {
     expect(blocks[0].domainKey).toBe("2025");
     expect(blocks[1].domainKey).toBe("2026");
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Anchor-agnostic DOW rows (regression: week×day straddled 2 columns when the
+  // week wasn't Monday-anchored). weekAnchorDow threads the data-derived anchor.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe("weekAnchorDow aligns the day-of-week rows", () => {
+    it("week×day with a Sunday anchor renders a single clean column", () => {
+      // A Sunday-anchored week: Sun 2022-10-09 .. Sat 2022-10-15
+      const rows: CalendarRow[] = [
+        {
+          domainKey: "2022-10-09 00:00:00",
+          cells: Array.from({ length: 7 }, (_, i) => ({
+            domainKey: "2022-10-09 00:00:00",
+            subdomainKey: `2022-10-${String(9 + i).padStart(2, "0")} 00:00:00`,
+            value: i,
+          })),
+        },
+      ];
+      const blocks = layoutCalendar({
+        rows,
+        domain: "week",
+        subdomain: "day",
+        weekAnchorDow: 0, // Sunday
+      });
+      // All 7 days in ONE column (cols === 1), rows 0..6 in week order
+      expect(blocks[0].cols).toBe(1);
+      expect(blocks[0].rows).toBe(7);
+      const rowsByDay = blocks[0].cells.map((c) => c.row).sort((a, b) => a - b);
+      expect(rowsByDay).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(blocks[0].cells.every((c) => c.col === 0)).toBe(true);
+    });
+
+    it("defaults to Monday (WEEK_START) when no anchor passed", () => {
+      const rows: CalendarRow[] = [
+        {
+          domainKey: "2024-10-07 00:00:00", // Monday
+          cells: [
+            { domainKey: "2024-10-07 00:00:00", subdomainKey: "2024-10-07 00:00:00", value: 1 },
+          ],
+        },
+      ];
+      const blocks = layoutCalendar({ rows, domain: "week", subdomain: "day" });
+      expect(WEEK_START).toBe(1);
+      // Monday at the Monday anchor → row 0
+      expect(blocks[0].cells[0].row).toBe(0);
+    });
+  });
 });

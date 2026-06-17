@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { enumerateGroupBuckets } from "./calendarBuckets";
+import { enumerateGroupBuckets, inferWeekAnchorDow } from "./calendarBuckets";
 
 // Format regex: "YYYY-MM-DD HH:mm:ss" — space sep, no T, no Z, no ms
 const KEY_FORMAT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -231,5 +231,64 @@ describe("enumerateGroupBuckets", () => {
     expect(keys).toHaveLength(168);
     expect(keys[0]).toBe("2024-10-07 00:00:00");
     expect(keys[167]).toBe("2024-10-13 23:00:00");
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Anchor-agnostic week handling (regression: combos all-grey/misaligned when
+  // Kinetica's DATE_TRUNC('week') anchor isn't Monday). 2022-10-09 is a SUNDAY.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe("week anchor is data-derived, not hardcoded Monday", () => {
+    it("week×day uses the domain bucket AS the week start (no Monday re-snap)", () => {
+      // Sunday-anchored week bucket → the 7 days are the bucket + 0..6, NOT Mon-snapped
+      const keys = enumerateGroupBuckets("2022-10-09 00:00:00", "week", "day");
+      expect(keys).toHaveLength(7);
+      expect(keys[0]).toBe("2022-10-09 00:00:00"); // the Sunday itself, not the Monday before
+      expect(keys[6]).toBe("2022-10-15 00:00:00");
+    });
+
+    it("week×hour starts at the domain bucket (Sunday) with no re-snap", () => {
+      const keys = enumerateGroupBuckets("2022-10-09 00:00:00", "week", "hour");
+      expect(keys).toHaveLength(168);
+      expect(keys[0]).toBe("2022-10-09 00:00:00");
+      expect(keys[167]).toBe("2022-10-15 23:00:00");
+    });
+
+    it("month×week with a Sunday anchor (dow=0) emits Sunday week-starts", () => {
+      // weekAnchorDow=0 → weeks start on Sundays. Oct 2022 Sundays: 2,9,16,23,30.
+      const keys = enumerateGroupBuckets("2022-10-01 00:00:00", "month", "week", 0);
+      expect(keys).toContain("2022-10-02 00:00:00");
+      expect(keys).toContain("2022-10-09 00:00:00");
+      expect(keys).toContain("2022-10-30 00:00:00");
+      // must NOT emit Monday week-starts (that was the bug)
+      expect(keys).not.toContain("2022-10-03 00:00:00");
+    });
+
+    it("year×week with a Sunday anchor emits Sunday week-starts", () => {
+      const keys = enumerateGroupBuckets("2022-01-01 00:00:00", "year", "week", 0);
+      // 2022-01-02 is the first Sunday of 2022
+      expect(keys).toContain("2022-01-02 00:00:00");
+      expect(keys.every((k) => new Date(k.replace(" ", "T") + "Z").getUTCDay() === 0)).toBe(true);
+    });
+
+    it("inferWeekAnchorDow reads the anchor off the data (week domain → Sunday=0)", () => {
+      const rows = [
+        { domain_bucket: "2022-10-09 00:00:00", subdomain_bucket: "2022-10-09 00:00:00" },
+      ];
+      expect(inferWeekAnchorDow(rows, "week", "day")).toBe(0); // 2022-10-09 is a Sunday
+    });
+
+    it("inferWeekAnchorDow reads the anchor off week subdomain buckets", () => {
+      const rows = [
+        { domain_bucket: "2022-01-01 00:00:00", subdomain_bucket: "2022-10-02 00:00:00" },
+      ];
+      expect(inferWeekAnchorDow(rows, "year", "week")).toBe(0); // 2022-10-02 is a Sunday
+    });
+
+    it("inferWeekAnchorDow returns null when no week is involved", () => {
+      const rows = [
+        { domain_bucket: "2022-10-01 00:00:00", subdomain_bucket: "2022-10-05 00:00:00" },
+      ];
+      expect(inferWeekAnchorDow(rows, "month", "day")).toBeNull();
+    });
   });
 });

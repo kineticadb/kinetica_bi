@@ -84,20 +84,31 @@ export function layoutCalendar(args: {
   rows: CalendarRow[];
   domain: CalendarDomain;
   subdomain: CalendarSubdomain;
+  /**
+   * Kinetica's week-boundary day-of-week (0=Sun … 6=Sat), from inferWeekAnchorDow.
+   * Drives the day-of-week ROW offset for "day" blocks so a week aligns to the data's
+   * actual week start (week×day → a clean single column). Defaults to WEEK_START (Monday).
+   */
+  weekAnchorDow?: number;
 }): PositionedBlock[] {
   const { rows, subdomain } = args;
   if (rows.length === 0) return [];
 
-  return rows.map((row) => layoutBlock(row, subdomain));
+  const anchorDow = args.weekAnchorDow ?? WEEK_START;
+  return rows.map((row) => layoutBlock(row, subdomain, anchorDow));
 }
 
 // ---------------------------------------------------------------------------
 // Per-block layout dispatch
 // ---------------------------------------------------------------------------
 
-function layoutBlock(row: CalendarRow, subdomain: CalendarSubdomain): PositionedBlock {
+function layoutBlock(
+  row: CalendarRow,
+  subdomain: CalendarSubdomain,
+  anchorDow: number,
+): PositionedBlock {
   switch (subdomain) {
-    case "day":   return layoutDayBlock(row);
+    case "day":   return layoutDayBlock(row, anchorDow);
     case "hour":  return layoutHourBlock(row);
     case "week":  return layoutWeekBlock(row);
     case "month": return layoutMonthBlock(row);
@@ -114,7 +125,7 @@ function layoutBlock(row: CalendarRow, subdomain: CalendarSubdomain): Positioned
 // cols = max col + 1.
 // ---------------------------------------------------------------------------
 
-function layoutDayBlock(row: CalendarRow): PositionedBlock {
+function layoutDayBlock(row: CalendarRow, anchorDow: number): PositionedBlock {
   const { domainKey, cells } = row;
 
   if (cells.length === 0) {
@@ -128,19 +139,19 @@ function layoutDayBlock(row: CalendarRow): PositionedBlock {
   );
   const firstMs = parseUTCMs(sorted[0].subdomainKey);
 
-  // Snap the anchor to its Monday (ISO week start).
-  // offset = (getUTCDay() + 7 - WEEK_START) % 7  →  Mon=0 … Sun=6
+  // Snap the anchor to the week start for Kinetica's ACTUAL week anchor (anchorDow),
+  // not a hardcoded Monday. offset = (getUTCDay() + 7 - anchorDow) % 7  →  anchorDay=row 0.
   const firstDay = new Date(firstMs);
   const firstDow = firstDay.getUTCDay(); // 0=Sun,1=Mon,…,6=Sat
-  const offsetToMonday = (firstDow + 7 - WEEK_START) % 7;
-  const anchorMs = firstMs - offsetToMonday * 86_400_000; // Monday of first cell's week
+  const offsetToAnchor = (firstDow + 7 - anchorDow) % 7;
+  const anchorMs = firstMs - offsetToAnchor * 86_400_000; // week-start of first cell's week
 
   const positioned: PositionedCell[] = cells.map((cell) => {
     const cellMs = parseUTCMs(cell.subdomainKey);
     const dow = new Date(cellMs).getUTCDay(); // 0=Sun,1=Mon,…,6=Sat
 
-    // DOW row index: Mon=0 … Sun=6
-    const rowIdx = (dow + 7 - WEEK_START) % 7;
+    // DOW row index: anchorDay = row 0 … +6
+    const rowIdx = (dow + 7 - anchorDow) % 7;
 
     // Week-column: how many full 7-day periods from the anchor Monday
     const daysSinceAnchor = Math.round((cellMs - anchorMs) / 86_400_000);

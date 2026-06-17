@@ -338,4 +338,42 @@ describe("CalendarCell and CalendarRow type exports", () => {
       expect(result.cellAt("2026-01-01 00:00:00", "2026-01-05 00:00:00")).toBe(42);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Anchor-agnostic gap-fill (regression: week combos all-grey when Kinetica's
+  // week anchor isn't Monday). 2022-10-09 is a SUNDAY-anchored week bucket.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe("anchor-agnostic week gap-fill (Sunday-anchored data)", () => {
+    it("week×day: Sunday-anchored week lights up its populated days (not all-grey)", () => {
+      const result = gapFillCalendar(
+        [
+          { domain_bucket: "2022-10-09 00:00:00", subdomain_bucket: "2022-10-09 00:00:00", value: 5 },
+          { domain_bucket: "2022-10-09 00:00:00", subdomain_bucket: "2022-10-12 00:00:00", value: 8 },
+        ],
+        "week",
+        "day",
+      );
+      const cells = result.rows[0].cells;
+      expect(cells).toHaveLength(7); // the week's 7 days (Sun..Sat)
+      expect(cells.find((c) => c.subdomainKey === "2022-10-09 00:00:00")?.value).toBe(5);
+      expect(cells.find((c) => c.subdomainKey === "2022-10-12 00:00:00")?.value).toBe(8);
+      // in-range day with no data → grey null, not absent
+      expect(cells.find((c) => c.subdomainKey === "2022-10-10 00:00:00")?.value).toBeNull();
+    });
+
+    it("year×week: Sunday-anchored week buckets in the data are matched (not all-grey)", () => {
+      const result = gapFillCalendar(
+        [
+          { domain_bucket: "2022-01-01 00:00:00", subdomain_bucket: "2022-10-02 00:00:00", value: 3 },
+          { domain_bucket: "2022-01-01 00:00:00", subdomain_bucket: "2022-10-09 00:00:00", value: 9 },
+        ],
+        "year",
+        "week",
+      );
+      const cells = result.rows[0].cells;
+      // the two Sunday week buckets must be present AND populated (the anchor was inferred = Sunday)
+      expect(cells.find((c) => c.subdomainKey === "2022-10-02 00:00:00")?.value).toBe(3);
+      expect(cells.find((c) => c.subdomainKey === "2022-10-09 00:00:00")?.value).toBe(9);
+    });
+  });
 });
