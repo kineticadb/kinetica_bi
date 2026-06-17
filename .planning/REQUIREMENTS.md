@@ -29,6 +29,11 @@
 - [x] **CALDR-V113-02**: For a dv-bound calendar, the cell drill is dv-isolated — it routes to `dvFilters[dynamicViewId]` (NOT `filters[sourceTableId]`); same-dv widgets update while source-table and other-dv widgets stay unaffected. A table-bound calendar routes to `filters[tableId]`. (Reuses the v1.12 dv-isolation path; named explicitly to prevent the Phase 63 root-cause recurring.)
 - [x] **CALDR-V113-03**: A calendar cell drill propagates to ALL consumer read-paths on the same scope — charts, records tables, AND map WMS layers (verified in-phase, per the v1.12 Phase 63.1 lesson) — and the `AggregatedWidgetRenderer`-as-sole-materialize-trigger invariant is preserved (the calendar never calls `materializeFilter`/`dropFilterView`; static-grep asserted).
 
+### Calendar UX (Phase 68.1 — INSERTED, operator feedback)
+
+- [x] **CALUX-V113-01**: The calendar renders wrapped, compact domain-group blocks (GitHub week-block layout — day subdomains as 7-row day-of-week × week columns; hour/week/month subdomains as compact grids) instead of one tall `domain-column × subdomain-row` line; domain groups are separate labeled blocks flowing left→right with an operator option to wrap (default) or render a continuous horizontal strip; day-of-week rows honor the Kinetica `DATE_TRUNC` week anchor (interim Monday-ISO until the Phase 65/69 spike confirms it). Existing cell-drill, active-cell highlight, gap-fill, color scale, and `respondToFilters` FROM-gating are preserved against the new layout.
+- [ ] **CALUX-V113-02**: A config toggle "Show domain/subdomain controls" (default OFF, with an info-icon hover description) reveals 2 viewer-facing dropdowns on the widget (top control bar) that let a dashboard viewer switch domain/subdomain live — initialized from the operator's configured values, dependent-gated to the 8 valid combos (`VALID_DOMAIN_SUBDOMAIN`/`isValidCombo`), re-fetching on change; the selection is VIEW-LOCAL (does not persist to the saved widget config, resets on reload). Both new options live in a new "Display" section of `CalendarConfigPanel`.
+
 ### Verification
 
 - [ ] **VERIFY-V113-01**: Live operator UAT — create a calendar widget on a table (and a dv), configure domain/subdomain + metric, see the color-scaled grid with correct labels and gap-filled empties; click a cell → the dashboard (incl. a map widget on the same scope) filters to that time slice live, the chip clears back to unfiltered, dv drill stays dv-isolated; automated gates green (frontend vitest 100% from `packages/web`, web + server `tsc` clean, server vitest set-based gate ⊆ TD-V16-TEST-ISOLATION).
@@ -68,6 +73,8 @@ Explicitly excluded for v1.13.
 | CALDR-V113-01 | Phase 68 | Complete |
 | CALDR-V113-02 | Phase 68 | Complete |
 | CALDR-V113-03 | Phase 68 | Complete |
+| CALUX-V113-01 | Phase 68.1 | Complete |
+| CALUX-V113-02 | Phase 68.1 | Pending |
 | VERIFY-V113-01 | Phase 69 | Pending |
 
 **Coverage:**

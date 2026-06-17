@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: Completed 68-04-PLAN.md
-last_updated: "2026-06-16T20:22:00.000Z"
+stopped_at: "Completed 68.1-02-PLAN.md (Display section: layoutMode + showDomainSubdomainControls)"
+last_updated: "2026-06-17T15:46:00Z"
 progress:
-  total_phases: 5
-  completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
+  total_phases: 6
+  completed_phases: 4
+  total_plans: 16
+  completed_plans: 15
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 68 — cell-drill-integration
+**Current focus:** Phase 68.1 — calendar-ux-wrapped-layout-on-widget-controls
 
 ## Current Position
 
-Phase: 68 (cell-drill-integration) — COMPLETE
-Plan: 4 of 4 (complete)
+Phase: 68.1 (calendar-ux-wrapped-layout-on-widget-controls) — EXECUTING
+Plan: 2 of 3
 
 ## v1.13 Phase Map
 
@@ -334,6 +334,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 68-cell-drill-integration P02 | 8 | 2 tasks | 3 files |
 | Phase 68-cell-drill-integration P03 | 8min | 2 tasks | 4 files |
 | Phase 68-cell-drill-integration P04 | 18min | 2 tasks | 2 files |
+| Phase 68.1 P01 | 2min | 1 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -346,6 +347,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- Phase 68.1 inserted after Phase 68 (2026-06-17, INSERTED — operator feedback from live calendar): **Calendar UX — wrapped layout + on-widget controls.** Two changes from seeing the Phase 67 renderer live: (1) **GitHub week-block wrapping** — the current renderer lays out `columns = domain buckets × rows = subdomain buckets` (Phase 67 CONTEXT design), which produces one very tall column for fine subdomains over few domain groups (e.g. year×day, month×day short range). Replace with GitHub-style wrapped blocks: day subdomains wrap into 7-row week blocks (rows = day-of-week, cols = weeks within the domain group); sensible grids for other subdomains. (2) **Config-gated on-widget domain/subdomain dropdowns** — a config toggle (e.g. "Show domain/subdomain controls", default OFF) that, when ON, renders 2 VIEWER-FACING dropdowns on the widget so the dashboard viewer switches domain/subdomain live (re-fetches; enforces the 8 valid combos via VALID_DOMAIN_SUBDOMAIN/isValidCombo — same gating as the Phase 66 config panel). Distinct from the Phase 66 operator-only set-once config dropdowns. Combined into ONE phase per operator decision. Frontend-only. Sequencing: MUST land before Phase 69 verification so live UAT covers the final UX. NOT yet planned (run /gsd:plan-phase 68.1). New requirements to add (e.g. CALUX-V113-01 layout, CALUX-V113-02 interactive controls).
 
 - v1.12 roadmap created 2026-06-15: Phases 62-64 (Drill-Down on Dynamic-View-Backed Widgets). 62 = server materialize-from-dv-view (DVDRILL-V112-03 server portion; SERVER-ONLY — extend `POST /api/filter/materialize`, no new route). 63 = client dv drill-down — dv-safe filter keying + dv-aware drill dispatch + filtered-dv read-path FROM-swap + removable chips + lifecycle reset (DVDRILL-V112-01/02/04/05 + client side of -03; FRONTEND-ONLY). 64 = verification + live UAT (VERIFY-V112-01; mirrors v1.9 P54 / v1.10 P57 / v1.11 P61). 6/6 requirements mapped, no orphans. Starts at 62 (v1.11 ended at 61). Standard granularity → 3 phases (focused bug-fix-as-feature; server / client / verification split). Locked invariants carried into success criteria: sole-materialize-trigger preserved, dv-isolated scope, table-backed path unchanged, no new server routes.
 
@@ -545,6 +548,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 68-03]: Cell clicks (handleCellClick) NOT gated on respondToFilters — clicks always drive filters into stores regardless of toggle
 - [Phase 68-04]: No MapChartRenderer.tsx wiring needed — calendar writes the same stores as existing drill (views[tableId]/dvViews[dvId]); existing Phase 63.1 FROM-swap already handles WMS propagation; specs PROVE it
 - [Phase 68-04]: Static re-assertion uses import-line extraction (not full-source multiline regex) to avoid false positives from comments mentioning banned symbols in CalendarRenderer.tsx
+- [Phase 68.1]: day subdomain rows=7 always (GitHub style); hour cols=6 (6×4); week cols=ceil(sqrt(count)) cap 13; month cols=4 (4×3); parseUTCMs normalizes Kinetica space-separated DATE_TRUNC strings to unambiguous UTC
+- [Phase 68.1]: WEEK_START = 1 (Monday-ISO) is the sole week-anchor constant in calendarLayout.ts; Phase 69 flips it in one edit after confirming Kinetica DATE_TRUNC week anchor
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -941,6 +946,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T20:22:00.000Z
-Stopped at: Completed 68-04-PLAN.md (Phase 68 complete)
+Last session: 2026-06-17T15:44:51.370Z
+Stopped at: Completed 68.1-01-PLAN.md
 Resume file: None

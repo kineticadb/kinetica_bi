@@ -38,10 +38,11 @@
 | 63. client-dv-drill-down | 4/4 | Complete   | 2026-06-15 |
 | 63.1. map-layer-dv-filter-swap | 1/1 | Complete | 2026-06-15 |
 | 64. verification-live-uat | 3/3 | Complete   | 2026-06-16 |
-| 65. calendar-sql-builder-kinetica-spike | v1.13 | Not started | - |
-| 66. chart-type-definition-config-panel | v1.13 | Not started | - |
+| 65. calendar-sql-builder-kinetica-spike | v1.13 | Complete | 2026-06-16 |
+| 66. chart-type-definition-config-panel | v1.13 | Complete | 2026-06-16 |
 | 67. svg-calendar-renderer-read-only | v1.13 | Complete | 2026-06-16 |
-| 68. cell-drill-integration | v1.13 | Not started | - |
+| 68. cell-drill-integration | v1.13 | Complete | 2026-06-16 |
+| 68.1. calendar-ux-wrapped-layout-on-widget-controls (INSERTED) | v1.13 | Planned | - |
 | 69. verification-live-uat | v1.13 | Not started | - |
 
 ---
@@ -150,6 +151,18 @@ Plans:
 - [x] 68-03-PLAN.md — "Respond to dashboard filters" toggle (CalendarConfigPanel field+checkbox, default OFF; CalendarRenderer FROM-gating) + updated specs [Wave 2]
 - [x] 68-04-PLAN.md — WMS propagation spec (table+dv) + sole-materialize static-grep + chip lifecycle [Wave 3]
 
+### Phase 68.1: Calendar UX — wrapped GitHub week-block layout + config-gated on-widget domain/subdomain controls (INSERTED)
+
+**Goal:** Replace the calendar's flat one-tall-column layout with wrapped GitHub-style domain-group blocks (compact in both dimensions), and add a config-gated set of viewer-facing on-widget domain/subdomain dropdowns — so operators get a readable calendar and (optionally) let viewers re-group time live. Must land before Phase 69 so live UAT covers the final UX.
+**Requirements**: CALUX-V113-01, CALUX-V113-02
+**Depends on:** Phase 68
+**Plans:** 2/3 plans executed
+
+Plans:
+- [ ] 68.1-01-PLAN.md — Pure `calendarLayout.ts` block-layout helper (TDD): date-derived 7-row DOW×week (day) + compact grids (hour/week/month) + single Monday-ISO `WEEK_START` constant [Wave 1]
+- [ ] 68.1-02-PLAN.md — `CalendarConfigPanel` new "Display" section: layout mode (Wrap default / Continuous strip) + "Show domain/subdomain controls" toggle (default OFF) + info icon + config fields/spec [Wave 1]
+- [ ] 68.1-03-PLAN.md — `CalendarRenderer` rewrite: consume `layoutCalendar` (wrapped/strip blocks + group/DOW labels) + config-gated top control bar with view-local effective domain/subdomain (re-fetch, dependent gating); preserve Phase 67/68 drill/highlight/gating/no-materialize-import [Wave 2]
+
 ### Phase 69: Verification + Live UAT
 **Goal**: The v1.13 milestone is fully verified: automated gates are green, a live operator walk-through confirms the calendar end-to-end (table-bound and dv-bound, including a WMS map on the same scope), and the verification record is compiled and committed.
 **Depends on**: Phases 65-68 all complete
@@ -175,5 +188,5 @@ Plans:
 | 65. calendar-sql-builder-kinetica-spike | 1/2 | Complete    | 2026-06-16 |
 | 66. chart-type-definition-config-panel | 4/4 | Complete    | 2026-06-16 |
 | 67. svg-calendar-renderer-read-only | 3/3 | Complete | 2026-06-16 |
-| 68. cell-drill-integration | 4/4 | Complete   | 2026-06-16 |
+| 68. cell-drill-integration | 4/4 | Complete    | 2026-06-16 |
 | 69. verification-live-uat | 0/3 | Not started | - |
