@@ -522,19 +522,16 @@ export default function CalendarConfigPanel({
           </div>
 
           {/* ---- Respond to dashboard filters toggle (Phase 68-03) ---- */}
-          <div className="ds-field">
-            <label className="ds-field-label" htmlFor="calendar-respond-to-filters">
-              Respond to dashboard filters
-            </label>
+          <label className="config-toggle">
             <input
-              id="calendar-respond-to-filters"
               type="checkbox"
               className="accent-checkbox"
               checked={respondToFilters}
               onChange={(e) => patch({ respondToFilters: e.target.checked })}
               aria-label="Respond to dashboard filters"
             />
-          </div>
+            <span>Respond to dashboard filters</span>
+          </label>
 
           {/* ---- Display section ---- */}
           <div className="config-group-label" style={{ marginTop: 16 }}>DISPLAY</div>
@@ -554,24 +551,23 @@ export default function CalendarConfigPanel({
           </div>
 
           {/* Show domain/subdomain controls */}
-          <div className="ds-field">
-            <label className="ds-field-label" htmlFor="calendar-show-controls">
-              Show domain/subdomain controls
-              <span
-                title="When on, viewers get dropdowns on the widget to change the time grouping live, without editing the widget. The viewer's choice is not saved and resets on reload."
-                aria-label="About show domain/subdomain controls"
-                style={{ marginLeft: 4, cursor: "help" }}
-              >ⓘ</span>
-            </label>
+          <label className="config-toggle">
             <input
-              id="calendar-show-controls"
               type="checkbox"
               className="accent-checkbox"
               checked={showDomainSubdomainControls}
               onChange={(e) => patch({ showDomainSubdomainControls: e.target.checked })}
               aria-label="Show domain/subdomain controls"
             />
-          </div>
+            <span>
+              Show domain/subdomain controls
+              <span
+                title="When on, viewers get dropdowns on the widget to change the time grouping live, without editing the widget. The viewer's choice is not saved and resets on reload."
+                aria-label="About show domain/subdomain controls"
+                style={{ marginLeft: 4, cursor: "help" }}
+              >ⓘ</span>
+            </span>
+          </label>
 
           {/* ---- Cap probe status ---- */}
           {capState === "checking" && (
