@@ -52,6 +52,13 @@ All phases 65-68 are FRONTEND-ONLY (packages/web): frontend vitest 100% + web ts
 - **WMS map propagation verified in Phase 68 (not deferred to UAT):** per the v1.12 Phase 63.1 lesson.
 - **Cell-count cap enforced at config-save (Phase 66):** guards against domain=year + subdomain=hour on wide datasets.
 
+### Phase 68.1-02 Decisions (locked 2026-06-17)
+
+- **CalendarConfig optional field extension:** `layoutMode?: "wrap" | "strip"` and `showDomainSubdomainControls?: boolean` — optional so Plan 03 renderer reads with `?? DEFAULT_CALENDAR_CONFIG.layoutMode` / `?? false`
+- **DISPLAY section position:** inserted after respondToFilters row, before cap-probe hints — all inside the `tableId !== undefined` fragment; section uses `config-group-label` header (mirrors TimelineConfigPanel OPTIONS)
+- **Info tooltip pattern:** native `title=` on `<span aria-label="About show domain/subdomain controls">ⓘ</span>` — no shared InfoIcon component (MapConfigPanel §643 precedent)
+- **showDomainSubdomainControls default OFF:** opt-in; viewer gets live domain/subdomain dropdowns only when designer explicitly enables the feature
+
 ### v1.13 Open Tech Debt (carried from v1.12)
 
 TD-V16-TEST-ISOLATION (server set-based gate in use), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names).
