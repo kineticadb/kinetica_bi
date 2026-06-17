@@ -37,7 +37,8 @@ import {
 import { gapFillCalendar } from "../../lib/calendarGapFill";
 import { useChartAxisColors } from "../../lib/chartColors";
 import type { CalendarDomain, CalendarSubdomain } from "../../lib/calendarBin";
-import { computeCellBounds } from "../../lib/calendarBin";
+import { computeCellBounds, VALID_DOMAIN_SUBDOMAIN } from "../../lib/calendarBin";
+import { layoutCalendar, WEEK_START } from "../../lib/calendarLayout";
 import type { TimelineAggregation, TimelineIntervalKey } from "../../lib/timelineBin";
 import { formatTimelineTick } from "../../lib/timelineBin";
 import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
@@ -112,6 +113,9 @@ export default function CalendarRenderer({
   const colorTheme = cfg.colorTheme ?? "Greens";
   // Phase 68-03: OFF (default) = always read unfiltered source; ON = Phase 67 filter-aware behavior.
   const respondToFilters = cfg.respondToFilters ?? false;
+  // Phase 68.1-03: layout mode + viewer control bar gate.
+  const layoutMode = cfg.layoutMode ?? "wrap";
+  const showControls = cfg.showDomainSubdomainControls ?? false;
 
   // ---- Empty-state gates (before hooks — mirroring TimelineRenderer eslint-disable pattern) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -192,6 +196,16 @@ export default function CalendarRenderer({
     return [String(lo), String(hi)];
   }, [activeFilters, timeCol]);
 
+  // ---- VIEW-LOCAL viewer override state (CALUX-V113-02) ----
+  // Viewer dropdown overrides — never call patch/onChange (view-local; resets on reload).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [viewerDomain, setViewerDomain] = useState<CalendarDomain | null>(null);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [viewerSubdomain, setViewerSubdomain] = useState<CalendarSubdomain | null>(null);
+  // Effective values: viewer override ?? operator config. Used EVERYWHERE (SQL, labels, bounds, drill).
+  const effDomain: CalendarDomain = viewerDomain ?? domain;
+  const effSubdomain: CalendarSubdomain = viewerSubdomain ?? subdomain;
+
   // ---- Data fetch state ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [data, setData] = useState<CalendarSqlRow[]>([]);
@@ -266,8 +280,8 @@ export default function CalendarRenderer({
           timeCol,
           metricColumn,
           aggregation,
-          domain,
-          subdomain,
+          domain: effDomain,
+          subdomain: effSubdomain,
         });
         const resp = await runSql(sql, undefined, ctrl.signal);
         const rows = decodeSqlResponse(resp).map((r) => ({
@@ -306,8 +320,8 @@ export default function CalendarRenderer({
     timeCol,
     metricColumn,
     aggregation,
-    domain,
-    subdomain,
+    effDomain,
+    effSubdomain,
     respondToFilters,
     filterVersion,
     fvViewName,
@@ -366,7 +380,7 @@ export default function CalendarRenderer({
     if (cell.value === null) return;
 
     const tid = tableId as number; // narrowed by the early-return guard above hooks
-    const [cellStart, cellEnd] = computeCellBounds(cell.subdomainKey, subdomain);
+    const [cellStart, cellEnd] = computeCellBounds(cell.subdomainKey, effSubdomain);
 
     // Toggle-off: if the active filter matches this exact cell, clear it
     if (
@@ -408,6 +422,18 @@ export default function CalendarRenderer({
     useToastStore.getState().showToast(chipText, "info");
   }
 
+  // ---- Viewer control-bar handlers (view-local; mirrors CalendarConfigPanel.handleDomainChange pattern) ----
+  function handleViewerDomainChange(d: CalendarDomain) {
+    setViewerDomain(d);
+    const valid = VALID_DOMAIN_SUBDOMAIN[d];
+    if (!(valid as readonly string[]).includes(effSubdomain)) {
+      setViewerSubdomain(valid[0]);
+    }
+  }
+  function handleViewerSubdomainChange(s: CalendarSubdomain) {
+    setViewerSubdomain(s);
+  }
+
   // ---- SVG layout ----
   const { domainKeys, subdomainKeys, rows: calendarRows } = grid;
   const colCount = domainKeys.length;
@@ -424,6 +450,32 @@ export default function CalendarRenderer({
 
   return (
     <div className="widget-calendar" style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
+      {/* ---- Config-gated viewer control bar (CALUX-V113-02) ---- */}
+      {showControls && (
+        <div data-testid="calendar-control-bar" style={{ display: "flex", gap: 8, padding: "4px 8px", flexShrink: 0 }}>
+          <select
+            className="ds-select"
+            aria-label="Domain"
+            value={effDomain}
+            onChange={(e) => handleViewerDomainChange(e.target.value as CalendarDomain)}
+          >
+            {(Object.keys(VALID_DOMAIN_SUBDOMAIN) as CalendarDomain[]).map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          <select
+            className="ds-select"
+            aria-label="Subdomain"
+            value={effSubdomain}
+            onChange={(e) => handleViewerSubdomainChange(e.target.value as CalendarSubdomain)}
+          >
+            {VALID_DOMAIN_SUBDOMAIN[effDomain].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Scrollable SVG wrapper */}
       <div style={{ overflow: "auto", flex: 1, width: "100%" }}>
         <svg
