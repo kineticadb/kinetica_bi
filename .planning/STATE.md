@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Calendar Heatmap Visualization
 status: unknown
-stopped_at: Completed 68-03-PLAN.md
-last_updated: "2026-06-16T20:03:00.000Z"
+stopped_at: Completed 68-04-PLAN.md
+last_updated: "2026-06-16T20:22:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-06-16 — v1.13 milestone started)
 
 ## Current Position
 
-Phase: 68 (cell-drill-integration) — EXECUTING
-Plan: 3 of 4
+Phase: 68 (cell-drill-integration) — COMPLETE
+Plan: 4 of 4 (complete)
 
 ## v1.13 Phase Map
 
@@ -332,6 +332,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 67 P03 | 3min | 2 tasks | 2 files |
 | Phase 68 P01 | 2min | 1 task (TDD: 2 commits) | 2 files |
 | Phase 68-cell-drill-integration P02 | 8 | 2 tasks | 3 files |
+| Phase 68-cell-drill-integration P03 | 8min | 2 tasks | 4 files |
+| Phase 68-cell-drill-integration P04 | 18min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -541,6 +543,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 68-03]: respondToFilters defaults to false (OFF) — calendar is a drill CONTROL; stable full-grid by default; filter-awareness is opt-in via checkbox
 - [Phase 68-03]: CalendarRenderer FROM resolution gated: OFF=base-table/raw-dvViewName (ignores fvViewName/dvFilterViewName); ON=Phase-67 full precedence; fvMaterializing suspend gate inside ON branch only
 - [Phase 68-03]: Cell clicks (handleCellClick) NOT gated on respondToFilters — clicks always drive filters into stores regardless of toggle
+- [Phase 68-04]: No MapChartRenderer.tsx wiring needed — calendar writes the same stores as existing drill (views[tableId]/dvViews[dvId]); existing Phase 63.1 FROM-swap already handles WMS propagation; specs PROVE it
+- [Phase 68-04]: Static re-assertion uses import-line extraction (not full-source multiline regex) to avoid false positives from comments mentioning banned symbols in CalendarRenderer.tsx
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -937,6 +941,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-16T18:19:13.949Z
-Stopped at: Completed 68-02-PLAN.md
+Last session: 2026-06-16T20:22:00.000Z
+Stopped at: Completed 68-04-PLAN.md (Phase 68 complete)
 Resume file: None

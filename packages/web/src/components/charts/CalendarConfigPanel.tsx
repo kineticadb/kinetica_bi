@@ -51,6 +51,8 @@ export type CalendarConfig = {
   subdomain: CalendarSubdomain;
   colorTheme: string;          // ColorBrewer Sequential scheme id
   respondToFilters?: boolean;  // Phase 68-03: OFF = always read unfiltered source (default). ON = Phase 67 filter-aware behavior.
+  layoutMode?: "wrap" | "strip";              // CALUX-V113-01: "wrap" = GitHub-style week blocks (default); "strip" = continuous horizontal strip
+  showDomainSubdomainControls?: boolean;       // CALUX-V113-02: viewer dropdowns to change grouping live (default false / OFF)
 };
 
 export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
@@ -61,6 +63,8 @@ export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
   subdomain: "day",
   colorTheme: "Greens",
   respondToFilters: false,
+  layoutMode: "wrap",
+  showDomainSubdomainControls: false,
 };
 
 /* ------------------------------------------------------------------ */
@@ -121,6 +125,8 @@ export default function CalendarConfigPanel({
   const subdomain = (cfg.subdomain ?? DEFAULT_CALENDAR_CONFIG.subdomain) as CalendarSubdomain;
   const colorTheme = cfg.colorTheme ?? DEFAULT_CALENDAR_CONFIG.colorTheme;
   const respondToFilters = cfg.respondToFilters ?? false;
+  const layoutMode = (cfg.layoutMode ?? DEFAULT_CALENDAR_CONFIG.layoutMode) as "wrap" | "strip";
+  const showDomainSubdomainControls = cfg.showDomainSubdomainControls ?? false;
 
   const allTables = tables ?? [];
 

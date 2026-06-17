@@ -79,7 +79,7 @@ Restored click-through exploration for dynamic-view-backed widgets: drilling a d
 - [x] **Phase 65: Calendar SQL Builder + Kinetica Spike** — Pure `buildCalendarSql.ts` + `computeCellBounds` + Kinetica `DATE_TRUNC` unit verification spike
 - [x] **Phase 66: Chart-Type Definition + Config Panel** — `definitions/calendar.ts` + `CalendarConfigPanel.tsx` with domain/subdomain dependent pickers + cell-count cap (completed 2026-06-16)
 - [x] **Phase 67: SVG Calendar Renderer (read-only)** — `CalendarRenderer.tsx` short-circuited in `WidgetRenderer`, data fetch, domain/subdomain pivot, gap-fill, color scale, tooltips, filter-aware re-fetch
-- [ ] **Phase 68: Cell-Drill Integration** — Cell click → BETWEEN range filter via `setBulkFilters`/`addDvFilter` + `markMaterializing`/`markDvMaterializing`; chips; dv-isolated routing; WMS propagation verified
+- [x] **Phase 68: Cell-Drill Integration** — Cell click → BETWEEN range filter via `setBulkFilters`/`addDvFilter` + `markMaterializing`/`markDvMaterializing`; chips; dv-isolated routing; WMS propagation verified
 - [ ] **Phase 69: Verification + Live UAT** — Automated gates + blocking live operator walk-through + compiled verification record
 
 ## Phase Details
@@ -145,10 +145,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 68-01-PLAN.md — `buildChipText` datetime-between human-readable range (columnTypes.ts) + spec [Wave 1]
-- [ ] 68-02-PLAN.md — Cell-click BETWEEN drill dispatch (table+dv routing) + reactive selected-cell highlight + toast (CalendarRenderer) + spec [Wave 1]
-- [ ] 68-03-PLAN.md — "Respond to dashboard filters" toggle (CalendarConfigPanel field+checkbox, default OFF; CalendarRenderer FROM-gating) + updated specs [Wave 2]
-- [ ] 68-04-PLAN.md — WMS propagation spec (table+dv) + sole-materialize static-grep + chip lifecycle [Wave 3]
+- [x] 68-01-PLAN.md — `buildChipText` datetime-between human-readable range (columnTypes.ts) + spec [Wave 1]
+- [x] 68-02-PLAN.md — Cell-click BETWEEN drill dispatch (table+dv routing) + reactive selected-cell highlight + toast (CalendarRenderer) + spec [Wave 1]
+- [x] 68-03-PLAN.md — "Respond to dashboard filters" toggle (CalendarConfigPanel field+checkbox, default OFF; CalendarRenderer FROM-gating) + updated specs [Wave 2]
+- [x] 68-04-PLAN.md — WMS propagation spec (table+dv) + sole-materialize static-grep + chip lifecycle [Wave 3]
 
 ### Phase 69: Verification + Live UAT
 **Goal**: The v1.13 milestone is fully verified: automated gates are green, a live operator walk-through confirms the calendar end-to-end (table-bound and dv-bound, including a WMS map on the same scope), and the verification record is compiled and committed.
@@ -175,5 +175,5 @@ Plans:
 | 65. calendar-sql-builder-kinetica-spike | 1/2 | Complete    | 2026-06-16 |
 | 66. chart-type-definition-config-panel | 4/4 | Complete    | 2026-06-16 |
 | 67. svg-calendar-renderer-read-only | 3/3 | Complete | 2026-06-16 |
-| 68. cell-drill-integration | 3/4 | In Progress|  |
+| 68. cell-drill-integration | 4/4 | Complete   | 2026-06-16 |
 | 69. verification-live-uat | 0/3 | Not started | - |

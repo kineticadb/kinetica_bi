@@ -26,8 +26,8 @@
 ### Cell Drill-Down (Click-Through)
 
 - [x] **CALDR-V113-01**: Clicking a calendar cell applies a timestamp range filter (`between`, value `[cell_start, cell_end]` with `cell_end = nextBucketStart − 1ms`) that filters the dashboard to that cell's time slice, shows a removable chip identifying the time range, and clears back to unfiltered on chip removal — consistent with the existing drill-down lifecycle (reset on dashboard-switch/logout).
-- [ ] **CALDR-V113-02**: For a dv-bound calendar, the cell drill is dv-isolated — it routes to `dvFilters[dynamicViewId]` (NOT `filters[sourceTableId]`); same-dv widgets update while source-table and other-dv widgets stay unaffected. A table-bound calendar routes to `filters[tableId]`. (Reuses the v1.12 dv-isolation path; named explicitly to prevent the Phase 63 root-cause recurring.)
-- [ ] **CALDR-V113-03**: A calendar cell drill propagates to ALL consumer read-paths on the same scope — charts, records tables, AND map WMS layers (verified in-phase, per the v1.12 Phase 63.1 lesson) — and the `AggregatedWidgetRenderer`-as-sole-materialize-trigger invariant is preserved (the calendar never calls `materializeFilter`/`dropFilterView`; static-grep asserted).
+- [x] **CALDR-V113-02**: For a dv-bound calendar, the cell drill is dv-isolated — it routes to `dvFilters[dynamicViewId]` (NOT `filters[sourceTableId]`); same-dv widgets update while source-table and other-dv widgets stay unaffected. A table-bound calendar routes to `filters[tableId]`. (Reuses the v1.12 dv-isolation path; named explicitly to prevent the Phase 63 root-cause recurring.)
+- [x] **CALDR-V113-03**: A calendar cell drill propagates to ALL consumer read-paths on the same scope — charts, records tables, AND map WMS layers (verified in-phase, per the v1.12 Phase 63.1 lesson) — and the `AggregatedWidgetRenderer`-as-sole-materialize-trigger invariant is preserved (the calendar never calls `materializeFilter`/`dropFilterView`; static-grep asserted).
 
 ### Verification
 
@@ -66,8 +66,8 @@ Explicitly excluded for v1.13.
 | CAL-V113-04 | Phase 67 | Complete |
 | CAL-V113-05 | Phase 66 (cap+defaults) + Phase 67 (re-fetch) | Complete |
 | CALDR-V113-01 | Phase 68 | Complete |
-| CALDR-V113-02 | Phase 68 | Pending |
-| CALDR-V113-03 | Phase 68 | Pending |
+| CALDR-V113-02 | Phase 68 | Complete |
+| CALDR-V113-03 | Phase 68 | Complete |
 | VERIFY-V113-01 | Phase 69 | Pending |
 
 **Coverage:**
