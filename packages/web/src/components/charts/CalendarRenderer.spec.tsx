@@ -927,10 +927,19 @@ describe("CalendarRenderer", () => {
   // (viewer) subdomain. Verified by checking the BETWEEN filter bounds match a week-granularity bucket.
   it("Test 32 (effective-value drill): drill uses effective (viewer) subdomain bounds after viewer-subdomain change", async () => {
     // Config: domain=month, subdomain=day. We change viewer subdomain to "week".
-    // CANNED_ROWS has subdomain_bucket "2026-01-03 00:00:00" (a day key).
-    // computeCellBounds("2026-01-03 00:00:00", "day") → end-start = 86399999ms (1 day - 1ms)
-    // computeCellBounds("2026-01-03 00:00:00", "week") → end-start = 604799999ms (7 days - 1ms)
-    // If the renderer uses effSubdomain="week", the bounds will be week-granularity.
+    // Per-group gap-fill (68.2-03): after subdomain switches to "week", the re-fetched SQL must
+    // return week-keyed subdomain_bucket values so gapFillCalendar can match them.
+    // enumerateGroupBuckets("2026-01-01 00:00:00", "month", "week") → Mondays in Jan 2026:
+    //   "2026-01-05 00:00:00", "2026-01-12 00:00:00", "2026-01-19 00:00:00", "2026-01-26 00:00:00"
+    // computeCellBounds("2026-01-05 00:00:00", "week") → span = 7 days - 1ms = 604799999ms.
+
+    // First fetch returns day-keyed CANNED_ROWS (already set up in beforeEach).
+    // Second fetch (after subdomain→"week") returns week-keyed data.
+    const weekKeyedRows = [
+      { domain_bucket: "2026-01-01 00:00:00", subdomain_bucket: "2026-01-05 00:00:00", value: 42 },
+    ];
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeCalendarResponse(CANNED_ROWS));
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeCalendarResponse(weekKeyedRows));
 
     const { container } = render(
       <CalendarRenderer
@@ -953,7 +962,7 @@ describe("CalendarRenderer", () => {
       expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
     });
 
-    // After re-fetch, wait for calendar-renderer (CANNED_ROWS still returned by mock)
+    // After re-fetch, wait for calendar-renderer (week-keyed data returned by mock)
     await waitFor(() => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
@@ -973,5 +982,100 @@ describe("CalendarRenderer", () => {
     const [lo, hi] = f.value as [string, string];
     const diffMs = new Date(hi).getTime() - new Date(lo).getTime();
     expect(diffMs).toBe(604_799_999); // 7 days - 1ms (week bucket)
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  Phase 68.2-03: per-group gap-fill renderer invariants              */
+  /* ------------------------------------------------------------------ */
+
+  // Test 33 (week×day single column): a week×day domain group renders at most 7 cells
+  // (1 col × 7 rows) — never a month-shaped phantom block.
+  // Confirms cross-fill bug is gone: previously a week group got cells from all weeks'
+  // days, creating multiple columns.
+  it("Test 33 (week×day single column): a week-domain/day-subdomain group has at most 7 day cells — no phantom cross-fill", async () => {
+    // Single-week response: Mon 2024-10-07, data on Wed 2024-10-09 only
+    const weekRows = [
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-09 00:00:00", value: 5 },
+    ];
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(weekRows));
+
+    const { container } = render(
+      <CalendarRenderer
+        widget={makeWidget({ domain: "week", subdomain: "day" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    // Count ALL rects (populated + data-empty) within the calendar renderer
+    const allRects = container.querySelectorAll("rect");
+    // A single week×day group should produce at most 7 rects (1 populated + ≤6 grey)
+    // Before the fix, the global cross-fill would produce many more if multiple weeks' data
+    expect(allRects.length).toBeLessThanOrEqual(7);
+    expect(allRects.length).toBeGreaterThanOrEqual(7); // full week always shown
+  });
+
+  // Test 34 (out-of-range blank): for a single-week group, the total rects is ≤7 —
+  // NOT month-shaped (30+). Confirms out-of-range slots produce no rect at all.
+  it("Test 34 (out-of-range blank): single-week group renders ≤7 total rects — not month-shaped", async () => {
+    const weekRows = [
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-09 00:00:00", value: 10 },
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-11 00:00:00", value: 20 },
+    ];
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(weekRows));
+
+    const { container } = render(
+      <CalendarRenderer
+        widget={makeWidget({ domain: "week", subdomain: "day" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    const allRects = container.querySelectorAll("rect");
+    // Exactly 7 cells for the one week group — not 30+ from phantom cross-fill
+    expect(allRects.length).toBeLessThanOrEqual(7);
+  });
+
+  // Test 35 (in-range grey preserved): a week group with data on 2 of 7 days
+  // renders data-empty="true" rects for the 5 missing in-range days.
+  it("Test 35 (in-range grey preserved): missing in-range days render data-empty rects; populated days have <title>", async () => {
+    // Week of 2024-10-07: data only on Mon (Oct 7) and Wed (Oct 9) — 5 missing days
+    const weekRows = [
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-07 00:00:00", value: 1 },
+      { domain_bucket: "2024-10-07 00:00:00", subdomain_bucket: "2024-10-09 00:00:00", value: 3 },
+    ];
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(weekRows));
+
+    const { container } = render(
+      <CalendarRenderer
+        widget={makeWidget({ domain: "week", subdomain: "day" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    // 5 in-range missing days → 5 grey cells
+    const emptyCells = container.querySelectorAll('[data-empty="true"]');
+    expect(emptyCells.length).toBe(5);
+
+    // Empty cells have no <title> (non-interactive)
+    for (const cell of Array.from(emptyCells)) {
+      expect(cell.querySelector("title")).toBeNull();
+    }
+
+    // 2 populated cells have <title>
+    const allRects = container.querySelectorAll("rect");
+    const populatedRects = Array.from(allRects).filter((r) => !r.getAttribute("data-empty"));
+    expect(populatedRects.length).toBe(2);
+    for (const cell of populatedRects) {
+      expect(cell.querySelector("title")).not.toBeNull();
+    }
   });
 });

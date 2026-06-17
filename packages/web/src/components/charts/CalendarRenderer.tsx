@@ -333,9 +333,9 @@ export default function CalendarRenderer({
     dvStatus,
   ]);
 
-  // ---- Gap-fill (useMemo) ----
+  // ---- Gap-fill (useMemo) — per-group, date-range-aware (68.2-03) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const grid = useMemo(() => gapFillCalendar(data), [data]);
+  const grid = useMemo(() => gapFillCalendar(data, effDomain, effSubdomain), [data, effDomain, effSubdomain]);
 
   // ---- Wrapped / strip block layout (CALUX-V113-01) — MUST be before early returns ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
