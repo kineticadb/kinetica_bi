@@ -434,16 +434,62 @@ export default function CalendarRenderer({
     setViewerSubdomain(s);
   }
 
-  // ---- SVG layout ----
-  const { domainKeys, subdomainKeys, rows: calendarRows } = grid;
-  const colCount = domainKeys.length;
-  const rowCount = subdomainKeys.length;
+  // ---- Wrapped / strip block layout (CALUX-V113-01) ----
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const blocks = useMemo(
+    () => layoutCalendar({ rows: grid.rows, domain: effDomain, subdomain: effSubdomain }),
+    [grid, effDomain, effSubdomain],
+  );
 
-  const svgWidth = LEFT_AXIS_WIDTH + colCount * (CELL_PX + GAP);
-  const svgHeight = TOP_AXIS_HEIGHT + rowCount * (CELL_PX + GAP);
+  // Layout constants for block rendering
+  const LABEL_HEIGHT = TOP_AXIS_HEIGHT;  // height above each block for the group label
+  const DOW_GUTTER = LEFT_AXIS_WIDTH;    // left gutter for sparse DOW labels (day subdomain)
+  const BLOCK_GAP = 16;                  // gap between adjacent blocks
 
-  // Sparse subdomain label stride: show ~12 labels
-  const labelStride = Math.max(1, Math.ceil(rowCount / 12));
+  // DOW label rows to show in the left gutter (Mon/Wed/Fri = rows 0,2,4 with WEEK_START=Monday)
+  const DOW_LABELS = ["Mon", "Wed", "Fri"];
+  const DOW_LABEL_ROWS = [0, 2, 4];
+
+  // Compute block pixel dimensions
+  function blockPixelWidth(b: { cols: number }): number {
+    return (effSubdomain === "day" ? DOW_GUTTER : 0) + b.cols * (CELL_PX + GAP);
+  }
+  function blockPixelHeight(b: { rows: number }): number {
+    return LABEL_HEIGHT + b.rows * (CELL_PX + GAP);
+  }
+
+  // Compute absolute block origins for the chosen layoutMode.
+  // "wrap": blocks flow left→right; when running x + block width > WRAP_WIDTH, wrap.
+  // "strip": all blocks in a single horizontal row.
+  const WRAP_WIDTH = 800; // wrap column breakpoint (px); scrollable wrapper handles overflow
+  type BlockOrigin = { bx: number; by: number };
+  const blockOrigins: BlockOrigin[] = [];
+  {
+    let curX = 0;
+    let curY = 0;
+    let rowMaxH = 0;
+    for (const b of blocks) {
+      const bw = blockPixelWidth(b);
+      const bh = blockPixelHeight(b);
+      if (layoutMode === "wrap" && curX > 0 && curX + bw > WRAP_WIDTH) {
+        // Wrap to next row
+        curX = 0;
+        curY += rowMaxH + BLOCK_GAP;
+        rowMaxH = 0;
+      }
+      blockOrigins.push({ bx: curX, by: curY });
+      curX += bw + BLOCK_GAP;
+      rowMaxH = Math.max(rowMaxH, bh);
+    }
+  }
+
+  // Total SVG dimensions
+  const svgWidth = blockOrigins.length > 0
+    ? Math.max(...blockOrigins.map((o, i) => o.bx + blockPixelWidth(blocks[i])))
+    : 0;
+  const svgHeight = blockOrigins.length > 0
+    ? Math.max(...blockOrigins.map((o, i) => o.by + blockPixelHeight(blocks[i])))
+    : 0;
 
   // Agg label for tooltip
   const aggLabel = `${aggregation}(${metricColumn})`;
@@ -484,87 +530,94 @@ export default function CalendarRenderer({
           height={svgHeight}
           style={{ display: "block" }}
         >
-          {/* ---- Domain axis (column headers, top) ---- */}
-          {domainKeys.map((dk, ci) => (
-            <text
-              key={dk}
-              x={LEFT_AXIS_WIDTH + ci * (CELL_PX + GAP) + CELL_PX / 2}
-              y={TOP_AXIS_HEIGHT - 6}
-              textAnchor="middle"
-              fontSize={10}
-              fill={axis}
-            >
-              {formatTimelineTick(dk, domain as TimelineIntervalKey)}
-            </text>
-          ))}
+          {/* ---- Block-based render: one <g> per domain group (CALUX-V113-01) ---- */}
+          {blocks.map((block, bi) => {
+            const { bx, by } = blockOrigins[bi];
+            const gutterW = effSubdomain === "day" ? DOW_GUTTER : 0;
+            const cellsOriginX = bx + gutterW;
+            const cellsOriginY = by + LABEL_HEIGHT;
 
-          {/* ---- Subdomain axis (row labels, left) ---- */}
-          {subdomainKeys.map((sk, ri) =>
-            ri % labelStride === 0 ? (
-              <text
-                key={sk}
-                x={LEFT_AXIS_WIDTH - 4}
-                y={TOP_AXIS_HEIGHT + ri * (CELL_PX + GAP) + CELL_PX / 2 + 4}
-                textAnchor="end"
-                fontSize={9}
-                fill={axis}
-              >
-                {formatTimelineTick(sk, subdomain as TimelineIntervalKey)}
-              </text>
-            ) : null,
-          )}
-
-          {/* ---- Cell grid ---- */}
-          {calendarRows.map((calRow, ci) =>
-            calRow.cells.map((cell, ri) => {
-              const x = LEFT_AXIS_WIDTH + ci * (CELL_PX + GAP);
-              const y = TOP_AXIS_HEIGHT + ri * (CELL_PX + GAP);
-              const isEmpty = cell.value === null;
-              if (isEmpty) {
-                return (
-                  <rect
-                    key={`${ci}-${ri}`}
-                    x={x}
-                    y={y}
-                    width={CELL_PX}
-                    height={CELL_PX}
-                    fill={emptyCell}
-                    data-empty="true"
-                    style={{ pointerEvents: "none" }}
-                  />
-                );
-              }
-
-              const numValue = cell.value as number;
-              const fill = colors[quantizeToBucket(numValue, colorDomain, CALENDAR_BUCKET_COUNT)];
-              const timeSlice = `${formatTimelineTick(cell.domainKey, domain as TimelineIntervalKey)} / ${formatTimelineTick(cell.subdomainKey, subdomain as TimelineIntervalKey)}`;
-              const tooltipText = `${timeSlice} · ${aggLabel}: ${numValue.toLocaleString()}`;
-
-              // Reactive selected-cell outline: match this cell's bounds against the active BETWEEN filter
-              const [cellStart, cellEnd] = computeCellBounds(cell.subdomainKey, subdomain);
-              const isActive =
-                appliedCell !== null &&
-                appliedCell[0] === cellStart &&
-                appliedCell[1] === cellEnd;
-
-              return (
-                <rect
-                  key={`${ci}-${ri}`}
-                  x={x}
-                  y={y}
-                  width={CELL_PX}
-                  height={CELL_PX}
-                  fill={fill}
-                  stroke={isActive ? accent : "none"}
-                  strokeWidth={isActive ? 2 : 0}
-                  onClick={() => handleCellClick(cell)}
-                  style={{ cursor: "pointer" }}
+            return (
+              <g key={block.domainKey}>
+                {/* Per-block group label (domain-level) */}
+                <text
+                  x={bx + gutterW + (block.cols * (CELL_PX + GAP)) / 2}
+                  y={by + LABEL_HEIGHT - 6}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill={axis}
                 >
-                  <title>{tooltipText}</title>
-                </rect>
-              );
-            }),
-          )}
+                  {formatTimelineTick(block.domainKey, effDomain as TimelineIntervalKey)}
+                </text>
+
+                {/* Sparse DOW labels down the left gutter (day subdomain only: Mon/Wed/Fri) */}
+                {effSubdomain === "day" && DOW_LABEL_ROWS.map((rowIdx, li) => (
+                  <text
+                    key={DOW_LABELS[li]}
+                    x={bx + gutterW - 4}
+                    y={cellsOriginY + rowIdx * (CELL_PX + GAP) + CELL_PX / 2 + 4}
+                    textAnchor="end"
+                    fontSize={9}
+                    fill={axis}
+                  >
+                    {DOW_LABELS[li]}
+                  </text>
+                ))}
+
+                {/* Cells */}
+                {block.cells.map((pc) => {
+                  const x = cellsOriginX + pc.col * (CELL_PX + GAP);
+                  const y = cellsOriginY + pc.row * (CELL_PX + GAP);
+                  const cell = pc.cell;
+                  const isEmpty = cell.value === null;
+
+                  if (isEmpty) {
+                    return (
+                      <rect
+                        key={`${block.domainKey}-${pc.col}-${pc.row}`}
+                        x={x}
+                        y={y}
+                        width={CELL_PX}
+                        height={CELL_PX}
+                        fill={emptyCell}
+                        data-empty="true"
+                        style={{ pointerEvents: "none" }}
+                      />
+                    );
+                  }
+
+                  const numValue = cell.value as number;
+                  const fill = colors[quantizeToBucket(numValue, colorDomain, CALENDAR_BUCKET_COUNT)];
+                  const timeSlice = `${formatTimelineTick(cell.domainKey, effDomain as TimelineIntervalKey)} / ${formatTimelineTick(cell.subdomainKey, effSubdomain as TimelineIntervalKey)}`;
+                  const tooltipText = `${timeSlice} · ${aggLabel}: ${numValue.toLocaleString()}`;
+
+                  // Reactive selected-cell outline: match this cell's bounds against the active BETWEEN filter
+                  const [cellStart, cellEnd] = computeCellBounds(cell.subdomainKey, effSubdomain);
+                  const isActive =
+                    appliedCell !== null &&
+                    appliedCell[0] === cellStart &&
+                    appliedCell[1] === cellEnd;
+
+                  return (
+                    <rect
+                      key={`${block.domainKey}-${pc.col}-${pc.row}`}
+                      x={x}
+                      y={y}
+                      width={CELL_PX}
+                      height={CELL_PX}
+                      fill={fill}
+                      stroke={isActive ? accent : "none"}
+                      strokeWidth={isActive ? 2 : 0}
+                      onClick={() => handleCellClick(cell)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <title>{tooltipText}</title>
+                    </rect>
+                  );
+                })}
+              </g>
+            );
+          })}
         </svg>
       </div>
 
