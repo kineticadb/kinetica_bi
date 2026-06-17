@@ -798,4 +798,180 @@ describe("CalendarRenderer", () => {
     );
     expect(remaining).toHaveLength(0);
   });
+
+  /* ------------------------------------------------------------------ */
+  /*  Phase 68.1-03: Wrapped layout + control bar + effective-value drill */
+  /* ------------------------------------------------------------------ */
+
+  // Test 25 (wrapped layout): with CANNED_ROWS, calendar-renderer appears and at least
+  // one populated rect with a <title> is present (blocks still render cells).
+  it("Test 25 (wrapped layout): calendar-renderer present + at least one populated rect with <title>", async () => {
+    const { container } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const allRects = container.querySelectorAll("rect");
+    const populatedRects = Array.from(allRects).filter((r) => !r.getAttribute("data-empty"));
+    expect(populatedRects.length).toBeGreaterThan(0);
+    for (const r of populatedRects) {
+      expect(r.querySelector("title")).not.toBeNull();
+    }
+  });
+
+  // Test 26 (group labels): with CANNED_ROWS (2 domain groups), the SVG contains
+  // at least 1 <text> element (per-block group label).
+  it("Test 26 (group labels): SVG contains at least one <text> group label", async () => {
+    const { container } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const svg = container.querySelector('[data-testid="calendar-renderer"]');
+    expect(svg).not.toBeNull();
+    const texts = svg!.querySelectorAll("text");
+    expect(texts.length).toBeGreaterThan(0);
+  });
+
+  // Test 27 (control bar OFF by default): without showDomainSubdomainControls,
+  // calendar-control-bar is absent and no aria-labelled domain select is present.
+  it("Test 27 (control bar OFF by default): no calendar-control-bar without showDomainSubdomainControls", async () => {
+    render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("calendar-control-bar")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /domain/i })).toBeNull();
+  });
+
+  // Test 28 (control bar ON): with showDomainSubdomainControls:true, calendar-control-bar
+  // renders with both a Domain select and a Subdomain select.
+  it("Test 28 (control bar ON): calendar-control-bar with Domain + Subdomain selects when showDomainSubdomainControls:true", async () => {
+    render(
+      <CalendarRenderer
+        widget={makeWidget({ showDomainSubdomainControls: true })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const controlBar = screen.getByTestId("calendar-control-bar");
+    expect(controlBar).toBeTruthy();
+    // Use getByRole with exact aria-label match
+    expect(screen.getByRole("combobox", { name: "Domain" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Subdomain" })).toBeTruthy();
+  });
+
+  // Test 29 (dependent gating): with controls ON and config domain="week",
+  // the Subdomain select only lists VALID_DOMAIN_SUBDOMAIN.week = ["day","hour"].
+  it("Test 29 (dependent gating): Subdomain select lists only valid subdomains for the effective domain", async () => {
+    render(
+      <CalendarRenderer
+        widget={makeWidget({ domain: "week", subdomain: "day", showDomainSubdomainControls: true })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const subdomainSelect = screen.getByRole("combobox", { name: /subdomain/i });
+    const options = Array.from(subdomainSelect.querySelectorAll("option")).map((o) => o.value);
+    // VALID_DOMAIN_SUBDOMAIN.week = ["day", "hour"]
+    expect(options).toContain("day");
+    expect(options).toContain("hour");
+    // Must NOT contain subdomains invalid for week (month/week)
+    expect(options).not.toContain("month");
+    expect(options).not.toContain("week");
+  });
+
+  // Test 30 (re-fetch on viewer change): with controls ON, changing the Domain select
+  // triggers runSql again (call count increases).
+  it("Test 30 (re-fetch on viewer change): changing viewer Domain select fires runSql again", async () => {
+    render(
+      <CalendarRenderer
+        widget={makeWidget({ domain: "month", subdomain: "day", showDomainSubdomainControls: true })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const callsBefore = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Change domain to "year" — valid subdomain day is in VALID_DOMAIN_SUBDOMAIN.year
+    const domainSelect = screen.getByRole("combobox", { name: "Domain" });
+    fireEvent.change(domainSelect, { target: { value: "year" } });
+
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  // Test 31 (view-local, no persist): CalendarRenderer.tsx never calls patch() —
+  // viewer dropdowns are view-local state only; config never written from this component.
+  it("Test 31 (view-local no persist): CalendarRenderer.tsx has no patch( call; viewer state via setViewerDomain/setViewerSubdomain", () => {
+    const src = readFileSync(resolve(__dirname, "CalendarRenderer.tsx"), "utf-8");
+    // Must not call patch() — view-local state only; config writes are never issued
+    expect(src).not.toMatch(/\bpatch\s*\(/);
+    // The component function signature accepts only widget + tables (not onChange)
+    // Confirmed by checking the export default function line
+    const funcLine = src.split("\n").find((l) => l.includes("export default function CalendarRenderer"));
+    expect(funcLine).toBeDefined();
+    expect(funcLine).not.toContain("onChange");
+    // Confirm viewer state is managed via internal setState (not prop)
+    expect(src).toContain("setViewerDomain");
+    expect(src).toContain("setViewerSubdomain");
+  });
+
+  // Test 32 (effective-value drill): with controls ON, after changing viewer Subdomain to "week"
+  // (valid for month domain), clicking a populated cell uses computeCellBounds with the effective
+  // (viewer) subdomain. Verified by checking the BETWEEN filter bounds match a week-granularity bucket.
+  it("Test 32 (effective-value drill): drill uses effective (viewer) subdomain bounds after viewer-subdomain change", async () => {
+    // Config: domain=month, subdomain=day. We change viewer subdomain to "week".
+    // CANNED_ROWS has subdomain_bucket "2026-01-03 00:00:00" (a day key).
+    // computeCellBounds("2026-01-03 00:00:00", "day") → end-start = 86399999ms (1 day - 1ms)
+    // computeCellBounds("2026-01-03 00:00:00", "week") → end-start = 604799999ms (7 days - 1ms)
+    // If the renderer uses effSubdomain="week", the bounds will be week-granularity.
+
+    const { container } = render(
+      <CalendarRenderer
+        widget={makeWidget({ domain: "month", subdomain: "day", showDomainSubdomainControls: true })}
+        tables={TABLES}
+      />,
+    );
+
+    // Wait for initial render with day subdomain
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    // Change viewer Subdomain to "week" (valid for month domain — VALID_DOMAIN_SUBDOMAIN.month = ["week","day"])
+    const subdomainSelect = screen.getByRole("combobox", { name: "Subdomain" });
+    fireEvent.change(subdomainSelect, { target: { value: "week" } });
+
+    // Wait for re-fetch with new effSubdomain (runSql called again)
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
+    });
+
+    // After re-fetch, wait for calendar-renderer (CANNED_ROWS still returned by mock)
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+
+    // Click the first populated cell — drill should use effSubdomain="week" bounds
+    const allRects = container.querySelectorAll("rect");
+    const populatedRect = Array.from(allRects).find((r) => !r.getAttribute("data-empty"));
+    expect(populatedRect).toBeTruthy();
+    fireEvent.click(populatedRect!);
+
+    expect(mockSetBulkFilters).toHaveBeenCalled();
+    const [, calledFilters] = mockSetBulkFilters.mock.calls[0] as [number, Array<Record<string, unknown>>];
+    expect(calledFilters).toHaveLength(1);
+    const f = calledFilters[0];
+    expect(f.operator).toBe("between");
+    // With effSubdomain="week", the BETWEEN span should be 7 days - 1ms = 604799999ms
+    const [lo, hi] = f.value as [string, string];
+    const diffMs = new Date(hi).getTime() - new Date(lo).getTime();
+    expect(diffMs).toBe(604_799_999); // 7 days - 1ms (week bucket)
+  });
 });

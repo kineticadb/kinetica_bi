@@ -337,6 +337,13 @@ export default function CalendarRenderer({
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const grid = useMemo(() => gapFillCalendar(data), [data]);
 
+  // ---- Wrapped / strip block layout (CALUX-V113-01) — MUST be before early returns ----
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const blocks = useMemo(
+    () => layoutCalendar({ rows: grid.rows, domain: effDomain, subdomain: effSubdomain }),
+    [grid, effDomain, effSubdomain],
+  );
+
   // ---- Reactive color domain (useMemo — NOT init-once) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const colorDomain = useMemo(() => computeDomain(data), [data]);
@@ -433,13 +440,6 @@ export default function CalendarRenderer({
   function handleViewerSubdomainChange(s: CalendarSubdomain) {
     setViewerSubdomain(s);
   }
-
-  // ---- Wrapped / strip block layout (CALUX-V113-01) ----
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const blocks = useMemo(
-    () => layoutCalendar({ rows: grid.rows, domain: effDomain, subdomain: effSubdomain }),
-    [grid, effDomain, effSubdomain],
-  );
 
   // Layout constants for block rendering
   const LABEL_HEIGHT = TOP_AXIS_HEIGHT;  // height above each block for the group label
