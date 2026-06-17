@@ -33,6 +33,7 @@
 
 - [x] **CALUX-V113-01**: The calendar renders wrapped, compact domain-group blocks (GitHub week-block layout — day subdomains as 7-row day-of-week × week columns; hour/week/month subdomains as compact grids) instead of one tall `domain-column × subdomain-row` line; domain groups are separate labeled blocks flowing left→right with an operator option to wrap (default) or render a continuous horizontal strip; day-of-week rows honor the Kinetica `DATE_TRUNC` week anchor (interim Monday-ISO until the Phase 65/69 spike confirms it). Existing cell-drill, active-cell highlight, gap-fill, color scale, and `respondToFilters` FROM-gating are preserved against the new layout.
 - [x] **CALUX-V113-02**: A config toggle "Show domain/subdomain controls" (default OFF, with an info-icon hover description) reveals 2 viewer-facing dropdowns on the widget (top control bar) that let a dashboard viewer switch domain/subdomain live — initialized from the operator's configured values, dependent-gated to the 8 valid combos (`VALID_DOMAIN_SUBDOMAIN`/`isValidCombo`), re-fetching on change; the selection is VIEW-LOCAL (does not persist to the saved widget config, resets on reload). Both new options live in a new "Display" section of `CalendarConfigPanel`.
+- [x] **CALUX-V113-03**: The calendar gap-fills PER DOMAIN GROUP using each group's own date range (not a single global subdomain axis): a domain group contains only the subdomain buckets that fall within its own time span — in-range buckets with no data render as GREY tiles, out-of-range slots (e.g. leading/trailing partial-week days at a month edge) render BLANK (no tile); a week×day group is a single 7-row column, never a month-shaped block. The visual week anchor (`WEEK_START` in `calendarLayout.ts`) is verified against and aligned to the live Kinetica `DATE_TRUNC('week')` anchor (resolves the Phase 65 NOT-RUN spike for the `week` unit), so week-domain groups stay column-clean.
 
 ### Verification
 
@@ -75,6 +76,7 @@ Explicitly excluded for v1.13.
 | CALDR-V113-03 | Phase 68 | Complete |
 | CALUX-V113-01 | Phase 68.1 | Complete |
 | CALUX-V113-02 | Phase 68.1 | Complete |
+| CALUX-V113-03 | Phase 68.2 | Complete |
 | VERIFY-V113-01 | Phase 69 | Pending |
 
 **Coverage:**
