@@ -325,6 +325,29 @@ describe("layoutCalendar — multiple domain groups", () => {
       expect(blocks[0].cells.every((c) => c.col === 0)).toBe(true);
     });
 
+    it("week×hour renders a 7-day × 24-hour punchcard (not a collapsed 6×4 grid)", () => {
+      // One week (Sun 2022-10-09) × 168 hours
+      const cells = [];
+      for (let dayOff = 0; dayOff < 7; dayOff++) {
+        for (let h = 0; h < 24; h++) {
+          const key = `2022-10-${String(9 + dayOff).padStart(2, "0")} ${String(h).padStart(2, "0")}:00:00`;
+          cells.push({ domainKey: "2022-10-09 00:00:00", subdomainKey: key, value: 1 });
+        }
+      }
+      const rows: CalendarRow[] = [{ domainKey: "2022-10-09 00:00:00", cells }];
+      const blocks = layoutCalendar({ rows, domain: "week", subdomain: "hour" });
+      expect(blocks[0].cols).toBe(24); // 24 hours across
+      expect(blocks[0].rows).toBe(7); // 7 days down
+      // first cell (Sun 00:00) at row 0, col 0; last (Sat 23:00) at row 6, col 23
+      const first = blocks[0].cells.find((c) => c.cell.subdomainKey === "2022-10-09 00:00:00");
+      const last = blocks[0].cells.find((c) => c.cell.subdomainKey === "2022-10-15 23:00:00");
+      expect(first).toMatchObject({ row: 0, col: 0 });
+      expect(last).toMatchObject({ row: 6, col: 23 });
+      // no two cells share a position (no collapse)
+      const positions = new Set(blocks[0].cells.map((c) => `${c.row},${c.col}`));
+      expect(positions.size).toBe(168);
+    });
+
     it("defaults to Monday (WEEK_START) when no anchor passed", () => {
       const rows: CalendarRow[] = [
         {

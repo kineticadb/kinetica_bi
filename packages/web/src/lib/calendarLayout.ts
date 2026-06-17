@@ -95,7 +95,7 @@ export function layoutCalendar(args: {
   if (rows.length === 0) return [];
 
   const anchorDow = args.weekAnchorDow ?? WEEK_START;
-  return rows.map((row) => layoutBlock(row, subdomain, anchorDow));
+  return rows.map((row) => layoutBlock(row, args.domain, subdomain, anchorDow));
 }
 
 // ---------------------------------------------------------------------------
@@ -104,12 +104,13 @@ export function layoutCalendar(args: {
 
 function layoutBlock(
   row: CalendarRow,
+  domain: CalendarDomain,
   subdomain: CalendarSubdomain,
   anchorDow: number,
 ): PositionedBlock {
   switch (subdomain) {
     case "day":   return layoutDayBlock(row, anchorDow);
-    case "hour":  return layoutHourBlock(row);
+    case "hour":  return layoutHourBlock(row, domain);
     case "week":  return layoutWeekBlock(row);
     case "month": return layoutMonthBlock(row);
   }
@@ -172,20 +173,33 @@ function layoutDayBlock(row: CalendarRow, anchorDow: number): PositionedBlock {
 }
 
 // ---------------------------------------------------------------------------
-// "hour" subdomain — compact 6-col × 4-row grid (24 hours)
+// "hour" subdomain
 //
-// index = getUTCHours() (0-23)
-// col   = index % 6
-// row   = floor(index / 6)
-// cols  = 6 (constant)
-// rows  = ceil(count / 6)
+//   day×hour  → compact 6-col × 4-row grid of the day's 24 hours
+//               (col = hour % 6, row = floor(hour / 6))
+//   week×hour → "punchcard": 7 day-rows × 24 hour-cols (168 cells)
+//               (row = day offset from the week start, col = hour of day)
+//               A single 6×4 grid would collapse all 7 days onto 24 positions.
 // ---------------------------------------------------------------------------
 
 const HOUR_COLS = 6;
 
-function layoutHourBlock(row: CalendarRow): PositionedBlock {
+function layoutHourBlock(row: CalendarRow, domain: CalendarDomain): PositionedBlock {
   const { domainKey, cells } = row;
 
+  if (domain === "week") {
+    // Punchcard: row = day offset from the week start (0..6), col = hour-of-day (0..23).
+    const weekStartMs = parseUTCMs(domainKey);
+    const positioned: PositionedCell[] = cells.map((cell) => {
+      const cellMs = parseUTCMs(cell.subdomainKey);
+      const dayOffset = Math.floor((cellMs - weekStartMs) / 86_400_000);
+      const hourOfDay = new Date(cellMs).getUTCHours();
+      return { cell, col: hourOfDay, row: dayOffset };
+    });
+    return { domainKey, label: domainKey, cols: 24, rows: 7, cells: positioned };
+  }
+
+  // day×hour — compact 6×4 grid of the day's 24 hours.
   const positioned: PositionedCell[] = cells.map((cell) => {
     const h = new Date(parseUTCMs(cell.subdomainKey)).getUTCHours();
     return { cell, col: h % HOUR_COLS, row: Math.floor(h / HOUR_COLS) };
