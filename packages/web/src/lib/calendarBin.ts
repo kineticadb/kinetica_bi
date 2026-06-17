@@ -40,8 +40,10 @@ export type CalendarSubdomain = "month" | "week" | "day" | "hour";
  * via POST /api/auth/login with Kinetica password credentials; credentials are not
  * accessible to the executor without reading packages/server/.env, which is
  * security-prohibited); FLAGGED for Phase 69 UAT (CAL-V113-03).
- * See .planning/phases/65-calendar-sql-builder-kinetica-spike/65-02-SUMMARY.md for
- * the exact spike queries to run during Phase 69 UAT.
+ * Re-attempted in Phase 68.2-02 (2026-06-17): still NOT-RUN, same auth barrier persists.
+ * See .planning/phases/65-calendar-sql-builder-kinetica-spike/65-02-SUMMARY.md and
+ * .planning/phases/68.2-calendar-week-anchor-spike-per-group-date-range-gap-fill/68.2-02-SPIKE.md
+ * for the exact spike queries to run during Phase 69 UAT.
  */
 export const KINETICA_DATE_TRUNC_UNITS = [
   "year",
