@@ -141,6 +141,27 @@ describe("LayersLegendPanel", () => {
     expect(screen.getByText("<other>")).toBeTruthy();
   });
 
+  it("Test 6b (numeric <other> verbatim): renders '<other>', NOT '0 – 0', for a numeric sink bucket with min/max = 0", () => {
+    // v1.14 Phase 70 follow-up: numeric <other> rows carry min/max = 0 (createDefaultBreak
+    // default). Before the fix this fell through to the "min – max" branch and rendered "0 – 0".
+    const cbConfig = JSON.stringify({
+      attr: "val",
+      valsType: "numeric",
+      includeOtherBucket: true,
+      breaks: [
+        { value: 0, min: 0, max: 10, color: "FF00FF00", label: "" },
+        { value: "<other>", min: 0, max: 0, color: "FFFF00FF", label: "" },
+      ],
+    });
+    const layer = makeResolvedLayer({
+      config: { renderMode: "classbreak" },
+      cb_config: cbConfig,
+    });
+    render(<LayersLegendPanel {...defaultProps()} layers={[layer]} />);
+    expect(screen.getByText("<other>")).toBeTruthy();
+    expect(screen.queryByText("0 – 0")).toBeNull();
+  });
+
   it("Test 7 (color swatch present): each break row has a swatch with backgroundColor", () => {
     const cbConfig = JSON.stringify({
       attr: "val",

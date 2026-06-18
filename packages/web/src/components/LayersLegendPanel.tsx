@@ -82,6 +82,8 @@ function aarrggbbToCssColor(aarrggbb: string): string {
  *
  * Precedence:
  *   1. brk.label — explicit operator-set legend label (always wins when non-empty).
+ *   1b. <other> sink bucket — render the keyword verbatim regardless of valsType
+ *       (numeric <other> carries min/max = 0, which would otherwise read as "0 – 0").
  *   2. Numeric breaks — render the bucket boundaries. Kinetica CB_VALS semantics are
  *      `lo:hi` (lo INCLUSIVE, hi EXCLUSIVE) per cbConfig.ts:27-33. The form allows
  *      either bound to be empty (open-ended bucket — typical for the first/last row):
@@ -96,6 +98,10 @@ function aarrggbbToCssColor(aarrggbb: string): string {
  */
 function breakDisplayText(brk: CbBreak): string {
   if (brk.label && brk.label.length > 0) return brk.label;
+  // <other> sink bucket — render the keyword verbatim regardless of valsType.
+  // Numeric <other> rows carry min/max = 0 (createDefaultBreak default), which would
+  // otherwise fall through to the "0 – 0" range branch below (v1.14 Phase 70 follow-up).
+  if (brk.value === "<other>") return "<other>";
   const hasMin = typeof brk.min === "number";
   const hasMax = typeof brk.max === "number";
   if (hasMin && hasMax) {
