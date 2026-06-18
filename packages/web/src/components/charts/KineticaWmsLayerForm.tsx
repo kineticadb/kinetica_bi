@@ -1181,6 +1181,12 @@ export default function KineticaWmsLayerForm({
               </select>
             </label>
 
+            {/* Phase 71 (SHAPE-V114-01): SHAPE* fields style polygon/line geometry and do
+                nothing for point (lat/lon) layers — hide them under latlon. Mirrors the
+                Phase 53 `spatialMode !== "track"` raster gate for the SHAPE* subset only.
+                Point color/size/opacity/shape (above) + Antialiasing (below) stay visible. */}
+            {spatialMode !== "latlon" && (
+              <>
             {/* Shape fill color (SHAPEFILLCOLORS) — AARRGGBB. See Point color comment above. */}
             <label className="config-color-field">
               Shape fill color (WKT)
@@ -1311,6 +1317,8 @@ export default function KineticaWmsLayerForm({
                 {(config.shapeLineWidth as number) ?? 1}
               </span>
             </label>
+              </>
+            )}
 
             <label className="config-toggle">
               Antialiasing

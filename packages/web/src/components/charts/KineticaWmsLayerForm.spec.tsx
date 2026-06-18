@@ -215,7 +215,11 @@ describe("KineticaWmsLayerForm", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("renderMode='raster' shows Point shape, Shape fill/line color, Shape line width, and Antialiasing controls", () => {
+  // Phase 71 (SHAPE-V114-01): migrated from the pre-existing combined raster test.
+  // Under spatialMode="latlon" (the baseConfig default), the layer-level SHAPE* fields
+  // (shape fill/line color + alpha, shape line width) are HIDDEN — points use POINT*
+  // styling, not shape style. Point shape + Antialiasing stay visible for latlon.
+  it("renderMode='raster' latlon: shows Point shape + Antialiasing, hides SHAPE* controls", () => {
     const onChange = vi.fn();
     render(
       <KineticaWmsLayerForm
@@ -225,7 +229,7 @@ describe("KineticaWmsLayerForm", () => {
       />
     );
 
-    // Point shape dropdown — has all 12 options
+    // Point shape dropdown — has all 12 options (visible for latlon)
     const pointShapeSelect = screen.getByLabelText("Point shape") as HTMLSelectElement;
     expect(pointShapeSelect).toBeInTheDocument();
     expect(pointShapeSelect.options).toHaveLength(12);
@@ -253,6 +257,40 @@ describe("KineticaWmsLayerForm", () => {
     );
     onChange.mockClear();
 
+    // SHAPE* controls are HIDDEN under latlon
+    expect(screen.queryByLabelText("Shape fill color (RGB)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Shape fill alpha")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Shape line color (RGB)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Shape line alpha")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Shape line width")).not.toBeInTheDocument();
+
+    // Point color / size / opacity controls stay visible for latlon
+    expect(screen.getByLabelText("Point color (RGB)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Point color alpha")).toBeInTheDocument();
+
+    // Antialiasing toggle stays visible for latlon (points use antialiasing)
+    const antialias = screen.getByLabelText("Antialiasing") as HTMLInputElement;
+    expect(antialias).toBeInTheDocument();
+    expect(antialias.type).toBe("checkbox");
+    fireEvent.click(antialias);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ antialiasing: true }),
+    );
+  });
+
+  // Phase 71 (SHAPE-V114-01): the SHAPE* control assertions migrated from the old
+  // combined test now run under spatialMode="wkt" — proving SHAPE* still shows + emits
+  // for polygon/line layers (no regression).
+  it("renderMode='raster' wkt: shows Shape fill/line color, Shape line alpha, and Shape line width", () => {
+    const onChange = vi.fn();
+    render(
+      <KineticaWmsLayerForm
+        config={{ ...baseConfig, spatialMode: "wkt" }}
+        onChange={onChange}
+        columns={baseColumns}
+      />
+    );
+
     // Shape fill color picker — moving the RGB color picker keeps the current alpha (defaults
     // to FF when config is empty) and joins to an 8-char AARRGGBB. So #abcdef → FFABCDEF.
     const shapeFill = screen.getByLabelText("Shape fill color (RGB)") as HTMLInputElement;
@@ -262,6 +300,10 @@ describe("KineticaWmsLayerForm", () => {
       expect.objectContaining({ shapeFillColor: "FFABCDEF" }),
     );
     onChange.mockClear();
+
+    // Shape fill / line alpha controls are present under wkt
+    expect(screen.getByLabelText("Shape fill alpha")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shape line alpha")).toBeInTheDocument();
 
     // Shape line color picker — same AARRGGBB behaviour (alpha preserved, RGB updated)
     const shapeLine = screen.getByLabelText("Shape line color (RGB)") as HTMLInputElement;
@@ -280,16 +322,6 @@ describe("KineticaWmsLayerForm", () => {
     fireEvent.change(lineWidth, { target: { value: "12" } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ shapeLineWidth: 12 }),
-    );
-    onChange.mockClear();
-
-    // Antialiasing toggle — checkbox emits boolean
-    const antialias = screen.getByLabelText("Antialiasing") as HTMLInputElement;
-    expect(antialias).toBeInTheDocument();
-    expect(antialias.type).toBe("checkbox");
-    fireEvent.click(antialias);
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ antialiasing: true }),
     );
   });
 
