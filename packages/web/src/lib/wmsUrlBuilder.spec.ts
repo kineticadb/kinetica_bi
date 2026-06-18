@@ -267,7 +267,7 @@ describe("buildWmsParams — render mode: raster", () => {
 
   it("emits SHAPEFILLCOLORS=AARRGGBB (legacy 6-digit normalizes to FF + RRGGBB, uppercase)", () => {
     const result = buildWmsParams(
-      makeConfig({ renderMode: "raster", shapeFillColor: "abcdef" }),
+      makeConfig({ spatialMode: "wkt", renderMode: "raster", shapeFillColor: "abcdef" }),
       1,
     );
     expect(result.SHAPEFILLCOLORS).toBe("FFABCDEF");
@@ -275,7 +275,7 @@ describe("buildWmsParams — render mode: raster", () => {
 
   it("emits SHAPEFILLCOLORS=AARRGGBB unchanged when an explicit 8-char value is set", () => {
     const result = buildWmsParams(
-      makeConfig({ renderMode: "raster", shapeFillColor: "40ABCDEF" }),
+      makeConfig({ spatialMode: "wkt", renderMode: "raster", shapeFillColor: "40ABCDEF" }),
       1,
     );
     expect(result.SHAPEFILLCOLORS).toBe("40ABCDEF");
@@ -283,7 +283,7 @@ describe("buildWmsParams — render mode: raster", () => {
 
   it("emits SHAPELINECOLORS=AARRGGBB (legacy 6-digit normalizes to FF + RRGGBB, uppercase)", () => {
     const result = buildWmsParams(
-      makeConfig({ renderMode: "raster", shapeLineColor: "112233" }),
+      makeConfig({ spatialMode: "wkt", renderMode: "raster", shapeLineColor: "112233" }),
       1,
     );
     expect(result.SHAPELINECOLORS).toBe("FF112233");
@@ -291,7 +291,7 @@ describe("buildWmsParams — render mode: raster", () => {
 
   it("emits SHAPELINECOLORS=AARRGGBB unchanged when an explicit 8-char value is set", () => {
     const result = buildWmsParams(
-      makeConfig({ renderMode: "raster", shapeLineColor: "80112233" }),
+      makeConfig({ spatialMode: "wkt", renderMode: "raster", shapeLineColor: "80112233" }),
       1,
     );
     expect(result.SHAPELINECOLORS).toBe("80112233");
@@ -299,7 +299,7 @@ describe("buildWmsParams — render mode: raster", () => {
 
   it("emits SHAPELINEWIDTHS=<int> when shapeLineWidth is set", () => {
     const result = buildWmsParams(
-      makeConfig({ renderMode: "raster", shapeLineWidth: 5 }),
+      makeConfig({ spatialMode: "wkt", renderMode: "raster", shapeLineWidth: 5 }),
       1,
     );
     expect(result.SHAPELINEWIDTHS).toBe("5");
@@ -307,7 +307,7 @@ describe("buildWmsParams — render mode: raster", () => {
 
   it("emits SHAPELINEWIDTHS=0 when shapeLineWidth=0 (boundary)", () => {
     const result = buildWmsParams(
-      makeConfig({ renderMode: "raster", shapeLineWidth: 0 }),
+      makeConfig({ spatialMode: "wkt", renderMode: "raster", shapeLineWidth: 0 }),
       1,
     );
     expect(result.SHAPELINEWIDTHS).toBe("0");
@@ -336,6 +336,116 @@ describe("buildWmsParams — render mode: raster", () => {
     expect(result).not.toHaveProperty("SHAPELINECOLORS");
     expect(result).not.toHaveProperty("SHAPELINEWIDTHS");
     expect(result).not.toHaveProperty("ANTIALIASING");
+  });
+});
+
+// ─── SHAPE-V114-03: SHAPE* latlon leak prevention (raster + classbreak) ──────
+
+describe("buildWmsParams — SHAPE-V114-03 SHAPE* suppressed for latlon", () => {
+  // RASTER branch — leak prevention
+  it("raster latlon: omits SHAPEFILLCOLORS/SHAPELINECOLORS/SHAPELINEWIDTHS even when shape values are saved (leak prevention)", () => {
+    const result = buildWmsParams(
+      makeConfig({
+        spatialMode: "latlon",
+        renderMode: "raster",
+        shapeFillColor: "FF00FF00",
+        shapeLineColor: "FFFF0000",
+        shapeLineWidth: 3,
+      }),
+      1,
+    );
+    expect(result).not.toHaveProperty("SHAPEFILLCOLORS");
+    expect(result).not.toHaveProperty("SHAPELINECOLORS");
+    expect(result).not.toHaveProperty("SHAPELINEWIDTHS");
+  });
+
+  it("raster latlon: still emits POINTCOLORS/POINTSIZES/ANTIALIASING (point styling unaffected by SHAPE* gate)", () => {
+    const result = buildWmsParams(
+      makeConfig({
+        spatialMode: "latlon",
+        renderMode: "raster",
+        pointColor: "FF3838",
+        pointSize: 8,
+        antialiasing: true,
+        // stale SHAPE* values present but suppressed:
+        shapeFillColor: "FF00FF00",
+        shapeLineColor: "FFFF0000",
+        shapeLineWidth: 3,
+      }),
+      1,
+    );
+    expect(result.POINTCOLORS).toBe("FFFF3838");
+    expect(result.POINTSIZES).toBe("8");
+    expect(result.ANTIALIASING).toBe("true");
+    // SHAPE* still suppressed:
+    expect(result).not.toHaveProperty("SHAPEFILLCOLORS");
+    expect(result).not.toHaveProperty("SHAPELINECOLORS");
+    expect(result).not.toHaveProperty("SHAPELINEWIDTHS");
+  });
+
+  it("raster wkt: emits SHAPEFILLCOLORS/SHAPELINECOLORS/SHAPELINEWIDTHS from the same shape values (no polygon/line regression)", () => {
+    const result = buildWmsParams(
+      makeConfig({
+        spatialMode: "wkt",
+        wktColumn: "geom",
+        renderMode: "raster",
+        shapeFillColor: "FF00FF00",
+        shapeLineColor: "FFFF0000",
+        shapeLineWidth: 3,
+      }),
+      1,
+    );
+    expect(result.SHAPEFILLCOLORS).toBe("FF00FF00");
+    expect(result.SHAPELINECOLORS).toBe("FFFF0000");
+    expect(result.SHAPELINEWIDTHS).toBe("3");
+  });
+
+  // CLASSBREAK branch — leak prevention
+  it("classbreak latlon: omits per-break SHAPE* even when breaks carry shape values; CB_ATTR/CB_VALS/POINTCOLORS still emit", () => {
+    const cbConfigJson = JSON.stringify({
+      attr: "fare_amount",
+      valsType: "numeric",
+      breaks: [
+        { value: 0, min: 0, max: 10, color: "FF112233", shapeLineWidth: 2, shapeLineColor: "FF000000", shapeFillColor: "FFAAAAAA" },
+        { value: 0, min: 10, max: 25, color: "FF445566", shapeLineWidth: 4, shapeLineColor: "FF111111", shapeFillColor: "FFBBBBBB" },
+      ],
+    });
+    const result = buildWmsParams(
+      makeConfig({ spatialMode: "latlon", renderMode: "classbreak" }),
+      undefined,
+      undefined,
+      undefined,
+      { cb_config: cbConfigJson, track_config: null },
+    );
+    expect(result).not.toBeNull();
+    expect(result!).not.toHaveProperty("SHAPELINEWIDTHS");
+    expect(result!).not.toHaveProperty("SHAPELINECOLORS");
+    expect(result!).not.toHaveProperty("SHAPEFILLCOLORS");
+    // classbreak point/value params unaffected:
+    expect(result!.CB_ATTR).toBe("fare_amount");
+    expect(result!.CB_VALS).toBe("0:10,10:25");
+    expect(result!.POINTCOLORS).toBe("FF112233,FF445566");
+  });
+
+  it("classbreak wkt: emits per-break SHAPELINEWIDTHS/SHAPELINECOLORS/SHAPEFILLCOLORS from the same break shape values (no classbreak regression)", () => {
+    const cbConfigJson = JSON.stringify({
+      attr: "fare_amount",
+      valsType: "numeric",
+      breaks: [
+        { value: 0, min: 0, max: 10, color: "FF112233", shapeLineWidth: 2, shapeLineColor: "FF000000", shapeFillColor: "FFAAAAAA" },
+        { value: 0, min: 10, max: 25, color: "FF445566", shapeLineWidth: 4, shapeLineColor: "FF111111", shapeFillColor: "FFBBBBBB" },
+      ],
+    });
+    const result = buildWmsParams(
+      makeConfig({ spatialMode: "wkt", wktColumn: "geom", renderMode: "classbreak" }),
+      undefined,
+      undefined,
+      undefined,
+      { cb_config: cbConfigJson, track_config: null },
+    );
+    expect(result!.SHAPELINEWIDTHS).toBe("2,4");
+    expect(result!.SHAPELINECOLORS).toBe("FF000000,FF111111");
+    expect(result!.SHAPEFILLCOLORS).toBe("FFAAAAAA,FFBBBBBB");
   });
 });
 

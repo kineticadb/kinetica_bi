@@ -337,15 +337,20 @@ export function buildWmsParams(
     if (config.pointShape !== undefined) {
       params.POINTSHAPES = config.pointShape;
     }
-    if (config.shapeFillColor !== undefined) {
-      // Normalize to 8-char AARRGGBB so legacy 6-char values still emit a valid alpha channel.
-      params.SHAPEFILLCOLORS = normalizeAARRGGBB(config.shapeFillColor, "FFFF3838");
-    }
-    if (config.shapeLineColor !== undefined) {
-      params.SHAPELINECOLORS = normalizeAARRGGBB(config.shapeLineColor, "FF000000");
-    }
-    if (config.shapeLineWidth !== undefined) {
-      params.SHAPELINEWIDTHS = String(config.shapeLineWidth);
+    // SHAPE-V114-03: SHAPE* style only applies to polygon/line geometry — suppress for
+    // latlon points so stale saved values don't leak. Gate-only: saved config values are
+    // untouched, so switching back to wkt/wkb restores emission.
+    if (config.spatialMode !== "latlon") {
+      if (config.shapeFillColor !== undefined) {
+        // Normalize to 8-char AARRGGBB so legacy 6-char values still emit a valid alpha channel.
+        params.SHAPEFILLCOLORS = normalizeAARRGGBB(config.shapeFillColor, "FFFF3838");
+      }
+      if (config.shapeLineColor !== undefined) {
+        params.SHAPELINECOLORS = normalizeAARRGGBB(config.shapeLineColor, "FF000000");
+      }
+      if (config.shapeLineWidth !== undefined) {
+        params.SHAPELINEWIDTHS = String(config.shapeLineWidth);
+      }
     }
     if (config.antialiasing !== undefined) {
       params.ANTIALIASING = String(config.antialiasing);
@@ -404,14 +409,19 @@ export function buildWmsParams(
       if (cb.breaks.some((b: CbBreak) => b.pointShape !== undefined)) {
         params.POINTSHAPES = cb.breaks.map((b: CbBreak) => b.pointShape ?? "circle").join(",");
       }
-      if (cb.breaks.some((b: CbBreak) => b.shapeLineWidth !== undefined)) {
-        params.SHAPELINEWIDTHS = cb.breaks.map((b: CbBreak) => String(b.shapeLineWidth ?? 1)).join(",");
-      }
-      if (cb.breaks.some((b: CbBreak) => b.shapeLineColor !== undefined)) {
-        params.SHAPELINECOLORS = cb.breaks.map((b: CbBreak) => normalizeAARRGGBB(b.shapeLineColor, "FF000000")).join(",");
-      }
-      if (cb.breaks.some((b: CbBreak) => b.shapeFillColor !== undefined)) {
-        params.SHAPEFILLCOLORS = cb.breaks.map((b: CbBreak) => normalizeAARRGGBB(b.shapeFillColor, "FF000000")).join(",");
+      // SHAPE-V114-03: SHAPE* style only applies to polygon/line geometry — suppress for
+      // latlon points so stale saved per-break values don't leak. Gate-only: break values
+      // are untouched, so switching back to wkt/wkb restores emission.
+      if (config.spatialMode !== "latlon") {
+        if (cb.breaks.some((b: CbBreak) => b.shapeLineWidth !== undefined)) {
+          params.SHAPELINEWIDTHS = cb.breaks.map((b: CbBreak) => String(b.shapeLineWidth ?? 1)).join(",");
+        }
+        if (cb.breaks.some((b: CbBreak) => b.shapeLineColor !== undefined)) {
+          params.SHAPELINECOLORS = cb.breaks.map((b: CbBreak) => normalizeAARRGGBB(b.shapeLineColor, "FF000000")).join(",");
+        }
+        if (cb.breaks.some((b: CbBreak) => b.shapeFillColor !== undefined)) {
+          params.SHAPEFILLCOLORS = cb.breaks.map((b: CbBreak) => normalizeAARRGGBB(b.shapeFillColor, "FF000000")).join(",");
+        }
       }
     }
     // If cb_config is null OR not configured, NO CB_* params emit. STYLES=cb_raster
