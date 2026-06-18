@@ -692,6 +692,40 @@ describe("buildWmsParams — Lane C cb_raster (SCHEMA-V17-03)", () => {
     expect(params!.CB_VALS).toBe("cash,credit,<other>");
   });
 
+  it("emits the literal <other> token after numeric ranges in CB_VALS (CBOTHER-V114-01) — POINTCOLORS stays positionally aligned", () => {
+    const cbConfigJson = JSON.stringify({
+      attr: "fare",
+      valsType: "numeric",
+      breaks: [
+        { value: 0, min: 1, max: 3, color: "FF000000" },
+        { value: 0, min: 3, max: 5, color: "FF111111" },
+        { value: "<other>", color: "FF7788AA" },
+      ],
+    });
+    const params = buildWmsParams(baseConfig, undefined, undefined, undefined, { cb_config: cbConfigJson, track_config: null });
+    // Numeric ranges followed by the literal <other> catch-all token.
+    expect(params!.CB_VALS).toBe("1:3,3:5,<other>");
+    // N ranges + 1 <other> = N+1 colors; the <other> color lands in the trailing slot.
+    expect(params!.POINTCOLORS.split(",").length).toBe(3);
+    expect(params!.POINTCOLORS).toBe("FF000000,FF111111,FF7788AA");
+  });
+
+  it("numeric config WITHOUT an <other> break emits NO <other> token — preservation invariant CBOTHER-V114-02", () => {
+    const cbConfigJson = JSON.stringify({
+      attr: "fare",
+      valsType: "numeric",
+      breaks: [
+        { value: 0, min: 0, max: 10, color: "FF112233" },
+        { value: 0, min: 10, max: 25, color: "FF445566" },
+        { value: 0, min: 25, max: 50, color: "FF7788AA" },
+      ],
+    });
+    const params = buildWmsParams(baseConfig, undefined, undefined, undefined, { cb_config: cbConfigJson, track_config: null });
+    // Byte-identical to pre-change numeric emission — no <other> injected.
+    expect(params!.CB_VALS).toBe("0:10,10:25,25:50");
+    expect(params!.CB_VALS).not.toContain("<other>");
+  });
+
   it("emits POINTSIZES / POINTSHAPES / SHAPELINEWIDTHS / SHAPELINECOLORS / SHAPEFILLCOLORS only when at least one break sets them", () => {
     const cbConfigJson = JSON.stringify({
       attr: "x",
