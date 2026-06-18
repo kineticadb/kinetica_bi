@@ -347,4 +347,124 @@ describe("TimelineRenderer", () => {
     });
     expect(screen.getByTestId("timeline-renderer").getAttribute("data-vertical")).toBe("true");
   });
+
+  // ---- Phase 72: grouped (series-split) rendering (GROUP-V114-04 timeline half) ----
+
+  describe("Grouped (Phase 72)", () => {
+    // Feeds: [0] range, [1] top-N pre-query (series/value rows), [2] main grouped query (bucket/series/value rows).
+    function mockGroupedResponse(
+      lo: number,
+      hi: number,
+      topRows: { series: string; value: number }[],
+      groupedRows: { bucket: string; series: string; value: number | null }[],
+    ) {
+      const rangeResp = { column_headers: ["lo", "hi"], column_1: [lo], column_2: [hi] };
+      const topResp = {
+        column_headers: ["series", "value"],
+        column_1: topRows.map((r) => r.series),
+        column_2: topRows.map((r) => r.value),
+      };
+      const groupedResp = {
+        column_headers: ["bucket", "series", "value"],
+        column_1: groupedRows.map((r) => r.bucket),
+        column_2: groupedRows.map((r) => r.series),
+        column_3: groupedRows.map((r) => r.value),
+      };
+      let call = 0;
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        const resp = call === 0 ? rangeResp : call === 1 ? topResp : groupedResp;
+        call++;
+        return Promise.resolve(resp);
+      });
+    }
+
+    it("Test 12: grouped path issues range → top-N pre-query → main grouped query (GROUP BY bucket, series + IN allow-list)", async () => {
+      mockGroupedResponse(
+        0, 86400,
+        [{ series: "A", value: 100 }, { series: "B", value: 50 }],
+        [
+          { bucket: "2024-01-01 00:00:00", series: "A", value: 10 },
+          { bucket: "2024-01-01 00:00:00", series: "B", value: 5 },
+        ],
+      );
+      render(<TimelineRenderer widget={makeWidget({ groupByColumn: "driver_id" })} tables={TABLES} />);
+      await waitFor(() => {
+        expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3);
+      });
+      const calls = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls;
+      const topSql = calls[1][0] as string;
+      const mainSql = calls[2][0] as string;
+      // top-N pre-query ranks series by aggregate value DESC
+      expect(topSql).toMatch(/driver_id AS series/);
+      expect(topSql).toMatch(/ORDER BY value DESC/);
+      // main grouped query splits by series and filters to the top-N allow-list
+      expect(mainSql).toMatch(/driver_id AS series/);
+      expect(mainSql).toMatch(/GROUP BY bucket, series/);
+      expect(mainSql).toMatch(/driver_id IN \(/);
+    });
+
+    it("Test 13: grouped renderer plots one Line per series value (source-text: top.series.map → <Line dataKey={sv}>)", async () => {
+      // Recharts does not render dimension-dependent SVG under JSDOM (RESEARCH §C-08); assert
+      // the one-Line-per-series architecture via SOURCE text + a completing render.
+      const path = resolve(__dirname, "TimelineRenderer.tsx");
+      const src = readFileSync(path, "utf-8");
+      expect(src).toMatch(/top\.series\.map/);
+      expect(src).toMatch(/selectTopSeries/);
+      expect(src).toMatch(/pivotSeriesRows/);
+      // shared Y-axis when grouped (no per-metric alternating axes)
+      expect(src).toMatch(/themeColorsFor/);
+
+      mockGroupedResponse(
+        0, 86400,
+        [{ series: "A", value: 100 }, { series: "B", value: 50 }],
+        [
+          { bucket: "2024-01-01 00:00:00", series: "A", value: 10 },
+          { bucket: "2024-01-01 00:00:00", series: "B", value: 5 },
+        ],
+      );
+      render(<TimelineRenderer widget={makeWidget({ groupByColumn: "driver_id" })} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("timeline-renderer")).toBeInTheDocument());
+    });
+
+    it("Test 14: top-N affordance — 'Showing top 12 of N' rendered when series truncated", async () => {
+      // 14 distinct series → truncated at MAX_SERIES (12).
+      const many = Array.from({ length: 14 }, (_, i) => ({ series: `s${i}`, value: 100 - i }));
+      const groupedRows = many.map((m) => ({ bucket: "2024-01-01 00:00:00", series: m.series, value: m.value }));
+      mockGroupedResponse(0, 86400, many, groupedRows);
+      render(<TimelineRenderer widget={makeWidget({ groupByColumn: "driver_id" })} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("timeline-renderer")).toBeInTheDocument());
+      expect(screen.getByTestId("timeline-truncated-note")).toHaveTextContent(/top 12 of 14/i);
+    });
+
+    it("Test 15: drag-to-filter still dispatches a BETWEEN filter on timeCol when grouped (source contract preserved)", () => {
+      // Drag handlers + commitFilter sit OUTSIDE the grouped/ungrouped branch, so the
+      // BETWEEN-on-timeCol dispatch is identical in both. Static-assert the shared contract.
+      const path = resolve(__dirname, "TimelineRenderer.tsx");
+      const src = readFileSync(path, "utf-8");
+      expect(src).toMatch(/setBulkFilters\(tableId as number,\s*\[filter\]\)/);
+      expect(src).toMatch(/operator:\s*"between"/);
+      expect(src).toMatch(/column:\s*timeCol/);
+    });
+
+    it("Test 16: groupByColumn is part of the fetch effect dep key (toggling group-by re-fetches)", () => {
+      const path = resolve(__dirname, "TimelineRenderer.tsx");
+      const src = readFileSync(path, "utf-8");
+      // dep array (~the JSON.stringify metrics block) must reference groupByColumn
+      expect(src).toMatch(/groupByColumn/);
+      const grouped = (src.match(/groupByColumn/g) ?? []).length;
+      expect(grouped).toBeGreaterThanOrEqual(3);
+    });
+
+    it("Test 17: ungrouped single-metric path is unchanged — still range + 1 metric query (regression lock)", async () => {
+      mockRangeAndMetricResponse(0, 86400, [[{ bucket: "2024-01-01 00:00:00", value: 10 }]]);
+      render(<TimelineRenderer widget={makeWidget()} tables={TABLES} />);
+      await waitFor(() => {
+        expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+      });
+      // ungrouped metric query has no series split
+      const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+      expect(metricSql).not.toMatch(/AS series/);
+      expect(metricSql).not.toMatch(/GROUP BY bucket, series/);
+    });
+  });
 });

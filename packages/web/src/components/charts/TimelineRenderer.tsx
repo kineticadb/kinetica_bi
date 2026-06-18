@@ -52,6 +52,7 @@ import {
   type TimelineMetric,
 } from "../../lib/timelineBin";
 import { buildTimelineSql } from "../../lib/buildTimelineSql";
+import { MAX_SERIES, selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
@@ -105,18 +106,22 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   const tableRef = cfg.tableRef;
   const dynamicViewId = cfg.dynamicViewId;
   const timeCol = cfg.timeCol ?? "";
+  const groupByColumn = cfg.groupByColumn ?? "";
+  const grouped = groupByColumn !== "";
   const rawMetrics = (cfg.metrics ?? []) as TimelineMetric[];
   const maxIntervals = cfg.maxIntervals ?? DEFAULT_MAX_INTERVALS;
   const showLegend = cfg.showLegend ?? true;
   const showTooltip = cfg.showTooltip ?? true;
   const vertical = cfg.vertical ?? false;
+  const colorTheme = cfg.colorTheme ?? DEFAULT_COLOR_THEME;
   const dateFormatOverride = cfg.dateFormatOverride ?? "";
 
-  // Defensive: hard-cap to MAX_METRICS even if config persisted more.
-  const metrics = useMemo(
-    () => rawMetrics.slice(0, MAX_METRICS).map((m, i) => ({ ...m, color: ensureColor(m, i) })),
-    [rawMetrics],
-  );
+  // Defensive: hard-cap to MAX_METRICS even if config persisted more. When grouped,
+  // the chart uses a SINGLE metric (metrics[0]) split into one series per group value.
+  const metrics = useMemo(() => {
+    const capped = rawMetrics.slice(0, grouped ? 1 : MAX_METRICS);
+    return capped.map((m, i) => ({ ...m, color: ensureColor(m, i) }));
+  }, [rawMetrics, grouped]);
 
   const { dashboardId } = useDashboardContext();
 
@@ -188,6 +193,11 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   const [error, setError] = useState<string | null>(null);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [interval, setIntervalState] = useState<TimelineInterval | null>(null);
+  // Phase 72 grouped state: ordered series values + top-N truncation affordance.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [seriesValues, setSeriesValues] = useState<string[]>([]);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [seriesInfo, setSeriesInfo] = useState<{ truncated: boolean; total: number }>({ truncated: false, total: 0 });
 
   // Fetch on mount + when relevant config / filterVersion changes (re-bin on filter)
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -243,7 +253,63 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
         // Step 2: pick interval
         const chosen = pickInterval({ rangeMs, maxIntervals });
 
-        // Step 3: N parallel metric queries
+        if (grouped) {
+          // ===== Grouped path (Phase 72): single metric → one series per group value. =====
+          const metric0 = metrics[0];
+
+          // Step 3a: top-N pre-query — rank series by aggregate metric value DESC.
+          // Reuse the same aggExpr shape as buildTimelineSql (COUNT_DISTINCT → COUNT(DISTINCT)).
+          const aggSql = metric0.aggregation === "COUNT_DISTINCT"
+            ? `COUNT(DISTINCT ${metric0.column})`
+            : `${metric0.aggregation}(${metric0.column})`;
+          const fromTarget = querySchema === "" ? queryTable : `${querySchema}.${queryTable}`;
+          const topSql =
+            `SELECT ${groupByColumn} AS series, ${aggSql} AS value ` +
+            `FROM ${fromTarget} ` +
+            `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL ` +
+            `GROUP BY series ` +
+            `ORDER BY value DESC ` +
+            `LIMIT ${MAX_SERIES * 4}`;
+          const topRows = decodeSqlResponse(await runSql(topSql, undefined, ctrl.signal));
+          const top = selectTopSeries(
+            topRows.map((r) => ({ series: String(r.series), value: Number(r.value) })),
+          );
+
+          // Step 3b: main grouped query, filtered to the top-N series allow-list.
+          const mainSql = buildTimelineSql({
+            schema: querySchema,
+            table: queryTable,
+            timeCol,
+            metric: metric0,
+            interval: chosen,
+            maxIntervals,
+            groupByColumn,
+            seriesIn: top.series,
+          });
+          const groupedRows = decodeSqlResponse(await runSql(mainSql, undefined, ctrl.signal));
+          const pivoted = pivotSeriesRows(
+            groupedRows.map((r) => {
+              const v = r.value;
+              return {
+                bucket: String(r.bucket),
+                series: String(r.series),
+                value: typeof v === "number" && Number.isFinite(v) ? v : null,
+              };
+            }),
+            top.series,
+          );
+
+          if (!cancelled) {
+            setData(pivoted);
+            setSeriesValues(top.series);
+            setSeriesInfo({ truncated: top.truncated, total: top.total });
+            setIntervalState(chosen);
+            setLoading(false);
+          }
+          return;
+        }
+
+        // ===== Ungrouped path (regression lock): N parallel per-metric queries. =====
         const metricResults = await Promise.all(
           metrics.map((m) => {
             const sql = buildTimelineSql({
@@ -274,6 +340,8 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
 
         if (!cancelled) {
           setData(merged);
+          setSeriesValues([]);
+          setSeriesInfo({ truncated: false, total: 0 });
           setIntervalState(chosen);
           setLoading(false);
         }
@@ -294,6 +362,8 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effectiveSchema, effectiveTable, timeCol, maxIntervals,
+    // Phase 72: toggling the group-by (or switching the grouped column) must re-fetch.
+    groupByColumn, grouped,
     JSON.stringify(metrics.map((m) => `${m.column}:${m.aggregation}`)),
     filterVersion,
     // Re-fetch when the filter-view materializes / changes / expires (FROM-swap target).
@@ -345,6 +415,16 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
     return <div className="widget-timeline widget-timeline--empty"><div className="config-hint">No data for the selected range.</div></div>;
   }
 
+  // Phase 72: grouped render reads the ordered top-N series + truncation affordance.
+  const top = { series: seriesValues, truncated: seriesInfo.truncated, total: seriesInfo.total };
+  // Per-series stroke colors cycle the chart's colorTheme ramp (no raw hex).
+  const seriesColors = grouped
+    ? themeColorsFor(
+        getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME)!,
+        Math.max(1, top.series.length),
+      )
+    : [];
+
   // Axis tick formatter for the bucket (category) axis — shared by both orientations.
   const bucketFormatter = (v: string) => {
     // Non-empty, non-"auto" override → operator's literal pass-through (raw bucket).
@@ -361,6 +441,16 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
       data-vertical={vertical ? "true" : "false"}
       style={{ width: "100%", height: "100%", cursor: "crosshair" }}
     >
+      {/* Top-N affordance — surfaces silent series capping (no raw hex; theme token color). */}
+      {grouped && top.truncated && (
+        <div
+          className="config-hint"
+          data-testid="timeline-truncated-note"
+          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px" }}
+        >
+          Showing top {MAX_SERIES} of {top.total} series
+        </div>
+      )}
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={data}
@@ -417,52 +507,93 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
             />
           )}
 
-          {/* Value axes — one per metric (alternating sides). YAxis when horizontal,
-              XAxis when vertical (left→bottom, right→top). */}
-          {metrics.map((m, i) => {
-            const tickStyle = { fill: toCssColor(m.color), fontSize: 11 };
-            if (vertical) {
+          {/* Value axis/axes. GROUPED (Phase 72): a SINGLE shared value axis — all series
+              share the one metric's scale. UNGROUPED: one axis per metric (alternating
+              sides). YAxis when horizontal, XAxis when vertical. */}
+          {grouped ? (
+            vertical ? (
+              <XAxis
+                key={AXIS_IDS[0]}
+                type="number"
+                xAxisId={AXIS_IDS[0]}
+                orientation="bottom"
+                stroke={X_AXIS_COLOR}
+                tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
+              />
+            ) : (
+              <YAxis
+                key={AXIS_IDS[0]}
+                type="number"
+                yAxisId={AXIS_IDS[0]}
+                width={60}
+                stroke={X_AXIS_COLOR}
+                tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
+              />
+            )
+          ) : (
+            metrics.map((m, i) => {
+              const tickStyle = { fill: toCssColor(m.color), fontSize: 11 };
+              if (vertical) {
+                return (
+                  <XAxis
+                    key={AXIS_IDS[i]}
+                    type="number"
+                    xAxisId={AXIS_IDS[i]}
+                    orientation={AXIS_ORIENTATIONS[i] === "left" ? "bottom" : "top"}
+                    stroke={toCssColor(m.color)}
+                    tick={tickStyle}
+                  />
+                );
+              }
               return (
-                <XAxis
+                <YAxis
                   key={AXIS_IDS[i]}
                   type="number"
-                  xAxisId={AXIS_IDS[i]}
-                  orientation={AXIS_ORIENTATIONS[i] === "left" ? "bottom" : "top"}
+                  yAxisId={AXIS_IDS[i]}
+                  orientation={AXIS_ORIENTATIONS[i]}
+                  width={60}
                   stroke={toCssColor(m.color)}
                   tick={tickStyle}
                 />
               );
-            }
-            return (
-              <YAxis
-                key={AXIS_IDS[i]}
-                type="number"
-                yAxisId={AXIS_IDS[i]}
-                orientation={AXIS_ORIENTATIONS[i]}
-                width={60}
-                stroke={toCssColor(m.color)}
-                tick={tickStyle}
-              />
-            );
-          })}
+            })
+          )}
 
-          {metrics.map((m, i) => (
-            <Line
-              key={`line_${i}`}
-              {...(vertical ? { xAxisId: AXIS_IDS[i] } : { yAxisId: AXIS_IDS[i] })}
-              dataKey={`metric_${i}`}
-              stroke={toCssColor(m.color)}
-              strokeWidth={2}
-              dot={false}
-              name={m.label && m.label !== "" ? m.label : `${m.aggregation}(${m.column})`}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          ))}
+          {grouped
+            ? top.series.map((sv, i) => (
+                <Line
+                  key={`series_${sv}`}
+                  {...(vertical ? { xAxisId: AXIS_IDS[0] } : { yAxisId: AXIS_IDS[0] })}
+                  dataKey={sv}
+                  stroke={toCssColor(seriesColors[i] ?? seriesColors[0] ?? "FF66C2A5")}
+                  strokeWidth={2}
+                  dot={false}
+                  name={sv}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              ))
+            : metrics.map((m, i) => (
+                <Line
+                  key={`line_${i}`}
+                  {...(vertical ? { xAxisId: AXIS_IDS[i] } : { yAxisId: AXIS_IDS[i] })}
+                  dataKey={`metric_${i}`}
+                  stroke={toCssColor(m.color)}
+                  strokeWidth={2}
+                  dot={false}
+                  name={m.label && m.label !== "" ? m.label : `${m.aggregation}(${m.column})`}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              ))}
           {showTooltip && (
             <Tooltip {...RECHARTS_TOOLTIP_PROPS} />
           )}
-          {showLegend && metrics.length > 1 && <Legend verticalAlign="bottom" />}
+          {/* Legend: always shown when grouped (series values matter); when ungrouped,
+              only for multi-metric (unchanged). */}
+          {((grouped && showLegend) || (!grouped && showLegend && metrics.length > 1)) && (
+            <Legend verticalAlign="bottom" />
+          )}
 
           {/* Transient drag band — spans the bucket axis (x in horizontal, y in vertical). */}
           {dragStart && dragEnd && dragStart !== dragEnd && (
