@@ -141,9 +141,9 @@ export default function CalendarRenderer({
   const effectiveSchema = dynamicViewId !== undefined ? "" : (schemaName ?? "");
   const effectiveTable = baseTableName ?? "";
 
-  // ---- Dashboard context (for markMaterializing / markDvMaterializing) ----
+  // ---- Dashboard context (for markMaterializing / markDvMaterializing + dv retry CTA) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { dashboardId } = useDashboardContext();
+  const { dashboardId, retryDynamicView } = useDashboardContext();
 
   // ---- Scoped store selectors (PITFALL C-02 — never the whole map) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -172,6 +172,10 @@ export default function CalendarRenderer({
   );
   const dvStatus = dvEntry?.status;
   const dvViewName = dvEntry?.viewName;
+  // Phase 69 gap-fix (issue 1 — dv-not-materialized parity): reason/error drive the same
+  // over_threshold / error render-body placeholders other charts show (WidgetRenderer §820-867).
+  const dvReason = dvEntry?.reason;
+  const dvError = dvEntry?.error;
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const dvFilterEntry = useFilterViewStore((s) =>
@@ -179,6 +183,19 @@ export default function CalendarRenderer({
   );
   const dvFilterViewName = dvFilterEntry?.viewName;
   const dvFilterMaterializing = dvFilterEntry?.materializing ?? false;
+
+  // ---- Filter-aware fetch deps, neutralized when respondToFilters is OFF (issue 3) ----
+  // OFF (default) → the calendar always reads the UNFILTERED source, so filter-store churn must
+  // NOT trigger a re-fetch. Collapse the filter-aware deps to constants when OFF; the fetch effect
+  // then only re-runs on config/combo/dv-lifecycle changes. The dv MATERIALIZATION lifecycle
+  // (dvStatus/dvViewName) stays live regardless — a dv becoming materialized must still kick off
+  // the first fetch even with respondToFilters OFF.
+  const dataFilterVersion = respondToFilters ? filterVersion : 0;
+  const dataFvViewName = respondToFilters ? fvViewName : undefined;
+  const dataFvExpiresAt = respondToFilters ? fvExpiresAt : 0;
+  const dataFvMaterializing = respondToFilters ? fvMaterializing : false;
+  const dataDvFilterViewName = respondToFilters ? dvFilterViewName : undefined;
+  const dataDvFilterMaterializing = respondToFilters ? dvFilterMaterializing : false;
 
   // ---- Reactive appliedCell memo (mirrors TimelineRenderer appliedBand, §173-180) ----
   // Finds the active BETWEEN filter on timeCol; captures [lo, hi] as the active bounds.
@@ -228,12 +245,12 @@ export default function CalendarRenderer({
       //   table path: fvViewName || schema.table
       //   dv path: dvFilterViewName ?? dvViewName
       const fromView =
-        dynamicViewId === undefined ? fvViewName : (dvFilterViewName ?? dvViewName);
+        dynamicViewId === undefined ? dataFvViewName : (dataDvFilterViewName ?? dvViewName);
 
       // Table path suspend/expiry gates
       if (dynamicViewId === undefined) {
-        if (fvMaterializing) return;
-        if (fvViewName && fvExpiresAt > 0 && Date.now() >= fvExpiresAt) {
+        if (dataFvMaterializing) return;
+        if (dataFvViewName && dataFvExpiresAt > 0 && Date.now() >= dataFvExpiresAt) {
           useFilterViewStore.getState().clearView(tableId);
           return;
         }
@@ -241,7 +258,7 @@ export default function CalendarRenderer({
 
       // DV path gates
       if (dynamicViewId !== undefined) {
-        if (dvFilterMaterializing) return;
+        if (dataDvFilterMaterializing) return;
         if (dvStatus !== "materialized") return;
       }
 
@@ -324,12 +341,15 @@ export default function CalendarRenderer({
     effDomain,
     effSubdomain,
     respondToFilters,
-    filterVersion,
-    fvViewName,
-    fvExpiresAt,
-    fvMaterializing,
-    dvFilterViewName,
-    dvFilterMaterializing,
+    // Filter-aware deps are neutralized to constants when respondToFilters is OFF (issue 3),
+    // so a filter change no longer re-fires this effect for an unfiltered calendar.
+    dataFilterVersion,
+    dataFvViewName,
+    dataFvExpiresAt,
+    dataFvMaterializing,
+    dataDvFilterViewName,
+    dataDvFilterMaterializing,
+    // dv materialization lifecycle stays live regardless of respondToFilters.
     dvViewName,
     dvStatus,
   ]);
@@ -364,7 +384,61 @@ export default function CalendarRenderer({
   const { axis, emptyCell, accent } = useChartAxisColors();
 
   // ---- Render states ----
-  if (loading) {
+  // DV lifecycle gates (issue 1 — parity with WidgetRenderer §820-867): a dv-bound calendar whose
+  // dv is NOT materialized shows the SAME placeholder other charts show, instead of an infinite
+  // "Loading…" (the fetch effect skips runSql for a non-materialized dv, so loading never clears).
+  if (dynamicViewId !== undefined && dvStatus !== "materialized") {
+    if (dvStatus === undefined || dvStatus === "pending") {
+      return (
+        <div className="widget-calendar" data-testid="calendar-loading">
+          Loading…
+        </div>
+      );
+    }
+    if (dvStatus === "over_threshold") {
+      // no_filter: offer the on-demand "load the full table" CTA (server falls back to the base
+      // table when it is under max_records). exceeds_max_records: a filter is applied but still too
+      // large → instruct to narrow. Mirrors WidgetRenderer's two over_threshold branches.
+      if (dvReason === "no_filter") {
+        return (
+          <div className="widget-calendar widget-over-threshold" data-testid="calendar-over-threshold">
+            <span>No filter applied — load the full table, or apply a filter to narrow it.</span>
+            <button
+              type="button"
+              className="widget-retry-btn"
+              onClick={() => retryDynamicView(dynamicViewId)}
+            >
+              Load full table
+            </button>
+          </div>
+        );
+      }
+      return (
+        <div className="widget-calendar widget-over-threshold" data-testid="calendar-over-threshold">
+          <span>Too much data — narrow your filters to enable this view.</span>
+        </div>
+      );
+    }
+    if (dvStatus === "error") {
+      return (
+        <div className="widget-calendar widget-error" data-testid="calendar-dv-error">
+          <span>{dvError ?? "Dynamic view materialize failed"}</span>
+          <button
+            type="button"
+            className="widget-retry-btn"
+            onClick={() => retryDynamicView(dynamicViewId)}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+  }
+
+  // Issue 2 (no flicker): only blank to the full Loading placeholder on the INITIAL load (no data
+  // yet). During a re-fetch we keep the previously-rendered grid so the calendar updates in place
+  // instead of flashing "Loading…" between every filter change.
+  if (loading && data.length === 0) {
     return (
       <div className="widget-calendar" data-testid="calendar-loading">
         Loading…

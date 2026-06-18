@@ -100,7 +100,7 @@ vi.mock("../../store/filterViewStore", async (importOriginal) => {
 });
 
 // ---- Dynamic view store mock ----
-let mockDvViews2: Record<number, { viewName?: string; status: string }> = {};
+let mockDvViews2: Record<number, { viewName?: string; status: string; reason?: string; error?: string }> = {};
 
 vi.mock("../../store/dynamicViewStore", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -336,15 +336,17 @@ describe("CalendarRenderer", () => {
     expect(sql).not.toContain("FROM demo.sales");
   });
 
-  it("Test 5 (filterVersion re-fetch): bumping filterVersion causes runSql to be called again", async () => {
-    const { rerender } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+  it("Test 5 (filterVersion re-fetch — respondToFilters ON): bumping filterVersion causes runSql to be called again", async () => {
+    // respondToFilters:true — re-fetching on a filter change is the CORRECT behavior only when ON.
+    // (The OFF case is asserted by Test 37: a filterVersion bump must NOT re-fetch.)
+    const { rerender } = render(<CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />);
     await waitFor(() => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     const callsBefore = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
     // Bump filterVersion — simulate a filter being applied
     mockFilterVersion = 1;
-    rerender(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    rerender(<CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />);
     await waitFor(() => {
       expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsBefore);
     });
@@ -1077,5 +1079,84 @@ describe("CalendarRenderer", () => {
     for (const cell of populatedRects) {
       expect(cell.querySelector("title")).not.toBeNull();
     }
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Phase 69 gap-fixes (live-UAT findings)                          */
+  /* ---------------------------------------------------------------- */
+
+  // Test 36 (issue 1 — dv over_threshold parity): a dv-bound calendar whose dv is NOT materialized
+  // (over_threshold/no_filter) must show the SAME "Load full table" placeholder other charts show
+  // — NOT an infinite "Loading…" — and must NOT issue runSql against a non-materialized dv.
+  it("Test 36 (dv over_threshold/no_filter): shows Load-full-table CTA, not infinite loading; no runSql", async () => {
+    mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "over_threshold", reason: "no_filter" } };
+    render(
+      <CalendarRenderer widget={makeWidget({ dynamicViewId: 99, tableRef: "demo.sales" })} tables={TABLES} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-over-threshold")).toBeTruthy();
+    });
+    expect(screen.getByText(/load the full table/i)).toBeTruthy();
+    // NOT stuck on the loading placeholder, and no SQL issued for a non-materialized dv.
+    expect(screen.queryByTestId("calendar-loading")).toBeNull();
+    expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+  });
+
+  // Test 36b (issue 1 — exceeds_max_records): a filter is applied but the dv result is still too
+  // large → "Too much data" message (no CTA), parity with WidgetRenderer.
+  it("Test 36b (dv over_threshold/exceeds_max_records): shows narrow-filters message; no runSql", async () => {
+    mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "over_threshold", reason: "exceeds_max_records" } };
+    render(
+      <CalendarRenderer widget={makeWidget({ dynamicViewId: 99, tableRef: "demo.sales" })} tables={TABLES} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-over-threshold")).toBeTruthy();
+    });
+    expect(screen.getByText(/too much data/i)).toBeTruthy();
+    expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+  });
+
+  // Test 37 (issue 3 — respondToFilters OFF ignores filter changes): with OFF (default), bumping
+  // filterVersion must NOT re-fetch — the calendar reads the unfiltered source, so filter-store
+  // churn is irrelevant. (Old behavior re-fetched on every filter change; see fixed Test 5.)
+  it("Test 37 (respondToFilters OFF): filterVersion bump does NOT re-fetch", async () => {
+    const { rerender } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+    // Apply a dashboard filter (bump version) — an OFF calendar must ignore it.
+    mockFilterVersion = 5;
+    rerender(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    // Give any (erroneous) re-fetch a chance to fire.
+    await new Promise((r) => setTimeout(r, 25));
+    expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  });
+
+  // Test 38 (issue 2 — no flicker on re-fetch): while a re-fetch is IN FLIGHT, the calendar keeps
+  // the previously-rendered grid (stale data) instead of blanking to "Loading…". respondToFilters
+  // ON so a filterVersion bump drives the re-fetch; the second runSql is held open.
+  it("Test 38 (re-fetch keeps stale grid — no Loading flash)", async () => {
+    const fn = runSql as unknown as ReturnType<typeof vi.fn>;
+    let resolveSecond: (v: unknown) => void = () => {};
+    fn.mockReset();
+    fn.mockResolvedValueOnce(makeCalendarResponse(CANNED_ROWS)); // initial load
+    fn.mockImplementationOnce(() => new Promise((res) => { resolveSecond = res; })); // re-fetch hangs
+    fn.mockResolvedValue(makeCalendarResponse(CANNED_ROWS)); // any further calls
+
+    const { rerender } = render(
+      <CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    // Trigger a re-fetch (filter applied) — the second runSql is in flight.
+    mockFilterVersion = 1;
+    rerender(<CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />);
+    await new Promise((r) => setTimeout(r, 25));
+    // While the re-fetch is in flight the OLD grid stays — NO loading flash.
+    expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    expect(screen.queryByTestId("calendar-loading")).toBeNull();
+    resolveSecond(makeCalendarResponse(CANNED_ROWS)); // unblock the hung fetch
   });
 });
