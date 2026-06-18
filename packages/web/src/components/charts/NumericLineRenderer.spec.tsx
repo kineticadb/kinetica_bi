@@ -187,4 +187,118 @@ describe("NumericLineRenderer", () => {
     expect(src).toMatch(/dataType:\s*"number"/);
     expect(src).toMatch(/operator:\s*"between"/);
   });
+
+  // ---- Phase 72: grouped (series-split) rendering (GROUP-V114-04 numeric-line half) ----
+
+  describe("Grouped (Phase 72)", () => {
+    // Feeds: [0] range, [1] top-N pre-query (series/value rows), [2] main grouped query (bucket/series/value rows).
+    function mockGroupedResponse(
+      lo: number,
+      hi: number,
+      topRows: { series: string; value: number }[],
+      groupedRows: { bucket: number; series: string; value: number | null }[],
+    ) {
+      const rangeResp = { column_headers: ["lo", "hi"], column_1: [lo], column_2: [hi] };
+      const topResp = {
+        column_headers: ["series", "value"],
+        column_1: topRows.map((r) => r.series),
+        column_2: topRows.map((r) => r.value),
+      };
+      const groupedResp = {
+        column_headers: ["bucket", "series", "value"],
+        column_1: groupedRows.map((r) => r.bucket),
+        column_2: groupedRows.map((r) => r.series),
+        column_3: groupedRows.map((r) => r.value),
+      };
+      let call = 0;
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        const resp = call === 0 ? rangeResp : call === 1 ? topResp : groupedResp;
+        call++;
+        return Promise.resolve(resp);
+      });
+    }
+
+    it("grouped path issues range → top-N pre-query → main grouped query (GROUP BY bucket, series + IN allow-list)", async () => {
+      mockGroupedResponse(
+        0, 100,
+        [{ series: "A", value: 100 }, { series: "B", value: 50 }],
+        [
+          { bucket: 0, series: "A", value: 10 },
+          { bucket: 0, series: "B", value: 5 },
+        ],
+      );
+      render(<NumericLineRenderer widget={makeWidget({ groupByColumn: "driver_id" })} tables={TABLES} />);
+      await waitFor(() => {
+        expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3);
+      });
+      const calls = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls;
+      const topSql = calls[1][0] as string;
+      const mainSql = calls[2][0] as string;
+      // top-N pre-query ranks series by aggregate value DESC
+      expect(topSql).toMatch(/driver_id AS series/);
+      expect(topSql).toMatch(/ORDER BY value DESC/);
+      // main grouped query splits by series and filters to the top-N allow-list
+      expect(mainSql).toMatch(/driver_id AS series/);
+      expect(mainSql).toMatch(/GROUP BY bucket, series/);
+      expect(mainSql).toMatch(/driver_id IN \(/);
+    });
+
+    it("grouped renderer plots one Line per series value with numeric bucket pivot + theme-ramp colors (source + render)", async () => {
+      // Recharts does not render dimension-dependent SVG under JSDOM; assert the
+      // one-Line-per-series architecture via SOURCE text + a completing render.
+      const src = readFileSync(resolve(__dirname, "NumericLineRenderer.tsx"), "utf-8");
+      expect(src).toMatch(/top\.series\.map/);
+      expect(src).toMatch(/selectTopSeries/);
+      expect(src).toMatch(/pivotSeriesRows/);
+      expect(src).toMatch(/numericBuckets:\s*true/);
+      expect(src).toMatch(/themeColorsFor/);
+
+      mockGroupedResponse(
+        0, 100,
+        [{ series: "A", value: 100 }, { series: "B", value: 50 }],
+        [
+          { bucket: 0, series: "A", value: 10 },
+          { bucket: 0, series: "B", value: 5 },
+        ],
+      );
+      render(<NumericLineRenderer widget={makeWidget({ groupByColumn: "driver_id" })} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("numericline-renderer")).toBeInTheDocument());
+    });
+
+    it("top-N affordance — 'Showing top 12 of N' rendered when series truncated", async () => {
+      const many = Array.from({ length: 14 }, (_, i) => ({ series: `s${i}`, value: 100 - i }));
+      const groupedRows = many.map((m) => ({ bucket: 0, series: m.series, value: m.value }));
+      mockGroupedResponse(0, 100, many, groupedRows);
+      render(<NumericLineRenderer widget={makeWidget({ groupByColumn: "driver_id" })} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("numericline-renderer")).toBeInTheDocument());
+      expect(screen.getByTestId("numericline-truncated-note")).toHaveTextContent(/top 12 of 14/i);
+    });
+
+    it("drag-to-filter still dispatches a BETWEEN filter on xField when grouped (source contract preserved)", () => {
+      // Drag handlers + commitFilter sit OUTSIDE the grouped/ungrouped branch, so the
+      // BETWEEN-on-xField dispatch is identical in both. Static-assert the shared contract.
+      const src = readFileSync(resolve(__dirname, "NumericLineRenderer.tsx"), "utf-8");
+      expect(src).toMatch(/setBulkFilters\(tableId as number,\s*\[filter\]\)/);
+      expect(src).toMatch(/operator:\s*"between"/);
+      expect(src).toMatch(/column:\s*xField/);
+    });
+
+    it("groupByColumn is part of the fetch effect dep key (toggling group-by re-fetches)", () => {
+      const src = readFileSync(resolve(__dirname, "NumericLineRenderer.tsx"), "utf-8");
+      expect(src).toMatch(/groupByColumn/);
+      const count = (src.match(/groupByColumn/g) ?? []).length;
+      expect(count).toBeGreaterThanOrEqual(3);
+    });
+
+    it("ungrouped single-metric path is unchanged — still range + 1 metric query, no series split (regression lock)", async () => {
+      mockRangeAndMetric(0, 100, [[{ bucket: 0, value: 10 }]]);
+      render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
+      await waitFor(() => {
+        expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+      });
+      const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+      expect(metricSql).not.toMatch(/AS series/);
+      expect(metricSql).not.toMatch(/GROUP BY bucket, series/);
+    });
+  });
 });
