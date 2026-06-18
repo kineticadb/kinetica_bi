@@ -103,4 +103,145 @@ describe("NumericLineConfigPanel", () => {
     fireEvent.click(screen.getByLabelText("Vertical orientation"));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ vertical: true }));
   });
+
+  // ---- Phase 72: Group By picker + single-metric-when-grouped (GROUP-V114-02, -03) ----
+
+  describe("Group By (Phase 72)", () => {
+    it("Group By picker present with a None option; lists drilldown-safe columns excluding the xField", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      const sel = screen.getByLabelText("Group by") as HTMLSelectElement;
+      const opts = Array.from(sel.querySelectorAll("option")).map((o) => o.value);
+      // explicit None option to clear grouping
+      expect(opts).toContain("");
+      // categorical/drilldown-safe columns are eligible
+      expect(opts).toContain("driver_id");
+      expect(opts).toContain("fare_amount");
+      expect(opts).toContain("passenger_count");
+      // the selected xField is excluded from the group-by options
+      expect(opts).not.toContain("trip_distance");
+      // geometry (wkt) is drilldown-UNsafe and excluded
+      expect(opts).not.toContain("pickup_geom");
+    });
+
+    it("ungrouped (groupByColumn '') still shows the multi-metric builder with the Add-metric button", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      expect(screen.getByRole("button", { name: /Add metric/ })).toBeInTheDocument();
+    });
+
+    it("selecting a Group By patches groupByColumn (non-destructive — does NOT clear metrics)", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [
+          { column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" },
+          { column: "passenger_count", aggregation: "AVG", color: "FFFC8D62" },
+        ],
+      });
+      fireEvent.change(screen.getByLabelText("Group by"), { target: { value: "driver_id" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.groupByColumn).toBe("driver_id");
+      // non-destructive: both metrics preserved in config so clearing restores them
+      expect(call.metrics).toHaveLength(2);
+    });
+
+    it("when grouped, exactly one metric row renders, Add-metric is HIDDEN, and Remove is hidden", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        groupByColumn: "driver_id",
+        metrics: [
+          { column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" },
+          { column: "passenger_count", aggregation: "AVG", color: "FFFC8D62" },
+        ],
+      });
+      // only metrics[0] row visible
+      expect(screen.getByTestId("numericline-metric-row-0")).toBeInTheDocument();
+      expect(screen.queryByTestId("numericline-metric-row-1")).not.toBeInTheDocument();
+      // Add metric button hidden when grouped
+      expect(screen.queryByRole("button", { name: /Add metric/ })).not.toBeInTheDocument();
+      // Remove button hidden on the single grouped row
+      expect(screen.queryByRole("button", { name: /Remove metric 1/ })).not.toBeInTheDocument();
+    });
+
+    it("clearing Group By back to None restores the multi-metric builder with metrics intact", () => {
+      const { onChange, rerender } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        groupByColumn: "driver_id",
+        metrics: [
+          { column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" },
+          { column: "passenger_count", aggregation: "AVG", color: "FFFC8D62" },
+        ],
+      });
+      fireEvent.change(screen.getByLabelText("Group by"), { target: { value: "" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.groupByColumn).toBe("");
+      expect(call.metrics).toHaveLength(2);
+      // re-render in the now-ungrouped state → multi-metric builder restored
+      rerender(
+        <NumericLineConfigPanel
+          config={{ ...call } as Record<string, unknown>}
+          onChange={onChange}
+          tables={TABLES}
+          isValid={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /Add metric/ })).toBeInTheDocument();
+      expect(screen.getByTestId("numericline-metric-row-1")).toBeInTheDocument();
+    });
+
+    it("enabling Group By with 0 metrics seeds one default metric row", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [],
+      });
+      fireEvent.change(screen.getByLabelText("Group by"), { target: { value: "driver_id" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.groupByColumn).toBe("driver_id");
+      expect(call.metrics.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("grouped form is valid with tableId + xField + groupByColumn + a complete metrics[0]", () => {
+      const isValid = vi.fn();
+      render(
+        <NumericLineConfigPanel
+          config={{
+            tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+            groupByColumn: "driver_id",
+            metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+          } as Record<string, unknown>}
+          onChange={vi.fn()}
+          tables={TABLES}
+          isValid={isValid}
+        />,
+      );
+      expect(isValid).toHaveBeenLastCalledWith(true);
+    });
+
+    it("changing X-axis column to the current groupByColumn clears groupByColumn", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        groupByColumn: "fare_amount",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      fireEvent.change(screen.getByLabelText("X-axis column"), { target: { value: "fare_amount" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.xField).toBe("fare_amount");
+      expect(call.groupByColumn).toBe("");
+    });
+
+    it("changing base table clears groupByColumn (old group col invalid on new schema)", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        groupByColumn: "driver_id",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      fireEvent.change(screen.getByLabelText("Base table"), { target: { value: "demo.nyctaxi" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.groupByColumn).toBe("");
+    });
+  });
 });

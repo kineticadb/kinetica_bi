@@ -29,6 +29,7 @@ export type NumericLineConfig = {
   tableRef?: string; // "schema.name"
   dynamicViewId?: number; // future-compat; not exposed in picker yet
   xField: string; // numeric X-axis column
+  groupByColumn?: string; // Phase 72: optional group-by dimension. Non-empty → single-metric series-split.
   metrics: NumericMetric[]; // length 0..4
   maxBuckets: number; // default 50
   showLegend: boolean;
@@ -73,6 +74,8 @@ export default function NumericLineConfigPanel({
   const tableId = cfg.tableId;
   const allTables = tables ?? [];
   const xField = cfg.xField ?? "";
+  const groupByColumn = cfg.groupByColumn ?? "";
+  const grouped = groupByColumn !== "";
   const metrics = cfg.metrics ?? [];
   const maxBuckets = cfg.maxBuckets ?? DEFAULT_MAX_BUCKETS;
   const showLegend = cfg.showLegend ?? true;
@@ -107,15 +110,31 @@ export default function NumericLineConfigPanel({
     [columns],
   );
 
-  const formValid = useMemo(
+  // Phase 72: group-eligible dimensions (drilldown-safe; excludes the selected xField).
+  // Mirrors ChartConfigPanel / TimelineConfigPanel `isColumnDrillDownSafe` eligibility.
+  const groupByColumns = useMemo(
     () =>
-      tableId !== undefined &&
-      xField !== "" &&
+      Object.entries(columns)
+        .filter(([name, type]) => name !== xField && isColumnDrillDownSafe(type))
+        .map(([name]) => name),
+    [columns, xField],
+  );
+
+  // Form validity:
+  //  - ungrouped: tableId + xField + 1..MAX_METRICS, each metric complete.
+  //  - grouped: tableId + xField + groupByColumn + a complete metrics[0] (metrics[1..] ignored).
+  const formValid = useMemo(() => {
+    if (tableId === undefined || xField === "") return false;
+    if (grouped) {
+      const m0 = metrics[0];
+      return m0 !== undefined && m0.column !== "" && m0.aggregation !== undefined;
+    }
+    return (
       metrics.length >= 1 &&
       metrics.length <= MAX_METRICS &&
-      metrics.every((m) => m.column !== "" && m.aggregation !== undefined),
-    [tableId, xField, metrics],
-  );
+      metrics.every((m) => m.column !== "" && m.aggregation !== undefined)
+    );
+  }, [tableId, xField, grouped, metrics]);
 
   useEffect(() => {
     isValid?.(formValid);
@@ -135,18 +154,42 @@ export default function NumericLineConfigPanel({
 
   const handleTableChange = (newValue: string) => {
     if (newValue === "") {
-      patch({ tableId: undefined, tableRef: undefined, xField: "", metrics: [] });
+      patch({ tableId: undefined, tableRef: undefined, xField: "", groupByColumn: "", metrics: [] });
       return;
     }
     const newTable = allTables.find((t) => `${t.schema}.${t.name}` === newValue);
     if (!newTable) return;
-    // Old xField / metrics may not exist on the new schema — clear both.
+    // Old xField / groupByColumn / metrics may not exist on the new schema — clear all.
     patch({
       tableId: newTable.id,
       tableRef: `${newTable.schema}.${newTable.name}`,
       xField: "",
+      groupByColumn: "",
       metrics: [],
     });
+  };
+
+  const handleXFieldChange = (newCol: string) =>
+    // If the new X-axis column equals the current group-by, clear the group-by
+    // (a column can't be both the X axis and the series split).
+    patch({ xField: newCol, ...(newCol === groupByColumn ? { groupByColumn: "" } : {}) });
+
+  // Phase 72: toggle the group-by dimension. NON-DESTRUCTIVE — never mutates the metrics
+  // array on enable (metrics[1..] stay in config so clearing restores the multi-metric
+  // builder). Only seeds metrics[0] when enabling with zero metrics so a single row renders.
+  const handleGroupByChange = (newCol: string) => {
+    if (newCol !== "" && metrics.length === 0) {
+      const palette = themePalette.length > 0
+        ? themePalette
+        : themeColorsFor(getCbColorTheme(DEFAULT_COLOR_THEME)!, 1);
+      const seedColor = palette[0] ?? "FF66C2A5";
+      patch({
+        groupByColumn: newCol,
+        metrics: [{ column: "", aggregation: "SUM", color: seedColor, label: "" }],
+      });
+      return;
+    }
+    patch({ groupByColumn: newCol });
   };
 
   const handleAddMetric = () => {
@@ -218,7 +261,7 @@ export default function NumericLineConfigPanel({
               className="ds-select"
               aria-label="X-axis column"
               value={xField}
-              onChange={(e) => patch({ xField: e.target.value })}
+              onChange={(e) => handleXFieldChange(e.target.value)}
             >
               <option value="">Pick a numeric column...</option>
               {numericColumns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -228,6 +271,22 @@ export default function NumericLineConfigPanel({
                 No numeric columns on this table. Pick a different table.
               </div>
             )}
+          </div>
+
+          {/* Group By (optional) — Phase 72. Selecting a dimension collapses the
+              chart to a single metric split into one series per group value;
+              "None" restores the 1-4 multi-metric builder. */}
+          <div className="ds-field">
+            <span className="ds-field-label">Group By (optional)</span>
+            <select
+              className="ds-select"
+              aria-label="Group by"
+              value={groupByColumn}
+              onChange={(e) => handleGroupByChange(e.target.value)}
+            >
+              <option value="">None</option>
+              {groupByColumns.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
 
           {/* Color theme — above Metrics so re-picking visibly recolors swatches. */}
@@ -245,9 +304,10 @@ export default function NumericLineConfigPanel({
             </select>
           </div>
 
-          {/* Metrics */}
+          {/* Metrics — when grouped, a single metric is split into one series per
+              group value (multi-metric is mutually exclusive with group-by). */}
           <div className="config-group-label" style={{ marginTop: 16 }}>
-            METRICS (max {MAX_METRICS})
+            {grouped ? `METRIC (grouped by ${groupByColumn})` : `METRICS (max ${MAX_METRICS})`}
           </div>
 
           {metrics.length === 0 && (
@@ -256,7 +316,7 @@ export default function NumericLineConfigPanel({
             </div>
           )}
 
-          {metrics.map((m, idx) => {
+          {(grouped ? metrics.slice(0, 1) : metrics).map((m, idx) => {
             const columnMissing = m.column !== "" && columns[m.column] === undefined;
             return (
               <div
@@ -303,14 +363,16 @@ export default function NumericLineConfigPanel({
                   style={{ flex: "1 1 120px", minWidth: 120 }}
                 />
 
-                <button
-                  type="button"
-                  className="ghost-sm ghost-danger"
-                  aria-label={`Remove metric ${idx + 1}`}
-                  onClick={() => handleRemoveMetric(idx)}
-                >
-                  Remove
-                </button>
+                {!grouped && (
+                  <button
+                    type="button"
+                    className="ghost-sm ghost-danger"
+                    aria-label={`Remove metric ${idx + 1}`}
+                    onClick={() => handleRemoveMetric(idx)}
+                  >
+                    Remove
+                  </button>
+                )}
 
                 {columnMissing && (
                   <span className="config-hint" style={{ color: "var(--danger)" }}>
@@ -321,15 +383,17 @@ export default function NumericLineConfigPanel({
             );
           })}
 
-          <button
-            type="button"
-            className="ghost-sm"
-            aria-label="Add metric"
-            onClick={handleAddMetric}
-            disabled={metrics.length >= MAX_METRICS}
-          >
-            + Add metric {metrics.length >= MAX_METRICS && `(max ${MAX_METRICS})`}
-          </button>
+          {!grouped && (
+            <button
+              type="button"
+              className="ghost-sm"
+              aria-label="Add metric"
+              onClick={handleAddMetric}
+              disabled={metrics.length >= MAX_METRICS}
+            >
+              + Add metric {metrics.length >= MAX_METRICS && `(max ${MAX_METRICS})`}
+            </button>
+          )}
 
           {/* Options */}
           <div className="config-group-label" style={{ marginTop: 16 }}>
