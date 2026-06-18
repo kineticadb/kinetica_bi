@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildNumericLineSql } from "./buildNumericLineSql";
 import type { NumericMetric } from "./numericBin";
+import { MAX_SERIES } from "./groupedSeries";
 
 const metric = (over: Partial<NumericMetric> = {}): NumericMetric => ({
   column: "fare_amount",
@@ -50,5 +51,67 @@ describe("buildNumericLineSql", () => {
     });
     expect(sql).toContain("FROM _kbi_filt_x ");
     expect(sql).toContain("FLOOR(trip_distance / 0.5) * 0.5 AS bucket");
+  });
+});
+
+describe("buildNumericLineSql — grouped (Phase 72)", () => {
+  it("no group-by arg → byte-identical to baseline", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+    });
+    expect(sql).toBe(
+      "SELECT FLOOR(trip_distance / 5) * 5 AS bucket, SUM(fare_amount) AS value " +
+        "FROM demo.nyctaxi WHERE trip_distance IS NOT NULL " +
+        "GROUP BY bucket ORDER BY bucket ASC LIMIT 51",
+    );
+  });
+
+  it("groupByColumn emits FLOOR bucket + series + GROUP BY bucket, series + IS NOT NULL", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+      groupByColumn: "vendor",
+    });
+    expect(sql).toContain("FLOOR(trip_distance / 5) * 5 AS bucket");
+    expect(sql).toContain("vendor AS series");
+    expect(sql).toContain("GROUP BY bucket, series");
+    expect(sql).toContain("AND vendor IS NOT NULL");
+  });
+
+  it("grouped LIMIT scales (maxBuckets + 1) by MAX_SERIES", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+      groupByColumn: "vendor",
+    });
+    expect(sql).toContain(`LIMIT ${51 * MAX_SERIES}`);
+  });
+
+  it("seriesIn emits numeric IN-filter and LIMIT scaled by list length", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+      groupByColumn: "vendor",
+      seriesIn: [1, 2],
+    });
+    expect(sql).toContain("vendor IN (1, 2)");
+    expect(sql).toContain(`LIMIT ${51 * 2}`);
   });
 });

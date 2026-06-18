@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildTimelineSql } from "./buildTimelineSql";
 import { INTERVAL_LADDER } from "./timelineBin";
 import type { TimelineInterval, TimelineMetric } from "./timelineBin";
+import { MAX_SERIES } from "./groupedSeries";
 
 describe("buildTimelineSql", () => {
   // Helpers: look up real ladder entries (tests exercise the real ladder per plan spec)
@@ -143,5 +144,72 @@ describe("buildTimelineSql", () => {
     expect(sql).toContain("GROUP BY bucket");
     // Verify it's not repeating the DATE_TRUNC in GROUP BY
     expect(sql).not.toContain("GROUP BY DATE_TRUNC");
+  });
+});
+
+describe("buildTimelineSql — grouped (Phase 72)", () => {
+  const hourEntry = INTERVAL_LADDER.find((i) => i.key === "hour")! as TimelineInterval;
+  const baseMetric: TimelineMetric = {
+    column: "fare_amount",
+    aggregation: "SUM",
+    color: "FF66C2A5",
+  };
+
+  // Backward-compat: no group-by arg → byte-identical to the Test 1 baseline literal.
+  it("no group-by arg → byte-identical to baseline", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('hour', pickup_time) AS bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL GROUP BY bucket ORDER BY bucket ASC LIMIT 200"
+    );
+  });
+
+  it("groupByColumn emits series + GROUP BY bucket, series + IS NOT NULL", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+      groupByColumn: "vendor",
+    });
+    expect(sql).toContain("vendor AS series");
+    expect(sql).toContain("GROUP BY bucket, series");
+    expect(sql).toContain("AND vendor IS NOT NULL");
+  });
+
+  it("grouped LIMIT scales by MAX_SERIES", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+      groupByColumn: "vendor",
+    });
+    expect(sql).toContain(`LIMIT ${200 * MAX_SERIES}`);
+  });
+
+  it("seriesIn emits IN-filter with quoting and LIMIT scaled by list length", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+      groupByColumn: "vendor",
+      seriesIn: ["A", "O'Brien"],
+    });
+    expect(sql).toContain("vendor IN ('A', 'O''Brien')");
+    expect(sql).toContain(`LIMIT ${200 * 2}`);
   });
 });
