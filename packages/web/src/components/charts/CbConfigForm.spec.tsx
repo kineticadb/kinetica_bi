@@ -445,6 +445,55 @@ describe("CbConfigForm", () => {
     expect(screen.getByLabelText("Shape fill color (AARRGGBB hex) for break 1")).toBeInTheDocument();
   });
 
+  // Phase 71 (SHAPE-V114-02): with hideShapeParams (latlon/point context), the per-break
+  // advanced panel hides the SHAPE* trio (shape line width/color/fill) but keeps Point
+  // size + Point shape (points legitimately use POINT* styling).
+  it("hideShapeParams: expanded advanced panel shows Point size/shape but HIDES the SHAPE* trio", () => {
+    const breaks = [
+      { value: 10, color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+    ];
+    render(
+      <CbConfigForm
+        config={makeCbConfig({ attr: "fare", valsType: "numeric", breaks })}
+        onChange={onChange}
+        columns={baseColumns}
+        hideShapeParams
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Toggle advanced for row 1"));
+
+    // Point size + Point shape stay visible
+    expect(screen.getByLabelText("Point size for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Point shape for break 1")).toBeInTheDocument();
+
+    // SHAPE* trio is hidden under hideShapeParams
+    expect(screen.queryByLabelText("Shape line width for break 1")).toBeNull();
+    expect(screen.queryByLabelText("Shape line color (AARRGGBB hex) for break 1")).toBeNull();
+    expect(screen.queryByLabelText("Shape fill color (AARRGGBB hex) for break 1")).toBeNull();
+  });
+
+  // Phase 71 (SHAPE-V114-02): regression — omitting hideShapeParams (default falsy)
+  // preserves the full advanced panel including the SHAPE* trio.
+  it("hideShapeParams omitted: expanded advanced panel shows ALL fields including the SHAPE* trio", () => {
+    const breaks = [
+      { value: 10, color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+    ];
+    render(
+      <CbConfigForm
+        config={makeCbConfig({ attr: "fare", valsType: "numeric", breaks })}
+        onChange={onChange}
+        columns={baseColumns}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Toggle advanced for row 1"));
+
+    expect(screen.getByLabelText("Point size for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Point shape for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shape line width for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shape line color (AARRGGBB hex) for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shape fill color (AARRGGBB hex) for break 1")).toBeInTheDocument();
+  });
+
   it("pointSize input clamps to 1-20 range — 0 → 1, 50 → 20", () => {
     const breaks = [
       { value: 10, color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },

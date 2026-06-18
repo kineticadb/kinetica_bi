@@ -1424,6 +1424,7 @@ export default function KineticaWmsLayerForm({
               cbAutoSuggestDisabledReason ?? cbAutoSuggestTarget.autoSuggestDisabledReason
             }
             trackContext={spatialMode === "track"}
+            hideShapeParams={spatialMode === "latlon"}
           />
         )}
 

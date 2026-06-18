@@ -325,6 +325,52 @@ describe("KineticaWmsLayerForm", () => {
     );
   });
 
+  // Phase 71 (SHAPE-V114-02): parent wiring — KineticaWmsLayerForm passes
+  // hideShapeParams={spatialMode === "latlon"} to CbConfigForm. In classbreak mode,
+  // expanding a break row shows the SHAPE* trio for wkt but hides it for latlon.
+  const cbBreaksConfig = (spatialMode: string): Record<string, unknown> => ({
+    ...baseConfig,
+    spatialMode,
+    renderMode: "classbreak",
+    cb_config: JSON.stringify({
+      attr: "fare",
+      valsType: "numeric",
+      breaks: [
+        { value: 10, color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+      ],
+    }),
+  });
+
+  it("classbreak latlon: expanding a break row hides the per-break SHAPE* trio", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={cbBreaksConfig("latlon")}
+        onChange={vi.fn()}
+        columns={baseColumns}
+      />
+    );
+    fireEvent.click(screen.getByLabelText("Toggle advanced for row 1"));
+    expect(screen.getByLabelText("Point size for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Point shape for break 1")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Shape line width for break 1")).toBeNull();
+    expect(screen.queryByLabelText("Shape line color (AARRGGBB hex) for break 1")).toBeNull();
+    expect(screen.queryByLabelText("Shape fill color (AARRGGBB hex) for break 1")).toBeNull();
+  });
+
+  it("classbreak wkt: expanding a break row shows the per-break SHAPE* trio", () => {
+    render(
+      <KineticaWmsLayerForm
+        config={cbBreaksConfig("wkt")}
+        onChange={vi.fn()}
+        columns={baseColumns}
+      />
+    );
+    fireEvent.click(screen.getByLabelText("Toggle advanced for row 1"));
+    expect(screen.getByLabelText("Shape line width for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shape line color (AARRGGBB hex) for break 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shape fill color (AARRGGBB hex) for break 1")).toBeInTheDocument();
+  });
+
   it("does NOT render a table picker (table picker lives in LayersModal)", () => {
     render(
       <KineticaWmsLayerForm

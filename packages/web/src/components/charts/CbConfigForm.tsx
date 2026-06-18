@@ -72,6 +72,12 @@ type CbConfigFormProps = {
    * non-track CB form.
    */
   trackContext?: boolean;
+  /**
+   * Phase 71 (SHAPE-V114-02): when true (latlon/point context), the per-break SHAPE*
+   * trio (shape line width/color/fill) is hidden — points use POINT* styling, not shape
+   * style. Additive: undefined/false preserves the full form.
+   */
+  hideShapeParams?: boolean;
 };
 
 // ── Cardinality state machine ───────────────────────────────────────
@@ -112,6 +118,7 @@ export default function CbConfigForm({
   tableName,
   autoSuggestDisabledReason,
   trackContext,
+  hideShapeParams,
 }: CbConfigFormProps): JSX.Element {
   // ── Deserialize cb_config ────────────────────────────────────────
   const cbConfig: CbConfig = coalesceCbConfig((config.cb_config as string | null) ?? null);
@@ -987,6 +994,10 @@ export default function CbConfigForm({
                     ))}
                   </select>
                 </label>
+                {/* Phase 71 (SHAPE-V114-02): hide the per-break SHAPE* trio under
+                    latlon/point context — points use POINT* styling, not shape style. */}
+                {!hideShapeParams && (
+                  <>
                 <label>
                   Shape line width
                   <input
@@ -1062,6 +1073,8 @@ export default function CbConfigForm({
                     />
                   </span>
                 </label>
+                  </>
+                )}
               </div>
             )}
           </div>
