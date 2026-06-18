@@ -47,6 +47,7 @@ import type {
   RadioGroupConfig,
   RadioOption,
   RadioOrientation,
+  RadioDisplayStyle,
 } from "../../lib/radioGroupConfig";
 import {
   getOptionActions,
@@ -69,6 +70,7 @@ function parseConfig(raw: Record<string, unknown>): RadioGroupConfig {
   return {
     title: raw.title as string | undefined,
     orientation: (raw.orientation as RadioOrientation | undefined) ?? "vertical",
+    displayStyle: (raw.displayStyle as RadioDisplayStyle | undefined) ?? "radio",
     defaultOptionId: raw.defaultOptionId as string | undefined,
     options: (raw.options as RadioOption[] | undefined) ?? [],
   };
@@ -864,6 +866,25 @@ export default function RadioGroupConfigPanel({
         >
           <option value="vertical">Vertical (default)</option>
           <option value="horizontal">Horizontal</option>
+        </select>
+      </div>
+
+      {/* Display style toggle — radio inputs vs a toggle-button group (existing button look). */}
+      <div className="ds-field" style={{ marginBottom: 10 }}>
+        <span className="ds-field-label">Display style</span>
+        <select
+          className="ds-select"
+          aria-label="Radio Dashboard Control display style"
+          value={cfg.displayStyle ?? "radio"}
+          onChange={(e) =>
+            onChange({
+              ...config,
+              displayStyle: e.target.value as RadioDisplayStyle,
+            })
+          }
+        >
+          <option value="radio">Radio buttons (default)</option>
+          <option value="buttons">Toggle buttons</option>
         </select>
       </div>
 

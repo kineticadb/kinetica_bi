@@ -563,6 +563,25 @@ describe("RadioGroupConfigPanel — orientation toggle", () => {
     const next = onChange.mock.calls[0][0] as { orientation: string };
     expect(next.orientation).toBe("horizontal");
   });
+
+  it("switching display style calls onChange with displayStyle='buttons'", () => {
+    const onChange = vi.fn();
+    render(
+      <RadioGroupConfigPanel
+        config={{ orientation: "vertical", options: [] }}
+        onChange={onChange}
+        isValid={vi.fn()}
+        widgets={[mockWidget1]}
+      />,
+    );
+
+    const select = screen.getByRole("combobox", { name: /radio dashboard control display style/i });
+    fireEvent.change(select, { target: { value: "buttons" } });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    const next = onChange.mock.calls[0][0] as { displayStyle: string };
+    expect(next.displayStyle).toBe("buttons");
+  });
 });
 
 // ---------------------------------------------------------------------------

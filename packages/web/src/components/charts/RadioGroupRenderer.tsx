@@ -42,6 +42,7 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
   // This ensures a config edit + live re-render is always reflected.
   const cfg = (widget.config ?? {}) as unknown as RadioGroupConfig;
   const orientation = cfg.orientation ?? "vertical";
+  const displayStyle = cfg.displayStyle ?? "radio";
   const title = cfg.title;
   const options = cfg.options ?? [];
   const defaultOptionId = cfg.defaultOptionId;
@@ -105,12 +106,33 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
         <div className="radiogroup-title">{title}</div>
       )}
       <div
-        className={`radiogroup-options radiogroup--${orientation}`}
+        className={`radiogroup-options radiogroup--${orientation} radiogroup--${displayStyle === "buttons" ? "buttons" : "radio"}`}
         role="radiogroup"
         aria-label={title ?? "Radio Dashboard Control"}
       >
         {options.map((opt) => {
           const isSelected = selectedOptionId === opt.id;
+
+          // Toggle-button style: reuse the app's button classes (selected = filled
+          // btn-primary; unselected = ghost-sm). role="radio" + aria-checked keeps the
+          // single-select semantics + a11y identical to the input variant.
+          if (displayStyle === "buttons") {
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={opt.label}
+                className={`radiogroup-button ${isSelected ? "btn-primary" : "ghost-sm"}`}
+                data-testid={`radiogroup-option-${opt.id}`}
+                onClick={() => setSelectedOptionId(opt.id)}
+              >
+                {opt.label}
+              </button>
+            );
+          }
+
           return (
             <label
               key={opt.id}

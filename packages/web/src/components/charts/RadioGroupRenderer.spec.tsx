@@ -414,4 +414,47 @@ describe("RadioGroupRenderer", () => {
     expect((state.layerOverrides[LAYER_ID]?.config as Record<string, unknown>)?.renderMode).toBe("classbreak");
     expect(state.widgetOverrides[WIDGET_ID]).toEqual({ show_popup: true });
   });
+
+  /* ---- displayStyle "buttons": toggle-button group ---------------- */
+
+  it("displayStyle 'buttons': renders <button role=radio> per option (no inputs), selected uses btn-primary, click applies the action", async () => {
+    const { default: RadioGroupRenderer } = await import("./RadioGroupRenderer");
+    const LAYER_ID = 260;
+    const layer = makeLayer(LAYER_ID);
+    const cfg: RadioGroupConfig = {
+      ...layerTargetConfig(LAYER_ID, { defaultOptionId: "opt-a" }),
+      displayStyle: "buttons",
+    };
+    const widget = makeRadioWidget(cfg);
+
+    let container!: HTMLElement;
+    await act(async () => {
+      ({ container } = render(wrapWithProvider(<RadioGroupRenderer widget={widget} />, [layer])));
+    });
+
+    // Buttons, not radio inputs.
+    const optB = container.querySelector("[data-testid='radiogroup-option-opt-b']") as HTMLElement;
+    expect(optB.tagName).toBe("BUTTON");
+    expect(optB.getAttribute("role")).toBe("radio");
+    expect(container.querySelector("input[type='radio']")).toBeNull();
+
+    // Selected option reuses the existing primary-button look; unselected uses ghost-sm.
+    const optA = container.querySelector("[data-testid='radiogroup-option-opt-a']") as HTMLElement;
+    expect(optA.className).toContain("btn-primary"); // opt-a is the default-selected
+    expect(optA.getAttribute("aria-checked")).toBe("true");
+    expect(optB.className).toContain("ghost-sm");
+    expect(optB.getAttribute("aria-checked")).toBe("false");
+
+    // Clicking a button selects it and applies its action (overlay reflects classbreak).
+    await act(async () => {
+      fireEvent.click(optB);
+    });
+    const cfgOverride = useWidgetActionStore.getState().layerOverrides[LAYER_ID]?.config as
+      | Record<string, unknown>
+      | undefined;
+    expect(cfgOverride?.renderMode).toBe("classbreak");
+    expect(
+      (container.querySelector("[data-testid='radiogroup-option-opt-b']") as HTMLElement).className,
+    ).toContain("btn-primary");
+  });
 });

@@ -38,6 +38,13 @@ import { validateActionPatch, validateLayerSnapshot } from "./actionAllowList";
 export type RadioOrientation = "vertical" | "horizontal";
 
 /**
+ * How the options render: classic radio inputs, or a toggle-button group that reuses
+ * the app's button look (selected = btn-primary, unselected = ghost-sm). Single-select
+ * either way. Optional — defaults to "radio" so existing widgets are unchanged.
+ */
+export type RadioDisplayStyle = "radio" | "buttons";
+
+/**
  * A single radio option.
  *
  * Phase 60.2 multi-target shape: `actions` carries an ordered array of independent
@@ -77,12 +84,14 @@ export type RadioOption = {
  *
  * - title: optional display title above the group
  * - orientation: "vertical" (default) | "horizontal"
+ * - displayStyle: "radio" (default) | "buttons" — render as radio inputs or a toggle-button group
  * - defaultOptionId: optional; Phase 60 applies this option transiently on dashboard open
  * - options: ordered array of RadioOptions; each carries independent WidgetAction envelopes
  */
 export type RadioGroupConfig = {
   title?: string;
   orientation: RadioOrientation;
+  displayStyle?: RadioDisplayStyle;
   defaultOptionId?: string;
   options: RadioOption[];
 };
