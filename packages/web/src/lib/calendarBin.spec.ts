@@ -134,18 +134,27 @@ describe("calendarBin — computeCellBounds", () => {
     expect(end).toBe("2024-12-31T23:59:59.999Z");
   });
 
-  it("week: known Monday anchor — 2024-01-01 is a Monday (ISO week start)", () => {
-    // week anchor = documented assumption (Monday); confirmed in Plan 65-02.
-    // 2024-01-01 is a Monday. A timestamp within the first ISO week of 2024:
-    //   start = 2024-01-01T00:00:00.000Z (Monday)
-    //   end   = 2024-01-07T23:59:59.999Z (Sunday, next bucket = 2024-01-08T00:00:00.000Z - 1ms)
-    const [start, end] = computeCellBounds("2024-01-03T08:00:00.000Z", "week");
+  it("week: trusts the bucket-start input verbatim (Monday-anchored bucket → [Mon, Sun])", () => {
+    // The drill input is Kinetica's DATE_TRUNC('week') bucket START. For a Monday-anchored
+    // deployment the bucket start is a Monday (2024-01-01 is a Monday):
+    //   start = 2024-01-01T00:00:00.000Z, end = 2024-01-07T23:59:59.999Z
+    const [start, end] = computeCellBounds("2024-01-01T00:00:00.000Z", "week");
     expect(start).toBe("2024-01-01T00:00:00.000Z");
     expect(end).toBe("2024-01-07T23:59:59.999Z");
   });
 
+  it("week: ANCHOR-AGNOSTIC — a Sunday-anchored bucket start is NOT re-anchored to Monday (v1.13 CALUX bug fix)", () => {
+    // 2022-10-23 is a SUNDAY. Under a Sunday-anchored Kinetica deployment, DATE_TRUNC('week')
+    // returns this date as the bucket start, and the cell COUNT covers [Oct 23 .. Oct 29].
+    // The drill window MUST match that same week — the old code shifted back to Monday Oct 17
+    // (a DIFFERENT week), which is exactly why the filtered record count diverged from the cell.
+    const [start, end] = computeCellBounds("2022-10-23T00:00:00.000Z", "week");
+    expect(start).toBe("2022-10-23T00:00:00.000Z"); // NOT 2022-10-17 (would be the Monday re-anchor)
+    expect(end).toBe("2022-10-29T23:59:59.999Z");
+  });
+
   it("week: verify 7-day span (end - start + 1ms === 7 days)", () => {
-    const [start, end] = computeCellBounds("2024-01-03T08:00:00.000Z", "week");
+    const [start, end] = computeCellBounds("2024-01-01T00:00:00.000Z", "week");
     const spanMs = new Date(end).getTime() - new Date(start).getTime() + 1;
     expect(spanMs).toBe(7 * 24 * 60 * 60 * 1000); // exactly 7 days
   });

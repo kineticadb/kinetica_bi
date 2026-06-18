@@ -23,8 +23,9 @@
  * Compatible with the whereClause.ts datetime BETWEEN path — the 'Z' suffix contains
  * no embedded single quotes, safe as a single-quoted SQL literal.
  *
- * Week start-day: Monday (ISO week; offset = (getUTCDay() + 6) % 7).
- * Documented assumption — confirmed in Plan 65-02 against the live Kinetica instance.
+ * Week bucketing: computeCellBounds for "week" trusts the input as Kinetica's
+ * DATE_TRUNC('week') bucket START (the deployment's actual anchor — NOT assumed Monday)
+ * and spans [start, start + 7 days). See computeCellBounds for the v1.13 anchor-bug history.
  */
 
 /** The domain is the "outer" grouping level in the calendar (rows). */
@@ -129,14 +130,20 @@ export function computeCellBounds(
       break;
     }
     case "week": {
-      // Truncate to day first, then back up to Monday (ISO week start).
-      // offset = (getUTCDay() + 6) % 7  →  Mon=0, Tue=1, …, Sun=6
-      const dayTrunc = Date.UTC(y, mo, day, 0, 0, 0, 0);
-      const dow = new Date(dayTrunc).getUTCDay(); // 0=Sun, 1=Mon, …, 6=Sat
-      const offset = (dow + 6) % 7; // distance from Monday (Mon=0 … Sun=6)
-      startMs = dayTrunc - offset * 86_400_000;
-      nextBucketStartMs = startMs + 7 * 86_400_000; // +7 days
-      // week anchor = documented assumption (Monday); confirmed in Plan 65-02.
+      // The input is Kinetica's DATE_TRUNC('week', timeCol) bucket START — i.e. the ACTUAL
+      // week anchor Kinetica uses for THIS deployment (NOT guaranteed Monday; it varies by
+      // Kinetica config). Trust it verbatim: the bucket spans [bucketStart, bucketStart + 7d).
+      //
+      // The previous code re-anchored the input back to Monday. When Kinetica's anchor was
+      // not Monday, that shifted the drilled BETWEEN window to a DIFFERENT week than the one
+      // the cell's COUNT was computed over — so the filtered record count never matched the
+      // cell tooltip (small mismatch for similar adjacent weeks; catastrophic at the data's
+      // start/end boundary where the shifted week is near-empty). v1.13 CALUX week-anchor bug.
+      //
+      // The renderer already infers the anchor for layout/gap-fill (inferWeekAnchorDow); the
+      // drill bounds must likewise honor the real bucket start rather than assume Monday.
+      startMs = Date.UTC(y, mo, day, 0, 0, 0, 0);
+      nextBucketStartMs = startMs + 7 * 86_400_000; // +7 days from the bucket start
       break;
     }
     case "month": {
