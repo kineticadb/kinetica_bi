@@ -225,14 +225,15 @@ export default function CbConfigForm({
       min: typeChanged ? (newValsType === "numeric" ? 0 : undefined) : b.min,
       max: typeChanged ? (newValsType === "numeric" ? 0 : undefined) : b.max,
     }));
-    // Categorical column-change rule: auto-toggle includeOtherBucket=true + append <other> row
+    // Column-change rule (BOTH valsTypes — Plan 70-01 numeric mirror of the
+    // categorical rule): auto-toggle includeOtherBucket=true + append <other> row.
     let nextIncludeOther = cbConfig.includeOtherBucket;
-    if (typeChanged && newValsType === "categorical") {
+    if (typeChanged) {
       nextIncludeOther = true;
       const hasOther = nextBreaks.some((b) => b.value === "<other>");
       if (!hasOther) {
         const otherRow: CbBreak = {
-          ...createDefaultBreak("categorical", nextBreaks.length),
+          ...createDefaultBreak(newValsType, nextBreaks.length),
           value: "<other>",
         };
         nextBreaks = [...nextBreaks, otherRow];
@@ -259,7 +260,7 @@ export default function CbConfigForm({
       const hasOther = cbConfig.breaks.some((b) => b.value === "<other>");
       if (!hasOther) {
         const otherRow: CbBreak = {
-          ...createDefaultBreak("categorical", cbConfig.breaks.length),
+          ...createDefaultBreak(cbConfig.valsType, cbConfig.breaks.length),
           value: "<other>",
         };
         next.breaks = [...cbConfig.breaks, otherRow];
@@ -510,6 +511,9 @@ export default function CbConfigForm({
     }
     const allValuesPresent = cbConfig.breaks.every((b) => {
       if (cbConfig.valsType === "numeric") {
+        // <other> sink-bucket row carries no min/max — always valid (Plan 70-01,
+        // mirrors the categorical whitelist below).
+        if (b.value === "<other>") return true;
         // Numeric ranges require finite min < max on every row (incl. the open
         // edges left by Auto-suggest, which the operator must fill before save).
         return (
@@ -655,8 +659,14 @@ export default function CbConfigForm({
               Could not count distinct values. Try again.
             </div>
           )}
+        </div>
+      )}
 
-          {/* <other> bucket toggle */}
+      {/* ── <other> bucket toggle + NULL hint (Plan 70-01: shared by BOTH ──
+          numeric and categorical; renders once a column is chosen). The
+          toggle reuses onToggleOtherBucket (append on ON, filter on OFF). */}
+      {cbConfig.attr !== "" && (
+        <div className="cb-other-section">
           <label className="cb-other-toggle">
             <input
               type="checkbox"
