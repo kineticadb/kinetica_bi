@@ -97,6 +97,7 @@ import MapZoomToolbar from "./MapZoomToolbar";
 import { LayersLegendPanel } from "../LayersLegendPanel";
 import type { ResolvedLegendLayer, DvLayerStatus } from "../LayersLegendPanel";
 import { resolveLegendLayers } from "../../lib/resolveLegendLayers";
+import { applyLayerOverrides } from "../../lib/applyLayerOverrides";
 import { useLayerVisibilityToggle } from "../../hooks/useLayerVisibilityToggle";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { getLegendPanelEnabled, getLegendPanelCorner } from "../../lib/legendPanelConfig";
@@ -479,21 +480,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // The CONFIG-TIME path (dashboardLayersStore.updateLayer) is untouched — this
   // is a RENDER-TIME overlay only; the store retains the saved config as baseline.
   const layerOverrides = useWidgetActionStore((s) => s.layerOverrides);
+  // v1.14: merge via the shared applyLayerOverrides helper so the STANDALONE
+  // LegendRenderer reads byte-identical overlay-merged layers (GAP-61-01 parity —
+  // the standalone legend previously read the raw store and drifted from the map).
   const effectiveLayers = useMemo(
-    () =>
-      allLayers.map((l) => {
-        const ov = layerOverrides[l.id];
-        if (!ov) return l;
-        // Split the DTO-shaped overlay into nested config patch and top-level fields.
-        const { config: cfgPatch, ...topLevel } = ov as {
-          config?: Record<string, unknown>;
-          [key: string]: unknown;
-        };
-        // Deep-merge: nested config fields go into layer.config, top-level stay top-level.
-        return cfgPatch
-          ? { ...l, ...topLevel, config: { ...(l.config as Record<string, unknown>), ...cfgPatch } }
-          : { ...l, ...topLevel };
-      }),
+    () => applyLayerOverrides(allLayers, layerOverrides),
     [allLayers, layerOverrides]
   );
 

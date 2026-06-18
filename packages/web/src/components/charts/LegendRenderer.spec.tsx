@@ -31,8 +31,10 @@ vi.mock("../../store/dashboardLayersStore", () => {
   return { useDashboardLayersStore: hook };
 });
 
-// Import LegendRenderer AFTER the mocks
+// Import LegendRenderer AFTER the mocks. widgetActionStore + dynamicViewStore are the
+// REAL stores (not mocked) — default empty, seeded explicitly in the overlay test below.
 import LegendRenderer from "./LegendRenderer";
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 
 function makeWidget(overrides: Partial<WidgetDto>): WidgetDto {
   return {
@@ -85,6 +87,8 @@ function renderWithContext(
 beforeEach(() => {
   _storeState.layers = [];
   lastLayersLegendPanelProps = null;
+  // Reset the real action-engine overlay store between tests (prevents bleed).
+  useWidgetActionStore.setState({ layerOverrides: {} });
 });
 
 describe("LegendRenderer (Phase 42 / WIDGET-V17-01..05)", () => {
@@ -240,18 +244,41 @@ describe("LegendRenderer (Phase 42 / WIDGET-V17-01..05)", () => {
     expect((lastLayersLegendPanelProps?.layers as unknown[]).length).toBe(0);
   });
 
-  it("Test 10: source uses legendKey primitive selector formula", () => {
+  it("Test 10: reads OVERLAY-MERGED layers (applyLayerOverrides) so an action-engine layerOverride is reflected — parity with the map (v1.14 fix)", () => {
+    // Layer 12 persists renderMode=classbreak but NO cb_config in the store; an active
+    // layerOverride (radio/control) supplies the cb_config. The map renders breaks from
+    // the overlay; before the fix the standalone legend read the raw store and showed
+    // "No breaks configured". Now it must surface the overlay-merged cb_config.
+    const overlayCb = JSON.stringify({
+      attr: "val",
+      valsType: "numeric",
+      breaks: [{ value: 0, min: 0, max: 10, color: "FF00FF00", label: "" }],
+    });
+    _storeState.layers = [
+      makeLayer(12, { config: { renderMode: "classbreak" }, cb_config: null }),
+    ];
+    useWidgetActionStore.setState({
+      layerOverrides: { 12: { cb_config: overlayCb } },
+    });
+    const mapA = makeWidget({ id: 1, type: "map", config: { includedLayerIds: [12] } });
+    const legendWidget = makeWidget({ id: 100, config: { sourceMapWidgetId: 1 } });
+    renderWithContext(legendWidget, [mapA, legendWidget]);
+
+    const layers = lastLayersLegendPanelProps?.layers as { layer: DashboardLayerDto }[];
+    expect(layers).toHaveLength(1);
+    // The overlay cb_config is merged onto the resolved layer (NOT the raw store null).
+    expect(layers[0].layer.cb_config).toBe(overlayCb);
+  });
+
+  it("Test 10b: source merges overlays via applyLayerOverrides + subscribes to the action store", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "LegendRenderer.tsx"),
       "utf-8",
     );
-    // Verify the exact selector formula (mirror of MapChartRenderer:533-540)
-    expect(source).toMatch(/const legendKey = useDashboardLayersStore/);
-    expect(source).toMatch(/\$\{l\.id\}:\$\{.*renderMode/);
-    expect(source).toMatch(/l\.cb_config \?\? "null"/);
-    // Anti-pattern check: must NOT subscribe to s.layers array directly
-    expect(source).not.toMatch(/useDashboardLayersStore\(\(s\) => s\.layers\)/);
-    expect(source).not.toMatch(/useDashboardLayersStore\(s => s\.layers\)/);
+    expect(source).toMatch(/applyLayerOverrides\(allLayers, layerOverrides\)/);
+    expect(source).toMatch(/useWidgetActionStore\(\(s\) => s\.layerOverrides\)/);
+    // The removed primitive legendKey selector must be gone.
+    expect(source).not.toMatch(/const legendKey = useDashboardLayersStore/);
   });
 
   it("Test 11: global.css contains .legend-widget-* selectors", () => {

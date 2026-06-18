@@ -23,7 +23,9 @@ import { useMemo } from "react";
 import { LayersLegendPanel } from "../LayersLegendPanel";
 import type { DvLayerStatus, ResolvedLegendLayer } from "../LayersLegendPanel";
 import { resolveLegendLayers } from "../../lib/resolveLegendLayers";
+import { applyLayerOverrides } from "../../lib/applyLayerOverrides";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useDashboardContext } from "../DashboardContext";
 import { useLayerVisibilityToggle } from "../../hooks/useLayerVisibilityToggle";
@@ -43,14 +45,17 @@ export default function LegendRenderer({
     | number
     | undefined;
 
-  // legendKey primitive selector — VERBATIM mirror of MapChartRenderer.tsx:533-540 (PITFALL S-02 lock)
-  const legendKey = useDashboardLayersStore((s) =>
-    s.layers
-      .map(
-        (l) =>
-          `${l.id}:${(l.config as { renderMode?: string })?.renderMode ?? "raster"}:${l.cb_config ?? "null"}:${(l.config as { visible?: boolean })?.visible !== false}`,
-      )
-      .join("|"),
+  // v1.14 fix: read OVERLAY-MERGED layers, exactly like MapChartRenderer.effectiveLayers.
+  // Previously this read the raw store via a primitive legendKey and IGNORED the v1.11
+  // action-engine layerOverrides — so a control/radio overlay that set a layer's
+  // renderMode/cb_config rendered on the map + in-map legend but showed "No breaks
+  // configured" here (legend out of sync with the map). Both paths now merge via the
+  // shared applyLayerOverrides helper so they can't drift.
+  const allLayers = useDashboardLayersStore((s) => s.layers);
+  const layerOverrides = useWidgetActionStore((s) => s.layerOverrides);
+  const effectiveLayers = useMemo(
+    () => applyLayerOverrides(allLayers, layerOverrides),
+    [allLayers, layerOverrides],
   );
 
   // Eye-toggle handler — flips config.visible (optimistic store update + PATCH).
@@ -84,10 +89,7 @@ export default function LegendRenderer({
 
   const resolvedLegendLayers = useMemo<ResolvedLegendLayer[]>(() => {
     if (isOrphan) return [];
-    const base = resolveLegendLayers(
-      useDashboardLayersStore.getState().layers,
-      includedLayerIds,
-    );
+    const base = resolveLegendLayers(effectiveLayers, includedLayerIds);
     // Enrich each entry with dv-materialization status (read imperatively from the store).
     // dynamicViewVersion above is the reactive trigger that fires this useMemo.
     const dvViews = useDynamicViewStore.getState().views;
@@ -98,10 +100,10 @@ export default function LegendRenderer({
       const dvStatus: DvLayerStatus = dvEntry ? dvEntry.status : "absent";
       return { ...entry, dvStatus };
     });
-    // legendKey is the read-trigger; includedLayerIds is the filter trigger;
-    // dynamicViewVersion is the dv-state re-render trigger; isOrphan gates render.
+    // effectiveLayers is the (overlay-merged) read-trigger; includedLayerIds is the filter
+    // trigger; dynamicViewVersion is the dv-state re-render trigger; isOrphan gates render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legendKey, includedLayerIds, isOrphan, dynamicViewVersion]);
+  }, [effectiveLayers, includedLayerIds, isOrphan, dynamicViewVersion]);
 
   if (isOrphan) {
     return (
