@@ -391,7 +391,9 @@ export function buildWmsParams(
       //   categorical → comma-separated distinct values "a,b,<other>"
       params.CB_VALS =
         cb.valsType === "numeric"
-          ? cb.breaks.map((b: CbBreak) => `${b.min ?? 0}:${b.max ?? 0}`).join(",")
+          ? cb.breaks
+              .map((b: CbBreak) => (b.value === "<other>" ? "<other>" : `${b.min ?? 0}:${b.max ?? 0}`))
+              .join(",")
           : cb.breaks.map((b: CbBreak) => String(b.value)).join(",");
       params.POINTCOLORS = cb.breaks.map((b: CbBreak) => normalizeAARRGGBB(b.color, "FF000000")).join(",");
       // Optional per-break fields — emit only when at least one break has the field set
