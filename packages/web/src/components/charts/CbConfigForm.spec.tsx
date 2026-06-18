@@ -561,7 +561,7 @@ describe("CbConfigForm", () => {
     expect(screen.getByLabelText("Include <other> bucket")).toBeInTheDocument();
   });
 
-  it("in numeric mode, [✓] Include <other> bucket checkbox is NOT rendered", () => {
+  it("in NUMERIC mode, [✓] Include <other> bucket checkbox IS rendered (CBOTHER-V114-03)", () => {
     render(
       <CbConfigForm
         config={makeCbConfig({ attr: "fare", valsType: "numeric", breaks: [] })}
@@ -569,7 +569,18 @@ describe("CbConfigForm", () => {
         columns={baseColumns}
       />,
     );
-    expect(screen.queryByLabelText("Include <other> bucket")).toBeNull();
+    expect(screen.getByLabelText("Include <other> bucket")).toBeInTheDocument();
+  });
+
+  it("in CATEGORICAL mode, EXACTLY ONE Include <other> bucket checkbox renders (relocation left no duplicate)", () => {
+    render(
+      <CbConfigForm
+        config={makeCbConfig({ attr: "vendor", valsType: "categorical", breaks: [], includeOtherBucket: false })}
+        onChange={onChange}
+        columns={baseColumns}
+      />,
+    );
+    expect(screen.getAllByLabelText("Include <other> bucket").length).toBe(1);
   });
 
   it("toggling <other> checkbox ON appends a break with value === '<other>' at end of breaks", () => {
@@ -909,6 +920,68 @@ describe("CbConfigForm", () => {
     // Regular breaks have cleared values
     expect(resultBreaks[0].value).toBe("");
     expect(resultBreaks[1].value).toBe("");
+  });
+
+  /* ── Plan 70-01: numeric <other> bucket (CBOTHER-V114-02/03) ────── */
+
+  it("switching a column TO numeric defaults includeOtherBucket=true and appends one <other> row", () => {
+    const breaks = [
+      { value: "cat1", color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+      { value: "cat2", color: "FFEF4444", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+    ];
+    render(
+      <CbConfigForm
+        config={makeCbConfig({ attr: "vendor", valsType: "categorical", breaks })}
+        onChange={onChange}
+        columns={baseColumns}
+      />,
+    );
+    // Switch to the numeric "fare" column.
+    fireEvent.change(screen.getByLabelText("CB column"), { target: { value: "fare" } });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const cb = parsedCbFromOnChange(onChange);
+    expect(cb.valsType).toBe("numeric");
+    expect(cb.includeOtherBucket).toBe(true);
+    const resultBreaks = cb.breaks as Array<Record<string, unknown>>;
+    expect(resultBreaks.filter((b) => b.value === "<other>").length).toBe(1);
+    expect(resultBreaks[resultBreaks.length - 1].value).toBe("<other>");
+  });
+
+  it("the numeric <other> row renders as a read-only chip (no min/max inputs)", () => {
+    render(
+      <CbConfigForm
+        config={makeCbConfig({ attr: "fare", valsType: "numeric", breaks: [
+          { value: 0, min: 0, max: 10, color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+          { value: "<other>", color: "FF888888", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+        ], includeOtherBucket: true })}
+        onChange={onChange}
+        columns={baseColumns}
+      />,
+    );
+    // Read-only chip present for the <other> row (row index 1).
+    expect(screen.getByTestId("cb-other-chip-1")).toBeInTheDocument();
+    // No min/max numeric inputs for the <other> row.
+    expect(screen.queryByLabelText("Min for break 2")).toBeNull();
+    expect(screen.queryByLabelText("Max for break 2")).toBeNull();
+  });
+
+  it("a numeric config with valid ranges + one <other> row is valid (isValid(true))", () => {
+    const isValid = vi.fn();
+    render(
+      <CbConfigForm
+        config={makeCbConfig({ attr: "fare", valsType: "numeric", breaks: [
+          { value: 0, min: 0, max: 10, color: "FF3B82F6", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+          { value: 0, min: 10, max: 20, color: "FFEF4444", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+          { value: "<other>", color: "FF888888", label: "", pointSize: 5, pointShape: "circle", shapeLineWidth: 1, shapeLineColor: "FF000000", shapeFillColor: "FFFFFFFF" },
+        ], includeOtherBucket: true })}
+        onChange={onChange}
+        columns={baseColumns}
+        isValid={isValid}
+      />,
+    );
+    const calls = isValid.mock.calls.map((c) => c[0]);
+    expect(calls.some((v) => v === true)).toBe(true);
+    expect(calls.every((v) => v !== false)).toBe(true);
   });
 
   /* ── Plan 39-03: Auto-suggest button + N slider ─────────────────── */
