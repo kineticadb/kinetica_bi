@@ -12,6 +12,7 @@
 
 import type { TimelineInterval, TimelineMetric } from "./timelineBin";
 import { buildTimelineBucket } from "./timelineBin";
+import { MAX_SERIES } from "./groupedSeries";
 
 export type BuildTimelineSqlArgs = {
   schema: string; // empty string for DV-bound (viewName-as-table); see Phase 44 follow-up
@@ -20,7 +21,26 @@ export type BuildTimelineSqlArgs = {
   metric: TimelineMetric;
   interval: TimelineInterval;
   maxIntervals: number; // serves as LIMIT
+  /**
+   * Phase 72: optional group-by column. When a non-empty string, the query splits
+   * into one series per distinct value (`<groupByColumn> AS series`) instead of the
+   * single per-metric line. Absent/empty → ungrouped output BYTE-IDENTICAL to before.
+   */
+  groupByColumn?: string;
+  /**
+   * Phase 72: optional top-N series allow-list (from the top-N pre-query). When
+   * provided alongside groupByColumn, the main query filters
+   * `AND <groupByColumn> IN (<values>)` and scales LIMIT by the list length so no
+   * selected series is clipped mid-range.
+   */
+  seriesIn?: (string | number)[];
 };
+
+/** Format a seriesIn value for SQL: numbers verbatim, strings single-quoted with internal quotes doubled. */
+function formatSeriesInValue(v: string | number): string {
+  if (typeof v === "number") return String(v);
+  return `'${v.replace(/'/g, "''")}'`;
+}
 
 /**
  * Build the aggregation expression for a single metric.
@@ -36,7 +56,7 @@ function aggExpr(metric: TimelineMetric): string {
 /**
  * Build the full per-metric timeline query.
  *
- * Emitted shape:
+ * Emitted shape (ungrouped — no groupByColumn):
  *   SELECT <bucket> AS bucket, <agg> AS value
  *   FROM <schema.table | table>
  *   WHERE <timeCol> IS NOT NULL
@@ -44,24 +64,52 @@ function aggExpr(metric: TimelineMetric): string {
  *   ORDER BY bucket ASC
  *   LIMIT <maxIntervals>
  *
+ * Emitted shape (grouped — non-empty groupByColumn, Phase 72):
+ *   SELECT <bucket> AS bucket, <groupByColumn> AS series, <agg> AS value
+ *   FROM <schema.table | table>
+ *   WHERE <timeCol> IS NOT NULL AND <groupByColumn> IS NOT NULL
+ *         [AND <groupByColumn> IN (<seriesIn>)]
+ *   GROUP BY bucket, series
+ *   ORDER BY bucket ASC
+ *   LIMIT <maxIntervals * MAX_SERIES | maxIntervals * seriesIn.length>
+ *
  * The GROUP BY uses the literal alias `bucket` (not the full expression) so
  * Kinetica's SQL engine references the computed column. This is the standard
  * GROUP-BY-alias pattern and matches the Recharts merge expectation downstream
  * where row data keys are `{ bucket: string; value: number | null }`.
  */
 export function buildTimelineSql(args: BuildTimelineSqlArgs): string {
-  const { schema, table, timeCol, metric, interval, maxIntervals } = args;
+  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn } = args;
   // Phase 44 follow-up: empty schema means the table arg is a bare unprefixed
   // identifier (e.g. a dynamic view's materialized view name).
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
   const bucket = buildTimelineBucket(timeCol, interval);
   const agg = aggExpr(metric);
+
+  // Ungrouped path — kept literally identical for the byte-for-byte backward-compat lock.
+  if (!groupByColumn) {
+    return (
+      `SELECT ${bucket} AS bucket, ${agg} AS value ` +
+      `FROM ${fromTarget} ` +
+      `WHERE ${timeCol} IS NOT NULL ` +
+      `GROUP BY bucket ` +
+      `ORDER BY bucket ASC ` +
+      `LIMIT ${maxIntervals}`
+    );
+  }
+
+  // Grouped path (Phase 72): one series per distinct groupByColumn value.
+  const hasSeriesIn = Array.isArray(seriesIn) && seriesIn.length > 0;
+  const inClause = hasSeriesIn
+    ? ` AND ${groupByColumn} IN (${seriesIn!.map(formatSeriesInValue).join(", ")})`
+    : "";
+  const limit = hasSeriesIn ? maxIntervals * seriesIn!.length : maxIntervals * MAX_SERIES;
   return (
-    `SELECT ${bucket} AS bucket, ${agg} AS value ` +
+    `SELECT ${bucket} AS bucket, ${groupByColumn} AS series, ${agg} AS value ` +
     `FROM ${fromTarget} ` +
-    `WHERE ${timeCol} IS NOT NULL ` +
-    `GROUP BY bucket ` +
+    `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause} ` +
+    `GROUP BY bucket, series ` +
     `ORDER BY bucket ASC ` +
-    `LIMIT ${maxIntervals}`
+    `LIMIT ${limit}`
   );
 }
