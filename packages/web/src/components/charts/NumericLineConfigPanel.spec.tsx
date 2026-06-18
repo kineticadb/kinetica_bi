@@ -221,6 +221,26 @@ describe("NumericLineConfigPanel", () => {
       expect(isValid).toHaveBeenLastCalledWith(true);
     });
 
+    it("when grouped, the per-metric color swatch is HIDDEN and the palette preview + 'Color palette' label show instead", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        groupByColumn: "driver_id",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      expect(screen.queryByLabelText("Metric 1 color")).toBeNull();
+      expect(screen.getByText("Color palette")).toBeInTheDocument();
+      expect(screen.getByLabelText("Color palette preview")).toBeInTheDocument();
+    });
+
+    it("ungrouped keeps the per-metric color swatch and shows no palette preview (regression)", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      expect(screen.getByLabelText("Metric 1 color")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Color palette preview")).toBeNull();
+    });
+
     it("changing X-axis column to the current groupByColumn clears groupByColumn", () => {
       const { onChange } = renderPanel({
         tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",

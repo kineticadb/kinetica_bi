@@ -277,6 +277,28 @@ describe("TimelineConfigPanel", () => {
       expect(isValid).toHaveBeenLastCalledWith(true);
     });
 
+    it("Test 19: when grouped, the per-metric color swatch is HIDDEN and the palette preview + 'Color palette' label show instead", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",
+        groupByColumn: "driver_id",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      // the misleading single metric color swatch is gone (series colors come from the palette)
+      expect(screen.queryByLabelText("Metric 1 color")).toBeNull();
+      // the palette picker is framed as a palette + a preview strip is shown
+      expect(screen.getByText("Color palette")).toBeInTheDocument();
+      expect(screen.getByLabelText("Color palette preview")).toBeInTheDocument();
+    });
+
+    it("Test 20: ungrouped keeps the per-metric color swatch and shows no palette preview (regression)", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      expect(screen.getByLabelText("Metric 1 color")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Color palette preview")).toBeNull();
+    });
+
     it("Test 19: changing time column to the current groupByColumn clears groupByColumn", () => {
       const { onChange } = renderPanel({
         tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",

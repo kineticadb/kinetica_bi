@@ -156,6 +156,16 @@ export default function TimelineConfigPanel({
     return themeColorsFor(t, Math.max(1, metrics.length || 1));
   }, [colorTheme, metrics.length]);
 
+  // The palette's DISTINCT colors, for the grouped-mode preview swatch strip. Sized to
+  // the theme's largest defined count (capped at 8) so the preview shows real, non-repeated
+  // colors — the renderer cycles these across the actual group values at draw time.
+  const palettePreview = useMemo(() => {
+    const t = getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME);
+    if (!t) return [];
+    const maxN = Math.max(...Object.keys(t.byCount).map(Number));
+    return themeColorsFor(t, Math.min(8, maxN));
+  }, [colorTheme]);
+
   // ----- Handlers -----
 
   const patch = (partial: Partial<TimelineConfig>) => {
@@ -309,9 +319,10 @@ export default function TimelineConfigPanel({
           </div>
 
           {/* Color theme — placed above Metrics so re-picking a theme visibly
-              recolors each metric's swatch below. */}
+              recolors each metric's swatch below. When grouped, this palette is the
+              ONLY color control: series colors cycle it (the per-metric swatch is hidden). */}
           <div className="ds-field">
-            <span className="ds-field-label">Color theme</span>
+            <span className="ds-field-label">{grouped ? "Color palette" : "Color theme"}</span>
             <select
               className="ds-select"
               aria-label="Color theme"
@@ -322,6 +333,34 @@ export default function TimelineConfigPanel({
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
+            {/* Phase 72 follow-up: when grouped, preview the palette + clarify it drives
+                series colors (cycling/repeating once groups exceed the palette length). */}
+            {grouped && (
+              <>
+                <div
+                  className="timeline-palette-preview"
+                  aria-label="Color palette preview"
+                  style={{ display: "flex", gap: 3, marginTop: 6 }}
+                >
+                  {palettePreview.map((c, i) => (
+                    <span
+                      key={`${c}_${i}`}
+                      title={c}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 3,
+                        backgroundColor: toCssColor(c),
+                        display: "inline-block",
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="config-hint" style={{ marginTop: 4 }}>
+                  One color per group, cycling this palette. Groups beyond {palettePreview.length} reuse colors.
+                </div>
+              </>
+            )}
           </div>
 
           {/* Metrics — when grouped, a single metric is split into one series per
@@ -365,13 +404,18 @@ export default function TimelineConfigPanel({
                   {AGGREGATIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
 
-                <input
-                  type="color"
-                  aria-label={`Metric ${idx + 1} color`}
-                  value={toCssColor(m.color)}
-                  onChange={(e) => updateMetric(idx, { color: toAarrggbb(e.target.value) })}
-                  style={{ width: 40, height: 28, padding: 0, border: "none" }}
-                />
+                {/* Per-metric color swatch — hidden when grouped: series colors come from
+                    the Color palette above (the swatch would mislead, looking like the only
+                    color control). v1.14 Phase 72 follow-up. */}
+                {!grouped && (
+                  <input
+                    type="color"
+                    aria-label={`Metric ${idx + 1} color`}
+                    value={toCssColor(m.color)}
+                    onChange={(e) => updateMetric(idx, { color: toAarrggbb(e.target.value) })}
+                    style={{ width: 40, height: 28, padding: 0, border: "none" }}
+                  />
+                )}
 
                 <input
                   type="text"

@@ -146,6 +146,15 @@ export default function NumericLineConfigPanel({
     return themeColorsFor(t, Math.max(1, metrics.length || 1));
   }, [colorTheme, metrics.length]);
 
+  // Distinct palette colors for the grouped-mode preview strip (capped at 8). The renderer
+  // cycles these across the actual group values at draw time. v1.14 Phase 72 follow-up.
+  const palettePreview = useMemo(() => {
+    const t = getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME);
+    if (!t) return [];
+    const maxN = Math.max(...Object.keys(t.byCount).map(Number));
+    return themeColorsFor(t, Math.min(8, maxN));
+  }, [colorTheme]);
+
   // ----- Handlers -----
 
   const patch = (partial: Partial<NumericLineConfig>) => {
@@ -289,9 +298,11 @@ export default function NumericLineConfigPanel({
             </select>
           </div>
 
-          {/* Color theme — above Metrics so re-picking visibly recolors swatches. */}
+          {/* Color theme — above Metrics so re-picking visibly recolors swatches. When
+              grouped, this palette is the ONLY color control: series colors cycle it
+              (the per-metric swatch is hidden). v1.14 Phase 72 follow-up. */}
           <div className="ds-field">
-            <span className="ds-field-label">Color theme</span>
+            <span className="ds-field-label">{grouped ? "Color palette" : "Color theme"}</span>
             <select
               className="ds-select"
               aria-label="Color theme"
@@ -302,6 +313,32 @@ export default function NumericLineConfigPanel({
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
+            {grouped && (
+              <>
+                <div
+                  className="numericline-palette-preview"
+                  aria-label="Color palette preview"
+                  style={{ display: "flex", gap: 3, marginTop: 6 }}
+                >
+                  {palettePreview.map((c, i) => (
+                    <span
+                      key={`${c}_${i}`}
+                      title={c}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 3,
+                        backgroundColor: toCssColor(c),
+                        display: "inline-block",
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="config-hint" style={{ marginTop: 4 }}>
+                  One color per group, cycling this palette. Groups beyond {palettePreview.length} reuse colors.
+                </div>
+              </>
+            )}
           </div>
 
           {/* Metrics — when grouped, a single metric is split into one series per
@@ -345,13 +382,17 @@ export default function NumericLineConfigPanel({
                   {AGGREGATIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
 
-                <input
-                  type="color"
-                  aria-label={`Metric ${idx + 1} color`}
-                  value={toCssColor(m.color)}
-                  onChange={(e) => updateMetric(idx, { color: toAarrggbb(e.target.value) })}
-                  style={{ width: 40, height: 28, padding: 0, border: "none" }}
-                />
+                {/* Per-metric color swatch — hidden when grouped: series colors come from
+                    the Color palette above. v1.14 Phase 72 follow-up. */}
+                {!grouped && (
+                  <input
+                    type="color"
+                    aria-label={`Metric ${idx + 1} color`}
+                    value={toCssColor(m.color)}
+                    onChange={(e) => updateMetric(idx, { color: toAarrggbb(e.target.value) })}
+                    style={{ width: 40, height: 28, padding: 0, border: "none" }}
+                  />
+                )}
 
                 <input
                   type="text"
