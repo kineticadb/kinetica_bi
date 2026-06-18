@@ -33,6 +33,7 @@ export type TimelineConfig = {
   tableRef?: string;          // "schema.name"
   dynamicViewId?: number;     // future-compat; not exposed in picker yet (defer to follow-up)
   timeCol: string;
+  groupByColumn?: string;     // Phase 72: optional group-by dimension. Non-empty → single-metric series-split.
   metrics: TimelineMetric[];  // length 0..4
   maxIntervals: number;       // default 200
   showLegend: boolean;
@@ -79,6 +80,8 @@ export default function TimelineConfigPanel({
   const tableId = cfg.tableId;
   const allTables = tables ?? [];
   const timeCol = cfg.timeCol ?? "";
+  const groupByColumn = cfg.groupByColumn ?? "";
+  const grouped = groupByColumn !== "";
   const metrics = cfg.metrics ?? [];
   const maxIntervals = cfg.maxIntervals ?? DEFAULT_MAX_INTERVALS;
   const showLegend = cfg.showLegend ?? true;
@@ -116,16 +119,31 @@ export default function TimelineConfigPanel({
     [columns],
   );
 
-  // Form validity: must have tableId + timeCol + at least 1 metric, every metric must have column + aggregation
-  const formValid = useMemo(
+  // Phase 72: group-eligible dimensions (drilldown-safe; excludes the selected timeCol).
+  // Mirrors ChartConfigPanel's `isColumnDrillDownSafe` group-by eligibility precedent.
+  const groupByColumns = useMemo(
     () =>
-      tableId !== undefined &&
-      timeCol !== "" &&
+      Object.entries(columns)
+        .filter(([name, type]) => name !== timeCol && isColumnDrillDownSafe(type))
+        .map(([name]) => name),
+    [columns, timeCol],
+  );
+
+  // Form validity:
+  //  - ungrouped: tableId + timeCol + 1..MAX_METRICS, each metric complete.
+  //  - grouped: tableId + timeCol + a complete metrics[0] (metrics[1..] ignored).
+  const formValid = useMemo(() => {
+    if (tableId === undefined || timeCol === "") return false;
+    if (grouped) {
+      const m0 = metrics[0];
+      return m0 !== undefined && m0.column !== "" && m0.aggregation !== undefined;
+    }
+    return (
       metrics.length >= 1 &&
       metrics.length <= MAX_METRICS &&
-      metrics.every((m) => m.column !== "" && m.aggregation !== undefined),
-    [tableId, timeCol, metrics],
-  );
+      metrics.every((m) => m.column !== "" && m.aggregation !== undefined)
+    );
+  }, [tableId, timeCol, grouped, metrics]);
 
   useEffect(() => {
     isValid?.(formValid);
@@ -146,21 +164,43 @@ export default function TimelineConfigPanel({
 
   const handleTableChange = (newValue: string) => {
     if (newValue === "") {
-      patch({ tableId: undefined, tableRef: undefined, timeCol: "", metrics: [] });
+      patch({ tableId: undefined, tableRef: undefined, timeCol: "", groupByColumn: "", metrics: [] });
       return;
     }
     const newTable = allTables.find((t) => `${t.schema}.${t.name}` === newValue);
     if (!newTable) return;
-    // Old timeCol / metrics may not exist on the new schema — clear both.
+    // Old timeCol / groupByColumn / metrics may not exist on the new schema — clear all.
     patch({
       tableId: newTable.id,
       tableRef: `${newTable.schema}.${newTable.name}`,
       timeCol: "",
+      groupByColumn: "",
       metrics: [],
     });
   };
 
-  const handleTimeColChange = (newCol: string) => patch({ timeCol: newCol });
+  const handleTimeColChange = (newCol: string) =>
+    // If the new time column equals the current group-by, clear the group-by
+    // (a column can't be both the time axis and the series split).
+    patch({ timeCol: newCol, ...(newCol === groupByColumn ? { groupByColumn: "" } : {}) });
+
+  // Phase 72: toggle the group-by dimension. NON-DESTRUCTIVE — never mutates the metrics
+  // array on enable (metrics[1..] stay in config so clearing restores the multi-metric
+  // builder). Only seeds metrics[0] when enabling with zero metrics so a single row renders.
+  const handleGroupByChange = (newCol: string) => {
+    if (newCol !== "" && metrics.length === 0) {
+      const palette = themePalette.length > 0
+        ? themePalette
+        : themeColorsFor(getCbColorTheme(DEFAULT_COLOR_THEME)!, 1);
+      const seedColor = palette[0] ?? "FF66C2A5";
+      patch({
+        groupByColumn: newCol,
+        metrics: [{ column: "", aggregation: "SUM", color: seedColor, label: "" }],
+      });
+      return;
+    }
+    patch({ groupByColumn: newCol });
+  };
 
   const handleAddMetric = () => {
     if (metrics.length >= MAX_METRICS) return;
@@ -252,6 +292,22 @@ export default function TimelineConfigPanel({
             )}
           </div>
 
+          {/* Group By (optional) — Phase 72. Selecting a dimension collapses the
+              chart to a single metric split into one series per group value;
+              "None" restores the 1-4 multi-metric builder. */}
+          <div className="ds-field">
+            <span className="ds-field-label">Group By (optional)</span>
+            <select
+              className="ds-select"
+              aria-label="Group by"
+              value={groupByColumn}
+              onChange={(e) => handleGroupByChange(e.target.value)}
+            >
+              <option value="">None</option>
+              {groupByColumns.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
           {/* Color theme — placed above Metrics so re-picking a theme visibly
               recolors each metric's swatch below. */}
           <div className="ds-field">
@@ -268,9 +324,10 @@ export default function TimelineConfigPanel({
             </select>
           </div>
 
-          {/* Metrics */}
+          {/* Metrics — when grouped, a single metric is split into one series per
+              group value (multi-metric is mutually exclusive with group-by). */}
           <div className="config-group-label" style={{ marginTop: 16 }}>
-            METRICS (max {MAX_METRICS})
+            {grouped ? `METRIC (grouped by ${groupByColumn})` : `METRICS (max ${MAX_METRICS})`}
           </div>
 
           {metrics.length === 0 && (
@@ -279,7 +336,7 @@ export default function TimelineConfigPanel({
             </div>
           )}
 
-          {metrics.map((m, idx) => {
+          {(grouped ? metrics.slice(0, 1) : metrics).map((m, idx) => {
             const columnMissing = m.column !== "" && columns[m.column] === undefined;
             return (
               <div
@@ -326,14 +383,16 @@ export default function TimelineConfigPanel({
                   style={{ flex: "1 1 120px", minWidth: 120 }}
                 />
 
-                <button
-                  type="button"
-                  className="ghost-sm ghost-danger"
-                  aria-label={`Remove metric ${idx + 1}`}
-                  onClick={() => handleRemoveMetric(idx)}
-                >
-                  Remove
-                </button>
+                {!grouped && (
+                  <button
+                    type="button"
+                    className="ghost-sm ghost-danger"
+                    aria-label={`Remove metric ${idx + 1}`}
+                    onClick={() => handleRemoveMetric(idx)}
+                  >
+                    Remove
+                  </button>
+                )}
 
                 {columnMissing && (
                   <span className="config-hint" style={{ color: "var(--danger)" }}>
@@ -344,15 +403,17 @@ export default function TimelineConfigPanel({
             );
           })}
 
-          <button
-            type="button"
-            className="ghost-sm"
-            aria-label="Add metric"
-            onClick={handleAddMetric}
-            disabled={metrics.length >= MAX_METRICS}
-          >
-            + Add metric {metrics.length >= MAX_METRICS && `(max ${MAX_METRICS})`}
-          </button>
+          {!grouped && (
+            <button
+              type="button"
+              className="ghost-sm"
+              aria-label="Add metric"
+              onClick={handleAddMetric}
+              disabled={metrics.length >= MAX_METRICS}
+            >
+              + Add metric {metrics.length >= MAX_METRICS && `(max ${MAX_METRICS})`}
+            </button>
+          )}
 
           {/* Options */}
           <div className="config-group-label" style={{ marginTop: 16 }}>
