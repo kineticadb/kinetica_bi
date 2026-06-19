@@ -84,6 +84,10 @@ import {
   updateDashboardDynamicView,
   // v1.6 Phase 32 Plan 03: DELETE /api/dynamic-view/:id needs the row-removal helper.
   deleteDashboardDynamicView,
+  // v1.15 Phase 75 (COLCFG-V115-01): column display config CRUD helpers.
+  listColumnDisplayConfig,
+  upsertColumnDisplayConfig,
+  deleteColumnDisplayConfig,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -2095,6 +2099,39 @@ export const createApp = async (): Promise<express.Express> => {
     if (!ok) return res.status(404).json({ error: "Table not found." });
     return res.status(204).send();
   });
+
+  // v1.15 Phase 75 (COLCFG-V115-01): global per-table column display config.
+  // READ ungated (requireAuth only) — render surfaces (Phase 77) resolve labels for any viewer.
+  app.get("/api/tables/:tableId/column-display-config", requireAuth, (req, res) => {
+    const tableId = Number(req.params.tableId);
+    return res.json({ data: listColumnDisplayConfig(tableId) });
+  });
+
+  // UPSERT — gated by datasets:manage (mirrors /api/tables writes).
+  app.put(
+    "/api/tables/:tableId/column-display-config/:columnName",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      const tableId = Number(req.params.tableId);
+      const columnName = req.params.columnName;
+      const { label, format_spec } = req.body as { label?: string | null; format_spec?: unknown };
+      const row = upsertColumnDisplayConfig(tableId, columnName, label ?? null, format_spec ?? null);
+      return res.json(row);
+    }
+  );
+
+  // DELETE — gated by datasets:manage.
+  app.delete(
+    "/api/tables/:tableId/column-display-config/:columnName",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      const tableId = Number(req.params.tableId);
+      const columnName = req.params.columnName;
+      const ok = deleteColumnDisplayConfig(tableId, columnName);
+      if (!ok) return res.status(404).json({ error: "Column display config not found." });
+      return res.status(204).send();
+    }
+  );
 
   // Kinetica discovery routes — all routed through kineticaSqlHelper with per-user creds
   // PHASE 3: try/catch removed; typed errors bubble to errorMiddleware via asyncHandler.
