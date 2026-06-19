@@ -11,6 +11,9 @@ type AuthState = {
   error: string | null;
   reason: AuthReason;
   authMode: AuthModeOrNull;
+  // Phase 74 (SETTINGS-V115-03): lead-time (minutes) before view expiry when Phase 78 should
+  // send a keep-alive touch. Defaults to 1; set from /api/me on bootstrap.
+  ttlKeepaliveLeadMinutes: number;
   bootstrap: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -25,6 +28,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   reason: null,
   authMode: null,
+  ttlKeepaliveLeadMinutes: 1,
   bootstrap: async () => {
     // Step 1: pre-auth config read. Failure → silent fallback (LoginPage falls back to password form).
     // CONTEXT.md / PITFALL I-03/I-04: must NOT throw out of bootstrap.
@@ -39,7 +43,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const me = await fetchMe();
       if (me) {
         // /me carries authMode now; latest-write-wins (more authoritative than /config's pre-auth read).
-        set({ status: "authenticated", user: me.user, authMode: me.authMode, error: null, reason: null });
+        set({ status: "authenticated", user: me.user, authMode: me.authMode, ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes, error: null, reason: null });
       } else {
         // bootstrap-driven 401: honest "not logged in", NOT mid-session expiry — reason stays null
         set({ status: "unauthenticated", user: null, reason: null });

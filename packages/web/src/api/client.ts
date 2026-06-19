@@ -125,7 +125,9 @@ export const fetchAuthConfig = async (): Promise<AuthConfig> => {
 };
 
 // Phase 7 (UX-08): /me now returns authMode alongside user. Expanded MeResponse type.
-export type MeResponse = { user: AuthUser; authMode: AuthMode };
+// Phase 74 (SETTINGS-V115-03): /api/me also returns the keep-alive lead-time
+// (default 1) for the Phase 78 TTL keep-alive to consume.
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -160,6 +162,9 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
       permissions: json.user.permissions ?? [],
     },
     authMode: json.authMode as AuthMode,
+    // Coalesce to 1 defensively — an older server build that omits the field never yields undefined.
+    // Mirrors the roles/permissions `?? []` coalescing already in this function.
+    ttlKeepaliveLeadMinutes: typeof json.ttlKeepaliveLeadMinutes === "number" ? json.ttlKeepaliveLeadMinutes : 1,
   };
 };
 
