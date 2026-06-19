@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
+import { ColumnDisplayConfigRow, Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
 import { seedRbac } from "./lib/rbacSeed";
 
 const ensureDir = (dbPath: string) => {
@@ -225,6 +225,22 @@ const SCHEMA_DDL = `
     PRIMARY KEY (dashboard_id, grantee_type, grantee)
   );
   CREATE INDEX IF NOT EXISTS idx_dashboard_access_grants_dashboard_id ON dashboard_access_grants (dashboard_id);
+
+  -- v1.15 Phase 75 (COLCFG-V115-01): global per-table column display config.
+  -- Keyed by (table_id, column_name). label NULL = use raw column name.
+  -- format_spec is JSON-encoded FormatSpec (NULL = no formatting). JSON-in-TEXT
+  -- mirrors dashboard_dynamic_views.columns_json. CREATE TABLE IF NOT EXISTS covers
+  -- fresh + existing installs (new table, no rows to migrate, no ALTER needed).
+  CREATE TABLE IF NOT EXISTS column_display_config (
+    table_id INTEGER NOT NULL,
+    column_name TEXT NOT NULL,
+    label TEXT,
+    format_spec TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (table_id, column_name)
+  );
+  CREATE INDEX IF NOT EXISTS idx_column_display_config_table_id ON column_display_config (table_id);
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -777,5 +793,63 @@ export const updateDashboardDynamicView = (
 
 export const deleteDashboardDynamicView = (id: number): boolean => {
   const result = db.prepare("DELETE FROM dashboard_dynamic_views WHERE id = ?").run(id);
+  return result.changes > 0;
+};
+
+// --- Column Display Config (Phase 75 v1.15 COLCFG-V115-01) ---
+
+const mapColumnDisplayConfig = (row: any): ColumnDisplayConfigRow => ({
+  table_id: row.table_id,
+  column_name: row.column_name,
+  label: row.label ?? null,
+  // format_spec is TEXT in SQLite; parse to object on read, re-stringify on write.
+  // Null-guard mirrors mapDashboardDynamicView columns_json (Pitfall 4 — never JSON.parse(null)).
+  format_spec: row.format_spec ? JSON.parse(row.format_spec) : null,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+export const listColumnDisplayConfig = (tableId: number): ColumnDisplayConfigRow[] =>
+  db
+    .prepare("SELECT * FROM column_display_config WHERE table_id = ? ORDER BY column_name ASC")
+    .all(tableId)
+    .map(mapColumnDisplayConfig);
+
+export const getColumnDisplayConfig = (
+  tableId: number,
+  columnName: string
+): ColumnDisplayConfigRow | undefined => {
+  const row = db
+    .prepare("SELECT * FROM column_display_config WHERE table_id = ? AND column_name = ?")
+    .get(tableId, columnName);
+  return row ? mapColumnDisplayConfig(row) : undefined;
+};
+
+export const upsertColumnDisplayConfig = (
+  tableId: number,
+  columnName: string,
+  label: string | null,
+  formatSpec: unknown | null
+): ColumnDisplayConfigRow => {
+  db.prepare(`
+    INSERT INTO column_display_config (table_id, column_name, label, format_spec)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(table_id, column_name) DO UPDATE SET
+      label = excluded.label,
+      format_spec = excluded.format_spec,
+      updated_at = datetime('now')
+  `).run(
+    tableId,
+    columnName,
+    label ?? null,
+    formatSpec ? JSON.stringify(formatSpec) : null
+  );
+  return getColumnDisplayConfig(tableId, columnName)!;
+};
+
+export const deleteColumnDisplayConfig = (tableId: number, columnName: string): boolean => {
+  const result = db
+    .prepare("DELETE FROM column_display_config WHERE table_id = ? AND column_name = ?")
+    .run(tableId, columnName);
   return result.changes > 0;
 };

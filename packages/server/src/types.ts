@@ -91,3 +91,17 @@ export type DashboardLayer = {
   created_at: string;
   updated_at: string;
 };
+
+// v1.15 Phase 75 (COLCFG-V115-01): global per-table column display config row.
+// `format_spec` is TEXT in SQLite (JSON-encoded FormatSpec); decoded to an object on
+// read. The server treats it as opaque JSON — the FormatSpec discriminated union lives
+// on the web side in packages/web/src/lib/columnFormatter.ts.
+// `label` is the operator display name; NULL = use raw column name.
+export type ColumnDisplayConfigRow = {
+  table_id: number;
+  column_name: string;
+  label: string | null;
+  format_spec: unknown | null; // FormatSpec on the web side; opaque object on server
+  created_at: string;
+  updated_at: string;
+};
