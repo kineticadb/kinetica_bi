@@ -138,6 +138,25 @@ export const createApp = async (): Promise<express.Express> => {
     throw new Error(`[boot] AUTH_MODE must be 'password' or 'oidc' (got: ${process.env.AUTH_MODE})`);
   }
 
+  // ---- Phase 74 (SETTINGS-V115-01/02/03): env-driven TTL config ----
+  // Read ONCE at boot (ARCHITECTURE AP-5 — never re-read process.env per-route).
+  // UNLIKE AUTH_MODE, an invalid value does NOT fail-fast: TTL is a non-critical
+  // tuning knob, so a deploy typo must not take the app down. Fall back + warn.
+  const readPositiveIntEnv = (name: string, def: number): number => {
+    const raw = process.env[name];
+    if (raw === undefined || raw.trim() === "") return def;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+      console.warn(
+        `[boot] ${name} must be a positive integer (got: ${JSON.stringify(raw)}); falling back to default ${def}`,
+      );
+      return def;
+    }
+    return n;
+  };
+  const DEFAULT_VIEW_TTL_MINUTES = readPositiveIntEnv("DEFAULT_VIEW_TTL_MINUTES", 5);
+  const TTL_KEEPALIVE_LEAD_MINUTES = readPositiveIntEnv("TTL_KEEPALIVE_LEAD_MINUTES", 1);
+
   // Dev-mode split-port workaround (TD-V11-01): when set, prefixes post-OIDC-callback
   // redirects with an absolute origin so the SPA on Vite loads after login. Empty in
   // production (Express serves the built SPA same-origin, so relative paths just work).
@@ -345,7 +364,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
@@ -968,11 +987,11 @@ export const createApp = async (): Promise<express.Express> => {
         req: dvAuthedReq,
         view: dvFilterViewName,
         sqlBody: `SELECT * FROM ${dvViewName} WHERE ${dvWhereClause}`,
-        ttl: 5,
+        ttl: DEFAULT_VIEW_TTL_MINUTES,
         route: "POST /api/filter/materialize",
         op: "MATERIALIZE",
       });
-      const dvExpiresAt = Date.now() + 5 * 60 * 1000;
+      const dvExpiresAt = Date.now() + DEFAULT_VIEW_TTL_MINUTES * 60 * 1000;
       return res.json({ viewName: dvFilterViewName, expiresAt: dvExpiresAt });
     }
 
@@ -1054,12 +1073,12 @@ export const createApp = async (): Promise<express.Express> => {
       req: authedReq,
       view: viewName,
       sqlBody: `SELECT * FROM ${tableRef} WHERE ${whereClause}`,
-      ttl: 5,
+      ttl: DEFAULT_VIEW_TTL_MINUTES,
       route: "POST /api/filter/materialize",
       op: "MATERIALIZE",
     });
 
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes (sliding TTL)
+    const expiresAt = Date.now() + DEFAULT_VIEW_TTL_MINUTES * 60 * 1000; // TTL (sliding)
     return res.json({ viewName, expiresAt });
   }));
 
@@ -1717,12 +1736,12 @@ export const createApp = async (): Promise<express.Express> => {
         req: authedReq,
         view: dynamicViewName,
         sqlBody: substituted,
-        ttl: 5,
+        ttl: DEFAULT_VIEW_TTL_MINUTES,
         route: "POST /api/dynamic-view/materialize",
         op: "DYNAMIC_MATERIALIZE",
       });
 
-      const expiresAt = Date.now() + 5 * 60 * 1000;
+      const expiresAt = Date.now() + DEFAULT_VIEW_TTL_MINUTES * 60 * 1000;
       return res.json({
         status: "materialized",
         view_name: dynamicViewName,
