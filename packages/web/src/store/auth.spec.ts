@@ -26,6 +26,11 @@ describe("authStore initial state", () => {
   it("authMode defaults to null on initial state", () => {
     expect(useAuthStore.getState().authMode).toBeNull();
   });
+
+  // Phase 74 (SETTINGS-V115-03): ttlKeepaliveLeadMinutes defaults to 1 before any bootstrap.
+  it("ttlKeepaliveLeadMinutes defaults to 1 on initial state (pre-bootstrap)", () => {
+    expect(useAuthStore.getState().ttlKeepaliveLeadMinutes).toBe(1);
+  });
 });
 
 describe("bootstrap() — latest-write-wins authMode", () => {
@@ -55,6 +60,19 @@ describe("bootstrap() — latest-write-wins authMode", () => {
     expect(useAuthStore.getState().authMode).toBe("oidc");
     expect(useAuthStore.getState().status).toBe("authenticated");
     expect(useAuthStore.getState().user).toEqual({ username: "alice" });
+  });
+
+  // Phase 74 (SETTINGS-V115-03): bootstrap surfaces ttlKeepaliveLeadMinutes from /me into the store.
+  it("bootstrap sets ttlKeepaliveLeadMinutes from /me when authenticated", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      ttlKeepaliveLeadMinutes: 3,
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().ttlKeepaliveLeadMinutes).toBe(3);
+    expect(useAuthStore.getState().status).toBe("authenticated");
   });
 });
 
