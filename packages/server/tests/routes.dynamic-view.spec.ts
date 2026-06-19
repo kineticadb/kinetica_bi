@@ -748,6 +748,38 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
       .send({ dynamic_view_id: dv.id });
     expect(res.status).toBe(401);
   });
+
+  it("DEFAULT_VIEW_TTL_MINUTES=10 overrides TTL: DDL contains TTL = 10 and expires_at ≈ now + 10 minutes (Phase 74 SETTINGS-V115-02)", async () => {
+    vi.stubEnv("DEFAULT_VIEW_TTL_MINUTES", "10");
+    let callIndex = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      callIndex += 1;
+      if (callIndex === 1) return respond(countResult(500));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 1000 });
+    const { cookie } = makeSessionCookie();
+    const before = Date.now();
+    const res = await agent
+      .post("/api/dynamic-view/materialize")
+      .set("Cookie", cookie)
+      .send({ dynamic_view_id: dv.id });
+    const after = Date.now();
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("materialized");
+    // DDL must contain the configured TTL
+    const stmts = sqlStatements(fetchMock);
+    const ddl = stmts.find((s) => s.includes("CREATE OR REPLACE MATERIALIZED VIEW"));
+    expect(ddl).toBeDefined();
+    expect(ddl).toContain("USING TABLE PROPERTIES (TTL = 10)");
+    // expires_at must reflect the configured 10-minute TTL
+    expect(res.body.expires_at).toBeGreaterThanOrEqual(before + 10 * 60 * 1000);
+    expect(res.body.expires_at).toBeLessThanOrEqual(after + 10 * 60 * 1000);
+    // env var is restored by the afterEach vi.unstubAllEnvs()
+  });
 });
 
 // ============================================================================

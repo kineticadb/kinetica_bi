@@ -300,6 +300,36 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
     expect(stmt).toMatch(new RegExp(`^DROP TABLE IF EXISTS _kbi_filt_uadmin_d${dashId}_dv${dv.id}_s\\w{8}$`));
     expect(stmt).not.toMatch(/_t\d+_s/);
   });
+
+  it("DEFAULT_VIEW_TTL_MINUTES=10 overrides TTL on dv path: DDL contains TTL = 10 and expiresAt ≈ now + 10 minutes (Phase 74 SETTINGS-V115-02)", async () => {
+    vi.stubEnv("DEFAULT_VIEW_TTL_MINUTES", "10");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId);
+    const { cookie } = makeSessionCookie();
+    const before = Date.now();
+    const res = await agent
+      .post("/api/filter/materialize")
+      .set("Cookie", cookie)
+      .send({
+        dashboardId: dashId,
+        dynamicViewId: dv.id,
+        filters: [{ column: "zone", value: "East", dataType: "string", addedAt: 0 }],
+      });
+    const after = Date.now();
+    expect(res.status).toBe(200);
+    // DDL must contain the configured TTL
+    const stmt = findSqlStatement(fetchMock);
+    expect(stmt).toContain("USING TABLE PROPERTIES (TTL = 10)");
+    // expiresAt must reflect the configured 10-minute TTL
+    expect(res.body.expiresAt).toBeGreaterThanOrEqual(before + 10 * 60 * 1000);
+    expect(res.body.expiresAt).toBeLessThanOrEqual(after + 10 * 60 * 1000);
+    // env var is restored by the afterEach vi.unstubAllEnvs()
+  });
 });
 
 describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=oidc", () => {

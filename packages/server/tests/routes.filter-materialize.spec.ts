@@ -556,6 +556,40 @@ describe("POST /api/filter/materialize — AUTH_MODE=password", () => {
     expect(res.body.expiresAt).toBeGreaterThanOrEqual(before + 5 * 60 * 1000);
     expect(res.body.expiresAt).toBeLessThanOrEqual(after + 5 * 60 * 1000);
   });
+
+  it("DEFAULT_VIEW_TTL_MINUTES=10 overrides TTL: DDL contains TTL = 10 and expiresAt ≈ now + 10 minutes (Phase 74 SETTINGS-V115-02)", async () => {
+    vi.stubEnv("DEFAULT_VIEW_TTL_MINUTES", "10");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(successKineticaBody), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const { cookie } = makeSessionCookie();
+    const before = Date.now();
+    const res = await agent
+      .post("/api/filter/materialize")
+      .set("Cookie", cookie)
+      .send({
+        dashboardId: dashId,
+        tableId,
+        filters: [{ column: "x", value: "y", dataType: "string", addedAt: 0 }],
+      });
+    const after = Date.now();
+    expect(res.status).toBe(200);
+    // DDL must contain the configured TTL
+    const calls = fetchMock.mock.calls;
+    const ddlCall = calls.find((c) => {
+      const body = JSON.parse((c[1] as { body: string }).body);
+      return typeof body.statement === "string" && body.statement.includes("CREATE OR REPLACE MATERIALIZED VIEW");
+    });
+    expect(ddlCall).toBeDefined();
+    const reqBody = JSON.parse((ddlCall![1] as { body: string }).body);
+    expect(reqBody.statement).toContain("USING TABLE PROPERTIES (TTL = 10)");
+    // expiresAt must reflect the configured 10-minute TTL
+    expect(res.body.expiresAt).toBeGreaterThanOrEqual(before + 10 * 60 * 1000);
+    expect(res.body.expiresAt).toBeLessThanOrEqual(after + 10 * 60 * 1000);
+  });
 });
 
 describe("POST /api/filter/materialize — AUTH_MODE=oidc", () => {

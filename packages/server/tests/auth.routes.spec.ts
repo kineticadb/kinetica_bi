@@ -379,7 +379,7 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
 
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
-    expect(meRes.body).toEqual({ user: { username: "alice" }, authMode: "password" });
+    expect(meRes.body).toEqual({ user: { username: "alice" }, authMode: "password", ttlKeepaliveLeadMinutes: 1 });
   });
 
   it("returns authMode='oidc' in oidc mode for an authenticated session", async () => {
@@ -390,7 +390,7 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
     const agent = await buildTestApp();
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
-    expect(meRes.body).toEqual({ user: { username: "alice" }, authMode: "oidc" });
+    expect(meRes.body).toEqual({ user: { username: "alice" }, authMode: "oidc", ttlKeepaliveLeadMinutes: 1 });
   });
 
   it("returns 401 + REAUTH_REQUIRED with no authMode field in password mode (no session)", async () => {
@@ -408,5 +408,22 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
     expect(meRes.status).toBe(401);
     expect(meRes.body).toEqual({ error: "Not authenticated.", code: "REAUTH_REQUIRED" });
     expect(meRes.body.authMode).toBeUndefined();
+  });
+
+  it("TTL_KEEPALIVE_LEAD_MINUTES=3 surfaces as ttlKeepaliveLeadMinutes: 3 on /api/me (Phase 74 SETTINGS-V115-03)", async () => {
+    vi.stubEnv("TTL_KEEPALIVE_LEAD_MINUTES", "3");
+    mockKineticaLoginOK();
+    const agent = await buildTestApp();
+    const loginRes = await agent
+      .post("/api/auth/login")
+      .send({ username: "alice", password: "hunter2" });
+    expect(loginRes.status).toBe(200);
+    const cookieHeader = loginRes.headers["set-cookie"] as string[];
+    const cookie = cookieHeader[0].split(";")[0];
+
+    const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.ttlKeepaliveLeadMinutes).toBe(3);
+    // env var is restored by the global afterEach vi.unstubAllEnvs()
   });
 });
