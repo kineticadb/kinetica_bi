@@ -52,6 +52,12 @@ import { formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } fro
 import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
+// Phase 77 Plan 01 (COLAPPLY-V115-01): column display config resolution for RecordsTableRenderer.
+import {
+  useColumnDisplayConfigStore,
+  resolveLabel,
+  resolveFormatter,
+} from "../../store/columnDisplayConfigStore";
 import {
   RECHARTS_TOOLTIP_PROPS,
   DEFAULT_CHART_PALETTE,
@@ -1596,6 +1602,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   // we MUST subscribe directly here — the records short-circuit at line 175 means
   // AggregatedWidgetRenderer's subscription never reaches us.
   const tableId = cfg.tableId as number | undefined;
+  // Phase 77-01 (COLAPPLY-V115-01): subscribe to configVersion (primitive selector) so
+  // Phase 76 editor mutations re-render this component and re-invoke resolve* helpers.
+  // Mirror the filterVersion pattern at :394 — primitive selector, not the whole state.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
   // Phase 35 Plan 05 (DV-V16-13): dv-bound widget — same semantics as AggregatedWidget.
   // Effect 1 (Phase 30 spatial materialize trigger) STAYS UNCHANGED — filter view is the
   // `{view}` substitution source for the dv template.
@@ -1701,6 +1711,15 @@ const RecordsTableRenderer = ({ widget }: Props) => {
 
   // FK4: abort in-flight export on unmount
   useEffect(() => () => exportAbortRef.current?.abort(), []);
+
+  // Phase 77-01 (COLAPPLY-V115-01): load column display config for this table once when
+  // tableId is known. The store caches; loadConfig replaces the entry and bumps configVersion.
+  // Guard against undefined (dv-bound widgets have no tableId — raw fallback is accepted).
+  useEffect(() => {
+    if (tableId !== undefined) {
+      void useColumnDisplayConfigStore.getState().loadConfig(tableId);
+    }
+  }, [tableId]);
 
   const handleDownloadCsv = async () => {
     // Abort previous in-flight export if still running
@@ -2134,6 +2153,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
               {columnOrder.map((col) => {
                 const isSorted = sortField === col;
                 const arrow = isSorted ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+                // Phase 77-01 (COLAPPLY-V115-01): resolve display label.
+                // Guard against undefined tableId (dv-bound widget) — raw col name as fallback.
+                // configVersion subscription above ensures re-render when config changes.
+                const headerLabel = tableId !== undefined ? resolveLabel(tableId, col) : col;
                 return (
                   <th
                     key={col}
@@ -2141,7 +2164,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
                     onClick={() => handleHeaderClick(col)}
                     title={`Sort by ${col}`}
                   >
-                    {col}{arrow}
+                    {headerLabel}{arrow}
                   </th>
                 );
               })}
@@ -2182,9 +2205,13 @@ const RecordsTableRenderer = ({ widget }: Props) => {
                   onClick={handleRowClick}
                   style={{ cursor: drillEnabled ? "pointer" : undefined }}
                 >
-                  {columnOrder.map((col) => (
-                    <td key={col}>{String(row[col] ?? "")}</td>
-                  ))}
+                  {columnOrder.map((col) => {
+                    // Phase 77-01 (COLAPPLY-V115-01): resolve formatter for this column.
+                    // Guard against undefined tableId (dv-bound widget) — identity passthrough.
+                    const fmt = tableId !== undefined ? resolveFormatter(tableId, col) : (v: unknown) => v;
+                    const formatted = fmt(row[col]);
+                    return <td key={col}>{String(formatted ?? "")}</td>;
+                  })}
                 </tr>
               );
             })}

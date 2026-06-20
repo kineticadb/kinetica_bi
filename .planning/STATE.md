@@ -1,30 +1,113 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.13
-milestone_name: Calendar Heatmap Visualization
-status: shipped
-stopped_at: v1.13 Calendar Heatmap Visualization SHIPPED 2026-06-18 — archived (milestones/v1.13-ROADMAP.md + v1.13-REQUIREMENTS.md), MILESTONES.md + PROJECT.md + RETROSPECTIVE.md updated, tagged v1.13. NEXT = push (fetch first; origin shared) then /gsd:new-milestone for v1.14.
-last_updated: "2026-06-18T14:42:55.525Z"
+milestone: v1.15
+milestone_name: Column Formatting & View Lifecycle
+status: unknown
+stopped_at: Completed 76-02-PLAN.md — Format columns entry point button + integration test
+last_updated: "2026-06-20T22:30:00.000Z"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 22
-  completed_plans: 22
+  total_phases: 6
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-18 — v1.13 SHIPPED)
+See: .planning/PROJECT.md (updated 2026-06-19 — v1.15 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Between milestones — v1.13 shipped; planning next milestone (v1.14) via /gsd:new-milestone
+**Current focus:** Phase 76 — column-formatting-editor-ui
 
 ## Current Position
 
-v1.13 Calendar Heatmap Visualization — SHIPPED 2026-06-18 (7 phases, 22 plans, 12/12 reqs, live UAT passed, tagged v1.13)
-No active milestone. NEXT = push to shared origin (fetch first) + /gsd:new-milestone.
+Phase: 76 (column-formatting-editor-ui) — COMPLETE
+Plan: 2 of 2
+
+### v1.15 Scope (locked 2026-06-19)
+
+Three feature areas (phase numbering continues from 74) — NOT frontend-only (server tables/endpoints + new permission):
+
+1. **Client-side column formatting + custom labels (global per-table):** new `column_display_config` table (table_id + column → label + format spec) + CRUD; pure client formatter lib (numbers: commas/decimals/currency/percent + advanced d3-format string; dates: presets + custom pattern); client-side only (no Kinetica SQL change). New dep `d3-format` (web).
+2. **Column Formatting editor UI** — per-table editor from the Tables area; per-column label + format with live preview; saves to global config.
+3. **Apply labels + formatting** — records-table (headers=label, cells=formatted), chart tooltips + axes + in-chart series legends, map info popups (template + KV). Map layers legend EXCLUDED.
+4. **View TTL keep-alive** — dashboard-level touch-query (get first records) a configurable lead-time before expiry, for filter-views + dynamic-views; verify-live that a read resets Kinetica TTL (re-materialize = documented fallback).
+5. **App settings infra + 2 settings** — `app_settings` KV table + admin GET/PATCH + new admin-settings permission + admin settings UI; `default_view_ttl_minutes` (replaces hardcoded TTL=5 in both materialize endpoints) + `ttl_keepalive_lead_minutes` (default 1).
+
+Test gates: frontend vitest 100% from `packages/web`; web + server `tsc` clean (separate gates); server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (never a fixed pass-count). `AggregatedWidgetRenderer` stays sole materialize trigger; theme-tokens-only.
+
+### v1.15 Open Tech Debt (carried)
+
+TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
+
+### v1.15 Phase Map
+
+| Phase | Name | Stack | Key Requirements |
+|-------|------|-------|------------------|
+| 74 | App-Settings Infrastructure + TTL Defaults | BOTH (server-heavy) | SETTINGS-V115-01, -02, -03 |
+| 75 | Column Display Config Foundation | BOTH | COLCFG-V115-01, -02, -03 |
+| 76 | Column Formatting Editor UI | FRONTEND-ONLY | COLEDIT-V115-01, -02, -03 |
+| 77 | Apply Labels + Formatting at Render Surfaces | FRONTEND-ONLY | COLAPPLY-V115-01, -02, -03, -04 |
+| 78 | View TTL Keep-Alive Touch | FRONTEND-ONLY | TTLKEEP-V115-01 |
+| 79 | Verification + Live UAT | BOTH + operator | TTLKEEP-V115-02, VERIFY-V115-01 |
+
+**Dependency spine:** Phase 74 is the FOUNDATION (no app-settings infra exists today — everything is env-var driven) and unblocks Phase 78 (which needs `ttl_keepalive_lead_minutes` + the configurable `expiresAt`). Phase 75 is the column-config FOUNDATION (server table+CRUD + pure formatter lib + store/helpers) and unblocks Phases 76 + 77, which are independent of each other. Execution: 74 → {75 (independent of 74), 78 (needs 74)} → {76, 77} (both need 75, parallel-safe) → 79 (verifies after all land).
+
+**This is the first server-touching milestone since v1.12.** Server work: two new SQLite tables (`app_settings` KV + `column_display_config` keyed `table_id`+`column_name`) in `db.ts` SCHEMA_DDL; admin settings GET/PATCH + column-config CRUD endpoints in `index.ts`; `default_view_ttl_minutes` replaces the hardcoded `TTL = 5` at `index.ts:1057` (filter-materialize) + `index.ts:1720` (dynamic-view materialize) via `lib/materializedView.ts:35`; endpoints return `expiresAt` from the configured value.
+
+**NEW PERMISSION (flag):** `app:manage_settings` added to the `lib/permissions.ts` catalog + `rbacSeed.ts` (admin gets it, once-only seed mirroring the v1.10 17th-permission `dashboards:manage_access` pattern; operator removals survive restarts) + mirrored byte-for-byte in the web `PERMISSIONS` list. Admin settings UI mirrors the v1.8 Users/Roles management page pattern (hide-don't-disable).
+
+**NEW WEB DEPENDENCY (flag):** `d3-format` in `packages/web` (Phase 75) — for the advanced number-format string escape hatch in the pure formatter lib; web-only, no server/SQL coupling.
+
+**Test gates (per phase):**
+
+- Server phases (74, 75 server portion, 79): supertests in BOTH auth modes (password + oidc) + server `tsc` clean + server vitest SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky — NEVER a fixed pass-count).
+- Frontend phases (75 client portion, 76, 77, 78): frontend vitest 100% from `packages/web` + web `tsc` clean + theme-guard.spec.ts green (theme tokens only, no raw hex).
+- Phase 79 gates BOTH stacks + a blocking live operator walk-through (incl. the live TTLKEEP-V115-02 confirmation that a read resets the Kinetica view TTL; re-materialize = documented fallback).
+- `AggregatedWidgetRenderer` remains the SOLE materialize trigger throughout — Phase 77 is read-path label/format injection (no new materialize) and Phase 78's keep-alive touch is a READ, not a materialize (statically assert the keep-alive hook never imports `materializeFilter`/`materializeDynamicView`).
+
+### v1.15 Locked Scope Decisions (2026-06-19)
+
+- **Global per-table config:** label + format spec attaches to `table_id` + `column_name`, reused across ALL dashboards using that table (set once, applies everywhere). Per-dashboard overrides deferred.
+- **Client-side formatting only:** the formatter is a PURE client library — it NEVER alters the SQL sent to Kinetica. Numbers (commas/decimals/currency/percent + advanced d3-format string) + dates (presets + custom pattern); invalid/empty spec → raw value fallback.
+- **Chart labels reach tooltips + axes + in-chart series legends** (not only tooltips). Records-table headers/cells + map info popups (template + KV) also use labels/formatting. The map LAYERS LEGEND (`LayersLegendPanel`) is NEVER affected — locked by an explicit test (COLAPPLY-V115-04).
+- **Keep-alive = touch-query (READ) + verify-live:** lead-time exposed as `ttl_keepalive_lead_minutes` (default 1) so it can be moved earlier if a read-reset proves slow; re-materialize is the documented FALLBACK if reads don't reset TTL (validated live in Phase 79).
+- **App-settings store is extensible** but only the two TTL settings are in scope this milestone.
+
+### v1.14 Scope (locked 2026-06-18)
+
+Three frontend refinements (phase numbering continues from 70):
+
+1. **Numeric `<other>` bucket** — class-break numeric breaks emit `<other>` catch-all (`1:3,3:5,<other>`); default-ON for new/edited configs only; existing saved numeric layers untouched until re-saved. (`cbConfig.ts`, `wmsUrlBuilder.ts:392`, `CbConfigForm.tsx`)
+2. **SHAPE* hidden for lat/lon points** — hide SHAPEFILLCOLOR/SHAPELINECOLOR/SHAPELINEWIDTH when `spatialMode === "latlon"`, in BOTH layer form (`KineticaWmsLayerForm.tsx:1184-1313`) and per-break advanced panel (`CbConfigForm.tsx:948-1056`); applies to point raster + cb raster; ALSO suppress WMS emission (`wmsUrlBuilder.ts:340-349`) so stale saved values don't leak.
+3. **Group-by for timeline + numeric-line** — add optional `groupByColumn` mirroring the bar/line/pie pattern (`ChartConfigPanel.tsx:268-321`); single-metric-when-grouped (multi-metric only when no group-by); N-series rendering. (`Timeline*`/`NumericLine*` config panels + renderers + SQL builders)
+
+All three FRONTEND-ONLY expected (`packages/web`): frontend vitest 100% + web tsc clean; flag any server diff. `AggregatedWidgetRenderer` stays the sole materialize trigger.
+
+### v1.14 Open Tech Debt (carried from v1.13)
+
+TD-V16-TEST-ISOLATION (server set-based gate), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
+
+### v1.14 Phase Map
+
+| Phase | Name | Stack | Key Requirements |
+|-------|------|-------|------------------|
+| 70 | Numeric `<other>` Catch-All Bucket | FRONTEND-ONLY | CBOTHER-V114-01, -02, -03 |
+| 71 | SHAPE* Hidden for Lat/Lon Point Layers | FRONTEND-ONLY | SHAPE-V114-01, -02, -03 |
+| 72 | Group-By for Timeline + Numeric-Line Charts | FRONTEND-ONLY | GROUP-V114-01, -02, -03, -04 |
+| 73 | Verification + Live UAT | BOTH + operator | VERIFY-V114-01 |
+
+Phases 70/71/72 are INDEPENDENT (no cross-feature dependency) — any order or parallel. All three are FRONTEND-ONLY (`packages/web`): frontend vitest 100% (run from `packages/web`) + web tsc clean; flag any server diff. Phase 73 verifies BOTH stacks + a blocking live operator walk-through (mirrors v1.13 Phase 69 / v1.12 Phase 64), then compiles the verification record.
+
+Test gates (every phase): frontend vitest 100% from `packages/web`; web + server `tsc` clean as SEPARATE gates; server vitest is a SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky — NEVER a fixed pass-count); theme-guard.spec.ts green (theme tokens only, no raw hex). `AggregatedWidgetRenderer` remains the SOLE materialize trigger (timeline + numeric-line are `usesAggregation:false` and own their SQL lifecycle — not routed through it).
+
+### v1.14 Locked Scope Decisions (2026-06-18)
+
+- **`<other>` default-on, new/edited only:** a missing `<other>` flag on an already-saved numeric config does NOT silently inject `<other>` — `coalesceCbConfig` must preserve current render until the layer is re-saved. Mirrors the categorical `<other>` shipped in v1.7 Phase 39.
+- **Group-by collapses to a single metric:** enabling a group-by on timeline/numeric-line restricts to one metric (each series = one group value); multi-metric (1–4) stays available only when no group-by is set; UI enforces the mutual exclusion; renderers apply a top-N group cap.
+- **SHAPE* hiding gates BOTH the UI AND the WMS emission:** hide fields when `spatialMode === "latlon"` in `KineticaWmsLayerForm` (layer-level) + `CbConfigForm` (per-break), and suppress SHAPE* param emission in `wmsUrlBuilder` so saved-but-hidden values don't leak. Pattern precedent: v1.9 POINT*/SHAPE* suppression under track mode.
 
 ## v1.13 Phase Map
 
@@ -354,6 +437,16 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 68.2 P01 | 2 | 1 tasks | 2 files |
 | Phase 68.2 P03 | 5 | 2 tasks | 4 files |
 | Phase 69-verification-live-uat P69-02 | 10 | 1 tasks | 1 files |
+| Phase 70 P01 | 4min | 3 tasks | 4 files |
+| Phase 71 P01 | 3 | 2 tasks | 4 files |
+| Phase 71 P02 | 6min | 1 tasks | 2 files |
+| Phase 72 P01 | 3 | 3 tasks | 6 files |
+| Phase 72 P02 | 5 | 2 tasks | 4 files |
+| Phase 72 P03 | 4 | 2 tasks | 4 files |
+| Phase 74-app-settings-infrastructure-ttl-defaults P01 | 6 | 2 tasks | 5 files |
+| Phase 75 P02 | 25 | 2 tasks | 4 files |
+| Phase 75-column-display-config-foundation P03 | 6 | 2 tasks | 5 files |
+| Phase 76-01 P01 | 6 | 3 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -577,6 +670,22 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 68.2]: subdomainKeys (top-level) = sorted union of all groups expected keys — informational; layout uses per-block cells
 - [Phase 69-02]: 69-UAT.md shipped in "pending attestation" (all status: PENDING); 69-01-AUTOMATED-GATES.md not yet present at doc-ship time — automated_gates_verdict set to pending, operator fills §0 P3 at the 69-03 checkpoint
 - [Phase 69-02]: Chat-fixes mini-table in traceability maps 344c274/4f4ef7c/90c8f3b/0a9d9f8 → confirming UAT sections; year×day h-scroll noted as expected (auto-scroll is v2 deferral)
+- [Phase 70]: Numeric CB_VALS emits literal <other> for the <other> break (b.value === '<other>'), else min:max; no pre-encoding (CBOTHER-V114-01)
+- [Phase 70]: <other> toggle moved (not copied) to a shared cbConfig.attr-gated block — renders once per mode; column-change default-on broadened to both valsTypes; preservation invariant (no auto-injection) regression-locked (CBOTHER-V114-02/03)
+- [Phase 72]: Numeric-Line group-by: single-metric-when-grouped (non-destructive collapse to metrics[0]); grouped pivot passes numericBuckets:true for numeric bucket sort; one Line per top-N series on a single shared Y-axis with themeColorsFor ramp (no raw hex); drag-to-filter BETWEEN-on-xField preserved
+- [Phase 74]: readPositiveIntEnv fallback-not-fail-fast: TTL env vars log warning + fall back to default on invalid; never throw (contrast AUTH_MODE which is critical)
+- [Phase 74]: ttlKeepaliveLeadMinutes exposed on GET /api/me (not /api/auth/config); /api/auth/config stays auth-mode-only
+- [Phase 74]: Phase 74 pivoted to env-var config: zero app_settings table, CRUD endpoint, new permission, or settings UI
+- [Phase 75-01]: column_display_config endpoint URL locked as table-scoped (/api/tables/:tableId/column-display-config) — consumed verbatim by Plan 03 client store
+- [Phase 75-01]: ColumnDisplayConfigRow type lives in types.ts (not db.ts) — consistent with DashboardDynamicView convention
+- [Phase 75-01]: format_spec stored as opaque JSON-in-TEXT on server; FormatSpec discriminated union is web-side only (columnFormatter.ts in Phase 75-02)
+- [Phase 75-01]: GET read endpoint uses requireAuth (not requirePermission) — any authenticated viewer can read for render surfaces (Phase 77)
+- [Phase 75]: Percent preset in number formatter appends literal '%' (no ×100); only d3 escape hatch uses d3's '%' type which does ×100 (documented in code)
+- [Phase 75]: Date formatting uses hand-rolled UTC getters (extends columnTypes.ts MONTH_NAMES pattern) — no d3-time-format added
+- [Phase 75]: FormatSpec discriminated union lives in columnFormatter.ts (pure client type); server stores it as opaque JSON-in-TEXT
+- [Phase 75]: resolveLabel/resolveFormatter co-located in columnDisplayConfigStore.ts (store imports disallow placement in pure columnFormatter.ts)
+- [Phase 75]: ColumnDisplayConfigRow client type in api/client.ts (not server types.ts); client DTO for fetch helpers + store setConfig
+- [Phase 76]: Single-file ColumnFormatEditorModal with sub-components (ColumnEditorForm, NumberControls, DateControls, D3Controls); baseline snapshot for dirty tracking; defaultSpecForKind builder
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -973,6 +1082,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-17T20:03:38.450Z
-Stopped at: Completed 69-02-PLAN.md (authored 69-UAT.md — full-matrix pending-attestation doc)
+Last session: 2026-06-20T21:47:52.631Z
+Stopped at: Completed 76-01-PLAN.md — ColumnFormatEditorModal + 10 component tests
 Resume file: None
