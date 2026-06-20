@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
 import ChartCard from "./ChartCard";
+import ColumnFormatEditorModal from "./ColumnFormatEditorModal";
 
 type View =
   | { mode: "list" }
@@ -122,6 +123,7 @@ const DatasetsPage = () => {
 
 const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void }) => {
   const columns = Object.entries(table.columns);
+  const [showFormatEditor, setShowFormatEditor] = useState(false);
 
   return (
     <div className="dashboard-list">
@@ -129,9 +131,14 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
         title={table.name}
         description={table.description || `Schema: ${table.schema}`}
         actions={
-          <button className="ghost-sm" onClick={onBack}>
-            Back
-          </button>
+          <>
+            <button className="ghost-sm" onClick={() => setShowFormatEditor(true)}>
+              Format columns
+            </button>
+            <button className="ghost-sm" onClick={onBack}>
+              Back
+            </button>
+          </>
         }
       >
         <div className="ds-detail">
@@ -174,6 +181,12 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
           </table>
         )}
       </ChartCard>
+      {showFormatEditor && (
+        <ColumnFormatEditorModal
+          table={table}
+          onClose={() => setShowFormatEditor(false)}
+        />
+      )}
     </div>
   );
 };
