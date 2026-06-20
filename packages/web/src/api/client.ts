@@ -1,6 +1,7 @@
 import type { ActiveFilter } from "../store/filterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
 import { useToastStore } from "../store/toast";
+import type { FormatSpec } from "../lib/columnFormatter";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -1365,4 +1366,48 @@ export const deleteRole = async (
   return response.ok
     ? { ok: true }
     : { ok: false, error: (json as { error?: string }).error || `Failed (${response.status})` };
+};
+
+// --- Column Display Config ---
+
+export type ColumnDisplayConfigRow = {
+  table_id: number;
+  column_name: string;
+  label: string | null;
+  format_spec: FormatSpec | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const listColumnDisplayConfig = async (tableId: number): Promise<ColumnDisplayConfigRow[]> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/column-display-config`);
+  if (!response.ok) await throwForStatus(response, "Failed to load column display config");
+  const json = await response.json();
+  return json.data as ColumnDisplayConfigRow[];
+};
+
+export const upsertColumnDisplayConfig = async (
+  tableId: number,
+  columnName: string,
+  label: string | null,
+  formatSpec: FormatSpec | null,
+): Promise<ColumnDisplayConfigRow> => {
+  const response = await apiFetch(
+    `${API_BASE}/api/tables/${tableId}/column-display-config/${encodeURIComponent(columnName)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label, format_spec: formatSpec }),
+    },
+  );
+  if (!response.ok) await throwForStatus(response, "Failed to save column display config");
+  return (await response.json()) as ColumnDisplayConfigRow;
+};
+
+export const deleteColumnDisplayConfig = async (tableId: number, columnName: string): Promise<void> => {
+  const response = await apiFetch(
+    `${API_BASE}/api/tables/${tableId}/column-display-config/${encodeURIComponent(columnName)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) await throwForStatus(response, "Failed to delete column display config");
 };
