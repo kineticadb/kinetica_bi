@@ -28,6 +28,9 @@ import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { DashboardContextProvider } from "../DashboardContext";
 import { FilteringBadge } from "../FilteringBadge";
 import * as clientModule from "../../api/client";
+// Phase 77-01 (COLAPPLY-V115-01): column display config store — used directly (real store, no mock).
+import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
+import type { FormatSpecNumber } from "../../lib/columnFormatter";
 
 // Phase 15-02: mock materializeFilter + dropFilterView alongside runSql.
 // vi.spyOn still works on vi.fn() mocks — existing tests use spyOn pattern.
@@ -38,6 +41,9 @@ vi.mock("../../api/client", async (importOriginal) => {
     runSql: vi.fn(),
     materializeFilter: vi.fn(),
     dropFilterView: vi.fn(),
+    // Phase 77-01: default no-op so loadConfig never makes real HTTP calls.
+    // Tests that need config data use upsertColumn on the real store directly.
+    listColumnDisplayConfig: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -3113,5 +3119,289 @@ describe("WidgetRenderer Phase 67 — calendar short-circuit to CalendarRenderer
       .filter((line) => line.trimStart().startsWith("import"))
       .join("\n");
     expect(importLines).not.toMatch(/materializeFilter|dropFilterView/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 77-01 (COLAPPLY-V115-01) — RecordsTable column display config
+// ---------------------------------------------------------------------------
+
+// TABLE_ID used throughout this describe block — matches makeRecordsWidget default (99).
+const RECORDS_TABLE_ID = 99;
+
+// A minimal number format spec that produces thousands separators.
+const NUMBER_SPEC: FormatSpecNumber = {
+  kind: "number",
+  thousandsSep: true,
+  decimals: 0,
+  currency: false,
+  percent: false,
+};
+
+// Records widget factory for this block.
+const makeRecordsWidgetForConfig = (overrides: Partial<WidgetDto> = {}): WidgetDto => ({
+  id: 20,
+  dashboard_id: 1,
+  title: "RecordsConfig Test",
+  type: "records",
+  position: 5,
+  config: {
+    table: "ki_home.sales",
+    tableId: RECORDS_TABLE_ID,
+    columns: "amount,name",
+    pageSize: 25,
+  },
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  ...overrides,
+});
+
+describe("RecordsTable column display config (COLAPPLY-V115-01)", () => {
+  beforeEach(() => {
+    // Reset SQL mock — seed a two-row response: amount=1234567/9876543, name="Alice"/"Bob"
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(
+      buildResponse(
+        ["amount", "name"],
+        [[1234567, 9876543], ["Alice", "Bob"]],
+      ) as Record<string, unknown>,
+    );
+    vi.spyOn(clientModule, "materializeFilter").mockResolvedValue({
+      viewName: "_kbi_filt_test",
+      expiresAt: Date.now() + 300000,
+    });
+    vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
+    // Default: loadConfig returns empty (no config entries). Individual tests override this.
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ------------------------------------------------------------------
+  // Test 1: header shows the saved display label (not the raw column name)
+  // ------------------------------------------------------------------
+  it("header renders the saved display label for a configured column (sort arrow preserved on active sort)", async () => {
+    // Spy on listColumnDisplayConfig to return a label for "amount".
+    // loadConfig calls listColumnDisplayConfig then setConfig — this is how the store gets seeded.
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: RECORDS_TABLE_ID,
+        column_name: "amount",
+        label: "Revenue",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeRecordsWidgetForConfig({
+      config: {
+        table: "ki_home.sales",
+        tableId: RECORDS_TABLE_ID,
+        columns: "amount,name",
+        sortField: "amount",
+        sortDirection: "asc",
+        pageSize: 25,
+      },
+    });
+
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    // Wait for loadConfig to complete AND data to load
+    await waitFor(() => {
+      const headers = Array.from(container.querySelectorAll("thead th")).map(
+        (th) => th.textContent ?? "",
+      );
+      expect(headers.some((h) => h.includes("Revenue"))).toBe(true);
+    });
+
+    const headers = Array.from(container.querySelectorAll("thead th")).map(
+      (th) => th.textContent ?? "",
+    );
+
+    // "amount" column must show the label "Revenue" (not raw "amount")
+    expect(headers.some((h) => h.includes("Revenue"))).toBe(true);
+    expect(headers.some((h) => h === "amount" || h.startsWith("amount "))).toBe(false);
+
+    // Sort arrow must still appear on the active sort column header
+    const revenueHeader = headers.find((h) => h.includes("Revenue")) ?? "";
+    expect(revenueHeader).toMatch(/▲|▼/);
+  });
+
+  // ------------------------------------------------------------------
+  // Test 2: cell values are formatted using the saved formatter
+  // ------------------------------------------------------------------
+  it("cell value renders through the saved formatter and differs from raw String(value)", async () => {
+    // Return a number format spec for "amount" from the API.
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: RECORDS_TABLE_ID,
+        column_name: "amount",
+        label: null,
+        format_spec: NUMBER_SPEC,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeRecordsWidgetForConfig();
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    // Wait for formatted cell to appear
+    await waitFor(() => {
+      const cells = Array.from(container.querySelectorAll("tbody td")).map(
+        (td) => td.textContent ?? "",
+      );
+      // Raw value would be "1234567" — formatted with thousands sep becomes "1,234,567"
+      expect(cells.some((c) => c === "1,234,567")).toBe(true);
+    });
+
+    const cells = Array.from(container.querySelectorAll("tbody td")).map(
+      (td) => td.textContent ?? "",
+    );
+
+    expect(cells.some((c) => c === "1,234,567")).toBe(true);
+    // Raw string should NOT appear in the "amount" column cells
+    expect(cells.some((c) => c === "1234567")).toBe(false);
+  });
+
+  // ------------------------------------------------------------------
+  // Test 3: raw fallback when column has no config entry
+  // ------------------------------------------------------------------
+  it("header shows raw column name and cell shows raw value when no config exists for the column", async () => {
+    // listColumnDisplayConfig returns [] (default mock) → no config for "name"
+    const widget = makeRecordsWidgetForConfig();
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("thead th").length).toBeGreaterThan(0);
+    });
+
+    const headers = Array.from(container.querySelectorAll("thead th")).map(
+      (th) => th.textContent ?? "",
+    );
+    // "name" column: no config → raw column name
+    expect(headers.some((h) => h === "name" || h.startsWith("name "))).toBe(true);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("tbody tr").length).toBeGreaterThan(0);
+    });
+
+    const cells = Array.from(container.querySelectorAll("tbody td")).map(
+      (td) => td.textContent ?? "",
+    );
+    // No format spec → raw value passthrough
+    expect(cells.some((c) => c === "Alice")).toBe(true);
+  });
+
+  // ------------------------------------------------------------------
+  // Test 4: dv-bound widget (tableId undefined) → raw names + raw values
+  // ------------------------------------------------------------------
+  it("dv-bound widget (tableId undefined) renders raw column name and raw value without crashing", async () => {
+    const DV_ID = 5;
+
+    // Seed a dynamic view entry so the widget renders (not orphan state).
+    act(() => {
+      useDynamicViewStore.getState().setView(DV_ID, {
+        viewName: "_kbi_dv_5",
+        status: "materialized",
+      });
+    });
+
+    // Seed config for a hypothetical tableId — should NOT affect dv-bound rendering
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: RECORDS_TABLE_ID,
+        column_name: "amount",
+        label: "Should Not Appear",
+        format_spec: NUMBER_SPEC,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const dvWidget = makeRecordsWidgetForConfig({
+      id: 21,
+      config: {
+        // No tableId — dv-bound
+        table: "ki_home.sales",
+        dynamicViewId: DV_ID,
+        columns: "amount,name",
+        pageSize: 25,
+      },
+    });
+
+    // Pass the dynamic view in the dashboard context so it's not orphan
+    const { container } = render(
+      <DashboardContextProvider
+        dashboardId={1}
+        widgets={[dvWidget]}
+        dynamicViews={[{ id: DV_ID, name: "dv_5", table_id: RECORDS_TABLE_ID, template: "", max_records: 10000 } as any]}
+        retryDynamicView={() => {}}
+      >
+        <WidgetRenderer widget={dvWidget} />
+      </DashboardContextProvider>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("thead th").length).toBeGreaterThan(0);
+    });
+
+    const headers = Array.from(container.querySelectorAll("thead th")).map(
+      (th) => th.textContent ?? "",
+    );
+
+    // dv-bound: raw col name "amount" (no label override, tableId undefined)
+    expect(headers.some((h) => h === "amount" || h.startsWith("amount "))).toBe(true);
+    expect(headers.some((h) => h.includes("Should Not Appear"))).toBe(false);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("tbody tr").length).toBeGreaterThan(0);
+    });
+
+    const cells = Array.from(container.querySelectorAll("tbody td")).map(
+      (td) => td.textContent ?? "",
+    );
+    // Raw value "1234567" (no thousands formatting — tableId is undefined)
+    expect(cells.some((c) => c === "1234567")).toBe(true);
+  });
+
+  // ------------------------------------------------------------------
+  // Test 5: configVersion-driven live re-render — header updates after upsertColumn
+  // ------------------------------------------------------------------
+  it("header updates live after upsertColumn bumps configVersion (configVersion-driven re-render)", async () => {
+    // Initial render with NO config for "amount" (listColumnDisplayConfig returns [])
+    const widget = makeRecordsWidgetForConfig();
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("thead th").length).toBeGreaterThan(0);
+    });
+
+    // Confirm raw label initially
+    const headersBefore = Array.from(container.querySelectorAll("thead th")).map(
+      (th) => th.textContent ?? "",
+    );
+    expect(headersBefore.some((h) => h === "amount" || h.startsWith("amount "))).toBe(true);
+
+    // Mutate config directly — upsert bypasses loadConfig, bumps configVersion → re-render fires
+    act(() => {
+      useColumnDisplayConfigStore.getState().upsertColumn(
+        RECORDS_TABLE_ID,
+        "amount",
+        "New Label",
+        null,
+      );
+    });
+
+    // Headers should now show "New Label" (configVersion subscription triggers re-render)
+    await waitFor(() => {
+      const headersAfter = Array.from(container.querySelectorAll("thead th")).map(
+        (th) => th.textContent ?? "",
+      );
+      expect(headersAfter.some((h) => h.includes("New Label"))).toBe(true);
+    });
   });
 });
