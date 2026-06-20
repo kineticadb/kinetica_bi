@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.15
 milestone_name: Column Formatting & View Lifecycle
 status: unknown
-stopped_at: Completed 76-02-PLAN.md — Format columns entry point button + integration test
-last_updated: "2026-06-20T22:30:00.000Z"
+stopped_at: Completed 77-01-PLAN.md (Records Table label+format injection)
+last_updated: "2026-06-20T23:32:31.406Z"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-19 — v1.15 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 76 — column-formatting-editor-ui
+**Current focus:** Phase 77 — apply-labels-formatting-at-render-surfaces
 
 ## Current Position
 
-Phase: 76 (column-formatting-editor-ui) — COMPLETE
-Plan: 2 of 2
+Phase: 77 (apply-labels-formatting-at-render-surfaces) — EXECUTING
+Plan: 1 of 3
 
 ### v1.15 Scope (locked 2026-06-19)
 
@@ -447,6 +447,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 75 P02 | 25 | 2 tasks | 4 files |
 | Phase 75-column-display-config-foundation P03 | 6 | 2 tasks | 5 files |
 | Phase 76-01 P01 | 6 | 3 tasks | 2 files |
+| Phase 77-apply-labels-formatting-at-render-surfaces P01 | 36 | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -686,6 +687,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 75]: resolveLabel/resolveFormatter co-located in columnDisplayConfigStore.ts (store imports disallow placement in pure columnFormatter.ts)
 - [Phase 75]: ColumnDisplayConfigRow client type in api/client.ts (not server types.ts); client DTO for fetch helpers + store setConfig
 - [Phase 76]: Single-file ColumnFormatEditorModal with sub-components (ColumnEditorForm, NumberControls, DateControls, D3Controls); baseline snapshot for dirty tracking; defaultSpecForKind builder
+- [Phase 77-01]: RecordsTableRenderer: guard tableId with ternary (tableId !== undefined ? resolveLabel(tableId, col) : col) for dv-bound fallback; configVersion primitive selector subscription forces re-render; loadConfig useEffect keyed on tableId
+- [Phase 77-01]: Test pattern for loadConfig: spy on listColumnDisplayConfig per-test (not upsertColumn-before-render) because setConfig on mount REPLACES store entries
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1082,6 +1085,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-20T21:47:52.631Z
-Stopped at: Completed 76-01-PLAN.md — ColumnFormatEditorModal + 10 component tests
+Last session: 2026-06-20T23:32:31.397Z
+Stopped at: Completed 77-01-PLAN.md (Records Table label+format injection)
 Resume file: None

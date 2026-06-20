@@ -92,7 +92,10 @@
   2. Chart tooltips show the custom label and a formatted value per the column's format spec, AND chart axis titles + in-chart series legends show the custom label.
   3. Map info popups show the custom label + formatted value in BOTH the template `{column}` substitution mode and the key/value mode.
   4. The map layers legend (`LayersLegendPanel`) continues to render layer/break config with NO column label or formatting applied — and this exclusion is locked by an explicit test.
-**Plans**: TBD
+**Plans**: 3 plans (all wave 1 — independent files, parallel-safe)
+- [ ] 77-01-PLAN.md — Records Table: RecordsTableRenderer header=resolveLabel + cell=resolveFormatter + configVersion (COLAPPLY-V115-01)
+- [ ] 77-02-PLAN.md — Charts: shared ColumnFormatTooltip + tooltip/series/axis label+format across Bar/Line/Pie/Scatter + Timeline + NumericLine (COLAPPLY-V115-02)
+- [ ] 77-03-PLAN.md — Map info popups: renderInfoTemplate formatValue callback + InfoSelectionView template+KV (COLAPPLY-V115-03) + LayersLegendPanel exclusion guard test (COLAPPLY-V115-04)
 
 ### Phase 78: View TTL Keep-Alive Touch
 **Goal**: While a dashboard is open, the client fires a lightweight "get first records" touch on each live materialized view (filter-views + dynamic-views) a configurable lead-time (`ttl_keepalive_lead_minutes`) before its `expiresAt`, re-arming after each touch, so an idle dashboard never hits an expired view.
@@ -136,7 +139,7 @@
 | 74. app-settings-infra-ttl-defaults | v1.15 | 0/2 | Not started | - |
 | 75. column-display-config-foundation | v1.15 | 1/3 | In progress | - |
 | 76. column-formatting-editor-ui | v1.15 | 0/TBD | Not started | - |
-| 77. apply-labels-formatting-render-surfaces | v1.15 | 0/TBD | Not started | - |
+| 77. apply-labels-formatting-render-surfaces | v1.15 | 0/3 | Not started | - |
 | 78. view-ttl-keep-alive-touch | v1.15 | 0/TBD | Not started | - |
 | 79. verification-live-uat | v1.15 | 0/TBD | Not started | - |
 
