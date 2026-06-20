@@ -49,6 +49,9 @@ import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import { DEFAULT_COLOR_THEME, MAX_METRICS } from "./TimelineConfigPanel";
 import type { NumericLineConfig } from "./NumericLineConfigPanel";
+// Phase 77 Plan 02 (COLAPPLY-V115-02): column label + value formatting at tooltip.
+import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
+import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 
 type Props = {
   widget: WidgetDto;
@@ -113,6 +116,17 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
   }, [rawMetrics, grouped]);
 
   const { dashboardId } = useDashboardContext();
+
+  // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
+  // Hooks must be called unconditionally (before early returns) — guard tableId inside effect.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+  void configVersion; // referenced to prevent tree-shaking; reactive via subscription
+  const { loadConfig } = useColumnDisplayConfigStore.getState();
+  useEffect(() => {
+    if (tableId !== undefined) loadConfig(tableId);
+  }, [tableId, loadConfig]);
+  // metricColumn for tooltip: first metric's source column (single-metric / grouped case).
+  const metricColumn = metrics[0]?.column ?? "";
 
   // ----- Empty-state gates -----
   if (tableId === undefined || tableRef === undefined) {
@@ -549,7 +563,10 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
                 />
               ))}
           {showTooltip && (
-            <Tooltip {...RECHARTS_TOOLTIP_PROPS} />
+            <Tooltip
+              {...RECHARTS_TOOLTIP_PROPS}
+              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            />
           )}
           {/* Legend: always shown when grouped (series values matter); when ungrouped,
               only for multi-metric (unchanged). */}
