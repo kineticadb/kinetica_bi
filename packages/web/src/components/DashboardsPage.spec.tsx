@@ -8,6 +8,7 @@ import { useInfoSelectionStore } from "../store/infoSelectionStore";
 import { useLastInfoClickContextStore } from "../store/lastInfoClickContextStore";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
+import { useColumnDisplayConfigStore } from "../store/columnDisplayConfigStore";
 
 // Phase 30 test infrastructure: stub browser APIs missing in JSDOM + OL Map.
 // ResizeObserver is used by ol/Map at construction time — stub it before any OL import.
@@ -186,7 +187,7 @@ describe("DashboardsPage — LIFE-V13-04 (dashboard-switch cleanup)", () => {
     expect(dropFilterView).toHaveBeenCalledWith({ dashboardId: 7, tableId: 100 });
   });
 
-  it("resets ALL SIX stores when cleanup runs (filterStore + filterViewStore + infoSelectionStore + lastInfoClickContextStore + spatialFilterStore + dynamicViewStore — STORE-V14-03 + Plan 23-02 extension + Plan 27-02 STORE-V15-04 extension + Phase 33 DV-V16-07 extension)", async () => {
+  it("resets ALL EIGHT stores when cleanup runs (filterStore + filterViewStore + infoSelectionStore + lastInfoClickContextStore + spatialFilterStore + dynamicViewStore + widgetActionStore + columnDisplayConfigStore — STORE-V14-03 + Plan 23-02 extension + Plan 27-02 STORE-V15-04 extension + Phase 33 DV-V16-07 extension + Phase 75 COLCFG-V115-03 extension)", async () => {
     useFilterStore.getState().addFilter(99, {
       column: "g", value: "A", dataType: "string", addedAt: Date.now(),
     } as ActiveFilter);
@@ -213,9 +214,11 @@ describe("DashboardsPage — LIFE-V13-04 (dashboard-switch cleanup)", () => {
       status: "materialized",
       expiresAt: Date.now() + 60000,
     });
+    // Phase 75 COLCFG-V115-03: seed column display config store (8th store)
+    useColumnDisplayConfigStore.getState().upsertColumn(42, "revenue", "Revenue", null);
 
-    // Direct invocation of cleanup logic (same 6-store pattern as production at DashboardsPage.tsx
-    // DashboardOpen cleanup useEffect — Phase 33 extension after the spatialFilterStore.reset() line).
+    // Direct invocation of cleanup logic (same pattern as production at DashboardsPage.tsx
+    // DashboardOpen cleanup useEffect — Phase 75 extension after the widgetActionStore.reset() line).
     const views = useFilterViewStore.getState().views;
     for (const tableIdStr of Object.keys(views)) {
       const tableId = Number(tableIdStr);
@@ -236,6 +239,8 @@ describe("DashboardsPage — LIFE-V13-04 (dashboard-switch cleanup)", () => {
       }
     }
     useDynamicViewStore.getState().reset();
+    // Phase 75 COLCFG-V115-03: 8th-store reset.
+    useColumnDisplayConfigStore.getState().reset();
 
     expect(useFilterStore.getState().filters).toEqual({});
     expect(useFilterStore.getState().filterVersion).toBe(0);
@@ -249,9 +254,12 @@ describe("DashboardsPage — LIFE-V13-04 (dashboard-switch cleanup)", () => {
     expect(useSpatialFilterStore.getState().shapes).toEqual([]);
     expect(useSpatialFilterStore.getState().spatialFilterVersion).toBe(0);
     expect(useSpatialFilterStore.getState().shapeCounter).toBe(0);
-    // Phase 33 DV-V16-07: dynamic view store also resets (6th, last)
+    // Phase 33 DV-V16-07: dynamic view store also resets (6th)
     expect(useDynamicViewStore.getState().views).toEqual({});
     expect(useDynamicViewStore.getState().dynamicViewVersion).toBe(0);
+    // Phase 75 COLCFG-V115-03: column display config store also resets (8th)
+    expect(useColumnDisplayConfigStore.getState().configs).toEqual({});
+    expect(useColumnDisplayConfigStore.getState().configVersion).toBe(0);
   });
 
   // Phase 33 DV-V16-07: 6th-store DROP loop assertions for DashboardOpen unmount.

@@ -33,6 +33,7 @@ import { useLastInfoClickContextStore } from "../store/lastInfoClickContextStore
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
+import { useColumnDisplayConfigStore } from "../store/columnDisplayConfigStore";
 import { applyWidgetAction, applyWidgetActions } from "../lib/applyWidgetAction";
 import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
@@ -506,6 +507,9 @@ const DashboardOpen = ({
       // must not leak across dashboard switch. Runtime config overlays applied by control
       // widgets (e.g. radio groups) are session-only and must clear on dashboard-switch.
       useWidgetActionStore.getState().reset();
+      // Phase 75 Plan 03 (COLCFG-V115-03): 8th store — column display config cache; global
+      // per-table config but reset to prevent stale entries accumulating across sessions.
+      useColumnDisplayConfigStore.getState().reset();
     };
   }, [dashboard.id]);
 
