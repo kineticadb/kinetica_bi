@@ -53,11 +53,13 @@ import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
 // Phase 77 Plan 01 (COLAPPLY-V115-01): column display config resolution for RecordsTableRenderer.
+// Phase 77 Plan 02 (COLAPPLY-V115-02): ColumnFormatTooltip for chart renderers.
 import {
   useColumnDisplayConfigStore,
   resolveLabel,
   resolveFormatter,
 } from "../../store/columnDisplayConfigStore";
+import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 import {
   RECHARTS_TOOLTIP_PROPS,
   DEFAULT_CHART_PALETTE,
@@ -984,6 +986,15 @@ const BarRenderer = ({
   drillDownColumnType,
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
+  // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+  void configVersion; // referenced to prevent tree-shaking; reactive via subscription
+  const { loadConfig } = useColumnDisplayConfigStore.getState();
+  useEffect(() => {
+    if (tableId !== undefined) loadConfig(tableId);
+  }, [tableId, loadConfig]);
+  const groupByColumn = (config.groupByColumn as string) || "";
+  const metricColumn = (config.metricColumn as string) || "";
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_BAR_COLOR;
   const radius = (config.barRadius as number) ?? 4;
@@ -992,14 +1003,15 @@ const BarRenderer = ({
   const showTooltip = config.showTooltip !== false;
   const showValueLabels = config.showValueLabels === true;
   const horizontal = config.horizontal === true; // horizontal bars (Recharts layout="vertical")
-  const xAxisLabel = (config.xAxisLabel as string) || "";
-  const yAxisLabel = (config.yAxisLabel as string) || "";
+  // Axis title: user-set value wins; else fall back to resolved column label (not formatted — labels only).
+  const xTitle = (config.xAxisLabel as string) || (tableId !== undefined && groupByColumn ? resolveLabel(tableId, groupByColumn) : "");
+  const yTitle = (config.yAxisLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
   // Axis title objects (Recharts), or undefined when blank.
-  const xLabelObj = xAxisLabel
-    ? { value: xAxisLabel, position: "insideBottom" as const, offset: -4, fill: AXIS_COLOR, fontSize: 12 }
+  const xLabelObj = xTitle
+    ? { value: xTitle, position: "insideBottom" as const, offset: -4, fill: AXIS_COLOR, fontSize: 12 }
     : undefined;
-  const yLabelObj = yAxisLabel
-    ? { value: yAxisLabel, angle: -90, position: "insideLeft" as const, fill: AXIS_COLOR, fontSize: 12, style: { textAnchor: "middle" as const } }
+  const yLabelObj = yTitle
+    ? { value: yTitle, angle: -90, position: "insideLeft" as const, fill: AXIS_COLOR, fontSize: 12, style: { textAnchor: "middle" as const } }
     : undefined;
 
   // Phase 10 DRILL-04: dim-peers transient — non-active <Cell> elements drop to 0.3
@@ -1045,8 +1057,8 @@ const BarRenderer = ({
         margin={{
           top: 10,
           right: 10,
-          left: yAxisLabel ? 12 : (horizontal ? 8 : -10),
-          bottom: xAxisLabel ? 24 : 0,
+          left: yTitle ? 12 : (horizontal ? 8 : -10),
+          bottom: xTitle ? 24 : 0,
         }}
         onClick={handleChartClick}
         style={wrapperStyle}
@@ -1063,13 +1075,18 @@ const BarRenderer = ({
             <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={yLabelObj} />
           </>
         )}
-        {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
+        {showTooltip && (
+          <Tooltip
+            {...RECHARTS_TOOLTIP_PROPS}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+          />
+        )}
         {showLegend && <Legend />}
         <Bar
           dataKey={y}
           fill={color}
           radius={horizontal ? [0, radius, radius, 0] : [radius, radius, 0, 0]}
-          name={(config.yFieldLabel as string) || y}
+          name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
         >
           {showValueLabels && (
             <LabelList
@@ -1112,6 +1129,15 @@ const LineRenderer = ({
   drillDownColumnType,
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
+  // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+  void configVersion; // referenced to prevent tree-shaking; reactive via subscription
+  const { loadConfig } = useColumnDisplayConfigStore.getState();
+  useEffect(() => {
+    if (tableId !== undefined) loadConfig(tableId);
+  }, [tableId, loadConfig]);
+  const groupByColumn = (config.groupByColumn as string) || "";
+  const metricColumn = (config.metricColumn as string) || "";
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_LINE_COLOR;
   const strokeWidth = (config.strokeWidth as number) ?? 2;
@@ -1175,7 +1201,12 @@ const LineRenderer = ({
           {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
           <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
           <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
+          {showTooltip && (
+            <Tooltip
+              {...RECHARTS_TOOLTIP_PROPS}
+              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            />
+          )}
           {showLegend && <Legend />}
           <Area
             type={curved ? "monotone" : "linear"}
@@ -1184,7 +1215,7 @@ const LineRenderer = ({
             fill={`url(#${gradientId})`}
             strokeWidth={strokeWidth}
             dot={showDots ? { r: 3 } : false}
-            name={(config.yFieldLabel as string) || y}
+            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
           />
         </AreaChart>
       ) : (
@@ -1197,7 +1228,12 @@ const LineRenderer = ({
           {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
           <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
           <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
+          {showTooltip && (
+            <Tooltip
+              {...RECHARTS_TOOLTIP_PROPS}
+              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            />
+          )}
           {showLegend && <Legend />}
           <Line
             type={curved ? "monotone" : "linear"}
@@ -1205,7 +1241,7 @@ const LineRenderer = ({
             stroke={color}
             strokeWidth={strokeWidth}
             dot={showDots ? { r: 3 } : false}
-            name={(config.yFieldLabel as string) || y}
+            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
           />
         </LineChart>
       )}
@@ -1224,6 +1260,15 @@ const PieRenderer = ({
   drillDownColumn,
   drillDownColumnType,
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
+  // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+  void configVersion; // referenced to prevent tree-shaking; reactive via subscription
+  const { loadConfig } = useColumnDisplayConfigStore.getState();
+  useEffect(() => {
+    if (tableId !== undefined) loadConfig(tableId);
+  }, [tableId, loadConfig]);
+  const groupByColumn = (config.groupByColumn as string) || "";
+  const metricColumn = (config.metricColumn as string) || "";
   const { x: nameKey, y: valueKey } = resolveKeys(data, config);
   const innerRadius = (config.innerRadius as number) ?? 0;
   const padAngle = (config.padAngle as number) ?? 2;
@@ -1296,10 +1341,16 @@ const PieRenderer = ({
             />
           ))}
         </Pie>
-        {/* itemStyle/labelStyle force the "name : value" line to the theme text color — for a pie the
-            Cell fills don't flow into the tooltip item color, so it would default to dark (unreadable
-            on the dark --panel). bar/line tooltips inherit the bright series color and don't need this. */}
-        {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} itemStyle={{ color: "var(--text)" }} labelStyle={{ color: "var(--text)" }} />}
+        {/* ColumnFormatTooltip handles item color via var(--text) and entry.color — these
+            explicit itemStyle/labelStyle props are preserved for fallback but content= takes precedence. */}
+        {showTooltip && (
+          <Tooltip
+            {...RECHARTS_TOOLTIP_PROPS}
+            itemStyle={{ color: "var(--text)" }}
+            labelStyle={{ color: "var(--text)" }}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+          />
+        )}
         {showLegend && <Legend />}
       </PieChart>
     </ResponsiveContainer>
@@ -1317,6 +1368,15 @@ const ScatterRenderer = ({
   drillDownColumnType,
 }: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
+  // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+  void configVersion; // referenced to prevent tree-shaking; reactive via subscription
+  const { loadConfig } = useColumnDisplayConfigStore.getState();
+  useEffect(() => {
+    if (tableId !== undefined) loadConfig(tableId);
+  }, [tableId, loadConfig]);
+  const groupByColumn = (config.groupByColumn as string) || "";
+  const metricColumn = (config.metricColumn as string) || "";
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_SCATTER_COLOR;
   const dotSize = (config.dotSize as number) ?? 6;
@@ -1377,7 +1437,12 @@ const ScatterRenderer = ({
           name={(config.yLabel as string) || y}
           type="number"
         />
-        {showTooltip && <Tooltip {...RECHARTS_TOOLTIP_PROPS} />}
+        {showTooltip && (
+          <Tooltip
+            {...RECHARTS_TOOLTIP_PROPS}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+          />
+        )}
         <Scatter data={data} fill={color}>
           {data.map((row, i) => (
             <Cell
