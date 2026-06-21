@@ -68,6 +68,8 @@ vi.mock("../../api/client", async (importOriginal) => {
     ...actual,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     infoQuery: (req: any, signal?: any) => _infoQueryMock(req, signal),
+    // Stub listColumnDisplayConfig so loadConfig() doesn't make real API calls.
+    listColumnDisplayConfig: () => Promise.resolve([]),
   };
 });
 
@@ -101,6 +103,7 @@ vi.mock("../../store/lastInfoClickContextStore", () => {
 // Imports MUST come after vi.mock factories (hoisting concern).
 import InfoSelectionView from "./InfoSelectionView";
 import { useInfoSelectionStore } from "../../store/infoSelectionStore";
+import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
 
 const FIXTURE_CTX = {
   clickLon: -122.4,
@@ -772,5 +775,115 @@ describe("InfoSelectionView", () => {
     act(() => fireEvent.click(next));
     expect(screen.getByText("Record 2 of 2")).toBeInTheDocument();
     expect(next).toBeDisabled();
+  });
+});
+
+// ── COLAPPLY-V115-03: column display config applied to info popups ──────────────────────────────
+
+describe("InfoSelectionView column display config (COLAPPLY-V115-03)", () => {
+  // Layer 5 has table_id = 105 (100 + id) from makeLayer helper
+  const TABLE_ID = 105;
+
+  beforeEach(() => {
+    // Seed the store with a saved label + number formatter for "amount" column
+    // and a saved label for "name" column (no format spec).
+    act(() => {
+      useColumnDisplayConfigStore.getState().upsertColumn(
+        TABLE_ID,
+        "amount",
+        "Total Amount",
+        { kind: "number", thousandsSep: true, decimals: 2, currency: "$", percent: false },
+      );
+      useColumnDisplayConfigStore.getState().upsertColumn(
+        TABLE_ID,
+        "name",
+        "Customer Name",
+        null,
+      );
+    });
+  });
+
+  it("CDCV1: template mode — {amount} substitution shows the formatted value not the raw value", () => {
+    act(() => {
+      useInfoSelectionStore.getState().setSelection(5, {
+        rows: [{ amount: 1234.5, name: "alice" }],
+        columns: ["amount", "name"],
+        page: 0,
+        hasMore: false,
+      });
+      useInfoSelectionStore.getState().setActiveLayer(5);
+    });
+    const layers = [makeLayer(5, { info_template: "Amount: {amount}" }), makeLayer(8)];
+    const { container } = render(<InfoSelectionView {...defaultProps} eligibleLayers={layers} />);
+    const templateDiv = container.querySelector(".info-selection-row-template");
+    expect(templateDiv).not.toBeNull();
+    // The formatted value ($1,234.50) should be in the HTML output, not the raw "1234.5"
+    expect(templateDiv!.innerHTML).toContain("$");
+    expect(templateDiv!.innerHTML).not.toBe("Amount: 1234.5");
+  });
+
+  it("CDCV2: KV mode — key cell shows resolved label; value cell shows formatted value", () => {
+    act(() => {
+      useInfoSelectionStore.getState().setSelection(5, {
+        rows: [{ amount: 9999, name: "bob" }],
+        columns: ["amount", "name"],
+        page: 0,
+        hasMore: false,
+      });
+      useInfoSelectionStore.getState().setActiveLayer(5);
+    });
+    // info_template=null → KV mode
+    render(<InfoSelectionView {...defaultProps} />);
+    // key cell should show resolved label "Customer Name" not raw "name"
+    expect(screen.getByText("Customer Name")).toBeInTheDocument();
+    // key cell should show "Total Amount" not raw "amount"
+    expect(screen.getByText("Total Amount")).toBeInTheDocument();
+    // raw column names should not appear as row headers
+    const rowHeaders = screen.getAllByRole("rowheader");
+    const headerTexts = rowHeaders.map((h) => h.textContent);
+    expect(headerTexts).not.toContain("amount");
+    expect(headerTexts).not.toContain("name");
+  });
+
+  it("CDCV3: KV mode — column with NO config shows raw column name + raw value (fallback)", () => {
+    // Use a layer with table_id for which we have NO config seeded (use table_id = 108 → layer id=8)
+    act(() => {
+      useInfoSelectionStore.getState().setSelection(8, {
+        rows: [{ score: 42, city: "SF" }],
+        columns: ["score", "city"],
+        page: 0,
+        hasMore: false,
+      });
+      useInfoSelectionStore.getState().setActiveLayer(8);
+    });
+    // Layer 8 has table_id=108 — no upsertColumn done for that table_id
+    render(<InfoSelectionView {...defaultProps} />);
+    const rowHeaders = screen.getAllByRole("rowheader");
+    const headerTexts = rowHeaders.map((h) => h.textContent);
+    // Raw column names should appear as row headers (no label substitution)
+    expect(headerTexts).toContain("score");
+    expect(headerTexts).toContain("city");
+  });
+
+  it("CDCV4: configVersion live update — after upsertColumn changes a label, the KV key re-renders with the new label", () => {
+    act(() => {
+      useInfoSelectionStore.getState().setSelection(5, {
+        rows: [{ amount: 100, name: "carol" }],
+        columns: ["amount", "name"],
+        page: 0,
+        hasMore: false,
+      });
+      useInfoSelectionStore.getState().setActiveLayer(5);
+    });
+    render(<InfoSelectionView {...defaultProps} />);
+    // Initial render: key shows "Customer Name"
+    expect(screen.getByText("Customer Name")).toBeInTheDocument();
+    // Update the label in the store (mimics Phase 76 editor save)
+    act(() => {
+      useColumnDisplayConfigStore.getState().upsertColumn(TABLE_ID, "name", "Buyer Name", null);
+    });
+    // After configVersion bump → should re-render with new label
+    expect(screen.getByText("Buyer Name")).toBeInTheDocument();
+    expect(screen.queryByText("Customer Name")).toBeNull();
   });
 });

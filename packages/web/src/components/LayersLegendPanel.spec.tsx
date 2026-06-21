@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "node:fs";
 import path from "node:path";
 import { LayersLegendPanel, type ResolvedLegendLayer } from "./LayersLegendPanel";
 import type { DashboardLayerDto } from "../api/client";
+import { useColumnDisplayConfigStore } from "../store/columnDisplayConfigStore";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -432,5 +433,64 @@ describe("onToggleVisible eye toggle", () => {
     await userEvent.click(eye);
     expect(onToggleVisible).toHaveBeenCalledTimes(1);
     expect(onToggleCollapse).not.toHaveBeenCalled();
+  });
+});
+
+// ── COLAPPLY-V115-04: Legend exclusion guard ───────────────────────────────────────────────────
+
+describe("COLAPPLY-V115-04: layers legend is NOT affected by column display config", () => {
+  it("renders break label/value UNCHANGED when a saved display label and format exist for that column/value", () => {
+    // Seed the store with a display label AND a number format for a column "fare"
+    // and a break value of 10 that appears in the legend.
+    // The legend's break text should come from cb_config (breakDisplayText) verbatim,
+    // NOT from resolveLabel or resolveFormatter.
+    const TABLE_ID_LEGEND = 999;
+    act(() => {
+      useColumnDisplayConfigStore.getState().upsertColumn(
+        TABLE_ID_LEGEND,
+        "fare",
+        "Fare Amount",
+        { kind: "number", thousandsSep: true, decimals: 2, currency: "$", percent: false },
+      );
+    });
+
+    const cbConfig = JSON.stringify({
+      attr: "fare",
+      valsType: "numeric",
+      breaks: [
+        { value: 10, min: 0, max: 10, color: "FFFF0000", label: "Low Fare" },
+        { value: 20, min: 10, max: 20, color: "FF00FF00", label: "" },
+      ],
+    });
+    const layer = makeLayer({
+      id: 501,
+      table_id: TABLE_ID_LEGEND,
+      config: { renderMode: "classbreak" },
+      cb_config: cbConfig,
+    });
+    const resolved: ResolvedLegendLayer = { layer, visible: true };
+
+    render(<LayersLegendPanel {...defaultProps()} layers={[resolved]} />);
+
+    // Break row 1: label "Low Fare" — raw cb_config label, NOT "Fare Amount" (the display-config label)
+    expect(screen.getByText("Low Fare")).toBeInTheDocument();
+    expect(screen.queryByText("Fare Amount")).toBeNull();
+
+    // Break row 2: label empty → falls back to numeric range "10 – 20" (raw boundaries)
+    // NOT formatted as "$10.00 – $20.00" or any currency-formatted value
+    expect(screen.getByText("10 – 20")).toBeInTheDocument();
+    expect(screen.queryByText("$10.00")).toBeNull();
+    expect(screen.queryByText("$20.00")).toBeNull();
+  });
+
+  it("COLAPPLY-V115-04: LayersLegendPanel.tsx contains no resolveLabel/resolveFormatter/columnDisplayConfig wiring", () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "./LayersLegendPanel.tsx"),
+      "utf8",
+    );
+    expect(src).not.toMatch(/resolveLabel/);
+    expect(src).not.toMatch(/resolveFormatter/);
+    expect(src).not.toMatch(/columnDisplayConfig/);
+    expect(src).not.toMatch(/tableId/);
   });
 });
