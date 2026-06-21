@@ -87,6 +87,7 @@ import { infoQuery, type InfoSpatialMode } from "../../api/client";
 import type { DashboardLayerDto } from "../../api/client";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
 import { coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
+import { useColumnDisplayConfigStore, resolveLabel, resolveFormatter } from "../../store/columnDisplayConfigStore";
 
 type Props = {
   /** Eligibility list. Caller (popup or card wrapper) computes with its own scoping rule.
@@ -124,6 +125,21 @@ export default function InfoSelectionView({
     activeLayerId !== null
       ? eligibleLayers.find((l) => l.id === activeLayerId) ?? null
       : null;
+
+  // COLAPPLY-V115-03: subscribe to configVersion (primitive selector) so the popup re-renders
+  // live when the Phase 76 editor saves a new label/format. The resolve* helpers are
+  // getState()-based; this subscription is the re-render trigger (mirrors filterVersion /
+  // dynamicViewVersion pattern from LegendRenderer.tsx).
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+
+  // Populate the column display config cache for the active layer's table on mount /
+  // when the active layer changes. Guard against null. The store deduplicates internally
+  // (load once per tableId and merges into configs[tableId]).
+  useEffect(() => {
+    if (activeLayer === null) return;
+    const { loadConfig } = useColumnDisplayConfigStore.getState();
+    void loadConfig(activeLayer.table_id);
+  }, [activeLayer?.table_id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Plan 23-03 Task 1: per-view AbortController for dropdown-switch + Load-more fetches.
   // Independent of MapChartRenderer's click-fan-out controller (V13-P-10 spirit:
@@ -417,11 +433,17 @@ export default function InfoSelectionView({
           <div className="info-selection-error">{entry.error}</div>
         )}
         {entry && currentRow !== null && (() => {
+          // COLAPPLY-V115-03: formatValue callback bound to activeLayer.table_id injects
+          // the column formatter while keeping renderInfoTemplate a PURE store-free lib.
+          // configVersion in scope above ensures the closure captures the latest formatters
+          // on every re-render triggered by a config edit (void ref: no direct JSX use needed).
+          void configVersion;
           const result = renderInfoTemplate({
             template: activeLayer.info_template,
             columns: sortedColumns,
             row: currentRow,
             infoColumns: activeLayer.info_columns,
+            formatValue: (col, value) => String(resolveFormatter(activeLayer.table_id, col)(value) ?? ""),
           });
           if (result.mode === "template") {
             // NO SANITIZATION — locked at .planning/PROJECT.md Key Decision:
@@ -438,8 +460,8 @@ export default function InfoSelectionView({
               <tbody>
                 {result.pairs.map(({ col, value }) => (
                   <tr key={col}>
-                    <th scope="row">{col}</th>
-                    <td>{formatKvValue(value)}</td>
+                    <th scope="row">{resolveLabel(activeLayer.table_id, col)}</th>
+                    <td>{formatKvValue(resolveFormatter(activeLayer.table_id, col)(value))}</td>
                   </tr>
                 ))}
               </tbody>
