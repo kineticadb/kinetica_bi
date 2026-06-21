@@ -26,6 +26,7 @@ import {
 import { useApiQuery } from "../hooks/useApiQuery";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
 import { useMapOnlySpatialMaterialize } from "../hooks/useMapOnlySpatialMaterialize";  // Phase 54 (TRACKFIX-V19-09 / GAP-54-10)
+import { useViewKeepAlive } from "../hooks/useViewKeepAlive";  // Phase 78 (TTLKEEP-V115-01)
 import { useFilterStore } from "../store/filterStore";
 import { useFilterViewStore } from "../store/filterViewStore";
 import { useInfoSelectionStore } from "../store/infoSelectionStore";
@@ -419,6 +420,13 @@ const DashboardOpen = ({
   // Mirrors useDynamicViewMaterializeChain; preserves the Phase 30 sole-trigger invariant
   // — tables with a chart/records widget are skipped here (WidgetRenderer Effect 1 owns them).
   useMapOnlySpatialMaterialize(dashboard.id, widgets);
+
+  // Phase 78 (TTLKEEP-V115-01): dashboard-level keep-alive — fires a lightweight READ touch
+  // against each live materialized view (filter-views + dynamic-views) ~ttlKeepaliveLeadMinutes
+  // before expiry, re-arming after each touch; tears down all timers/controllers on dashboard
+  // switch / unmount (teardown is internal to the hook's empty-deps effect). READ-only — never
+  // materializes (AggregatedWidgetRenderer stays sole materialize trigger).
+  useViewKeepAlive(dashboard.id);
 
   // Phase 12: Layer store subscription
   const layers = useDashboardLayersStore((s) => s.layers);
