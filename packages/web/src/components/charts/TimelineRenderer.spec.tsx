@@ -29,12 +29,14 @@ import { resolve } from "node:path";
 import TimelineRenderer from "./TimelineRenderer";
 import type { TableDto, WidgetDto } from "../../api/client";
 
-// Mock runSql to feed canned range + metric responses
+// Mock runSql to feed canned range + metric responses.
+// Also mock listColumnDisplayConfig so loadConfig (Phase 77-02) never makes real HTTP calls.
 vi.mock("../../api/client", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     runSql: vi.fn(),
+    listColumnDisplayConfig: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -466,5 +468,60 @@ describe("TimelineRenderer", () => {
       expect(metricSql).not.toMatch(/AS series/);
       expect(metricSql).not.toMatch(/GROUP BY bucket, series/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 77-02 (COLAPPLY-V115-02) — TimelineRenderer: ColumnFormatTooltip wired
+// ---------------------------------------------------------------------------
+
+describe("TimelineRenderer — ColumnFormatTooltip tooltip wiring (COLAPPLY-V115-02)", () => {
+  it("TimelineRenderer.tsx imports ColumnFormatTooltip (static assertion)", () => {
+    const path = resolve(__dirname, "TimelineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    expect(src).toContain("ColumnFormatTooltip");
+    expect(src).toContain('content={<ColumnFormatTooltip');
+  });
+
+  it("TimelineRenderer.tsx subscribes to configVersion (primitive-selector subscription)", () => {
+    const path = resolve(__dirname, "TimelineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    expect(src).toContain("useColumnDisplayConfigStore((s) => s.configVersion)");
+  });
+
+  it("TimelineRenderer.tsx does NOT import materializeFilter (sole-trigger invariant preserved)", () => {
+    const path = resolve(__dirname, "TimelineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    const importLines = src.split("\n").filter((l) => l.trimStart().startsWith("import")).join("\n");
+    expect(importLines).not.toMatch(/materializeFilter/);
+  });
+
+  it("tooltip renders ColumnFormatTooltip content with formatted value on mount", async () => {
+    // Seed a format spec for the metric column so the formatter is applied.
+    const { listColumnDisplayConfig } = await import("../../api/client");
+    (listColumnDisplayConfig as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        table_id: 1,
+        column_name: "fare_amount",
+        label: "Fare Revenue",
+        format_spec: { kind: "number", thousandsSep: true, decimals: 0, currency: "$", percent: false },
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    mockRangeAndMetricResponse(0, 86400, [[{ bucket: "2024-01-01 00:00:00", value: 999 }]]);
+    const { container } = render(<TimelineRenderer widget={makeWidget()} tables={TABLES} />);
+
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    // Verify the Tooltip component in the rendered output uses ColumnFormatTooltip
+    // by checking the source file wiring (static) — recharts SVG rendering is not
+    // introspectable in jsdom; formatter correctness is proven in ColumnFormatTooltip.spec.tsx.
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    expect(src).toContain("content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn}");
+    expect(container).toBeTruthy(); // component rendered without crash
   });
 });

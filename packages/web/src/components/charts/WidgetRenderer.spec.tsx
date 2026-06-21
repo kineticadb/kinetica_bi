@@ -3405,3 +3405,291 @@ describe("RecordsTable column display config (COLAPPLY-V115-01)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 77-02 (COLAPPLY-V115-02) — Chart tooltip value format, series/axis label fallback chains
+// ---------------------------------------------------------------------------
+
+// Strategy: mock recharts components to render their key label props as visible DOM text.
+// This avoids SVG introspection difficulties while still asserting the fallback chains.
+vi.mock("recharts", async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createElement: h, cloneElement } = require("react");
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    // Give ResponsiveContainer fixed dimensions so Recharts renders children.
+    ResponsiveContainer: ({ children }: { children: unknown }) =>
+      h("div", { style: { width: 800, height: 400 }, "data-testid": "responsive-container" }, children),
+    // Render Bar name= as a visible span so we can query it.
+    Bar: ({ name, children }: { name?: string; children?: unknown }) =>
+      h("div", { "data-testid": "recharts-bar", "data-name": name },
+        h("span", { "data-testid": "bar-series-name" }, name),
+        children,
+      ),
+    // Render XAxis label= as a visible span.
+    XAxis: ({ label }: { label?: { value?: string } | string }) => {
+      const labelText = typeof label === "object" && label !== null ? (label as { value?: string }).value : (label as string | undefined);
+      return h("div", { "data-testid": "recharts-xaxis" },
+        h("span", { "data-testid": "xaxis-label" }, labelText ?? ""),
+      );
+    },
+    // Render YAxis label= as a visible span.
+    YAxis: ({ label }: { label?: { value?: string } | string }) => {
+      const labelText = typeof label === "object" && label !== null ? (label as { value?: string }).value : (label as string | undefined);
+      return h("div", { "data-testid": "recharts-yaxis" },
+        h("span", { "data-testid": "yaxis-label" }, labelText ?? ""),
+      );
+    },
+    // Render Tooltip content= prop with synthetic active/payload so formatter is exercised.
+    Tooltip: ({ content }: { content?: { type?: unknown; props?: Record<string, unknown> } }) => {
+      if (!content) return null;
+      // Inject synthetic recharts-style active/payload/label props via cloneElement
+      const synthetic = cloneElement(content as Parameters<typeof cloneElement>[0], {
+        active: true,
+        payload: [{ name: "value", value: 1234, color: "var(--chart-1)" }],
+        label: "CategoryA",
+      });
+      return h("div", { "data-testid": "recharts-tooltip" }, synthetic);
+    },
+    CartesianGrid: () => null,
+    Legend: () => null,
+    BarChart: ({ children }: { children?: unknown }) => h("div", { "data-testid": "recharts-barchart" }, children),
+    LineChart: ({ children }: { children?: unknown }) => h("div", { "data-testid": "recharts-linechart" }, children),
+    AreaChart: ({ children }: { children?: unknown }) => h("div", { "data-testid": "recharts-areachart" }, children),
+    Area: ({ name }: { name?: string }) =>
+      h("div", { "data-testid": "recharts-area", "data-name": name },
+        h("span", { "data-testid": "area-series-name" }, name),
+      ),
+    Line: ({ name }: { name?: string }) =>
+      h("div", { "data-testid": "recharts-line", "data-name": name },
+        h("span", { "data-testid": "line-series-name" }, name),
+      ),
+    Cell: () => null,
+    LabelList: () => null,
+  };
+});
+
+// Bar chart widget factory for chart-renderer tests.
+const CHART_TABLE_ID = 77;
+const CHART_METRIC_COL = "fare_amount";
+const CHART_GROUP_COL = "region";
+
+const makeBarWidget = (overrides: Partial<WidgetDto> = {}): WidgetDto => ({
+  id: 77,
+  dashboard_id: 1,
+  title: "Bar Test",
+  type: "bar",
+  position: 10,
+  config: {
+    sql: `SELECT region, SUM(fare_amount) AS value FROM demo.trips GROUP BY region LIMIT 100`,
+    tableId: CHART_TABLE_ID,
+    groupByColumn: CHART_GROUP_COL,
+    metricColumn: CHART_METRIC_COL,
+    aggregation: "SUM",
+  },
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  ...overrides,
+});
+
+// Kinetica response with one row of chart data.
+const CHART_RESPONSE = {
+  column_headers: ["region", "value"],
+  column_datatypes: ["varchar", "double"],
+  column_1: ["East"],
+  column_2: [1234],
+};
+
+describe("BarRenderer chart tooltip, series/axis label fallback chains (COLAPPLY-V115-02)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(CHART_RESPONSE as unknown as Record<string, unknown>);
+    vi.spyOn(clientModule, "materializeFilter").mockResolvedValue({ viewName: "_kbi_filt_test", expiresAt: Date.now() + 300000 });
+    vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
+    // Default no-op so loadConfig never makes real HTTP calls.
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([]);
+  });
+
+  // ------------------------------------------------------------------
+  // Test 1: series name fallback — yFieldLabel wins
+  // ------------------------------------------------------------------
+  it("series name uses config.yFieldLabel when set (yFieldLabel wins over resolved metric label)", async () => {
+    const widget = makeBarWidget({
+      config: {
+        ...makeBarWidget().config,
+        yFieldLabel: "Custom Metric Label",
+      },
+    });
+
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    const seriesName = getByTestId("bar-series-name").textContent ?? "";
+    expect(seriesName).toBe("Custom Metric Label");
+  });
+
+  // ------------------------------------------------------------------
+  // Test 2: series name fallback — resolved metric label when yFieldLabel not set
+  // ------------------------------------------------------------------
+  it("series name falls back to resolved metric column label when yFieldLabel is unset", async () => {
+    // Seed a label for metricColumn (fare_amount → "Fare Revenue")
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: CHART_TABLE_ID,
+        column_name: CHART_METRIC_COL,
+        label: "Fare Revenue",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeBarWidget();
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    // Wait for loadConfig to populate the store
+    await waitFor(() => {
+      const seriesName = getByTestId("bar-series-name").textContent ?? "";
+      expect(seriesName).toBe("Fare Revenue");
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Test 3: series name fallback — resolveLabel returns raw column name when no stored label
+  // ------------------------------------------------------------------
+  it("series name shows raw column name (resolveLabel fallback) when yFieldLabel is unset and no label is stored", async () => {
+    const widget = makeBarWidget();
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    const seriesName = getByTestId("bar-series-name").textContent ?? "";
+    // resolveLabel(tableId, "fare_amount") returns "fare_amount" (raw column name) when no stored label.
+    // The || y fallback is only reached if resolveLabel returns empty/falsy, which it never does
+    // (it always returns at least the column name). So we expect the raw column name here.
+    expect(seriesName).toBe(CHART_METRIC_COL); // "fare_amount"
+  });
+
+  // ------------------------------------------------------------------
+  // Test 4: Bar X axis title — user-set label wins over resolved
+  // ------------------------------------------------------------------
+  it("Bar X-axis title uses config.xAxisLabel when set (user label wins over resolved)", async () => {
+    const widget = makeBarWidget({
+      config: { ...makeBarWidget().config, xAxisLabel: "My X Label" },
+    });
+
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    const xLabel = getByTestId("xaxis-label").textContent ?? "";
+    expect(xLabel).toBe("My X Label");
+  });
+
+  // ------------------------------------------------------------------
+  // Test 5: Bar X axis title — falls back to resolved groupByColumn label
+  // ------------------------------------------------------------------
+  it("Bar X-axis title falls back to resolved groupByColumn label when config.xAxisLabel is unset", async () => {
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: CHART_TABLE_ID,
+        column_name: CHART_GROUP_COL,
+        label: "Sales Region",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeBarWidget();
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    await waitFor(() => {
+      const xLabel = getByTestId("xaxis-label").textContent ?? "";
+      expect(xLabel).toBe("Sales Region");
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Test 6: dv-bound / legacy fallback — no tableId → series = raw y, no axis title
+  // ------------------------------------------------------------------
+  it("dv-bound widget (no tableId, no groupByColumn/metricColumn) uses raw y key for series name", async () => {
+    const dvWidget: WidgetDto = {
+      id: 78,
+      dashboard_id: 1,
+      title: "DV Bar",
+      type: "bar",
+      position: 11,
+      config: {
+        sql: "SELECT cat, SUM(val) AS value FROM demo.t GROUP BY cat",
+        // No tableId, no groupByColumn, no metricColumn
+      },
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={dvWidget} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    const seriesName = getByTestId("bar-series-name").textContent ?? "";
+    // No tableId → resolveLabel not called → raw y ("value")
+    expect(seriesName).toBe("value");
+  });
+
+  // ------------------------------------------------------------------
+  // Test 7: configVersion-driven re-render — series name updates after upsertColumn
+  // ------------------------------------------------------------------
+  it("series name updates live after upsertColumn bumps configVersion (configVersion-driven re-render)", async () => {
+    const widget = makeBarWidget();
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+
+    // Initial: no stored label → series name = raw column name ("fare_amount" via resolveLabel)
+    expect(getByTestId("bar-series-name").textContent).toBe(CHART_METRIC_COL);
+
+    // Mutate config directly — upsertColumn bumps configVersion → re-render fires
+    act(() => {
+      useColumnDisplayConfigStore.getState().upsertColumn(
+        CHART_TABLE_ID,
+        CHART_METRIC_COL,
+        "Live Metric",
+        null,
+      );
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("bar-series-name").textContent).toBe("Live Metric");
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Test 8: tooltip content uses ColumnFormatTooltip with formatted value
+  // ------------------------------------------------------------------
+  it("tooltip renders formatted value via resolveFormatter (ColumnFormatTooltip wired)", async () => {
+    // Seed a currency format spec for metricColumn
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: CHART_TABLE_ID,
+        column_name: CHART_METRIC_COL,
+        label: null,
+        format_spec: { kind: "number", thousandsSep: true, decimals: 0, currency: "$", percent: false },
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeBarWidget();
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => expect(getByTestId("recharts-tooltip")).toBeTruthy());
+
+    // Wait for loadConfig to populate store, then tooltip should show formatted value
+    await waitFor(() => {
+      const tooltipText = getByTestId("recharts-tooltip").textContent ?? "";
+      // $1,234 (thousandsSep=true, currency="$", decimals=0)
+      expect(tooltipText).toContain("$1,234");
+    });
+  });
+});

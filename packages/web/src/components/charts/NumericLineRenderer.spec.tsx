@@ -24,9 +24,10 @@ import { resolve } from "node:path";
 import NumericLineRenderer from "./NumericLineRenderer";
 import type { TableDto, WidgetDto } from "../../api/client";
 
+// Also mock listColumnDisplayConfig so loadConfig (Phase 77-02) never makes real HTTP calls.
 vi.mock("../../api/client", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
-  return { ...actual, runSql: vi.fn() };
+  return { ...actual, runSql: vi.fn(), listColumnDisplayConfig: vi.fn().mockResolvedValue([]) };
 });
 
 vi.mock("../DashboardContext", () => ({
@@ -300,5 +301,63 @@ describe("NumericLineRenderer", () => {
       expect(metricSql).not.toMatch(/AS series/);
       expect(metricSql).not.toMatch(/GROUP BY bucket, series/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 77-02 (COLAPPLY-V115-02) — NumericLineRenderer: ColumnFormatTooltip wired
+// ---------------------------------------------------------------------------
+// Note: readFileSync and resolve are already imported at the top of this file.
+
+describe("NumericLineRenderer — ColumnFormatTooltip tooltip wiring (COLAPPLY-V115-02)", () => {
+  it("NumericLineRenderer.tsx imports ColumnFormatTooltip (static assertion)", () => {
+    const path = resolve(__dirname, "NumericLineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    expect(src).toContain("ColumnFormatTooltip");
+    expect(src).toContain('content={<ColumnFormatTooltip');
+  });
+
+  it("NumericLineRenderer.tsx subscribes to configVersion (primitive-selector subscription)", () => {
+    const path = resolve(__dirname, "NumericLineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    expect(src).toContain("useColumnDisplayConfigStore((s) => s.configVersion)");
+  });
+
+  it("NumericLineRenderer.tsx does NOT import materializeFilter (sole-trigger invariant preserved)", () => {
+    const path = resolve(__dirname, "NumericLineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    const importLines = src.split("\n").filter((l) => l.trimStart().startsWith("import")).join("\n");
+    expect(importLines).not.toMatch(/materializeFilter/);
+  });
+
+  it("tooltip uses ColumnFormatTooltip wiring with correct tableId/groupByColumn/metricColumn props", () => {
+    const path = resolve(__dirname, "NumericLineRenderer.tsx");
+    const src = readFileSync(path, "utf-8");
+    // Assert the exact prop passthrough pattern
+    expect(src).toContain("content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn}");
+  });
+
+  it("renders without crash when a metric column has a saved format spec", async () => {
+    const { listColumnDisplayConfig } = await import("../../api/client");
+    (listColumnDisplayConfig as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        table_id: 1,
+        column_name: "fare_amount",
+        label: "Fare Revenue",
+        format_spec: { kind: "number", thousandsSep: true, decimals: 2, currency: "$", percent: false },
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    mockRangeAndMetric(0, 100, [[{ bucket: 0, value: 500 }]]);
+    const { container } = render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
+
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    // Component must render without crash (ColumnFormatTooltip is present in source)
+    expect(container).toBeTruthy();
   });
 });
