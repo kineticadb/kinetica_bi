@@ -38,6 +38,10 @@ export type RenderInfoTemplateArgs = {
   row: Record<string, unknown>;
   /** Raw `info_columns` JSON-array string from DashboardLayerDto. null → all-columns kv-mode. */
   infoColumns?: string | null;
+  /** Optional value formatter for template-mode {column} substitution. (col, rawValue) => display string.
+   *  Injected by the caller (InfoSelectionView) bound to layer.table_id — keeps this lib store-free.
+   *  When omitted, substitution falls back to String(rawValue) (current behavior). */
+  formatValue?: (col: string, value: unknown) => string;
 };
 
 export function renderInfoTemplate(args: RenderInfoTemplateArgs): RenderResult {
@@ -49,7 +53,8 @@ export function renderInfoTemplate(args: RenderInfoTemplateArgs): RenderResult {
       const v = args.row[col];
       // null and undefined both coerce to empty string (most user-facing rendering
       // wants "Alice" at "" rather than "Alice" at "null").
-      return v === null || v === undefined ? "" : String(v);
+      if (v === null || v === undefined) return "";
+      return args.formatValue ? args.formatValue(col, v) : String(v);
     });
     return { mode: "template", html };
   }

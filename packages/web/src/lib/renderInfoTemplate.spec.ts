@@ -181,4 +181,40 @@ describe("renderInfoTemplate", () => {
       });
     });
   });
+
+  describe("formatValue callback (COLAPPLY-V115-03)", () => {
+    it("FV1: template mode with formatValue — callback is called and its return value is used for substitution", () => {
+      const formatValue = (col: string, value: unknown) => `${col}:${String(value).toUpperCase()}`;
+      const result = renderInfoTemplate({
+        template: "Name={name} Amount={amount}",
+        columns: ["name", "amount"],
+        row: { name: "alice", amount: 42 },
+        formatValue,
+      });
+      expect(result).toEqual({ mode: "template", html: "Name=name:ALICE Amount=amount:42" });
+    });
+
+    it("FV2: template mode WITHOUT formatValue — behavior is identical to today (raw String(v) fallback)", () => {
+      const result = renderInfoTemplate({
+        template: "Name={name} Amount={amount}",
+        columns: ["name", "amount"],
+        row: { name: "alice", amount: 42 },
+        // formatValue intentionally omitted
+      });
+      expect(result).toEqual({ mode: "template", html: "Name=alice Amount=42" });
+    });
+
+    it("FV3: null/undefined value with formatValue present — still '' (formatter NOT invoked for null/undefined)", () => {
+      const formatValue = vi.fn((_col: string, value: unknown) => `FORMATTED:${String(value)}`);
+      const result = renderInfoTemplate({
+        template: "Score={score} Name={name}",
+        columns: ["score", "name"],
+        row: { score: null, name: undefined },
+        formatValue,
+      });
+      expect((result as { mode: "template"; html: string }).html).toBe("Score= Name=");
+      // Formatter must NOT have been called for null or undefined values
+      expect(formatValue).not.toHaveBeenCalled();
+    });
+  });
 });
