@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.15
 milestone_name: Column Formatting & View Lifecycle
 status: unknown
-stopped_at: Completed 77-01-PLAN.md (Records Table label+format injection)
-last_updated: "2026-06-20T23:32:31.406Z"
+stopped_at: Completed 78-view-ttl-keep-alive-touch/78-01-PLAN.md
+last_updated: "2026-06-22T18:54:36.679Z"
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 8
+  completed_phases: 5
+  total_plans: 11
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-19 — v1.15 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 77 — apply-labels-formatting-at-render-surfaces
+**Current focus:** Phase 78 — view-ttl-keep-alive-touch
 
 ## Current Position
 
-Phase: 77 (apply-labels-formatting-at-render-surfaces) — EXECUTING
-Plan: 1 of 3
+Phase: 78 (view-ttl-keep-alive-touch) — EXECUTING
+Plan: 1 of 1
 
 ### v1.15 Scope (locked 2026-06-19)
 
@@ -448,6 +448,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 75-column-display-config-foundation P03 | 6 | 2 tasks | 5 files |
 | Phase 76-01 P01 | 6 | 3 tasks | 2 files |
 | Phase 77-apply-labels-formatting-at-render-surfaces P01 | 36 | 2 tasks | 2 files |
+| Phase 77-apply-labels-formatting-at-render-surfaces P02 | 49 | 4 tasks | 8 files |
+| Phase 77 P03 | 65 | 3 tasks | 5 files |
+| Phase 78-view-ttl-keep-alive-touch P01 | 10 | 2 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -689,6 +692,13 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 76]: Single-file ColumnFormatEditorModal with sub-components (ColumnEditorForm, NumberControls, DateControls, D3Controls); baseline snapshot for dirty tracking; defaultSpecForKind builder
 - [Phase 77-01]: RecordsTableRenderer: guard tableId with ternary (tableId !== undefined ? resolveLabel(tableId, col) : col) for dv-bound fallback; configVersion primitive selector subscription forces re-render; loadConfig useEffect keyed on tableId
 - [Phase 77-01]: Test pattern for loadConfig: spy on listColumnDisplayConfig per-test (not upsertColumn-before-render) because setConfig on mount REPLACES store entries
+- [Phase 77-02]: ColumnFormatTooltip uses RECHARTS_TOOLTIP_PROPS.contentStyle spread — passes theme-guard without allowlisting
+- [Phase 77-02]: vi.mock factory uses require('react') for createElement/cloneElement — hoisted context has no ES module React import
+- [Phase 77-02]: configVersion + loadConfig hooks placed before early-returns in Timeline/NumericLine to satisfy React hooks-count invariant
+- [Phase 77]: formatValue callback injection into renderInfoTemplate: keeps pure lib store-free; null/undefined guard runs before formatter invocation
+- [Phase 77]: COLAPPLY-V115-04 legend guard: two-pronged test (behavioral + static grep) locks LayersLegendPanel from ever receiving column display config wiring
+- [Phase 78-view-ttl-keep-alive-touch]: W-based re-arm interval (not fixed expiresAt) avoids tight-loop; MIN_DELAY=1s first-touch floor; MIN_INTERVAL=30s re-arm floor
+- [Phase 78-view-ttl-keep-alive-touch]: f:<tableId>/d:<dvId> key namespacing prevents filter-view/dynamic-view ID collision in shared timer+controller+window ref Maps
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1085,6 +1095,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-20T23:32:31.397Z
-Stopped at: Completed 77-01-PLAN.md (Records Table label+format injection)
+Last session: 2026-06-21T03:37:10.353Z
+Stopped at: Completed 78-view-ttl-keep-alive-touch/78-01-PLAN.md
 Resume file: None
