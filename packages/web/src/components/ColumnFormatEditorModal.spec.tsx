@@ -138,8 +138,7 @@ describe("ColumnFormatEditorModal", () => {
 
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
 
-    // Switch to Number (revenue auto-selects Number, but switch to None first then back)
-    fireEvent.change(kindSelect, { target: { value: "none" } });
+    // Columns default to "none" (no inferred kind); switching to Number reveals controls
     fireEvent.change(kindSelect, { target: { value: "number" } });
 
     expect(screen.getByRole("spinbutton", { name: /decimal places/i })).toBeInTheDocument();
@@ -249,6 +248,10 @@ describe("ColumnFormatEditorModal", () => {
       expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
     });
 
+    // Columns default to "none"; explicitly pick Number to exercise the number-save path
+    const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
+    fireEvent.change(kindSelect, { target: { value: "number" } });
+
     // Edit label
     const labelInput = screen.getByRole("textbox", { name: /display label/i });
     fireEvent.change(labelInput, { target: { value: "My Revenue" } });
@@ -283,23 +286,34 @@ describe("ColumnFormatEditorModal", () => {
   // ---------------------------------------------------------------------------
   // T9: kind "none" + empty label → deleteColumnDisplayConfig + removeColumn
   // ---------------------------------------------------------------------------
-  it("T9: none kind + empty label → deleteColumnDisplayConfig + removeColumn", async () => {
+  it("T9: clearing a saved column (none kind + empty label) → deleteColumnDisplayConfig + removeColumn", async () => {
+    // Seed revenue with an existing saved config so clearing it is a real change.
+    // (Columns now default to "none"; the delete path is only reachable when a
+    // previously-saved column is reset to none + empty label.)
+    mockedClient.listColumnDisplayConfig.mockResolvedValue([
+      {
+        table_id: 42,
+        column_name: "revenue",
+        label: "Old Revenue",
+        format_spec: { kind: "number", thousandsSep: true, decimals: 2, currency: false, percent: false },
+        created_at: "",
+        updated_at: "",
+      },
+    ]);
+
     renderModal();
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
     });
 
-    // Switch to None
+    // Clear the label and switch the kind back to None → now differs from the saved baseline
+    const labelInput = screen.getByRole("textbox", { name: /display label/i });
+    fireEvent.change(labelInput, { target: { value: "" } });
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
     fireEvent.change(kindSelect, { target: { value: "none" } });
 
-    // Ensure label is empty (it already is by default)
-    const labelInput = screen.getByRole("textbox", { name: /display label/i });
-    fireEvent.change(labelInput, { target: { value: "" } });
-
-    // Make it dirty by switching kind (already done above)
-    // Confirm Save is enabled (dirty from kind change)
+    // Confirm Save is enabled (dirty vs the saved baseline)
     const saveBtn = screen.getByRole("button", { name: /^save$/i });
     expect(saveBtn).not.toBeDisabled();
 

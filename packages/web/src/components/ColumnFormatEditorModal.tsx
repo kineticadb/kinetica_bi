@@ -20,7 +20,6 @@ import { useColumnDisplayConfigStore } from "../store/columnDisplayConfigStore";
 import { useToastStore } from "../store/toast";
 import {
   buildFormatter,
-  defaultFormatKind,
   type FormatSpec,
   type FormatSpecNumber,
   type FormatSpecDate,
@@ -105,9 +104,13 @@ export default function ColumnFormatEditorModal({
           const storedSpec = saved?.format_spec ?? null;
           const storedLabel = saved?.label ?? "";
 
-          const spec: FormatSpec = storedSpec
-            ? storedSpec
-            : defaultSpecForKind(defaultFormatKind(col, table.columns));
+          // No saved spec → default to "none" so the form truthfully reflects
+          // "no format applied" (and Save stays disabled until the operator
+          // actually picks a format). We deliberately do NOT pre-infer a kind
+          // from the column type — that misrepresented unsaved columns as
+          // already-formatted and seeded the baseline so the shown default
+          // could never be saved.
+          const spec: FormatSpec = storedSpec ? storedSpec : defaultSpecForKind("none");
 
           initialWorking[col] = { label: storedLabel, spec };
           initialBaseline[col] = { label: storedLabel, spec };
@@ -171,7 +174,7 @@ export default function ColumnFormatEditorModal({
     setWorking((prev) => {
       const prevCol = prev[col] ?? {
         label: "",
-        spec: defaultSpecForKind(defaultFormatKind(col, table.columns)),
+        spec: defaultSpecForKind("none"),
       };
       const next = { ...prev, [col]: updater(prevCol) };
       setIsDirty(computeIsDirty(next, baseline));
