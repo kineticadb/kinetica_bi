@@ -484,23 +484,25 @@ const ChartConfigPanel = ({
   //   - records/table: no auto-default — user picks intentionally
   const supportsDrillDown = chartDef?.supportsDrillDown === true;
   const currentDrillDownColumn = (draft.drillDownColumn as string) ?? "";
-  const defaultDrillDownColumn =
-    currentDrillDownColumn !== ""
-      ? currentDrillDownColumn
-      : (() => {
-          if (!supportsDrillDown) return "";
-          // Scatter: configured x-axis key (CONTEXT.md lock). Today derived from groupByColumn
-          // because scatter has no separate xAxisKey field; future-proofed by being its own branch.
-          if (widgetType === "scatter") {
-            // TODO if scatter gains a dedicated xAxisKey/xKey field on its ChartTypeDefinition,
-            // read (draft.xAxisKey as string) || (draft.groupByColumn as string) here.
-            return (draft.groupByColumn as string) || "";
-          }
-          // Bar/line/pie: groupByColumn as the category dimension at click-extraction time
-          if (usesAggregation) return (draft.groupByColumn as string) || "";
-          // Records/table: no auto-default
-          return "";
-        })();
+  // Aggregated category charts (bar/line/area/pie) build rows as `{ <groupByColumn>: cat, value }`,
+  // so a click can only meaningfully filter on the group-by column. The drill-down column ALWAYS
+  // follows group-by for these types — an independent pick that diverged produced `= 'undefined'`
+  // filters. (Records/table — non-aggregated, raw rows — keep an independent drill-down picker.)
+  const drillFollowsGroupBy = supportsDrillDown && usesAggregation && requiresGroupBy;
+  const defaultDrillDownColumn = (() => {
+    if (!supportsDrillDown) return "";
+    // Aggregated category charts: lock drill-down to the current group-by column (no divergence).
+    if (drillFollowsGroupBy) return (draft.groupByColumn as string) || "";
+    // An explicit pick wins for the remaining (non-aggregated / records) types.
+    if (currentDrillDownColumn !== "") return currentDrillDownColumn;
+    // Scatter: configured x-axis key (CONTEXT.md lock). Today derived from groupByColumn
+    // because scatter has no separate xAxisKey field; future-proofed by being its own branch.
+    if (widgetType === "scatter") return (draft.groupByColumn as string) || "";
+    // Other aggregated (no group-by, e.g. scalar): groupByColumn fallback.
+    if (usesAggregation) return (draft.groupByColumn as string) || "";
+    // Records/table: no auto-default
+    return "";
+  })();
 
   return (
     <div className="config-panel">
@@ -678,7 +680,7 @@ const ChartConfigPanel = ({
         {/* Phase 10 DRILL-02: drill-down column picker — visible only for chart types
             that supportsDrillDown. Geometry/large-text columns excluded via PITFALL D-01 lock.
             Phase 35 (DV-V16-12): visible when bound to a dv too (selectedSource defined). */}
-        {supportsDrillDown && selectedSource && (
+        {supportsDrillDown && selectedSource && !drillFollowsGroupBy && (
           <div className="config-group">
             <div className="config-group-label">Drill-Down</div>
             <label className="ds-field">
@@ -699,6 +701,17 @@ const ChartConfigPanel = ({
               </select>
               <span className="config-hint">Column whose value becomes the filter on click</span>
             </label>
+          </div>
+        )}
+        {/* Aggregated category charts: drill-down always follows the Group By column (the
+            clicked category) — no separate picker, so group-by and drill-down can't diverge. */}
+        {supportsDrillDown && selectedSource && drillFollowsGroupBy && (
+          <div className="config-group">
+            <div className="config-group-label">Drill-Down</div>
+            <span className="config-hint">
+              Clicking filters by the Group By column
+              {(draft.groupByColumn as string) ? ` (${draft.groupByColumn as string})` : ""}.
+            </span>
           </div>
         )}
 

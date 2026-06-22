@@ -19,7 +19,7 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, waitFor, act, screen, fireEvent } from "@testing-library/react";
-import WidgetRenderer from "./WidgetRenderer";
+import WidgetRenderer, { resolveAggregatedDrillTarget } from "./WidgetRenderer";
 import { useFilterStore } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
@@ -3760,5 +3760,43 @@ describe("BarRenderer chart tooltip, series/axis label fallback chains (COLAPPLY
       // Synthetic 1234 → "$1,234" via the column formatter (not the plain toLocaleString default).
       expect(getByTestId("labellist-formatted").textContent).toBe("$1,234");
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// resolveAggregatedDrillTarget — aggregated charts drill on the GROUP-BY column,
+// never a diverged drillDownColumn that isn't in the aggregated row (the reported
+// `Device_Manufacturer = 'undefined'` bug).
+// ────────────────────────────────────────────────────────────────────────────
+describe("resolveAggregatedDrillTarget (drill on group-by column)", () => {
+  it("uses the group-by column even when drillDownColumn diverges (no undefined)", () => {
+    const row = { Location_City: "NYC", value: 5 };
+    const out = resolveAggregatedDrillTarget(row, "Location_City", "Device_Manufacturer", "string");
+    expect(out.column).toBe("Location_City");
+    expect(out.value).toBe("NYC"); // NOT undefined
+    expect(out.dataType).toBe("string"); // inferred (diverged → not the persisted type)
+  });
+
+  it("keeps the persisted type when group-by and drill-down agree", () => {
+    const row = { region: "East", value: 9 };
+    const out = resolveAggregatedDrillTarget(row, "region", "region", "string");
+    expect(out.column).toBe("region");
+    expect(out.value).toBe("East");
+    expect(out.dataType).toBe("string");
+  });
+
+  it("infers number type for a numeric group-by category", () => {
+    const row = { year: 2024, value: 3 };
+    const out = resolveAggregatedDrillTarget(row, "year", "something_else", "string");
+    expect(out.column).toBe("year");
+    expect(out.value).toBe(2024);
+    expect(out.dataType).toBe("number");
+  });
+
+  it("falls back to drillDownColumn when there is no group-by column", () => {
+    const row = { city: "LA", value: 1 };
+    const out = resolveAggregatedDrillTarget(row, "", "city", "string");
+    expect(out.column).toBe("city");
+    expect(out.value).toBe("LA");
   });
 });

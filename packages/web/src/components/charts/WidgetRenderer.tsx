@@ -971,6 +971,32 @@ function resolveKeys(data: Row[], config: Record<string, unknown>) {
   return { x, y };
 }
 
+/**
+ * Drill target for AGGREGATED charts (bar/line/area/pie). Their rows are shaped
+ * `{ <groupByColumn>: category, value: n }`, so the only column a click can meaningfully
+ * filter on is the group-by column — that IS the clicked category. A separately-configured
+ * `drillDownColumn` that differs from the group-by column is absent from the aggregated row,
+ * so reading it yields `undefined` (the filter then shows `= 'undefined'` and matches nothing).
+ * Always prefer the group-by column; keep the persisted type only when the two agree, else
+ * infer from the clicked value (categorical group-bys → string, numeric → number).
+ */
+export function resolveAggregatedDrillTarget(
+  row: Row | undefined,
+  groupByColumn: string,
+  drillDownColumn: string,
+  drillDownColumnType: DrillDownDataType,
+): { column: string; value: unknown; dataType: DrillDownDataType } {
+  const column = groupByColumn || drillDownColumn;
+  const value = row?.[column];
+  const dataType: DrillDownDataType =
+    column === drillDownColumn
+      ? drillDownColumnType
+      : typeof value === "number"
+        ? "number"
+        : "string";
+  return { column, value, dataType };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Chart renderers                                                    */
 /* ------------------------------------------------------------------ */
@@ -1031,7 +1057,11 @@ const BarRenderer = ({
     const payload = (nextState as { activePayload?: Array<{ payload?: Row }> } | null)
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
-    const value = payload[drillDownColumn];
+    // Aggregated chart → drill on the group-by column (the clicked category), never a
+    // diverged drillDownColumn that isn't in the aggregated row (would filter `= 'undefined'`).
+    const { column, value, dataType } = resolveAggregatedDrillTarget(
+      payload, groupByColumn, drillDownColumn, drillDownColumnType,
+    );
     // 1. dim-peers transient (PITFALL C-03 sequencing)
     setClickedElement(value);
     // 2. dispatch addFilter after 300ms — gives the dim render visible time before
@@ -1041,9 +1071,9 @@ const BarRenderer = ({
         tableId,
         dynamicViewId,
         dashboardId,
-        column: drillDownColumn,
+        column,
         value,
-        dataType: drillDownColumnType,
+        dataType,
         widgetId,
       });
     }, 300);
@@ -1175,7 +1205,10 @@ const LineRenderer = ({
     const payload = (nextState as { activePayload?: Array<{ payload?: Row }> } | null)
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
-    const value = payload[drillDownColumn];
+    // Aggregated chart → drill on the group-by / x-dimension column (the clicked category).
+    const { column, value, dataType } = resolveAggregatedDrillTarget(
+      payload, groupByColumn, drillDownColumn, drillDownColumnType,
+    );
     setClickedElement(value);
     // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
     setTimeout(() => {
@@ -1183,9 +1216,9 @@ const LineRenderer = ({
         tableId,
         dynamicViewId,
         dashboardId,
-        column: drillDownColumn,
+        column,
         value,
-        dataType: drillDownColumnType,
+        dataType,
         widgetId,
       });
     }, 300);
@@ -1306,7 +1339,10 @@ const PieRenderer = ({
     if (!drillEnabled) return;
     const row = (slice as { payload?: Row })?.payload;
     if (!row) return;
-    const value = row[drillDownColumn];
+    // Aggregated chart → drill on the group-by column (the clicked slice's category).
+    const { column, value, dataType } = resolveAggregatedDrillTarget(
+      row, groupByColumn, drillDownColumn, drillDownColumnType,
+    );
     setClickedElement(value);
     // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
     setTimeout(() => {
@@ -1314,9 +1350,9 @@ const PieRenderer = ({
         tableId,
         dynamicViewId,
         dashboardId,
-        column: drillDownColumn,
+        column,
         value,
-        dataType: drillDownColumnType,
+        dataType,
         widgetId,
       });
     }, 300);
@@ -1419,7 +1455,10 @@ const ScatterRenderer = ({
     const payload = (nextState as { activePayload?: Array<{ payload?: Row }> } | null)
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
-    const value = payload[drillDownColumn];
+    // Aggregated chart → drill on the group-by / x-dimension column (the clicked category).
+    const { column, value, dataType } = resolveAggregatedDrillTarget(
+      payload, groupByColumn, drillDownColumn, drillDownColumnType,
+    );
     setClickedElement(value);
     // PITFALL C-03 sequencing: dispatch addFilter after 300ms.
     setTimeout(() => {
@@ -1427,9 +1466,9 @@ const ScatterRenderer = ({
         tableId,
         dynamicViewId,
         dashboardId,
-        column: drillDownColumn,
+        column,
         value,
-        dataType: drillDownColumnType,
+        dataType,
         widgetId,
       });
     }, 300);
