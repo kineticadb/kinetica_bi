@@ -1094,9 +1094,17 @@ const BarRenderer = ({
               position={horizontal ? "right" : "top"}
               fill={AXIS_COLOR}
               fontSize={11}
-              formatter={(v: unknown) =>
-                typeof v === "number" ? v.toLocaleString() : String(v ?? "")
-              }
+              // Phase 77 follow-up (COLAPPLY-V115-02): run on-bar value labels through the
+              // column formatter for consistency with the tooltip + pie slice labels. When no
+              // format spec is set, resolveFormatter is identity → fall back to the prior
+              // toLocaleString() default (thousands separator) so unconfigured bars look unchanged.
+              formatter={(v: unknown) => {
+                if (tableId !== undefined && metricColumn) {
+                  const out = resolveFormatter(tableId, metricColumn)(v);
+                  if (out !== v) return String(out); // a real format spec was applied
+                }
+                return typeof v === "number" ? v.toLocaleString() : String(v ?? "");
+              }}
             />
           )}
           {data.map((row, index) => (

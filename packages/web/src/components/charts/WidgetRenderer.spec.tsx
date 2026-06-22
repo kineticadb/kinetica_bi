@@ -3466,7 +3466,12 @@ vi.mock("recharts", async (importOriginal) => {
         h("span", { "data-testid": "line-series-name" }, name),
       ),
     Cell: () => null,
-    LabelList: () => null,
+    // Surface the LabelList `formatter` output (applied to a synthetic value) so we can
+    // assert on-bar value labels run through the metric formatter (COLAPPLY-V115-02 follow-up).
+    LabelList: ({ formatter }: { formatter?: (v: unknown) => unknown }) =>
+      formatter
+        ? h("span", { "data-testid": "labellist-formatted" }, String(formatter(1234)))
+        : null,
     PieChart: ({ children }: { children?: unknown }) => h("div", { "data-testid": "recharts-piechart" }, children),
     // Render each slice's `label` function output as a visible span so we can assert
     // the metric formatter is applied to pie slice labels (COLAPPLY-V115-02 follow-up).
@@ -3728,6 +3733,32 @@ describe("BarRenderer chart tooltip, series/axis label fallback chains (COLAPPLY
       const labels = getAllByTestId("pie-slice-label").map((n) => n.textContent ?? "");
       // The raw metric value 1234 renders as "$1,234", not "1234".
       expect(labels.some((t) => t === "$1,234")).toBe(true);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Test 9: on-bar value labels (showValueLabels) also run through the metric formatter
+  // ------------------------------------------------------------------
+  it("bar value labels are formatted via the metric column formatter when shown", async () => {
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: CHART_TABLE_ID,
+        column_name: CHART_METRIC_COL,
+        label: null,
+        format_spec: { kind: "number", thousandsSep: true, decimals: 0, currency: "$", percent: false },
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeBarWidget({
+      config: { ...makeBarWidget().config, showValueLabels: true },
+    });
+    const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => {
+      // Synthetic 1234 → "$1,234" via the column formatter (not the plain toLocaleString default).
+      expect(getByTestId("labellist-formatted").textContent).toBe("$1,234");
     });
   });
 });
