@@ -88,6 +88,18 @@ export function ColumnFormatTooltip({
       ? resolveFormatter(tableId, metricColumn)
       : (v) => v;
 
+  // Metric label: the value line should describe the METRIC (e.g. "Total Revenue"),
+  // not echo Recharts' per-entry `name`. For a pie/single-series chart that name is
+  // the slice's CATEGORY value (e.g. "NYC") — already shown on the category line above,
+  // so repeating it is redundant and the metric's label never appears. Use the resolved
+  // metric label for single-series payloads; keep per-entry names for true multi-series
+  // (grouped bar/line) where each entry is a distinct series.
+  const metricLabel =
+    tableId !== undefined && metricColumn
+      ? resolveLabel(tableId, metricColumn)
+      : undefined;
+  const singleSeries = payload.length === 1;
+
   return (
     <div
       style={{
@@ -111,19 +123,23 @@ export function ColumnFormatTooltip({
       )}
 
       {/* Value lines — one per payload entry */}
-      {payload.map((entry, i) => (
-        <p
-          key={i}
-          style={{
-            margin: "2px 0",
-            color: entry.color ?? "var(--text)",
-            fontSize: 13,
-          }}
-        >
-          {entry.name != null ? `${entry.name}: ` : ""}
-          {String(fmt(entry.value) ?? "")}
-        </p>
-      ))}
+      {payload.map((entry, i) => {
+        // Single-series → prefer the metric label; multi-series → keep the per-series name.
+        const valueName = singleSeries && metricLabel != null ? metricLabel : entry.name;
+        return (
+          <p
+            key={i}
+            style={{
+              margin: "2px 0",
+              color: entry.color ?? "var(--text)",
+              fontSize: 13,
+            }}
+          >
+            {valueName != null ? `${valueName}: ` : ""}
+            {String(fmt(entry.value) ?? "")}
+          </p>
+        );
+      })}
     </div>
   );
 }

@@ -3467,6 +3467,18 @@ vi.mock("recharts", async (importOriginal) => {
       ),
     Cell: () => null,
     LabelList: () => null,
+    PieChart: ({ children }: { children?: unknown }) => h("div", { "data-testid": "recharts-piechart" }, children),
+    // Render each slice's `label` function output as a visible span so we can assert
+    // the metric formatter is applied to pie slice labels (COLAPPLY-V115-02 follow-up).
+    Pie: ({ data, label, children }: { data?: Array<Record<string, unknown>>; label?: unknown; children?: unknown }) =>
+      h("div", { "data-testid": "recharts-pie" },
+        typeof label === "function"
+          ? (Array.isArray(data) ? data : []).map((d, i) =>
+              h("span", { key: i, "data-testid": "pie-slice-label" },
+                String((label as (e: { value?: unknown }) => unknown)(d))))
+          : null,
+        children,
+      ),
   };
 });
 
@@ -3690,6 +3702,32 @@ describe("BarRenderer chart tooltip, series/axis label fallback chains (COLAPPLY
       const tooltipText = getByTestId("recharts-tooltip").textContent ?? "";
       // $1,234 (thousandsSep=true, currency="$", decimals=0)
       expect(tooltipText).toContain("$1,234");
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Test 8: pie slice labels run the metric value through resolveFormatter
+  // (COLAPPLY-V115-02 follow-up — raw 1234 → "$1,234", not "1234")
+  // ------------------------------------------------------------------
+  it("pie slice labels are formatted via the metric column formatter", async () => {
+    vi.spyOn(clientModule, "listColumnDisplayConfig").mockResolvedValue([
+      {
+        table_id: CHART_TABLE_ID,
+        column_name: CHART_METRIC_COL,
+        label: null,
+        format_spec: { kind: "number", thousandsSep: true, decimals: 0, currency: "$", percent: false },
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    const widget = makeBarWidget({ type: "pie" });
+    const { getAllByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => {
+      const labels = getAllByTestId("pie-slice-label").map((n) => n.textContent ?? "");
+      // The raw metric value 1234 renders as "$1,234", not "1234".
+      expect(labels.some((t) => t === "$1,234")).toBe(true);
     });
   });
 });

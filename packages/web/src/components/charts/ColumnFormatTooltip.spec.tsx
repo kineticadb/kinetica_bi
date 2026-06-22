@@ -236,6 +236,41 @@ describe("ColumnFormatTooltip (COLAPPLY-V115-02)", () => {
   });
 
   // ------------------------------------------------------------------
+  // Behavior 5b: single-series (pie) — value line uses the METRIC label,
+  // not Recharts' per-entry name (which for a pie is the redundant category value).
+  // ------------------------------------------------------------------
+  it("single-series value line uses the metric label, not the redundant slice name", () => {
+    // Label + currency format on the metric column "amount".
+    useColumnDisplayConfigStore
+      .getState()
+      .upsertColumn(TABLE_ID, "amount", "Total Revenue", NUMBER_SPEC);
+
+    // Pie payload: Recharts sets entry.name to the slice's CATEGORY value ("NYC")
+    // and injects no `label`. The category comes from payload[0].payload[groupByColumn].
+    const { getByText, container } = render(
+      <ColumnFormatTooltip
+        tableId={TABLE_ID}
+        groupByColumn="vendor_id"
+        metricColumn="amount"
+        active={true}
+        payload={[
+          {
+            name: "NYC",
+            value: 252191.85,
+            color: "var(--chart-1)",
+            payload: { vendor_id: "NYC", amount: 252191.85 },
+          },
+        ]}
+      />,
+    );
+
+    // Value line shows the metric label + formatted value — NOT "NYC: $252,191.85".
+    expect(getByText(/Total Revenue: \$252,191\.85/)).toBeTruthy();
+    // "NYC" still appears once (on the category line), never as the value-line prefix.
+    expect(container.textContent).not.toMatch(/NYC: \$252,191\.85/);
+  });
+
+  // ------------------------------------------------------------------
   // Behavior 6: no raw hex in rendered output (theme tokens only)
   // ------------------------------------------------------------------
   it("renders without inline raw hex color literals (uses theme tokens)", () => {

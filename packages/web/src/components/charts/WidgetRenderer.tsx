@@ -1324,7 +1324,19 @@ const PieRenderer = ({
           innerRadius={innerRadius}
           outerRadius="80%"
           paddingAngle={padAngle}
-          label={config.showLabels !== false}
+          // Phase 77 follow-up (COLAPPLY-V115-02): slice labels run the metric value through
+          // the column formatter (e.g. raw 252191.8498… → $252,191.85) for consistency with the
+          // tooltip. Falls back to the raw value when no tableId/metricColumn (legacy/dv-bound).
+          label={
+            config.showLabels === false
+              ? false
+              : (entry: { value?: unknown }) =>
+                  String(
+                    (tableId !== undefined && metricColumn
+                      ? resolveFormatter(tableId, metricColumn)(entry.value)
+                      : entry.value) ?? "",
+                  )
+          }
           onClick={handleSliceClick}
         >
           {data.map((row, index) => (
