@@ -96,6 +96,16 @@ export default function DataFilterRenderer({ widget, tables }: Props): JSX.Eleme
   );
   const columns: Record<string, string> = baseTable?.columns ?? {};
 
+  // Stable signature of which configured fields' columns are currently known on the
+  // base table. The `tables` registry loads asynchronously, so on first mount this
+  // can be all-"absent" and then flips once metadata arrives. Used as a fetch-effect
+  // dependency so the value-universe fetch RE-RUNS when columns become available —
+  // fixing a race where the widget mounted before `tables` loaded, every field was
+  // skipped, and the dropdown showed a spurious "No matches" that never recovered.
+  const columnsReadyKey = filterFields
+    .map((f) => (columns[f.column] !== undefined ? "1" : "0"))
+    .join("");
+
   // ----- Empty-state gates -----
   if (tableId === undefined || tableRef === undefined) {
     return (
@@ -169,6 +179,17 @@ export default function DataFilterRenderer({ widget, tables }: Props): JSX.Eleme
         return;
       }
 
+      // The `tables` registry loads asynchronously; until this widget's base table
+      // resolves, its column metadata is unknown. Defer the fetch (keeping the
+      // controls in their "Loading…" state) and let the effect re-fire once metadata
+      // arrives — baseTable?.id + columnsReadyKey are in the dep array below. Without
+      // this guard every field was skipped, Promise.all([]) resolved instantly,
+      // universeLoading flipped to false, and the dropdown rendered a spurious
+      // "No matches" that never recovered (the effect did not depend on table metadata).
+      if (baseTable === undefined) {
+        return; // keep universeLoading = true; effect re-runs when baseTable resolves
+      }
+
       const promises: Promise<void>[] = [];
 
       filterFields.forEach((f, idx) => {
@@ -228,7 +249,7 @@ export default function DataFilterRenderer({ widget, tables }: Props): JSX.Eleme
       ctrl.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schemaName, baseTableName, JSON.stringify(filterFields.map((f) => `${f.column}:${f.kind}`))]);
+  }, [schemaName, baseTableName, JSON.stringify(filterFields.map((f) => `${f.column}:${f.kind}`)), columnsReadyKey, baseTable?.id]);
 
   // User-initiated control updates flow through here so we can tick the dirty flag.
   // Mount-time fetches keep using setStaged directly above so they don't mark dirty.

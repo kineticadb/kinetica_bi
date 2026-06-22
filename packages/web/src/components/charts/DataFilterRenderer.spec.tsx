@@ -179,6 +179,33 @@ describe("DataFilterRenderer", () => {
     expect(screen.getByRole("combobox", { name: /region/i })).toBeInTheDocument();
   });
 
+  // 5b. Race fix: the `tables` registry loads async. A widget that mounts BEFORE
+  // its base table resolves must DEFER the value-universe fetch (no spurious
+  // "No matches") and RE-FETCH once the metadata arrives.
+  it("defers the value fetch until the table registry loads, then re-fetches", async () => {
+    vi.mocked(client.topValuesFn).mockResolvedValue({ values: ["A", "B", "C"] });
+    const widget = makeWidget([{ column: "region", kind: "dropdown" }]);
+
+    // Mount with an EMPTY tables registry → base table can't resolve → fetch deferred.
+    const { rerender } = render(<DataFilterRenderer widget={widget} tables={[]} />);
+    expect(client.topValuesFn).not.toHaveBeenCalled();
+
+    // Registry finishes loading → tables prop updates → effect must re-fire and fetch.
+    rerender(<DataFilterRenderer widget={widget} tables={defaultTables} />);
+
+    await waitFor(() =>
+      expect(client.topValuesFn).toHaveBeenCalledWith(
+        expect.objectContaining({ schema: "ki_home", table: "trips", column: "region" }),
+        expect.anything(),
+      ),
+    );
+
+    // Values now populate (no spurious empty state).
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "A" })).toBeInTheDocument(),
+    );
+  });
+
   // 6. multi-select → checkbox list populated from topValuesFn
   it("renders a multi-select for multi-select kind populated from topValuesFn response", async () => {
     vi.mocked(client.topValuesFn).mockResolvedValue({ values: ["A", "B", "C"] });
