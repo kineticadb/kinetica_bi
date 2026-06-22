@@ -4318,3 +4318,125 @@ input[type="checkbox"],
 .banner-dismiss:hover {
   color: #cae8ff;
 }
+
+/* ---------------------------------------------------------------------------
+   ColumnFormatEditorModal (Phase 76) — two-pane column formatting editor.
+   Reuses the .modal-overlay portal + .modal-content shell; this block supplies
+   the wider size class, the two-pane body, the left-list rows, and the
+   right-pane form/preview. Mirrors the .dynamic-views-modal-* + .view-row
+   conventions. Theme tokens only (this file is not theme-guard-scanned, but the
+   convention holds).
+   --------------------------------------------------------------------------- */
+
+.col-format-editor-modal {
+  width: 900px;
+  max-width: 92vw;
+}
+
+.col-format-editor-body {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  height: 65vh;
+  overflow: hidden;
+}
+
+.col-format-editor-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 10px;
+  min-height: 0;
+}
+
+.col-format-editor-right {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px 20px;
+  min-height: 0;
+}
+
+.col-format-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.col-format-row:hover {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+.col-format-row.active {
+  background: var(--card);
+  border-color: var(--accent);
+}
+
+.col-format-col-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-format-col-type {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+}
+
+.col-format-saved-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+}
+
+.col-format-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.col-format-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.col-format-preview-value {
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.col-format-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
