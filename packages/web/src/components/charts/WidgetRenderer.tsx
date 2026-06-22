@@ -1589,13 +1589,19 @@ const TableRenderer = ({
 
   const drillEnabled =
     !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
-  // Phase 10 DRILL-04: row-tint — find the active filter value for the
-  // configured drillDownColumn (if any) so matching rows get the highlight class.
-  const activeFilterValue = tableFilters.find((f) => f.column === drillDownColumn)?.value;
+  // This "Data Table" is an AGGREGATED chart (group-by + value), so — like bar/pie — the
+  // drill filters on the group-by column (the clicked row's category), never a diverged
+  // drillDownColumn that isn't in the aggregated row (which produced `= 'undefined'`).
+  const drillCol = groupByColumn || drillDownColumn;
+  // Phase 10 DRILL-04: row-tint — find the active filter value for the drill column so
+  // matching rows get the highlight class.
+  const activeFilterValue = tableFilters.find((f) => f.column === drillCol)?.value;
 
   const handleRowClick = (row: Row) => {
     if (!drillEnabled) return;
-    const value = row[drillDownColumn];
+    const { column, value, dataType } = resolveAggregatedDrillTarget(
+      row, groupByColumn, drillDownColumn, drillDownColumnType,
+    );
     // No dim-peers transient on table — direct dispatch, but still 300ms-delayed
     // for consistency with bar/pie/scatter timing AND to keep the data-clear visible
     // (PITFALL C-03 sequencing — same across chart types).
@@ -1604,9 +1610,9 @@ const TableRenderer = ({
         tableId,
         dynamicViewId,
         dashboardId,
-        column: drillDownColumn,
+        column,
         value,
-        dataType: drillDownColumnType,
+        dataType,
         widgetId,
       });
     }, 300);
@@ -1633,7 +1639,7 @@ const TableRenderer = ({
             const isFiltered =
               drillEnabled &&
               activeFilterValue !== undefined &&
-              String(row[drillDownColumn]) === String(activeFilterValue);
+              String(row[drillCol]) === String(activeFilterValue);
             const classes = [
               striped && i % 2 === 1 ? "widget-table-stripe" : "",
               isFiltered ? "widget-table-row-active" : "",
