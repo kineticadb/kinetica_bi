@@ -226,6 +226,32 @@ describe("DataFilterRenderer", () => {
     expect(screen.getByRole("checkbox", { name: /status: C/i })).toBeInTheDocument();
   });
 
+  // 6b. multi-select popover is PORTALED to document.body so it is never clipped by the
+  // widget card's overflow / the react-grid-layout transform (the reported "dropdown
+  // hidden unless the widget is tall enough" bug).
+  it("renders the multi-select popover in a portal outside the widget wrapper", async () => {
+    vi.mocked(client.topValuesFn).mockResolvedValue({ values: ["A", "B", "C"] });
+    const user = userEvent.setup();
+    const { container } = render(
+      <DataFilterRenderer
+        widget={makeWidget([{ column: "status", kind: "multi-select" }])}
+        tables={defaultTables}
+      />,
+    );
+    const trigger = await screen.findByRole("combobox", { name: /status/i });
+    await user.click(trigger);
+    await screen.findByRole("checkbox", { name: /status: A/i });
+
+    const popover = document.querySelector(".datafilter-mschips-popover");
+    expect(popover).not.toBeNull();
+    // Portaled: rendered into document.body, NOT inside the rendered widget subtree…
+    expect(container.contains(popover)).toBe(false);
+    // …and NOT nested inside the inline .datafilter-mschips trigger wrapper.
+    expect(popover!.closest(".datafilter-mschips")).toBeNull();
+    // fixed-positioned (escapes overflow/transform clipping)
+    expect((popover as HTMLElement).style.position).toBe("fixed");
+  });
+
   // 7. number-eq → number input
   it("renders a number input for number-eq kind", async () => {
     render(
