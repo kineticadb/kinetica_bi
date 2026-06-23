@@ -217,10 +217,10 @@ a {
   grid-row: 1 / span 2;
   background: linear-gradient(180deg, var(--sidebar-from), var(--sidebar-to));
   border-right: 1px solid var(--border);
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-5) var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
   overflow: hidden;
   transition: padding var(--duration-fast) ease;
 }
@@ -279,19 +279,20 @@ a {
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-2) var(--space-3);
   margin-bottom: var(--space-1);
   text-align: left;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
+  font-size: var(--text-sm);
   transition: all var(--duration-base) ease;
 }
 
 .sidebar.collapsed .nav-item {
-  padding: var(--space-4) 0;
+  padding: var(--space-2) 0;
   justify-content: center;
   gap: 0;
 }
@@ -316,7 +317,7 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
 }
 
 .sidebar-footer {
@@ -325,7 +326,7 @@ a {
   align-items: center;
   justify-content: space-between;
   border-top: 1px solid var(--border);
-  padding-top: var(--space-5);
+  padding-top: var(--space-3);
 }
 
 .sidebar.collapsed .sidebar-footer {
@@ -333,12 +334,12 @@ a {
 }
 
 .sidebar-label {
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 
 .sidebar-sub {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   color: var(--text);
 }
 

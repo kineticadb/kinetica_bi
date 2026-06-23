@@ -49,7 +49,7 @@ const App = () => {
     // width and the main-column's `1fr` stay in sync without prop-drilling.
     document.documentElement.style.setProperty(
       "--sidebar-width",
-      sidebarCollapsed ? "56px" : "260px",
+      sidebarCollapsed ? "56px" : "212px",
     );
     try {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
