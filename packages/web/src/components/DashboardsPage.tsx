@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faGear } from "@fortawesome/free-solid-svg-icons";
 import { useAuthStore } from "../store/auth";
@@ -402,6 +403,15 @@ const DashboardOpen = ({
   const [showLayersModal, setShowLayersModal] = useState(false);
   const [showDynamicViewsModal, setShowDynamicViewsModal] = useState(false);  // Phase 34 (DV-V16-08)
   const [configuringWidget, setConfiguringWidget] = useState<WidgetDto | null>(null);
+
+  // v1.16 Aurora single-bar layout: hoist this dashboard's title + toolbar into the
+  // topbar strip via a portal, instead of a separate header row below the topbar.
+  // Falls back to an inline header when the slot is absent (unit tests that render
+  // DashboardOpen without the app shell), so the toolbar buttons stay queryable.
+  const [topbarSlotEl, setTopbarSlotEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setTopbarSlotEl(document.getElementById("topbar-left-slot"));
+  }, []);
 
   // Phase 35 (DV-V16-13): orchestrator hook — mounted ONCE at DashboardOpen scope.
   // Owns the dashboard's dynamic-view list + the cascading materialize chain
@@ -829,36 +839,40 @@ const DashboardOpen = ({
 
   const layouts = widgets.map((w, i) => getWidgetLayout(w, i));
 
+  const dashboardHeader = (
+    <>
+      <div className="dashboard-open-title">{dashboard.name}</div>
+      <div className="dashboard-toolbar">
+        {canEdit && (
+          <button className="btn-primary btn-sm" onClick={() => setShowTableModal(true)}>
+            Tables
+          </button>
+        )}
+        {canDynamicViews && (
+          <button className="btn-primary btn-sm" onClick={() => setShowDynamicViewsModal(true)}>
+            Dynamic Views
+          </button>
+        )}
+        {canLayers && (
+          <button className="btn-primary btn-sm" onClick={() => setShowLayersModal(true)}>
+            Map Layers
+          </button>
+        )}
+        {canEdit && (
+          <button className="btn-primary btn-sm" onClick={() => setShowVizModal(true)}>
+            Visualizations
+          </button>
+        )}
+        <button className="ghost-sm" onClick={onBack}>Back</button>
+      </div>
+    </>
+  );
+
   return (
     <div className="dashboard-open">
-      <div className="dashboard-open-header">
-        <div>
-          <div className="dashboard-open-title">{dashboard.name}</div>
-        </div>
-        <div className="dashboard-toolbar">
-          {canEdit && (
-            <button className="btn-primary btn-sm" onClick={() => setShowTableModal(true)}>
-              Tables
-            </button>
-          )}
-          {canDynamicViews && (
-            <button className="btn-primary btn-sm" onClick={() => setShowDynamicViewsModal(true)}>
-              Dynamic Views
-            </button>
-          )}
-          {canLayers && (
-            <button className="btn-primary btn-sm" onClick={() => setShowLayersModal(true)}>
-              Map Layers
-            </button>
-          )}
-          {canEdit && (
-            <button className="btn-primary btn-sm" onClick={() => setShowVizModal(true)}>
-              Visualizations
-            </button>
-          )}
-          <button className="ghost-sm" onClick={onBack}>Back</button>
-        </div>
-      </div>
+      {topbarSlotEl
+        ? createPortal(dashboardHeader, topbarSlotEl)
+        : <div className="dashboard-open-header">{dashboardHeader}</div>}
 
       {error && <div className="error">{error}</div>}
       {(tablesQuery.error || widgetsQuery.error || viewsQuery.error) && (() => {

@@ -43,7 +43,8 @@ const Topbar = ({ onNavigateProfile }: TopbarProps) => {
 
   return (
     <header className="topbar">
-      <div />
+      {/* Pages portal their title + header actions here (v1.16 single-bar layout). */}
+      <div className="topbar-left" id="topbar-left-slot" />
       <div className="top-actions">
         {user && (
           <div className="user-menu-container" ref={menuRef}>
