@@ -29,6 +29,8 @@
   /* Floating overlays ON the map (zoom/draw toolbars, layers legend). */
   --map-surface: rgba(13, 11, 28, 0.88);
   --map-surface-hover: rgba(13, 11, 28, 0.96);
+  /* Near-opaque dark surface for overlay surfaces (modals, popovers). */
+  --panel-solid: #14121f;
   /* Subtle chip fill + swatch border. */
   --chip-bg: rgba(255, 255, 255, 0.08);
   --swatch-border: rgba(255, 255, 255, 0.2);
@@ -72,7 +74,7 @@
   --space-10: 32px;
 
   /* ── Radius scale ── */
-  --radius-sm: 4px;
+  --radius-sm: 9px;         /* compact mockup: 9px (was 4px) */
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius: 13px;           /* card default per mockup */
@@ -126,6 +128,7 @@
   --sidebar-to: #eceaf3;
   --map-surface: rgba(246, 245, 251, 0.94);
   --map-surface-hover: rgba(246, 245, 251, 1);
+  --panel-solid: #ffffff;
   --chip-bg: rgba(20, 16, 40, 0.06);
   --swatch-border: rgba(20, 16, 40, 0.2);
   --shadow: 0 1px 2px rgba(20, 16, 40, 0.1), 0 8px 24px rgba(20, 16, 40, 0.14);
@@ -160,8 +163,7 @@ body {
   /* Aurora dark: hex-mesh (Kinetica website motif) + violet/blue/magenta aurora radial washes + near-black base.
      background-attachment:fixed keeps the mesh stationary as content scrolls (matches the mockup). */
   background:
-    /* faint hexagon mesh — Kinetica website motif (stroke color is a structural/geometric literal) */
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='28' viewBox='0 0 48 28'%3E%3Cpath d='M12 1L24 1L30 14L24 27L12 27L6 14Z' fill='none' stroke='%23ffffff' stroke-opacity='0.035' stroke-width='1'/%3E%3C/svg%3E"), /* theme-guard-ignore: hex-mesh SVG stroke is a geometric/structural literal, not a color token */
+    /* Aurora radial glows — violet / blue / magenta washes */
     radial-gradient(1000px 640px at 12% -10%, rgba(127, 64, 237, 0.20), transparent 60%),
     radial-gradient(820px 540px at 100% 0%, rgba(56, 189, 248, 0.12), transparent 55%),
     radial-gradient(760px 740px at 60% 120%, rgba(217, 70, 239, 0.10), transparent 60%),
@@ -180,8 +182,7 @@ body {
    Aurora identity preserved on the warm off-white canvas — not a flat generic light theme. */
 :root[data-theme="light"] body {
   background:
-    /* Same hex mesh at much lower opacity — branded but not overpowering on light */
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='28' viewBox='0 0 48 28'%3E%3Cpath d='M12 1L24 1L30 14L24 27L12 27L6 14Z' fill='none' stroke='%237f40ed' stroke-opacity='0.06' stroke-width='1'/%3E%3C/svg%3E"), /* theme-guard-ignore: hex-mesh SVG stroke is a geometric/structural literal, not a color token */
+    /* Faint aurora glows — branded but subtle on the warm off-white canvas */
     radial-gradient(1000px 640px at 12% -10%, rgba(127, 64, 237, 0.05), transparent 60%),
     radial-gradient(820px 540px at 100% 0%, rgba(2, 132, 199, 0.03), transparent 55%),
     var(--bg);
@@ -709,14 +710,16 @@ a {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.78); /* raised from 0.6 — content recedes behind overlay */
   display: grid;
   place-items: center;
   z-index: 100;
 }
 
 .modal-content {
-  background: var(--panel);
+  /* Near-opaque surface — overlay modals must not bleed the dashboard through.
+     Uses --panel-solid instead of the translucent --panel so text is fully readable. */
+  background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -938,7 +941,7 @@ a {
 
 .btn-primary {
   background: var(--accent);
-  color: #0b1224;
+  color: var(--on-accent);
   border: none;
   padding: var(--space-3) var(--space-6);
   border-radius: var(--radius-md);
@@ -1773,7 +1776,7 @@ input[type="checkbox"],
   border-radius: var(--radius-md);
   border: none;
   background: var(--accent);
-  color: #052e16;
+  color: var(--on-accent);
   font-weight: var(--font-weight-semibold);
   font-size: var(--text-lg);
   cursor: pointer;
@@ -2857,7 +2860,7 @@ input[type="checkbox"],
   font-size: var(--text-base);
   padding: var(--space-2) var(--space-5);
   background: var(--accent);
-  color: #0b1224;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -2935,11 +2938,11 @@ input[type="checkbox"],
   color: var(--text);
 }
 
-/* Selected state — solid accent fill, dark text */
+/* Selected state — solid accent fill, on-accent text (white for the violet brand) */
 .info-popup-config-chip.selected {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0b1224;
+  color: var(--on-accent);
   font-weight: var(--font-weight-medium);
 }
 
