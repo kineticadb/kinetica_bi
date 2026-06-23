@@ -1,30 +1,111 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.15
-milestone_name: Column Formatting & View Lifecycle
-status: unknown
-stopped_at: Completed 78-view-ttl-keep-alive-touch/78-01-PLAN.md
-last_updated: "2026-06-22T18:54:36.679Z"
+milestone: v1.16
+milestone_name: White-Label Theming
+status: roadmap_created
+stopped_at: v1.16 ROADMAP CREATED 2026-06-23 — 5 phases (80-84), 21/21 requirements mapped, ready for plan-phase 80
+last_updated: "2026-06-23T00:00:00.000Z"
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-19 — v1.15 STARTED)
+See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 78 — view-ttl-keep-alive-touch
+**Current focus:** v1.16 White-Label Theming — defining requirements (research first)
 
 ## Current Position
 
-Phase: 78 (view-ttl-keep-alive-touch) — EXECUTING
-Plan: 1 of 1
+Phase: 80 (not started)
+Plan: —
+Status: Roadmap created — awaiting plan-phase 80
+Last activity: 2026-06-23 — Milestone v1.16 roadmap created (21/21 requirements mapped, 5 phases: 80-84)
+
+```
+Progress: [          ] 0% (0/5 phases)
+```
+
+### v1.16 Phase Map
+
+| Phase | Name | Stack | Key Requirements |
+|-------|------|-------|------------------|
+| 80 | Token Foundation + Aurora Default Theme | FRONTEND-ONLY | TOKENS-V116-01/02/03/04, THEME-V116-01/02/03 |
+| 81 | Brand Config Server Foundation | SERVER-ONLY | BRANDFND-01/02, SECA-V116-01, CSS-V116-02 |
+| 82 | Client Token Pipeline + FOUC Prevention + Identity | FRONTEND-ONLY | BRANDFND-03/04, BRANDUI-01 |
+| 83 | Branding Admin UI | FRONTEND-ONLY | BRANDUI-02/03/04/05, CSS-V116-01, SECA-V116-02 |
+| 84 | Verification + Live UAT | BOTH + operator | VERIFY-V116-01 |
+
+**Dependency spine:** 80 → 81 → 82 → 83 → 84 (strictly sequential; each phase's output is the next phase's input). Phases 80 and 81 CAN run in parallel (80 is frontend-only, 81 is server-only, no shared outputs at execution time), but 82 requires both to be complete.
+
+### v1.16 Scope (locked 2026-06-23)
+
+White-label theming. Config model = **runtime admin UI** (permission-gated; brand persisted server-side, applied live, no redeploy). Brandable: logo + app name, color palette (+ light/dark), typography, custom-CSS override (sanitized/scoped). Plus the "Aurora" distinctive Kinetica default theme. **Styling approach (research-locked 2026-06-22): EXTEND the existing CSS-custom-property token system — no Tailwind/Shadcn.**
+
+### v1.16 Key Architectural Decisions (locked)
+
+- **Styling approach:** Extend CSS custom-property token system. `document.documentElement.style.setProperty()` for runtime token application (inline styles beat stylesheet specificity). `removeProperty()` for reset.
+- **Aurora default theme baseline:** Kinetica violet `#7f40ed` on near-black `#0a0a12`, Manrope body + Space Grotesk display, compact density, glassmorphic panels, hex-mesh + aurora-glow body treatment. Full token table in `.planning/design/CHOSEN-DIRECTION.md`.
+- **Two-tier accent rule:** `--accent` for fills only; `--accent-text` for readable accent-colored text/icons (`#c4b5fd` on dark, darker variant on light). WCAG guardrails enforce this.
+- **Brand config server:** `brand_config` singleton SQLite table (`CHECK(id=1)`, `INSERT OR IGNORE` seed). Precedent: `column_display_config` (v1.15).
+- **18th permission:** `branding:manage` — writes gated; `GET /api/branding` unauthenticated (login page needs brand before auth). Precedent: `dashboards:manage_access` (v1.10).
+- **FOUC prevention:** inline `<head>` script reads `localStorage("kbi-brand-tokens")` synchronously before any CSS file parses. Extension of the existing dark/light FOUC guard in `index.html`.
+- **Cross-tab propagation:** `BroadcastChannel("kbi-brand-updated")` + `window.focus` refetch fallback for suspended tabs.
+- **SVG logo safety:** DOMPurify (SVG profile) at upload; always rendered as `<img>` never inline; MIME + magic-byte validation via `file-type`.
+- **CSS sanitization:** PostCSS AST at `PUT /api/branding` save time (recommended; strips `url()`, `@import`, `@font-face`, `expression()`). Reserve DOMPurify for SVG/HTML only.
+- **Custom CSS scoping:** OPEN DECISION 1 — settle at Phase 81/83 plan time: `@scope (#root)` (Baseline Dec 2025) vs no scoping (trust `branding:manage` boundary). If `@scope` chosen, `:root` overrides via custom CSS are blocked; document as intentional.
+- **Chart color integration:** `useChartAxisColors()` extended to read `brandStore` for axis/grid colors (SVG presentation attributes don't resolve CSS vars). WMS map layer class-break colors are explicitly out of scope (per-layer designer data, not chrome).
+- **Theme-guard extension:** extended in Phase 80 to cover structural token literals (spacing, type, radius, motion); brand admin components added to ALLOWLIST with justification comments in the same commit that introduces them.
+- **New deps:** web — `react-colorful@5.7.0`, `colord@2.9.x`; server — `multer@2.2.0`, `DOMPurify@3.4.x`, `postcss` (+ `file-type`).
+
+### v1.16 Open Decisions (must resolve at plan time)
+
+| Decision | Phase | Options | Recommendation |
+|----------|-------|---------|----------------|
+| Open Decision 1: Custom CSS scoping | 81 / 83 | A: No scoping (trust permission boundary) / B: `@scope (#root)` (Baseline Dec 2025) / C: Server-side selector prefix `[data-kbi-app]` | Option B if `:root` override not needed from escape hatch; Option A if admins must override tokens via custom CSS |
+| Open Decision 2: CSS sanitizer | 81 | PostCSS AST (walk every declaration node) vs regex (known unicode-escape bypass risk) | PostCSS AST — Pitfalls researcher confirmed regex is bypassed by real CVE patterns |
+
+### v1.16 Test Gates (every phase)
+
+- **Frontend phases (80, 82, 83):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard green (extended structural guard from Phase 80 onward).
+- **Server phase (81):** supertests in BOTH auth modes (password + oidc); server `tsc` clean; server vitest SET-BASED (failing files ⊆ TD-V16-TEST-ISOLATION — NEVER a fixed pass-count).
+- **Phase 84 (verification):** ALL of the above + blocking live operator walk-through.
+- **Invariant (all phases):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger — branding is a pure style/identity layer, no data-query coupling.
+- **Theme-guard invariant:** brand admin components (`BrandColorPicker.tsx`, etc.) are added to the ALLOWLIST in the SAME commit that introduces them, with explicit one-line justification comments (pattern: `ChartConfigPanel.tsx`).
+
+### v1.16 Requirement Coverage
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| TOKENS-V116-01 | Phase 80 | Pending |
+| TOKENS-V116-02 | Phase 80 | Pending |
+| TOKENS-V116-03 | Phase 80 | Pending |
+| TOKENS-V116-04 | Phase 80 | Pending |
+| THEME-V116-01 | Phase 80 | Pending |
+| THEME-V116-02 | Phase 80 | Pending |
+| THEME-V116-03 | Phase 80 | Pending |
+| BRANDFND-01 | Phase 81 | Pending |
+| BRANDFND-02 | Phase 81 | Pending |
+| SECA-V116-01 | Phase 81 | Pending |
+| CSS-V116-02 | Phase 81 | Pending |
+| BRANDFND-03 | Phase 82 | Pending |
+| BRANDFND-04 | Phase 82 | Pending |
+| BRANDUI-01 | Phase 82 | Pending |
+| BRANDUI-02 | Phase 83 | Pending |
+| BRANDUI-03 | Phase 83 | Pending |
+| BRANDUI-04 | Phase 83 | Pending |
+| BRANDUI-05 | Phase 83 | Pending |
+| CSS-V116-01 | Phase 83 | Pending |
+| SECA-V116-02 | Phase 83 | Pending |
+| VERIFY-V116-01 | Phase 84 | Pending |
+
+**Coverage: 21/21 (100%)**
 
 ### v1.15 Scope (locked 2026-06-19)
 
