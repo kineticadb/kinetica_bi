@@ -1,67 +1,137 @@
 :root {
   color-scheme: dark;
-  --bg: #0f172a;
-  --panel: #111827;
-  --accent: #22c55e;
-  --accent-2: #38bdf8;
-  --text: #e5e7eb;
-  --muted: #94a3b8;
-  --border: #1f2937;
-  --card: rgba(255, 255, 255, 0.04);
-  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  /* Deep panel tone for inputs / selects / code editors. Flips in light mode. */
-  --input-bg: #0b1224;
-  /* Sidebar gradient stops (flip in light mode). */
-  --sidebar-from: #0b1224;
-  --sidebar-to: #0d142b;
+
+  /* ── Color tokens — Aurora dark (CHOSEN-DIRECTION.md, locked 2026-06-23) ── */
+  --bg: #0a0a12;                           /* app background (+ hex mesh + aurora glows) */
+  --panel: rgba(24, 22, 40, 0.55);         /* glass card/panel */
+  --surface: rgba(30, 26, 52, 0.65);       /* lifts off --panel */
+  --card: rgba(255, 255, 255, 0.03);       /* row/nav highlight fill */
+
+  --accent: #7f40ed;                        /* FILLS: buttons, swatches, borders, focus rings */
+  --accent-text: #c4b5fd;                  /* accent TEXT/numbers/icons on dark (two-tier) */
+  --accent-deep: #7c3aed;                  /* button gradient end (keeps --on-accent readable) */
+  --accent-2: #38bdf8;                     /* cool-blue secondary / chart series contrast */
+  --on-accent: #ffffff;                    /* text ON accent fills */
+
+  --text: #ece9f6;                         /* primary text */
+  --muted: #9b95b8;                        /* secondary text */
+  --border: rgba(255, 255, 255, 0.08);     /* hairlines */
+
+  --danger: #fb7185;                       /* error/destructive */
+  --warning: #f59e0b;
+  --success: var(--accent);               /* brand-green-as-success; override if distinct hue needed */
+
+  /* Deep violet-black tone for inputs / selects / code editors. Flips in light mode. */
+  --input-bg: #0d0b1c;
+  /* Sidebar gradient — violet-black stops matching Aurora bg. */
+  --sidebar-from: #0d0b1c;
+  --sidebar-to: #120f26;
   /* Floating overlays ON the map (zoom/draw toolbars, layers legend). */
-  --map-surface: rgba(11, 18, 36, 0.85);
-  --map-surface-hover: rgba(11, 18, 36, 0.95);
-  /* Subtle chip fill + swatch border (light tint on dark; dark tint on light). */
+  --map-surface: rgba(13, 11, 28, 0.88);
+  --map-surface-hover: rgba(13, 11, 28, 0.96);
+  /* Subtle chip fill + swatch border. */
   --chip-bg: rgba(255, 255, 255, 0.08);
   --swatch-border: rgba(255, 255, 255, 0.2);
-  /* Status/semantic colors — single source of truth (components reference via var()). */
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --success: var(--accent);
-  /* Readable text/icon color ON an --accent-filled surface (buttons, badges, avatar).
-     White reads on both the dark and light accent greens; flip here if --accent ever lightens. */
-  --on-accent: #ffffff;
-  font-family: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Glassmorphic drop shadow */
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+
+  /* ── Typography tokens ── */
+  /* 80-02 swaps --font-body to "Manrope Variable" + --font-display to "Space Grotesk Variable".
+     Defined here with current family so nothing breaks before 80-02 lands. */
+  --font-body: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Type ramp (compact) — from CHOSEN-DIRECTION.md */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+  --text-2xl: 21px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+
+  /* ── Spacing (4px rhythm) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 10px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-8: 24px;
+  --space-10: 32px;
+
+  /* ── Radius scale ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius: 13px;           /* card default per mockup */
+
+  /* ── Elevation ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: var(--shadow); /* existing --shadow preserved as alias */
+
+  /* ── Motion ── */
+  --duration-fast: 100ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --ease-standard: cubic-bezier(.2, .7, .2, 1);
+
+  /* ── Layout ── */
+  /* Structural sidebar width reference (App.tsx writes the live --sidebar-width). */
+  --sidebar-width-fixed: 212px; /* theme-guard-ignore: structural layout constant, not spacing token */
+
+  /* ── Chart tokens (read by useChartAxisColors via getComputedStyle) ── */
+  --color-chart-grid: #1a1830;
+  --color-chart-axis: #6b6490;
 }
 
-/* ── Light theme — overrides the variables; applied via <html data-theme="light"> ── */
+/* ── Light theme — warm off-white Aurora palette (CONTEXT.md decision 2026-06-23) ── */
+/* Only color tokens flip — spacing/radius/type/motion scales are mode-independent. */
 :root[data-theme="light"] {
   color-scheme: light;
-  /* Slate page tone so the lighter widget surfaces below read as elevated — mirrors the
-     bg/panel contrast dark mode gets for free. */
-  --bg: #e2e8f0;
-  --panel: #ffffff;
-  /* Widget/card surface: a hair off white (slate-50) so it lifts off the page without the
-     starkness of pure white. */
-  --surface: #f8fafc;
-  --accent: #16a34a;
+
+  --bg: #eceaf3;                           /* slightly darker page (warm off-white) */
+  --panel: #f6f5fb;                        /* warm near-white panel */
+  --surface: #fbfaff;                      /* lifts off --panel */
+  --card: rgba(20, 16, 40, 0.025);
+
+  --accent: #7f40ed;                        /* SAME brand violet for fills (unchanged) */
+  --accent-text: #6d28d9;                  /* DARKER for readable accent text on light (WCAG AA) */
+  --accent-deep: #6d28d9;
   --accent-2: #0284c7;
-  --text: #0f172a;
-  --muted: #64748b;
-  /* Slate-300 — more visible than slate-200 so card/table/panel outlines read on light bg. */
-  --border: #cbd5e1;
-  /* Faint tint (kept translucent so active-row/nav highlights still read). Card EDGES are
-     defined by --border + --shadow below, not the fill. */
-  --card: rgba(15, 23, 42, 0.025);
-  /* Two-layer shadow: a tight near-edge layer DEFINES the card outline + a soft lift.
-     (The old single 60px blur gave a halo but no crisp edge on a light background.) */
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 10px 28px rgba(15, 23, 42, 0.18);
-  --input-bg: #ffffff;
-  --sidebar-from: #ffffff;
-  --sidebar-to: #f1f5f9;
-  --map-surface: rgba(255, 255, 255, 0.92);
-  --map-surface-hover: rgba(255, 255, 255, 1);
-  --chip-bg: rgba(15, 23, 42, 0.06);
-  --swatch-border: rgba(15, 23, 42, 0.25);
-  /* Status colors darken for contrast on light surfaces; --success inherits --accent. */
-  --danger: #dc2626;
+  --on-accent: #ffffff;
+
+  --text: #1e1b2e;                         /* dark violet-ink, AA on #f6f5fb */
+  --muted: #6b6490;
+  --border: rgba(20, 16, 40, 0.12);
+
+  --danger: #e11d48;
   --warning: #d97706;
+  /* --success inherits --accent (violet brand) in both modes */
+
+  --input-bg: #ffffff;
+  --sidebar-from: #f6f5fb;
+  --sidebar-to: #eceaf3;
+  --map-surface: rgba(246, 245, 251, 0.94);
+  --map-surface-hover: rgba(246, 245, 251, 1);
+  --chip-bg: rgba(20, 16, 40, 0.06);
+  --swatch-border: rgba(20, 16, 40, 0.2);
+  --shadow: 0 1px 2px rgba(20, 16, 40, 0.1), 0 8px 24px rgba(20, 16, 40, 0.14);
+
+  /* Light-mode chart colors */
+  --color-chart-grid: #e6e3f5;
+  --color-chart-axis: #7c6faa;
 }
 
 /* ── Text-color utility classes — single-token color helpers for components ── */
@@ -86,24 +156,26 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.08), transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(56, 189, 248, 0.12), transparent 32%),
+  /* Aurora dark: violet + blue + magenta radial washes over near-black.
+     Hex-mesh layer is added in 80-02 — leave this insertion point clear. */
+  background: radial-gradient(circle at 20% 20%, rgba(127, 64, 237, 0.12), transparent 38%),
+    radial-gradient(circle at 80% 5%, rgba(56, 189, 248, 0.10), transparent 34%),
+    radial-gradient(circle at 55% 85%, rgba(192, 68, 230, 0.07), transparent 40%),
     var(--bg);
   color: var(--text);
   min-height: 100vh;
-  /* Global typography compaction — drop the cascade default from the browser's 16px to
-     13px so unset text inherits smaller. Components with explicit font-size: Npx still
-     win the cascade; this just reduces the baseline. line-height nudged down for tighter
-     vertical rhythm. */
-  font-size: 13px;
-  line-height: 1.4;
+  font-family: var(--font-body);
+  /* Global typography compaction — body baseline 13px so unset text inherits smaller.
+     Components with explicit font-size tokens still win the cascade. */
+  font-size: var(--text-base); /* theme-guard-ignore: body baseline (13px ≈ --text-base 12px); documented one-off */
+  line-height: var(--leading-tight);
 }
 
-/* In light mode the bright corner washes lift the page toward white near the topbar and
-   eat the card/page contrast — keep only a faint brand tint so the slate canvas stays even. */
+/* In light mode, keep only a very faint violet+blue brand wash (subtler than dark).
+   Aurora identity preserved without overpowering the warm off-white canvas. */
 :root[data-theme="light"] body {
-  background: radial-gradient(circle at 20% 20%, rgba(22, 163, 74, 0.04), transparent 40%),
-    radial-gradient(circle at 80% 0%, rgba(2, 132, 199, 0.05), transparent 38%),
+  background: radial-gradient(circle at 20% 20%, rgba(127, 64, 237, 0.05), transparent 42%),
+    radial-gradient(circle at 80% 5%, rgba(2, 132, 199, 0.04), transparent 38%),
     var(--bg);
 }
 
