@@ -3,19 +3,34 @@
  *
  * Recharts renders CartesianGrid/XAxis/YAxis `stroke` (and tick `fill`) as SVG
  * presentation attributes, which do NOT resolve CSS variables — so chart internals
- * can't flip with the app theme via CSS alone. This hook reads the app theme store
- * and returns concrete colors that renderers pass to those props.
+ * can't flip with the app theme via CSS alone. This hook reads the theme store to
+ * re-run on theme toggle, then resolves actual color values from :root CSS custom
+ * properties via getComputedStyle so axis/grid/accent automatically follow both
+ * theme flips AND future brand overrides (Phase 82) with no code change.
  *
- *   grid — subtle gridline stroke
- *   axis — axis line stroke + tick text fill
+ *   grid — subtle gridline stroke (--color-chart-grid)
+ *   axis — axis line stroke + tick text fill (--color-chart-axis)
+ *   emptyCell — empty-cell fill in calendar renderer (same as grid)
+ *   accent — chart accent color, e.g. selected-cell ring (--accent-2)
+ *
+ * IMPORTANT: only call getComputedStyle inside the hook (render time) — calling it
+ * at module level returns "" because CSS hasn't parsed yet (RESEARCH Pitfall 2).
  */
 import { useThemeStore } from "../store/theme";
 
 export type ChartAxisColors = { grid: string; axis: string; emptyCell: string; accent: string };
 
 export function useChartAxisColors(): ChartAxisColors {
-  const theme = useThemeStore((s) => s.theme);
-  return theme === "light"
-    ? { grid: "#e2e8f0", axis: "#64748b", emptyCell: "#e2e8f0", accent: "#0284c7" } // slate-200 gridlines, slate-500 ticks; emptyCell matches light grid; accent = --accent-2 light
-    : { grid: "#1f2937", axis: "#94a3b8", emptyCell: "#1f2937", accent: "#38bdf8" }; // original dark values; emptyCell matches dark grid; accent = --accent-2 dark
+  // Subscribe to theme store so this hook re-runs whenever the theme toggles.
+  // The theme value itself is not used — the CSS custom properties on :root are
+  // the single source of truth; getComputedStyle reads whatever :root is currently
+  // resolving (dark or light), so colours always match the active mode.
+  useThemeStore((s) => s.theme);
+
+  const get = (v: string) =>
+    getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  const grid = get("--color-chart-grid");
+  const axis = get("--color-chart-axis");
+  return { grid, axis, emptyCell: grid, accent: get("--accent-2") };
 }
