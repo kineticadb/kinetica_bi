@@ -352,10 +352,10 @@ a {
 }
 
 .main {
-  padding: 0 var(--space-8) var(--space-10);
+  padding: 0 var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-3);
 }
 
 .topbar {
@@ -488,7 +488,7 @@ a {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-5) var(--space-5) var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
@@ -519,7 +519,7 @@ a {
 
 .card-sub {
   color: var(--muted);
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
 }
 
 .card-actions {
@@ -801,14 +801,16 @@ a {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1.5fr auto;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
 }
 
 .ds-header {
   color: var(--muted);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   border-bottom: 1px solid var(--border);
 }
 
@@ -830,7 +832,7 @@ a {
 
 .ds-meta {
   color: var(--muted);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
 }
 
 .ds-actions {
@@ -4112,7 +4114,7 @@ input[type="checkbox"],
 }
 
 .users-page-header {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 
 .users-page-title {
@@ -4124,8 +4126,8 @@ input[type="checkbox"],
 .users-loading,
 .users-error {
   color: var(--muted);
-  font-size: var(--text-lg);
-  padding: var(--space-5) 0;
+  font-size: var(--text-base);
+  padding: var(--space-4) 0;
 }
 
 .users-table-wrap {
@@ -4135,15 +4137,15 @@ input[type="checkbox"],
 .users-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
 }
 
 .users-th {
   text-align: left;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   color: var(--muted);
   font-weight: var(--font-weight-semibold);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border-bottom: 1px solid var(--border);
@@ -4153,13 +4155,13 @@ input[type="checkbox"],
 .users-th-check,
 .users-td-check {
   width: 36px;
-  padding: var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-2);
 }
 
 /* Post-v1.8 polish: row-select checkboxes match the green-accent convention. */
 .users-td-check input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   cursor: pointer;
 }
 
@@ -4181,7 +4183,7 @@ input[type="checkbox"],
 }
 
 .users-td {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   vertical-align: middle;
 }
 
