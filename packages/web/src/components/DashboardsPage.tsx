@@ -368,12 +368,12 @@ const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
   const saved = widget.config?.layout as Partial<LayoutItem> | undefined;
   return {
     i: String(widget.id),
-    x: saved?.x ?? (index % 2) * 6,
-    y: saved?.y ?? Math.floor(index / 2) * 4,
-    w: saved?.w ?? 6,
-    h: saved?.h ?? 4,
-    minW: 2,
-    minH: 2,
+    x: saved?.x ?? (index % 2) * 18,
+    y: saved?.y ?? Math.floor(index / 2) * 11,
+    w: saved?.w ?? 18,
+    h: saved?.h ?? 11,
+    minW: 6,
+    minH: 5,
   };
 };
 
@@ -612,7 +612,7 @@ const DashboardOpen = ({
     createWidget(dashboard.id, {
       title: label,
       type,
-      config: { ...defaults, layout: { x: 0, y: nextY, w: 6, h: 4 } }
+      config: { ...defaults, layout: { x: 0, y: nextY, w: 18, h: 11 } }
     })
       .then((widget) => {
         setWidgets((prev) => [...prev, widget]);
@@ -1055,8 +1055,8 @@ const DashboardOpen = ({
             className="dashboard-grid"
             width={width}
             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-            cols={{ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }}
-            rowHeight={80}
+            cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
+            rowHeight={30}
             margin={[8, 8]}
             containerPadding={[8, 8]}
             layouts={{ lg: layouts }}
