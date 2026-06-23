@@ -3600,7 +3600,7 @@ input[type="checkbox"],
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 5px var(--space-3);
+  padding: 5px var(--space-3); /* theme-guard-ignore: legend row compact height; 5px is between --space-1(4px) and --space-2(8px) */
   font-size: var(--text-base);
 }
 
@@ -3702,7 +3702,7 @@ input[type="checkbox"],
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 3px var(--space-3) 3px var(--space-6);
+  padding: 3px var(--space-3) 3px var(--space-6); /* theme-guard-ignore: break-row compact height; 3px sub-token vertical rhythm (between 2px hairline and --space-1 4px) */
   font-size: var(--text-sm);
   color: var(--text);
 }
@@ -4200,7 +4200,7 @@ input[type="checkbox"],
   align-items: center;
   gap: var(--space-1);
   font-size: var(--text-sm);
-  padding: 3px var(--space-2);
+  padding: 3px var(--space-2); /* theme-guard-ignore: role chip compact vertical; 3px between 2px hairline and --space-1 4px */
   border-radius: var(--radius-sm);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;

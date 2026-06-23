@@ -31,7 +31,7 @@ vi.stubGlobal(
         if (prop === "getPropertyValue") {
           return (name: string) => CSS_VAR_DEFAULTS[name.trim()] ?? "";
         }
-        const val = (target as Record<string | symbol, unknown>)[prop];
+        const val = (target as unknown as Record<string | symbol, unknown>)[prop];
         return typeof val === "function" ? val.bind(target) : val;
       },
     });
