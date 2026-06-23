@@ -644,7 +644,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -660,7 +660,7 @@ a {
 .widget-title {
   font-family: var(--font-display);
   font-weight: var(--font-weight-semibold);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   flex: 1;
 }
 
@@ -686,7 +686,7 @@ a {
 
 .widget-body {
   flex: 1;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   overflow: hidden;
 }
 
