@@ -12,7 +12,7 @@ const table: ChartTypeDefinition = {
     // Display
     { key: "pageSize", label: "Rows Per Page", type: "number", defaultValue: 25, group: "Display" },
     { key: "striped", label: "Striped Rows", type: "boolean", defaultValue: true, group: "Display" },
-    { key: "compact", label: "Compact Mode", type: "boolean", defaultValue: false, group: "Display" },
+    { key: "compact", label: "Compact Mode", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showRowNumbers", label: "Show Row Numbers", type: "boolean", defaultValue: false, group: "Display" },
     { key: "sortField", label: "Default Sort Field", type: "text", defaultValue: "", group: "Display" },
     { key: "sortDirection", label: "Sort Direction", type: "select", defaultValue: "asc", group: "Display", options: [
@@ -30,7 +30,7 @@ const table: ChartTypeDefinition = {
     columns: "",
     pageSize: 25,
     striped: true,
-    compact: false,
+    compact: true,
     showRowNumbers: false,
     sortField: "",
     sortDirection: "asc",

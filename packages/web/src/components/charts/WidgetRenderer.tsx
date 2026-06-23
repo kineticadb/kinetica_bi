@@ -1534,7 +1534,7 @@ const TableRenderer = ({
   tableFilters,
 }: { data: Row[]; config: Record<string, unknown>; tableFilters: ActiveFilter[] } & DrillProps) => {
   const pageSize = (config.pageSize as number) || 25;
-  const compact = config.compact === true;
+  const compact = config.compact !== false; // default compact to match the compact theme
   const striped = config.striped !== false;
   const showValueBars = config.showValueBars !== false; // default ON
   const barColor = (config.barColor as string) || DEFAULT_TABLE_BAR_COLOR;
@@ -1723,7 +1723,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const initialSortField = (cfg.sortField as string) || "";
   const initialSortDir = ((cfg.sortDirection as string) || "asc").toLowerCase() === "desc" ? "desc" : "asc";
   const pageSize = Math.max(1, Number(cfg.pageSize) || 25);
-  const compact = cfg.compact === true;
+  const compact = cfg.compact !== false; // default compact to match the compact theme
   const striped = cfg.striped !== false;
 
   // Phase 10 DRILL-01 + DRILL-04: drill-down config + filter subscription.
