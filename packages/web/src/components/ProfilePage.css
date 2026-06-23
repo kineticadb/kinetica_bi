@@ -1,57 +1,57 @@
 /* ProfilePage — Phase 50.1 */
 
 .profile-page {
-  padding: 32px 40px;
-  max-width: 680px;
+  padding: var(--space-10) 40px; /* theme-guard-ignore: 40px page side padding — intentional wide margin, not a standard spacing step */
+  max-width: 680px; /* theme-guard-ignore: max-width layout constant */
 }
 
 .profile-heading {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   opacity: 0.5;
-  margin: 0 0 24px;
+  margin: 0 0 var(--space-8);
 }
 
 .profile-section {
-  margin-bottom: 32px;
+  margin-bottom: var(--space-10);
 }
 
 .profile-username {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-1);
 }
 
 .profile-auth-mode {
-  font-size: 13px;
+  font-size: var(--text-lg);
   opacity: 0.55;
 }
 
 .profile-section-title {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   opacity: 0.5;
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-3);
 }
 
 .profile-role-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .profile-role-chip {
   display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px; /* theme-guard-ignore: pill shape — full-radius by design */
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
 }
 
 .profile-role-chip--default {
@@ -62,16 +62,16 @@
 .profile-perm-groups {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .profile-perm-group {
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--text-lg);
+  line-height: var(--leading-normal);
 }
 
 .profile-perm-group-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   opacity: 0.75;
 }
 
@@ -80,6 +80,6 @@
 }
 
 .profile-perm-empty {
-  font-size: 13px;
+  font-size: var(--text-lg);
   opacity: 0.5;
 }

@@ -9,13 +9,13 @@
 .user-menu-trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   background: none;
   border: none;
   cursor: pointer;
   color: inherit;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
   font-size: inherit;
 }
 
@@ -24,32 +24,32 @@
 }
 
 .user-menu-avatar {
-  font-size: 12px;
-  width: 28px;
-  height: 28px;
+  font-size: var(--text-base);
+  width: 28px; /* theme-guard-ignore: fixed avatar icon size, not a spacing token */
+  height: 28px; /* theme-guard-ignore: fixed avatar icon size, not a spacing token */
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: var(--accent);
   color: var(--on-accent);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   flex-shrink: 0;
 }
 
 .user-menu-caret {
-  font-size: 10px;
+  font-size: var(--text-xs);
   opacity: 0.7;
 }
 
 .user-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + var(--space-2));
   right: 0;
-  min-width: 140px;
+  min-width: 140px; /* theme-guard-ignore: dropdown minimum width, structural layout constant */
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow);
   z-index: 200;
   overflow: hidden;
@@ -63,10 +63,10 @@
   text-align: left;
   background: none;
   border: none;
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-5);
   cursor: pointer;
   color: inherit;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .user-menu-item:hover {
