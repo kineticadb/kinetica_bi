@@ -36,10 +36,11 @@
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
 
   /* ── Typography tokens ── */
-  /* 80-02 swaps --font-body to "Manrope Variable" + --font-display to "Space Grotesk Variable".
-     Defined here with current family so nothing breaks before 80-02 lands. */
-  --font-body: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-display: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Self-hosted via @fontsource-variable (80-02). Variable family names are required
+     — the variable packages register as "Manrope Variable" / "Space Grotesk Variable",
+     NOT "Manrope" / "Space Grotesk". Using the non-variable name silently falls back. */
+  --font-body: "Manrope Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
 
   /* Type ramp (compact) — from CHOSEN-DIRECTION.md */
   --text-2xs: 9px;
