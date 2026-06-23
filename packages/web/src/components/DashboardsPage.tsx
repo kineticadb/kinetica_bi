@@ -1062,7 +1062,7 @@ const DashboardOpen = ({
             layouts={{ lg: layouts }}
             onLayoutChange={(layout) => handleLayoutChange(layout)}
             dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
-            resizeConfig={{ enabled: canEdit }}
+            resizeConfig={{ enabled: canEdit, handles: ["se", "s", "e", "sw"] }}
           >
             {widgets.map((w) => {
               // Phase 16: for map widgets, derive the included layer tableIds so MapFilteringBadge
