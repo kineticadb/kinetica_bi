@@ -1057,6 +1057,8 @@ const DashboardOpen = ({
             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
             cols={{ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }}
             rowHeight={80}
+            margin={[8, 8]}
+            containerPadding={[8, 8]}
             layouts={{ lg: layouts }}
             onLayoutChange={(layout) => handleLayoutChange(layout)}
             dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
