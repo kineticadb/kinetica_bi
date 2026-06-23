@@ -82,12 +82,12 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
   3. Recharts axis/grid colors update when the theme flips (no hardcoded SVG presentation attributes); chart series colors remain visually distinct and not monochromatic.
   4. The extended theme-guard fails the build if any non-token spacing, typography, radius, or motion literal is introduced into a migrated component file (regressions caught at CI, not in review).
   5. Changing a structural token in `global.css` `:root` re-skins the whole app without touching any individual component file — verified by spot-checking 3+ components.
-**Plans**: TBD
+**Plans**: 3 plans (Wave 1: 80-01; Wave 2: 80-02 + 80-03 parallel-safe — both depend only on 80-01; sole shared file is global.css's :root blocks)
 
 Plans:
-- [ ] 80-01: Full token vocabulary definition + global.css structural migration (color, type, spacing, radius, elevation, motion — dark + light `:root`)
-- [ ] 80-02: Aurora visual polish — hex-mesh + aurora-glow body treatment, Space Grotesk display font, compact density defaults, `--accent-text` two-tier rule
-- [ ] 80-03: Chart + theme-guard integration — `useChartAxisColors` extended for brand tokens; theme-guard spec extended to cover structural token literals
+- [ ] 80-01-PLAN.md — Full token vocabulary in `:root` (dark) + `:root[data-theme="light"]` (light) with exact Aurora dark + warm off-white light values + two-tier accent; migrate all structural literals across global.css + the 3 component CSS files onto the tokens (normalized to clean scales) [TOKENS-V116-01/02/04, THEME-V116-01/02]
+- [ ] 80-02-PLAN.md — Aurora visual polish: self-host Manrope + Space Grotesk via @fontsource-variable (remove Google Fonts CDN), Space Grotesk display headings, hex-mesh + aurora-glow body treatment (dark vivid / light subtle), apply `--accent-text` two-tier rule; ends in a visual-verify checkpoint [THEME-V116-01/02, TOKENS-V116-04]
+- [ ] 80-03-PLAN.md — Chart + theme-guard integration: `useChartAxisColors` reads `--color-chart-*` via getComputedStyle (theme-flip + brand-ready); violet-led colorblind-aware `AURORA_CHART_PALETTE`; extend theme-guard to scan global.css + forbid structural literals (px/ms) with allow-primitives + inline pragma [THEME-V116-03, TOKENS-V116-03]
 
 ---
 

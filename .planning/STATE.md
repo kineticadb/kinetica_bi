@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
-status: roadmap_created
-stopped_at: v1.16 ROADMAP CREATED 2026-06-23 — 5 phases (80-84), 21/21 requirements mapped, ready for plan-phase 80
-last_updated: "2026-06-23T00:00:00.000Z"
+status: unknown
+stopped_at: "80-02-PLAN.md checkpoint reached (Task 3: visual verification awaiting sign-off)"
+last_updated: "2026-06-23T17:33:52.173Z"
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,18 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.16 White-Label Theming — defining requirements (research first)
+**Current focus:** Phase 80 — token-foundation-aurora-default-theme
 
 ## Current Position
 
-Phase: 80 (not started)
-Plan: —
-Status: Roadmap created — awaiting plan-phase 80
-Last activity: 2026-06-23 — Milestone v1.16 roadmap created (21/21 requirements mapped, 5 phases: 80-84)
-
-```
-Progress: [          ] 0% (0/5 phases)
-```
+Phase: 80 (token-foundation-aurora-default-theme) — EXECUTING
+Plan: 1 of 3
 
 ### v1.16 Phase Map
 
@@ -532,6 +526,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 77-apply-labels-formatting-at-render-surfaces P02 | 49 | 4 tasks | 8 files |
 | Phase 77 P03 | 65 | 3 tasks | 5 files |
 | Phase 78-view-ttl-keep-alive-touch P01 | 10 | 2 tasks | 3 files |
+| Phase 80 P01 | 8 | 2 tasks | 4 files |
+| Phase 80 P03 | 17 | 2 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -780,6 +776,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 77]: COLAPPLY-V115-04 legend guard: two-pronged test (behavioral + static grep) locks LayersLegendPanel from ever receiving column display config wiring
 - [Phase 78-view-ttl-keep-alive-touch]: W-based re-arm interval (not fixed expiresAt) avoids tight-loop; MIN_DELAY=1s first-touch floor; MIN_INTERVAL=30s re-arm floor
 - [Phase 78-view-ttl-keep-alive-touch]: f:<tableId>/d:<dvId> key namespacing prevents filter-view/dynamic-view ID collision in shared timer+controller+window ref Maps
+- [Phase 80]: Aurora dark palette: #7f40ed violet on #0a0a12; --accent-text #c4b5fd two-tier accent for fills vs readable text
+- [Phase 80]: Light mode: warm off-white #eceaf3/#f6f5fb; --accent-text #6d28d9 (darker for WCAG readability on light)
+- [Phase 80]: Font tokens use 'Manrope' (not Variable) until 80-02 adds fontsource self-hosting
+- [Phase 80]: getComputedStyle over TS mirror for axis/grid/accent: CSS is single source of truth, Phase 82 brand overrides picked up automatically
+- [Phase 80]: AURORA_CHART_PALETTE as TS const: series hues same dark/light, synchronous resolution required
+- [Phase 80]: Property-aware structural guard regex: curated to font-size/radius/padding/margin/gap/ms, allows width/height/layout constants
+- [Phase 80]: Variable font family names: Manrope Variable / Space Grotesk Variable — non-variable name silently falls to system font; fontsource-variable packages self-host with no CDN
+- [Phase 80]: Two-tier accent-text: --accent for fills (buttons/borders/focus); --accent-text for persistent text/numbers/icons — hover hints remain --accent as transient affordance
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1176,6 +1180,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-21T03:37:10.353Z
-Stopped at: Completed 78-view-ttl-keep-alive-touch/78-01-PLAN.md
+Last session: 2026-06-23T17:33:42.968Z
+Stopped at: 80-02-PLAN.md checkpoint reached (Task 3: visual verification awaiting sign-off)
 Resume file: None

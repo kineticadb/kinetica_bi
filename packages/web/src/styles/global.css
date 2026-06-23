@@ -3883,7 +3883,7 @@ input[type="checkbox"],
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 40px;
+  min-height: 28px; /* theme-guard-ignore: control height (compact, matches mockup ~28px) */
   background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -3923,7 +3923,7 @@ input[type="checkbox"],
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   line-height: 1;
   padding: 0 2px;
   border-radius: var(--radius-sm);
@@ -3941,7 +3941,7 @@ input[type="checkbox"],
   border: none;
   outline: none;
   color: var(--text);
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
   font-family: inherit;
   padding: var(--space-1) 2px;
 }

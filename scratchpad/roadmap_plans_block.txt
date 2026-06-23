@@ -1,0 +1,3 @@
+**Plans**: 2 plans
+- [ ] 76-01-PLAN.md — ColumnFormatEditorModal: two-pane editor (column list + per-column label/format controls + live preview + Save to global config)
+- [ ] 76-02-PLAN.md — "Format columns" entry-point button + modal mount on TableDetail (Tables area)
