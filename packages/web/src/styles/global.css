@@ -703,33 +703,6 @@ a {
   border-bottom-color: var(--muted) !important;
 }
 
-/* Edge resize handles (bottom = height-only, right = width-only) span the full
-   edge so widget height/width can be dragged anywhere along it, not just from a
-   tiny corner nub. The corner (se/sw) keeps the visible triangle; edges are
-   invisible cursor strips. */
-.react-grid-item > .react-resizable-handle-s::after,
-.react-grid-item > .react-resizable-handle-e::after {
-  display: none;
-}
-.react-grid-item > .react-resizable-handle-s {
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  height: var(--space-3);
-  margin: 0;
-  transform: none;
-  cursor: s-resize;
-}
-.react-grid-item > .react-resizable-handle-e {
-  top: 0;
-  right: 0;
-  height: 100%;
-  width: var(--space-3);
-  margin: 0;
-  transform: none;
-  cursor: e-resize;
-}
-
 .dash-tables-grid {
   grid-template-columns: 2fr 1fr 1fr auto;
 }

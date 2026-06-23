@@ -369,11 +369,11 @@ const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
   return {
     i: String(widget.id),
     x: saved?.x ?? (index % 2) * 18,
-    y: saved?.y ?? Math.floor(index / 2) * 11,
+    y: saved?.y ?? Math.floor(index / 2) * 24,
     w: saved?.w ?? 18,
-    h: saved?.h ?? 11,
+    h: saved?.h ?? 24,
     minW: 6,
-    minH: 5,
+    minH: 10,
   };
 };
 
@@ -612,7 +612,7 @@ const DashboardOpen = ({
     createWidget(dashboard.id, {
       title: label,
       type,
-      config: { ...defaults, layout: { x: 0, y: nextY, w: 18, h: 11 } }
+      config: { ...defaults, layout: { x: 0, y: nextY, w: 18, h: 24 } }
     })
       .then((widget) => {
         setWidgets((prev) => [...prev, widget]);
@@ -1056,13 +1056,13 @@ const DashboardOpen = ({
             width={width}
             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
             cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
-            rowHeight={30}
+            rowHeight={5}
             margin={[8, 8]}
             containerPadding={[8, 8]}
             layouts={{ lg: layouts }}
             onLayoutChange={(layout) => handleLayoutChange(layout)}
             dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
-            resizeConfig={{ enabled: canEdit, handles: ["se", "s", "e", "sw"] }}
+            resizeConfig={{ enabled: canEdit }}
           >
             {widgets.map((w) => {
               // Phase 16: for map widgets, derive the included layer tableIds so MapFilteringBadge
