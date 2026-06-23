@@ -63,10 +63,10 @@
   text-align: left;
   background: none;
   border: none;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   color: inherit;
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
 }
 
 .user-menu-item:hover {
