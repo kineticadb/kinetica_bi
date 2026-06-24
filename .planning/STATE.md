@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
 status: unknown
-stopped_at: Completed 81-01-PLAN.md
-last_updated: "2026-06-24T16:36:03.481Z"
+stopped_at: Completed 81-02-PLAN.md
+last_updated: "2026-06-24T16:42:00Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
 ## Current Position
 
 Phase: 81 (brand-config-server-foundation) — EXECUTING
-Plan: 1 of 3
+Plan: 2 of 3
 
 ### v1.16 Phase Map
 
@@ -788,6 +788,11 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 81-01]: brand_config is new v1.16 table — CREATE TABLE IF NOT EXISTS sufficient; no ALTER/PRAGMA migration needed
 - [Phase 81-01]: BRANDING_MANAGE granted to admin only via ALL_PERMISSIONS auto-inclusion; designer/user_admin/analyst unchanged — branding is operator/admin-level only
 - [Phase 81-01]: branding:manage string is byte-identical in server + web permissions.ts (BYTE-PARITY); rbacSeed.ts untouched
+- [Phase 81-02]: SVG detection is content-sniff only (first 1KB, <?xml or /<svg[\s>]/i) — fileTypeFromBuffer() returns undefined for SVG (no magic bytes); client MIME irrelevant for SVG/raster routing
+- [Phase 81-02]: Mislabeled-SVG bypass (SECA-V116-01) closed: looksSvg check runs before MIME check so any SVG bytes go through DOMPurify regardless of Content-Type: image/png declaration
+- [Phase 81-02]: DOMPurify(_brandDomWindow as any) — jsdom Window doesn't exactly satisfy DOMPurify WindowLike type; as any cast correct at runtime
+- [Phase 81-02]: PUT /api/branding stores config_json verbatim in 81-02; PostCSS CSS sanitization wired in 81-03 per plan decomposition
+- [Phase 81-02]: Cache headers: GET /api/branding no-cache,no-store (reverse-proxy safety); GET /api/branding/logo public,max-age=31536000,immutable (cache-busted by ?v= timestamp)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1184,6 +1189,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-24T16:36:03.469Z
-Stopped at: Completed 81-01-PLAN.md
+Last session: 2026-06-24T16:42:00Z
+Stopped at: Completed 81-02-PLAN.md
 Resume file: None
