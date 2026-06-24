@@ -96,19 +96,19 @@ Plans:
 **Depends on**: Phase 80 (token names must be stable before the server stores them)
 **Stack**: SERVER-ONLY (`packages/server`); new deps: `multer`, `DOMPurify`, `postcss` (+ `file-type` for MIME validation)
 **Requirements**: BRANDFND-01, BRANDFND-02, SECA-V116-01, CSS-V116-02
-**Open decisions to resolve at plan time**: Open Decision 2 (PostCSS AST vs regex sanitizer for custom CSS); confirm `file-type` package for MIME magic-byte validation
+**Open decisions resolved at plan time**: Open Decision 2 → PostCSS AST (regex rejected — unicode-escape CVE bypass per PITFALLS.md); MIME magic-byte validation → `file-type@19` (ESM-native, Node 24-compatible)
 **Success Criteria** (what must be TRUE):
   1. `GET /api/branding` returns the active brand config (all token overrides, app name, logo reference, custom CSS) with no authentication required — a `curl` with no session cookie returns 200 with JSON.
   2. `PUT /api/branding` with a valid session but without `branding:manage` returns 403; with the permission it saves and a subsequent `GET /api/branding` reflects the change.
   3. Uploading an SVG logo that contains a `<script>` tag is rejected or the script is stripped before storage; the stored value renders safely as an `<img>` tag (never inline or `dangerouslySetInnerHTML`).
   4. Submitting custom CSS containing `url(https://attacker.com)` or `@import` to `PUT /api/branding` stores a sanitized version with those declarations removed — verified via supertest.
   5. `GET /api/branding` carries `Cache-Control: no-cache, no-store` so a reverse proxy cannot serve a stale brand to the login page.
-**Plans**: TBD
+**Plans**: 3 plans (Wave 1: 81-01 foundation; Wave 2: 81-02 routes — depends on 81-01; Wave 3: 81-03 CSS sanitizer + both-auth-mode tests — depends on 81-02. Strictly sequential: routes need the table+permission, the CSS sanitizer wires into the PUT route.)
 
 Plans:
-- [ ] 81-01: `brand_config` DDL + `INSERT OR IGNORE` seed + `BRANDING_MANAGE` 18th permission (server + web `lib/permissions.ts` mirrors, `rbacSeed.ts`)
-- [ ] 81-02: Branding API routes — `GET /api/branding` (unauthenticated), `PUT /api/branding` (gated), `POST /api/branding/logo` (multer + MIME validation + DOMPurify SVG sanitization), `GET /api/branding/logo` (public, cache-busted)
-- [ ] 81-03: CSS sanitization at save time (PostCSS AST or agreed alternative), supertests for auth + sanitization behaviors in both auth modes
+- [ ] 81-01-PLAN.md — `brand_config` singleton DDL + `INSERT OR IGNORE` seed in db.ts + `BRANDING_MANAGE` 18th permission (server + web `lib/permissions.ts` byte-parity mirror; `rbacSeed.ts` needs NO change) + bump `lib.permissions.spec.ts` lock 17→18 [BRANDFND-01, BRANDFND-02]
+- [ ] 81-02-PLAN.md — 4 branding API routes: `GET /api/branding` + `GET /api/branding/logo` (unauthenticated, before requireAuth wall), `PUT /api/branding` + `POST /api/branding/logo` (gated on `branding:manage`); multer + `file-type@19` magic-byte MIME check + DOMPurify SVG sanitization; route supertests (password mode) [BRANDFND-01, BRANDFND-02, SECA-V116-01]
+- [ ] 81-03-PLAN.md — `brandCssSanitizer.ts` (PostCSS AST walk, 64KB cap) wired into PUT before storage; unit spec + CSS-vector integration tests + AUTH_MODE=oidc smoke block (both-auth-mode gate) [CSS-V116-02, SECA-V116-01]
 
 ---
 

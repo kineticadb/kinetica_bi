@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
 status: unknown
-stopped_at: "80-02-PLAN.md checkpoint reached (Task 3: visual verification awaiting sign-off)"
-last_updated: "2026-06-23T17:33:52.173Z"
+stopped_at: Completed 81-01-PLAN.md
+last_updated: "2026-06-24T16:36:03.481Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 80 — token-foundation-aurora-default-theme
+**Current focus:** Phase 81 — brand-config-server-foundation
 
 ## Current Position
 
-Phase: 80 (token-foundation-aurora-default-theme) — EXECUTING
+Phase: 81 (brand-config-server-foundation) — EXECUTING
 Plan: 1 of 3
 
 ### v1.16 Phase Map
@@ -528,6 +528,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 78-view-ttl-keep-alive-touch P01 | 10 | 2 tasks | 3 files |
 | Phase 80 P01 | 8 | 2 tasks | 4 files |
 | Phase 80 P03 | 17 | 2 tasks | 6 files |
+| Phase 81-brand-config-server-foundation P01 | 2 | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -784,6 +785,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 80]: Property-aware structural guard regex: curated to font-size/radius/padding/margin/gap/ms, allows width/height/layout constants
 - [Phase 80]: Variable font family names: Manrope Variable / Space Grotesk Variable — non-variable name silently falls to system font; fontsource-variable packages self-host with no CDN
 - [Phase 80]: Two-tier accent-text: --accent for fills (buttons/borders/focus); --accent-text for persistent text/numbers/icons — hover hints remain --accent as transient affordance
+- [Phase 81-01]: brand_config is new v1.16 table — CREATE TABLE IF NOT EXISTS sufficient; no ALTER/PRAGMA migration needed
+- [Phase 81-01]: BRANDING_MANAGE granted to admin only via ALL_PERMISSIONS auto-inclusion; designer/user_admin/analyst unchanged — branding is operator/admin-level only
+- [Phase 81-01]: branding:manage string is byte-identical in server + web permissions.ts (BYTE-PARITY); rbacSeed.ts untouched
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1180,6 +1184,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-23T17:33:42.968Z
-Stopped at: 80-02-PLAN.md checkpoint reached (Task 3: visual verification awaiting sign-off)
+Last session: 2026-06-24T16:36:03.469Z
+Stopped at: Completed 81-01-PLAN.md
 Resume file: None
