@@ -1114,6 +1114,49 @@ a {
   flex-wrap: wrap;
   align-items: center;
 }
+
+/* Toggle-buttons variant — render as a single segmented control rather than a
+   row of mismatched buttons (the old btn-primary/ghost-sm reuse made the
+   selected option taller + larger than its siblings). The container is the
+   track; each option is an equal-sized segment; only the selected one fills. */
+.radiogroup--buttons {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.radiogroup--buttons.radiogroup--vertical {
+  align-items: stretch;
+}
+.radiogroup-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-muted, var(--text));
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-base) ease,
+    color var(--duration-base) ease;
+}
+.radiogroup-button:hover:not(.radiogroup-button--selected) {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+}
+.radiogroup-button--selected {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: var(--font-weight-semibold);
+}
 .radiogroup-option {
   display: inline-flex;
   align-items: center;

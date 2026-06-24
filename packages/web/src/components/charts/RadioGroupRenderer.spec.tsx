@@ -417,7 +417,7 @@ describe("RadioGroupRenderer", () => {
 
   /* ---- displayStyle "buttons": toggle-button group ---------------- */
 
-  it("displayStyle 'buttons': renders <button role=radio> per option (no inputs), selected uses btn-primary, click applies the action", async () => {
+  it("displayStyle 'buttons': renders <button role=radio> per option (no inputs), selected segment is marked, click applies the action", async () => {
     const { default: RadioGroupRenderer } = await import("./RadioGroupRenderer");
     const LAYER_ID = 260;
     const layer = makeLayer(LAYER_ID);
@@ -438,11 +438,14 @@ describe("RadioGroupRenderer", () => {
     expect(optB.getAttribute("role")).toBe("radio");
     expect(container.querySelector("input[type='radio']")).toBeNull();
 
-    // Selected option reuses the existing primary-button look; unselected uses ghost-sm.
+    // Segmented control: every segment is .radiogroup-button; only the selected
+    // one carries the --selected modifier (filled).
     const optA = container.querySelector("[data-testid='radiogroup-option-opt-a']") as HTMLElement;
-    expect(optA.className).toContain("btn-primary"); // opt-a is the default-selected
+    expect(optA.className).toContain("radiogroup-button");
+    expect(optA.className).toContain("radiogroup-button--selected"); // opt-a is the default-selected
     expect(optA.getAttribute("aria-checked")).toBe("true");
-    expect(optB.className).toContain("ghost-sm");
+    expect(optB.className).toContain("radiogroup-button");
+    expect(optB.className).not.toContain("radiogroup-button--selected");
     expect(optB.getAttribute("aria-checked")).toBe("false");
 
     // Clicking a button selects it and applies its action (overlay reflects classbreak).
@@ -455,6 +458,6 @@ describe("RadioGroupRenderer", () => {
     expect(cfgOverride?.renderMode).toBe("classbreak");
     expect(
       (container.querySelector("[data-testid='radiogroup-option-opt-b']") as HTMLElement).className,
-    ).toContain("btn-primary");
+    ).toContain("radiogroup-button--selected");
   });
 });

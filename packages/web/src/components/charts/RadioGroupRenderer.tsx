@@ -113,9 +113,10 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
         {options.map((opt) => {
           const isSelected = selectedOptionId === opt.id;
 
-          // Toggle-button style: reuse the app's button classes (selected = filled
-          // btn-primary; unselected = ghost-sm). role="radio" + aria-checked keeps the
-          // single-select semantics + a11y identical to the input variant.
+          // Toggle-button style: a segmented control. Every segment is the same
+          // size; only the selected one is filled (radiogroup-button--selected).
+          // role="radio" + aria-checked keeps single-select semantics + a11y
+          // identical to the input variant.
           if (displayStyle === "buttons") {
             return (
               <button
@@ -124,7 +125,7 @@ export default function RadioGroupRenderer({ widget }: Props): JSX.Element {
                 role="radio"
                 aria-checked={isSelected}
                 aria-label={opt.label}
-                className={`radiogroup-button ${isSelected ? "btn-primary" : "ghost-sm"}`}
+                className={`radiogroup-button${isSelected ? " radiogroup-button--selected" : ""}`}
                 data-testid={`radiogroup-option-${opt.id}`}
                 onClick={() => setSelectedOptionId(opt.id)}
               >
