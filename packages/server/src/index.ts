@@ -115,6 +115,12 @@ import { PERMISSIONS, BUILTIN_ROLES } from "./lib/permissions";
 import type { Permission } from "./lib/permissions";
 // v1.10 Phase 55-02 (ENFORCE-V110-01..04): per-dashboard view access enforcement + grant CRUD.
 import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboardGrant } from "./lib/dashboardAccessDb";
+// v1.16 Phase 81 (BRANDFND-02, SECA-V116-01): branding deps — multer upload, magic-byte
+// type detection, jsdom DOM environment, DOMPurify SVG sanitization.
+import multer from "multer";
+import { fileTypeFromBuffer } from "file-type";
+import { JSDOM } from "jsdom";
+import DOMPurify from "dompurify";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -302,6 +308,28 @@ export const createApp = async (): Promise<express.Express> => {
       Promise.resolve(fn(req, res, next)).catch(next);
     };
 
+  // v1.16 Phase 81 (BRANDFND-02, SECA-V116-01): branding singletons — instantiated
+  // once per app (jsdom JSDOM() startup is ~10-50 ms; pay the cost once per process).
+  const _brandDomWindow = new JSDOM("").window;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _brandPurify = DOMPurify(_brandDomWindow as any);
+  const logoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 256 * 1024 }, // 256 KB hard cap
+  });
+  // Raster MIMEs that file-type's magic-byte detection can VERIFY. SVG is XML with
+  // no magic bytes, so it is NEVER in this set — SVG is detected by content-sniff
+  // (see POST /api/branding/logo), never by file-type or by the client-supplied Content-Type.
+  const ALLOWED_RASTER_MIMES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  type BrandConfigRow = {
+    config_json: string;
+    logo_data?: string | null;
+    logo_mime?: string | null;
+    logo_updated_at?: string | null;
+    updated_at?: string | null;
+    updated_by?: string | null;
+  };
+
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", service: "kinetica-bi-backend", version: "0.1.0" });
   });
@@ -378,6 +406,36 @@ export const createApp = async (): Promise<express.Express> => {
   app.get("/api/auth/config", (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
     return res.json({ authMode });
+  });
+
+  // v1.16 Phase 81 (BRANDFND-02): unauthenticated brand config — mounted BEFORE
+  // app.use("/api", requireAuth) so the login page can fetch brand without a session.
+  // Cache-Control: no-cache, no-store so a reverse proxy cannot serve a stale brand.
+  app.get("/api/branding", (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store");
+    const row = db
+      .prepare("SELECT config_json, logo_mime, logo_updated_at, updated_at FROM brand_config WHERE id = 1")
+      .get() as BrandConfigRow | undefined;
+    if (!row) return res.json({ config: {}, logoUrl: null, updatedAt: null });
+    const config = JSON.parse(row.config_json || "{}");
+    const logoUrl = row.logo_mime && row.logo_updated_at
+      ? `/api/branding/logo?v=${encodeURIComponent(row.logo_updated_at)}`
+      : null;
+    return res.json({ config, logoUrl, updatedAt: row.updated_at ?? null });
+  });
+
+  // v1.16 Phase 81 (SECA-V116-01): public logo bytes, cache-busted by ?v= timestamp.
+  // nosniff + immutable cache; rendered client-side as <img> (never inline).
+  app.get("/api/branding/logo", (_req, res) => {
+    const row = db
+      .prepare("SELECT logo_data, logo_mime FROM brand_config WHERE id = 1")
+      .get() as { logo_data: string | null; logo_mime: string | null } | undefined;
+    if (!row?.logo_data || !row.logo_mime) return res.status(404).end();
+    const buf = Buffer.from(row.logo_data, "base64");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Content-Type", row.logo_mime);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.send(buf);
   });
 
   // GET /api/auth/oidc/start — generates state+nonce, sets oidc_state httpOnly cookie, 302→IdP.
@@ -528,6 +586,91 @@ export const createApp = async (): Promise<express.Express> => {
 
   // All routes below require authentication.
   app.use("/api", requireAuth);
+
+  // ─── Branding API — gated writes (BRANDFND-01, SECA-V116-01) ─────────────────
+  // The two unauthenticated GETs (GET /api/branding, GET /api/branding/logo) are
+  // mounted ABOVE this wall. Only PUT + POST require branding:manage.
+
+  // v1.16 Phase 81 (BRANDFND-01): persist brand config. customCss sanitization is
+  // wired in Plan 81-03 — for now store config_json verbatim.
+  app.put("/api/branding", ...requirePermission(PERMISSIONS.BRANDING_MANAGE), (req, res) => {
+    const { config } = req.body as { config?: unknown };
+    if (!config || typeof config !== "object") {
+      return res.status(400).json({ error: "config object required" });
+    }
+    const configObj = config as Record<string, unknown>;
+    // NOTE (81-03): sanitizeCssPostcss(configObj.customCss) is wired here in the next plan.
+    const username = (req as AuthedRequest).user!.creds.username;
+    db.prepare(
+      "UPDATE brand_config SET config_json = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
+    ).run(JSON.stringify(configObj), username);
+    const row = db
+      .prepare("SELECT config_json, updated_at FROM brand_config WHERE id = 1")
+      .get() as BrandConfigRow;
+    return res.json({ config: JSON.parse(row.config_json), updatedAt: row.updated_at });
+  });
+
+  // v1.16 Phase 81 (SECA-V116-01): logo upload — multer memoryStorage. CRITICAL:
+  // SVG is XML with NO magic bytes, so fileTypeFromBuffer() returns undefined for
+  // every SVG. NEVER decide "is this an SVG?" from file-type OR from the client's
+  // req.file.mimetype — an attacker can upload SVG bytes with Content-Type: image/png
+  // to skip sanitization (RESEARCH.md Pitfall 2). Instead: content-sniff the buffer
+  // for SVG/XML markers (independent of declared/detected MIME) and ALWAYS run
+  // DOMPurify on anything that looks like SVG; only accept rasters that file-type's
+  // magic bytes positively identify; reject everything else with 415.
+  app.post(
+    "/api/branding/logo",
+    ...requirePermission(PERMISSIONS.BRANDING_MANAGE),
+    (req, res, next) => {
+      // multer MulterError (e.g. LIMIT_FILE_SIZE) does NOT flow through asyncHandler/
+      // errorMiddleware — catch here and map fileSize overflow to 413.
+      logoUpload.single("logo")(req, res, (err: unknown) => {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({ error: "Logo exceeds 256 KB limit" });
+          }
+          return res.status(400).json({ error: err.message });
+        }
+        if (err) return next(err);
+        return next();
+      });
+    },
+    async (req, res) => {
+      if (!req.file) return res.status(400).json({ error: "logo file required" });
+      const buf = req.file.buffer;
+      const detected = await fileTypeFromBuffer(buf); // undefined for SVG (no magic bytes)
+      // Content-sniff for SVG/XML in the first ~1KB, independent of any MIME claim.
+      const head = buf.subarray(0, 1024).toString("utf8").trimStart();
+      const looksSvg = head.startsWith("<?xml") || /<svg[\s>]/i.test(head);
+
+      let storedMime: string;
+      let storedData: string;
+      if (looksSvg) {
+        // Mislabeled or honestly-labeled — if it LOOKS like SVG, sanitize it as SVG.
+        const clean = _brandPurify.sanitize(buf.toString("utf8"), {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          FORBID_TAGS: ["script", "use", "foreignObject"],
+          FORBID_ATTR: ["onload", "onclick", "onerror"],
+        });
+        storedMime = "image/svg+xml";
+        storedData = Buffer.from(clean, "utf8").toString("base64");
+      } else if (detected && ALLOWED_RASTER_MIMES.has(detected.mime)) {
+        // Raster accepted ONLY when magic bytes positively identify an allowed type.
+        storedMime = detected.mime;
+        storedData = buf.toString("base64");
+      } else {
+        // Neither content-sniffed SVG nor magic-byte raster → reject.
+        return res.status(415).json({ error: "Unsupported logo type" });
+      }
+
+      const username = (req as AuthedRequest).user!.creds.username;
+      const ts = new Date().toISOString();
+      db.prepare(
+        "UPDATE brand_config SET logo_data = ?, logo_mime = ?, logo_updated_at = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
+      ).run(storedData, storedMime, ts, username);
+      return res.json({ logoUrl: `/api/branding/logo?v=${encodeURIComponent(ts)}` });
+    }
+  );
 
   // Dashboard persistence
   // ENFORCE-V110-01: server-side filter — bypass users (manage_access) get all;
