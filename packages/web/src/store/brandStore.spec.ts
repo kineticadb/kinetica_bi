@@ -1,13 +1,21 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
-// Mock BroadcastChannel BEFORE importing brandStore (module-level channel is created on import).
-const mockPostMessage = vi.fn();
-const mockAddEventListener = vi.fn();
-vi.stubGlobal("BroadcastChannel", vi.fn().mockImplementation(() => ({
-  addEventListener: mockAddEventListener,
-  postMessage: mockPostMessage,
-  close: vi.fn(),
-})));
+// Mock BroadcastChannel BEFORE importing brandStore. Must use vi.hoisted so this runs
+// before module evaluation (vi.stubGlobal is NOT hoisted; vi.hoisted IS).
+// brandStore creates its BroadcastChannel instance at module-level, so the stub must
+// exist when the module is first evaluated.
+const { mockPostMessage, mockAddEventListener } = vi.hoisted(() => {
+  const mockPostMessage = vi.fn();
+  const mockAddEventListener = vi.fn();
+  // Use a class so `new BroadcastChannel(...)` works (arrow fn is not a constructor).
+  class MockBroadcastChannel {
+    addEventListener = mockAddEventListener;
+    postMessage = mockPostMessage;
+    close = vi.fn();
+  }
+  globalThis.BroadcastChannel = MockBroadcastChannel as unknown as typeof BroadcastChannel;
+  return { mockPostMessage, mockAddEventListener };
+});
 
 // Mock fetchBranding before brandStore import so it's available at module evaluation.
 vi.mock("../api/client", async (importOriginal) => {
