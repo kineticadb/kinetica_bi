@@ -125,6 +125,37 @@ export const fetchAuthConfig = async (): Promise<AuthConfig> => {
   return response.json() as Promise<AuthConfig>;
 };
 
+// Phase 82 (BRANDFND-03): branding types + unauthenticated GET /api/branding fetch.
+// The login page needs brand applied BEFORE auth is established, so this must be a
+// raw fetch (NOT apiFetch) — apiFetch dispatches UNAUTHORIZED_EVENT on 401 which would
+// log the user out. Caller (brandStore.bootstrap) wraps in try/catch, falls back silently.
+export type BrandConfigPayload = {
+  primaryColor?: string | null;      accent2Color?: string | null;
+  bgColor?: string | null;           panelColor?: string | null;
+  textColor?: string | null;         mutedColor?: string | null;
+  borderColor?: string | null;       dangerColor?: string | null;
+  lightPrimaryColor?: string | null; lightAccent2Color?: string | null;
+  lightBgColor?: string | null;      lightPanelColor?: string | null;
+  lightTextColor?: string | null;    lightMutedColor?: string | null;
+  lightBorderColor?: string | null;  lightDangerColor?: string | null;
+  fontFamily?: string | null;        fontUrl?: string | null;
+  appName?: string | null;           customCss?: string | null; // sanitized server-side
+};
+export type BrandingResponse = {
+  config: BrandConfigPayload;
+  logoUrl: string | null;   // "/api/branding/logo?v=<ts>" relative URL, or null
+  updatedAt: string | null;
+};
+
+// IMPORTANT: raw fetch (NOT apiFetch). Unauthenticated — the login page must render
+// branded before auth, so a 401/failure must NOT trigger UNAUTHORIZED_EVENT/logout.
+// Caller (brandStore.bootstrap) wraps in try/catch and silently falls back to defaults.
+export const fetchBranding = async (): Promise<BrandingResponse> => {
+  const response = await fetch(`${API_BASE}/api/branding`, { credentials: "include" });
+  if (!response.ok) throw new Error(`Failed to load branding: ${response.status}`);
+  return response.json() as Promise<BrandingResponse>;
+};
+
 // Phase 7 (UX-08): /me now returns authMode alongside user. Expanded MeResponse type.
 // Phase 74 (SETTINGS-V115-03): /api/me also returns the keep-alive lead-time
 // (default 1) for the Phase 78 TTL keep-alive to consume.
