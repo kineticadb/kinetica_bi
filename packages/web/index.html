@@ -13,6 +13,41 @@
           document.documentElement.setAttribute("data-theme", t);
           document.documentElement.style.colorScheme = t;
         } catch (e) {}
+        // Brand token + font + favicon guard — extends dark/light theme guard above.
+        // Reads localStorage("kbi-brand-tokens") synchronously — populated by brandStore after
+        // every authoritative GET /api/branding. On first-ever cold-cache visit, this block is
+        // a no-op (brand not yet cached); one frame of the Aurora default is acceptable.
+        try {
+          var brand = JSON.parse(localStorage.getItem("kbi-brand-tokens") || "null");
+          if (brand && typeof brand === "object") {
+            var root = document.documentElement;
+            var isDark = t !== "light";
+            var slots = [
+              ["--accent",    isDark ? brand.primaryColor : (brand.lightPrimaryColor || brand.primaryColor)],
+              ["--accent-2",  isDark ? brand.accent2Color : (brand.lightAccent2Color || brand.accent2Color)],
+              ["--bg",        isDark ? brand.bgColor      : (brand.lightBgColor      || brand.bgColor)],
+              ["--panel",     isDark ? brand.panelColor   : (brand.lightPanelColor   || brand.panelColor)],
+              ["--text",      isDark ? brand.textColor    : (brand.lightTextColor    || brand.textColor)],
+              ["--muted",     isDark ? brand.mutedColor   : (brand.lightMutedColor   || brand.mutedColor)],
+              ["--border",    isDark ? brand.borderColor  : (brand.lightBorderColor  || brand.borderColor)],
+              ["--danger",    isDark ? brand.dangerColor  : (brand.lightDangerColor  || brand.dangerColor)],
+              ["--font-body", brand.fontFamily]
+            ];
+            for (var i = 0; i < slots.length; i++) {
+              if (slots[i][1]) root.style.setProperty(slots[i][0], slots[i][1]);
+            }
+            if (brand.fontUrl) {
+              var fontLink = document.createElement("link");
+              fontLink.rel = "stylesheet"; fontLink.href = brand.fontUrl;
+              document.head.appendChild(fontLink);
+            }
+            if (brand.logoUrl) {
+              var iconLink = document.createElement("link");
+              iconLink.rel = "icon"; iconLink.href = brand.logoUrl;
+              document.head.appendChild(iconLink);
+            }
+          }
+        } catch (e) {}
       })();
     </script>
   </head>
