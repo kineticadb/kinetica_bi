@@ -25,6 +25,7 @@ export const PERMISSIONS = {
   AUDIT_VIEW:               "audit:view",
   DATASETS_MANAGE:          "datasets:manage",
   DASHBOARDS_MANAGE_ACCESS: "dashboards:manage_access",
+  BRANDING_MANAGE:          "branding:manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
