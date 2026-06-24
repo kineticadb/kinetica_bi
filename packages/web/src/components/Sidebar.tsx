@@ -13,7 +13,7 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
 import { useBrandStore } from "../store/brandStore";
-import DEFAULT_LOGO from "../assets/logo-default.svg";
+import DefaultLogo from "./DefaultLogo";
 
 type NavItem = {
   label: string;
@@ -48,7 +48,11 @@ const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) =>
       <div className="sidebar-header">
         {!collapsed && (
           <div className="logo">
-            <img src={logoUrl ?? DEFAULT_LOGO} alt={appName ?? "Kinetica BI"} className="logo-img" />
+            {logoUrl ? (
+              <img src={logoUrl} alt={appName ?? "Kinetica BI"} className="logo-img" />
+            ) : (
+              <DefaultLogo className="logo-img" title={appName ?? "Kinetica BI"} />
+            )}
           </div>
         )}
         <button
