@@ -16,6 +16,8 @@ import { useLastInfoClickContextStore } from "./store/lastInfoClickContextStore"
 import { useSpatialFilterStore } from "./store/spatialFilterStore";
 import { useDynamicViewStore } from "./store/dynamicViewStore";
 import { initWmsCapabilities } from "./store/wmsCapabilities";
+import { useBrandStore } from "./store/brandStore";
+import { BrandStyleInjector } from "./components/BrandStyleInjector";
 import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, listUsers } from "./api/client";
 import { PERMISSIONS } from "./lib/permissions";
 
@@ -68,7 +70,23 @@ const App = () => {
 
   useEffect(() => {
     bootstrap();
+    // Fire brand bootstrap in parallel with auth — brand fetch is unauthenticated so it
+    // must NOT wait for auth to complete (login page needs brand before auth resolves).
+    // Imperative getState() call (not a hook selector) avoids adding a dep that would
+    // re-fire on every store update — mirrors the initWmsCapabilities() pattern below.
+    useBrandStore.getState().bootstrap();
   }, [bootstrap]);
+
+  // window.focus refetch — picks up brand changes in other tabs that missed BroadcastChannel
+  // (suspended/background tabs). Gated on hasLoaded to avoid double-bootstrap on initial load
+  // (focus fires on first page load; at that point hasLoaded is still false).
+  useEffect(() => {
+    const onFocus = () => {
+      if (useBrandStore.getState().hasLoaded) useBrandStore.getState().bootstrap();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   // Phase 9 FILT-01 + Phase 15 LIFE-V13-03 lifecycle: on logout / session expiry, fire-and-forget
   // DROPs for every active server-side filter view, then clear BOTH client stores.
@@ -223,11 +241,11 @@ const App = () => {
   }, [status, hasPermission]);
 
   if (status === "unknown") {
-    return <div className="login-shell"><div className="muted">Loading…</div><Toast /></div>;
+    return <div className="login-shell"><div className="muted">Loading…</div><BrandStyleInjector /><Toast /></div>;
   }
 
   if (status !== "authenticated") {
-    return <><LoginPage /><Toast /></>;
+    return <><LoginPage /><BrandStyleInjector /><Toast /></>;
   }
 
   return (
@@ -258,6 +276,7 @@ const App = () => {
         {page === "roles" && <RolesPage />}
         {page === "profile" && <ProfilePage />}
       </div>
+      <BrandStyleInjector />
       <Toast />
     </div>
   );
