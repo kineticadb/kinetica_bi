@@ -85,7 +85,7 @@ describe("NOUN_TO_GROUP", () => {
 });
 
 describe("GROUP_ORDER", () => {
-  it("has the five expected group names in order", () => {
-    expect(GROUP_ORDER).toEqual(["Dashboards", "Design", "Users", "Roles", "Audit"]);
+  it("has the six expected group names in order", () => {
+    expect(GROUP_ORDER).toEqual(["Dashboards", "Design", "Users", "Roles", "Audit", "Branding"]);
   });
 });

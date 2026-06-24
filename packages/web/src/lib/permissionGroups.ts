@@ -4,7 +4,8 @@
  * for reuse by ProfilePage and any other consumer.
  *
  * PERMISSION_DESCRIPTIONS added in Phase 50.2: human-readable descriptions for
- * all 16 permissions, displayed as muted secondary text in the Roles matrix.
+ * all permissions, displayed as muted secondary text in the Roles matrix.
+ * Phase 81 added branding:manage (the "Branding" group).
  */
 
 export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
@@ -25,6 +26,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "roles:create_custom": "Create new custom roles",
   "roles:delete_custom": "Delete custom roles",
   "audit:view": "View the audit log (viewer ships in a future release)",
+  "branding:manage": "Manage white-label branding: logo, app name, colors, fonts, and custom CSS",
 };
 
 export const NOUN_TO_GROUP: Record<string, string> = {
@@ -37,6 +39,7 @@ export const NOUN_TO_GROUP: Record<string, string> = {
   users: "Users",
   roles: "Roles",
   audit: "Audit",
+  branding: "Branding",
 };
 
 export const GROUP_ORDER = [
@@ -45,6 +48,7 @@ export const GROUP_ORDER = [
   "Users",
   "Roles",
   "Audit",
+  "Branding",
 ] as const;
 
 /**

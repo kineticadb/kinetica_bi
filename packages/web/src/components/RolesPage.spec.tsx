@@ -2,7 +2,7 @@
  * RolesPage.spec.tsx — Phase 50, Plan 02, Task 3
  *
  * Covers:
- *   Test 1 — ROLES-V18-01: matrix renders 17 checkboxes in 5 group sections.
+ *   Test 1 — ROLES-V18-01: matrix renders 18 checkboxes in 6 group sections.
  *   Test 2 — ROLES-V18-02: toggling + Save sends exactly one updateRolePermissions call with full set.
  *   Test 3 — ROLES-V18-02: built-in role Save triggers window.confirm.
  *   Test 4 — SAFE-V18-02 mirror: user_admin viewer sees admin role locked + "Only admins…" text;
@@ -136,22 +136,22 @@ describe("RolesPage", () => {
     vi.mocked(deleteRole).mockResolvedValue({ ok: true });
   });
 
-  // ── Test 1: ROLES-V18-01 — 17 checkboxes in 5 group sections ─────────────────
+  // ── Test 1: ROLES-V18-01 — 18 checkboxes in 6 group sections ─────────────────
 
-  it("renders 17 permission checkboxes in 5 group sections after selecting a role", async () => {
+  it("renders 18 permission checkboxes in 6 group sections after selecting a role", async () => {
     seedAdminStore();
     render(<RolesPage />);
 
-    // Select "analyst" role (has 1 permission, but matrix shows all 17)
+    // Select "analyst" role (has 1 permission, but matrix shows all 18)
     await selectRole("analyst");
 
     // Wait for the matrix to appear
     await waitFor(() => {
-      expect(screen.getAllByRole("checkbox").length).toBe(17);
+      expect(screen.getAllByRole("checkbox").length).toBe(18);
     });
 
-    // All 5 group headers present (use getAllByText since "Roles" may appear in the left pane title too)
-    for (const group of ["Dashboards", "Design", "Users", "Roles", "Audit"]) {
+    // All 6 group headers present (use getAllByText since "Roles" may appear in the left pane title too)
+    for (const group of ["Dashboards", "Design", "Users", "Roles", "Audit", "Branding"]) {
       const matches = screen.getAllByText(group);
       expect(matches.length).toBeGreaterThan(0);
     }

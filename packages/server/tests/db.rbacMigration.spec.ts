@@ -165,17 +165,17 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
     }
   });
 
-  it("seeds 34 role_permissions rows total (17+10+6+1)", () => {
+  it("seeds 35 role_permissions rows total (18+10+6+1)", () => {
     const x = createDb(":memory:");
     const count = (
       x
         .prepare("SELECT COUNT(*) AS c FROM role_permissions")
         .get() as { c: number }
     ).c;
-    expect(count).toBe(34);
+    expect(count).toBe(35);
   });
 
-  it("admin role maps to exactly 17 permissions", () => {
+  it("admin role maps to exactly 18 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -184,7 +184,7 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(17);
+    expect(count).toBe(18);
   });
 
   it("designer role maps to exactly 10 permissions", () => {
@@ -250,7 +250,7 @@ describe("RBAC seed idempotency (SCHEMA-V18-01)", () => {
           .prepare("SELECT COUNT(*) AS c FROM role_permissions")
           .get() as { c: number }
       ).c;
-      expect(permCount).toBe(34);
+      expect(permCount).toBe(35);
 
       second.close();
     }).not.toThrow();
@@ -458,7 +458,7 @@ describe("RBAC FK cascade (SCHEMA-V18-01)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
-  it("rbac_seed_history has exactly 34 rows after first boot (one per default mapping)", () => {
+  it("rbac_seed_history has exactly 35 rows after first boot (one per default mapping)", () => {
     const dbPath = mkTempDbPath();
     const x = createDb(dbPath);
 
@@ -466,8 +466,8 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
       x.prepare("SELECT COUNT(*) AS c FROM rbac_seed_history").get() as { c: number }
     ).c;
 
-    // 17 (admin) + 10 (designer) + 6 (user_admin) + 1 (analyst) = 34
-    expect(histCount).toBe(34);
+    // 18 (admin) + 10 (designer) + 6 (user_admin) + 1 (analyst) = 35
+    expect(histCount).toBe(35);
     x.close();
   });
 
@@ -528,7 +528,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
   it("a permission newly added to DEFAULT_ROLE_MAPPINGS (simulated by deleting its history row) is seeded exactly once on next boot", () => {
     const dbPath = mkTempDbPath();
 
-    // First boot — seeds all 34 defaults and records 34 history rows.
+    // First boot — seeds all 35 defaults and records 35 history rows.
     const first = createDb(dbPath);
 
     // Simulate a future catalog addition: delete the history row for (analyst, dashboards:view)

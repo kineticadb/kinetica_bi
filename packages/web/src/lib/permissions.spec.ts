@@ -1,20 +1,21 @@
 /**
  * Byte-parity spec for packages/web/src/lib/permissions.ts.
  *
- * Rule: all 17 expected strings are HARDCODED here as literals — never derived
+ * Rule: all 18 expected strings are HARDCODED here as literals — never derived
  * from the source under test. Mirrors the Phase 46 catalog spec rule. Any
  * single-character drift between server and client PERMISSIONS is caught here
  * before it silently bypasses a gate.
  *
  * Updated Phase 56 Plan 01: added DASHBOARDS_MANAGE_ACCESS (17th entry).
+ * Updated Phase 81 Plan 01: added BRANDING_MANAGE (18th entry).
  */
 
 import { describe, it, expect } from "vitest";
 import { PERMISSIONS } from "./permissions";
 
 describe("PERMISSIONS mirror — byte-parity with server catalog", () => {
-  it("has exactly 17 permission keys", () => {
-    expect(Object.values(PERMISSIONS).length).toBe(17);
+  it("has exactly 18 permission keys", () => {
+    expect(Object.values(PERMISSIONS).length).toBe(18);
   });
 
   it("each permission value matches its independently hardcoded string", () => {
@@ -35,10 +36,11 @@ describe("PERMISSIONS mirror — byte-parity with server catalog", () => {
     expect(PERMISSIONS.AUDIT_VIEW).toBe("audit:view");
     expect(PERMISSIONS.DATASETS_MANAGE).toBe("datasets:manage");
     expect(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS).toBe("dashboards:manage_access");
+    expect(PERMISSIONS.BRANDING_MANAGE).toBe("branding:manage");
   });
 
   it("has no duplicate permission string values", () => {
     const values = Object.values(PERMISSIONS);
-    expect(new Set(values).size).toBe(17);
+    expect(new Set(values).size).toBe(18);
   });
 });

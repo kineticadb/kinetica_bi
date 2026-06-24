@@ -34,7 +34,7 @@ function assignRole(db: ReturnType<typeof createDb>, username: string, roleName:
 }
 
 describe("rbacDb — getEffectivePermissions", () => {
-  it("admin short-circuit: 'admin' returns all 17 permissions on EMPTY db (before seed)", () => {
+  it("admin short-circuit: 'admin' returns all 18 permissions on EMPTY db (before seed)", () => {
     // Use a raw fresh DB with NO seedRbac to prove the short-circuit fires before any DB read.
     // We can't easily get a pre-seed DB via createDb(), so use the already-seeded one — the
     // short-circuit must fire BEFORE any query regardless of DB state.
@@ -44,37 +44,37 @@ describe("rbacDb — getEffectivePermissions", () => {
     db.prepare("DELETE FROM roles").run();
     const result = getEffectivePermissions("admin", db);
     expect(result).toBeInstanceOf(Set);
-    expect(result.size).toBe(17);
+    expect(result.size).toBe(18);
     expect([...result].sort()).toEqual([...ALL_PERMISSIONS].sort());
   });
 
-  it("admin short-circuit: 'ADMIN' (uppercase) also returns all 17 — case-insensitive bootstrap", () => {
+  it("admin short-circuit: 'ADMIN' (uppercase) also returns all 18 — case-insensitive bootstrap", () => {
     const db = createDb(":memory:");
     const result = getEffectivePermissions("ADMIN", db);
-    expect(result.size).toBe(17);
+    expect(result.size).toBe(18);
     expect([...result].sort()).toEqual([...ALL_PERMISSIONS].sort());
   });
 
-  it("admin short-circuit: '  Admin  ' (whitespace + mixed case) returns all 17", () => {
+  it("admin short-circuit: '  Admin  ' (whitespace + mixed case) returns all 18", () => {
     const db = createDb(":memory:");
     const result = getEffectivePermissions("  Admin  ", db);
-    expect(result.size).toBe(17);
+    expect(result.size).toBe(18);
   });
 
-  it("APP_ADMIN_USERNAME override: 'alice@corp.com' returns all 16; 'admin' does NOT short-circuit", () => {
+  it("APP_ADMIN_USERNAME override: 'alice@corp.com' returns all 18; 'admin' does NOT short-circuit", () => {
     const db = createDb(":memory:");
     const original = process.env.APP_ADMIN_USERNAME;
     try {
       process.env.APP_ADMIN_USERNAME = "alice@corp.com";
       // alice@corp.com (case variations) gets admin short-circuit
-      expect(getEffectivePermissions("Alice@Corp.com", db).size).toBe(17);
-      expect(getEffectivePermissions("ALICE@CORP.COM", db).size).toBe(17);
+      expect(getEffectivePermissions("Alice@Corp.com", db).size).toBe(18);
+      expect(getEffectivePermissions("ALICE@CORP.COM", db).size).toBe(18);
       // "admin" must NOT short-circuit when APP_ADMIN_USERNAME is overridden
       // (it may still have permissions from DB; the point is it doesn't short-circuit)
       // With an empty user_roles for "admin", it should fall back to analyst (dashboards:view).
       const adminResult = getEffectivePermissions("admin", db);
-      // Should NOT be 17 (no short-circuit)
-      expect(adminResult.size).not.toBe(17);
+      // Should NOT be 18 (no short-circuit → no full-catalog grant)
+      expect(adminResult.size).not.toBe(18);
       // Should be analyst fallback (1 permission: dashboards:view)
       expect(adminResult.has("dashboards:view")).toBe(true);
       expect(adminResult.size).toBe(1);
@@ -206,11 +206,11 @@ describe("rbacDb — getEffectiveRolesAndPermissions", () => {
     expect(result.permissions).toContain("datasets:manage");
   });
 
-  it("admin: roles=['admin'], permissions has all 17", () => {
+  it("admin: roles=['admin'], permissions has all 18", () => {
     const db = createDb(":memory:");
     const result = getEffectiveRolesAndPermissions("admin", db);
     expect(result.roles).toEqual(["admin"]);
-    expect(result.permissions).toHaveLength(17);
+    expect(result.permissions).toHaveLength(18);
   });
 
   it("zero user_roles: roles=['analyst'], permissions has dashboards:view", () => {
