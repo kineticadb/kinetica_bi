@@ -64,7 +64,7 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 ### Phases
 
 - [ ] **Phase 80: Token Foundation + Aurora Default Theme** — Define full token vocabulary, migrate global.css, ship Aurora dark+light, extend theme-guard
-- [ ] **Phase 81: Brand Config Server Foundation** — `brand_config` table, 18th permission, 4 API routes, logo upload + SVG sanitization, CSS sanitization at save time
+- [x] **Phase 81: Brand Config Server Foundation** — `brand_config` table, 18th permission, 4 API routes, logo upload + SVG sanitization, CSS sanitization at save time
 - [ ] **Phase 82: Client Token Pipeline + FOUC Prevention + Identity** — `brandStore`, FOUC-free inline bootstrap, live token apply, logo/name/favicon wiring across all surfaces
 - [ ] **Phase 83: Branding Admin UI** — `BrandingSettingsPage` with color pickers, WCAG badges, font picker, feel levers, live preview, Save/Reset, custom CSS editor
 - [ ] **Phase 84: Verification + Live UAT** — Green automated gates both stacks + blocking operator walk-through; compiled verification record
@@ -106,9 +106,9 @@ Plans:
 **Plans**: 3 plans (Wave 1: 81-01 foundation; Wave 2: 81-02 routes — depends on 81-01; Wave 3: 81-03 CSS sanitizer + both-auth-mode tests — depends on 81-02. Strictly sequential: routes need the table+permission, the CSS sanitizer wires into the PUT route.)
 
 Plans:
-- [ ] 81-01-PLAN.md — `brand_config` singleton DDL + `INSERT OR IGNORE` seed in db.ts + `BRANDING_MANAGE` 18th permission (server + web `lib/permissions.ts` byte-parity mirror; `rbacSeed.ts` needs NO change) + bump `lib.permissions.spec.ts` lock 17→18 [BRANDFND-01, BRANDFND-02]
-- [ ] 81-02-PLAN.md — 4 branding API routes: `GET /api/branding` + `GET /api/branding/logo` (unauthenticated, before requireAuth wall), `PUT /api/branding` + `POST /api/branding/logo` (gated on `branding:manage`); multer + `file-type@19` magic-byte MIME check + DOMPurify SVG sanitization; route supertests (password mode) [BRANDFND-01, BRANDFND-02, SECA-V116-01]
-- [ ] 81-03-PLAN.md — `brandCssSanitizer.ts` (PostCSS AST walk, 64KB cap) wired into PUT before storage; unit spec + CSS-vector integration tests + AUTH_MODE=oidc smoke block (both-auth-mode gate) [CSS-V116-02, SECA-V116-01]
+- [x] 81-01-PLAN.md — `brand_config` singleton DDL + `INSERT OR IGNORE` seed in db.ts + `BRANDING_MANAGE` 18th permission (server + web `lib/permissions.ts` byte-parity mirror; `rbacSeed.ts` needs NO change) + bump `lib.permissions.spec.ts` lock 17→18 [BRANDFND-01, BRANDFND-02]
+- [x] 81-02-PLAN.md — 4 branding API routes: `GET /api/branding` + `GET /api/branding/logo` (unauthenticated, before requireAuth wall), `PUT /api/branding` + `POST /api/branding/logo` (gated on `branding:manage`); multer + `file-type@19` magic-byte MIME check + DOMPurify SVG sanitization; route supertests (password mode) [BRANDFND-01, BRANDFND-02, SECA-V116-01]
+- [x] 81-03-PLAN.md — `brandCssSanitizer.ts` (PostCSS AST walk, 64KB cap) wired into PUT before storage; unit spec + CSS-vector integration tests + AUTH_MODE=oidc smoke block (both-auth-mode gate) [CSS-V116-02, SECA-V116-01]
 
 ---
 
@@ -120,14 +120,14 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. On a throttled (Slow 3G) hard reload with a custom brand set, the custom brand colors are visible from the very first painted frame — no flash of the default Kinetica violet before brand loads.
   2. After an admin saves a new primary color, other open tabs (on a different browser or incognito) pick up the change within seconds — without the user manually refreshing.
-  3. The topbar, sidebar, and login page all display the uploaded logo as an `<img>` element (never inline SVG / `dangerouslySetInnerHTML`); app name replaces every "Kinetica BI" hardcoded string; the browser tab favicon reflects the brand.
+  3. The sidebar (expanded) and login page display the uploaded logo as an `<img>` element (never inline SVG / `dangerouslySetInnerHTML`); app name replaces every "Kinetica BI" hardcoded string; the browser tab favicon reflects the brand. (Topbar logo excluded per 82-CONTEXT decision 2026-06-24 — deferred; Topbar has no brand mark today.)
   4. `localStorage("kbi-brand-tokens")` is populated after every authoritative brand fetch, and the `index.html` inline script reads it synchronously before any stylesheet parses — confirmed by inspecting the DOM before React hydration.
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 82-01: `brandStore.ts` — bootstrap, `applyBrandTokens` (inline `setProperty` on `:root`), `localStorage` cache write, `BroadcastChannel` post + listener, theme-store subscription for dark/light re-apply
-- [ ] 82-02: FOUC prevention — extend `index.html` inline `<head>` script to read `localStorage("kbi-brand-tokens")` + apply tokens + inject font `<link>` before first paint; `BrandStyleInjector.tsx` for custom CSS injection via `textContent`
-- [ ] 82-03: App identity wiring — `Topbar.tsx`, `Sidebar.tsx`, login page reading `appName` + `logoUrl` from `useBrandStore`; `document.title` set at bootstrap; favicon `<link>` injected from bootstrap response
+- [ ] 82-01-PLAN.md — Foundation: `brandStore.ts` (bootstrap/applyBrandTokens setProperty+removeProperty, localStorage cache, BroadcastChannel + window.focus refetch, theme subscription, document.title), `fetchBranding()` client fn, `BrandStyleInjector.tsx` (textContent), App.tsx wiring [BRANDFND-03]
+- [ ] 82-02-PLAN.md — FOUC: extend the `index.html` inline `<head>` IIFE to read `kbi-brand-tokens` + apply token `setProperty` + inject font/favicon `<link>` before first paint [BRANDFND-04]
+- [ ] 82-03-PLAN.md — Identity wiring: `Sidebar.tsx` logo `<img>` (custom or bundled `logo-default.svg`) + `LoginPage.tsx` appName (both branches) + `Sidebar.spec.tsx` update; Topbar intentionally excluded [BRANDUI-01]
 
 ---
 
@@ -184,7 +184,7 @@ Plans:
 | 70–73 | v1.14 | — | Complete | 2026-06-19 |
 | 74–79 | v1.15 | 11/11 | Complete | 2026-06-22 |
 | 80 | v1.16 | 0/3 | Not started | - |
-| 81 | v1.16 | 0/3 | Not started | - |
+| 81 | v1.16 | 3/3 | Complete | BRANDFND-01/02, SECA-V116-01, CSS-V116-02 |
 | 82 | v1.16 | 0/3 | Not started | - |
 | 83 | v1.16 | 0/3 | Not started | - |
 | 84 | v1.16 | 0/3 | Not started | - |

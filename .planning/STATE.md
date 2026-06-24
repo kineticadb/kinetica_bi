@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
 status: unknown
-stopped_at: Completed 81-02-PLAN.md
-last_updated: "2026-06-24T16:42:00Z"
+stopped_at: Completed 82-01-PLAN.md
+last_updated: "2026-06-24T18:01:21.618Z"
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 5
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 81 — brand-config-server-foundation
+**Current focus:** Phase 82 — client-token-pipeline-fouc-prevention-identity
 
 ## Current Position
 
-Phase: 81 (brand-config-server-foundation) — EXECUTING
-Plan: 2 of 3
+Phase: 82 (client-token-pipeline-fouc-prevention-identity) — EXECUTING
+Plan: 1 of 3
 
 ### v1.16 Phase Map
 
@@ -84,10 +84,10 @@ White-label theming. Config model = **runtime admin UI** (permission-gated; bran
 | THEME-V116-01 | Phase 80 | Pending |
 | THEME-V116-02 | Phase 80 | Pending |
 | THEME-V116-03 | Phase 80 | Pending |
-| BRANDFND-01 | Phase 81 | Pending |
-| BRANDFND-02 | Phase 81 | Pending |
-| SECA-V116-01 | Phase 81 | Pending |
-| CSS-V116-02 | Phase 81 | Pending |
+| BRANDFND-01 | Phase 81 | Complete |
+| BRANDFND-02 | Phase 81 | Complete |
+| SECA-V116-01 | Phase 81 | Complete |
+| CSS-V116-02 | Phase 81 | Complete |
 | BRANDFND-03 | Phase 82 | Pending |
 | BRANDFND-04 | Phase 82 | Pending |
 | BRANDUI-01 | Phase 82 | Pending |
@@ -529,6 +529,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 80 P01 | 8 | 2 tasks | 4 files |
 | Phase 80 P03 | 17 | 2 tasks | 6 files |
 | Phase 81-brand-config-server-foundation P01 | 2 | 3 tasks | 4 files |
+| Phase 82 P01 | 842 | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -793,6 +794,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 81-02]: DOMPurify(_brandDomWindow as any) — jsdom Window doesn't exactly satisfy DOMPurify WindowLike type; as any cast correct at runtime
 - [Phase 81-02]: PUT /api/branding stores config_json verbatim in 81-02; PostCSS CSS sanitization wired in 81-03 per plan decomposition
 - [Phase 81-02]: Cache headers: GET /api/branding no-cache,no-store (reverse-proxy safety); GET /api/branding/logo public,max-age=31536000,immutable (cache-busted by ?v= timestamp)
+- [Phase 81-03]: PostCSS@8 does NOT canonicalize unicode escapes in declaration values (u\72l( preserved as-is); resolveCssUnicodeEscapes() pre-normalizes values before pattern-matching to close the bypass — CSS output is still root.toString() after node.remove() only
+- [Phase 81-03]: sanitizeCssPostcss output = root.toString() after AST-based node.remove(); no regex replacement of CSS content
+- [Phase 81-03]: CSS-V116-02 complete: customCss sanitized BEFORE db.prepare() write (defense before write); @scope wrapping deferred to Phase 83
+- [Phase 82]: Used vi.hoisted() for BroadcastChannel mock — vi.stubGlobal is not hoisted, module-level new BroadcastChannel() fires before stub
+- [Phase 82]: localStorage kbi-brand-tokens shape: { ...config, logoUrl } — all BrandConfigPayload keys + logoUrl for Plan 82-02 inline FOUC script
+- [Phase 82]: BrandStyleInjector mounted in all 3 App render branches (loading/login/authenticated) — custom CSS applies pre-auth
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1189,6 +1196,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-24T16:42:00Z
-Stopped at: Completed 81-02-PLAN.md
+Last session: 2026-06-24T18:01:21.607Z
+Stopped at: Completed 82-01-PLAN.md
 Resume file: None
