@@ -121,6 +121,8 @@ import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
 import DOMPurify from "dompurify";
+// v1.16 Phase 81 (CSS-V116-02): PostCSS AST sanitizer for custom CSS at save time.
+import { sanitizeCssPostcss } from "./lib/brandCssSanitizer";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -599,7 +601,11 @@ export const createApp = async (): Promise<express.Express> => {
       return res.status(400).json({ error: "config object required" });
     }
     const configObj = config as Record<string, unknown>;
-    // NOTE (81-03): sanitizeCssPostcss(configObj.customCss) is wired here in the next plan.
+    // v1.16 Phase 81 (CSS-V116-02): sanitize customCss BEFORE storage (defense before write).
+    // PostCSS AST walk strips url(), @import, @font-face, expression(), behavior, -moz-binding.
+    if (typeof configObj.customCss === "string") {
+      configObj.customCss = sanitizeCssPostcss(configObj.customCss);
+    }
     const username = (req as AuthedRequest).user!.creds.username;
     db.prepare(
       "UPDATE brand_config SET config_json = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1"

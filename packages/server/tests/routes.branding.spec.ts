@@ -1,7 +1,8 @@
 /**
- * routes.branding.spec.ts — Phase 81 Plan 02 (BRANDFND-01, BRANDFND-02, SECA-V116-01)
+ * routes.branding.spec.ts — Phase 81 Plans 02 + 03 (BRANDFND-01, BRANDFND-02, SECA-V116-01, CSS-V116-02)
  *
- * Integration supertests covering the 4 branding API routes added in 81-02:
+ * Integration supertests covering the 4 branding API routes added in 81-02 +
+ * CSS sanitization integration tests + AUTH_MODE=oidc smoke block added in 81-03.
  *
  *   GET /api/branding (unauthenticated):
  *     - 200 + { config, logoUrl: null } with no cookie
@@ -12,6 +13,9 @@
  *     - 403 PERMISSION_DENIED with analyst session
  *     - 200 with admin session; subsequent GET reflects change
  *     - 400 with missing/invalid config
+ *     - url() stripped from customCss before storage (CSS-V116-02)
+ *     - @import stripped from customCss; legitimate rules preserved (CSS-V116-02)
+ *     - expression() stripped from customCss (CSS-V116-02)
  *
  *   POST /api/branding/logo (branding:manage gated):
  *     - 401 with no session
@@ -25,14 +29,63 @@
  *     - 404 with no logo stored
  *     - 200 + correct Content-Type + immutable Cache-Control after upload
  *
+ *   AUTH_MODE=oidc smoke:
+ *     - GET /api/branding returns 200 unauthenticated even in oidc mode (SECA-V116-01)
+ *
  * AUTH-MODE NOTE: the JWT-cookie session path is auth-mode-agnostic.
  * Do NOT assert a fixed total server pass-count (SET-BASED TD-V16-TEST-ISOLATION gate).
  */
+
+// Hoisted mock so AUTH_MODE=oidc boot succeeds without network.
+const mocks = vi.hoisted(() => {
+  const CLOCK_TOLERANCE = Symbol("mock.clock_tolerance");
+  const client: Record<string | symbol, unknown> = {
+    authorizationUrl: vi.fn().mockReturnValue("https://idp.example.com/authorize?mock=1"),
+    callback: vi.fn(),
+  };
+  function Issuer(this: { metadata: unknown; Client: unknown }, _meta: unknown) {
+    this.metadata = { issuer: "https://idp.example.com", jwks_uri: "https://idp.example.com/jwks" };
+    this.Client = function (_clientMeta: unknown) {
+      return client;
+    };
+  }
+  (Issuer as unknown as { discover: ReturnType<typeof vi.fn> }).discover = vi
+    .fn()
+    .mockResolvedValue({
+      metadata: { issuer: "https://idp.example.com", jwks_uri: "https://idp.example.com/jwks" },
+      Client: function (_clientMeta: unknown) {
+        return client;
+      },
+    });
+  class OPError extends Error {
+    error: string;
+    constructor(error: string) {
+      super(error);
+      this.name = "OPError";
+      this.error = error;
+    }
+  }
+  class RPError extends Error {
+    constructor(msg: string) {
+      super(msg);
+      this.name = "RPError";
+    }
+  }
+  return { CLOCK_TOLERANCE, client, Issuer, OPError, RPError };
+});
+
+vi.mock("openid-client", () => ({
+  Issuer: mocks.Issuer,
+  custom: { clock_tolerance: mocks.CLOCK_TOLERANCE },
+  errors: { OPError: mocks.OPError, RPError: mocks.RPError },
+}));
+
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { buildTestApp } from "./helpers/app";
 import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
 import { createSession } from "../src/sessionStore";
+import { resetOidcClientForTests } from "../src/oidc";
 import jwt from "jsonwebtoken";
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
@@ -268,5 +321,86 @@ describe("branding routes — AUTH_MODE=password", () => {
     expect(serveRes.headers["content-type"]).toContain("image/svg+xml");
     const servedBody = serveRes.text ?? serveRes.body.toString();
     expect(servedBody).not.toContain("<script");
+  });
+
+  // ── CSS sanitization integration tests (CSS-V116-02) ─────────────────────────
+  // These tests prove the sanitizer is wired into PUT BEFORE storage and that the
+  // sanitized value is reflected in a subsequent GET.
+
+  it("PUT /api/branding: customCss with url() is stored sanitized (url() removed, attacker.com absent)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    const putRes = await app
+      .put("/api/branding")
+      .set("Cookie", cookie)
+      .send({ config: { customCss: "body { background: url(https://attacker.com?x=1) }" } });
+    expect(putRes.status).toBe(200);
+
+    // Verify via GET that the stored value does NOT contain the attack vector
+    const getRes = await app.get("/api/branding");
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.config.customCss).not.toContain("url(");
+    expect(getRes.body.config.customCss).not.toContain("attacker.com");
+  });
+
+  it("PUT /api/branding: customCss with @import is stripped; legitimate rules preserved", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    const putRes = await app
+      .put("/api/branding")
+      .set("Cookie", cookie)
+      .send({ config: { customCss: "@import url('evil.css'); button { color: red }" } });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await app.get("/api/branding");
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.config.customCss).not.toContain("@import");
+    expect(getRes.body.config.customCss).toContain("color: red");
+  });
+
+  it("PUT /api/branding: customCss with expression() is stripped", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    const putRes = await app
+      .put("/api/branding")
+      .set("Cookie", cookie)
+      .send({ config: { customCss: "div { width: expression(alert(1)) }" } });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await app.get("/api/branding");
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.config.customCss).not.toContain("expression(");
+  });
+});
+
+// ─── Branding routes — AUTH_MODE=oidc smoke (SECA-V116-01) ───────────────────
+// Verifies that GET /api/branding is reachable unauthenticated in OIDC mode.
+// The openid-client module is mocked (vi.hoisted above) so the app boots offline.
+
+describe("branding routes — AUTH_MODE=oidc smoke", () => {
+  beforeEach(() => {
+    vi.stubEnv("AUTH_MODE", "oidc");
+    vi.stubEnv("AUTH_OIDC_ISSUER_URL", "https://idp.example.com");
+    vi.stubEnv("AUTH_OIDC_CLIENT_ID", "kinetica-bi");
+    vi.stubEnv("AUTH_OIDC_CLIENT_SECRET", "secret");
+    vi.stubEnv("AUTH_OIDC_REDIRECT_URI", "https://bi.example.com/api/auth/oidc/callback");
+    db.exec("DELETE FROM sessions");
+    db.exec(
+      "UPDATE brand_config SET config_json='{}', logo_data=NULL, logo_mime=NULL, logo_updated_at=NULL, updated_by=NULL WHERE id=1"
+    );
+    resetOidcClientForTests();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("GET /api/branding returns 200 unauthenticated even in oidc mode", async () => {
+    const app = await buildTestApp();
+    const res = await app.get("/api/branding");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("config");
   });
 });
