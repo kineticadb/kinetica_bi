@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen, cleanup } from "@testing-library/react";
 import Sidebar from "./Sidebar";
 import { useAuthStore } from "../store/auth";
+import { useBrandStore } from "../store/brandStore";
 import { seedAnalystStore, seedAdminStore } from "../test/seedAuthStore";
 
 function renderSidebar(
@@ -31,6 +32,7 @@ describe("Sidebar", () => {
   beforeEach(() => {
     cleanup();
     useAuthStore.setState({ status: "unauthenticated", user: null });
+    useBrandStore.setState({ appName: "Kinetica BI", logoUrl: null });
   });
 
   it("renders the three nav items with their labels (expanded)", () => {
@@ -54,12 +56,20 @@ describe("Sidebar", () => {
 
   it("renders the logo when expanded", () => {
     renderSidebar({ collapsed: false });
-    expect(screen.getByText("Kinetica BI")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Kinetica BI" })).toBeInTheDocument();
   });
 
   it("hides the logo when collapsed", () => {
     renderSidebar({ collapsed: true });
-    expect(screen.queryByText("Kinetica BI")).toBeNull();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("renders custom logo src and appName when brand store has values", () => {
+    useBrandStore.setState({ logoUrl: "/api/branding/logo?v=9", appName: "Acme" });
+    renderSidebar({ collapsed: false });
+    const img = screen.getByRole("img", { name: "Acme" });
+    expect(img).toBeInTheDocument();
+    expect(img.getAttribute("src")).toBe("/api/branding/logo?v=9");
   });
 
   it("collapse toggle has correct aria-label + aria-expanded when expanded", () => {
