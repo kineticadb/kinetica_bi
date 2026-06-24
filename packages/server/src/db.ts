@@ -241,6 +241,24 @@ const SCHEMA_DDL = `
     PRIMARY KEY (table_id, column_name)
   );
   CREATE INDEX IF NOT EXISTS idx_column_display_config_table_id ON column_display_config (table_id);
+
+  -- v1.16 Phase 81 (BRANDFND-01): global singleton brand configuration.
+  -- Single row enforced by CHECK(id = 1) + INSERT OR IGNORE seed. Follows the
+  -- column_display_config (v1.15) JSON-blob pattern: config_json holds the full
+  -- BrandConfig object (token overrides, fonts, app name, custom CSS) so token
+  -- additions never require a schema migration. Logo stored as base64 TEXT (not
+  -- BLOB) for clean better-sqlite3 round-trips, consistent with the JSON-blob
+  -- approach. CREATE TABLE IF NOT EXISTS covers fresh + existing deployments
+  -- (brand_config is a NEW v1.16 table — no ALTER/PRAGMA migration needed).
+  CREATE TABLE IF NOT EXISTS brand_config (
+    id          INTEGER PRIMARY KEY CHECK(id = 1),
+    config_json TEXT NOT NULL DEFAULT '{}',
+    logo_data   TEXT,
+    logo_mime   TEXT,
+    logo_updated_at TEXT,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by  TEXT
+  );
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -322,6 +340,11 @@ export const createDb = (dbPath: string): Database.Database => {
   // v1.8 RBAC (SCHEMA-V18-01): idempotent built-in role + default-mapping seed.
   // Runs every boot; INSERT OR IGNORE makes it a no-op on subsequent restarts.
   seedRbac(instance);
+
+  // v1.16 Phase 81 (BRANDFND-01): seed the singleton brand_config row.
+  // INSERT OR IGNORE — first boot inserts the row with defaults (config_json='{}'),
+  // a no-op on every subsequent restart. Mirrors the seedRbac idempotency model.
+  instance.exec("INSERT OR IGNORE INTO brand_config (id) VALUES (1)");
 
   return instance;
 };
