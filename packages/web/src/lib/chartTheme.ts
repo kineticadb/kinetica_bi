@@ -22,7 +22,10 @@
  */
 export const RECHARTS_TOOLTIP_PROPS = {
   contentStyle: {
-    background: "var(--panel)",
+    // --panel is translucent glass; tooltips need an OPAQUE surface so the chart
+    // behind them doesn't bleed through and make the text unreadable. --panel-solid
+    // is the same near-opaque surface used by modal content.
+    background: "var(--panel-solid)",
     border: "1px solid var(--border)",
     borderRadius: 8,
     color: "var(--text)",
