@@ -1,12 +1,14 @@
 import { FormEvent, useState } from "react";
 import { useAuthStore } from "../store/auth";
 import { API_BASE } from "../api/client";
+import { useBrandStore } from "../store/brandStore";
 
 const LoginPage = () => {
   const login = useAuthStore((s) => s.login);
   const error = useAuthStore((s) => s.error);
   const reason = useAuthStore((s) => s.reason);
   const authMode = useAuthStore((s) => s.authMode);
+  const appName = useBrandStore((s) => s.appName);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +26,7 @@ const LoginPage = () => {
               Your session has ended. Please sign in again.
             </div>
           )}
-          <div className="login-brand">Kinetica BI</div>
+          <div className="login-brand">{appName ?? "Kinetica BI"}</div>
           <h1 className="login-title">Sign in</h1>
           <a href={`${API_BASE}/api/auth/oidc/start`} className="login-submit">
             Sign in with SSO
@@ -58,7 +60,7 @@ const LoginPage = () => {
             Your session has ended. Please sign in again.
           </div>
         )}
-        <div className="login-brand">Kinetica BI</div>
+        <div className="login-brand">{appName ?? "Kinetica BI"}</div>
         <h1 className="login-title">Sign in</h1>
         <p className="login-sub">Use your Kinetica credentials.</p>
 

@@ -12,6 +12,8 @@ import {
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
+import { useBrandStore } from "../store/brandStore";
+import DEFAULT_LOGO from "../assets/logo-default.svg";
 
 type NavItem = {
   label: string;
@@ -37,12 +39,18 @@ type Props = {
 
 const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) => {
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  const logoUrl = useBrandStore((s) => s.logoUrl);
+  const appName = useBrandStore((s) => s.appName);
   const visibleNav = nav.filter((item) => !item.permission || hasPermission(item.permission));
 
   return (
     <aside className={clsx("sidebar", collapsed && "collapsed")}>
       <div className="sidebar-header">
-        {!collapsed && <div className="logo">Kinetica BI</div>}
+        {!collapsed && (
+          <div className="logo">
+            <img src={logoUrl ?? DEFAULT_LOGO} alt={appName ?? "Kinetica BI"} className="logo-img" />
+          </div>
+        )}
         <button
           type="button"
           className="sidebar-toggle"
