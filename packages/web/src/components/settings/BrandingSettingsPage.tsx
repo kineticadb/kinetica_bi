@@ -7,6 +7,8 @@ import type { BrandConfigPayload } from "../../api/client";
 import { brandPageGuard } from "./brandPageGuard";
 import { BrandColorPicker } from "./BrandColorPicker";
 import { WcagBadge } from "./WcagBadge";
+import { FeelLevers } from "./FeelLevers";
+import { BrandPreviewCard } from "./BrandPreviewCard";
 import "./BrandingSettingsPage.css";
 
 /**
@@ -312,7 +314,10 @@ export function BrandingSettingsPage() {
         {/* Section 4: Feel */}
         <section className="branding-section" id="brand-feel">
           <h3>Feel</h3>
-          {/* 83-03 fills this — density / radius / glow / type-scale / motion controls */}
+          <div className="brand-feel-layout">
+            <FeelLevers draft={draft} onChange={handleDraftChange} />
+            <BrandPreviewCard />
+          </div>
         </section>
 
         {/* Section 5: Custom CSS */}

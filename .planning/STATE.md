@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
-status: executing
-stopped_at: "Completed 83-01-PLAN.md"
-last_updated: "2026-06-25T09:49:00.000Z"
+status: unknown
+stopped_at: Completed 83-02-PLAN.md
+last_updated: "2026-06-25T14:00:11.770Z"
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 17
-  completed_plans: 10
+  total_plans: 13
+  completed_plans: 11
 ---
 
 # Project State
@@ -532,6 +532,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 82 P01 | 842 | 3 tasks | 6 files |
 | Phase 82 P02 | 4min | 1 tasks | 1 files |
 | Phase 82-client-token-pipeline-fouc-prevention-identity P03 | 900 | 3 tasks | 4 files |
+| Phase 83-branding-admin-ui P02 | 6 | 3 tasks | 8 files |
 
 ### Quick Tasks Completed
 
@@ -805,6 +806,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 82]: Brand FOUC block placed inside same IIFE as theme block so var t (light/dark) is in scope for token variant selection without re-reading localStorage
 - [Phase 82]: Cold-cache brand block is safe no-op: JSON.parse(getItem('kbi-brand-tokens') || 'null') returns null; if-guard prevents any setProperty calls — one frame of Aurora default is accepted
 - [Phase 82-client-token-pipeline-fouc-prevention-identity]: Logo rendered as <img> (custom logoUrl or DEFAULT_LOGO fallback) in Sidebar; LoginPage uses appName ?? 'Kinetica BI'; Topbar excluded per locked CONTEXT decision
+- [Phase 83-branding-admin-ui]: Aurora hex defaults in BrandingSettingsPage.tsx parent (not BrandColorPicker): single ALLOWLIST entry; component stays generic
+- [Phase 83-branding-admin-ui]: CURATED_FONTS = @fontsource-variable self-hosted only (no CDN URLs); 4 options each for body + display
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1211,6 +1214,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-25T09:49:00.000Z
-Stopped at: Completed 83-01-PLAN.md
-Resume file: .planning/phases/83-branding-admin-ui/83-02-PLAN.md
+Last session: 2026-06-25T14:00:06.116Z
+Stopped at: Completed 83-02-PLAN.md
+Resume file: None

@@ -30,8 +30,8 @@ Make the app white-labelable: a permitted admin brands it live (logo/name, color
 ### Branding Admin UI (BRANDUI)
 
 - [x] **BRANDUI-01**: A permission-gated Branding settings page lets an admin set the app name and upload a brand logo (used in topbar, sidebar, login, and favicon).
-- [ ] **BRANDUI-02**: The admin can edit the color palette for both dark and light modes via color pickers, with a live WCAG contrast indicator for critical pairs (text/background, on-accent/accent).
-- [ ] **BRANDUI-03**: The admin can choose body + display fonts from a curated, self-hosted list.
+- [x] **BRANDUI-02**: The admin can edit the color palette for both dark and light modes via color pickers, with a live WCAG contrast indicator for critical pairs (text/background, on-accent/accent).
+- [x] **BRANDUI-03**: The admin can choose body + display fonts from a curated, self-hosted list.
 - [ ] **BRANDUI-04**: The admin can adjust the "feel" levers — corner radius, density (Compact/Comfortable/Spacious), and the ambient glow on/off — plus coarse controls for type-scale (base size + ratio), spacing density, and motion speed.
 - [ ] **BRANDUI-05**: The page shows a live preview of branding changes before saving, and supports Save and Reset-to-Kinetica-default.
 - [ ] **BRANDUI-06**: The admin can upload an OPTIONAL dark-mode logo override in addition to the required primary logo; the client shows the dark variant in dark mode when present, else the primary, else the bundled default. (Added 2026-06-24 — uploaded logos are opaque `<img>`s and can't be auto-recolored per theme like the inline default. Spans server schema/endpoint + client selection + Phase-83 UI.)
@@ -44,7 +44,7 @@ Make the app white-labelable: a permitted admin brands it live (logo/name, color
 ### Security & Accessibility (SECA)
 
 - [x] **SECA-V116-01**: Logo/asset uploads are validated (MIME + magic-byte type check, size limit) and SVGs are sanitized; logos render as images (never inline-executed).
-- [ ] **SECA-V116-02**: The branding UI surfaces accessibility guardrails — contrast ratios computed live with pass/fail feedback so a customer cannot unknowingly ship an illegible palette (dark AND light).
+- [x] **SECA-V116-02**: The branding UI surfaces accessibility guardrails — contrast ratios computed live with pass/fail feedback so a customer cannot unknowingly ship an illegible palette (dark AND light).
 
 ### Verification (VERIFY)
 
@@ -86,13 +86,13 @@ Populated 2026-06-23 (roadmap created).
 | BRANDFND-03 | Phase 82 | Complete |
 | BRANDFND-04 | Phase 82 | Complete |
 | BRANDUI-01 | Phase 82 | Complete |
-| BRANDUI-02 | Phase 83 | Pending |
-| BRANDUI-03 | Phase 83 | Pending |
+| BRANDUI-02 | Phase 83 | Complete |
+| BRANDUI-03 | Phase 83 | Complete |
 | BRANDUI-04 | Phase 83 | Pending |
 | BRANDUI-05 | Phase 83 | Partial (83-01: live-preview + Save/Reset skeleton + dirty-tracking + leave-revert; full Save/Reset in 83-03) |
 | BRANDUI-06 | Phase 83 | Pending (optional dark-logo override; BOTH-stack) |
 | CSS-V116-01 | Phase 83 | Pending |
-| SECA-V116-02 | Phase 83 | Pending |
+| SECA-V116-02 | Phase 83 | Complete |
 | VERIFY-V116-01 | Phase 84 | Pending |
 
 **Coverage:**
