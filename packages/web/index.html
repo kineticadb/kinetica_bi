@@ -41,9 +41,12 @@
               fontLink.rel = "stylesheet"; fontLink.href = brand.fontUrl;
               document.head.appendChild(fontLink);
             }
-            if (brand.logoUrl) {
+            // BRANDUI-06: use dark-mode logo override for favicon when in dark mode and one is cached.
+            // brand.logoDarkUrl may be absent on old caches — defensive fallback to brand.logoUrl.
+            var effectiveLogoUrl = (isDark && brand.logoDarkUrl) ? brand.logoDarkUrl : brand.logoUrl;
+            if (effectiveLogoUrl) {
               var iconLink = document.createElement("link");
-              iconLink.rel = "icon"; iconLink.href = brand.logoUrl;
+              iconLink.rel = "icon"; iconLink.href = effectiveLogoUrl;
               document.head.appendChild(iconLink);
             }
           }

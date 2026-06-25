@@ -10,13 +10,14 @@ export type BrandState = {
   // Resolved config (null = not yet fetched or default)
   config: BrandConfigPayload | null;
   // Derived from config for convenient component reads
-  appName: string | null;   // config.appName ?? null
-  logoUrl: string | null;   // relative URL to the logo, or null
-  customCss: string | null; // config.customCss ?? null
-  hasLoaded: boolean;       // true after first successful bootstrap
+  appName: string | null;      // config.appName ?? null
+  logoUrl: string | null;      // relative URL to the primary logo, or null
+  logoDarkUrl: string | null;  // relative URL to the dark-mode logo override, or null (BRANDUI-06)
+  customCss: string | null;    // config.customCss ?? null
+  hasLoaded: boolean;          // true after first successful bootstrap
   // Actions
   bootstrap: () => Promise<void>;
-  update: (config: BrandConfigPayload, logoUrl: string | null) => void;
+  update: (config: BrandConfigPayload, logoUrl: string | null, logoDarkUrl?: string | null) => void;
   /** Re-apply the last-SAVED config to :root without touching localStorage or store state.
    *  Called by App.tsx nav guard when the user confirms leaving the branding page with
    *  unsaved changes — reverts the live :root preview back to the saved brand. */
@@ -162,6 +163,7 @@ export const useBrandStore = create<BrandState>((set, get) => ({
   config: null,
   appName: null,
   logoUrl: null,
+  logoDarkUrl: null,
   customCss: null,
   hasLoaded: false,
 
@@ -193,11 +195,11 @@ export const useBrandStore = create<BrandState>((set, get) => ({
       injectFavicon(data.logoUrl);
 
       // Persist to localStorage — this is the exact shape Plan 82-02's inline script reads:
-      // { ...config token keys, logoUrl, fontUrl }
+      // { ...config token keys, logoUrl, logoDarkUrl, fontUrl }
       try {
         localStorage.setItem(
           BRAND_STORAGE_KEY,
-          JSON.stringify({ ...data.config, logoUrl: data.logoUrl })
+          JSON.stringify({ ...data.config, logoUrl: data.logoUrl, logoDarkUrl: data.logoDarkUrl ?? null })
         );
       } catch {
         // quota / private-mode — non-fatal; FOUC guard degrades to no-brand first frame
@@ -207,6 +209,7 @@ export const useBrandStore = create<BrandState>((set, get) => ({
         config: data.config,
         appName: data.config.appName ?? null,
         logoUrl: data.logoUrl,
+        logoDarkUrl: data.logoDarkUrl ?? null,
         customCss: data.config.customCss ?? null,
         hasLoaded: true,
       });
@@ -220,17 +223,22 @@ export const useBrandStore = create<BrandState>((set, get) => ({
    * Apply a brand config update (called from Phase 83 admin save).
    * Re-applies tokens, sets title, writes localStorage, updates state, and
    * posts to BroadcastChannel so other tabs pick up the change silently.
+   *
+   * logoDarkUrl is optional — existing callers (83-03 handleSave) that don't pass it
+   * will preserve the current store value, so they are unaffected.
    */
-  update: (newConfig: BrandConfigPayload, newLogoUrl: string | null) => {
+  update: (newConfig: BrandConfigPayload, newLogoUrl: string | null, newLogoDarkUrl?: string | null) => {
     applyBrandTokens(newConfig, useThemeStore.getState().theme);
     if (typeof document !== "undefined") {
       document.title = newConfig.appName ?? "Kinetica BI";
     }
+    // Resolve logoDarkUrl: use provided value when given; else keep the current store value.
+    const resolvedLogoDarkUrl = newLogoDarkUrl !== undefined ? newLogoDarkUrl : get().logoDarkUrl;
     injectFavicon(newLogoUrl);
     try {
       localStorage.setItem(
         BRAND_STORAGE_KEY,
-        JSON.stringify({ ...newConfig, logoUrl: newLogoUrl })
+        JSON.stringify({ ...newConfig, logoUrl: newLogoUrl, logoDarkUrl: resolvedLogoDarkUrl })
       );
     } catch {
       // ignore quota / private-mode errors
@@ -239,6 +247,7 @@ export const useBrandStore = create<BrandState>((set, get) => ({
       config: newConfig,
       appName: newConfig.appName ?? null,
       logoUrl: newLogoUrl,
+      logoDarkUrl: resolvedLogoDarkUrl,
       customCss: newConfig.customCss ?? null,
     });
     notifyOtherTabs();

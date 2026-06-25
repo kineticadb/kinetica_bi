@@ -14,6 +14,7 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
 import { useBrandStore } from "../store/brandStore";
+import { useThemeStore } from "../store/theme";
 import DefaultLogo from "./DefaultLogo";
 
 type NavItem = {
@@ -42,7 +43,12 @@ type Props = {
 const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) => {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const logoUrl = useBrandStore((s) => s.logoUrl);
+  const logoDarkUrl = useBrandStore((s) => s.logoDarkUrl);
   const appName = useBrandStore((s) => s.appName);
+  const theme = useThemeStore((s) => s.theme);
+  // BRANDUI-06: show dark-mode logo override when in dark mode and one is configured;
+  // else fall back to primary logo; else fall back to inline DefaultLogo.
+  const effectiveLogoUrl = (theme === "dark" && logoDarkUrl) ? logoDarkUrl : logoUrl;
   const visibleNav = nav.filter((item) => !item.permission || hasPermission(item.permission));
 
   return (
@@ -50,8 +56,8 @@ const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) =>
       <div className="sidebar-header">
         {!collapsed && (
           <div className="logo">
-            {logoUrl ? (
-              <img src={logoUrl} alt={appName ?? "Kinetica BI"} className="logo-img" />
+            {effectiveLogoUrl ? (
+              <img src={effectiveLogoUrl} alt={appName ?? "Kinetica BI"} className="logo-img" />
             ) : (
               <DefaultLogo className="logo-img" title={appName ?? "Kinetica BI"} />
             )}
