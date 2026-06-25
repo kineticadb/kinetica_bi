@@ -45,7 +45,7 @@ export function LogoUploader({ label, previewUrl, previewMode, onFileChosen }: L
       <div className="logo-uploader-actions">
         <button
           type="button"
-          className="ds-btn ds-btn-ghost ds-btn-sm"
+          className="ghost-sm"
           onClick={() => inputRef.current?.click()}
         >
           Choose file

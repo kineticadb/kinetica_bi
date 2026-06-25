@@ -16,7 +16,7 @@
  * Branding-page exemption note:
  * The branding settings page itself is NOT specially scoped in the draft CSS —
  * the page header (Reset / Save) is positioned above the CSS editor in DOM order
- * and uses !important-safe ds-btn classes; the page root carries id="branding-admin-exempt"
+ * and uses the app's standard btn-primary / ghost-sm classes; the page root carries id="branding-admin-exempt"
  * as a marker for future Phase 84 exclusion logic. For now, Reset is the recovery
  * mechanism. (Flagged as CSS-V116-02 scope divergence, tracked for Phase 84.)
  *

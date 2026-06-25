@@ -207,14 +207,14 @@ export function BrandingSettingsPage() {
         <div className="branding-header-actions">
           <button
             type="button"
-            className="ds-btn ds-btn-ghost"
+            className="ghost-sm"
             onClick={handleReset}
           >
             Reset to Defaults
           </button>
           <button
             type="button"
-            className="ds-btn ds-btn-primary"
+            className="btn-primary btn-sm"
             disabled={!isDirty || saving}
             onClick={() => { void handleSave(); }}
           >

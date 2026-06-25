@@ -16,10 +16,10 @@ export function BrandPreviewCard() {
 
       {/* Buttons */}
       <div className="brand-preview-row">
-        <button type="button" className="ds-btn ds-btn-primary">
+        <button type="button" className="btn-primary btn-sm">
           Primary
         </button>
-        <button type="button" className="ds-btn ds-btn-ghost">
+        <button type="button" className="ghost-sm">
           Ghost
         </button>
       </div>

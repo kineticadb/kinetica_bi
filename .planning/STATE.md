@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
 status: unknown
-stopped_at: Completed 83-03-PLAN.md
-last_updated: "2026-06-25T14:11:36.751Z"
+stopped_at: Completed 83-04-PLAN.md
+last_updated: "2026-06-25T14:28:21.154Z"
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -534,6 +534,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 82-client-token-pipeline-fouc-prevention-identity P03 | 900 | 3 tasks | 4 files |
 | Phase 83-branding-admin-ui P02 | 6 | 3 tasks | 8 files |
 | Phase 83 P03 | 490 | 3 tasks | 8 files |
+| Phase 83-branding-admin-ui P04 | 12 | 4 tasks | 11 files |
 
 ### Quick Tasks Completed
 
@@ -812,6 +813,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 83]: SegGroup generic typed helper: eliminates 4 near-identical button-group markup patterns
 - [Phase 83]: kbi-brand-css-draft separate element for CSS draft preview: never overwrites kbi-custom-css owned by BrandStyleInjector
 - [Phase 83]: No @scope branding-page exemption: Reset always reachable via header; id=branding-admin-exempt marker for Phase 84
+- [Phase 83-04]: Phase-81 SVG/magic-byte validation reused unchanged for dark variant — only target columns + response key differ
+- [Phase 83-04]: Optional logoDarkUrl param on brandStore.update() defaults to current store value — no breaking change to 83-03 callers
+- [Phase 83-04]: LogoUploader preview swatch via CSS class (logo-uploader-preview--dark/light) — token-only, theme-guard safe
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1218,6 +1222,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-25T14:11:36.742Z
-Stopped at: Completed 83-03-PLAN.md
+Last session: 2026-06-25T14:28:21.144Z
+Stopped at: Completed 83-04-PLAN.md
 Resume file: None
