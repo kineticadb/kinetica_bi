@@ -10,6 +10,7 @@ import { WcagBadge } from "./WcagBadge";
 import { FeelLevers } from "./FeelLevers";
 import { BrandPreviewCard } from "./BrandPreviewCard";
 import { CustomCssEditor } from "./CustomCssEditor";
+import { LogoUploader } from "./LogoUploader";
 import "./BrandingSettingsPage.css";
 
 /**
@@ -112,8 +113,10 @@ export function BrandingSettingsPage() {
   const [saving, setSaving] = useState(false);
   /** Set after Save when server-returned customCss differs from submitted (stripped declarations). */
   const [strippedNotice, setStrippedNotice] = useState<string | null>(null);
-  /** Primary logo file chosen this session — uploaded on Save (83-04 adds dark slot). */
+  /** Primary logo file chosen this session — uploaded on Save. */
   const [draftLogoFile, setDraftLogoFile] = useState<File | null>(null);
+  /** Dark-mode logo override file chosen this session — uploaded on Save (BRANDUI-06). */
+  const [draftDarkLogoFile, setDraftDarkLogoFile] = useState<File | null>(null);
 
   /** Apply draft changes live to :root and mark dirty. */
   function handleDraftChange(updates: Partial<BrandConfigPayload>) {
@@ -128,10 +131,13 @@ export function BrandingSettingsPage() {
     // Pass empty config — applyBrandTokens with {} removes all overrides → Aurora defaults
     applyBrandTokens({}, theme);
     setDraft({});
+    // Clear both chosen logo files so Save after Reset does not re-upload stale files (BRANDUI-06)
+    setDraftLogoFile(null);
+    setDraftDarkLogoFile(null);
     setIsDirty(true); // must stay dirty so the reset can be saved (Pitfall 1)
   }
 
-  /** Save draft via PUT /api/branding (+ logo POST when a file was chosen). */
+  /** Save draft via PUT /api/branding (+ logo POST(s) when files were chosen). */
   async function handleSave() {
     if (saving) return;
     setSaving(true);
@@ -144,6 +150,13 @@ export function BrandingSettingsPage() {
       if (draftLogoFile) {
         const logoResp = await uploadBrandLogo(draftLogoFile, "primary");
         newLogoUrl = logoResp.logoUrl ?? null;
+      }
+
+      // Upload the dark-mode logo override if a new file was chosen (BRANDUI-06).
+      let newLogoDarkUrl: string | null = useBrandStore.getState().logoDarkUrl;
+      if (draftDarkLogoFile) {
+        const darkResp = await uploadBrandLogo(draftDarkLogoFile, "dark");
+        newLogoDarkUrl = darkResp.logoDarkUrl ?? null;
       }
 
       // PUT /api/branding — server sanitizes customCss and returns the cleaned config.
@@ -161,8 +174,10 @@ export function BrandingSettingsPage() {
       }
 
       // Reflect saved state through the store (writes localStorage + notifies other tabs).
-      useBrandStore.getState().update(resp.config, newLogoUrl);
+      // Pass newLogoDarkUrl to thread the dark variant into the store + localStorage.
+      useBrandStore.getState().update(resp.config, newLogoUrl, newLogoDarkUrl);
       setDraftLogoFile(null);
+      setDraftDarkLogoFile(null);
       setIsDirty(false);
     } catch (err) {
       // Page stays dirty so the user can retry.
@@ -212,7 +227,46 @@ export function BrandingSettingsPage() {
         {/* Section 1: Logo & App Name */}
         <section className="branding-section" id="brand-logo">
           <h3>Logo &amp; App Name</h3>
-          {/* 83-02 fills this — logo upload slot + app name field */}
+
+          {/* App name text input */}
+          <div className="ds-field brand-appname-field">
+            <label className="ds-field-label" htmlFor="brand-appname">App Name</label>
+            <input
+              id="brand-appname"
+              type="text"
+              className="ds-input"
+              value={d.appName ?? "Kinetica BI"}
+              onChange={(e) => handleDraftChange({ appName: e.target.value })}
+              placeholder="Kinetica BI"
+            />
+          </div>
+
+          {/* Dual logo slots: primary (required) + dark-mode override (optional, BRANDUI-06) */}
+          <div className="brand-logo-slots">
+            <LogoUploader
+              label="Primary logo"
+              previewUrl={useBrandStore.getState().logoUrl}
+              previewMode="light"
+              onFileChosen={(f) => {
+                setDraftLogoFile(f);
+                if (f) setIsDirty(true);
+              }}
+            />
+            <LogoUploader
+              label="Dark-mode override (optional)"
+              previewUrl={useBrandStore.getState().logoDarkUrl}
+              previewMode="dark"
+              onFileChosen={(f) => {
+                setDraftDarkLogoFile(f);
+                if (f) setIsDirty(true);
+              }}
+            />
+          </div>
+          <p className="brand-section-hint">
+            Primary logo is shown in both modes by default. Upload a Dark-mode override to
+            display a different logo when the app is in dark mode (e.g. an inverted or
+            lighter variant). Uploads are validated server-side (SVG sanitized, max 256 KB).
+          </p>
         </section>
 
         {/* Section 2: Colors — 18 pickers in dark | light columns */}

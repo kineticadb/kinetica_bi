@@ -21,13 +21,14 @@ const mockBrandStoreUpdate = vi.fn();
 vi.mock("../../../store/brandStore", () => ({
   useBrandStore: Object.assign(
     // Direct call (hook usage) — returns state slices
-    (selector: (s: { config: BrandConfigPayload; logoUrl: string | null }) => unknown) =>
-      selector({ config: {}, logoUrl: null }),
+    (selector: (s: { config: BrandConfigPayload; logoUrl: string | null; logoDarkUrl: string | null }) => unknown) =>
+      selector({ config: {}, logoUrl: null, logoDarkUrl: null }),
     {
       // Zustand-compatible static methods
       getState: vi.fn(() => ({
         config: {},
         logoUrl: null,
+        logoDarkUrl: null,
         update: mockBrandStoreUpdate,
         revertToSaved: vi.fn(),
       })),
@@ -135,8 +136,12 @@ describe("BrandingSettingsPage — handleSave", () => {
     await waitFor(() => {
       expect(mockBrandStoreUpdate).toHaveBeenCalledTimes(1);
     });
-    // logoUrl may be null (no logo set in test); the first arg is the config
-    expect(mockBrandStoreUpdate).toHaveBeenCalledWith(savedConfig, expect.toSatisfy((v: unknown) => v === null || typeof v === "string"));
+    // logoUrl may be null (no logo set in test); logoDarkUrl also null (no dark file in test)
+    expect(mockBrandStoreUpdate).toHaveBeenCalledWith(
+      savedConfig,
+      expect.toSatisfy((v: unknown) => v === null || typeof v === "string"),
+      expect.toSatisfy((v: unknown) => v === null || typeof v === "string" || v === undefined)
+    );
   });
 
   it("sets stripped notice when server-returned customCss differs from submitted", async () => {
