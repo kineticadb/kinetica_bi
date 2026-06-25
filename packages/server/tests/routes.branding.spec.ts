@@ -117,7 +117,7 @@ const PNG_1x1 = Buffer.from(
 beforeEach(() => {
   db.exec("DELETE FROM sessions");
   db.exec(
-    "UPDATE brand_config SET config_json='{}', logo_data=NULL, logo_mime=NULL, logo_updated_at=NULL, updated_by=NULL WHERE id=1"
+    "UPDATE brand_config SET config_json='{}', logo_data=NULL, logo_mime=NULL, logo_updated_at=NULL, logo_dark_data=NULL, logo_dark_mime=NULL, logo_dark_updated_at=NULL, updated_by=NULL WHERE id=1"
   );
 });
 
@@ -374,6 +374,132 @@ describe("branding routes — AUTH_MODE=password", () => {
     expect(getRes.status).toBe(200);
     expect(getRes.body.config.customCss).not.toContain("expression(");
   });
+
+  // ── Dark-logo upload + serve (BRANDUI-06) ────────────────────────────────────
+
+  it("POST /api/branding/logo with no cookie + variant=dark returns 401", async () => {
+    const app = await buildTestApp();
+    const res = await app
+      .post("/api/branding/logo")
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark-logo.png");
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/branding/logo with analyst + variant=dark returns 403 PERMISSION_DENIED", async () => {
+    const app = await buildTestApp();
+    const { cookie } = seedAnalystSession("branding_analyst_dark");
+    const res = await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark-logo.png");
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("PERMISSION_DENIED");
+  });
+
+  it("POST /api/branding/logo with admin + variant=dark returns 200 + logoDarkUrl", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark-logo.png");
+    expect(res.status).toBe(200);
+    expect(typeof res.body.logoDarkUrl).toBe("string");
+    expect(res.body.logoDarkUrl).toContain("/api/branding/logo?variant=dark&v=");
+  });
+
+  it("GET /api/branding reflects logoDarkUrl non-null after dark upload", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    // Upload dark logo
+    await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark-logo.png");
+
+    // GET should reflect logoDarkUrl
+    const getRes = await app.get("/api/branding");
+    expect(getRes.status).toBe(200);
+    expect(typeof getRes.body.logoDarkUrl).toBe("string");
+    expect(getRes.body.logoDarkUrl).toContain("variant=dark");
+  });
+
+  it("GET /api/branding/logo?variant=dark after dark upload returns 200 + correct content-type", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark-logo.png");
+
+    const serveRes = await app.get("/api/branding/logo?variant=dark");
+    expect(serveRes.status).toBe(200);
+    expect(serveRes.headers["content-type"]).toContain("image/png");
+    expect(serveRes.headers["cache-control"]).toContain("immutable");
+  });
+
+  it("GET /api/branding/logo?variant=dark on fresh DB (no dark logo) returns 404", async () => {
+    const app = await buildTestApp();
+    const res = await app.get("/api/branding/logo?variant=dark");
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/branding/logo with variant=dark: SVG with <script> is sanitized (dark variant reuses Phase-81 validation)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const evilSvg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="10" height="10"/></svg>'
+    );
+
+    const res = await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .field("variant", "dark")
+      .attach("logo", evilSvg, "evil-dark.svg");
+    expect(res.status).toBe(200);
+
+    // Verify dark columns contain sanitized SVG (no <script>)
+    const row = db
+      .prepare("SELECT logo_dark_data, logo_dark_mime FROM brand_config WHERE id=1")
+      .get() as { logo_dark_data: string; logo_dark_mime: string };
+    const decoded = Buffer.from(row.logo_dark_data, "base64").toString("utf-8");
+    expect(decoded).not.toContain("<script");
+    expect(row.logo_dark_mime).toBe("image/svg+xml");
+  });
+
+  it("Primary logo columns are UNCHANGED after variant=dark upload", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    // Upload primary logo first
+    await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .attach("logo", PNG_1x1, "primary.png");
+
+    // Upload dark logo
+    await app
+      .post("/api/branding/logo")
+      .set("Cookie", cookie)
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark.png");
+
+    // Primary columns must still exist (variant=dark must NOT overwrite them)
+    const row = db
+      .prepare("SELECT logo_data, logo_mime, logo_dark_data, logo_dark_mime FROM brand_config WHERE id=1")
+      .get() as { logo_data: string | null; logo_mime: string | null; logo_dark_data: string | null; logo_dark_mime: string | null };
+    expect(row.logo_data).not.toBeNull();
+    expect(row.logo_mime).toBe("image/png");
+    expect(row.logo_dark_data).not.toBeNull();
+    expect(row.logo_dark_mime).toBe("image/png");
+  });
 });
 
 // ─── Branding routes — AUTH_MODE=oidc smoke (SECA-V116-01) ───────────────────
@@ -389,7 +515,7 @@ describe("branding routes — AUTH_MODE=oidc smoke", () => {
     vi.stubEnv("AUTH_OIDC_REDIRECT_URI", "https://bi.example.com/api/auth/oidc/callback");
     db.exec("DELETE FROM sessions");
     db.exec(
-      "UPDATE brand_config SET config_json='{}', logo_data=NULL, logo_mime=NULL, logo_updated_at=NULL, updated_by=NULL WHERE id=1"
+      "UPDATE brand_config SET config_json='{}', logo_data=NULL, logo_mime=NULL, logo_updated_at=NULL, logo_dark_data=NULL, logo_dark_mime=NULL, logo_dark_updated_at=NULL, updated_by=NULL WHERE id=1"
     );
     resetOidcClientForTests();
   });
@@ -402,5 +528,31 @@ describe("branding routes — AUTH_MODE=oidc smoke", () => {
     const res = await app.get("/api/branding");
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("config");
+  });
+
+  // ── Dark-logo smoke (BRANDUI-06) — AUTH_MODE=oidc ────────────────────────────
+
+  it("GET /api/branding in oidc mode includes logoDarkUrl field (null when no dark logo)", async () => {
+    const app = await buildTestApp();
+    const res = await app.get("/api/branding");
+    expect(res.status).toBe(200);
+    // logoDarkUrl must be present in the response (null when no dark logo stored)
+    expect(Object.prototype.hasOwnProperty.call(res.body, "logoDarkUrl")).toBe(true);
+    expect(res.body.logoDarkUrl).toBeNull();
+  });
+
+  it("GET /api/branding/logo?variant=dark in oidc mode returns 404 when no dark logo stored", async () => {
+    const app = await buildTestApp();
+    const res = await app.get("/api/branding/logo?variant=dark");
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/branding/logo with variant=dark in oidc mode is gated (401 without session)", async () => {
+    const app = await buildTestApp();
+    const res = await app
+      .post("/api/branding/logo")
+      .field("variant", "dark")
+      .attach("logo", PNG_1x1, "dark-logo.png");
+    expect(res.status).toBe(401);
   });
 });
