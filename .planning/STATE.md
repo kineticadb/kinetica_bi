@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.16
 milestone_name: White-Label Theming
-status: unknown
-stopped_at: Completed 82-01-PLAN.md
-last_updated: "2026-06-24T18:01:21.618Z"
+status: executing
+stopped_at: "Completed 83-01-PLAN.md"
+last_updated: "2026-06-25T09:49:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 7
+  completed_phases: 3
+  total_plans: 17
+  completed_plans: 10
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 82 — client-token-pipeline-fouc-prevention-identity
+**Current focus:** Phase 83 — branding-admin-ui
 
 ## Current Position
 
-Phase: 82 (client-token-pipeline-fouc-prevention-identity) — EXECUTING
-Plan: 1 of 3
+Phase: 83 (branding-admin-ui) — EXECUTING
+Plan: 2 of 4
 
 ### v1.16 Phase Map
 
@@ -530,6 +530,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 80 P03 | 17 | 2 tasks | 6 files |
 | Phase 81-brand-config-server-foundation P01 | 2 | 3 tasks | 4 files |
 | Phase 82 P01 | 842 | 3 tasks | 6 files |
+| Phase 82 P02 | 4min | 1 tasks | 1 files |
+| Phase 82-client-token-pipeline-fouc-prevention-identity P03 | 900 | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -800,6 +802,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 82]: Used vi.hoisted() for BroadcastChannel mock — vi.stubGlobal is not hoisted, module-level new BroadcastChannel() fires before stub
 - [Phase 82]: localStorage kbi-brand-tokens shape: { ...config, logoUrl } — all BrandConfigPayload keys + logoUrl for Plan 82-02 inline FOUC script
 - [Phase 82]: BrandStyleInjector mounted in all 3 App render branches (loading/login/authenticated) — custom CSS applies pre-auth
+- [Phase 82]: Brand FOUC block placed inside same IIFE as theme block so var t (light/dark) is in scope for token variant selection without re-reading localStorage
+- [Phase 82]: Cold-cache brand block is safe no-op: JSON.parse(getItem('kbi-brand-tokens') || 'null') returns null; if-guard prevents any setProperty calls — one frame of Aurora default is accepted
+- [Phase 82-client-token-pipeline-fouc-prevention-identity]: Logo rendered as <img> (custom logoUrl or DEFAULT_LOGO fallback) in Sidebar; LoginPage uses appName ?? 'Kinetica BI'; Topbar excluded per locked CONTEXT decision
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1194,8 +1199,18 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **TD-V17-LIVE-UAT** (new, v1.8 carry-in): Phase 43 milestone-level live walk-through never run (classbreak + track visual confirmation + legend parity). Pre-existing at v1.8 start.
 - **TD-V16-TEST-ISOLATION** (inherited): server cross-mode suite contamination (~106 red). v1.9 Phase 53 must not worsen this; all new regression specs are frontend-only (wmsUrlBuilder/KineticaWmsLayerForm vitest — no new server specs expected).
 
+### Phase 83 Plan 01 Decisions (locked 2026-06-25)
+
+- **brandPageGuard module pattern:** mutable `{ isDirty, revert }` refs in a tiny module read by App.tsx onSelect before setPage — avoids prop-drilling through Sidebar; BrandingSettingsPage syncs refs in useEffect
+- **applyBrandTokens exported** from brandStore.ts (was module-private) so BrandingSettingsPage can call it for draft preview without touching localStorage or BroadcastChannel
+- **revertToSaved() action** on BrandState: re-applies saved config via applyBrandTokens(get().config, theme) — no network roundtrip on leave; safe for synchronous intercept
+- **Leave-guard at onSelect level** (not useEffect cleanup): synchronous intercept before setPage eliminates the leave-revert race (Pitfall 2 from RESEARCH.md)
+- **--glow-opacity via calc() in rgba()**: body aurora radial-gradient alphas use calc(N * var(--glow-opacity, 1)) — single token toggle, low risk, no style element injection
+- **No theme-guard ALLOWLIST in 83-01**: BrandingSettingsPage scaffold has zero hex literals; 83-02 adds both allowlist entries when react-colorful hex defaults are introduced
+- **deps pre-installed**: react-colorful@5.7.0, colord@2.9.3, @codemirror/lang-css@6.3.1 installed in 83-01 so 83-02/83-03 can import directly
+
 ## Session Continuity
 
-Last session: 2026-06-24T18:01:21.607Z
-Stopped at: Completed 82-01-PLAN.md
-Resume file: None
+Last session: 2026-06-25T09:49:00.000Z
+Stopped at: Completed 83-01-PLAN.md
+Resume file: .planning/phases/83-branding-admin-ui/83-02-PLAN.md

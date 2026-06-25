@@ -63,9 +63,9 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 
 ### Phases
 
-- [ ] **Phase 80: Token Foundation + Aurora Default Theme** — Define full token vocabulary, migrate global.css, ship Aurora dark+light, extend theme-guard
+- [x] **Phase 80: Token Foundation + Aurora Default Theme** — Define full token vocabulary, migrate global.css, ship Aurora dark+light, extend theme-guard
 - [x] **Phase 81: Brand Config Server Foundation** — `brand_config` table, 18th permission, 4 API routes, logo upload + SVG sanitization, CSS sanitization at save time
-- [ ] **Phase 82: Client Token Pipeline + FOUC Prevention + Identity** — `brandStore`, FOUC-free inline bootstrap, live token apply, logo/name/favicon wiring across all surfaces
+- [x] **Phase 82: Client Token Pipeline + FOUC Prevention + Identity** — `brandStore`, FOUC-free inline bootstrap, live token apply, logo/name/favicon wiring across all surfaces
 - [ ] **Phase 83: Branding Admin UI** — `BrandingSettingsPage` with color pickers, WCAG badges, font picker, feel levers, live preview, Save/Reset, custom CSS editor
 - [ ] **Phase 84: Verification + Live UAT** — Green automated gates both stacks + blocking operator walk-through; compiled verification record
 
@@ -134,21 +134,23 @@ Plans:
 ### Phase 83: Branding Admin UI
 **Goal**: A permitted admin can brand the app end-to-end from a single settings page — picking colors with live WCAG feedback, choosing fonts, adjusting feel levers, previewing changes live before saving, and injecting sanitized custom CSS — all without a redeploy.
 **Depends on**: Phase 82 (token pipeline must work before the UI can preview live changes)
-**Stack**: FRONTEND-ONLY (`packages/web`); new deps: `react-colorful`, `colord`
-**Requirements**: BRANDUI-02, BRANDUI-03, BRANDUI-04, BRANDUI-05, CSS-V116-01, SECA-V116-02
+**Stack**: BOTH (`packages/web` + a small `packages/server` schema/endpoint touch for the optional dark logo — see BRANDUI-06); new web deps: `react-colorful`, `colord`
+**Requirements**: BRANDUI-02, BRANDUI-03, BRANDUI-04, BRANDUI-05, BRANDUI-06, CSS-V116-01, SECA-V116-02
 **Open decisions to resolve at plan time**: Open Decision 1 (custom CSS scoping — `@scope (#root)` vs no scoping); whether `:root` token overrides via custom CSS are allowed or blocked if `@scope` is chosen
+**Scope addition (2026-06-24)**: BRANDUI-06 — optional dark-mode logo override (one required primary + optional dark). Additive: `brand_config` gains optional `logo_dark_*` columns + dark-variant upload/serve (server), `logoDarkUrl` in `GET /api/branding` + theme-aware selection in `Sidebar.tsx`/FOUC script (client), and a second optional upload slot in the settings UI. The bundled DEFAULT logo already themes via inline SVG (`DefaultLogo.tsx`) — this is only for customer uploads.
 **Success Criteria** (what must be TRUE):
   1. An admin changing the primary accent color in the color picker sees every button, focus ring, and active-state swatch update live on the page before hitting Save — without a page reload or API call.
   2. Setting a color combination that fails WCAG AA contrast (e.g. light text on light background) shows a visible FAIL badge next to the affected token pair in both dark and light mode simultaneously — the admin cannot unknowingly ship an illegible palette.
   3. An admin can pick a body font and a display font from the curated list; switching fonts updates the live preview instantly and the selection persists through Save + reload.
   4. Adjusting the density lever (Compact / Comfortable / Spacious) visibly changes the spacing rhythm across the preview; corner-radius and glow on/off controls produce observable visual changes.
   5. Pasting CSS with a `url()` data-exfiltration pattern into the custom CSS editor and saving is rejected server-side (sanitized); the admin sees the stored CSS (minus the blocked declaration) after save — the escape hatch works for legitimate selectors and is blocked for known attack vectors.
-**Plans**: TBD
+**Plans**: 4 plans (Wave 1: 83-01 foundation; Wave 2: 83-02; Wave 3: 83-03; Wave 4: 83-04 — page-building plans sequenced to share BrandingSettingsPage.tsx without clobbering)
 
 Plans:
-- [ ] 83-01: `BrandingSettingsPage.tsx` scaffold — Settings nav entry (gated on `branding:manage`, hide-don't-disable), page layout, color picker section (react-colorful) with WCAG contrast badges (colord), font picker with curated list
-- [ ] 83-02: Feel levers + live preview panel — density/radius/glow/type-scale/motion-speed controls; live preview component showing button, chip, nav item, input, badge with real-time `setProperty` updates; Save + Reset-to-Kinetica-default
-- [ ] 83-03: Custom CSS editor (CodeMirror 6 CSS mode, reusing existing `@codemirror/lang-sql` dep pattern), theme-guard ALLOWLIST updated with justification comments for brand admin components
+- [x] 83-01-PLAN.md — Foundation: extend BrandConfigPayload + applyBrandTokens (display-font, feel-levers, accent-text) + export applyBrandTokens + revertToSaved; --glow-opacity in global.css; page scaffold + branding nav (gated, hide-don't-disable) + App.tsx state-based leave-guard; updateBrandConfig/uploadBrandLogo client fns [BRANDUI-05]
+- [ ] 83-02-PLAN.md — Colors (18 react-colorful pickers, dark|light) + WCAG warn-only badges (colord, both modes) + Fonts (curated body+display selects) [BRANDUI-02, BRANDUI-03, SECA-V116-02]
+- [ ] 83-03-PLAN.md — Feel levers (density/radius/glow/type-scale/motion) + compact preview card + full Save/Reset-to-Aurora + Custom CSS editor (CodeMirror lang-css, debounced draft inject, stripped-declarations notice, page exempt) [BRANDUI-04, BRANDUI-05, CSS-V116-01]
+- [ ] 83-04-PLAN.md — BRANDUI-06 dark-logo: server logo_dark_* columns + variant upload/serve + logoDarkUrl in GET (+ both-auth supertests); client brandStore.logoDarkUrl + Sidebar/FOUC theme selection + dual logo-slot UI [BRANDUI-06]
 
 ---
 
@@ -186,7 +188,7 @@ Plans:
 | 80 | v1.16 | 0/3 | Not started | - |
 | 81 | v1.16 | 3/3 | Complete | BRANDFND-01/02, SECA-V116-01, CSS-V116-02 |
 | 82 | v1.16 | 0/3 | Not started | - |
-| 83 | v1.16 | 0/3 | Not started | - |
+| 83 | v1.16 | 1/4 | In progress | 83-01 complete (2026-06-25) |
 | 84 | v1.16 | 0/3 | Not started | - |
 
 ---
