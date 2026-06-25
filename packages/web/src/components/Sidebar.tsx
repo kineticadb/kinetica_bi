@@ -57,9 +57,9 @@ const Sidebar = ({ activeKey, onSelect, collapsed, onToggleCollapse }: Props) =>
         {!collapsed && (
           <div className="logo">
             {effectiveLogoUrl ? (
-              <img src={effectiveLogoUrl} alt={appName ?? "Kinetica BI"} className="logo-img" />
+              <img src={effectiveLogoUrl} alt={appName ?? "Kinetica BI"} className="logo-img brand-logo" />
             ) : (
-              <DefaultLogo className="logo-img" title={appName ?? "Kinetica BI"} />
+              <DefaultLogo className="logo-img brand-logo" title={appName ?? "Kinetica BI"} />
             )}
           </div>
         )}

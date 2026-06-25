@@ -277,6 +277,19 @@ a {
   font-size: var(--text-xl);
 }
 
+/* App logo image (sidebar). Wide/large uploads scale to fit the header line while
+   preserving aspect ratio. `.brand-logo` is the stable, documented hook an admin can
+   override via Branding → Custom CSS (e.g. `.brand-logo { max-height: 48px }`). */
+.logo-img,
+.brand-logo {
+  display: block;
+  max-width: 100%;
+  max-height: 32px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .nav-item {
   width: 100%;
   border: 1px solid transparent;
