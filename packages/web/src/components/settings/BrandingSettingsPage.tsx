@@ -9,6 +9,7 @@ import { BrandColorPicker } from "./BrandColorPicker";
 import { WcagBadge } from "./WcagBadge";
 import { FeelLevers } from "./FeelLevers";
 import { BrandPreviewCard } from "./BrandPreviewCard";
+import { CustomCssEditor } from "./CustomCssEditor";
 import "./BrandingSettingsPage.css";
 
 /**
@@ -109,6 +110,8 @@ export function BrandingSettingsPage() {
   );
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** Set after Save when server-returned customCss differs from submitted (stripped declarations). */
+  const [strippedNotice, setStrippedNotice] = useState<string | null>(null);
 
   /** Apply draft changes live to :root and mark dirty. */
   function handleDraftChange(updates: Partial<BrandConfigPayload>) {
@@ -323,7 +326,16 @@ export function BrandingSettingsPage() {
         {/* Section 5: Custom CSS */}
         <section className="branding-section" id="brand-css">
           <h3>Custom CSS</h3>
-          {/* 83-03 fills this — CodeMirror CSS editor, debounced draft inject, stripped-declarations notice */}
+          <p className="brand-section-hint">
+            Applied app-wide. Server sanitizes{" "}
+            <code>url()</code>, <code>@import</code>, <code>@font-face</code>,{" "}
+            <code>expression()</code> on Save. Reset clears this field.
+          </p>
+          <CustomCssEditor
+            value={draft.customCss ?? ""}
+            onChange={(v) => handleDraftChange({ customCss: v })}
+            strippedNotice={strippedNotice}
+          />
         </section>
       </div>
     </div>
