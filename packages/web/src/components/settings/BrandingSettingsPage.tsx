@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useBrandStore } from "../../store/brandStore";
 import { applyBrandTokens } from "../../store/brandStore";
 import { useThemeStore } from "../../store/theme";
-import { updateBrandConfig, uploadBrandLogo } from "../../api/client";
+import { updateBrandConfig, uploadBrandLogo, deleteBrandLogo } from "../../api/client";
 import type { BrandConfigPayload } from "../../api/client";
 import { brandPageGuard } from "./brandPageGuard";
 import { BrandColorPicker } from "./BrandColorPicker";
@@ -69,15 +69,18 @@ interface ColorFieldDef {
  * 9 token pairs — each row renders one dark + one light BrandColorPicker.
  * Token names match BrandConfigPayload field names from 83-01.
  */
+// Ordered most-significant → least (how prominently each token shows across the app):
+// brand accent, app background, body text, panels, hairline borders, secondary text,
+// secondary accent, accent-colored text, then the error-only danger color.
 const COLOR_FIELDS: ColorFieldDef[] = [
   { token: "--accent",      label: "Accent",       darkField: "primaryColor",     lightField: "lightPrimaryColor" },
+  { token: "--bg",          label: "Background",   darkField: "bgColor",          lightField: "lightBgColor" },
+  { token: "--text",        label: "Text",         darkField: "textColor",        lightField: "lightTextColor" },
+  { token: "--panel",       label: "Panel",        darkField: "panelColor",       lightField: "lightPanelColor" },
+  { token: "--border",      label: "Border",       darkField: "borderColor",      lightField: "lightBorderColor" },
+  { token: "--muted",       label: "Muted Text",   darkField: "mutedColor",       lightField: "lightMutedColor" },
   { token: "--accent-2",    label: "Accent 2",     darkField: "accent2Color",     lightField: "lightAccent2Color" },
   { token: "--accent-text", label: "Accent Text",  darkField: "accentTextColor",  lightField: "lightAccentTextColor" },
-  { token: "--bg",          label: "Background",   darkField: "bgColor",          lightField: "lightBgColor" },
-  { token: "--panel",       label: "Panel",        darkField: "panelColor",       lightField: "lightPanelColor" },
-  { token: "--text",        label: "Text",         darkField: "textColor",        lightField: "lightTextColor" },
-  { token: "--muted",       label: "Muted Text",   darkField: "mutedColor",       lightField: "lightMutedColor" },
-  { token: "--border",      label: "Border",       darkField: "borderColor",      lightField: "lightBorderColor" },
   { token: "--danger",      label: "Danger",       darkField: "dangerColor",      lightField: "lightDangerColor" },
 ];
 
@@ -117,6 +120,9 @@ export function BrandingSettingsPage() {
   const [draftLogoFile, setDraftLogoFile] = useState<File | null>(null);
   /** Dark-mode logo override file chosen this session — uploaded on Save (BRANDUI-06). */
   const [draftDarkLogoFile, setDraftDarkLogoFile] = useState<File | null>(null);
+  /** Staged logo removals (set by Reset; cleared when a new file is chosen) — applied on Save. */
+  const [removePrimaryLogo, setRemovePrimaryLogo] = useState(false);
+  const [removeDarkLogo, setRemoveDarkLogo] = useState(false);
 
   /** Apply draft changes live to :root and mark dirty. */
   function handleDraftChange(updates: Partial<BrandConfigPayload>) {
@@ -134,6 +140,9 @@ export function BrandingSettingsPage() {
     // Clear both chosen logo files so Save after Reset does not re-upload stale files (BRANDUI-06)
     setDraftLogoFile(null);
     setDraftDarkLogoFile(null);
+    // Reset-to-default also REMOVES any saved logo(s) — staged here, deleted on Save.
+    setRemovePrimaryLogo(true);
+    setRemoveDarkLogo(true);
     setIsDirty(true); // must stay dirty so the reset can be saved (Pitfall 1)
   }
 
@@ -145,18 +154,24 @@ export function BrandingSettingsPage() {
       // Snapshot submitted CSS so we can diff against the sanitized version returned.
       const submittedCss = draft.customCss ?? "";
 
-      // Upload the primary logo if a new file was chosen this session.
+      // Primary logo: upload a newly chosen file, else delete it if Reset staged a removal.
       let newLogoUrl: string | null = useBrandStore.getState().logoUrl;
       if (draftLogoFile) {
         const logoResp = await uploadBrandLogo(draftLogoFile, "primary");
         newLogoUrl = logoResp.logoUrl ?? null;
+      } else if (removePrimaryLogo) {
+        await deleteBrandLogo("primary");
+        newLogoUrl = null;
       }
 
-      // Upload the dark-mode logo override if a new file was chosen (BRANDUI-06).
+      // Dark-mode logo override (BRANDUI-06): same — upload chosen file, else delete on staged removal.
       let newLogoDarkUrl: string | null = useBrandStore.getState().logoDarkUrl;
       if (draftDarkLogoFile) {
         const darkResp = await uploadBrandLogo(draftDarkLogoFile, "dark");
         newLogoDarkUrl = darkResp.logoDarkUrl ?? null;
+      } else if (removeDarkLogo) {
+        await deleteBrandLogo("dark");
+        newLogoDarkUrl = null;
       }
 
       // PUT /api/branding — server sanitizes customCss and returns the cleaned config.
@@ -178,6 +193,8 @@ export function BrandingSettingsPage() {
       useBrandStore.getState().update(resp.config, newLogoUrl, newLogoDarkUrl);
       setDraftLogoFile(null);
       setDraftDarkLogoFile(null);
+      setRemovePrimaryLogo(false);
+      setRemoveDarkLogo(false);
       setIsDirty(false);
     } catch (err) {
       // Page stays dirty so the user can retry.
@@ -223,6 +240,7 @@ export function BrandingSettingsPage() {
         </div>
       </div>
 
+      <div className="branding-body">
       <div className="branding-sections">
         {/* Section 1: Logo & App Name */}
         <section className="branding-section" id="brand-logo">
@@ -245,20 +263,26 @@ export function BrandingSettingsPage() {
           <div className="brand-logo-slots">
             <LogoUploader
               label="Primary logo"
-              previewUrl={useBrandStore.getState().logoUrl}
+              previewUrl={removePrimaryLogo ? null : useBrandStore.getState().logoUrl}
               previewMode="light"
               onFileChosen={(f) => {
                 setDraftLogoFile(f);
-                if (f) setIsDirty(true);
+                if (f) {
+                  setRemovePrimaryLogo(false); // a chosen file overrides a staged removal
+                  setIsDirty(true);
+                }
               }}
             />
             <LogoUploader
               label="Dark-mode override (optional)"
-              previewUrl={useBrandStore.getState().logoDarkUrl}
+              previewUrl={removeDarkLogo ? null : useBrandStore.getState().logoDarkUrl}
               previewMode="dark"
               onFileChosen={(f) => {
                 setDraftDarkLogoFile(f);
-                if (f) setIsDirty(true);
+                if (f) {
+                  setRemoveDarkLogo(false);
+                  setIsDirty(true);
+                }
               }}
             />
           </div>
@@ -274,45 +298,7 @@ export function BrandingSettingsPage() {
           <h3>Colors</h3>
 
           <div className="brand-color-columns">
-            {/* ── Dark column ── */}
-            <div>
-              <p className="brand-color-column-header">Dark</p>
-              {COLOR_FIELDS.map(({ label, darkField }) => (
-                <div key={darkField} className="brand-color-row">
-                  <BrandColorPicker
-                    label={label}
-                    value={d[darkField]}
-                    fallback={DARK_DEFAULTS[darkField]}
-                    onChange={(hex) => handleDraftChange({ [darkField]: hex })}
-                  />
-                </div>
-              ))}
-
-              {/* WCAG critical-pair badges — dark column (warn-only, Save NOT blocked) */}
-              <div className="brand-color-badge-row">
-                <span className="ds-field-label">Text / BG:</span>
-                <WcagBadge
-                  fg={d.textColor ?? DARK_DEFAULTS.textColor}
-                  bg={d.bgColor ?? DARK_DEFAULTS.bgColor}
-                />
-              </div>
-              <div className="brand-color-badge-row">
-                <span className="ds-field-label">Accent Text / Accent:</span>
-                <WcagBadge
-                  fg={d.accentTextColor ?? DARK_DEFAULTS.accentTextColor}
-                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
-                />
-              </div>
-              <div className="brand-color-badge-row">
-                <span className="ds-field-label">On-Accent (#fff) / Accent:</span>
-                <WcagBadge
-                  fg="#ffffff"
-                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
-                />
-              </div>
-            </div>
-
-            {/* ── Light column ── */}
+            {/* ── Light column (left — matches logo section: dark-variant on the right) ── */}
             <div>
               <p className="brand-color-column-header">Light</p>
               {COLOR_FIELDS.map(({ label, lightField }) => (
@@ -346,6 +332,44 @@ export function BrandingSettingsPage() {
                 <WcagBadge
                   fg="#ffffff"
                   bg={d.lightPrimaryColor ?? LIGHT_DEFAULTS.lightPrimaryColor}
+                />
+              </div>
+            </div>
+
+            {/* ── Dark column (right) ── */}
+            <div>
+              <p className="brand-color-column-header">Dark</p>
+              {COLOR_FIELDS.map(({ label, darkField }) => (
+                <div key={darkField} className="brand-color-row">
+                  <BrandColorPicker
+                    label={label}
+                    value={d[darkField]}
+                    fallback={DARK_DEFAULTS[darkField]}
+                    onChange={(hex) => handleDraftChange({ [darkField]: hex })}
+                  />
+                </div>
+              ))}
+
+              {/* WCAG critical-pair badges — dark column (warn-only, Save NOT blocked) */}
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">Text / BG:</span>
+                <WcagBadge
+                  fg={d.textColor ?? DARK_DEFAULTS.textColor}
+                  bg={d.bgColor ?? DARK_DEFAULTS.bgColor}
+                />
+              </div>
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">Accent Text / Accent:</span>
+                <WcagBadge
+                  fg={d.accentTextColor ?? DARK_DEFAULTS.accentTextColor}
+                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
+                />
+              </div>
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">On-Accent (#fff) / Accent:</span>
+                <WcagBadge
+                  fg="#ffffff"
+                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
                 />
               </div>
             </div>
@@ -397,10 +421,7 @@ export function BrandingSettingsPage() {
         {/* Section 4: Feel */}
         <section className="branding-section" id="brand-feel">
           <h3>Feel</h3>
-          <div className="brand-feel-layout">
-            <FeelLevers draft={draft} onChange={handleDraftChange} />
-            <BrandPreviewCard />
-          </div>
+          <FeelLevers draft={draft} onChange={handleDraftChange} />
         </section>
 
         {/* Section 5: Custom CSS */}
@@ -417,6 +438,10 @@ export function BrandingSettingsPage() {
             strippedNotice={strippedNotice}
           />
         </section>
+      </div>
+      <aside className="branding-preview-aside">
+        <BrandPreviewCard />
+      </aside>
       </div>
     </div>
   );

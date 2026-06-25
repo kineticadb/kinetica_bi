@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * LogoUploader — single logo-slot component.
@@ -26,18 +26,35 @@ export interface LogoUploaderProps {
 
 export function LogoUploader({ label, previewUrl, previewMode, onFileChosen }: LogoUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  // Local object-URL preview of a chosen-but-unsaved file (revoked on change/unmount).
+  const [localPreview, setLocalPreview] = useState<string | null>(null);
+
+  // URL.createObjectURL is unavailable under jsdom — guard so unit tests don't throw.
+  const canObjectUrl = typeof URL !== "undefined" && typeof URL.createObjectURL === "function";
+
+  useEffect(
+    () => () => { if (localPreview && canObjectUrl) URL.revokeObjectURL(localPreview); },
+    [localPreview, canObjectUrl],
+  );
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
+    setLocalPreview((prev) => {
+      if (prev && canObjectUrl) URL.revokeObjectURL(prev);
+      return file && canObjectUrl ? URL.createObjectURL(file) : null;
+    });
     onFileChosen(file);
   }
+
+  // Chosen file (local object URL) takes precedence over the saved previewUrl.
+  const shownUrl = localPreview ?? previewUrl;
 
   return (
     <div className="logo-uploader">
       <p className="ds-field-label">{label}</p>
       <div className={`logo-uploader-preview logo-uploader-preview--${previewMode}`}>
-        {previewUrl ? (
-          <img src={previewUrl} alt={label} className="logo-uploader-img" />
+        {shownUrl ? (
+          <img src={shownUrl} alt={label} className="logo-uploader-img" />
         ) : (
           <span className="logo-uploader-empty">No logo</span>
         )}

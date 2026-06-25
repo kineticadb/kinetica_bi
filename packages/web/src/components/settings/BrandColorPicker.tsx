@@ -1,4 +1,4 @@
-import { HexColorPicker } from "react-colorful";
+import { HexColorPicker, HexColorInput } from "react-colorful";
 
 interface BrandColorPickerProps {
   label: string;
@@ -21,7 +21,13 @@ export function BrandColorPicker({ label, value, fallback, onChange }: BrandColo
     <div className="brand-color-picker">
       <label className="ds-field-label">{label}</label>
       <HexColorPicker color={current} onChange={onChange} />
-      <span className="brand-color-hex">{current}</span>
+      <HexColorInput
+        className="brand-color-hex-input"
+        color={current}
+        onChange={onChange}
+        prefixed
+        aria-label={`${label} hex value`}
+      />
     </div>
   );
 }

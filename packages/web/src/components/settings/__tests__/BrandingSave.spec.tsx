@@ -46,6 +46,7 @@ vi.mock("../../../store/theme", () => ({
 // Mocked API client
 const mockUpdateBrandConfig = vi.fn();
 const mockUploadBrandLogo = vi.fn();
+const mockDeleteBrandLogo = vi.fn();
 
 vi.mock("../../../api/client", async (importActual) => {
   const actual = await importActual<typeof import("../../../api/client")>();
@@ -53,6 +54,7 @@ vi.mock("../../../api/client", async (importActual) => {
     ...actual,
     updateBrandConfig: (...args: unknown[]) => mockUpdateBrandConfig(...args),
     uploadBrandLogo: (...args: unknown[]) => mockUploadBrandLogo(...args),
+    deleteBrandLogo: (...args: unknown[]) => mockDeleteBrandLogo(...args),
   };
 });
 
@@ -60,6 +62,9 @@ vi.mock("../../../api/client", async (importActual) => {
 vi.mock("react-colorful", () => ({
   HexColorPicker: ({ color }: { color: string }) => (
     <div data-testid="hex-picker" data-color={color} />
+  ),
+  HexColorInput: ({ color, onChange }: { color: string; onChange: (h: string) => void }) => (
+    <input data-testid="hex-input" value={color} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 

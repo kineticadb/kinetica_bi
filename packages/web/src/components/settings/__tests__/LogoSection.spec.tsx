@@ -47,6 +47,7 @@ vi.mock("../../../store/theme", () => ({
 
 const mockUpdateBrandConfig = vi.fn();
 const mockUploadBrandLogo = vi.fn();
+const mockDeleteBrandLogo = vi.fn();
 
 vi.mock("../../../api/client", async (importActual) => {
   const actual = await importActual<typeof import("../../../api/client")>();
@@ -54,6 +55,7 @@ vi.mock("../../../api/client", async (importActual) => {
     ...actual,
     updateBrandConfig: (...args: unknown[]) => mockUpdateBrandConfig(...args),
     uploadBrandLogo: (...args: unknown[]) => mockUploadBrandLogo(...args),
+    deleteBrandLogo: (...args: unknown[]) => mockDeleteBrandLogo(...args),
   };
 });
 
@@ -61,6 +63,9 @@ vi.mock("../../../api/client", async (importActual) => {
 vi.mock("react-colorful", () => ({
   HexColorPicker: ({ color }: { color: string }) => (
     <div data-testid="hex-picker" data-color={color} />
+  ),
+  HexColorInput: ({ color, onChange }: { color: string; onChange: (h: string) => void }) => (
+    <input data-testid="hex-input" value={color} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
@@ -246,9 +251,10 @@ describe("BrandingSettingsPage — dual logo slots (BRANDUI-06)", () => {
     });
   });
 
-  it("Reset clears both draft logo files (uploadBrandLogo NOT called if user resets then saves)", async () => {
+  it("Reset clears chosen files AND removes saved logos on Save (deleteBrandLogo, not uploadBrandLogo)", async () => {
     mockUpdateBrandConfig.mockResolvedValue(makeSaveResponse());
     mockBrandStoreUpdate.mockImplementation(() => {});
+    mockDeleteBrandLogo.mockResolvedValue(undefined);
 
     render(<BrandingSettingsPage />);
 
@@ -261,7 +267,7 @@ describe("BrandingSettingsPage — dual logo slots (BRANDUI-06)", () => {
     Object.defineProperty(darkInput, "files", { value: [makeFakeFile("d.png")], configurable: true });
     fireEvent.change(darkInput);
 
-    // Reset
+    // Reset → stages removal of both logos and clears the chosen files
     fireEvent.click(screen.getByRole("button", { name: /reset to defaults/i }));
 
     // Now save
@@ -270,8 +276,10 @@ describe("BrandingSettingsPage — dual logo slots (BRANDUI-06)", () => {
     await waitFor(() => {
       expect(mockUpdateBrandConfig).toHaveBeenCalledTimes(1);
     });
-    // After Reset, no logo files → uploadBrandLogo should NOT be called
+    // After Reset, chosen files were cleared → no upload; instead both logos are deleted.
     expect(mockUploadBrandLogo).not.toHaveBeenCalled();
+    expect(mockDeleteBrandLogo).toHaveBeenCalledWith("primary");
+    expect(mockDeleteBrandLogo).toHaveBeenCalledWith("dark");
   });
 
   it("app-name input change marks isDirty and drives draft.appName", () => {

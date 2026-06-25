@@ -5,8 +5,32 @@
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--space-6);
-  max-width: 960px;
+  max-width: 1280px;
   width: 100%;
+}
+
+/* Two-column body: scrolling form (left) + sticky live preview panel (right). */
+.branding-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.branding-preview-aside {
+  position: sticky;
+  top: var(--space-6);
+  align-self: start;
+}
+
+/* Collapse to a single column on narrow viewports (preview drops below the form). */
+@media (max-width: 1100px) {
+  .branding-body {
+    grid-template-columns: 1fr;
+  }
+  .branding-preview-aside {
+    position: static;
+  }
 }
 
 .branding-header {
@@ -70,10 +94,22 @@
   gap: var(--space-2);
 }
 
-.brand-color-hex {
-  font-size: var(--text-xs);
-  color: var(--muted);
+/* Editable hex entry under each picker (react-colorful HexColorInput). */
+.brand-color-hex-input {
+  width: 100%;
+  max-width: 120px;
   font-family: monospace;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.brand-color-hex-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* ── Color columns layout ── */
