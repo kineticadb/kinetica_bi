@@ -5,6 +5,8 @@ import { useThemeStore } from "../../store/theme";
 import { updateBrandConfig } from "../../api/client";
 import type { BrandConfigPayload } from "../../api/client";
 import { brandPageGuard } from "./brandPageGuard";
+import { BrandColorPicker } from "./BrandColorPicker";
+import { WcagBadge } from "./WcagBadge";
 import "./BrandingSettingsPage.css";
 
 /**
@@ -17,7 +19,86 @@ import "./BrandingSettingsPage.css";
  *
  * The page root uses id="branding-admin-exempt" so custom CSS injected by
  * BrandStyleInjector can be scoped to exclude this page in Phase 84.
+ *
+ * THEME-GUARD NOTE: This file is on the ALLOWLIST in theme-guard.spec.ts because
+ * COLOR_FIELDS contains the Aurora default-hex palette values (the data, not chrome
+ * colors). The #ffffff on-accent WCAG literal is also here for the same reason.
  */
+
+// ── Aurora default hex values per token (dark mode) ──────────────────────────
+// Read from :root in global.css (locked 2026-06-23, CHOSEN-DIRECTION.md).
+// These are fallback values for the pickers when no override is set in the draft.
+const DARK_DEFAULTS = {
+  primaryColor: "#7f40ed",
+  accent2Color: "#38bdf8",
+  accentTextColor: "#c4b5fd",
+  bgColor: "#0a0a12",
+  panelColor: "#181628",
+  textColor: "#ece9f6",
+  mutedColor: "#9b95b8",
+  borderColor: "#2a2742",
+  dangerColor: "#fb7185",
+} as const;
+
+// Aurora default hex values per token (light mode).
+// Read from :root[data-theme="light"] in global.css.
+const LIGHT_DEFAULTS = {
+  lightPrimaryColor: "#7f40ed",
+  lightAccent2Color: "#0284c7",
+  lightAccentTextColor: "#6d28d9",
+  lightBgColor: "#eceaf3",
+  lightPanelColor: "#f6f5fb",
+  lightTextColor: "#1e1b2e",
+  lightMutedColor: "#6b6490",
+  lightBorderColor: "#c4c0d8",
+  lightDangerColor: "#e11d48",
+} as const;
+
+interface ColorFieldDef {
+  token: string;
+  label: string;
+  darkField: keyof typeof DARK_DEFAULTS;
+  lightField: keyof typeof LIGHT_DEFAULTS;
+}
+
+/**
+ * 9 token pairs — each row renders one dark + one light BrandColorPicker.
+ * Token names match BrandConfigPayload field names from 83-01.
+ */
+const COLOR_FIELDS: ColorFieldDef[] = [
+  { token: "--accent",      label: "Accent",       darkField: "primaryColor",     lightField: "lightPrimaryColor" },
+  { token: "--accent-2",    label: "Accent 2",     darkField: "accent2Color",     lightField: "lightAccent2Color" },
+  { token: "--accent-text", label: "Accent Text",  darkField: "accentTextColor",  lightField: "lightAccentTextColor" },
+  { token: "--bg",          label: "Background",   darkField: "bgColor",          lightField: "lightBgColor" },
+  { token: "--panel",       label: "Panel",        darkField: "panelColor",       lightField: "lightPanelColor" },
+  { token: "--text",        label: "Text",         darkField: "textColor",        lightField: "lightTextColor" },
+  { token: "--muted",       label: "Muted Text",   darkField: "mutedColor",       lightField: "lightMutedColor" },
+  { token: "--border",      label: "Border",       darkField: "borderColor",      lightField: "lightBorderColor" },
+  { token: "--danger",      label: "Danger",       darkField: "dangerColor",      lightField: "lightDangerColor" },
+];
+
+// ── Curated self-hosted font list ─────────────────────────────────────────────
+// Only fonts installed via @fontsource-variable (Phase 80) are listed.
+// No arbitrary http/https URLs — curated list only (BRANDUI-03).
+export interface FontOption {
+  label: string;
+  css: string;
+}
+
+export const CURATED_BODY_FONTS: FontOption[] = [
+  { label: "Manrope (Aurora Default)", css: '"Manrope Variable", "Segoe UI", system-ui, -apple-system, sans-serif' },
+  { label: "Space Grotesk", css: '"Space Grotesk Variable", "Segoe UI", system-ui, -apple-system, sans-serif' },
+  { label: "System UI", css: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+  { label: "Georgia (Serif)", css: 'Georgia, "Times New Roman", serif' },
+];
+
+export const CURATED_DISPLAY_FONTS: FontOption[] = [
+  { label: "Space Grotesk (Aurora Default)", css: '"Space Grotesk Variable", "Segoe UI", system-ui, -apple-system, sans-serif' },
+  { label: "Manrope", css: '"Manrope Variable", "Segoe UI", system-ui, -apple-system, sans-serif' },
+  { label: "System UI", css: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+  { label: "Georgia (Serif)", css: 'Georgia, "Times New Roman", serif' },
+];
+
 export function BrandingSettingsPage() {
   const theme = useThemeStore((s) => s.theme);
 
@@ -70,6 +151,9 @@ export function BrandingSettingsPage() {
     };
   }, [isDirty]);
 
+  // ── Resolved draft values (draft overrides or Aurora defaults) ──────────────
+  const d = draft;
+
   return (
     <div className="branding-admin" id="branding-admin-exempt">
       <div className="branding-header">
@@ -100,16 +184,129 @@ export function BrandingSettingsPage() {
           {/* 83-02 fills this — logo upload slot + app name field */}
         </section>
 
-        {/* Section 2: Colors */}
+        {/* Section 2: Colors — 18 pickers in dark | light columns */}
         <section className="branding-section" id="brand-colors">
           <h3>Colors</h3>
-          {/* 83-02 fills this — 18 react-colorful pickers (dark + light columns) + WCAG badges */}
+
+          <div className="brand-color-columns">
+            {/* ── Dark column ── */}
+            <div>
+              <p className="brand-color-column-header">Dark</p>
+              {COLOR_FIELDS.map(({ label, darkField }) => (
+                <div key={darkField} className="brand-color-row">
+                  <BrandColorPicker
+                    label={label}
+                    value={d[darkField]}
+                    fallback={DARK_DEFAULTS[darkField]}
+                    onChange={(hex) => handleDraftChange({ [darkField]: hex })}
+                  />
+                </div>
+              ))}
+
+              {/* WCAG critical-pair badges — dark column (warn-only, Save NOT blocked) */}
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">Text / BG:</span>
+                <WcagBadge
+                  fg={d.textColor ?? DARK_DEFAULTS.textColor}
+                  bg={d.bgColor ?? DARK_DEFAULTS.bgColor}
+                />
+              </div>
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">Accent Text / Accent:</span>
+                <WcagBadge
+                  fg={d.accentTextColor ?? DARK_DEFAULTS.accentTextColor}
+                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
+                />
+              </div>
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">On-Accent (#fff) / Accent:</span>
+                <WcagBadge
+                  fg="#ffffff"
+                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
+                />
+              </div>
+            </div>
+
+            {/* ── Light column ── */}
+            <div>
+              <p className="brand-color-column-header">Light</p>
+              {COLOR_FIELDS.map(({ label, lightField }) => (
+                <div key={lightField} className="brand-color-row">
+                  <BrandColorPicker
+                    label={label}
+                    value={d[lightField]}
+                    fallback={LIGHT_DEFAULTS[lightField]}
+                    onChange={(hex) => handleDraftChange({ [lightField]: hex })}
+                  />
+                </div>
+              ))}
+
+              {/* WCAG critical-pair badges — light column */}
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">Text / BG:</span>
+                <WcagBadge
+                  fg={d.lightTextColor ?? LIGHT_DEFAULTS.lightTextColor}
+                  bg={d.lightBgColor ?? LIGHT_DEFAULTS.lightBgColor}
+                />
+              </div>
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">Accent Text / Accent:</span>
+                <WcagBadge
+                  fg={d.lightAccentTextColor ?? LIGHT_DEFAULTS.lightAccentTextColor}
+                  bg={d.lightPrimaryColor ?? LIGHT_DEFAULTS.lightPrimaryColor}
+                />
+              </div>
+              <div className="brand-color-badge-row">
+                <span className="ds-field-label">On-Accent (#fff) / Accent:</span>
+                <WcagBadge
+                  fg="#ffffff"
+                  bg={d.lightPrimaryColor ?? LIGHT_DEFAULTS.lightPrimaryColor}
+                />
+              </div>
+            </div>
+          </div>
+
+          <p className="brand-theme-note">
+            Live preview reflects the currently active theme. Editing the off-theme column
+            (e.g. light colors while in dark mode) won&apos;t visibly re-skin the app until
+            you toggle the theme. WCAG badges update for both columns simultaneously.
+            Save is never blocked by a failing contrast badge.
+          </p>
         </section>
 
         {/* Section 3: Fonts */}
         <section className="branding-section" id="brand-fonts">
           <h3>Fonts</h3>
-          {/* 83-02 fills this — body + display font selects */}
+
+          <div className="brand-fonts-grid">
+            <div className="brand-font-field">
+              <label className="ds-field-label" htmlFor="brand-font-body">Body Font</label>
+              <select
+                id="brand-font-body"
+                className="ds-select"
+                value={d.fontFamily ?? CURATED_BODY_FONTS[0].css}
+                onChange={(e) => handleDraftChange({ fontFamily: e.target.value })}
+              >
+                {CURATED_BODY_FONTS.map((f) => (
+                  <option key={f.css} value={f.css}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="brand-font-field">
+              <label className="ds-field-label" htmlFor="brand-font-display">Display Font</label>
+              <select
+                id="brand-font-display"
+                className="ds-select"
+                value={d.displayFontFamily ?? CURATED_DISPLAY_FONTS[0].css}
+                onChange={(e) => handleDraftChange({ displayFontFamily: e.target.value })}
+              >
+                {CURATED_DISPLAY_FONTS.map((f) => (
+                  <option key={f.css} value={f.css}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </section>
 
         {/* Section 4: Feel */}
