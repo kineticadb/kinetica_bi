@@ -5,6 +5,17 @@ import type { FormatSpec } from "../lib/columnFormatter";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
+/**
+ * Resolve a server-relative asset path (e.g. the branding logo URL) against API_BASE.
+ * The server returns relative paths like "/api/branding/logo?v=…"; an <img src> / favicon
+ * resolves those against the PAGE origin (Vite :5173 in dev), which has no /api proxy and
+ * serves index.html → broken image. Prefixing with API_BASE makes the asset load from the
+ * actual API origin in dev (cross-origin :4000) and stays correct in prod (same-origin →
+ * API_BASE is "" or the API host). Already-absolute URLs pass through unchanged.
+ */
+export const toAbsoluteAssetUrl = (u: string | null | undefined): string | null =>
+  !u ? null : /^https?:\/\//.test(u) ? u : `${API_BASE}${u}`;
+
 export const UNAUTHORIZED_EVENT = "kbi:unauthorized";
 export const PERMISSION_DENIED_EVENT = "kbi:permission-denied";
 
@@ -196,7 +207,20 @@ export const uploadBrandLogo = async (
     // No Content-Type header — let browser set the multipart boundary
   });
   if (!response.ok) await throwForStatus(response, "Failed to upload logo");
-  return response.json() as Promise<LogoUploadResponse>;
+  const data = (await response.json()) as LogoUploadResponse;
+  // Normalize to absolute so the <img>/favicon load from the API origin, not the page origin.
+  return {
+    logoUrl: toAbsoluteAssetUrl(data.logoUrl) ?? undefined,
+    logoDarkUrl: toAbsoluteAssetUrl(data.logoDarkUrl) ?? undefined,
+  };
+};
+
+// DELETE /api/branding/logo — remove the stored primary (or ?variant=dark) logo.
+// Used by Reset-to-default. Authenticated, branding:manage.
+export const deleteBrandLogo = async (variant: "primary" | "dark" = "primary"): Promise<void> => {
+  const q = variant === "dark" ? "?variant=dark" : "";
+  const response = await apiFetch(`${API_BASE}/api/branding/logo${q}`, { method: "DELETE" });
+  if (!response.ok) await throwForStatus(response, "Failed to remove logo");
 };
 
 // IMPORTANT: raw fetch (NOT apiFetch). Unauthenticated — the login page must render
@@ -205,7 +229,13 @@ export const uploadBrandLogo = async (
 export const fetchBranding = async (): Promise<BrandingResponse> => {
   const response = await fetch(`${API_BASE}/api/branding`, { credentials: "include" });
   if (!response.ok) throw new Error(`Failed to load branding: ${response.status}`);
-  return response.json() as Promise<BrandingResponse>;
+  const data = (await response.json()) as BrandingResponse;
+  // Normalize logo URLs to absolute so they load from the API origin (see toAbsoluteAssetUrl).
+  return {
+    ...data,
+    logoUrl: toAbsoluteAssetUrl(data.logoUrl),
+    logoDarkUrl: toAbsoluteAssetUrl(data.logoDarkUrl),
+  };
 };
 
 // Phase 7 (UX-08): /me now returns authMode alongside user. Expanded MeResponse type.
