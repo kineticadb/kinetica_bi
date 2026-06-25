@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useBrandStore } from "../../store/brandStore";
 import { applyBrandTokens } from "../../store/brandStore";
 import { useThemeStore } from "../../store/theme";
-import { updateBrandConfig } from "../../api/client";
+import { updateBrandConfig, uploadBrandLogo } from "../../api/client";
 import type { BrandConfigPayload } from "../../api/client";
 import { brandPageGuard } from "./brandPageGuard";
 import { BrandColorPicker } from "./BrandColorPicker";
@@ -112,6 +112,8 @@ export function BrandingSettingsPage() {
   const [saving, setSaving] = useState(false);
   /** Set after Save when server-returned customCss differs from submitted (stripped declarations). */
   const [strippedNotice, setStrippedNotice] = useState<string | null>(null);
+  /** Primary logo file chosen this session — uploaded on Save (83-04 adds dark slot). */
+  const [draftLogoFile, setDraftLogoFile] = useState<File | null>(null);
 
   /** Apply draft changes live to :root and mark dirty. */
   function handleDraftChange(updates: Partial<BrandConfigPayload>) {
@@ -129,17 +131,41 @@ export function BrandingSettingsPage() {
     setIsDirty(true); // must stay dirty so the reset can be saved (Pitfall 1)
   }
 
-  /** Save draft via PUT /api/branding; on success notify store + other tabs. */
+  /** Save draft via PUT /api/branding (+ logo POST when a file was chosen). */
   async function handleSave() {
+    if (saving) return;
     setSaving(true);
     try {
+      // Snapshot submitted CSS so we can diff against the sanitized version returned.
+      const submittedCss = draft.customCss ?? "";
+
+      // Upload the primary logo if a new file was chosen this session.
+      let newLogoUrl: string | null = useBrandStore.getState().logoUrl;
+      if (draftLogoFile) {
+        const logoResp = await uploadBrandLogo(draftLogoFile, "primary");
+        newLogoUrl = logoResp.logoUrl ?? null;
+      }
+
+      // PUT /api/branding — server sanitizes customCss and returns the cleaned config.
       const resp = await updateBrandConfig(draft);
-      // Reflect saved state through the store (also notifies other tabs via BroadcastChannel)
-      useBrandStore.getState().update(resp.config, useBrandStore.getState().logoUrl);
-      setDraft(resp.config);
+
+      // Compare submitted vs server-sanitized CSS to detect stripped declarations.
+      const savedCss = resp.config.customCss ?? "";
+      if (savedCss !== submittedCss) {
+        setStrippedNotice(
+          "Some declarations were removed by the server (url()/@import/@font-face/etc.)."
+        );
+        setDraft((d) => ({ ...d, customCss: savedCss }));
+      } else {
+        setStrippedNotice(null);
+      }
+
+      // Reflect saved state through the store (writes localStorage + notifies other tabs).
+      useBrandStore.getState().update(resp.config, newLogoUrl);
+      setDraftLogoFile(null);
       setIsDirty(false);
     } catch (err) {
-      // Errors surface via the store's error path; page stays dirty so user can retry
+      // Page stays dirty so the user can retry.
       console.error("Failed to save brand config:", err);
     } finally {
       setSaving(false);
