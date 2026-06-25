@@ -8,6 +8,7 @@ import {
   faAnglesRight,
   faUsers,
   faUserShield,
+  faPalette,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useAuthStore } from "../store/auth";
@@ -28,6 +29,7 @@ const nav: NavItem[] = [
   { label: "User Management", key: "users", icon: faUsers, permission: PERMISSIONS.USERS_VIEW },
   { label: "Roles", key: "roles", icon: faUserShield, permission: PERMISSIONS.ROLES_VIEW },
   { label: "Settings", key: "settings", icon: faGear },
+  { label: "Branding", key: "branding", icon: faPalette, permission: PERMISSIONS.BRANDING_MANAGE },
 ];
 
 type Props = {

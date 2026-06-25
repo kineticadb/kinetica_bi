@@ -18,10 +18,12 @@ import { useDynamicViewStore } from "./store/dynamicViewStore";
 import { initWmsCapabilities } from "./store/wmsCapabilities";
 import { useBrandStore } from "./store/brandStore";
 import { BrandStyleInjector } from "./components/BrandStyleInjector";
+import { BrandingSettingsPage } from "./components/settings/BrandingSettingsPage";
+import { brandPageGuard } from "./components/settings/brandPageGuard";
 import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, listUsers } from "./api/client";
 import { PERMISSIONS } from "./lib/permissions";
 
-type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile";
+type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
 // Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
@@ -189,7 +191,8 @@ const App = () => {
         parsed.page === "settings" ||
         parsed.page === "users" ||
         parsed.page === "roles" ||
-        parsed.page === "profile"
+        parsed.page === "profile" ||
+        parsed.page === "branding"
       ) {
         setPage(parsed.page);
       }
@@ -252,7 +255,17 @@ const App = () => {
     <div className="app-shell">
       <Sidebar
         activeKey={page}
-        onSelect={(key) => { setPage(key as Page); setDashboardViewMode("list"); }}
+        onSelect={(key) => {
+          // Leave-guard for the branding page: if the user has unsaved changes,
+          // prompt to confirm; on confirm, revert live :root to the saved brand.
+          // Intercepts here (before setPage) to avoid the leave-revert race (Pitfall 2).
+          if (page === "branding" && brandPageGuard.isDirty) {
+            if (!window.confirm("Discard unsaved branding changes?")) return;
+            brandPageGuard.revert?.();
+          }
+          setPage(key as Page);
+          setDashboardViewMode("list");
+        }}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />
@@ -272,6 +285,7 @@ const App = () => {
         {page === "settings" && (
           <div className="muted">Section coming soon.</div>
         )}
+        {page === "branding" && <BrandingSettingsPage />}
         {page === "users" && <UsersPage />}
         {page === "roles" && <RolesPage />}
         {page === "profile" && <ProfilePage />}
