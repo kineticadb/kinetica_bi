@@ -52,6 +52,10 @@ const ALLOWLIST: ReadonlyArray<string> = [
   // these ARE the token system (not literals bypassing it). The structural guard
   // (second describe block below) enforces that properties in rules use var() instead.
   "../styles/global.css",
+  // Brand color tooling: BrandingSettingsPage authors the Aurora default-hex map
+  // (COLOR_FIELDS fallback values) — its job is to define literal hex color defaults.
+  // Also contains the fixed #ffffff on-accent WCAG check literal.
+  "settings/BrandingSettingsPage.tsx",
 ];
 
 /**
