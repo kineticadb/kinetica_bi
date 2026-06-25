@@ -17,16 +17,71 @@ export type BrandState = {
   // Actions
   bootstrap: () => Promise<void>;
   update: (config: BrandConfigPayload, logoUrl: string | null) => void;
+  /** Re-apply the last-SAVED config to :root without touching localStorage or store state.
+   *  Called by App.tsx nav guard when the user confirms leaving the branding page with
+   *  unsaved changes — reverts the live :root preview back to the saved brand. */
+  revertToSaved: () => void;
 };
+
+// ---------------------------------------------------------------------------
+// Feel-lever helper functions (pure — no imports).
+// Called from applyBrandTokens to apply density/radius/motion/type-scale
+// preset values onto :root inline styles.
+// ---------------------------------------------------------------------------
+
+function applyDensityPreset(root: HTMLElement, preset: string | null): void {
+  const TOKENS = ["--space-1","--space-2","--space-3","--space-4","--space-5","--space-6","--space-8","--space-10"];
+  const scales: Record<string, string[]> = {
+    comfortable: ["4px","8px","12px","14px","20px","24px","28px","36px"],
+    spacious:    ["6px","12px","14px","18px","24px","28px","34px","44px"],
+  };
+  if (!preset || preset === "compact") { TOKENS.forEach(t => root.style.removeProperty(t)); return; }
+  const vals = scales[preset];
+  if (!vals) return;
+  TOKENS.forEach((t, i) => root.style.setProperty(t, vals[i]));
+}
+
+function applyRadiusPreset(root: HTMLElement, preset: string | null): void {
+  const RTOKENS = ["--radius","--radius-sm","--radius-md","--radius-lg"];
+  if (!preset || preset === "default") { RTOKENS.forEach(t => root.style.removeProperty(t)); return; }
+  const maps: Record<string, string[]> = {
+    sharp: ["4px","2px","4px","6px"],
+    round: ["20px","14px","16px","20px"],
+  };
+  (maps[preset] ?? []).forEach((v, i) => root.style.setProperty(RTOKENS[i], v));
+}
+
+function applyMotionPreset(root: HTMLElement, speed: string | null): void {
+  if (!speed || speed === "default") {
+    ["--duration-fast","--duration-base","--duration-slow"].forEach(t => root.style.removeProperty(t));
+    return;
+  }
+  const maps: Record<string, [string, string, string]> = {
+    none:    ["0ms","0ms","0ms"],
+    reduced: ["50ms","100ms","150ms"],
+    fast:    ["60ms","120ms","180ms"],
+  };
+  const [f, b, s] = maps[speed] ?? ["100ms","200ms","300ms"];
+  root.style.setProperty("--duration-fast", f);
+  root.style.setProperty("--duration-base", b);
+  root.style.setProperty("--duration-slow", s);
+}
+
+function applyTypeScalePreset(root: HTMLElement, base: number | null): void {
+  if (!base) { root.style.removeProperty("--text-base"); return; }
+  root.style.setProperty("--text-base", `${base}px`);
+}
 
 /**
  * Apply brand token overrides to :root CSS custom properties.
- * Pure module function (not in state) — guards for DOM absence (SSR / tests).
+ * Exported so BrandingSettingsPage can call it for live draft preview
+ * without committing to the store (pure :root apply — no localStorage write,
+ * no BroadcastChannel — that's update()'s job on Save).
  *
  * Uses removeProperty when value is null/undefined so Reset-to-defaults
  * clears previously-set overrides and the compiled global.css defaults resume.
  */
-function applyBrandTokens(config: BrandConfigPayload | null, theme: Theme): void {
+export function applyBrandTokens(config: BrandConfigPayload | null, theme: Theme): void {
   if (typeof document === "undefined") return;
   if (!config) return; // No overrides — compiled defaults from global.css win
 
@@ -47,6 +102,28 @@ function applyBrandTokens(config: BrandConfigPayload | null, theme: Theme): void
   set("--border",    isDark ? config.borderColor   : (config.lightBorderColor ?? config.borderColor));
   set("--danger",    isDark ? config.dangerColor   : (config.lightDangerColor ?? config.dangerColor));
   set("--font-body", config.fontFamily);
+
+  // Display font (Phase 83 — BRANDUI-03)
+  set("--font-display", config.displayFontFamily);
+
+  // Accent text color (Phase 83 — two-tier accent rule; dark vs light)
+  set("--accent-text", isDark ? config.accentTextColor : (config.lightAccentTextColor ?? config.accentTextColor));
+
+  // Density (--space-* scale multipliers)
+  applyDensityPreset(root, config.densityPreset ?? null);
+
+  // Radius preset
+  applyRadiusPreset(root, config.radiusPreset ?? null);
+
+  // Glow (requires --glow-opacity token in global.css body background)
+  if (config.glowEnabled === false) root.style.setProperty("--glow-opacity", "0");
+  else root.style.removeProperty("--glow-opacity");
+
+  // Type scale base (only --text-base directly; other --text-* are absolute)
+  applyTypeScalePreset(root, config.typeScaleBase ?? null);
+
+  // Motion speed
+  applyMotionPreset(root, config.motionSpeed ?? null);
 }
 
 /**
@@ -81,7 +158,7 @@ function notifyOtherTabs(): void {
 // ---------------------------------------------------------------------------
 // Zustand store — mirrors theme.ts structure exactly
 // ---------------------------------------------------------------------------
-export const useBrandStore = create<BrandState>((set) => ({
+export const useBrandStore = create<BrandState>((set, get) => ({
   config: null,
   appName: null,
   logoUrl: null,
@@ -165,6 +242,10 @@ export const useBrandStore = create<BrandState>((set) => ({
       customCss: newConfig.customCss ?? null,
     });
     notifyOtherTabs();
+  },
+
+  revertToSaved: () => {
+    applyBrandTokens(get().config, useThemeStore.getState().theme);
   },
 }));
 

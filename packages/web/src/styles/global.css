@@ -94,6 +94,9 @@
   /* Structural sidebar width reference (App.tsx writes the live --sidebar-width). */
   --sidebar-width-fixed: 212px; /* theme-guard-ignore: structural layout constant, not spacing token */
 
+  /* ambient aurora glow on/off — brandable (Phase 83) */
+  --glow-opacity: 1;
+
   /* ── Chart tokens (read by useChartAxisColors via getComputedStyle) ── */
   --color-chart-grid: #1a1830;
   --color-chart-axis: #6b6490;
@@ -163,10 +166,10 @@ body {
   /* Aurora dark: hex-mesh (Kinetica website motif) + violet/blue/magenta aurora radial washes + near-black base.
      background-attachment:fixed keeps the mesh stationary as content scrolls (matches the mockup). */
   background:
-    /* Aurora radial glows — violet / blue / magenta washes */
-    radial-gradient(1000px 640px at 12% -10%, rgba(127, 64, 237, 0.20), transparent 60%),
-    radial-gradient(820px 540px at 100% 0%, rgba(56, 189, 248, 0.12), transparent 55%),
-    radial-gradient(760px 740px at 60% 120%, rgba(217, 70, 239, 0.10), transparent 60%),
+    /* Aurora radial glows — violet / blue / magenta washes; alpha gated by --glow-opacity (Phase 83) */
+    radial-gradient(1000px 640px at 12% -10%, rgba(127, 64, 237, calc(0.20 * var(--glow-opacity, 1))), transparent 60%),
+    radial-gradient(820px 540px at 100% 0%, rgba(56, 189, 248, calc(0.12 * var(--glow-opacity, 1))), transparent 55%),
+    radial-gradient(760px 740px at 60% 120%, rgba(217, 70, 239, calc(0.10 * var(--glow-opacity, 1))), transparent 60%),
     var(--bg);
   background-attachment: fixed;
   color: var(--text);
@@ -182,9 +185,9 @@ body {
    Aurora identity preserved on the warm off-white canvas — not a flat generic light theme. */
 :root[data-theme="light"] body {
   background:
-    /* Faint aurora glows — branded but subtle on the warm off-white canvas */
-    radial-gradient(1000px 640px at 12% -10%, rgba(127, 64, 237, 0.05), transparent 60%),
-    radial-gradient(820px 540px at 100% 0%, rgba(2, 132, 199, 0.03), transparent 55%),
+    /* Faint aurora glows — branded but subtle on the warm off-white canvas; alpha gated by --glow-opacity (Phase 83) */
+    radial-gradient(1000px 640px at 12% -10%, rgba(127, 64, 237, calc(0.05 * var(--glow-opacity, 1))), transparent 60%),
+    radial-gradient(820px 540px at 100% 0%, rgba(2, 132, 199, calc(0.03 * var(--glow-opacity, 1))), transparent 55%),
     var(--bg);
   background-attachment: fixed;
 }
