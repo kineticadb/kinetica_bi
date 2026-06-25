@@ -256,6 +256,9 @@ const SCHEMA_DDL = `
     logo_data   TEXT,
     logo_mime   TEXT,
     logo_updated_at TEXT,
+    logo_dark_data TEXT,
+    logo_dark_mime TEXT,
+    logo_dark_updated_at TEXT,
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by  TEXT
   );
@@ -345,6 +348,24 @@ export const createDb = (dbPath: string): Database.Database => {
   // INSERT OR IGNORE — first boot inserts the row with defaults (config_json='{}'),
   // a no-op on every subsequent restart. Mirrors the seedRbac idempotency model.
   instance.exec("INSERT OR IGNORE INTO brand_config (id) VALUES (1)");
+
+  // v1.16 Phase 83 Plan 04 (BRANDUI-06): add logo_dark_* columns to existing Phase-81
+  // deployments that have brand_config without the dark-logo columns.
+  // SCHEMA_DDL CREATE TABLE above includes these columns for fresh installs.
+  // PRAGMA-guarded ALTER pattern verbatim from sessions (above) and dashboard_layers.
+  const brandCols = instance
+    .prepare("PRAGMA table_info(brand_config)")
+    .all() as Array<{ name: string }>;
+  const brandColNames = new Set(brandCols.map((c) => c.name));
+  if (!brandColNames.has("logo_dark_data")) {
+    instance.exec("ALTER TABLE brand_config ADD COLUMN logo_dark_data TEXT");
+  }
+  if (!brandColNames.has("logo_dark_mime")) {
+    instance.exec("ALTER TABLE brand_config ADD COLUMN logo_dark_mime TEXT");
+  }
+  if (!brandColNames.has("logo_dark_updated_at")) {
+    instance.exec("ALTER TABLE brand_config ADD COLUMN logo_dark_updated_at TEXT");
+  }
 
   return instance;
 };
