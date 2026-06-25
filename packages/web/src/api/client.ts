@@ -140,11 +140,63 @@ export type BrandConfigPayload = {
   lightBorderColor?: string | null;  lightDangerColor?: string | null;
   fontFamily?: string | null;        fontUrl?: string | null;
   appName?: string | null;           customCss?: string | null; // sanitized server-side
+  // Display font (Phase 83 — BRANDUI-03)
+  displayFontFamily?: string | null;  // maps to --font-display
+  displayFontUrl?: string | null;     // optional link tag for display font
+  // Accent text (Phase 83 — closes WCAG Pitfall 4; needed for --accent-text WCAG check)
+  accentTextColor?: string | null;       // maps to --accent-text (dark mode)
+  lightAccentTextColor?: string | null;  // maps to --accent-text (light mode)
+  // Feel levers (Phase 83 — BRANDUI-04)
+  densityPreset?: "compact" | "comfortable" | "spacious" | null;
+  radiusPreset?: "sharp" | "default" | "round" | null;
+  glowEnabled?: boolean | null;
+  typeScaleBase?: number | null;
+  motionSpeed?: "none" | "reduced" | "default" | "fast" | null;
 };
 export type BrandingResponse = {
   config: BrandConfigPayload;
   logoUrl: string | null;   // "/api/branding/logo?v=<ts>" relative URL, or null
+  logoDarkUrl: string | null; // dark-mode logo override (BRANDUI-06), or null
   updatedAt: string | null;
+};
+
+// PUT /api/branding — persist brand config (authenticated, branding:manage)
+export type BrandingPutResponse = {
+  config: BrandConfigPayload;
+  updatedAt: string;
+};
+export const updateBrandConfig = async (
+  config: BrandConfigPayload
+): Promise<BrandingPutResponse> => {
+  const response = await apiFetch(`${API_BASE}/api/branding`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config }),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to save brand config");
+  return response.json() as Promise<BrandingPutResponse>;
+};
+
+// POST /api/branding/logo — upload logo variant (authenticated, branding:manage)
+// variant: 'primary' (default) | 'dark' (BRANDUI-06)
+export type LogoUploadResponse = {
+  logoUrl?: string;       // for variant 'primary'
+  logoDarkUrl?: string;   // for variant 'dark'
+};
+export const uploadBrandLogo = async (
+  file: File,
+  variant: "primary" | "dark" = "primary"
+): Promise<LogoUploadResponse> => {
+  const form = new FormData();
+  form.append("logo", file);
+  if (variant === "dark") form.append("variant", "dark");
+  const response = await apiFetch(`${API_BASE}/api/branding/logo`, {
+    method: "POST",
+    body: form,
+    // No Content-Type header — let browser set the multipart boundary
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to upload logo");
+  return response.json() as Promise<LogoUploadResponse>;
 };
 
 // IMPORTANT: raw fetch (NOT apiFetch). Unauthenticated — the login page must render
