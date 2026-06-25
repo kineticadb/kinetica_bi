@@ -708,6 +708,28 @@ export const createApp = async (): Promise<express.Express> => {
     }
   );
 
+  // DELETE /api/branding/logo — remove the stored logo (used by Reset-to-default and any
+  // future per-slot "remove" affordance). ?variant=dark clears the dark override; default
+  // clears the primary. Gated on branding:manage. Nulling already-null columns is a safe no-op.
+  app.delete(
+    "/api/branding/logo",
+    ...requirePermission(PERMISSIONS.BRANDING_MANAGE),
+    (req, res) => {
+      const variant = (req.query as Record<string, string>).variant === "dark" ? "dark" : "primary";
+      const username = (req as AuthedRequest).user!.creds.username;
+      if (variant === "dark") {
+        db.prepare(
+          "UPDATE brand_config SET logo_dark_data = NULL, logo_dark_mime = NULL, logo_dark_updated_at = NULL, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
+        ).run(username);
+      } else {
+        db.prepare(
+          "UPDATE brand_config SET logo_data = NULL, logo_mime = NULL, logo_updated_at = NULL, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
+        ).run(username);
+      }
+      return res.json({ cleared: true });
+    }
+  );
+
   // Dashboard persistence
   // ENFORCE-V110-01: server-side filter — bypass users (manage_access) get all;
   // everyone else gets only dashboards for which canViewDashboard returns true.

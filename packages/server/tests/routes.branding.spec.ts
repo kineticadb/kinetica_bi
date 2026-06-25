@@ -266,6 +266,49 @@ describe("branding routes — AUTH_MODE=password", () => {
     expect(res.headers["cache-control"]).toContain("immutable");
   });
 
+  // ── DELETE /api/branding/logo (Reset-to-default removal) ─────────────────────
+
+  it("DELETE /api/branding/logo with no cookie returns 401", async () => {
+    const app = await buildTestApp();
+    const res = await app.delete("/api/branding/logo");
+    expect(res.status).toBe(401);
+  });
+
+  it("DELETE /api/branding/logo with analyst cookie returns 403 PERMISSION_DENIED", async () => {
+    const app = await buildTestApp();
+    const { cookie } = seedAnalystSession("branding_del_analyst");
+    const res = await app.delete("/api/branding/logo").set("Cookie", cookie);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("PERMISSION_DENIED");
+  });
+
+  it("DELETE /api/branding/logo removes the primary logo (subsequent serve → 404)", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    await app.post("/api/branding/logo").set("Cookie", cookie).attach("logo", PNG_1x1, "logo.png");
+    expect((await app.get("/api/branding/logo")).status).toBe(200);
+
+    const del = await app.delete("/api/branding/logo").set("Cookie", cookie);
+    expect(del.status).toBe(200);
+    expect((await app.get("/api/branding/logo")).status).toBe(404);
+    // GET /api/branding no longer reports a logoUrl
+    expect((await app.get("/api/branding")).body.logoUrl).toBeNull();
+  });
+
+  it("DELETE /api/branding/logo?variant=dark removes ONLY the dark override", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    await app.post("/api/branding/logo").set("Cookie", cookie).attach("logo", PNG_1x1, "primary.png");
+    await app.post("/api/branding/logo").set("Cookie", cookie)
+      .field("variant", "dark").attach("logo", PNG_1x1, "dark.png");
+
+    const del = await app.delete("/api/branding/logo?variant=dark").set("Cookie", cookie);
+    expect(del.status).toBe(200);
+    expect((await app.get("/api/branding/logo?variant=dark")).status).toBe(404);
+    // Primary survives
+    expect((await app.get("/api/branding/logo")).status).toBe(200);
+  });
+
   // ── SVG sanitization (honestly-labeled) ──────────────────────────────────────
 
   it("POST /api/branding/logo: SVG with <script> is sanitized before storage (honestly labeled)", async () => {
