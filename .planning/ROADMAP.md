@@ -60,7 +60,9 @@
   2. With no per-widget override set, the Y-axis ticks render using the bound value column's display-config formatter (default-from-bound-column); setting a per-widget format overrides it live, and clearing the override falls back to the column default.
   3. The resolved Y-axis formatter is applied to the Y-axis TICK labels (recharts `tickFormatter`) in `TimelineRenderer` and the line chart renderer.
   4. The per-widget Y-axis override does NOT change chart tooltips or data labels — those retain their existing v1.15 column-config behavior (verified: changing the Y-axis format leaves tooltip/data-label formatting unchanged).
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 86-01-PLAN.md — shared FormatSpecEditor (extracted from ColumnFormatEditorModal) + yAxisFormat config field + Y-AXIS FORMAT control on both config panels (set/clear)
+- [ ] 86-02-PLAN.md — renderer hybrid resolution (override→buildFormatter, else bound-column resolveFormatter) + tickFormatter on all value axes (ticks-only), both renderers
 
 #### Phase 87: Verification + Live UAT
 **Goal**: The milestone is proven correct via green automated gates on both stacks plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
@@ -130,7 +132,7 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 | 74–79 | v1.15 | 11/11 | Complete | 2026-06-22 |
 | 80–84 | v1.16 | 13/13 | Complete (UAT 14/14) | 2026-06-26 |
 | 85. SI Smart-Abbreviation Number Format | v1.17 | 0/1 | Planned | - |
-| 86. Chart Y-Axis Number Format (timeline + line) | v1.17 | 0/? | Not started | - |
+| 86. Chart Y-Axis Number Format (timeline + line) | v1.17 | 0/2 | Planned | - |
 | 87. Verification + Live UAT | v1.17 | 0/? | Not started | - |
 
 ---
