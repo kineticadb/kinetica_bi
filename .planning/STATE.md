@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.17
 milestone_name: Chart Number Formatting
 status: unknown
-stopped_at: Completed 85-01-PLAN.md
-last_updated: "2026-06-26T18:34:29.142Z"
+stopped_at: Completed 86-01-PLAN.md
+last_updated: "2026-06-26T19:11:45.010Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 3
+  completed_plans: 2
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 — v1.17 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 85 — si-smart-abbreviation-number-format
+**Current focus:** Phase 86 — chart-y-axis-number-format
 
 ## Current Position
 
-Phase: 85 (si-smart-abbreviation-number-format) — EXECUTING
-Plan: 1 of 1
+Phase: 86 (chart-y-axis-number-format) — EXECUTING
+Plan: 1 of 2
 
 ### v1.17 Phase Map
 
@@ -585,6 +585,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 83 P03 | 490 | 3 tasks | 8 files |
 | Phase 83-branding-admin-ui P04 | 12 | 4 tasks | 11 files |
 | Phase 85 P01 | 370 | 2 tasks | 4 files |
+| Phase 86-chart-y-axis-number-format P01 | 326 | 2 tasks | 7 files |
 
 ### Quick Tasks Completed
 
@@ -868,6 +869,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 83-04]: LogoUploader preview swatch via CSS class (logo-uploader-preview--dark/light) — token-only, theme-guard safe
 - [Phase 85]: d3 specifier is .~s: +1 offset maps user-facing decimal-places to d3 significant-digit precision; ~ flag trims trailing zeros (1.0M→1M)
 - [Phase 85]: SIControls uses only existing CSS classes (config-group, config-group-label, ds-field, ds-field-label, config-hint) — no invented class names per CLAUDE.md
+- [Phase 86]: Extracted all 4 *Controls + defaultSpecForKind into FormatSpecEditor.tsx (full extraction); FormatSpecEditor.onChange accepts FormatSpec|null; yAxisFormat:undefined=cleared (never {kind:none})
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1274,6 +1276,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-26T18:31:09.880Z
-Stopped at: Completed 85-01-PLAN.md
+Last session: 2026-06-26T19:11:45.001Z
+Stopped at: Completed 86-01-PLAN.md
 Resume file: None

@@ -14,8 +14,8 @@
 
 ### Chart Y-Axis Number Format (AXIS)
 
-- [ ] **AXIS-V117-01**: The timeline and line chart config panels each expose a Y-axis number-format control that reuses the column number-format options (including the new SI smart-abbreviation).
-- [ ] **AXIS-V117-02**: The Y-axis number format defaults to the bound value column's display-config formatter and can be overridden per-widget (hybrid); clearing the per-widget override falls back to the column default.
+- [x] **AXIS-V117-01**: The timeline and line chart config panels each expose a Y-axis number-format control that reuses the column number-format options (including the new SI smart-abbreviation).
+- [x] **AXIS-V117-02**: The Y-axis number format defaults to the bound value column's display-config formatter and can be overridden per-widget (hybrid); clearing the per-widget override falls back to the column default.
 - [ ] **AXIS-V117-03**: The resolved Y-axis formatter is applied to the Y-axis **tick labels** in `TimelineRenderer` and the line chart renderer (recharts `tickFormatter`); chart tooltips and data labels are NOT changed by the per-widget Y-axis override (they retain their existing v1.15 column-config behavior).
 
 ### Verification (VERIFY)
@@ -45,8 +45,8 @@ Mapped to phases during roadmap creation (2026-06-26). Phase numbering continues
 |-------------|-------|--------|
 | FMT-V117-01 | Phase 85 | Complete |
 | FMT-V117-02 | Phase 85 | Complete |
-| AXIS-V117-01 | Phase 86 | Pending |
-| AXIS-V117-02 | Phase 86 | Pending |
+| AXIS-V117-01 | Phase 86 | Complete |
+| AXIS-V117-02 | Phase 86 | Complete |
 | AXIS-V117-03 | Phase 86 | Pending |
 | VERIFY-V117-01 | Phase 87 | Pending |
 
