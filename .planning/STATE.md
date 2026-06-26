@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.17
 milestone_name: Chart Number Formatting
-status: roadmap-complete
-stopped_at: v1.17 roadmap created (Phases 85-87, 2026-06-26)
-last_updated: "2026-06-26T18:30:00.000Z"
+status: unknown
+stopped_at: Completed 85-01-PLAN.md
+last_updated: "2026-06-26T18:34:29.142Z"
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,14 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 — v1.17 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.17 Chart Number Formatting — roadmap complete (Phases 85-87); next: plan Phase 85
+**Current focus:** Phase 85 — si-smart-abbreviation-number-format
 
 ## Current Position
 
-Phase: 85 (not started — roadmap created, awaiting plan-phase)
-Plan: —
-Status: Roadmap complete — 3 phases (85-87), 6/6 requirements mapped
-Last activity: 2026-06-26 — v1.17 roadmap created (Phases 85-87); next: `/gsd:plan-phase 85`
+Phase: 85 (si-smart-abbreviation-number-format) — EXECUTING
+Plan: 1 of 1
 
 ### v1.17 Phase Map
 
@@ -586,6 +584,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 83-branding-admin-ui P02 | 6 | 3 tasks | 8 files |
 | Phase 83 P03 | 490 | 3 tasks | 8 files |
 | Phase 83-branding-admin-ui P04 | 12 | 4 tasks | 11 files |
+| Phase 85 P01 | 370 | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -867,6 +866,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 83-04]: Phase-81 SVG/magic-byte validation reused unchanged for dark variant — only target columns + response key differ
 - [Phase 83-04]: Optional logoDarkUrl param on brandStore.update() defaults to current store value — no breaking change to 83-03 callers
 - [Phase 83-04]: LogoUploader preview swatch via CSS class (logo-uploader-preview--dark/light) — token-only, theme-guard safe
+- [Phase 85]: d3 specifier is .~s: +1 offset maps user-facing decimal-places to d3 significant-digit precision; ~ flag trims trailing zeros (1.0M→1M)
+- [Phase 85]: SIControls uses only existing CSS classes (config-group, config-group-label, ds-field, ds-field-label, config-hint) — no invented class names per CLAUDE.md
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1273,6 +1274,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-25T14:28:21.144Z
-Stopped at: Completed 83-04-PLAN.md
+Last session: 2026-06-26T18:31:09.880Z
+Stopped at: Completed 85-01-PLAN.md
 Resume file: None

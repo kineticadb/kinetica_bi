@@ -9,8 +9,8 @@
 
 ### Smart Abbreviation Number Format (FMT)
 
-- [ ] **FMT-V117-01**: A "smart abbreviation" number format is available as a choice in the client column-display number formatter — SI prefixes via d3-format `~s` (k / M / G / T; e.g. 1,234,567 → "1.2M"), honoring the existing configurable decimals control. Pure client formatting; never alters the SQL sent to Kinetica; invalid/empty input falls back to the raw value (v1.15 formatter contract).
-- [ ] **FMT-V117-02**: The Column Format editor UI exposes the SI smart-abbreviation option alongside the existing number formats, with the same live preview on a sample value, and it persists per-column in `column_display_config` exactly like the other formats.
+- [x] **FMT-V117-01**: A "smart abbreviation" number format is available as a choice in the client column-display number formatter — SI prefixes via d3-format `~s` (k / M / G / T; e.g. 1,234,567 → "1.2M"), honoring the existing configurable decimals control. Pure client formatting; never alters the SQL sent to Kinetica; invalid/empty input falls back to the raw value (v1.15 formatter contract).
+- [x] **FMT-V117-02**: The Column Format editor UI exposes the SI smart-abbreviation option alongside the existing number formats, with the same live preview on a sample value, and it persists per-column in `column_display_config` exactly like the other formats.
 
 ### Chart Y-Axis Number Format (AXIS)
 
@@ -43,8 +43,8 @@ Mapped to phases during roadmap creation (2026-06-26). Phase numbering continues
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FMT-V117-01 | Phase 85 | Pending |
-| FMT-V117-02 | Phase 85 | Pending |
+| FMT-V117-01 | Phase 85 | Complete |
+| FMT-V117-02 | Phase 85 | Complete |
 | AXIS-V117-01 | Phase 86 | Pending |
 | AXIS-V117-02 | Phase 86 | Pending |
 | AXIS-V117-03 | Phase 86 | Pending |
