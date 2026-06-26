@@ -1,30 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.16
-milestone_name: White-Label Theming
-status: unknown
-stopped_at: Completed 83-04-PLAN.md
+milestone: v1.17
+milestone_name: Chart Number Formatting
+status: defining-requirements
+stopped_at: v1.16 shipped + archived (2026-06-26)
 last_updated: "2026-06-26T17:49:21.841Z"
 progress:
-  total_phases: 5
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-22 — v1.16 STARTED)
+See: .planning/PROJECT.md (updated 2026-06-26 — v1.17 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 83 — branding-admin-ui
+**Current focus:** v1.17 Chart Number Formatting — defining requirements
 
 ## Current Position
 
-Phase: 83 (branding-admin-ui) — EXECUTING
-Plan: 2 of 4
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-26 — Milestone v1.17 Chart Number Formatting started (v1.16 shipped + archived)
 
 ### v1.16 Phase Map
 
