@@ -47,7 +47,8 @@
   2. The chosen SI format persists per-column in `column_display_config` (survives reload) exactly like the other formats, and reappears selected when the editor is reopened.
   3. A column set to SI abbreviation renders abbreviated values across every surface that already consumes column display config — records table cells, chart tooltips, chart axis-title / series labels, and map info popups — with NO change to the SQL sent to Kinetica.
   4. Invalid/empty input falls back to the raw value (the v1.15 formatter contract is preserved).
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 85-01-PLAN.md — SI FormatSpec variant in columnFormatter.ts + Column Format editor option/SIControls/preview (+ extended unit & component tests)
 
 #### Phase 86: Chart Y-Axis Number Format (timeline + line)
 **Goal**: A designer can control how a timeline or line chart's Y-axis tick labels are formatted per widget, defaulting to the bound value column's format and overridable per chart, without touching tooltips or data labels.
@@ -128,7 +129,7 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 | 70–73 | v1.14 | — | Complete | 2026-06-19 |
 | 74–79 | v1.15 | 11/11 | Complete | 2026-06-22 |
 | 80–84 | v1.16 | 13/13 | Complete (UAT 14/14) | 2026-06-26 |
-| 85. SI Smart-Abbreviation Number Format | v1.17 | 0/? | Not started | - |
+| 85. SI Smart-Abbreviation Number Format | v1.17 | 0/1 | Planned | - |
 | 86. Chart Y-Axis Number Format (timeline + line) | v1.17 | 0/? | Not started | - |
 | 87. Verification + Live UAT | v1.17 | 0/? | Not started | - |
 
@@ -182,5 +183,3 @@ A configurable Calendar Heatmap widget: GitHub-style time-bucketed grids across 
 - [x] Phase 69: Verification + Live UAT (3/3 plans) — completed 2026-06-18 — 69-VERIFICATION.md passed (4/4 SCs); 3 dv/filter gaps fixed in-session (d60f3b1) + re-walked PASS
 
 </details>
-</content>
-</invoke>
