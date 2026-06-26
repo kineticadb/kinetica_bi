@@ -41,12 +41,13 @@
               fontLink.rel = "stylesheet"; fontLink.href = brand.fontUrl;
               document.head.appendChild(fontLink);
             }
-            // BRANDUI-06: use dark-mode logo override for favicon when in dark mode and one is cached.
-            // brand.logoDarkUrl may be absent on old caches — defensive fallback to brand.logoUrl.
+            // Favicon: dedicated favicon (BRANDUI-07) if cached, else fall back to the logo
+            // (dark-mode override when in dark mode). Fields may be absent on old caches.
             var effectiveLogoUrl = (isDark && brand.logoDarkUrl) ? brand.logoDarkUrl : brand.logoUrl;
-            if (effectiveLogoUrl) {
+            var effectiveFavicon = brand.faviconUrl || effectiveLogoUrl;
+            if (effectiveFavicon) {
               var iconLink = document.createElement("link");
-              iconLink.rel = "icon"; iconLink.href = effectiveLogoUrl;
+              iconLink.rel = "icon"; iconLink.href = effectiveFavicon;
               document.head.appendChild(iconLink);
             }
           }

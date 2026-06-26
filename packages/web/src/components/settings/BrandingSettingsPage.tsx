@@ -106,6 +106,22 @@ export const CURATED_DISPLAY_FONTS: FontOption[] = [
   { label: "Georgia (Serif)", css: 'Georgia, "Times New Roman", serif' },
 ];
 
+/** Object-URL preview for a chosen-but-unsaved file; revoked on change/unmount.
+ *  Guarded for jsdom (no URL.createObjectURL). Parent-owned so it clears on Reset. */
+function useObjectUrl(file: File | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+      setUrl(null);
+      return;
+    }
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  return url;
+}
+
 export function BrandingSettingsPage() {
   const theme = useThemeStore((s) => s.theme);
 
@@ -120,9 +136,16 @@ export function BrandingSettingsPage() {
   const [draftLogoFile, setDraftLogoFile] = useState<File | null>(null);
   /** Dark-mode logo override file chosen this session — uploaded on Save (BRANDUI-06). */
   const [draftDarkLogoFile, setDraftDarkLogoFile] = useState<File | null>(null);
+  /** Favicon file chosen this session — uploaded on Save (BRANDUI-07). */
+  const [draftFaviconFile, setDraftFaviconFile] = useState<File | null>(null);
   /** Staged logo removals (set by Reset; cleared when a new file is chosen) — applied on Save. */
   const [removePrimaryLogo, setRemovePrimaryLogo] = useState(false);
   const [removeDarkLogo, setRemoveDarkLogo] = useState(false);
+  const [removeFavicon, setRemoveFavicon] = useState(false);
+  // Parent-owned object-URL previews for chosen-but-unsaved files (clear on Reset).
+  const primaryPreview = useObjectUrl(draftLogoFile);
+  const darkPreview = useObjectUrl(draftDarkLogoFile);
+  const faviconPreview = useObjectUrl(draftFaviconFile);
 
   /** Apply draft changes live to :root and mark dirty. */
   function handleDraftChange(updates: Partial<BrandConfigPayload>) {
@@ -140,9 +163,11 @@ export function BrandingSettingsPage() {
     // Clear both chosen logo files so Save after Reset does not re-upload stale files (BRANDUI-06)
     setDraftLogoFile(null);
     setDraftDarkLogoFile(null);
-    // Reset-to-default also REMOVES any saved logo(s) — staged here, deleted on Save.
+    // Reset-to-default also REMOVES any saved logo(s) + favicon — staged here, deleted on Save.
+    setDraftFaviconFile(null);
     setRemovePrimaryLogo(true);
     setRemoveDarkLogo(true);
+    setRemoveFavicon(true);
     setIsDirty(true); // must stay dirty so the reset can be saved (Pitfall 1)
   }
 
@@ -174,6 +199,16 @@ export function BrandingSettingsPage() {
         newLogoDarkUrl = null;
       }
 
+      // Favicon (BRANDUI-07): upload a chosen file, else delete on staged removal.
+      let newFaviconUrl: string | null = useBrandStore.getState().faviconUrl;
+      if (draftFaviconFile) {
+        const favResp = await uploadBrandLogo(draftFaviconFile, "favicon");
+        newFaviconUrl = favResp.faviconUrl ?? null;
+      } else if (removeFavicon) {
+        await deleteBrandLogo("favicon");
+        newFaviconUrl = null;
+      }
+
       // PUT /api/branding — server sanitizes customCss and returns the cleaned config.
       const resp = await updateBrandConfig(draft);
 
@@ -190,11 +225,13 @@ export function BrandingSettingsPage() {
 
       // Reflect saved state through the store (writes localStorage + notifies other tabs).
       // Pass newLogoDarkUrl to thread the dark variant into the store + localStorage.
-      useBrandStore.getState().update(resp.config, newLogoUrl, newLogoDarkUrl);
+      useBrandStore.getState().update(resp.config, newLogoUrl, newLogoDarkUrl, newFaviconUrl);
       setDraftLogoFile(null);
       setDraftDarkLogoFile(null);
+      setDraftFaviconFile(null);
       setRemovePrimaryLogo(false);
       setRemoveDarkLogo(false);
+      setRemoveFavicon(false);
       setIsDirty(false);
     } catch (err) {
       // Page stays dirty so the user can retry.
@@ -263,7 +300,7 @@ export function BrandingSettingsPage() {
           <div className="brand-logo-slots">
             <LogoUploader
               label="Primary logo"
-              previewUrl={removePrimaryLogo ? null : useBrandStore.getState().logoUrl}
+              previewUrl={removePrimaryLogo ? null : (primaryPreview ?? useBrandStore.getState().logoUrl)}
               previewMode="light"
               onFileChosen={(f) => {
                 setDraftLogoFile(f);
@@ -275,12 +312,24 @@ export function BrandingSettingsPage() {
             />
             <LogoUploader
               label="Dark-mode override (optional)"
-              previewUrl={removeDarkLogo ? null : useBrandStore.getState().logoDarkUrl}
+              previewUrl={removeDarkLogo ? null : (darkPreview ?? useBrandStore.getState().logoDarkUrl)}
               previewMode="dark"
               onFileChosen={(f) => {
                 setDraftDarkLogoFile(f);
                 if (f) {
                   setRemoveDarkLogo(false);
+                  setIsDirty(true);
+                }
+              }}
+            />
+            <LogoUploader
+              label="Favicon (optional)"
+              previewUrl={removeFavicon ? null : (faviconPreview ?? useBrandStore.getState().faviconUrl)}
+              previewMode="light"
+              onFileChosen={(f) => {
+                setDraftFaviconFile(f);
+                if (f) {
+                  setRemoveFavicon(false);
                   setIsDirty(true);
                 }
               }}

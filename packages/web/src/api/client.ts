@@ -168,6 +168,7 @@ export type BrandingResponse = {
   config: BrandConfigPayload;
   logoUrl: string | null;   // "/api/branding/logo?v=<ts>" relative URL, or null
   logoDarkUrl: string | null; // dark-mode logo override (BRANDUI-06), or null
+  faviconUrl: string | null;  // dedicated favicon (BRANDUI-07), or null
   updatedAt: string | null;
 };
 
@@ -193,14 +194,15 @@ export const updateBrandConfig = async (
 export type LogoUploadResponse = {
   logoUrl?: string;       // for variant 'primary'
   logoDarkUrl?: string;   // for variant 'dark'
+  faviconUrl?: string;    // for variant 'favicon'
 };
 export const uploadBrandLogo = async (
   file: File,
-  variant: "primary" | "dark" = "primary"
+  variant: "primary" | "dark" | "favicon" = "primary"
 ): Promise<LogoUploadResponse> => {
   const form = new FormData();
   form.append("logo", file);
-  if (variant === "dark") form.append("variant", "dark");
+  if (variant !== "primary") form.append("variant", variant);
   const response = await apiFetch(`${API_BASE}/api/branding/logo`, {
     method: "POST",
     body: form,
@@ -212,13 +214,14 @@ export const uploadBrandLogo = async (
   return {
     logoUrl: toAbsoluteAssetUrl(data.logoUrl) ?? undefined,
     logoDarkUrl: toAbsoluteAssetUrl(data.logoDarkUrl) ?? undefined,
+    faviconUrl: toAbsoluteAssetUrl(data.faviconUrl) ?? undefined,
   };
 };
 
-// DELETE /api/branding/logo — remove the stored primary (or ?variant=dark) logo.
+// DELETE /api/branding/logo — remove the stored primary (or ?variant=dark|favicon) logo.
 // Used by Reset-to-default. Authenticated, branding:manage.
-export const deleteBrandLogo = async (variant: "primary" | "dark" = "primary"): Promise<void> => {
-  const q = variant === "dark" ? "?variant=dark" : "";
+export const deleteBrandLogo = async (variant: "primary" | "dark" | "favicon" = "primary"): Promise<void> => {
+  const q = variant === "primary" ? "" : `?variant=${variant}`;
   const response = await apiFetch(`${API_BASE}/api/branding/logo${q}`, { method: "DELETE" });
   if (!response.ok) await throwForStatus(response, "Failed to remove logo");
 };
@@ -235,6 +238,7 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
     ...data,
     logoUrl: toAbsoluteAssetUrl(data.logoUrl),
     logoDarkUrl: toAbsoluteAssetUrl(data.logoDarkUrl),
+    faviconUrl: toAbsoluteAssetUrl(data.faviconUrl),
   };
 };
 

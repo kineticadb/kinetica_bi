@@ -330,6 +330,8 @@ export const createApp = async (): Promise<express.Express> => {
     logo_updated_at?: string | null;
     logo_dark_mime?: string | null;
     logo_dark_updated_at?: string | null;
+    favicon_mime?: string | null;
+    favicon_updated_at?: string | null;
     updated_at?: string | null;
     updated_by?: string | null;
   };
@@ -418,9 +420,9 @@ export const createApp = async (): Promise<express.Express> => {
   app.get("/api/branding", (_req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store");
     const row = db
-      .prepare("SELECT config_json, logo_mime, logo_updated_at, logo_dark_mime, logo_dark_updated_at, updated_at FROM brand_config WHERE id = 1")
+      .prepare("SELECT config_json, logo_mime, logo_updated_at, logo_dark_mime, logo_dark_updated_at, favicon_mime, favicon_updated_at, updated_at FROM brand_config WHERE id = 1")
       .get() as BrandConfigRow | undefined;
-    if (!row) return res.json({ config: {}, logoUrl: null, logoDarkUrl: null, updatedAt: null });
+    if (!row) return res.json({ config: {}, logoUrl: null, logoDarkUrl: null, faviconUrl: null, updatedAt: null });
     const config = JSON.parse(row.config_json || "{}");
     const logoUrl = row.logo_mime && row.logo_updated_at
       ? `/api/branding/logo?v=${encodeURIComponent(row.logo_updated_at)}`
@@ -428,14 +430,18 @@ export const createApp = async (): Promise<express.Express> => {
     const logoDarkUrl = row.logo_dark_mime && row.logo_dark_updated_at
       ? `/api/branding/logo?variant=dark&v=${encodeURIComponent(row.logo_dark_updated_at)}`
       : null;
-    return res.json({ config, logoUrl, logoDarkUrl, updatedAt: row.updated_at ?? null });
+    const faviconUrl = row.favicon_mime && row.favicon_updated_at
+      ? `/api/branding/logo?variant=favicon&v=${encodeURIComponent(row.favicon_updated_at)}`
+      : null;
+    return res.json({ config, logoUrl, logoDarkUrl, faviconUrl, updatedAt: row.updated_at ?? null });
   });
 
   // v1.16 Phase 81 (SECA-V116-01): public logo bytes, cache-busted by ?v= timestamp.
   // nosniff + immutable cache; rendered client-side as <img> (never inline).
   // Phase 83 Plan 04 (BRANDUI-06): supports ?variant=dark to serve the dark-mode logo.
   app.get("/api/branding/logo", (_req, res) => {
-    const variant = (_req.query as Record<string, string>).variant === "dark" ? "dark" : "primary";
+    const qv = (_req.query as Record<string, string>).variant;
+    const variant = qv === "dark" ? "dark" : qv === "favicon" ? "favicon" : "primary";
     let logoData: string | null = null;
     let logoMime: string | null = null;
     if (variant === "dark") {
@@ -444,6 +450,12 @@ export const createApp = async (): Promise<express.Express> => {
         .get() as { logo_dark_data: string | null; logo_dark_mime: string | null } | undefined;
       logoData = row?.logo_dark_data ?? null;
       logoMime = row?.logo_dark_mime ?? null;
+    } else if (variant === "favicon") {
+      const row = db
+        .prepare("SELECT favicon_data, favicon_mime FROM brand_config WHERE id = 1")
+        .get() as { favicon_data: string | null; favicon_mime: string | null } | undefined;
+      logoData = row?.favicon_data ?? null;
+      logoMime = row?.favicon_mime ?? null;
     } else {
       const row = db
         .prepare("SELECT logo_data, logo_mime FROM brand_config WHERE id = 1")
@@ -694,12 +706,19 @@ export const createApp = async (): Promise<express.Express> => {
       // multer reads text fields into req.body; variant is sent by uploadBrandLogo(file, "dark").
       // Validation (SVG content-sniff + DOMPurify + magic-byte) is IDENTICAL for both variants —
       // only the target columns and response key differ.
-      const variant = (req.body as Record<string, unknown>)?.variant === "dark" ? "dark" : "primary";
+      const bodyVariant = (req.body as Record<string, unknown>)?.variant;
+      const variant = bodyVariant === "dark" ? "dark" : bodyVariant === "favicon" ? "favicon" : "primary";
       if (variant === "dark") {
         db.prepare(
           "UPDATE brand_config SET logo_dark_data = ?, logo_dark_mime = ?, logo_dark_updated_at = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
         ).run(storedData, storedMime, ts, username);
         return res.json({ logoDarkUrl: `/api/branding/logo?variant=dark&v=${encodeURIComponent(ts)}` });
+      }
+      if (variant === "favicon") {
+        db.prepare(
+          "UPDATE brand_config SET favicon_data = ?, favicon_mime = ?, favicon_updated_at = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
+        ).run(storedData, storedMime, ts, username);
+        return res.json({ faviconUrl: `/api/branding/logo?variant=favicon&v=${encodeURIComponent(ts)}` });
       }
       db.prepare(
         "UPDATE brand_config SET logo_data = ?, logo_mime = ?, logo_updated_at = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
@@ -715,11 +734,16 @@ export const createApp = async (): Promise<express.Express> => {
     "/api/branding/logo",
     ...requirePermission(PERMISSIONS.BRANDING_MANAGE),
     (req, res) => {
-      const variant = (req.query as Record<string, string>).variant === "dark" ? "dark" : "primary";
+      const dv = (req.query as Record<string, string>).variant;
+      const variant = dv === "dark" ? "dark" : dv === "favicon" ? "favicon" : "primary";
       const username = (req as AuthedRequest).user!.creds.username;
       if (variant === "dark") {
         db.prepare(
           "UPDATE brand_config SET logo_dark_data = NULL, logo_dark_mime = NULL, logo_dark_updated_at = NULL, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
+        ).run(username);
+      } else if (variant === "favicon") {
+        db.prepare(
+          "UPDATE brand_config SET favicon_data = NULL, favicon_mime = NULL, favicon_updated_at = NULL, updated_at = datetime('now'), updated_by = ? WHERE id = 1"
         ).run(username);
       } else {
         db.prepare(

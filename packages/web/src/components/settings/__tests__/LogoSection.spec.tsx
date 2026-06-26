@@ -161,7 +161,7 @@ describe("BrandingSettingsPage — dual logo slots (BRANDUI-06)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders two LogoUploader slots in the Logo section", () => {
+  it("renders three LogoUploader slots in the Logo section (primary, dark, favicon)", () => {
     render(<BrandingSettingsPage />);
     // Primary slot: find by aria-label on the file input
     const primaryInput = document.querySelector('input[aria-label="Upload Primary logo"]');
@@ -169,9 +169,12 @@ describe("BrandingSettingsPage — dual logo slots (BRANDUI-06)", () => {
     // Dark slot: find by aria-label on the file input
     const darkInput = document.querySelector('input[aria-label="Upload Dark-mode override (optional)"]');
     expect(darkInput).not.toBeNull();
-    // Both file inputs exist
+    // Favicon slot (BRANDUI-07)
+    const faviconInput = document.querySelector('input[aria-label="Upload Favicon (optional)"]');
+    expect(faviconInput).not.toBeNull();
+    // All three file inputs exist
     const inputs = document.querySelectorAll('input[type="file"]');
-    expect(inputs.length).toBeGreaterThanOrEqual(2);
+    expect(inputs.length).toBeGreaterThanOrEqual(3);
   });
 
   it("renders the app-name text input in the Logo section", () => {

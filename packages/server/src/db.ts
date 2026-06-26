@@ -259,6 +259,9 @@ const SCHEMA_DDL = `
     logo_dark_data TEXT,
     logo_dark_mime TEXT,
     logo_dark_updated_at TEXT,
+    favicon_data TEXT,
+    favicon_mime TEXT,
+    favicon_updated_at TEXT,
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by  TEXT
   );
@@ -365,6 +368,15 @@ export const createDb = (dbPath: string): Database.Database => {
   }
   if (!brandColNames.has("logo_dark_updated_at")) {
     instance.exec("ALTER TABLE brand_config ADD COLUMN logo_dark_updated_at TEXT");
+  }
+  if (!brandColNames.has("favicon_data")) {
+    instance.exec("ALTER TABLE brand_config ADD COLUMN favicon_data TEXT");
+  }
+  if (!brandColNames.has("favicon_mime")) {
+    instance.exec("ALTER TABLE brand_config ADD COLUMN favicon_mime TEXT");
+  }
+  if (!brandColNames.has("favicon_updated_at")) {
+    instance.exec("ALTER TABLE brand_config ADD COLUMN favicon_updated_at TEXT");
   }
 
   return instance;

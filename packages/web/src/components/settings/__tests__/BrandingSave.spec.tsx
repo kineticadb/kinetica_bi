@@ -141,12 +141,9 @@ describe("BrandingSettingsPage — handleSave", () => {
     await waitFor(() => {
       expect(mockBrandStoreUpdate).toHaveBeenCalledTimes(1);
     });
-    // logoUrl may be null (no logo set in test); logoDarkUrl also null (no dark file in test)
-    expect(mockBrandStoreUpdate).toHaveBeenCalledWith(
-      savedConfig,
-      expect.toSatisfy((v: unknown) => v === null || typeof v === "string"),
-      expect.toSatisfy((v: unknown) => v === null || typeof v === "string" || v === undefined)
-    );
+    // logoUrl may be null (no logo set in test); logoDarkUrl + faviconUrl also null (none in test)
+    const nullableUrl = expect.toSatisfy((v: unknown) => v === null || typeof v === "string" || v === undefined);
+    expect(mockBrandStoreUpdate).toHaveBeenCalledWith(savedConfig, nullableUrl, nullableUrl, nullableUrl);
   });
 
   it("sets stripped notice when server-returned customCss differs from submitted", async () => {

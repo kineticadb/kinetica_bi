@@ -309,6 +309,30 @@ describe("branding routes — AUTH_MODE=password", () => {
     expect((await app.get("/api/branding/logo")).status).toBe(200);
   });
 
+  // ── Favicon variant (BRANDUI-07) ─────────────────────────────────────────────
+
+  it("favicon: upload (variant=favicon) → GET /api/branding faviconUrl set → serve 200 → DELETE → 404", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+
+    // Initially no favicon
+    expect((await app.get("/api/branding")).body.faviconUrl).toBeNull();
+
+    const up = await app.post("/api/branding/logo").set("Cookie", cookie)
+      .field("variant", "favicon").attach("logo", PNG_1x1, "fav.png");
+    expect(up.status).toBe(200);
+    expect(up.body.faviconUrl).toContain("variant=favicon");
+
+    // GET /api/branding reflects faviconUrl; serve returns the image
+    expect((await app.get("/api/branding")).body.faviconUrl).toContain("variant=favicon");
+    expect((await app.get("/api/branding/logo?variant=favicon")).status).toBe(200);
+
+    // DELETE clears only the favicon
+    expect((await app.delete("/api/branding/logo?variant=favicon").set("Cookie", cookie)).status).toBe(200);
+    expect((await app.get("/api/branding/logo?variant=favicon")).status).toBe(404);
+    expect((await app.get("/api/branding")).body.faviconUrl).toBeNull();
+  });
+
   // ── SVG sanitization (honestly-labeled) ──────────────────────────────────────
 
   it("POST /api/branding/logo: SVG with <script> is sanitized before storage (honestly labeled)", async () => {

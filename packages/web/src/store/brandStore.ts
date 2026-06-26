@@ -13,11 +13,12 @@ export type BrandState = {
   appName: string | null;      // config.appName ?? null
   logoUrl: string | null;      // relative URL to the primary logo, or null
   logoDarkUrl: string | null;  // relative URL to the dark-mode logo override, or null (BRANDUI-06)
+  faviconUrl: string | null;   // dedicated favicon, or null → falls back to logoUrl (BRANDUI-07)
   customCss: string | null;    // config.customCss ?? null
   hasLoaded: boolean;          // true after first successful bootstrap
   // Actions
   bootstrap: () => Promise<void>;
-  update: (config: BrandConfigPayload, logoUrl: string | null, logoDarkUrl?: string | null) => void;
+  update: (config: BrandConfigPayload, logoUrl: string | null, logoDarkUrl?: string | null, faviconUrl?: string | null) => void;
   /** Re-apply the last-SAVED config to :root without touching localStorage or store state.
    *  Called by App.tsx nav guard when the user confirms leaving the branding page with
    *  unsaved changes — reverts the live :root preview back to the saved brand. */
@@ -128,18 +129,27 @@ export function applyBrandTokens(config: BrandConfigPayload | null, theme: Theme
 }
 
 /**
- * Inject (or update) a <link rel="icon"> tag to set the favicon.
- * No-op in SSR / when logoUrl is absent.
+ * Inject, update, or REMOVE the <link rel="icon"> favicon.
+ * - faviconUrl set   → create/update the link.
+ * - faviconUrl null  → remove the injected link so the tab reverts to the browser
+ *   default (Reset-to-default / no brand icon). Without this, a cleared favicon
+ *   leaves a stale <link> and the old icon persists.
+ * No-op in SSR.
  */
-function injectFavicon(logoUrl: string | null): void {
-  if (typeof document === "undefined" || !logoUrl) return;
-  let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+function injectFavicon(faviconUrl: string | null): void {
+  if (typeof document === "undefined") return;
+  const existing = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+  if (!faviconUrl) {
+    if (existing) existing.remove();
+    return;
+  }
+  let link = existing;
   if (!link) {
     link = document.createElement("link");
     link.rel = "icon";
     document.head.appendChild(link);
   }
-  link.href = logoUrl;
+  link.href = faviconUrl;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +174,7 @@ export const useBrandStore = create<BrandState>((set, get) => ({
   appName: null,
   logoUrl: null,
   logoDarkUrl: null,
+  faviconUrl: null,
   customCss: null,
   hasLoaded: false,
 
@@ -191,15 +202,15 @@ export const useBrandStore = create<BrandState>((set, get) => ({
         document.title = data.config.appName ?? "Kinetica BI";
       }
 
-      // Inject/update favicon <link> in <head>
-      injectFavicon(data.logoUrl);
+      // Inject/update favicon <link> — dedicated favicon if set, else the logo (BRANDUI-07).
+      injectFavicon(data.faviconUrl ?? data.logoUrl);
 
       // Persist to localStorage — this is the exact shape Plan 82-02's inline script reads:
-      // { ...config token keys, logoUrl, logoDarkUrl, fontUrl }
+      // { ...config token keys, logoUrl, logoDarkUrl, faviconUrl, fontUrl }
       try {
         localStorage.setItem(
           BRAND_STORAGE_KEY,
-          JSON.stringify({ ...data.config, logoUrl: data.logoUrl, logoDarkUrl: data.logoDarkUrl ?? null })
+          JSON.stringify({ ...data.config, logoUrl: data.logoUrl, logoDarkUrl: data.logoDarkUrl ?? null, faviconUrl: data.faviconUrl ?? null })
         );
       } catch {
         // quota / private-mode — non-fatal; FOUC guard degrades to no-brand first frame
@@ -210,6 +221,7 @@ export const useBrandStore = create<BrandState>((set, get) => ({
         appName: data.config.appName ?? null,
         logoUrl: data.logoUrl,
         logoDarkUrl: data.logoDarkUrl ?? null,
+        faviconUrl: data.faviconUrl ?? null,
         customCss: data.config.customCss ?? null,
         hasLoaded: true,
       });
@@ -227,18 +239,20 @@ export const useBrandStore = create<BrandState>((set, get) => ({
    * logoDarkUrl is optional — existing callers (83-03 handleSave) that don't pass it
    * will preserve the current store value, so they are unaffected.
    */
-  update: (newConfig: BrandConfigPayload, newLogoUrl: string | null, newLogoDarkUrl?: string | null) => {
+  update: (newConfig: BrandConfigPayload, newLogoUrl: string | null, newLogoDarkUrl?: string | null, newFaviconUrl?: string | null) => {
     applyBrandTokens(newConfig, useThemeStore.getState().theme);
     if (typeof document !== "undefined") {
       document.title = newConfig.appName ?? "Kinetica BI";
     }
-    // Resolve logoDarkUrl: use provided value when given; else keep the current store value.
+    // Resolve optional logo variants: use the provided value when given; else keep current store value.
     const resolvedLogoDarkUrl = newLogoDarkUrl !== undefined ? newLogoDarkUrl : get().logoDarkUrl;
-    injectFavicon(newLogoUrl);
+    const resolvedFaviconUrl = newFaviconUrl !== undefined ? newFaviconUrl : get().faviconUrl;
+    // Favicon: dedicated favicon if set, else the logo (BRANDUI-07).
+    injectFavicon(resolvedFaviconUrl ?? newLogoUrl);
     try {
       localStorage.setItem(
         BRAND_STORAGE_KEY,
-        JSON.stringify({ ...newConfig, logoUrl: newLogoUrl, logoDarkUrl: resolvedLogoDarkUrl })
+        JSON.stringify({ ...newConfig, logoUrl: newLogoUrl, logoDarkUrl: resolvedLogoDarkUrl, faviconUrl: resolvedFaviconUrl })
       );
     } catch {
       // ignore quota / private-mode errors
@@ -248,6 +262,7 @@ export const useBrandStore = create<BrandState>((set, get) => ({
       appName: newConfig.appName ?? null,
       logoUrl: newLogoUrl,
       logoDarkUrl: resolvedLogoDarkUrl,
+      faviconUrl: resolvedFaviconUrl,
       customCss: newConfig.customCss ?? null,
     });
     notifyOtherTabs();
