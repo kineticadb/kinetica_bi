@@ -374,7 +374,7 @@ const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
     w: saved?.w ?? 18,
     h: saved?.h ?? 24,
     minW: 6,
-    minH: 10,
+    minH: 6,
   };
 };
 
