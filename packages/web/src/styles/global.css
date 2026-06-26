@@ -1608,7 +1608,7 @@ input[type="checkbox"],
 .widget-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
 }
 
 .widget-table th,
@@ -1672,6 +1672,14 @@ input[type="checkbox"],
 .widget-records .widget-table-wrap {
   flex: 1;
   min-height: 0;
+}
+
+/* Records table reads denser than the aggregated table — one token smaller (11px).
+   Target th/td DIRECTLY: .widget-table-compact th/td set font-size on the cells, and a
+   direct cell rule beats the inherited table-level value regardless of specificity. */
+.widget-records .widget-table th,
+.widget-records .widget-table td {
+  font-size: var(--text-sm);
 }
 
 .widget-table-th-sortable {
@@ -2845,7 +2853,9 @@ input[type="checkbox"],
 }
 .info-popup {
   position: relative;
-  background: var(--panel);
+  /* Opaque surface — --panel is translucent glass; the map behind would bleed through
+     and make text unreadable. Same --panel-solid used by modals + chart tooltips. */
+  background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
@@ -2854,24 +2864,25 @@ input[type="checkbox"],
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  font-size: var(--text-lg);
+  /* Info popup is denser than the app chrome — content (column names, record values)
+     at --text-sm (11px), one step below widget titles (--text-base/12px). */
+  font-size: var(--text-sm);
 }
 .info-selection-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Reserve right-side space for the absolute-positioned .info-popup-close button so the
-     dropdown select doesn't sit underneath the X. The card surface doesn't render a close
-     button, so the extra padding is benign there (no visible difference). */
-  padding: var(--space-2) var(--space-10) var(--space-2) var(--space-3);
+  /* Close X is now a flex child of this header (see .info-popup-close) — no reserved
+     padding needed; the gap provides breathing room between the select and the X. */
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 .info-selection-layer-select {
   flex: 1;
   min-width: 0;
-  font-size: var(--text-lg);
-  /* Match the app's standard dark dropdown (.ds-select). */
+  font-size: var(--text-sm);
+  /* Match the app's standard dark dropdown (.ds-select), incl. its --text-sm size. */
   background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -2883,20 +2894,21 @@ input[type="checkbox"],
   outline: none;
   border-color: var(--accent);
 }
+/* Header flex child (not absolute) so it vertically centers with the layer select
+   via the header's align-items: center. */
 .info-popup-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   background: transparent;
   border: none;
   cursor: pointer;
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   line-height: 1;
-  padding: 2px var(--space-2);
-  color: var(--text-muted, #6b7280);
-  z-index: 1;
+  padding: var(--space-1);
+  color: var(--muted);
 }
-.info-popup-close:hover { color: inherit; }
+.info-popup-close:hover { color: var(--text); }
 .info-selection-body {
   padding: var(--space-3);
   overflow-y: auto;
@@ -2911,9 +2923,11 @@ input[type="checkbox"],
 }
 .info-selection-error { color: #b91c1c; }
 .info-selection-row { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
-.info-selection-row-kv { width: 100%; border-collapse: collapse; }
-.info-selection-row-kv th { text-align: left; padding: 2px var(--space-2); font-weight: var(--font-weight-semibold); vertical-align: top; }
-.info-selection-row-kv td { padding: 2px var(--space-2); word-break: break-word; }
+/* table-layout: fixed + explicit column split so a long column name can't starve the
+   value column down to ~1 char wide (which forced values to wrap one letter per line). */
+.info-selection-row-kv { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.info-selection-row-kv th { width: 45%; text-align: left; padding: 2px var(--space-2); font-weight: var(--font-weight-semibold); vertical-align: top; overflow-wrap: anywhere; }
+.info-selection-row-kv td { padding: 2px var(--space-2); vertical-align: top; overflow-wrap: anywhere; }
 /* Single-record nav footer: [Back] Record N of M(+) [Next] */
 .info-selection-footer {
   padding: var(--space-2) var(--space-3);
@@ -2923,9 +2937,11 @@ input[type="checkbox"],
   justify-content: space-between;
   gap: var(--space-2);
 }
-/* Back = secondary (ghost button), Next = primary (accent) — match app button styles. */
-.info-selection-nav-back {
-  font-size: var(--text-base);
+/* Back + Next are symmetric pager controls — same ghost-button style (matches the
+   app's .ghost-sm). Neither is emphasized over the other. */
+.info-selection-nav-back,
+.info-selection-nav-next {
+  font-size: var(--text-sm);
   padding: var(--space-2) var(--space-4);
   background: transparent;
   color: var(--text);
@@ -2934,28 +2950,15 @@ input[type="checkbox"],
   cursor: pointer;
   transition: border-color var(--duration-base) ease;
 }
-.info-selection-nav-back:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-.info-selection-nav-next {
-  font-size: var(--text-base);
-  padding: var(--space-2) var(--space-5);
-  background: var(--accent);
-  color: var(--on-accent);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-weight: var(--font-weight-semibold);
-  transition: opacity var(--duration-base) ease;
-}
+.info-selection-nav-back:hover:not(:disabled),
 .info-selection-nav-next:hover:not(:disabled) {
-  opacity: 0.9;
+  border-color: var(--accent);
 }
 .info-selection-nav-back:disabled,
 .info-selection-nav-next:disabled { opacity: 0.4; cursor: not-allowed; }
 .info-selection-nav-total {
-  font-size: var(--text-base);
-  color: var(--text-muted, #6b7280);
+  font-size: var(--text-sm);
+  color: var(--muted);
   white-space: nowrap;
 }
 

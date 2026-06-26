@@ -24,8 +24,6 @@
  *     <InfoSelectionView />.
  */
 import { useEffect } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { useInfoSelectionStore } from "../../store/infoSelectionStore";
 import InfoSelectionView from "./InfoSelectionView";
 import type { DashboardLayerDto } from "../../api/client";
@@ -74,19 +72,13 @@ export default function InfoPopup({ eligibleLayers, layerNameFor, resolveTable, 
         onClick={(e) => e.stopPropagation()}
         style={{ width: `${widthPx}px`, height: `${heightPx}px` }}
       >
-        <button
-          className="info-popup-close"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          <FontAwesomeIcon icon={faXmark} />
-        </button>
         <InfoSelectionView
           eligibleLayers={eligibleLayers}
           layerNameFor={layerNameFor}
           resolveTable={resolveTable}
           emptyStateCopy="No records"
           onActiveLayerIneligible={onClose}
+          onClose={onClose}
         />
       </div>
     </div>

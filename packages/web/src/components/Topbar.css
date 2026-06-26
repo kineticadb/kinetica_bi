@@ -47,7 +47,8 @@
   top: calc(100% + var(--space-2));
   right: 0;
   min-width: 140px; /* theme-guard-ignore: dropdown minimum width, structural layout constant */
-  background: var(--panel);
+  /* Opaque surface (--panel is translucent glass) so content behind doesn't bleed through. */
+  background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);

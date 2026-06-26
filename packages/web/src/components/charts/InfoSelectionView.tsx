@@ -88,6 +88,8 @@ import type { DashboardLayerDto } from "../../api/client";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
 import { coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
 import { useColumnDisplayConfigStore, resolveLabel, resolveFormatter } from "../../store/columnDisplayConfigStore";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faXmark } from "@fortawesome/free-solid-svg-icons";
 
 type Props = {
   /** Eligibility list. Caller (popup or card wrapper) computes with its own scoping rule.
@@ -106,6 +108,10 @@ type Props = {
    *  layer deleted, spatialMode flipped to wkb). Popup uses this to dismiss; card
    *  uses it to reset the store and render empty state. */
   onActiveLayerIneligible: () => void;
+  /** Optional dismiss handler. When provided (popup), a close X renders in the header
+   *  as a flex child so it vertically centers with the layer select. The card surface
+   *  omits it (no onClose). */
+  onClose?: () => void;
 };
 
 export default function InfoSelectionView({
@@ -114,6 +120,7 @@ export default function InfoSelectionView({
   resolveTable,
   emptyStateCopy,
   onActiveLayerIneligible,
+  onClose,
 }: Props) {
   // PITFALL S-02 lock: scoped selectors. NEVER subscribe to s.state whole.
   const activeLayerId = useInfoSelectionStore((s) => s.activeLayerId);
@@ -421,6 +428,16 @@ export default function InfoSelectionView({
             </option>
           ))}
         </select>
+        {onClose && (
+          <button
+            type="button"
+            className="info-popup-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
+        )}
       </div>
       <div className="info-selection-body">
         {entry?.loading && rowsLen === 0 && (
