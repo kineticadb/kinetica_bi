@@ -1,15 +1,28 @@
+import { WcagBadge } from "./WcagBadge";
+
+/** Resolved colors for the CURRENTLY ACTIVE theme (dark or light) — used for the
+ *  WCAG summary so the preview shows contrast for the mode the app is actually in. */
+export type PreviewWcag = {
+  text: string;
+  bg: string;
+  accentText: string;
+  accent: string;
+  onAccent: string;
+};
+
 /**
  * BrandPreviewCard — compact card rendering representative app components
  * that re-skin live as the admin edits, because they all consume :root tokens.
  *
- * Shows: primary button, ghost button, a chip/badge, a text input, an accent-
- * colored label, and a faux nav-item — so component states are visible as
- * feel/color levers change.
+ * Shows: primary button, ghost button, a chip/badge, a text input, body + muted
+ * text, an accent-colored label, danger text, a faux nav-item, and (when `wcag`
+ * is provided) the active-theme WCAG critical-pair badges — so all the brandable
+ * color/text tokens are visible as feel/color levers change.
  *
- * Pure presentational: no state, no callbacks. Uses only existing app classes
- * and CSS tokens so it naturally reflects the live :root overrides.
+ * Mostly presentational. Uses only existing app classes and CSS tokens so it
+ * naturally reflects the live :root overrides.
  */
-export function BrandPreviewCard() {
+export function BrandPreviewCard({ wcag }: { wcag?: PreviewWcag }) {
   return (
     <div className="brand-preview-card" aria-label="live component preview">
       <p className="brand-preview-card-label">Preview</p>
@@ -41,9 +54,14 @@ export function BrandPreviewCard() {
         />
       </div>
 
-      {/* Accent text */}
+      {/* Text tokens: body, muted, accent, danger */}
+      <div className="brand-preview-row">
+        <span>Body text</span>
+        <span className="text-muted">Muted text</span>
+      </div>
       <div className="brand-preview-row">
         <span className="brand-preview-accent-text">Accent text label</span>
+        <span className="text-danger">Danger text</span>
       </div>
 
       {/* Faux nav item */}
@@ -53,6 +71,24 @@ export function BrandPreviewCard() {
           <span>Nav item</span>
         </div>
       </div>
+
+      {/* WCAG summary — active theme only (the mode the app is currently in) */}
+      {wcag && (
+        <div className="brand-preview-wcag">
+          <div className="brand-color-badge-row">
+            <span className="ds-field-label">Text / BG:</span>
+            <WcagBadge fg={wcag.text} bg={wcag.bg} />
+          </div>
+          <div className="brand-color-badge-row">
+            <span className="ds-field-label">Accent Text / BG:</span>
+            <WcagBadge fg={wcag.accentText} bg={wcag.bg} />
+          </div>
+          <div className="brand-color-badge-row">
+            <span className="ds-field-label">On-Accent (white) / Accent:</span>
+            <WcagBadge fg={wcag.onAccent} bg={wcag.accent} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

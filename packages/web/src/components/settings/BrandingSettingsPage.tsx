@@ -254,6 +254,24 @@ export function BrandingSettingsPage() {
   // ── Resolved draft values (draft overrides or Aurora defaults) ──────────────
   const d = draft;
 
+  // WCAG summary for the preview card — resolved for the CURRENTLY ACTIVE theme only.
+  const previewWcag =
+    theme === "light"
+      ? {
+          text: d.lightTextColor ?? LIGHT_DEFAULTS.lightTextColor,
+          bg: d.lightBgColor ?? LIGHT_DEFAULTS.lightBgColor,
+          accentText: d.lightAccentTextColor ?? LIGHT_DEFAULTS.lightAccentTextColor,
+          accent: d.lightPrimaryColor ?? LIGHT_DEFAULTS.lightPrimaryColor,
+          onAccent: "#ffffff",
+        }
+      : {
+          text: d.textColor ?? DARK_DEFAULTS.textColor,
+          bg: d.bgColor ?? DARK_DEFAULTS.bgColor,
+          accentText: d.accentTextColor ?? DARK_DEFAULTS.accentTextColor,
+          accent: d.primaryColor ?? DARK_DEFAULTS.primaryColor,
+          onAccent: "#ffffff",
+        };
+
   return (
     <div className="branding-admin" id="branding-admin-exempt">
       <div className="branding-header">
@@ -370,10 +388,10 @@ export function BrandingSettingsPage() {
                 />
               </div>
               <div className="brand-color-badge-row">
-                <span className="ds-field-label">Accent Text / Accent:</span>
+                <span className="ds-field-label">Accent Text / BG:</span>
                 <WcagBadge
                   fg={d.lightAccentTextColor ?? LIGHT_DEFAULTS.lightAccentTextColor}
-                  bg={d.lightPrimaryColor ?? LIGHT_DEFAULTS.lightPrimaryColor}
+                  bg={d.lightBgColor ?? LIGHT_DEFAULTS.lightBgColor}
                 />
               </div>
               <div className="brand-color-badge-row">
@@ -408,10 +426,10 @@ export function BrandingSettingsPage() {
                 />
               </div>
               <div className="brand-color-badge-row">
-                <span className="ds-field-label">Accent Text / Accent:</span>
+                <span className="ds-field-label">Accent Text / BG:</span>
                 <WcagBadge
                   fg={d.accentTextColor ?? DARK_DEFAULTS.accentTextColor}
-                  bg={d.primaryColor ?? DARK_DEFAULTS.primaryColor}
+                  bg={d.bgColor ?? DARK_DEFAULTS.bgColor}
                 />
               </div>
               <div className="brand-color-badge-row">
@@ -489,7 +507,7 @@ export function BrandingSettingsPage() {
         </section>
       </div>
       <aside className="branding-preview-aside">
-        <BrandPreviewCard />
+        <BrandPreviewCard wcag={previewWcag} />
       </aside>
       </div>
     </div>

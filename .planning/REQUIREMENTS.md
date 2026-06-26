@@ -35,6 +35,7 @@ Make the app white-labelable: a permitted admin brands it live (logo/name, color
 - [x] **BRANDUI-04**: The admin can adjust the "feel" levers — corner radius, density (Compact/Comfortable/Spacious), and the ambient glow on/off — plus coarse controls for type-scale (base size + ratio), spacing density, and motion speed.
 - [x] **BRANDUI-05**: The page shows a live preview of branding changes before saving, and supports Save and Reset-to-Kinetica-default.
 - [x] **BRANDUI-06**: The admin can upload an OPTIONAL dark-mode logo override in addition to the required primary logo; the client shows the dark variant in dark mode when present, else the primary, else the bundled default. (Added 2026-06-24 — uploaded logos are opaque `<img>`s and can't be auto-recolored per theme like the inline default. Spans server schema/endpoint + client selection + Phase-83 UI.)
+- [x] **BRANDUI-07**: The admin can upload an OPTIONAL dedicated favicon; the browser tab icon uses it when set, else falls back to the logo, else the browser default. (Added 2026-06-25 during Phase-83 UAT — a wide logo makes a poor favicon. Same `variant=` upload/serve/delete pattern as BRANDUI-06; Reset clears it.)
 
 ### Custom CSS Override (CSS)
 
@@ -82,15 +83,16 @@ Populated 2026-06-23 (roadmap created).
 | BRANDFND-01 | Phase 81 | Complete |
 | BRANDFND-02 | Phase 81 | Complete |
 | SECA-V116-01 | Phase 81 | Complete |
-| CSS-V116-02 | Phase 81, 83 | Partial (81: AST sanitize ✓; 83: @scope) |
+| CSS-V116-02 | Phase 81, 83 | Complete* (81: AST sanitize ✓; 83: editor + injection ✓; scoping = intentionally UNSCOPED full-power w/ branding page exempt per 83-CONTEXT — diverges from literal "scoped"; Phase 84 confirms live) |
 | BRANDFND-03 | Phase 82 | Complete |
 | BRANDFND-04 | Phase 82 | Complete |
 | BRANDUI-01 | Phase 82 | Complete |
 | BRANDUI-02 | Phase 83 | Complete |
 | BRANDUI-03 | Phase 83 | Complete |
 | BRANDUI-04 | Phase 83 | Complete |
-| BRANDUI-05 | Phase 83 | Partial (83-01: live-preview + Save/Reset skeleton + dirty-tracking + leave-revert; full Save/Reset in 83-03) |
-| BRANDUI-06 | Phase 83 | Pending (optional dark-logo override; BOTH-stack) |
+| BRANDUI-05 | Phase 83 | Complete (live-preview + dirty-tracking + leave-revert in 83-01; full Save/Reset in 83-03) |
+| BRANDUI-06 | Phase 83 | Complete (server logo_dark_* + variant upload/serve + logoDarkUrl; client Sidebar/FOUC selection; dual logo-slot UI) |
+| BRANDUI-07 | Phase 83 | Complete (favicon_* columns + variant=favicon upload/serve/delete + faviconUrl; favicon = faviconUrl ?? logoUrl; Reset clears) |
 | CSS-V116-01 | Phase 83 | Complete |
 | SECA-V116-02 | Phase 83 | Complete |
 | VERIFY-V116-01 | Phase 84 | Pending |

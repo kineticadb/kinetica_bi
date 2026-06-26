@@ -66,7 +66,7 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 - [x] **Phase 80: Token Foundation + Aurora Default Theme** — Define full token vocabulary, migrate global.css, ship Aurora dark+light, extend theme-guard
 - [x] **Phase 81: Brand Config Server Foundation** — `brand_config` table, 18th permission, 4 API routes, logo upload + SVG sanitization, CSS sanitization at save time
 - [x] **Phase 82: Client Token Pipeline + FOUC Prevention + Identity** — `brandStore`, FOUC-free inline bootstrap, live token apply, logo/name/favicon wiring across all surfaces
-- [ ] **Phase 83: Branding Admin UI** — `BrandingSettingsPage` with color pickers, WCAG badges, font picker, feel levers, live preview, Save/Reset, custom CSS editor
+- [x] **Phase 83: Branding Admin UI** — `BrandingSettingsPage` with color pickers, WCAG badges, font picker, feel levers, live preview, Save/Reset, custom CSS editor
 - [ ] **Phase 84: Verification + Live UAT** — Green automated gates both stacks + blocking operator walk-through; compiled verification record
 
 ## Phase Details

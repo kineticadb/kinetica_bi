@@ -240,6 +240,16 @@
   font-size: var(--text-sm);
 }
 
+/* WCAG summary block at the bottom of the preview (active theme only). */
+.brand-preview-wcag {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
 .brand-preview-nav-item {
   display: flex;
   align-items: center;
