@@ -39,22 +39,23 @@
 
 ## Traceability
 
-Populated during roadmap creation.
+Mapped to phases during roadmap creation (2026-06-26). Phase numbering continues from v1.16 (ended at Phase 84).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FMT-V117-01 | TBD | Pending |
-| FMT-V117-02 | TBD | Pending |
-| AXIS-V117-01 | TBD | Pending |
-| AXIS-V117-02 | TBD | Pending |
-| AXIS-V117-03 | TBD | Pending |
-| VERIFY-V117-01 | TBD | Pending |
+| FMT-V117-01 | Phase 85 | Pending |
+| FMT-V117-02 | Phase 85 | Pending |
+| AXIS-V117-01 | Phase 86 | Pending |
+| AXIS-V117-02 | Phase 86 | Pending |
+| AXIS-V117-03 | Phase 86 | Pending |
+| VERIFY-V117-01 | Phase 87 | Pending |
 
 **Coverage:**
 - v1 requirements: 6 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 6 ⚠️
+- Mapped to phases: 6 (100%)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-26*
-*Last updated: 2026-06-26 after v1.17 milestone start*
+*Last updated: 2026-06-26 after v1.17 roadmap creation (Phases 85-87, 6/6 mapped)*
+</content>

@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.17
 milestone_name: Chart Number Formatting
-status: defining-requirements
-stopped_at: v1.16 shipped + archived (2026-06-26)
-last_updated: "2026-06-26T17:49:21.841Z"
+status: roadmap-complete
+stopped_at: v1.17 roadmap created (Phases 85-87, 2026-06-26)
+last_updated: "2026-06-26T18:30:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,14 +19,63 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 — v1.17 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.17 Chart Number Formatting — defining requirements
+**Current focus:** v1.17 Chart Number Formatting — roadmap complete (Phases 85-87); next: plan Phase 85
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 85 (not started — roadmap created, awaiting plan-phase)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-26 — Milestone v1.17 Chart Number Formatting started (v1.16 shipped + archived)
+Status: Roadmap complete — 3 phases (85-87), 6/6 requirements mapped
+Last activity: 2026-06-26 — v1.17 roadmap created (Phases 85-87); next: `/gsd:plan-phase 85`
+
+### v1.17 Phase Map
+
+| Phase | Name | Stack | Key Requirements |
+|-------|------|-------|------------------|
+| 85 | SI Smart-Abbreviation Number Format (formatter + editor) | FRONTEND-ONLY | FMT-V117-01, FMT-V117-02 |
+| 86 | Chart Y-Axis Number Format (timeline + line) | FRONTEND-ONLY | AXIS-V117-01, -02, -03 |
+| 87 | Verification + Live UAT | BOTH (gates) + operator | VERIFY-V117-01 |
+
+**Dependency spine:** 85 → 86 → 87 (strictly sequential). Phase 86's Y-axis control REUSES the column number-format options including the new SI abbreviation, so Phase 85 must land first. Phase 87 verifies after both feature phases. All FRONTEND-ONLY (`packages/web`) except Phase 87's operator-involved live walk-through.
+
+### v1.17 Scope (locked 2026-06-26)
+
+**FRONTEND-ONLY** chart number formatting. Two features:
+
+1. **SI smart-abbreviation number format (Phase 85):** a "smart abbreviation" choice in the v1.15 `column-display-config` formatter lib (d3-format `~s` → k/M/G/T, e.g. 1,234,567 → "1.2M") honoring the existing decimals control, plus its exposure (live preview + per-column persistence in `column_display_config`) in the Column Format editor. Applies across EVERY existing column-display-config surface (records table, chart tooltips, axis/series labels, map info popups). REUSE the v1.15 formatter — NO duplicated formatting logic.
+2. **Per-widget Y-axis number format on timeline + line (Phase 86):** a Y-axis number-format control on the timeline + line config panels reusing the column number-format options (incl. SI). **Hybrid:** defaults to the bound value column's display-config formatter, overridable per-widget; clearing the override falls back to the column default. Applied to the **Y-axis TICK labels only** (recharts `tickFormatter`) in `TimelineRenderer` + the line chart renderer — tooltips/data labels keep their existing v1.15 column-config behavior.
+
+`d3-format` is already a web dep. NO server changes expected (flag any server diff). `AggregatedWidgetRenderer` remains the SOLE materialize trigger — this is pure read-path number formatting, no data-query coupling.
+
+### v1.17 Locked Scope Decisions (operator, 2026-06-26)
+
+- **Abbreviation = SI prefixes (k/M/G/T via d3 `~s`)**, NOT financial K/M/B/T (financial deferred → FMT-V2-01).
+- **Y-axis config = HYBRID per-widget override** — defaults from the bound column's display config; clearing the per-widget override falls back to the column default.
+- **Apply scope = Y-axis TICK labels ONLY** — the per-widget Y-axis override does NOT change tooltips or data labels (they keep their v1.15 column-config behavior).
+- **Frontend-only; reuse the v1.15 formatter lib** — no duplicated formatting logic; no server/SQL change.
+
+### v1.17 Test Gates (every phase)
+
+- **Frontend phases (85, 86):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard.spec.ts green (theme tokens only, no raw hex); server unaffected (flag any server diff).
+- **Phase 87 (verification):** ALL of the above + a blocking live operator walk-through (SI abbreviation applies across column-config surfaces; per-widget Y-axis override visible on timeline + line; default-from-bound-column confirmed; ticks-only scope confirmed — tooltips unchanged), with any gaps fixed in-session via repro-test-driven closure and re-walked to PASS.
+- **Invariant (all phases):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger — pure read-path number formatting, no data-query coupling.
+
+### v1.17 Requirement Coverage
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FMT-V117-01 | Phase 85 | Pending |
+| FMT-V117-02 | Phase 85 | Pending |
+| AXIS-V117-01 | Phase 86 | Pending |
+| AXIS-V117-02 | Phase 86 | Pending |
+| AXIS-V117-03 | Phase 86 | Pending |
+| VERIFY-V117-01 | Phase 87 | Pending |
+
+**Coverage: 6/6 (100%)**
+
+### v1.17 Open Tech Debt (carried)
+
+TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
 
 ### v1.16 Phase Map
 
