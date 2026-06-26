@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.17
 milestone_name: Chart Number Formatting
 status: unknown
-stopped_at: Completed 86-01-PLAN.md
-last_updated: "2026-06-26T19:11:45.010Z"
+stopped_at: Completed 86-02-PLAN.md
+last_updated: "2026-06-26T19:19:44.696Z"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -586,6 +586,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 83-branding-admin-ui P04 | 12 | 4 tasks | 11 files |
 | Phase 85 P01 | 370 | 2 tasks | 4 files |
 | Phase 86-chart-y-axis-number-format P01 | 326 | 2 tasks | 7 files |
+| Phase 86-chart-y-axis-number-format P02 | 271 | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -870,6 +871,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 85]: d3 specifier is .~s: +1 offset maps user-facing decimal-places to d3 significant-digit precision; ~ flag trims trailing zeros (1.0M→1M)
 - [Phase 85]: SIControls uses only existing CSS classes (config-group, config-group-label, ds-field, ds-field-label, config-hint) — no invented class names per CLAUDE.md
 - [Phase 86]: Extracted all 4 *Controls + defaultSpecForKind into FormatSpecEditor.tsx (full extraction); FormatSpecEditor.onChange accepts FormatSpec|null; yAxisFormat:undefined=cleared (never {kind:none})
+- [Phase 86-02]: Hybrid yAxisTickFormatter: cfg.yAxisFormat override → buildFormatter; else resolveFormatter(tableId, metricColumn) column-default; else identity. configVersion in deps for reactivity.
+- [Phase 86-02]: Single formatter applied to all value axes (not per-metric) — matches AXIS-V117-02 'bound value column' singular language.
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1276,6 +1279,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-26T19:11:45.001Z
-Stopped at: Completed 86-01-PLAN.md
+Last session: 2026-06-26T19:19:44.687Z
+Stopped at: Completed 86-02-PLAN.md
 Resume file: None
