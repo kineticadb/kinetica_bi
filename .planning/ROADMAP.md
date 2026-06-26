@@ -20,7 +20,7 @@
 - ✅ **v1.13 Calendar Heatmap Visualization** — Phases 65-69 incl. 68.1 / 68.2 (shipped 2026-06-18) — see `milestones/v1.13-ROADMAP.md`
 - ✅ **v1.14 Class-Break & Chart Config Refinements** — Phases 70-73 (shipped 2026-06-19) — see `milestones/v1.14-ROADMAP.md`
 - ✅ **v1.15 Column Formatting & View Lifecycle** — Phases 74-79 (shipped 2026-06-22) — see `milestones/v1.15-ROADMAP.md`
-- 🚧 **v1.16 White-Label Theming** — Phases 80-84 (in progress)
+- ✅ **v1.16 White-Label Theming** — Phases 80-84 (shipped 2026-06-26) — see `milestones/v1.16-ROADMAP.md`
 
 ---
 
@@ -44,133 +44,20 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 
 ---
 
-## v1.16 White-Label Theming — IN PROGRESS
+## v1.16 White-Label Theming — SHIPPED 2026-06-26
 
-**Milestone Goal:** Make the application white-labelable — a permitted admin can brand the app (logo + name, color palette, typography, custom CSS) from a runtime admin UI, applied live without a redeploy, on top of a polished distinctive default "Aurora" Kinetica theme.
+<details>
+<summary>✅ v1.16 (Phases 80-84) — SHIPPED 2026-06-26 — full phase details archived in milestones/v1.16-ROADMAP.md</summary>
 
-**Stack:** BOTH (server: `brand_config` SQLite table + 4 branding API routes + sanitizers; web: extended token system + `brandStore` + `BrandingSettingsPage`). New deps: web — `react-colorful`, `colord`; server — `multer`, `DOMPurify`, `postcss`.
+- [x] Phase 80: Token Foundation + Aurora Default Theme (3/3 plans)
+- [x] Phase 81: Brand Config Server Foundation (3/3 plans)
+- [x] Phase 82: Client Token Pipeline + FOUC Prevention + Identity (3/3 plans)
+- [x] Phase 83: Branding Admin UI (4/4 plans)
+- [x] Phase 84: Verification + Live UAT (14/14 operator UAT PASS)
 
-**Canonical refs:**
-- `.planning/design/CHOSEN-DIRECTION.md` (Aurora token baseline — locked)
-- `.planning/research/SUMMARY.md` (architecture + pitfalls + open decisions)
-- `packages/web/src/styles/global.css` (token migration target, ~4,440 lines)
-- `packages/server/src/db.ts` + `lib/permissions.ts` (v1.15 `column_display_config` + RBAC precedents)
-- `packages/web/src/styles/theme-guard.spec.ts` (extended structural guard)
+**Delivered:** Runtime white-label theming (logo/name, colors dark+light, fonts, feel levers, sanitized custom CSS) applied live with no redeploy and no FOUC, on the new Aurora default theme. 23/23 requirements; operator UAT 14/14 (2 gaps fixed in-session). See `MILESTONES.md` + `milestones/v1.16-ROADMAP.md`.
 
-**Open decisions to settle at plan time (flagged per phase):**
-- Open Decision 1 (Phase 81/83): Custom CSS scoping — `@scope (#root)` vs no scoping (see SUMMARY.md §Open Decisions)
-- Open Decision 2 (Phase 81): CSS sanitizer — PostCSS AST (recommended) vs regex (see SUMMARY.md §Open Decisions)
-
-### Phases
-
-- [x] **Phase 80: Token Foundation + Aurora Default Theme** — Define full token vocabulary, migrate global.css, ship Aurora dark+light, extend theme-guard
-- [x] **Phase 81: Brand Config Server Foundation** — `brand_config` table, 18th permission, 4 API routes, logo upload + SVG sanitization, CSS sanitization at save time
-- [x] **Phase 82: Client Token Pipeline + FOUC Prevention + Identity** — `brandStore`, FOUC-free inline bootstrap, live token apply, logo/name/favicon wiring across all surfaces
-- [x] **Phase 83: Branding Admin UI** — `BrandingSettingsPage` with color pickers, WCAG badges, font picker, feel levers, live preview, Save/Reset, custom CSS editor
-- [ ] **Phase 84: Verification + Live UAT** — Green automated gates both stacks + blocking operator walk-through; compiled verification record
-
-## Phase Details
-
-### Phase 80: Token Foundation + Aurora Default Theme
-**Goal**: The full structural token vocabulary is defined and enforced; Aurora dark + light mode ships as the default theme; chart colors and the theme-guard both cover the new structural tokens.
-**Depends on**: Nothing (first v1.16 phase; builds on existing CSS-token system)
-**Stack**: FRONTEND-ONLY (`packages/web`)
-**Requirements**: TOKENS-V116-01, TOKENS-V116-02, TOKENS-V116-03, TOKENS-V116-04, THEME-V116-01, THEME-V116-02, THEME-V116-03
-**Success Criteria** (what must be TRUE):
-  1. The Aurora dark-mode theme matches the approved baseline: violet `#7f40ed` on near-black `#0a0a12`, Manrope body + Space Grotesk display, compact density — every token in `.planning/design/CHOSEN-DIRECTION.md` is present in `global.css` `:root`.
-  2. Toggling dark/light re-skins the entire app coherently: panels, buttons, inputs, chips, and text all flip to the light-mode palette with a readable darker `--accent-text` on light backgrounds (two-tier accent rule holds in both modes).
-  3. Recharts axis/grid colors update when the theme flips (no hardcoded SVG presentation attributes); chart series colors remain visually distinct and not monochromatic.
-  4. The extended theme-guard fails the build if any non-token spacing, typography, radius, or motion literal is introduced into a migrated component file (regressions caught at CI, not in review).
-  5. Changing a structural token in `global.css` `:root` re-skins the whole app without touching any individual component file — verified by spot-checking 3+ components.
-**Plans**: 3 plans (Wave 1: 80-01; Wave 2: 80-02 + 80-03 parallel-safe — both depend only on 80-01; sole shared file is global.css's :root blocks)
-
-Plans:
-- [ ] 80-01-PLAN.md — Full token vocabulary in `:root` (dark) + `:root[data-theme="light"]` (light) with exact Aurora dark + warm off-white light values + two-tier accent; migrate all structural literals across global.css + the 3 component CSS files onto the tokens (normalized to clean scales) [TOKENS-V116-01/02/04, THEME-V116-01/02]
-- [ ] 80-02-PLAN.md — Aurora visual polish: self-host Manrope + Space Grotesk via @fontsource-variable (remove Google Fonts CDN), Space Grotesk display headings, hex-mesh + aurora-glow body treatment (dark vivid / light subtle), apply `--accent-text` two-tier rule; ends in a visual-verify checkpoint [THEME-V116-01/02, TOKENS-V116-04]
-- [ ] 80-03-PLAN.md — Chart + theme-guard integration: `useChartAxisColors` reads `--color-chart-*` via getComputedStyle (theme-flip + brand-ready); violet-led colorblind-aware `AURORA_CHART_PALETTE`; extend theme-guard to scan global.css + forbid structural literals (px/ms) with allow-primitives + inline pragma [THEME-V116-03, TOKENS-V116-03]
-
----
-
-### Phase 81: Brand Config Server Foundation
-**Goal**: The server-side brand persistence layer exists and is hardened — the branding API routes are live, the 18th permission gates writes, the login page can fetch brand before authentication, and logo + custom CSS save paths are sanitized against XSS/exfiltration vectors before any client code touches them.
-**Depends on**: Phase 80 (token names must be stable before the server stores them)
-**Stack**: SERVER-ONLY (`packages/server`); new deps: `multer`, `DOMPurify`, `postcss` (+ `file-type` for MIME validation)
-**Requirements**: BRANDFND-01, BRANDFND-02, SECA-V116-01, CSS-V116-02
-**Open decisions resolved at plan time**: Open Decision 2 → PostCSS AST (regex rejected — unicode-escape CVE bypass per PITFALLS.md); MIME magic-byte validation → `file-type@19` (ESM-native, Node 24-compatible)
-**Success Criteria** (what must be TRUE):
-  1. `GET /api/branding` returns the active brand config (all token overrides, app name, logo reference, custom CSS) with no authentication required — a `curl` with no session cookie returns 200 with JSON.
-  2. `PUT /api/branding` with a valid session but without `branding:manage` returns 403; with the permission it saves and a subsequent `GET /api/branding` reflects the change.
-  3. Uploading an SVG logo that contains a `<script>` tag is rejected or the script is stripped before storage; the stored value renders safely as an `<img>` tag (never inline or `dangerouslySetInnerHTML`).
-  4. Submitting custom CSS containing `url(https://attacker.com)` or `@import` to `PUT /api/branding` stores a sanitized version with those declarations removed — verified via supertest.
-  5. `GET /api/branding` carries `Cache-Control: no-cache, no-store` so a reverse proxy cannot serve a stale brand to the login page.
-**Plans**: 3 plans (Wave 1: 81-01 foundation; Wave 2: 81-02 routes — depends on 81-01; Wave 3: 81-03 CSS sanitizer + both-auth-mode tests — depends on 81-02. Strictly sequential: routes need the table+permission, the CSS sanitizer wires into the PUT route.)
-
-Plans:
-- [x] 81-01-PLAN.md — `brand_config` singleton DDL + `INSERT OR IGNORE` seed in db.ts + `BRANDING_MANAGE` 18th permission (server + web `lib/permissions.ts` byte-parity mirror; `rbacSeed.ts` needs NO change) + bump `lib.permissions.spec.ts` lock 17→18 [BRANDFND-01, BRANDFND-02]
-- [x] 81-02-PLAN.md — 4 branding API routes: `GET /api/branding` + `GET /api/branding/logo` (unauthenticated, before requireAuth wall), `PUT /api/branding` + `POST /api/branding/logo` (gated on `branding:manage`); multer + `file-type@19` magic-byte MIME check + DOMPurify SVG sanitization; route supertests (password mode) [BRANDFND-01, BRANDFND-02, SECA-V116-01]
-- [x] 81-03-PLAN.md — `brandCssSanitizer.ts` (PostCSS AST walk, 64KB cap) wired into PUT before storage; unit spec + CSS-vector integration tests + AUTH_MODE=oidc smoke block (both-auth-mode gate) [CSS-V116-02, SECA-V116-01]
-
----
-
-### Phase 82: Client Token Pipeline + FOUC Prevention + Identity
-**Goal**: Brand tokens flow from server to browser at startup; the app never flashes the default Kinetica theme on load/reload; logo, app name, and favicon are drawn from the brand store across every surface; brand changes by an admin propagate to other open tabs without a hard refresh.
-**Depends on**: Phase 81 (server routes must exist for the client to bootstrap from)
-**Stack**: FRONTEND-ONLY (`packages/web`)
-**Requirements**: BRANDFND-03, BRANDFND-04, BRANDUI-01
-**Success Criteria** (what must be TRUE):
-  1. On a throttled (Slow 3G) hard reload with a custom brand set, the custom brand colors are visible from the very first painted frame — no flash of the default Kinetica violet before brand loads.
-  2. After an admin saves a new primary color, other open tabs (on a different browser or incognito) pick up the change within seconds — without the user manually refreshing.
-  3. The sidebar (expanded) and login page display the uploaded logo as an `<img>` element (never inline SVG / `dangerouslySetInnerHTML`); app name replaces every "Kinetica BI" hardcoded string; the browser tab favicon reflects the brand. (Topbar logo excluded per 82-CONTEXT decision 2026-06-24 — deferred; Topbar has no brand mark today.)
-  4. `localStorage("kbi-brand-tokens")` is populated after every authoritative brand fetch, and the `index.html` inline script reads it synchronously before any stylesheet parses — confirmed by inspecting the DOM before React hydration.
-**Plans**: 3 plans
-
-Plans:
-- [ ] 82-01-PLAN.md — Foundation: `brandStore.ts` (bootstrap/applyBrandTokens setProperty+removeProperty, localStorage cache, BroadcastChannel + window.focus refetch, theme subscription, document.title), `fetchBranding()` client fn, `BrandStyleInjector.tsx` (textContent), App.tsx wiring [BRANDFND-03]
-- [ ] 82-02-PLAN.md — FOUC: extend the `index.html` inline `<head>` IIFE to read `kbi-brand-tokens` + apply token `setProperty` + inject font/favicon `<link>` before first paint [BRANDFND-04]
-- [ ] 82-03-PLAN.md — Identity wiring: `Sidebar.tsx` logo `<img>` (custom or bundled `logo-default.svg`) + `LoginPage.tsx` appName (both branches) + `Sidebar.spec.tsx` update; Topbar intentionally excluded [BRANDUI-01]
-
----
-
-### Phase 83: Branding Admin UI
-**Goal**: A permitted admin can brand the app end-to-end from a single settings page — picking colors with live WCAG feedback, choosing fonts, adjusting feel levers, previewing changes live before saving, and injecting sanitized custom CSS — all without a redeploy.
-**Depends on**: Phase 82 (token pipeline must work before the UI can preview live changes)
-**Stack**: BOTH (`packages/web` + a small `packages/server` schema/endpoint touch for the optional dark logo — see BRANDUI-06); new web deps: `react-colorful`, `colord`
-**Requirements**: BRANDUI-02, BRANDUI-03, BRANDUI-04, BRANDUI-05, BRANDUI-06, CSS-V116-01, SECA-V116-02
-**Open decisions to resolve at plan time**: Open Decision 1 (custom CSS scoping — `@scope (#root)` vs no scoping); whether `:root` token overrides via custom CSS are allowed or blocked if `@scope` is chosen
-**Scope addition (2026-06-24)**: BRANDUI-06 — optional dark-mode logo override (one required primary + optional dark). Additive: `brand_config` gains optional `logo_dark_*` columns + dark-variant upload/serve (server), `logoDarkUrl` in `GET /api/branding` + theme-aware selection in `Sidebar.tsx`/FOUC script (client), and a second optional upload slot in the settings UI. The bundled DEFAULT logo already themes via inline SVG (`DefaultLogo.tsx`) — this is only for customer uploads.
-**Success Criteria** (what must be TRUE):
-  1. An admin changing the primary accent color in the color picker sees every button, focus ring, and active-state swatch update live on the page before hitting Save — without a page reload or API call.
-  2. Setting a color combination that fails WCAG AA contrast (e.g. light text on light background) shows a visible FAIL badge next to the affected token pair in both dark and light mode simultaneously — the admin cannot unknowingly ship an illegible palette.
-  3. An admin can pick a body font and a display font from the curated list; switching fonts updates the live preview instantly and the selection persists through Save + reload.
-  4. Adjusting the density lever (Compact / Comfortable / Spacious) visibly changes the spacing rhythm across the preview; corner-radius and glow on/off controls produce observable visual changes.
-  5. Pasting CSS with a `url()` data-exfiltration pattern into the custom CSS editor and saving is rejected server-side (sanitized); the admin sees the stored CSS (minus the blocked declaration) after save — the escape hatch works for legitimate selectors and is blocked for known attack vectors.
-**Plans**: 4 plans (Wave 1: 83-01 foundation; Wave 2: 83-02; Wave 3: 83-03; Wave 4: 83-04 — page-building plans sequenced to share BrandingSettingsPage.tsx without clobbering)
-
-Plans:
-- [x] 83-01-PLAN.md — Foundation: extend BrandConfigPayload + applyBrandTokens (display-font, feel-levers, accent-text) + export applyBrandTokens + revertToSaved; --glow-opacity in global.css; page scaffold + branding nav (gated, hide-don't-disable) + App.tsx state-based leave-guard; updateBrandConfig/uploadBrandLogo client fns [BRANDUI-05]
-- [ ] 83-02-PLAN.md — Colors (18 react-colorful pickers, dark|light) + WCAG warn-only badges (colord, both modes) + Fonts (curated body+display selects) [BRANDUI-02, BRANDUI-03, SECA-V116-02]
-- [ ] 83-03-PLAN.md — Feel levers (density/radius/glow/type-scale/motion) + compact preview card + full Save/Reset-to-Aurora + Custom CSS editor (CodeMirror lang-css, debounced draft inject, stripped-declarations notice, page exempt) [BRANDUI-04, BRANDUI-05, CSS-V116-01]
-- [ ] 83-04-PLAN.md — BRANDUI-06 dark-logo: server logo_dark_* columns + variant upload/serve + logoDarkUrl in GET (+ both-auth supertests); client brandStore.logoDarkUrl + Sidebar/FOUC theme selection + dual logo-slot UI [BRANDUI-06]
-
----
-
-### Phase 84: Verification + Live UAT
-**Goal**: The entire v1.16 milestone is proven correct — automated gates green on both stacks and a blocking live operator walk-through attests every brandable capability end-to-end with a compiled verification record.
-**Depends on**: Phase 83 (all features must be complete)
-**Stack**: BOTH + operator
-**Requirements**: VERIFY-V116-01
-**Success Criteria** (what must be TRUE):
-  1. All automated gates pass: frontend vitest 100% from `packages/web`; web `tsc` clean; server `tsc` clean; server vitest SET-BASED (failing files ⊆ TD-V16-TEST-ISOLATION); theme-guard green including the extended structural-token guard.
-  2. The live operator walk-through attests: Aurora default theme renders correctly in dark and light mode out-of-the-box; an admin can brand logo/name/colors/fonts/feel live with no FOUC on apply + reload; Reset restores the Kinetica defaults cleanly.
-  3. Custom CSS sanitization is verified live: injecting a `url()` exfiltration pattern is blocked; a legitimate CSS rule (e.g. `button { letter-spacing: 0.05em }`) applies and persists through reload.
-  4. A user without `branding:manage` cannot access the Branding settings page and `PUT /api/branding` returns 403.
-  5. Any gaps surfaced during the live walk-through are fixed in-session with repro-test-driven closure and re-walked to PASS before the verification record is compiled.
-**Plans**: TBD
-
-Plans:
-- [ ] 84-01: Automated gate run + gap triage (both stacks, theme-guard, server supertests both auth modes)
-- [ ] 84-02: Live operator walk-through — default Aurora dark+light; brand logo/name/colors/fonts/feel live; no-FOUC verify; custom-CSS sanitize+scope; WCAG feedback; logo-upload validation; non-permitted user blocked
-- [ ] 84-03: Compile 84-VERIFICATION.md; fix any in-session gaps; re-walk PASS
+</details>
 
 ---
 
@@ -185,11 +72,7 @@ Plans:
 | 65–69 incl. 68.1/68.2 | v1.13 | — | Complete | 2026-06-18 |
 | 70–73 | v1.14 | — | Complete | 2026-06-19 |
 | 74–79 | v1.15 | 11/11 | Complete | 2026-06-22 |
-| 80 | v1.16 | 0/3 | Not started | - |
-| 81 | v1.16 | 3/3 | Complete | BRANDFND-01/02, SECA-V116-01, CSS-V116-02 |
-| 82 | v1.16 | 0/3 | Not started | - |
-| 83 | v1.16 | 1/4 | In progress | 83-01 complete (2026-06-25) |
-| 84 | v1.16 | 0/3 | Not started | - |
+| 80–84 | v1.16 | 13/13 | Complete (UAT 14/14) | 2026-06-26 |
 
 ---
 
