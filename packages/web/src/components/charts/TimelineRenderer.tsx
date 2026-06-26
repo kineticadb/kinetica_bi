@@ -59,7 +59,10 @@ import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import { DEFAULT_COLOR_THEME, MAX_METRICS, type TimelineConfig } from "./TimelineConfigPanel";
 // Phase 77 Plan 02 (COLAPPLY-V115-02): column label + value formatting at tooltip.
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
+import { resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+// Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
+import { buildFormatter } from "../../lib/columnFormatter";
 
 type Props = {
   widget: WidgetDto;
@@ -138,6 +141,21 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   }, [tableId, loadConfig]);
   // metricColumn for tooltip: first metric's source column (single-metric / grouped case).
   const metricColumn = metrics[0]?.column ?? "";
+
+  // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
+  // configVersion dep ensures the column-default refreshes when the column's display config is edited.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const yAxisTickFormatter = useMemo(() => {
+    if (cfg.yAxisFormat) {
+      const fmt = buildFormatter(cfg.yAxisFormat);
+      return (v: unknown) => String(fmt(v) ?? v);
+    }
+    if (tableId !== undefined && metricColumn !== "") {
+      const fmt = resolveFormatter(tableId, metricColumn);
+      return (v: unknown) => String(fmt(v) ?? v);
+    }
+    return (v: unknown) => String(v ?? "");
+  }, [cfg.yAxisFormat, tableId, metricColumn, configVersion]);
 
   // ----- Empty-state gates -----
   if (tableId === undefined || tableRef === undefined) {
@@ -533,15 +551,17 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                 orientation="bottom"
                 stroke={X_AXIS_COLOR}
                 tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
+                tickFormatter={yAxisTickFormatter}
               />
             ) : (
               <YAxis
                 key={AXIS_IDS[0]}
                 type="number"
                 yAxisId={AXIS_IDS[0]}
-                width={60}
+                width={64}
                 stroke={X_AXIS_COLOR}
                 tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
+                tickFormatter={yAxisTickFormatter}
               />
             )
           ) : (
@@ -556,6 +576,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                     orientation={AXIS_ORIENTATIONS[i] === "left" ? "bottom" : "top"}
                     stroke={toCssColor(m.color)}
                     tick={tickStyle}
+                    tickFormatter={yAxisTickFormatter}
                   />
                 );
               }
@@ -565,9 +586,10 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                   type="number"
                   yAxisId={AXIS_IDS[i]}
                   orientation={AXIS_ORIENTATIONS[i]}
-                  width={60}
+                  width={64}
                   stroke={toCssColor(m.color)}
                   tick={tickStyle}
+                  tickFormatter={yAxisTickFormatter}
                 />
               );
             })

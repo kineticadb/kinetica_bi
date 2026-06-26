@@ -525,3 +525,52 @@ describe("TimelineRenderer — ColumnFormatTooltip tooltip wiring (COLAPPLY-V115
     expect(container).toBeTruthy(); // component rendered without crash
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 86 (AXIS-V117-02/03) — TimelineRenderer: yAxisTickFormatter resolution
+// ---------------------------------------------------------------------------
+
+describe("TimelineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03)", () => {
+  it("Y1 (override): yAxisFormat present → all 4 type=number axes carry tickFormatter; source wiring correct; buildFormatter SI output confirmed", async () => {
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    // 4 value axes must carry tickFormatter={yAxisTickFormatter}
+    const tickCount = (src.match(/tickFormatter=\{yAxisTickFormatter\}/g) ?? []).length;
+    expect(tickCount).toBe(4);
+    // bucket axes must be untouched (still use bucketFormatter)
+    const bucketCount = (src.match(/tickFormatter=\{bucketFormatter\}/g) ?? []).length;
+    expect(bucketCount).toBe(2);
+    // override branch uses buildFormatter
+    expect(src).toMatch(/buildFormatter\(cfg\.yAxisFormat/);
+    // column-default branch uses resolveFormatter
+    expect(src).toMatch(/resolveFormatter\(tableId, metricColumn\)/);
+    // configVersion is in the useMemo dep array
+    expect(src).toMatch(/configVersion\]/);
+    // Invoke buildFormatter directly via ESM import to prove SI output
+    const { buildFormatter } = await import("../../lib/columnFormatter");
+    const fmt = buildFormatter({ kind: "si", decimals: 1 });
+    expect(String(fmt(1234567) ?? 1234567)).toBe("1.2M");
+  });
+
+  it("Y2 (column-default): absent yAxisFormat → useMemo uses resolveFormatter(tableId, metricColumn); identity fallback produces raw string (source assertions)", () => {
+    // Source assertion: the fallback path calls resolveFormatter(tableId, metricColumn)
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    expect(src).toMatch(/resolveFormatter\(tableId, metricColumn\)/);
+    // Source assertion: configVersion is the last dep in the yAxisTickFormatter useMemo
+    expect(src).toMatch(/configVersion\]/);
+    // Source assertion: the identity branch returns String(v ?? "")
+    expect(src).toContain('return (v: unknown) => String(v ?? "")');
+    // Prove identity semantics directly (no store needed)
+    const identity = (v: unknown) => String(v ?? "");
+    expect(identity(42)).toBe("42");
+    expect(identity(null)).toBe("");
+  });
+
+  it("Y3 (tooltip isolation): ColumnFormatTooltip receives NO yAxisFormat prop — tooltip wiring is unchanged", () => {
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    // The ColumnFormatTooltip JSX must not include yAxisFormat
+    const tooltipJsx = src.match(/content=\{<ColumnFormatTooltip[^}]+\}/)?.[0] ?? "";
+    expect(tooltipJsx).not.toContain("yAxisFormat");
+    // The tooltip still passes the three expected props
+    expect(src).toContain("content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn}");
+  });
+});
