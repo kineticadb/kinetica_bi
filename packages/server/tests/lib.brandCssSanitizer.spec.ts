@@ -72,6 +72,46 @@ describe("sanitizeCssPostcss — legitimate CSS preserved", () => {
   });
 });
 
+describe("sanitizeCssPostcss — resilient parse (strip only the bad part)", () => {
+  it("a syntax error in one rule does NOT discard valid sibling rules", () => {
+    // Tolerant parser recovers per-rule: the malformed middle rule must not
+    // wipe the valid rules before and after it.
+    const raw =
+      "button { color: red } .broken {{{ bad } .ok { letter-spacing: 0.05em }";
+    const result = sanitizeCssPostcss(raw);
+    expect(result).toContain("color: red");
+    expect(result).toContain("letter-spacing");
+  });
+
+  it("strips a blocked declaration but keeps valid declarations in the same rule", () => {
+    const result = sanitizeCssPostcss(
+      "button { letter-spacing: 0.05em; background: url(https://attacker.com); color: blue }"
+    );
+    expect(result).not.toContain("attacker.com");
+    expect(result).not.toContain("url(");
+    expect(result).toContain("letter-spacing");
+    expect(result).toContain("color: blue");
+  });
+
+  it("strips a blocked rule entirely but keeps valid rules even with malformed CSS present", () => {
+    const raw =
+      "@import url('evil.css'); .a { color: red } garbage!!! .b { font-weight: bold }";
+    const result = sanitizeCssPostcss(raw);
+    expect(result).not.toContain("@import");
+    expect(result).toContain("color: red");
+    expect(result).toContain("font-weight");
+  });
+
+  it("removes the empty shell left when a rule's only declaration was stripped", () => {
+    const result = sanitizeCssPostcss(
+      ".only-bad { background: url(x) } .good { color: green }"
+    );
+    expect(result).not.toContain("url(");
+    expect(result).not.toContain("only-bad"); // empty rule dropped, no `{}` litter
+    expect(result).toContain("color: green");
+  });
+});
+
 describe("sanitizeCssPostcss — edge cases", () => {
   it("returns empty string for empty input", () => {
     expect(sanitizeCssPostcss("")).toBe("");

@@ -6,7 +6,7 @@
 // reach the walker. The CSS document itself is mutated via node.remove() only, never
 // via regex replacement. Runs at PUT /api/branding save time, BEFORE storage (defense
 // before write). Phase 83 handles @scope wrapping at injection.
-import postcss from "postcss";
+import safeParse from "postcss-safe-parser";
 
 // Resolve CSS unicode escapes (e.g. \72 → r, \000075 → u) in a string.
 // This is needed because PostCSS preserves raw declaration values without resolving
@@ -38,13 +38,17 @@ const BLOCKED_AT_RULES = new Set([
 
 /**
  * Sanitize custom CSS using a PostCSS AST walk. Returns the sanitized CSS string.
- * Empty/invalid input → "" (never throws).
+ *
+ * Uses postcss-safe-parser (tolerant) rather than the strict parser: a syntax
+ * error in ONE rule no longer discards the whole stylesheet. The parser recovers
+ * per-rule, and the walk strips only the offending at-rules / declarations — valid
+ * rules are preserved. Empty input → "" (never throws).
  */
 export function sanitizeCssPostcss(raw: string): string {
   if (!raw || typeof raw !== "string") return "";
   const capped = raw.slice(0, 65_536); // 64 KB cap (DoS guard)
   try {
-    const root = postcss.parse(capped);
+    const root = safeParse(capped);
     root.walk((node) => {
       if (node.type === "atrule") {
         if (BLOCKED_AT_RULES.has(node.name.toLowerCase())) {
@@ -67,6 +71,15 @@ export function sanitizeCssPostcss(raw: string): string {
           node.remove();
         }
       }
+    });
+    // Removing the only declaration from a rule (or all rules from an @media
+    // block) leaves an empty shell like `button {}`. Drop those so stripping a
+    // single bad part doesn't litter the saved CSS with empty rulesets.
+    root.walkRules((rule) => {
+      if (rule.nodes.length === 0) rule.remove();
+    });
+    root.walkAtRules((at) => {
+      if (Array.isArray(at.nodes) && at.nodes.length === 0) at.remove();
     });
     return root.toString();
   } catch {

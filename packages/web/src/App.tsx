@@ -192,7 +192,9 @@ const App = () => {
         parsed.page === "users" ||
         parsed.page === "roles" ||
         parsed.page === "profile" ||
-        parsed.page === "branding"
+        // Branding is permission-gated: never restore it for a user who lacks
+        // branding:manage (server enforces too, but don't strand them on the page).
+        (parsed.page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE))
       ) {
         setPage(parsed.page);
       }
@@ -213,6 +215,18 @@ const App = () => {
     }
     // Run once per status transition into "authenticated".
   }, [status]);
+
+  // Client-side access gate for the branding page: if the active page is
+  // "branding" but the user lacks branding:manage (e.g. their role changed
+  // mid-session, or a stale restored page), fall back to dashboards. The nav
+  // link is already hidden and the server returns 403 on PUT — this closes the
+  // gap where the page itself was still reachable/rendered.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (page === "branding" && !hasPermission(PERMISSIONS.BRANDING_MANAGE)) {
+      setPage("dashboards");
+    }
+  }, [status, page, hasPermission]);
 
   // Phase 11 MAP-01/MAP-02: probe WMS capabilities once per authenticated session.
   // Fires AFTER auth-status gating so it only runs when the user is authenticated
@@ -285,7 +299,7 @@ const App = () => {
         {page === "settings" && (
           <div className="muted">Section coming soon.</div>
         )}
-        {page === "branding" && <BrandingSettingsPage />}
+        {page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE) && <BrandingSettingsPage />}
         {page === "users" && <UsersPage />}
         {page === "roles" && <RolesPage />}
         {page === "profile" && <ProfilePage />}

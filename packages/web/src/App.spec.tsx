@@ -69,6 +69,11 @@ vi.mock("./components/ProfilePage", () => ({
   ProfilePage: () => <main data-testid="page-profile">Profile</main>,
 }));
 
+// Stub BrandingSettingsPage — App's permission-gated render branch is what we test here.
+vi.mock("./components/settings/BrandingSettingsPage", () => ({
+  BrandingSettingsPage: () => <main data-testid="page-branding">Branding</main>,
+}));
+
 import App from "./App";
 import { dropFilterView, dropDynamicView, PERMISSION_DENIED_EVENT, fetchMe, listUsers } from "./api/client";
 import { seedUserAdminStore, seedAnalystStore } from "./test/seedAuthStore";
@@ -570,6 +575,40 @@ describe("App — ROLES-V18-01: RolesPage render branch + OIDC ReturnTo restore"
     render(<App />);
     // The RolesPage stub renders data-testid="page-roles"
     expect(await screen.findByTestId("page-roles")).toBeInTheDocument();
+  });
+});
+
+// Phase 84 (Test 14): branding page is client-gated on branding:manage, not just
+// the hidden nav link — a non-permitted user who reaches page='branding' (restored
+// from sessionStorage or a stale state) must NOT land on the page.
+describe("App — branding page permission gate (Test 14)", () => {
+  it("does NOT restore/render branding for a user without branding:manage", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "branding" }));
+    setAuth({ status: "unknown" });
+    const { rerender } = render(<App />);
+    setAuth({
+      status: "authenticated",
+      authMode: "oidc",
+      user: { username: "analyst", roles: ["analyst"], permissions: [] },
+    });
+    rerender(<App />);
+    // Falls back to dashboards; branding page never rendered.
+    expect(await screen.findByTestId("page-dashboards")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-branding")).not.toBeInTheDocument();
+  });
+
+  it("restores/renders branding for a user WITH branding:manage", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "branding" }));
+    setAuth({ status: "unknown" });
+    const { rerender } = render(<App />);
+    setAuth({
+      status: "authenticated",
+      authMode: "oidc",
+      user: { username: "admin", roles: ["admin"], permissions: [PERMISSIONS.BRANDING_MANAGE] },
+    });
+    rerender(<App />);
+    expect(await screen.findByTestId("page-branding")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-dashboards")).not.toBeInTheDocument();
   });
 });
 
