@@ -23,6 +23,8 @@ import { CB_COLOR_THEMES, getCbColorTheme, themeColorsFor } from "../../lib/cbCo
 import type { NumericMetric, NumericAggregation } from "../../lib/numericBin";
 import { DEFAULT_MAX_BUCKETS } from "../../lib/numericBin";
 import { MAX_METRICS, DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
+import { type FormatSpec } from "../../lib/columnFormatter";
+import { FormatSpecEditor } from "./FormatSpecEditor";
 
 export type NumericLineConfig = {
   tableId?: number;
@@ -30,6 +32,7 @@ export type NumericLineConfig = {
   dynamicViewId?: number; // future-compat; not exposed in picker yet
   xField: string; // numeric X-axis column
   groupByColumn?: string; // Phase 72: optional group-by dimension. Non-empty → single-metric series-split.
+  yAxisFormat?: FormatSpec; // Phase 86: per-widget Y-axis tick formatter override. Absent → bound column default.
   metrics: NumericMetric[]; // length 0..4
   maxBuckets: number; // default 50
   showLegend: boolean;
@@ -76,6 +79,7 @@ export default function NumericLineConfigPanel({
   const xField = cfg.xField ?? "";
   const groupByColumn = cfg.groupByColumn ?? "";
   const grouped = groupByColumn !== "";
+  const yAxisFormat = cfg.yAxisFormat ?? null;
   const metrics = cfg.metrics ?? [];
   const maxBuckets = cfg.maxBuckets ?? DEFAULT_MAX_BUCKETS;
   const showLegend = cfg.showLegend ?? true;
@@ -486,6 +490,17 @@ export default function NumericLineConfigPanel({
             />
             <span>Vertical orientation</span>
           </label>
+
+          {/* Y-Axis Format — Phase 86 */}
+          <div className="config-group-label" style={{ marginTop: 16 }}>Y-AXIS FORMAT</div>
+          <FormatSpecEditor
+            spec={yAxisFormat}
+            onChange={(s) => patch({ yAxisFormat: s ?? undefined })}
+          />
+          <div className="config-hint">
+            Applied to the Y-axis tick labels only (tooltips + data labels keep their column
+            formatting). Applied to all Y-axis metrics. Clear to use the bound column&apos;s default.
+          </div>
         </>
       )}
     </div>

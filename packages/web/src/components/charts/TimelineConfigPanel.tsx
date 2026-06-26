@@ -24,6 +24,8 @@ import {
 import { CB_COLOR_THEMES, getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import type { TimelineMetric, TimelineAggregation } from "../../lib/timelineBin";
 import { DEFAULT_MAX_INTERVALS } from "../../lib/timelineBin";
+import { type FormatSpec } from "../../lib/columnFormatter";
+import { FormatSpecEditor } from "./FormatSpecEditor";
 
 export const MAX_METRICS = 4;
 export const DEFAULT_COLOR_THEME = "Set2"; // 8-color ColorBrewer qualitative (locked)
@@ -34,6 +36,7 @@ export type TimelineConfig = {
   dynamicViewId?: number;     // future-compat; not exposed in picker yet (defer to follow-up)
   timeCol: string;
   groupByColumn?: string;     // Phase 72: optional group-by dimension. Non-empty → single-metric series-split.
+  yAxisFormat?: FormatSpec;   // Phase 86: per-widget Y-axis tick formatter override. Absent → bound column default.
   metrics: TimelineMetric[];  // length 0..4
   maxIntervals: number;       // default 200
   showLegend: boolean;
@@ -82,6 +85,7 @@ export default function TimelineConfigPanel({
   const timeCol = cfg.timeCol ?? "";
   const groupByColumn = cfg.groupByColumn ?? "";
   const grouped = groupByColumn !== "";
+  const yAxisFormat = cfg.yAxisFormat ?? null;
   const metrics = cfg.metrics ?? [];
   const maxIntervals = cfg.maxIntervals ?? DEFAULT_MAX_INTERVALS;
   const showLegend = cfg.showLegend ?? true;
@@ -520,6 +524,17 @@ export default function TimelineConfigPanel({
               value={dateFormatOverride}
               onChange={(e) => patch({ dateFormatOverride: e.target.value })}
             />
+          </div>
+
+          {/* Y-Axis Format — Phase 86 */}
+          <div className="config-group-label" style={{ marginTop: 16 }}>Y-AXIS FORMAT</div>
+          <FormatSpecEditor
+            spec={yAxisFormat}
+            onChange={(s) => patch({ yAxisFormat: s ?? undefined })}
+          />
+          <div className="config-hint">
+            Applied to the Y-axis tick labels only (tooltips + data labels keep their column
+            formatting). Applied to all Y-axis metrics. Clear to use the bound column&apos;s default.
           </div>
         </>
       )}

@@ -322,4 +322,39 @@ describe("TimelineConfigPanel", () => {
       expect(call.groupByColumn).toBe("");
     });
   });
+
+  // ---- Phase 86: Y-axis format control (AXIS-V117-01, AXIS-V117-02) ----
+
+  describe("Y-Axis Format (Phase 86)", () => {
+    it("Test Y1: Y-AXIS FORMAT label renders in OPTIONS section when a table is selected", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      expect(screen.getByText("Y-AXIS FORMAT")).toBeInTheDocument();
+    });
+
+    it("Test Y2: selecting 'si' on the Format kind select calls onChange with yAxisFormat: { kind: 'si', ... }", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
+      fireEvent.change(kindSelect, { target: { value: "si" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as TimelineConfig;
+      expect(call.yAxisFormat).toMatchObject({ kind: "si" });
+    });
+
+    it("Test Y3: selecting '— Use column default —' calls onChange with yAxisFormat: undefined", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+        yAxisFormat: { kind: "si", decimals: 1 },
+      });
+      const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
+      fireEvent.change(kindSelect, { target: { value: "" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as TimelineConfig;
+      expect(call.yAxisFormat).toBeUndefined();
+    });
+  });
 });
