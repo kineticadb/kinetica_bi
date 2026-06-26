@@ -40,7 +40,12 @@ export type FormatSpecD3 = {
 
 export type FormatSpecNone = { kind: "none" }; // explicit no-op (operator cleared a prior spec)
 
-export type FormatSpec = FormatSpecNumber | FormatSpecDate | FormatSpecD3 | FormatSpecNone;
+export type FormatSpecSI = {
+  kind: "si";
+  decimals: number;   // 0..N — maps to d3 SIGNIFICANT-digit precision via (decimals + 1)
+};
+
+export type FormatSpec = FormatSpecNumber | FormatSpecDate | FormatSpecD3 | FormatSpecNone | FormatSpecSI;
 
 // ---------------------------------------------------------------------------
 // Internal: month name tables (UTC, mirrors columnTypes.ts MONTH_NAMES pattern)
@@ -185,6 +190,20 @@ function buildD3Formatter(spec: FormatSpecD3): (v: unknown) => string | unknown 
   };
 }
 
+function buildSIFormatter(spec: FormatSpecSI): (v: unknown) => string | unknown {
+  const d3Spec = `.${spec.decimals + 1}~s`;
+  return (v: unknown): string | unknown => {
+    if (v === null || v === undefined) return v;
+    const n = typeof v === "number" ? v : Number(v);
+    if (isNaN(n)) return v;
+    try {
+      return d3Format(d3Spec)(n);
+    } catch {
+      return v; // invalid spec → raw value, never throw
+    }
+  };
+}
+
 function buildDateFormatter(spec: FormatSpecDate): (v: unknown) => string | unknown {
   return (v: unknown): string | unknown => {
     if (v === null || v === undefined) return v;
@@ -217,6 +236,7 @@ function buildDateFormatter(spec: FormatSpecDate): (v: unknown) => string | unkn
  * - kind:"number"       → number formatting; percent preset appends literal %, NO ×100
  * - kind:"d3"           → raw d3 specifier; d3's % type DOES ×100 (intentional escape hatch)
  * - kind:"date"         → hand-rolled UTC formatter (5 presets + custom token pattern)
+ * - kind:"si"           → SI smart-abbreviation (d3 ~s: k/M/G/T); decimals maps to precision via decimals+1
  *
  * All formatters: null/undefined pass through unchanged; type mismatch returns raw value.
  */
@@ -234,6 +254,8 @@ export function buildFormatter(
       return buildD3Formatter(spec);
     case "date":
       return buildDateFormatter(spec);
+    case "si":
+      return buildSIFormatter(spec);
     default: {
       // Exhaustiveness guard (TypeScript will catch unhandled kinds at compile time)
       const _exhaustive: never = spec;

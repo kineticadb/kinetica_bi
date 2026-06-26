@@ -282,6 +282,44 @@ describe("buildFormatter / kind:none + identity cases", () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildFormatter — kind: "si" (smart abbreviation)
+// ---------------------------------------------------------------------------
+
+describe("buildFormatter / kind:si", () => {
+  it("decimals=1 abbreviates millions: 1234567 → '1.2M'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(1234567)).toBe("1.2M");
+  });
+  it("decimals=1 abbreviates billions: 3400000000 → '3.4G'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(3400000000)).toBe("3.4G");
+  });
+  it("decimals=0 → '1M'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 0 })(1234567)).toBe("1M");
+  });
+  it("decimals=2 → '1.23M'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 2 })(1234567)).toBe("1.23M");
+  });
+  it("sub-kilo stays unabbreviated: 500 → '500'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(500)).toBe("500");
+  });
+  it("1000 → '1k'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(1000)).toBe("1k");
+  });
+  it("zero → '0'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(0)).toBe("0");
+  });
+  it("negative uses d3 Unicode minus: -1234567 → '−1.2M'", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(-1234567)).toBe("−1.2M");
+  });
+  it("null/undefined pass through", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })(null)).toBe(null);
+    expect(buildFormatter({ kind: "si", decimals: 1 })(undefined)).toBe(undefined);
+  });
+  it("non-numeric input → raw value (never throws)", () => {
+    expect(buildFormatter({ kind: "si", decimals: 1 })("abc")).toBe("abc");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // defaultFormatKind
 // ---------------------------------------------------------------------------
 
