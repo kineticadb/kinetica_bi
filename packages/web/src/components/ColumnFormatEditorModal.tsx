@@ -24,6 +24,7 @@ import {
   type FormatSpecNumber,
   type FormatSpecDate,
   type FormatSpecD3,
+  type FormatSpecSI,
 } from "../lib/columnFormatter";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,8 @@ function defaultSpecForKind(kind: FormatSpec["kind"]): FormatSpec {
       return { kind: "date", preset: "iso" };
     case "d3":
       return { kind: "d3", specifier: "" };
+    case "si":
+      return { kind: "si", decimals: 1 };
     case "none":
     default:
       return { kind: "none" };
@@ -393,6 +396,7 @@ function ColumnEditorForm({
           <option value="number">Number</option>
           <option value="date">Date</option>
           <option value="d3">Advanced (d3-format)</option>
+          <option value="si">Smart abbreviation (k / M / G / T)</option>
         </select>
       </div>
 
@@ -412,6 +416,12 @@ function ColumnEditorForm({
       {spec.kind === "d3" && (
         <D3Controls
           spec={spec as FormatSpecD3}
+          onChange={onSpecChange}
+        />
+      )}
+      {spec.kind === "si" && (
+        <SIControls
+          spec={spec as FormatSpecSI}
           onChange={onSpecChange}
         />
       )}
@@ -595,6 +605,40 @@ function D3Controls({
       <div className="config-hint">
         Uses raw d3-format semantics: the <code>%</code> type multiplies by 100 here
         (unlike the Number &rarr; Percent preset which appends a literal % with no ×100).
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: SIControls
+// ---------------------------------------------------------------------------
+function SIControls({
+  spec,
+  onChange,
+}: {
+  spec: FormatSpecSI;
+  onChange: (s: FormatSpec) => void;
+}): JSX.Element {
+  return (
+    <div className="config-group">
+      <div className="config-group-label">Smart abbreviation</div>
+      <div className="ds-field">
+        <label className="ds-field-label">Decimal places</label>
+        <input
+          type="number"
+          min={0}
+          value={spec.decimals}
+          onChange={(e) => {
+            const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+            onChange({ ...spec, decimals: v });
+          }}
+          aria-label="Decimal places"
+        />
+      </div>
+      <div className="config-hint">
+        e.g. 1,234,567 → 1.2M · 3,400,000,000 → 3.4G. Uses SI prefixes (k / M / G / T);
+        decimal places ≈ significant digits after the prefix.
       </div>
     </div>
   );

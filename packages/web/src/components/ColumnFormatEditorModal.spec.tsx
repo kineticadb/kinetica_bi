@@ -1,5 +1,5 @@
 /**
- * ColumnFormatEditorModal spec — Phase 76 Plan 01
+ * ColumnFormatEditorModal spec — Phase 76 Plan 01 + Phase 85 Plan 01
  *
  * Coverage:
  *   T1 — renders label input with placeholder = raw column name (COLEDIT-V115-02)
@@ -12,6 +12,7 @@
  *   T8 — editing label + format then Save calls upsertColumnDisplayConfig + upsertColumn (COLEDIT-V115-03 persist)
  *   T9 — kind "none" + empty label → Save calls deleteColumnDisplayConfig + removeColumn
  *   T10 — rejected upsert fires error toast; modal stays open; isDirty preserved
+ *   T11 — switching kind to Smart abbreviation shows decimal-places control + SI live preview (FMT-V117-02)
  */
 
 import React from "react";
@@ -367,5 +368,26 @@ describe("ColumnFormatEditorModal", () => {
 
     // Save button still enabled (isDirty preserved)
     expect(screen.getByRole("button", { name: /^save$/i })).not.toBeDisabled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // T11: switching kind to Smart abbreviation shows decimal-places control + SI live preview
+  // ---------------------------------------------------------------------------
+  it("T11: switching kind to Smart abbreviation shows decimal-places control + SI live preview", async () => {
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
+    });
+
+    const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
+    fireEvent.change(kindSelect, { target: { value: "si" } });
+
+    // SIControls decimal-places input appears
+    expect(screen.getByLabelText(/decimal places/i)).toBeInTheDocument();
+
+    // Live preview renders SAMPLE_NUMBER (1234567.891) abbreviated at default decimals=1
+    const preview = screen.getByTestId("live-preview");
+    expect(preview).toHaveTextContent("1.2M");
   });
 });
