@@ -54,12 +54,11 @@ import type { CalendarConfig } from "./CalendarConfigPanel";
 /*  Layout constants                                                   */
 /* ------------------------------------------------------------------ */
 
-const CELL_PX = 14;
+const CELL_PX = 9; // ~3/5 of the former 14px — denser grid, more room (operator request)
 const GAP = 2;
 const LEFT_AXIS_WIDTH = 52;
 const TOP_AXIS_HEIGHT = 32;
-const LEGEND_HEIGHT = 28;
-const LEGEND_SWATCH = 14;
+const LEGEND_SWATCH = CELL_PX; // legend swatches match the calendar cell size
 
 /* ------------------------------------------------------------------ */
 /*  decodeSqlResponse — verbatim from TimelineRenderer.tsx lines 86-100 */
@@ -605,8 +604,11 @@ export default function CalendarRenderer({
         </div>
       )}
 
+      {/* Calendar grid + vertical legend laid out in a row so the legend is a
+          compact right-hand strip (frees vertical space for the grid). */}
+      <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0, width: "100%" }}>
       {/* Scrollable SVG wrapper */}
-      <div style={{ overflow: "auto", flex: 1, width: "100%" }}>
+      <div style={{ overflow: "auto", flex: 1, minWidth: 0 }}>
         <svg
           data-testid="calendar-renderer"
           width={svgWidth}
@@ -704,16 +706,18 @@ export default function CalendarRenderer({
         </svg>
       </div>
 
-      {/* ---- Discrete Less→More legend ---- */}
+      {/* ---- Discrete Less→More legend (vertical strip on the LEFT via order: -1) ---- */}
       <div
         data-testid="calendar-legend"
         style={{
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           gap: 4,
-          height: LEGEND_HEIGHT,
           padding: "4px 8px",
           flexShrink: 0,
+          alignSelf: "flex-start",
+          order: -1,
         }}
       >
         <span style={{ fontSize: 11, color: axis }}>Less</span>
@@ -729,6 +733,7 @@ export default function CalendarRenderer({
           />
         ))}
         <span style={{ fontSize: 11, color: axis }}>More</span>
+      </div>
       </div>
     </div>
   );
