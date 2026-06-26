@@ -3667,7 +3667,7 @@ input[type="checkbox"],
   max-width: 280px;
   max-height: calc(100% - 24px);
   overflow-y: auto;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   pointer-events: auto;
 }
 
@@ -3683,7 +3683,7 @@ input[type="checkbox"],
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
   user-select: none;
   border-bottom: 1px solid var(--border);
@@ -3691,7 +3691,7 @@ input[type="checkbox"],
 }
 
 .layers-legend-panel-body {
-  padding: var(--space-2) 0;
+  padding: var(--space-1) 0;
 }
 
 .layers-legend-panel-layer-block {
@@ -3703,8 +3703,8 @@ input[type="checkbox"],
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 5px var(--space-3); /* theme-guard-ignore: legend row compact height; 5px is between --space-1(4px) and --space-2(8px) */
-  font-size: var(--text-base);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
 }
 
 /* Layer name grows so the render-mode chip stays right-aligned next to the
@@ -3721,9 +3721,9 @@ input[type="checkbox"],
   background: none;
   border: none;
   color: var(--muted);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   cursor: pointer;
-  padding: 0 2px;
+  padding: 0 var(--space-0);
   flex-shrink: 0;
 }
 
@@ -3820,7 +3820,7 @@ input[type="checkbox"],
 }
 
 .layers-legend-panel-empty {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   font-style: italic;
   color: var(--muted);
   font-size: var(--text-sm);
