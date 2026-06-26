@@ -55,6 +55,7 @@ import { resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
 import { buildFormatter } from "../../lib/columnFormatter";
+import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 
 type Props = {
   widget: WidgetDto;
@@ -426,6 +427,15 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
       )
     : [];
 
+  // Phase 87 (UAT): size the value axis to its formatted tick labels rather than a fixed
+  // width, so short SI labels ("18M") reclaim left-edge space for the plot while long raw
+  // values ("1,234,567") still fit. recharts 2.x YAxis width is a fixed number (no "auto").
+  const yValueKeys = grouped ? top.series : metrics.map((_, i) => `metric_${i}`);
+  const yAxisWidth = estimateValueAxisWidth(
+    data.flatMap((row) => yValueKeys.map((k) => Number((row as Record<string, unknown>)[k]))),
+    (v) => yAxisTickFormatter(v),
+  );
+
   return (
     <div
       className="widget-timeline"
@@ -486,7 +496,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
               dataKey="bucket"
               stroke={X_AXIS_COLOR}
               tick={{ fontSize: 11, fill: X_AXIS_COLOR }}
-              width={64}
+              width={yAxisWidth}
               minTickGap={24}
               tickFormatter={bucketFormatter}
             />
@@ -520,7 +530,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
                 key={AXIS_IDS[0]}
                 type="number"
                 yAxisId={AXIS_IDS[0]}
-                width={64}
+                width={yAxisWidth}
                 stroke={X_AXIS_COLOR}
                 tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
                 tickFormatter={yAxisTickFormatter}
@@ -548,7 +558,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
                   type="number"
                   yAxisId={AXIS_IDS[i]}
                   orientation={AXIS_ORIENTATIONS[i]}
-                  width={64}
+                  width={yAxisWidth}
                   stroke={toCssColor(m.color)}
                   tick={tickStyle}
                   tickFormatter={yAxisTickFormatter}
