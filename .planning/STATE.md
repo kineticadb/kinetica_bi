@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 90-02-PLAN.md
-last_updated: "2026-06-27T23:31:47.602Z"
+stopped_at: Completed 90-03-PLAN.md
+last_updated: "2026-06-27T23:49:33.812Z"
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -614,6 +614,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 89-store-server-foundation P01 | 393 | 3 tasks | 6 files |
 | Phase 90-combination-orchestrator P01 | 300 | 1 tasks | 2 files |
 | Phase 90 P02 | 7 | 2 tasks | 5 files |
+| Phase 90 P03 | 8min | 3 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -912,6 +913,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 90-01]: Test isolation via vi.resetModules() + dynamic import for module-level Map state in materializeFilter specs
 - [Phase 90]: MAX_COMBINATION_VIEWS_PER_TABLE env var name matches filterCombinationStore constant name for 1:1 correspondence; auth store field maxCombinationViewsPerTable read by Plan 03 orchestrator
 - [Phase 90]: Coalesce to 10 (not 0) in fetchMe for backward compat with older server builds that omit the field
+- [Phase 90]: DUAL-TRIGGER: useCombinationOrchestrator runs alongside AggregatedWidgetRenderer Effect 1 (combination views have _c<hash8> suffix — no collision); renderers read filterViewStore until Phase 91/92 flips the read path
+- [Phase 90]: combinationVersion excluded from Effect deps — adding it would cause infinite re-fire loop; proven by spec scenario 10 (no-loop test)
+- [Phase 90]: NON_TRIGGER_TYPES copied not imported in orchestrator — circular dep risk; extended with radiogroup + calendar beyond useMapOnlySpatialMaterialize original
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1318,6 +1322,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-27T23:31:47.593Z
-Stopped at: Completed 90-02-PLAN.md
+Last session: 2026-06-27T23:42:44.069Z
+Stopped at: Completed 90-03-PLAN.md
 Resume file: None
