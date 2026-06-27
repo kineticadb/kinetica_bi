@@ -1832,29 +1832,23 @@ input[type="checkbox"],
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--input-bg);
   color: var(--text);
   font-size: var(--text-lg);
   outline: none;
 }
 
 .login-field input:focus {
-  border-color: var(--accent-2);
+  border-color: var(--accent);
 }
 
 .login-error {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #fecaca;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   font-size: var(--text-lg);
-}
-
-/* Light theme: dark-on-tint for legibility (50.3 follow-up — same broken-contrast class). */
-:root[data-theme="light"] .login-error {
-  color: #b91c1c;
-  border-color: rgba(185, 28, 28, 0.45);
 }
 
 :root[data-theme="light"] .login-banner {
@@ -1891,7 +1885,7 @@ input[type="checkbox"],
 
 .logout-btn:hover {
   color: var(--text);
-  border-color: var(--accent-2);
+  border-color: var(--accent);
 }
 
 /* --- Phase 3 additions --- */
@@ -4400,7 +4394,9 @@ input[type="checkbox"],
   right: 0;
   top: calc(100% + 4px);
   z-index: 200;
-  background: var(--panel);
+  /* Opaque --panel-solid (not the translucent --panel) so table rows behind the
+     popover don't bleed through — same fix as the info-popup / modals. */
+  background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
