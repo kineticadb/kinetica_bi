@@ -714,7 +714,7 @@ export default function CalendarRenderer({
           flexDirection: "column",
           alignItems: "center",
           gap: 4,
-          padding: "4px 8px",
+          padding: "4px 4px",
           flexShrink: 0,
           alignSelf: "flex-start",
           order: -1,
