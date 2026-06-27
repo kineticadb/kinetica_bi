@@ -1036,10 +1036,10 @@ const BarRenderer = ({
   const yTitle = (config.yAxisLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
   // Axis title objects (Recharts), or undefined when blank.
   const xLabelObj = xTitle
-    ? { value: xTitle, position: "insideBottom" as const, offset: -4, fill: AXIS_COLOR, fontSize: 12 }
+    ? { value: xTitle, position: "insideBottom" as const, offset: -4, fill: AXIS_COLOR, fontSize: 11 }
     : undefined;
   const yLabelObj = yTitle
-    ? { value: yTitle, angle: -90, position: "insideLeft" as const, fill: AXIS_COLOR, fontSize: 12, style: { textAnchor: "middle" as const } }
+    ? { value: yTitle, angle: -90, position: "insideLeft" as const, fill: AXIS_COLOR, fontSize: 11, style: { textAnchor: "middle" as const } }
     : undefined;
 
   // Phase 10 DRILL-04: dim-peers transient — non-active <Cell> elements drop to 0.3
@@ -1101,10 +1101,12 @@ const BarRenderer = ({
   );
 
   return (
-    // Full-height wrapper so the ResponsiveContainer fills the widget body (matches the
-    // TimelineRenderer pattern) — without it the aggregated charts under-filled, leaving
-    // dead space below the chart. Phase 87 (UAT).
-    <div style={{ width: "100%", height: "100%" }}>
+    // Bulletproof fill: a relative full-height box with an absolutely-positioned inset:0
+    // child gives ResponsiveContainer a concrete pixel-sized parent, so the chart fills the
+    // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
+    // plain height:100% left dead space below the bars.
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div style={{ position: "absolute", inset: 0 }}>
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={data}
@@ -1121,13 +1123,13 @@ const BarRenderer = ({
         {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={horizontal} horizontal={!horizontal} />}
         {horizontal ? (
           <>
-            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} tickFormatter={valueAxisTickFormatter} />
-            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={yTitle ? 112 : 90} label={yLabelObj} />
+            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={xLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={yTitle ? 112 : 90} label={yLabelObj} />
           </>
         ) : (
           <>
-            <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} />
-            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={valueAxisWidth + (yTitle ? 22 : 0)} label={yLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={xLabelObj} />
+            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (yTitle ? 22 : 0)} label={yLabelObj} tickFormatter={valueAxisTickFormatter} />
           </>
         )}
         {showTooltip && (
@@ -1136,7 +1138,7 @@ const BarRenderer = ({
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
           />
         )}
-        {showLegend && <Legend wrapperStyle={{ paddingTop: 6 }} />}
+        {showLegend && <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} />}
         <Bar
           dataKey={y}
           fill={color}
@@ -1178,6 +1180,7 @@ const BarRenderer = ({
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    </div>
     </div>
   );
 };
