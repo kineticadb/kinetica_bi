@@ -169,6 +169,11 @@ export const createApp = async (): Promise<express.Express> => {
   const DEFAULT_VIEW_TTL_MINUTES = readPositiveIntEnv("DEFAULT_VIEW_TTL_MINUTES", 5);
   const TTL_KEEPALIVE_LEAD_MINUTES = readPositiveIntEnv("TTL_KEEPALIVE_LEAD_MINUTES", 1);
 
+  // ---- Phase 90 (COMBO-V118-03): per-table combination-view ceiling ----
+  // Deploy-time tuning knob; read ONCE at boot, fallback+warn on invalid (mirrors the TTL knobs).
+  // Default 10 matches the web-side MAX_COMBINATION_VIEWS_PER_TABLE constant (filterCombinationStore.ts).
+  const MAX_COMBINATION_VIEWS_PER_TABLE = readPositiveIntEnv("MAX_COMBINATION_VIEWS_PER_TABLE", 10);
+
   // Dev-mode split-port workaround (TD-V11-01): when set, prefixes post-OIDC-callback
   // redirects with an absolute origin so the SPA on Vite loads after login. Empty in
   // production (Express serves the built SPA same-origin, so relative paths just work).
@@ -402,7 +407,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
