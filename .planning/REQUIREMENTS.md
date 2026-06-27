@@ -52,27 +52,25 @@
 
 ## Traceability
 
-Populated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FSCOPE-V118-01 | TBD | Pending |
-| FSCOPE-V118-02 | TBD | Pending |
-| FSCOPE-V118-03 | TBD | Pending |
-| COMBO-V118-01 | TBD | Pending |
-| COMBO-V118-02 | TBD | Pending |
-| COMBO-V118-03 | TBD | Pending |
-| COMBO-V118-04 | TBD | Pending |
-| READ-V118-01 | TBD | Pending |
-| READ-V118-02 | TBD | Pending |
-| COMM-V118-01 | TBD | Pending |
-| VERIFY-V118-01 | TBD | Pending |
+| FSCOPE-V118-01 | Phase 93 | Pending |
+| FSCOPE-V118-02 | Phase 93 | Pending |
+| FSCOPE-V118-03 | Phase 94 | Pending |
+| COMBO-V118-01 | Phase 90 | Pending |
+| COMBO-V118-02 | Phase 89 | Pending |
+| COMBO-V118-03 | Phase 90 | Pending |
+| COMBO-V118-04 | Phase 91 | Pending |
+| READ-V118-01 | Phase 91 | Pending |
+| READ-V118-02 | Phase 92 | Pending |
+| COMM-V118-01 | Phase 95 | Pending |
+| VERIFY-V118-01 | Phase 96 | Pending |
 
 **Coverage:**
 - v1 requirements: 11 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-27*
-*Last updated: 2026-06-27 after v1.18 milestone start (research-driven)*
+*Last updated: 2026-06-27 — roadmap created (phases 88–96)*

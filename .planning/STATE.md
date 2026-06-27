@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
-status: defining-requirements
-stopped_at: v1.17 shipped + archived (2026-06-27)
-last_updated: "2026-06-27T18:17:32.879Z"
+status: roadmap-created
+stopped_at: v1.18 roadmap created (2026-06-27)
+last_updated: "2026-06-27T00:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 9
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,61 +19,83 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.18 Per-Visualization Filter Selection — researching + defining requirements
+**Current focus:** v1.18 Per-Visualization Filter Selection — roadmap created, ready for Phase 88 planning
 
 ## Current Position
 
-Phase: Not started (researching / defining requirements)
+Phase: 88 (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-27 — Milestone v1.18 Per-Visualization Filter Selection started (v1.17 shipped + archived)
+Status: Roadmap created
+Last activity: 2026-06-27 — Roadmap created for v1.18 Per-Visualization Filter Selection (phases 88–96)
 
-### v1.17 Phase Map
+### v1.18 Phase Map
 
-| Phase | Name | Stack | Key Requirements |
-|-------|------|-------|------------------|
-| 85 | SI Smart-Abbreviation Number Format (formatter + editor) | FRONTEND-ONLY | FMT-V117-01, FMT-V117-02 |
-| 86 | Chart Y-Axis Number Format (timeline + line) | FRONTEND-ONLY | AXIS-V117-01, -02, -03 |
-| 87 | Verification + Live UAT | BOTH (gates) + operator | VERIFY-V117-01 |
+| Phase | Name | Stack | Key Requirements | Research Flag |
+|-------|------|-------|------------------|---------------|
+| 88 | Foundation — Pure Logic + Types | FRONTEND-ONLY | FSCOPE-V118-01 (partial), COMBO-V118-01 (partial) | None |
+| 89 | Store + Server Foundation | BOTH (frontend-heavy) | COMBO-V118-02, COMBO-V118-03, COMBO-V118-04 (partial) | None |
+| 90 | Combination-Orchestrator | FRONTEND-ONLY | COMBO-V118-01, COMBO-V118-03 | REQUIRED — ownership semantics + diff/dispatch algorithm |
+| 91 | WidgetRenderer Wiring | FRONTEND-ONLY | READ-V118-01, COMBO-V118-04 | None |
+| 92 | MapChartRenderer Wiring | FRONTEND-ONLY | READ-V118-02, COMBO-V118-04 (cross-cutting) | None |
+| 93 | Filter Scope Config UI | BOTH (frontend-heavy) | FSCOPE-V118-01, FSCOPE-V118-02 | None |
+| 94 | Dynamic View Filter Scope Wiring | BOTH | FSCOPE-V118-03 | REQUIRED — three source-type cases + server branching |
+| 95 | On-Widget Badge Indicator | FRONTEND-ONLY | COMM-V118-01 | None |
+| 96 | Verification + Live UAT | BOTH + operator | VERIFY-V118-01 | None |
 
-**Dependency spine:** 85 → 86 → 87 (strictly sequential). Phase 86's Y-axis control REUSES the column number-format options including the new SI abbreviation, so Phase 85 must land first. Phase 87 verifies after both feature phases. All FRONTEND-ONLY (`packages/web`) except Phase 87's operator-involved live walk-through.
+**Dependency spine:** 88 → 89 → 90 → 91 → 92 → 93 → 94 → 95 → 96 (strictly sequential for the core engine path). Phase 93 (config UI) may overlap with 92; Phase 95 (badge) may overlap with 94 — both safe because absent filterScope falls through to accept-all.
 
-### v1.17 Scope (locked 2026-06-26)
+**SERVER-touching phases:** 89 (filterCombinationStore keep-alive + viewNaming.ts hashKey8 + POST /api/filter/materialize optional combinationKey param + DELETE extension), 93 (SQLite migration: filter_selection column on dashboard_dynamic_views + PATCH /api/dynamic-view/:id extension), 94 (env flag for dv filter-scope disable, exposed on /api/me mirroring ttlKeepaliveLeadMinutes).
 
-**FRONTEND-ONLY** chart number formatting. Two features:
+### v1.18 Scope (locked 2026-06-27)
 
-1. **SI smart-abbreviation number format (Phase 85):** a "smart abbreviation" choice in the v1.15 `column-display-config` formatter lib (d3-format `~s` → k/M/G/T, e.g. 1,234,567 → "1.2M") honoring the existing decimals control, plus its exposure (live preview + per-column persistence in `column_display_config`) in the Column Format editor. Applies across EVERY existing column-display-config surface (records table, chart tooltips, axis/series labels, map info popups). REUSE the v1.15 formatter — NO duplicated formatting logic.
-2. **Per-widget Y-axis number format on timeline + line (Phase 86):** a Y-axis number-format control on the timeline + line config panels reusing the column number-format options (incl. SI). **Hybrid:** defaults to the bound value column's display-config formatter, overridable per-widget; clearing the override falls back to the column default. Applied to the **Y-axis TICK labels only** (recharts `tickFormatter`) in `TimelineRenderer` + the line chart renderer — tooltips/data labels keep their existing v1.15 column-config behavior.
+BOTH stacks (web-heavy; small server touch). Key locked decisions:
 
-`d3-format` is already a web dep. NO server changes expected (flag any server diff). `AggregatedWidgetRenderer` remains the SOLE materialize trigger — this is pure read-path number formatting, no data-query coupling.
+1. **Selection model = source-widget allow-list ONLY** — lists only filter-PRODUCING widgets (chart drill-downs, DataFilter, map spatial draws); NOT records table, map info popup, legend. Per-column exclusion dropped → deferred FSCOPE-V2-02.
+2. **Default = accept-all (opt-out)** — absent filterScope means all filters apply; byte-identical to v1.17 for unconfigured dashboards (COMBO-V118-04 correctness gate).
+3. **View dedup:** one Kinetica materialized view per UNIQUE resolved filter combination; reuse existing `fingerprint()` pattern for dedup key (no new deps); ref-counted `combinationViews` slice; FNV-1a hash8 only for the Kinetica view NAME suffix (`_c{hash8}`).
+4. **Per-table combination ceiling:** deploy-time ENV VAR (default ~10, read once at boot w/ fallback+warn, mirroring v1.15 TTL env vars); over-ceiling combinations fall back to the full all-filters view + warning.
+5. **Dynamic-view filter scope IS in v1.18** but behind a deploy-time DISABLE env flag (Phase 94).
+6. **WMS layers:** `filterScope` is a TOP-LEVEL layer field (like track_config). READ-V118-02 = WMS request only swaps the per-combination VIEW NAME — filters never travel in the WMS request. Both buildWmsParams sites + dep keys.
+7. **On-widget badge** ("N of M filters") shown only when ≥1 active filter is ignored (Phase 95).
+8. **Combination-orchestrator** (Phase 90) is the sole-materialize-trigger for combination views — mirrors useDynamicViewMaterializeChain; must precede renderer wiring.
 
-### v1.17 Locked Scope Decisions (operator, 2026-06-26)
+### v1.18 Test Gates (every phase)
 
-- **Abbreviation = SI prefixes (k/M/G/T via d3 `~s`)**, NOT financial K/M/B/T (financial deferred → FMT-V2-01).
-- **Y-axis config = HYBRID per-widget override** — defaults from the bound column's display config; clearing the per-widget override falls back to the column default.
-- **Apply scope = Y-axis TICK labels ONLY** — the per-widget Y-axis override does NOT change tooltips or data labels (they keep their v1.15 column-config behavior).
-- **Frontend-only; reuse the v1.15 formatter lib** — no duplicated formatting logic; no server/SQL change.
+- **Frontend phases (88, 90, 91, 92, 95):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard green.
+- **Server-touching phases (89, 93, 94):** ALL of the above + supertests in BOTH auth modes; server `tsc` clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
+- **Phase 96 (verification):** ALL of the above + a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
+- **Invariant (all phases):** sole-materialize-trigger — static grep: `grep -r "materializeFilter|dropFilterView" packages/web/src/components/charts/` finds only authorized call sites. No individual chart renderer calls these functions.
 
-### v1.17 Test Gates (every phase)
-
-- **Frontend phases (85, 86):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard.spec.ts green (theme tokens only, no raw hex); server unaffected (flag any server diff).
-- **Phase 87 (verification):** ALL of the above + a blocking live operator walk-through (SI abbreviation applies across column-config surfaces; per-widget Y-axis override visible on timeline + line; default-from-bound-column confirmed; ticks-only scope confirmed — tooltips unchanged), with any gaps fixed in-session via repro-test-driven closure and re-walked to PASS.
-- **Invariant (all phases):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger — pure read-path number formatting, no data-query coupling.
-
-### v1.17 Requirement Coverage
+### v1.18 Requirement Coverage
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FMT-V117-01 | Phase 85 | Pending |
-| FMT-V117-02 | Phase 85 | Pending |
-| AXIS-V117-01 | Phase 86 | Pending |
-| AXIS-V117-02 | Phase 86 | Pending |
-| AXIS-V117-03 | Phase 86 | Pending |
-| VERIFY-V117-01 | Phase 87 | Pending |
+| FSCOPE-V118-01 | Phase 93 | Pending |
+| FSCOPE-V118-02 | Phase 93 | Pending |
+| FSCOPE-V118-03 | Phase 94 | Pending |
+| COMBO-V118-01 | Phase 90 | Pending |
+| COMBO-V118-02 | Phase 89 | Pending |
+| COMBO-V118-03 | Phase 90 | Pending |
+| COMBO-V118-04 | Phase 91 | Pending |
+| READ-V118-01 | Phase 91 | Pending |
+| READ-V118-02 | Phase 92 | Pending |
+| COMM-V118-01 | Phase 95 | Pending |
+| VERIFY-V118-01 | Phase 96 | Pending |
 
-**Coverage: 6/6 (100%)**
+**Coverage: 11/11 (100%)**
 
-### v1.17 Open Tech Debt (carried)
+### v1.18 Key Architectural Decisions (locked)
+
+- **New store:** `filterCombinationStore` keyed by stableComboHash string (not tableId); parallel to filterViewStore pattern; becomes the 9th store in both cleanup chains (App.tsx + DashboardsPage.tsx).
+- **stableComboHash:** deterministic sorted-JSON key encoding sourceType + sourceId + resolved filter array; NOFILTER sentinel for empty (no view created); comboShortHash (FNV-1a 8-char) for Kinetica view name suffix.
+- **Orchestrator hook:** mirrors useDynamicViewMaterializeChain; fires on filterVersion tick; computes unique combinations; diffs registry; fires exactly one POST per new combination; enforces MAX_COMBINATION_VIEWS_PER_TABLE ceiling with fallback to global view.
+- **Server extension:** viewNaming.ts gains optional `comboShort?` param (byte-identical when absent); POST /api/filter/materialize accepts optional `combinationKey` in body; DELETE extended to accept viewName directly for combination-view cleanup.
+- **Read path A (WidgetRenderer):** filterViewStore.views[tableId] selectors replaced with filterCombinationStore.vizToHash[vizKey] + registry[hash] selectors; Effect 1 rewritten; combinationVersion replaces clearMaterializingVersion as Effect 2 dep.
+- **Read path B (MapChartRenderer):** viewsKey replaced with comboViewsKey; BOTH buildWmsParams call sites (Effect 2 line ~1229 + Effect 3 line ~1477) read from combination entries; both dep arrays updated.
+- **layer.filterScope:** TOP-LEVEL layer field, never nested in layer.config — track_config-toplevel-field recurring pattern.
+- **PITFALL S-02 lock:** all store selectors project to primitive strings (vizToHash[vizKey] scoped to one entry, or combinationVersion integer); never subscribe to the registry object.
+
+### v1.18 Open Tech Debt (carried from v1.17)
 
 TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
 
