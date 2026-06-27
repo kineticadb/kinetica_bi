@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
-status: roadmap-created
-stopped_at: v1.18 roadmap created (2026-06-27)
-last_updated: "2026-06-27T00:00:00.000Z"
+status: unknown
+stopped_at: Completed 88-01-PLAN.md
+last_updated: "2026-06-27T21:27:13.413Z"
 progress:
   total_phases: 9
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,14 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.18 Per-Visualization Filter Selection — roadmap created, ready for Phase 88 planning
+**Current focus:** Phase 88 — foundation-pure-logic-types
 
 ## Current Position
 
-Phase: 88 (not started)
-Plan: —
-Status: Roadmap created
-Last activity: 2026-06-27 — Roadmap created for v1.18 Per-Visualization Filter Selection (phases 88–96)
+Phase: 88 (foundation-pure-logic-types) — EXECUTING
+Plan: 1 of 1
 
 ### v1.18 Phase Map
 
@@ -611,6 +609,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 85 P01 | 370 | 2 tasks | 4 files |
 | Phase 86-chart-y-axis-number-format P01 | 326 | 2 tasks | 7 files |
 | Phase 86-chart-y-axis-number-format P02 | 271 | 2 tasks | 4 files |
+| Phase 88 P01 | 221 | 2 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -897,6 +896,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 86]: Extracted all 4 *Controls + defaultSpecForKind into FormatSpecEditor.tsx (full extraction); FormatSpecEditor.onChange accepts FormatSpec|null; yAxisFormat:undefined=cleared (never {kind:none})
 - [Phase 86-02]: Hybrid yAxisTickFormatter: cfg.yAxisFormat override → buildFormatter; else resolveFormatter(tableId, metricColumn) column-default; else identity. configVersion in deps for reactivity.
 - [Phase 86-02]: Single formatter applied to all value axes (not per-metric) — matches AXIS-V117-02 'bound value column' singular language.
+- [Phase 88]: FilterSelectionConfig: source-allow-list only, no filterOverrides (deferred FSCOPE-V2-02)
+- [Phase 88]: stableComboHash djb2 recipe: seed=5381, (h<<5)+h XOR charCode, >>>0 unsigned — server must mirror byte-for-byte in Phase 89
+- [Phase 88]: NOFILTER_SENTINEL='NOFILTER': empty resolved filter set never creates a Kinetica view
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1303,6 +1305,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-26T19:19:44.687Z
-Stopped at: Completed 86-02-PLAN.md
+Last session: 2026-06-27T21:23:50.150Z
+Stopped at: Completed 88-01-PLAN.md
 Resume file: None
