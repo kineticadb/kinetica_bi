@@ -27,6 +27,7 @@ import { useEffect, useRef } from "react";
 
 import { useFilterViewStore } from "../store/filterViewStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useAuthStore } from "../store/auth";
 import { runSql } from "../api/client";
 
@@ -69,6 +70,17 @@ export function useViewKeepAlive(dashboardId: number): void {
   const dynamicKey = useDynamicViewStore((s) =>
     Object.entries(s.views)
       .map(([id, e]) => `${id}:${e.status}:${e.viewName}:${e.expiresAt ?? 0}`)
+      .sort()
+      .join(","),
+  );
+
+  // Phase 89 (COMBO-V118-02): primitive subscription for combination-registry views.
+  // Primitive-string projection (S-02 compliant) — does NOT subscribe to the registry
+  // object reference; encodes viewName + expiresAt + materializeVersion for each entry
+  // so the re-sync effect fires whenever a combination view appears, disappears, or changes.
+  const combinationKey = useFilterCombinationStore((s) =>
+    Object.entries(s.registry)
+      .map(([hash, e]) => `${hash}:${e.viewName}:${e.expiresAt}:${e.materializeVersion}`)
       .sort()
       .join(","),
   );
@@ -164,6 +176,21 @@ export function useViewKeepAlive(dashboardId: number): void {
       }
     }
 
+    // Phase 89 (COMBO-V118-02): combination-registry views. Live when viewName non-empty AND
+    // expiresAt > 0 AND not expired. Key prefix "c:" avoids collision with "f:" and "d:".
+    // The existing schedule/touch/prune loops operate generically over liveKeys — c: keys
+    // flow through automatically without any additional change.
+    for (const [hash, entry] of Object.entries(
+      useFilterCombinationStore.getState().registry,
+    )) {
+      if (entry.viewName && entry.expiresAt > 0 && Date.now() < entry.expiresAt) {
+        liveKeys.set(`c:${hash}`, {
+          viewName: entry.viewName,
+          expiresAt: entry.expiresAt,
+        });
+      }
+    }
+
     // For each live view: schedule if no timer exists yet for this key.
     // Strategy: on each effect run, if the key is already scheduled, leave the running timer
     // in place (the dep-key already incorporates viewName+expiresAt+version so a
@@ -201,7 +228,7 @@ export function useViewKeepAlive(dashboardId: number): void {
     // Do NOT return a cleanup here — that would tear down timers on every dep-key bump.
     // The empty-deps unmount effect below is the sole teardown point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, dynamicKey, dashboardId]);
+  }, [filterKey, dynamicKey, combinationKey, dashboardId]);
 
   // --- UNMOUNT TEARDOWN EFFECT (empty deps): clears all timers + aborts all controllers ---
   // Mirrors useDynamicViewMaterializeChain:256-263. No orphaned timer may fire after unmount.
