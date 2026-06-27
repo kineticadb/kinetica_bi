@@ -1787,20 +1787,20 @@ input[type="checkbox"],
 
 .login-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 340px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-10);
+  padding: var(--space-6);
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-3);
 }
 
 .login-brand {
   font-family: var(--font-display);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--accent-text);
@@ -1810,31 +1810,32 @@ input[type="checkbox"],
 .login-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: var(--font-weight-semibold);
 }
 
 .login-sub {
   margin: 0;
   color: var(--muted);
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
 }
 
 .login-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  font-size: var(--text-lg);
+  gap: var(--space-1);
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 
+/* Match the app's standard control density (.ds-field input). */
 .login-field input {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--input-bg);
   color: var(--text);
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
   outline: none;
 }
 
@@ -1847,8 +1848,8 @@ input[type="checkbox"],
   border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
   color: var(--danger);
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-lg);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
 }
 
 :root[data-theme="light"] .login-banner {
@@ -1858,13 +1859,13 @@ input[type="checkbox"],
 
 .login-submit {
   margin-top: var(--space-1);
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
   border: none;
   background: var(--accent);
   color: var(--on-accent);
   font-weight: var(--font-weight-semibold);
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   cursor: pointer;
 }
 
@@ -1895,8 +1896,8 @@ input[type="checkbox"],
   border: 1px solid rgba(56, 189, 248, 0.4);
   color: #cae8ff;
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-lg);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
   margin-bottom: var(--space-1);
 }
 
