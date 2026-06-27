@@ -1787,11 +1787,11 @@ input[type="checkbox"],
 
 .login-card {
   width: 100%;
-  max-width: 340px;
+  max-width: 300px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-6);
+  padding: var(--space-5);
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
