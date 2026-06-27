@@ -1112,7 +1112,7 @@ const BarRenderer = ({
         margin={{
           top: 10,
           right: 10,
-          left: yTitle ? 20 : (horizontal ? 8 : 0),
+          left: horizontal ? 8 : 0,
           bottom: xTitle ? 30 : 0,
         }}
         onClick={handleChartClick}
@@ -1122,12 +1122,12 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} tickFormatter={valueAxisTickFormatter} />
-            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={90} label={yLabelObj} />
+            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={yTitle ? 112 : 90} label={yLabelObj} />
           </>
         ) : (
           <>
             <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} />
-            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={valueAxisWidth} label={yLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={valueAxisWidth + (yTitle ? 22 : 0)} label={yLabelObj} tickFormatter={valueAxisTickFormatter} />
           </>
         )}
         {showTooltip && (
