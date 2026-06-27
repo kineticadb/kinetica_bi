@@ -1064,6 +1064,105 @@ describe("throwForStatus generic 4xx/5xx error preservation", () => {
   });
 });
 
+// Phase 90 (COMBO-V118-01): combinationKey cache-key branch in materializeFilter.
+// Two distinct combinations for the same tableId must NOT collapse into one in-flight promise.
+// NOTE: materializeFilter uses a module-level Map (inFlightMaterialize) for in-flight dedup.
+// Each test imports a fresh module instance via vi.resetModules() + dynamic import to ensure
+// isolation — the same pattern used by other modules with module-level state in this repo.
+describe("materializeFilter combinationKey cache-key (Phase 90 COMBO-V118-01)", () => {
+  let mf: typeof import("./client").materializeFilter;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    // Dynamic import gives a fresh module instance with an empty inFlightMaterialize Map.
+    const mod = await import("./client");
+    mf = mod.materializeFilter;
+    vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Test 1: Two different combinationKeys for the same tableId fire TWO distinct fetches.
+  it("two calls with DIFFERENT combinationKey + same tableId fire two distinct fetches (no collapse)", () => {
+    // Use never-resolving promises so the second call sees the first still in-flight.
+    vi.mocked(globalThis.fetch)
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockReturnValueOnce(new Promise(() => {}));
+
+    const baseArgs = { dashboardId: 5, tableId: 7, filters: [sampleFilter] };
+    // Fire first call — stays in-flight
+    void mf({ ...baseArgs, combinationKey: "table:7:A" });
+    // Fire second call WHILE first is still in-flight — different combinationKey, must NOT join
+    void mf({ ...baseArgs, combinationKey: "table:7:B" });
+
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
+  });
+
+  // Test 2: Two calls with the SAME combinationKey collapse to one fetch (dedup preserved).
+  it("two calls with the SAME combinationKey + same dashboardId collapse to ONE fetch", async () => {
+    let resolveFetch: (response: Response) => void = () => {};
+    const fetchPromise = new Promise<Response>((res) => { resolveFetch = res; });
+    vi.mocked(globalThis.fetch).mockReturnValue(fetchPromise);
+
+    const args = { dashboardId: 5, tableId: 7, filters: [sampleFilter], combinationKey: "table:7:A" };
+    const callA = mf(args);
+    const callB = mf(args);
+
+    // Both calls join the same in-flight promise — only ONE fetch fires.
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+
+    resolveFetch(
+      new Response(JSON.stringify({ viewName: "_kbi_filt_c_dedup", expiresAt: 1 }), { status: 200 }),
+    );
+    const [resA, resB] = await Promise.all([callA, callB]);
+    expect(resA).toEqual(resB);
+    expect(resA.viewName).toBe("_kbi_filt_c_dedup");
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  // Test 3: A call WITH combinationKey passes combinationKey in the POST JSON body.
+  it("passes combinationKey in the POST JSON body when present", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ viewName: "_kbi_filt_c_body", expiresAt: 1 }), { status: 200 }),
+    );
+    await mf({
+      dashboardId: 5,
+      tableId: 7,
+      filters: [sampleFilter],
+      combinationKey: "table:7:A",
+    });
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string).combinationKey).toBe("table:7:A");
+  });
+
+  // Test 4: A call WITHOUT combinationKey on the table path keeps the existing t${tableId} bucket.
+  // Two same-table no-key calls collapse to ONE fetch (v1.17 behavior unchanged).
+  it("no-key table calls still use t${tableId} bucket — two concurrent calls collapse (v1.17 unchanged)", () => {
+    vi.mocked(globalThis.fetch).mockReturnValue(new Promise(() => {}));
+
+    const args = { dashboardId: 5, tableId: 7, filters: [sampleFilter] };
+    void mf(args);
+    void mf(args);
+
+    // No combinationKey → same old cache key → ONE fetch (same as pre-Phase-90).
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  // Test 5: A call WITHOUT combinationKey on the dv path keeps dv${dynamicViewId} bucket.
+  it("no-key dv calls still use dv${dynamicViewId} bucket (v1.17 unchanged)", () => {
+    vi.mocked(globalThis.fetch).mockReturnValue(new Promise(() => {}));
+
+    const args = { dashboardId: 5, dynamicViewId: 7, filters: [sampleFilter] };
+    void mf(args);
+    void mf(args);
+
+    // No combinationKey → existing dv cache key → ONE fetch (unchanged).
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+});
+
 // Post-Phase-48 gap regression: login response must carry roles/permissions
 // (server now mirrors /me); client coalesces missing arrays defensively.
 describe("login — RBAC shape coalescing (post-48 gap fix)", () => {

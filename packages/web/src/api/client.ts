@@ -2,6 +2,7 @@ import type { ActiveFilter } from "../store/filterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
 import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
+import { comboShortHash } from "../lib/stableComboHash";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -832,6 +833,11 @@ export type MaterializeFilterArgs = {
   // sole caller that sets these; v1.3 column-only callers leave both undefined.
   spatialFilters?: SpatialFilter[];
   spatialTarget?: SpatialTarget;
+  // Phase 90 (COMBO-V118-01): the stableComboHash string for this combination. When present,
+  // the server appends _c<hash8> to the view name (Phase 89-02) AND the in-flight dedup cache
+  // keys on the combination (not just the table) so distinct combinations for the same tableId
+  // do not collapse into one in-flight promise. Absent = byte-identical v1.17 behavior.
+  combinationKey?: string;
 };
 
 export type MaterializeFilterResponse = {
@@ -866,7 +872,9 @@ export const materializeFilter = async (
   args: MaterializeFilterArgs,
   signal?: AbortSignal
 ): Promise<MaterializeFilterResponse> => {
-  const cacheKey = args.dynamicViewId !== undefined
+  const cacheKey = args.combinationKey !== undefined && args.combinationKey !== ""
+    ? `${args.dashboardId}:c${comboShortHash(args.combinationKey)}`
+    : args.dynamicViewId !== undefined
     ? `${args.dashboardId}:dv${args.dynamicViewId}`
     : `${args.dashboardId}:t${args.tableId}`;
   const existing = inFlightMaterialize.get(cacheKey);
