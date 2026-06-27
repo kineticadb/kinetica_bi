@@ -85,7 +85,10 @@
   3. When the last widget using a combination leaves the dashboard (or changes its filter selection), the combination view is DROPped — unit test confirms refCount→0 triggers DROP.
   4. Static grep: grep -r "materializeFilter\|dropFilterView" packages/web/src/components/charts/ finds only authorized call sites — no individual chart renderer calls these functions.
   5. Web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 90-01-PLAN.md — client.ts cache-key fix: combinationKey on MaterializeFilterArgs + per-combination in-flight branch (COMBO-V118-01)
+- [ ] 90-02-PLAN.md — env-var ceiling plumbing: server boot read → /api/me → MeResponse/fetchMe → web auth store, both-auth-mode supertest (COMBO-V118-03)
+- [ ] 90-03-PLAN.md — useCombinationOrchestrator hook (diff/dispatch + ref-count DROP + ceiling fallback + info toast) + 11-scenario spec + DashboardOpen mount (COMBO-V118-01, COMBO-V118-03)
 
 #### Phase 91: WidgetRenderer Wiring
 **Goal**: Standard chart widgets (WidgetRenderer/AggregatedWidgetRenderer, TimelineRenderer, NumericLineRenderer) read their view name from filterCombinationStore instead of filterViewStore.views[tableId], and an existing dashboard with no filterScope config behaves byte-identically to v1.17.
@@ -186,7 +189,7 @@
 | 85–87 | v1.17 | 3/3 | Complete (UAT 6/6) | 2026-06-27 |
 | 88 | v1.18 | 0/TBD | Not started | — |
 | 89 | v1.18 | 0/TBD | Not started | — |
-| 90 | v1.18 | 0/TBD | Not started | — |
+| 90 | v1.18 | 0/3 | Planned | — |
 | 91 | v1.18 | 0/TBD | Not started | — |
 | 92 | v1.18 | 0/TBD | Not started | — |
 | 93 | v1.18 | 0/TBD | Not started | — |
