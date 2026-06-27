@@ -69,7 +69,9 @@
   3. POST /api/filter/materialize with no combinationKey in the body produces a view name byte-identical to v1.17 — existing supertest vectors pass unchanged.
   4. POST /api/filter/materialize with a combinationKey appends _c{hash8} to the view name — new supertest confirms the extended shape.
   5. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 89-01-PLAN.md — filterCombinationStore (9th store) + ref-count lifecycle + snapshot-then-DROP cleanup at BOTH reset sites + keep-alive extension + MAX_COMBINATION_VIEWS_PER_TABLE (COMBO-V118-02, COMBO-V118-03)
+- [ ] 89-02-PLAN.md — server hashKey8 (exact Phase-88 djb2) + buildFilterViewName combinationKey suffix + POST/DELETE materialize param + both-auth-mode supertests (COMBO-V118-04)
 
 #### Phase 90: Combination-Orchestrator
 **Goal**: A single hook owns all combination-view materializations — it computes unique combinations across all dashboard widgets on each filterVersion tick, diffs the registry, fires exactly one POST per new combination, enforces the per-table ceiling with fallback to the global view, and manages ref-counting. Individual renderers never call materializeFilter.
