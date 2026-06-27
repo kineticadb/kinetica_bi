@@ -1031,15 +1031,21 @@ const BarRenderer = ({
   const showTooltip = config.showTooltip !== false;
   const showValueLabels = config.showValueLabels === true;
   const horizontal = config.horizontal === true; // horizontal bars (Recharts layout="vertical")
-  // Axis title: user-set value wins; else fall back to resolved column label (not formatted — labels only).
-  const xTitle = (config.xAxisLabel as string) || (tableId !== undefined && groupByColumn ? resolveLabel(tableId, groupByColumn) : "");
-  const yTitle = (config.yAxisLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
-  // Axis title objects (Recharts), or undefined when blank.
-  const xLabelObj = xTitle
-    ? { value: xTitle, position: "insideBottom" as const, offset: -4, fill: AXIS_COLOR, fontSize: 11 }
+  // Axis titles are SEMANTIC, not physical: categoryTitle = the grouping dimension,
+  // valueTitle = the metric. They follow the DATA so flipping orientation moves each title
+  // to whichever axis now carries it (xAxisLabel = category, yAxisLabel = value by default).
+  const categoryTitle = (config.xAxisLabel as string) || (tableId !== undefined && groupByColumn ? resolveLabel(tableId, groupByColumn) : "");
+  const valueTitle = (config.yAxisLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
+  // Map to the physical axes: vertical → bottom=category, left=value;
+  // horizontal → bottom=value, left=category.
+  const bottomTitle = horizontal ? valueTitle : categoryTitle;
+  const leftTitle = horizontal ? categoryTitle : valueTitle;
+  // Axis title objects positioned for their physical axis (or undefined when blank).
+  const bottomLabelObj = bottomTitle
+    ? { value: bottomTitle, position: "insideBottom" as const, offset: -4, fill: AXIS_COLOR, fontSize: 11 }
     : undefined;
-  const yLabelObj = yTitle
-    ? { value: yTitle, angle: -90, position: "insideLeft" as const, fill: AXIS_COLOR, fontSize: 11, style: { textAnchor: "middle" as const } }
+  const leftLabelObj = leftTitle
+    ? { value: leftTitle, angle: -90, position: "insideLeft" as const, fill: AXIS_COLOR, fontSize: 11, style: { textAnchor: "middle" as const } }
     : undefined;
 
   // Phase 10 DRILL-04: dim-peers transient — non-active <Cell> elements drop to 0.3
@@ -1115,7 +1121,7 @@ const BarRenderer = ({
           top: 8,
           right: 10,
           left: horizontal ? 8 : 0,
-          bottom: xTitle ? 8 : 0,
+          bottom: bottomTitle ? 8 : 0,
         }}
         onClick={handleChartClick}
         style={wrapperStyle}
@@ -1123,13 +1129,13 @@ const BarRenderer = ({
         {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={horizontal} horizontal={!horizontal} />}
         {horizontal ? (
           <>
-            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={xLabelObj} tickFormatter={valueAxisTickFormatter} />
-            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={yTitle ? 112 : 90} label={yLabelObj} />
+            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 112 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
-            <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={xLabelObj} />
-            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (yTitle ? 22 : 0)} label={yLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
+            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 22 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} />
           </>
         )}
         {showTooltip && (
