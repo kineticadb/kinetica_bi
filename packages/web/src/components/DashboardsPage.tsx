@@ -28,6 +28,7 @@ import { useApiQuery } from "../hooks/useApiQuery";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
 import { useMapOnlySpatialMaterialize } from "../hooks/useMapOnlySpatialMaterialize";  // Phase 54 (TRACKFIX-V19-09 / GAP-54-10)
 import { useViewKeepAlive } from "../hooks/useViewKeepAlive";  // Phase 78 (TTLKEEP-V115-01)
+import { useCombinationOrchestrator } from "../hooks/useCombinationOrchestrator";  // Phase 90 (COMBO-V118-01/03)
 import { useFilterStore } from "../store/filterStore";
 import { useFilterViewStore } from "../store/filterViewStore";
 import { useInfoSelectionStore } from "../store/infoSelectionStore";
@@ -439,6 +440,13 @@ const DashboardOpen = ({
   // switch / unmount (teardown is internal to the hook's empty-deps effect). READ-only — never
   // materializes (AggregatedWidgetRenderer stays sole materialize trigger).
   useViewKeepAlive(dashboard.id);
+
+  // Phase 90 (COMBO-V118-01 / COMBO-V118-03): dashboard-level combination-view orchestrator.
+  // Fires one POST per UNIQUE resolved filter combination per filterVersion tick, ref-counts +
+  // DROPs at 0, and enforces the per-table ceiling (env var via /api/me) with all-filters fallback.
+  // DUAL-TRIGGER (Phase 90): runs ALONGSIDE AggregatedWidgetRenderer Effect 1 — combination views
+  // carry a distinct _c<hash8> suffix and are not read by any renderer until Phase 91/92.
+  useCombinationOrchestrator(dashboard.id, widgets);
 
   // Phase 12: Layer store subscription
   const layers = useDashboardLayersStore((s) => s.layers);

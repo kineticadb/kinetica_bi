@@ -60,7 +60,7 @@ function makeWidget(overrides: {
     dashboard_id: DASH_ID,
     title: `Widget ${overrides.id}`,
     type: overrides.type ?? "bar",
-    position: { x: 0, y: 0, w: 4, h: 4 },
+    position: 0,
     config: {
       ...(overrides.tableId !== undefined ? { tableId: overrides.tableId } : {}),
       ...(overrides.filterSelection ? { filterSelection: overrides.filterSelection } : {}),
@@ -246,7 +246,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     });
 
     // Each call has a distinct combinationKey
-    const keys = (materializeFilter as Mock).mock.calls.map((c: [{ combinationKey: string }]) => c[0].combinationKey);
+    const keys = (materializeFilter as Mock).mock.calls.map((c: unknown[]) => (c[0] as { combinationKey: string }).combinationKey);
     expect(keys[0]).not.toBe(keys[1]);
 
     await waitFor(() => {
