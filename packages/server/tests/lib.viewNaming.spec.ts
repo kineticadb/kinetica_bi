@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeForViewName,
   buildFilterViewName,
+  hashKey8,
 } from "../src/lib/viewNaming";
 import { buildDynamicViewName } from "../src/lib/dynamicViewName";
 
@@ -177,5 +178,97 @@ describe("buildFilterViewName with dynamicViewId (dv drill-down path — DVDRILL
         dashboardId: 42,
       })
     ).toThrow(/tableId or dynamicViewId required/);
+  });
+});
+
+describe("hashKey8 (COMBO-V118-04 — djb2 cross-stack contract)", () => {
+  it("returns a string of exactly 8 lowercase hex chars for a non-empty input", () => {
+    const result = hashKey8("hello");
+    expect(result).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it("returns a string of exactly 8 lowercase hex chars for an empty input", () => {
+    const result = hashKey8("");
+    expect(result).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it("is deterministic — same input always produces the same output", () => {
+    const s = "table:7:status|eq|\"East\"";
+    expect(hashKey8(s)).toBe(hashKey8(s));
+  });
+
+  it("KNOWN-VECTOR (cross-stack lock): hashKey8(\"table:7:status|eq|\\\"East\\\"\") === \"3a777c0f\"", () => {
+    // Computed from the Phase-88 djb2 recipe: seed 5381, (h<<5)+h, XOR charCode, >>>0, padStart(8).
+    // Client comboShortHash("table:7:status|eq|\"East\"") must equal the same literal.
+    expect(hashKey8('table:7:status|eq|"East"')).toBe("3a777c0f");
+  });
+});
+
+describe("buildFilterViewName with combinationKey (COMBO-V118-04)", () => {
+  const K = 'table:7:status|eq|"East"';
+
+  it("ABSENT-KEY REGRESSION LOCK (table path): byte-identical to v1.17", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      tableId: 7,
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_t7_sabcd1234");
+  });
+
+  it("ABSENT-KEY REGRESSION LOCK (dv path): byte-identical to v1.17", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      dynamicViewId: 7,
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_dv7_sabcd1234");
+  });
+
+  it("PRESENT-KEY (table path): appends _c<hash8> after _s<session> segment", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      tableId: 7,
+      combinationKey: K,
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_t7_sabcd1234_c" + hashKey8(K));
+  });
+
+  it("PRESENT-KEY (dv path): appends _c<hash8> after _s<session> segment", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      dynamicViewId: 7,
+      combinationKey: K,
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_dv7_sabcd1234_c" + hashKey8(K));
+  });
+
+  it("PRESENT-KEY: does NOT append _c when combinationKey is empty string", () => {
+    const out = buildFilterViewName({
+      username: "alice",
+      sessionId: "abcd1234ef",
+      dashboardId: 42,
+      tableId: 7,
+      combinationKey: "",
+    });
+    expect(out).toBe("_kbi_filt_ualice_d42_t7_sabcd1234");
+    expect(out).not.toContain("_c");
+  });
+
+  it("worst-case length with combinationKey present stays < 200 chars", () => {
+    const out = buildFilterViewName({
+      username: "x".repeat(50),
+      sessionId: "abcdef0123456789",
+      dashboardId: 999999999,
+      tableId: 999999999,
+      combinationKey: K,
+    });
+    expect(out.length).toBeLessThan(200);
   });
 });
