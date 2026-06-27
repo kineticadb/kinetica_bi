@@ -1,30 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.17
-milestone_name: Chart Number Formatting
-status: unknown
-stopped_at: Completed 86-02-PLAN.md
+milestone: v1.18
+milestone_name: Per-Visualization Filter Selection
+status: defining-requirements
+stopped_at: v1.17 shipped + archived (2026-06-27)
 last_updated: "2026-06-27T18:17:32.879Z"
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-26 — v1.17 STARTED)
+See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 86 — chart-y-axis-number-format
+**Current focus:** v1.18 Per-Visualization Filter Selection — researching + defining requirements
 
 ## Current Position
 
-Phase: 86 (chart-y-axis-number-format) — EXECUTING
-Plan: 1 of 2
+Phase: Not started (researching / defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-27 — Milestone v1.18 Per-Visualization Filter Selection started (v1.17 shipped + archived)
 
 ### v1.17 Phase Map
 
