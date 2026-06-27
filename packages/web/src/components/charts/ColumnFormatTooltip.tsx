@@ -114,7 +114,7 @@ export function ColumnFormatTooltip({
             margin: "0 0 4px 0",
             color: "var(--text)",
             fontWeight: 600,
-            fontSize: 13,
+            fontSize: "var(--text-base)",
           }}
         >
           {catLabel != null ? `${catLabel}: ` : ""}
@@ -132,7 +132,7 @@ export function ColumnFormatTooltip({
             style={{
               margin: "2px 0",
               color: entry.color ?? "var(--text)",
-              fontSize: 13,
+              fontSize: "var(--text-base)",
             }}
           >
             {valueName != null ? `${valueName}: ` : ""}
