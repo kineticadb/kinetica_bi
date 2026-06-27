@@ -246,7 +246,8 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 7 (UX-08): /me now returns authMode alongside user. Expanded MeResponse type.
 // Phase 74 (SETTINGS-V115-03): /api/me also returns the keep-alive lead-time
 // (default 1) for the Phase 78 TTL keep-alive to consume.
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number };
+// Phase 90 (COMBO-V118-03): /api/me returns the per-table combination ceiling (default 10).
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -284,6 +285,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     // Coalesce to 1 defensively — an older server build that omits the field never yields undefined.
     // Mirrors the roles/permissions `?? []` coalescing already in this function.
     ttlKeepaliveLeadMinutes: typeof json.ttlKeepaliveLeadMinutes === "number" ? json.ttlKeepaliveLeadMinutes : 1,
+    // Phase 90 (COMBO-V118-03): coalesce to 10 — an older server build that omits the field must never yield undefined.
+    maxCombinationViewsPerTable: typeof json.maxCombinationViewsPerTable === "number" ? json.maxCombinationViewsPerTable : 10,
   };
 };
 

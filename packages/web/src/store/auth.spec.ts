@@ -31,6 +31,11 @@ describe("authStore initial state", () => {
   it("ttlKeepaliveLeadMinutes defaults to 1 on initial state (pre-bootstrap)", () => {
     expect(useAuthStore.getState().ttlKeepaliveLeadMinutes).toBe(1);
   });
+
+  // Phase 90 (COMBO-V118-03): maxCombinationViewsPerTable defaults to 10 before any bootstrap.
+  it("maxCombinationViewsPerTable defaults to 10 on initial state (pre-bootstrap)", () => {
+    expect(useAuthStore.getState().maxCombinationViewsPerTable).toBe(10);
+  });
 });
 
 describe("bootstrap() — latest-write-wins authMode", () => {
@@ -69,9 +74,24 @@ describe("bootstrap() — latest-write-wins authMode", () => {
       user: { username: "alice", roles: [], permissions: [] },
       authMode: "password",
       ttlKeepaliveLeadMinutes: 3,
+      maxCombinationViewsPerTable: 10,
     });
     await useAuthStore.getState().bootstrap();
     expect(useAuthStore.getState().ttlKeepaliveLeadMinutes).toBe(3);
+    expect(useAuthStore.getState().status).toBe("authenticated");
+  });
+
+  // Phase 90 (COMBO-V118-03): bootstrap surfaces maxCombinationViewsPerTable from /me into the store.
+  it("bootstrap sets maxCombinationViewsPerTable from /me when authenticated", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      ttlKeepaliveLeadMinutes: 1,
+      maxCombinationViewsPerTable: 5,
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().maxCombinationViewsPerTable).toBe(5);
     expect(useAuthStore.getState().status).toBe("authenticated");
   });
 });
