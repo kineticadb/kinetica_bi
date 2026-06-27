@@ -715,6 +715,11 @@ a {
 
 .widget-body {
   flex: 1;
+  /* min-height:0 lets this flex item resolve a definite height so percentage-height
+     chart children (recharts ResponsiveContainer) fill it instead of collapsing to
+     content height — the default min-height:auto left dead space under bar charts. */
+  min-height: 0;
+  min-width: 0;
   padding: var(--space-3) var(--space-4);
   overflow: hidden;
 }
