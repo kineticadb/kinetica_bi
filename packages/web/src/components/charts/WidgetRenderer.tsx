@@ -1130,12 +1130,12 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} />
-            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 112 : 90} label={leftLabelObj} />
+            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
             <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
-            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 22 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} />
           </>
         )}
         {showTooltip && (
