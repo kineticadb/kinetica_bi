@@ -1101,6 +1101,10 @@ const BarRenderer = ({
   );
 
   return (
+    // Full-height wrapper so the ResponsiveContainer fills the widget body (matches the
+    // TimelineRenderer pattern) — without it the aggregated charts under-filled, leaving
+    // dead space below the chart. Phase 87 (UAT).
+    <div style={{ width: "100%", height: "100%" }}>
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={data}
@@ -1108,8 +1112,8 @@ const BarRenderer = ({
         margin={{
           top: 10,
           right: 10,
-          left: yTitle ? 12 : (horizontal ? 8 : 0),
-          bottom: xTitle ? 24 : 0,
+          left: yTitle ? 20 : (horizontal ? 8 : 0),
+          bottom: xTitle ? 30 : 0,
         }}
         onClick={handleChartClick}
         style={wrapperStyle}
@@ -1132,7 +1136,7 @@ const BarRenderer = ({
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
           />
         )}
-        {showLegend && <Legend />}
+        {showLegend && <Legend wrapperStyle={{ paddingTop: 6 }} />}
         <Bar
           dataKey={y}
           fill={color}
@@ -1174,6 +1178,7 @@ const BarRenderer = ({
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    </div>
   );
 };
 
