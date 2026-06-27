@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 89-01-PLAN.md
-last_updated: "2026-06-27T22:27:35.890Z"
+stopped_at: Completed 90-01-PLAN.md
+last_updated: "2026-06-27T23:22:22.556Z"
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 89 — store-server-foundation
+**Current focus:** Phase 90 — combination-orchestrator
 
 ## Current Position
 
-Phase: 89 (store-server-foundation) — EXECUTING
-Plan: 1 of 2
+Phase: 90 (combination-orchestrator) — EXECUTING
+Plan: 1 of 3
 
 ### v1.18 Phase Map
 
@@ -612,6 +612,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 88 P01 | 221 | 2 tasks | 5 files |
 | Phase 89-store-server-foundation P02 | 340 | 2 tasks | 4 files |
 | Phase 89-store-server-foundation P01 | 393 | 3 tasks | 6 files |
+| Phase 90-combination-orchestrator P01 | 300 | 1 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -906,6 +907,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 89-store-server-foundation]: markMaterializing carries sourceType+sourceId on placeholder for typed cleanup loops
 - [Phase 89-store-server-foundation]: setVizHash does not bump combinationVersion — vizToHash mutations are not registry events (S-02)
 - [Phase 89-store-server-foundation]: dropCombinationView uses separate inFlightDropCombo Map to avoid cross-contamination with inFlightDrop
+- [Phase 90-01]: combinationKey branch takes precedence (first in ternary) over dynamicViewId and tableId branches in inFlightMaterialize cache key
+- [Phase 90-01]: Test isolation via vi.resetModules() + dynamic import for module-level Map state in materializeFilter specs
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1312,6 +1315,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-27T22:22:35.658Z
-Stopped at: Completed 89-01-PLAN.md
+Last session: 2026-06-27T23:22:22.546Z
+Stopped at: Completed 90-01-PLAN.md
 Resume file: None
