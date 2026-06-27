@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 88-01-PLAN.md
-last_updated: "2026-06-27T21:27:13.413Z"
+stopped_at: Completed 89-01-PLAN.md
+last_updated: "2026-06-27T22:22:35.667Z"
 progress:
   total_phases: 9
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 88 — foundation-pure-logic-types
+**Current focus:** Phase 89 — store-server-foundation
 
 ## Current Position
 
-Phase: 88 (foundation-pure-logic-types) — EXECUTING
-Plan: 1 of 1
+Phase: 89 (store-server-foundation) — EXECUTING
+Plan: 1 of 2
 
 ### v1.18 Phase Map
 
@@ -610,6 +610,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 86-chart-y-axis-number-format P01 | 326 | 2 tasks | 7 files |
 | Phase 86-chart-y-axis-number-format P02 | 271 | 2 tasks | 4 files |
 | Phase 88 P01 | 221 | 2 tasks | 5 files |
+| Phase 89-store-server-foundation P02 | 340 | 2 tasks | 4 files |
+| Phase 89-store-server-foundation P01 | 393 | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -899,6 +901,11 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 88]: FilterSelectionConfig: source-allow-list only, no filterOverrides (deferred FSCOPE-V2-02)
 - [Phase 88]: stableComboHash djb2 recipe: seed=5381, (h<<5)+h XOR charCode, >>>0 unsigned — server must mirror byte-for-byte in Phase 89
 - [Phase 88]: NOFILTER_SENTINEL='NOFILTER': empty resolved filter set never creates a Kinetica view
+- [Phase 89-store-server-foundation]: hashKey8 uses djb2 (seed 5381) byte-identical to client comboShortHash — COMBO-V118-04 cross-stack contract
+- [Phase 89-store-server-foundation]: _c<hash8> suffix appended AFTER _s<session> segment; combinationKey absent/empty → byte-identical v1.17; DELETE ?viewName= direct-drop branch added
+- [Phase 89-store-server-foundation]: markMaterializing carries sourceType+sourceId on placeholder for typed cleanup loops
+- [Phase 89-store-server-foundation]: setVizHash does not bump combinationVersion — vizToHash mutations are not registry events (S-02)
+- [Phase 89-store-server-foundation]: dropCombinationView uses separate inFlightDropCombo Map to avoid cross-contamination with inFlightDrop
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1305,6 +1312,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-27T21:23:50.150Z
-Stopped at: Completed 88-01-PLAN.md
+Last session: 2026-06-27T22:22:35.658Z
+Stopped at: Completed 89-01-PLAN.md
 Resume file: None
