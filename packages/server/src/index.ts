@@ -1149,6 +1149,11 @@ export const createApp = async (): Promise<express.Express> => {
       filters?: ActiveFilter[];
       spatialFilters?: SpatialFilter[];
       spatialTarget?: SpatialTarget;
+      // COMBO-V118-04: optional resolved-combination key. The client computes
+      // comboShortHash(stableComboHash(...)) locally and sends it here. When present,
+      // buildFilterViewName appends _c<hash8> to the view name so client-predicted
+      // names match actual Kinetica view names. When absent → byte-identical to v1.17.
+      combinationKey?: string;
     };
     const {
       dashboardId,
@@ -1157,6 +1162,7 @@ export const createApp = async (): Promise<express.Express> => {
       filters = [],
       spatialFilters,
       spatialTarget,
+      combinationKey,
     } = body;
 
     // ── Validation step 1: dashboardId numeric (always); tableId numeric only on
@@ -1207,6 +1213,7 @@ export const createApp = async (): Promise<express.Express> => {
         sessionId: dvAuthedReq.user!.sid,
         dashboardId,
         dynamicViewId: dynamicViewId as number,
+        combinationKey,
       });
       const dvWhereClause = buildServerWhereClause(dvFiltersArr);
       // FROM the dv's OWN materialized view. If that view isn't materialized yet,
@@ -1284,6 +1291,7 @@ export const createApp = async (): Promise<express.Express> => {
       sessionId: authedReq.user!.sid,
       dashboardId,
       tableId,
+      combinationKey,
     });
 
     // ── Compose WHERE: spatial OR-chain AND'd with column AND-chain ─────
@@ -1326,7 +1334,16 @@ export const createApp = async (): Promise<express.Express> => {
 
     const authedReq = req as AuthedRequest;
     let viewName: string;
-    if (dynamicViewId !== undefined && Number.isFinite(dynamicViewId)) {
+
+    // COMBO-V118-04: direct-drop branch — client already knows the exact combination
+    // view name (predicted locally via buildFilterViewName + combinationKey). Accepts
+    // ?viewName=<name> and drops it without re-deriving from tableId/dynamicViewId.
+    // The same DROP TABLE IF EXISTS path is used; no new injection surface (the
+    // existing dv/table branches also interpolate a computed name).
+    const directViewName = req.query.viewName;
+    if (typeof directViewName === "string" && directViewName !== "") {
+      viewName = directViewName;
+    } else if (dynamicViewId !== undefined && Number.isFinite(dynamicViewId)) {
       // dv path — drop the dv-filter view.
       viewName = buildFilterViewName({
         username: authedReq.user!.creds.username,
