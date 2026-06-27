@@ -993,6 +993,67 @@ export const dropFilterView = async (
 };
 
 // ---------------------------------------------------------------------------
+// Phase 89 Plan 01 (COMBO-V118-02): combination-view DROP helper.
+//
+// Mirrors dropFilterView exactly, except it targets the view by DIRECT name rather
+// than by tableId/dynamicViewId. The client already knows the exact view name from the
+// combination registry (client-predicted via comboShortHash before the POST returns).
+//
+// Plan 89-02 (server) extends DELETE /api/filter/materialize to accept
+// `?viewName=<name>` as an alternative selector. dropCombinationView uses that param.
+//
+// In-flight dedup: a separate `inFlightDropCombo` Map keyed by
+// "${dashboardId}:c:${viewName}" prevents duplicate DELETEs for the same combination
+// view (mirrors inFlightDrop for dropFilterView — same pattern as Phase 35 follow-up).
+
+export type DropCombinationViewArgs = {
+  dashboardId: number;
+  viewName: string;
+};
+
+const inFlightDropCombo = new Map<string, Promise<DropFilterViewResponse>>();
+
+export const dropCombinationView = async (
+  args: DropCombinationViewArgs,
+  signal?: AbortSignal,
+): Promise<DropFilterViewResponse> => {
+  const cacheKey = `${args.dashboardId}:c:${args.viewName}`;
+  const existing = inFlightDropCombo.get(cacheKey);
+  if (existing) {
+    // Concurrent caller — join the in-flight promise. AbortSignal deliberately not
+    // honored on cache joins to avoid aborting the shared promise (mirrors dropFilterView).
+    return existing;
+  }
+  const url = `${API_BASE}/api/filter/materialize?dashboardId=${args.dashboardId}&viewName=${encodeURIComponent(args.viewName)}`;
+  const promise = (async () => {
+    const response = await apiFetch(url, {
+      method: "DELETE",
+      signal,
+    });
+    if (!response.ok) {
+      await throwForStatus(response, "Failed to drop combination view");
+    }
+    return response.json() as Promise<DropFilterViewResponse>;
+  })();
+  inFlightDropCombo.set(cacheKey, promise);
+  // Clear on settle so a subsequent drop fires fresh. Explicit dual-handler form
+  // avoids the unhandled-rejection chain that .finally().catch() produces.
+  void promise.then(
+    () => {
+      if (inFlightDropCombo.get(cacheKey) === promise) {
+        inFlightDropCombo.delete(cacheKey);
+      }
+    },
+    () => {
+      if (inFlightDropCombo.get(cacheKey) === promise) {
+        inFlightDropCombo.delete(cacheKey);
+      }
+    },
+  );
+  return promise;
+};
+
+// ---------------------------------------------------------------------------
 // Phase 21 (POPUP-V14-01..06): client helper for POST /api/info/query.
 //
 // Phase 18 endpoint contract (locked at .planning/phases/18-spatial-spike-and-endpoint

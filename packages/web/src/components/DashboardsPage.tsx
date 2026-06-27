@@ -49,8 +49,10 @@ import {
   reorderLayers as apiReorderLayers,
   dropFilterView,
   dropDynamicView,
+  dropCombinationView,
   type DashboardLayerDto,
 } from "../api/client";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useToastStore } from "../store/toast";
 import ChartCard from "./ChartCard";
 import ChartConfigPanel from "./charts/ChartConfigPanel";
@@ -528,6 +530,16 @@ const DashboardOpen = ({
       // Phase 75 Plan 03 (COLCFG-V115-03): 8th store — column display config cache; global
       // per-table config but reset to prevent stale entries accumulating across sessions.
       useColumnDisplayConfigStore.getState().reset();
+      // Phase 89 (COMBO-V118-02): 9th store — combination-view registry. Snapshot BEFORE reset so
+      // the loop can read entry.dashboardId + entry.viewName. Dashboard-A combination views MUST NOT
+      // leak into dashboard-B (mirrors filterViewStore DROP loop — V13-P-12 carry-forward).
+      const combinationRegistry = useFilterCombinationStore.getState().registry;
+      for (const entry of Object.values(combinationRegistry)) {
+        if (entry.viewName) {
+          dropCombinationView({ dashboardId: entry.dashboardId, viewName: entry.viewName }).catch(() => {});
+        }
+      }
+      useFilterCombinationStore.getState().reset();
     };
   }, [dashboard.id]);
 

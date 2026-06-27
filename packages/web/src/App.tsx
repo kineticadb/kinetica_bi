@@ -20,7 +20,8 @@ import { useBrandStore } from "./store/brandStore";
 import { BrandStyleInjector } from "./components/BrandStyleInjector";
 import { BrandingSettingsPage } from "./components/settings/BrandingSettingsPage";
 import { brandPageGuard } from "./components/settings/brandPageGuard";
-import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, listUsers } from "./api/client";
+import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, dropCombinationView, listUsers } from "./api/client";
+import { useFilterCombinationStore } from "./store/filterCombinationStore";
 import { PERMISSIONS } from "./lib/permissions";
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
@@ -133,6 +134,15 @@ const App = () => {
         }
       }
       useDynamicViewStore.getState().reset();
+      // Phase 89 (COMBO-V118-02): 9th store — combination-view registry. Snapshot BEFORE reset so
+      // the loop can read entry.dashboardId + entry.viewName. Fire-and-forget DROP (V13-P-12 carry-forward).
+      const combinationRegistry = useFilterCombinationStore.getState().registry;
+      for (const entry of Object.values(combinationRegistry)) {
+        if (entry.viewName) {
+          dropCombinationView({ dashboardId: entry.dashboardId, viewName: entry.viewName }).catch(() => {});
+        }
+      }
+      useFilterCombinationStore.getState().reset();
     }
   }, [status]);
 
