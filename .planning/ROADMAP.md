@@ -21,66 +21,22 @@
 - ✅ **v1.14 Class-Break & Chart Config Refinements** — Phases 70-73 (shipped 2026-06-19) — see `milestones/v1.14-ROADMAP.md`
 - ✅ **v1.15 Column Formatting & View Lifecycle** — Phases 74-79 (shipped 2026-06-22) — see `milestones/v1.15-ROADMAP.md`
 - ✅ **v1.16 White-Label Theming** — Phases 80-84 (shipped 2026-06-26) — see `milestones/v1.16-ROADMAP.md`
-- 🚧 **v1.17 Chart Number Formatting** — Phases 85-87 (IN PROGRESS, started 2026-06-26) — see `## v1.17` section below
+- ✅ **v1.17 Chart Number Formatting** — Phases 85-87 (shipped 2026-06-27) — see `milestones/v1.17-ROADMAP.md`
 
 ---
 
-## v1.17 Chart Number Formatting — IN PROGRESS
+## v1.17 Chart Number Formatting — SHIPPED 2026-06-27
 
-> **Goal:** Make large numbers readable on charts and in formatted columns — add an SI "smart abbreviation" number format (k/M/G/T via d3-format `~s`) to the v1.15 client column-display formatter + Column Format editor, plus a hybrid per-widget Y-axis number-format option on timeline + line charts (applied to Y-axis TICK labels only). **FRONTEND-ONLY** (`packages/web`); `d3-format` already a web dep; REUSE the v1.15 `column-display-config` formatter — no duplicated formatting logic.
+<details>
+<summary>✅ v1.17 (Phases 85-87) — SHIPPED 2026-06-27 — full phase details archived in milestones/v1.17-ROADMAP.md</summary>
 
-### Phases
+- [x] Phase 85: SI Smart-Abbreviation Number Format (1/1 plan)
+- [x] Phase 86: Chart Y-Axis Number Format (timeline + line) (2/2 plans)
+- [x] Phase 87: Verification + Live UAT (6/6 operator UAT PASS)
 
-- [ ] **Phase 85: SI Smart-Abbreviation Number Format (formatter + editor)** — add the SI `~s` abbreviation choice to the v1.15 formatter lib and expose it (with live preview + persistence) in the Column Format editor.
-- [ ] **Phase 86: Chart Y-Axis Number Format (timeline + line)** — a hybrid per-widget Y-axis number-format control on the timeline + line config panels, defaulting from the bound column, applied to Y-axis tick labels only.
-- [ ] **Phase 87: Verification + Live UAT** — green automated gates + a blocking operator walk-through proving SI abbreviation + per-widget Y-axis ticks-only behavior.
+**Delivered:** SI "smart abbreviation" number format (k/M/G/T) in the column formatter + Column Format editor, plus a hybrid per-widget Y-axis number format on timeline/line/bar (defaults from the bound column, ticks-only). Frontend-only. 6/6 requirements; operator UAT 6/6 (8 polish gaps fixed in-session). See `MILESTONES.md` + `milestones/v1.17-ROADMAP.md`.
 
-### Phase Details
-
-#### Phase 85: SI Smart-Abbreviation Number Format (formatter + editor)
-**Goal**: Operators can pick a "smart abbreviation" (SI) number format for a column and see large numbers render as 1.2M / 3.4G etc. everywhere column display config is already consumed.
-**Stack**: FRONTEND-ONLY (`packages/web`)
-**Depends on**: Nothing (extends the existing v1.15 `column-display-config` formatter + editor)
-**Requirements**: FMT-V117-01, FMT-V117-02
-**Success Criteria** (what must be TRUE):
-  1. The Column Format editor lists a "Smart abbreviation" choice alongside the existing number formats, and selecting it shows the live preview render the sample value abbreviated with SI prefixes (e.g. 1,234,567 → "1.2M"), honoring the existing decimals control.
-  2. The chosen SI format persists per-column in `column_display_config` (survives reload) exactly like the other formats, and reappears selected when the editor is reopened.
-  3. A column set to SI abbreviation renders abbreviated values across every surface that already consumes column display config — records table cells, chart tooltips, chart axis-title / series labels, and map info popups — with NO change to the SQL sent to Kinetica.
-  4. Invalid/empty input falls back to the raw value (the v1.15 formatter contract is preserved).
-**Plans**: 1 plan
-- [ ] 85-01-PLAN.md — SI FormatSpec variant in columnFormatter.ts + Column Format editor option/SIControls/preview (+ extended unit & component tests)
-
-#### Phase 86: Chart Y-Axis Number Format (timeline + line)
-**Goal**: A designer can control how a timeline or line chart's Y-axis tick labels are formatted per widget, defaulting to the bound value column's format and overridable per chart, without touching tooltips or data labels.
-**Stack**: FRONTEND-ONLY (`packages/web`)
-**Depends on**: Phase 85 (the Y-axis control reuses the column number-format options, including the new SI smart-abbreviation, so the SI format must exist first)
-**Requirements**: AXIS-V117-01, AXIS-V117-02, AXIS-V117-03
-**Success Criteria** (what must be TRUE):
-  1. The timeline config panel AND the line chart config panel each expose a Y-axis number-format control offering the same number-format options as the Column Format editor, including SI smart-abbreviation.
-  2. With no per-widget override set, the Y-axis ticks render using the bound value column's display-config formatter (default-from-bound-column); setting a per-widget format overrides it live, and clearing the override falls back to the column default.
-  3. The resolved Y-axis formatter is applied to the Y-axis TICK labels (recharts `tickFormatter`) in `TimelineRenderer` and the line chart renderer.
-  4. The per-widget Y-axis override does NOT change chart tooltips or data labels — those retain their existing v1.15 column-config behavior (verified: changing the Y-axis format leaves tooltip/data-label formatting unchanged).
-**Plans**: 2 plans
-- [ ] 86-01-PLAN.md — shared FormatSpecEditor (extracted from ColumnFormatEditorModal) + yAxisFormat config field + Y-AXIS FORMAT control on both config panels (set/clear)
-- [ ] 86-02-PLAN.md — renderer hybrid resolution (override→buildFormatter, else bound-column resolveFormatter) + tickFormatter on all value axes (ticks-only), both renderers
-
-#### Phase 87: Verification + Live UAT
-**Goal**: The milestone is proven correct via green automated gates on both stacks plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
-**Stack**: BOTH (gate verification) + operator (live walk-through)
-**Depends on**: Phase 86 (verifies after all feature phases land)
-**Requirements**: VERIFY-V117-01
-**Success Criteria** (what must be TRUE):
-  1. Automated gates are green: frontend vitest 100% from `packages/web`, web `tsc` clean, theme-guard green, and the server is unaffected (any server diff is flagged and explained).
-  2. A live operator confirms the SI abbreviation chosen in the Column Format editor applies across the existing column-config surfaces (records table, chart tooltip, axis/series labels, map popup).
-  3. A live operator confirms the per-widget Y-axis number-format control is visible on both timeline + line, the default-from-bound-column behavior works, and the ticks-only scope holds (tooltips/data labels unchanged).
-  4. Any gap caught in the walk-through is fixed in-session via repro-test-driven closure and re-walked to PASS.
-**Plans**: TBD
-
-**Dependency spine:** 85 → 86 → 87 (strictly sequential — 86 reuses the SI format option that 85 introduces; 87 verifies after both land). All FRONTEND-ONLY except Phase 87's operator-involved live walk-through. No server changes expected (flag any server diff). `AggregatedWidgetRenderer` remains the SOLE materialize trigger — this is pure read-path number formatting, no data-query coupling.
-
-**Test gates (every phase):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard.spec.ts green (theme tokens only, no raw hex); server unaffected (flag any diff). Phase 87 adds a blocking live operator walk-through.
-
----
+</details>
 
 ## v1.15 Column Formatting & View Lifecycle — SHIPPED 2026-06-22
 
@@ -131,9 +87,7 @@ Six in-session UAT fixes (modal CSS, default-None, DataFilter load-race + popove
 | 70–73 | v1.14 | — | Complete | 2026-06-19 |
 | 74–79 | v1.15 | 11/11 | Complete | 2026-06-22 |
 | 80–84 | v1.16 | 13/13 | Complete (UAT 14/14) | 2026-06-26 |
-| 85. SI Smart-Abbreviation Number Format | v1.17 | 0/1 | Planned | - |
-| 86. Chart Y-Axis Number Format (timeline + line) | v1.17 | 0/2 | Planned | - |
-| 87. Verification + Live UAT | v1.17 | 0/? | Not started | - |
+| 85–87 | v1.17 | 3/3 | Complete (UAT 6/6) | 2026-06-27 |
 
 ---
 
