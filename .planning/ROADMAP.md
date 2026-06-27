@@ -54,7 +54,8 @@
   3. Two widgets with identical resolved filter arrays produce the same stableComboHash string; two with different arrays produce different hashes — unit tests confirm determinism and collision-resistance.
   4. The NOFILTER sentinel is returned when the resolved filter array is empty, and is never confused with a real hash — unit test asserts the sentinel value.
   5. Frontend vitest 100% green; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 88-01-PLAN.md — Filter-selection types + resolveFilterSet (allow-list ∩ active, accept-all default) + stableComboHash/comboShortHash/NOFILTER sentinel + unit specs
 
 #### Phase 89: Store + Server Foundation
 **Goal**: The filterCombinationStore exists as the 9th store in both cleanup chains, the keep-alive hook covers combination views, and the server endpoint accepts the optional combinationKey param — all additive, backward-compatible, no renderer wiring yet.
