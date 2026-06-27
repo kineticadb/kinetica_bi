@@ -60,6 +60,8 @@ import {
   resolveFormatter,
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
+import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 import {
   RECHARTS_TOOLTIP_PROPS,
   DEFAULT_CHART_PALETTE,
@@ -1079,6 +1081,25 @@ const BarRenderer = ({
     }, 300);
   };
 
+  // Phase 87 (UAT): value-axis number format — per-widget override → bound metric column
+  // default → raw. Mirrors the timeline/line hybrid; unconfigured bars keep their raw tick
+  // appearance. Applied to the VALUE axis (YAxis when vertical, XAxis when horizontal).
+  const yAxisFormatSpec = config.yAxisFormat as FormatSpec | undefined;
+  const valueAxisTickFormatter = (v: unknown): string => {
+    if (yAxisFormatSpec) return String(buildFormatter(yAxisFormatSpec)(v) ?? v);
+    if (tableId !== undefined && metricColumn) {
+      const out = resolveFormatter(tableId, metricColumn)(v);
+      if (out !== v) return String(out);
+    }
+    return v == null ? "" : String(v);
+  };
+  // Size the vertical value axis to its formatted labels so short SI ticks ("1.2M") reclaim
+  // left-edge space; recharts 2.x YAxis width is a fixed number (no "auto").
+  const valueAxisWidth = estimateValueAxisWidth(
+    data.map((row) => Number((row as Record<string, unknown>)[y])),
+    valueAxisTickFormatter,
+  );
+
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
@@ -1087,7 +1108,7 @@ const BarRenderer = ({
         margin={{
           top: 10,
           right: 10,
-          left: yTitle ? 12 : (horizontal ? 8 : -10),
+          left: yTitle ? 12 : (horizontal ? 8 : 0),
           bottom: xTitle ? 24 : 0,
         }}
         onClick={handleChartClick}
@@ -1096,13 +1117,13 @@ const BarRenderer = ({
         {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={horizontal} horizontal={!horizontal} />}
         {horizontal ? (
           <>
-            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} />
+            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} tickFormatter={valueAxisTickFormatter} />
             <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={90} label={yLabelObj} />
           </>
         ) : (
           <>
             <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={xLabelObj} />
-            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} label={yLabelObj} />
+            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} width={valueAxisWidth} label={yLabelObj} tickFormatter={valueAxisTickFormatter} />
           </>
         )}
         {showTooltip && (

@@ -22,6 +22,7 @@ const bar: ChartTypeDefinition = {
     { key: "showGrid", label: "Show Grid Lines", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showTooltip", label: "Show Tooltip", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showValueLabels", label: "Show Value Labels", type: "boolean", defaultValue: false, group: "Display", hint: "Print each bar's value at its end" },
+    { key: "yAxisFormat", label: "Value-Axis Number Format", type: "formatSpec", defaultValue: null, group: "Display", hint: "Defaults to the metric column's format; pick Smart abbreviation for compact ticks (1.2M)" },
   ],
   defaultConfig: {
     yFieldLabel: "",
@@ -35,6 +36,7 @@ const bar: ChartTypeDefinition = {
     showGrid: true,
     showTooltip: true,
     showValueLabels: false,
+    yAxisFormat: null,
   },
 };
 

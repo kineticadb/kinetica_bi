@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { getChartType, type ConfigField } from "./registry";
+import { FormatSpecEditor } from "./FormatSpecEditor";
+import type { FormatSpec } from "../../lib/columnFormatter";
 import { isColumnDrillDownSafe, inferDataTypeFromColumn } from "../../lib/columnTypes";
 import type { DynamicViewRow, WidgetDto } from "../../api/client";
 
@@ -908,6 +910,18 @@ const FieldRenderer = ({
 
     case "colorRules":
       return <ColorRulesField field={field} value={value} onChange={onChange} />;
+
+    case "formatSpec":
+      return (
+        <div className="ds-field">
+          <span className="ds-field-label">{field.label}</span>
+          <FormatSpecEditor
+            spec={(value as FormatSpec | null) ?? null}
+            onChange={(s) => onChange(s ?? undefined)}
+          />
+          {field.hint && <span className="config-hint">{field.hint}</span>}
+        </div>
+      );
 
     default:
       return null;

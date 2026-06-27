@@ -15,7 +15,10 @@ export type FieldType =
   | "range"
   // Repeatable {min?, max?, color} rules — used by Big Number to color the value
   // by range. Stored as an array on config[key].
-  | "colorRules";
+  | "colorRules"
+  // Reusable number/date format picker (the shared FormatSpecEditor). Stored as a
+  // FormatSpec object on config[key], or null/undefined = "use column default".
+  | "formatSpec";
 
 export type ConfigField = {
   key: string;

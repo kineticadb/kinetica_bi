@@ -693,3 +693,61 @@ describe("ChartConfigPanel — grouped chart sort direction + result limit", () 
     expect(screen.getByText(/ORDER BY value DESC LIMIT 500/)).toBeInTheDocument();
   });
 });
+
+// Phase 87 (UAT): the reusable "formatSpec" ConfigField type renders the shared
+// FormatSpecEditor and persists the picked spec on config[key] (bar Y-axis number format).
+describe("ChartConfigPanel — formatSpec field type (bar Y-axis number format)", () => {
+  const BAR_DEF_FMT: import("./registry").ChartTypeDefinition = {
+    type: "bar",
+    label: "Bar",
+    icon: "|",
+    fields: [
+      { key: "yAxisFormat", label: "Value-Axis Number Format", type: "formatSpec", defaultValue: null, group: "Display" },
+    ],
+    defaultConfig: { yAxisFormat: null },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) =>
+      type === "bar" ? BAR_DEF_FMT : undefined,
+    );
+  });
+
+  it("renders the FormatSpecEditor kind picker (incl. Smart abbreviation) for a formatSpec field", () => {
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{}}
+        tables={TABLES}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Format kind")).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Smart abbreviation/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("persists yAxisFormat = { kind: 'si', decimals: 1 } when SI is picked, then Apply", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{}}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Format kind"), { target: { value: "si" } });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0].config).toEqual(
+      expect.objectContaining({ yAxisFormat: { kind: "si", decimals: 1 } }),
+    );
+  });
+});
