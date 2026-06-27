@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 90-01-PLAN.md
-last_updated: "2026-06-27T23:22:22.556Z"
+stopped_at: Completed 90-02-PLAN.md
+last_updated: "2026-06-27T23:31:47.602Z"
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 ## Current Position
 
 Phase: 90 (combination-orchestrator) — EXECUTING
-Plan: 1 of 3
+Plan: 2 of 3
 
 ### v1.18 Phase Map
 
@@ -613,6 +613,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 89-store-server-foundation P02 | 340 | 2 tasks | 4 files |
 | Phase 89-store-server-foundation P01 | 393 | 3 tasks | 6 files |
 | Phase 90-combination-orchestrator P01 | 300 | 1 tasks | 2 files |
+| Phase 90 P02 | 7 | 2 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -909,6 +910,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 89-store-server-foundation]: dropCombinationView uses separate inFlightDropCombo Map to avoid cross-contamination with inFlightDrop
 - [Phase 90-01]: combinationKey branch takes precedence (first in ternary) over dynamicViewId and tableId branches in inFlightMaterialize cache key
 - [Phase 90-01]: Test isolation via vi.resetModules() + dynamic import for module-level Map state in materializeFilter specs
+- [Phase 90]: MAX_COMBINATION_VIEWS_PER_TABLE env var name matches filterCombinationStore constant name for 1:1 correspondence; auth store field maxCombinationViewsPerTable read by Plan 03 orchestrator
+- [Phase 90]: Coalesce to 10 (not 0) in fetchMe for backward compat with older server builds that omit the field
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1315,6 +1318,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-27T23:22:22.546Z
-Stopped at: Completed 90-01-PLAN.md
+Last session: 2026-06-27T23:31:47.593Z
+Stopped at: Completed 90-02-PLAN.md
 Resume file: None
