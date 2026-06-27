@@ -1115,7 +1115,7 @@ const BarRenderer = ({
           top: 8,
           right: 10,
           left: horizontal ? 8 : 0,
-          bottom: xTitle ? 20 : 0,
+          bottom: xTitle ? 8 : 0,
         }}
         onClick={handleChartClick}
         style={wrapperStyle}
@@ -1138,7 +1138,7 @@ const BarRenderer = ({
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
           />
         )}
-        {showLegend && <Legend wrapperStyle={{ paddingTop: 2, fontSize: 11 }} iconSize={10} />}
+        {showLegend && <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} />}
         <Bar
           dataKey={y}
           fill={color}
