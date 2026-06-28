@@ -4,6 +4,8 @@ import { FormatSpecEditor } from "./FormatSpecEditor";
 import type { FormatSpec } from "../../lib/columnFormatter";
 import { isColumnDrillDownSafe, inferDataTypeFromColumn } from "../../lib/columnTypes";
 import type { DynamicViewRow, WidgetDto } from "../../api/client";
+import { FilterSelectionPanel } from "./FilterSelectionPanel";
+import type { FilterSelectionConfig } from "../../types/filterSelection";
 
 type TableInfo = {
   id: number;
@@ -41,6 +43,12 @@ type Props = {
    * its source-map-widget dropdown.
    */
   widgets?: WidgetDto[];
+  /**
+   * Phase 93 (FSCOPE-V118-01): the id of the widget being configured. Passed to
+   * FilterSelectionPanel for self-exclusion (the widget cannot list itself as a
+   * filter source). Optional so existing call sites are unaffected.
+   */
+  widgetId?: number;
   onSave: (payload: { title: string; config: Record<string, unknown> }) => void;
   onCancel: () => void;
 };
@@ -75,6 +83,7 @@ const ChartConfigPanel = ({
   views,
   dynamicViews,
   widgets,           // Phase 42 Plan 42-01
+  widgetId,          // Phase 93 Plan 93-01
   onSave,
   onCancel,
 }: Props) => {
@@ -715,6 +724,18 @@ const ChartConfigPanel = ({
               {(draft.groupByColumn as string) ? ` (${draft.groupByColumn as string})` : ""}.
             </span>
           </div>
+        )}
+
+        {/* Phase 93 (FSCOPE-V118-01): Filter Scope section — visible whenever the widget
+            has a data source (same gate as Drill-Down). FilterSelectionPanel renders its
+            own config-group wrapper; do NOT wrap it in another config-group. */}
+        {selectedSource && (
+          <FilterSelectionPanel
+            value={draft.filterSelection as FilterSelectionConfig | undefined}
+            onChange={(next) => set("filterSelection", next)}
+            widgets={widgets ?? []}
+            selfWidgetId={widgetId}
+          />
         )}
 
         {/* Chart-specific field groups */}

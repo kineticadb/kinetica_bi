@@ -1293,6 +1293,7 @@ const WidgetConfigModal = ({
             views={views}
             dynamicViews={dynamicViews}
             widgets={widgets}      // Phase 42 Plan 42-01: forward to <Custom> slot
+            widgetId={widget.id}   // Phase 93 Plan 93-01: self-exclusion in FilterSelectionPanel
             onSave={onSave}
             onCancel={onClose}
           />
