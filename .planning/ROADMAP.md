@@ -101,7 +101,9 @@
   2. A widget with a source-allow-list that excludes one active filter reads from a different (narrower) combination view than a widget accepting all filters on the same table — confirmed by inspecting filterCombinationStore.vizToHash in devtools.
   3. While a new combination view is materializing, the widget shows a loading state and does not render the old (stale) view or the raw unfiltered table.
   4. Frontend vitest 100%; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 91-01-PLAN.md — AggregatedWidgetRenderer: flip table read to filterCombinationStore + remove Effect 1 table branch + Effect 2 rewire (clearEntry retry) + COMBO-V118-04 byte-identical spec (READ-V118-01, COMBO-V118-04)
+- [ ] 91-02-PLAN.md — TimelineRenderer + NumericLineRenderer: selector-only flip to filterCombinationStore + clearEntry expiry + NOFILTER/suspend specs (READ-V118-01)
 
 #### Phase 92: MapChartRenderer Wiring
 **Goal**: WMS map layers bind to their combination view by name — both buildWmsParams call sites (Effect 2 ADD/REMOVE and Effect 3 updateParams) resolve the per-layer combination view, and the comboViewsKey dep-key selector causes layer re-requests when the bound combination view changes.
