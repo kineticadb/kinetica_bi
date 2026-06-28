@@ -56,6 +56,11 @@ const _filterViewState: {
   }>;
 } = { views: {}, dvViews: {} };
 
+// Phase 92 (READ-V118-02): filterCombinationStore mock state — mutated by tests, read by the
+// selector-aware mock factory below. Keyed l:<layerId> in vizToHash; registry by combo hash.
+let _comboVizToHash: Record<string, string | undefined> = {};
+let _comboRegistry: Record<string, any> = {};
+
 // Phase 35 (DV-V16-13): per-layer dynamic-view store state. Shared between vi.mock factory
 // and tests so tests can mutate dvEntry shape (viewName, status) + dynamicViewVersion and the
 // renderer's imperative getState() snapshots read the new state on next effect fire.
@@ -392,6 +397,15 @@ vi.mock("../../store/filterViewStore", () => {
   const hook = (selector: (s: any) => any) => selector({ views: _filterViewState.views, dvViews: _filterViewState.dvViews });
   (hook as any).getState = () => ({ views: _filterViewState.views, dvViews: _filterViewState.dvViews });
   return { useFilterViewStore: hook };
+});
+
+// Phase 92: filterCombinationStore mock — selector-aware hook + getState(), mirrors the
+// filterViewStore mock pattern. NOFILTER_SENTINEL exported so the renderer's hash.endsWith check works.
+vi.mock("../../store/filterCombinationStore", () => {
+  const state = () => ({ vizToHash: _comboVizToHash, registry: _comboRegistry, combinationVersion: 0 });
+  const hook = (selector: (s: any) => any) => selector(state());
+  (hook as any).getState = () => state();
+  return { useFilterCombinationStore: hook, MAX_COMBINATION_VIEWS_PER_TABLE: 10 };
 });
 
 // Phase 35 (DV-V16-13): dynamicViewStore mock — same imperative .getState() pattern as
@@ -1469,6 +1483,8 @@ describe("MapChartRenderer — Phase 16 LAYERS-swap + _mv emission (MAP-V13-01..
     _filterState.filterVersion = 0;
     _layersState.layers = [];
     _filterViewState.views = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
     lastMapInstance = null;
     lastBasemapLayerInstance = null;
     lastResizeObserverCallback = null;
@@ -1501,16 +1517,21 @@ describe("MapChartRenderer — Phase 16 LAYERS-swap + _mv emission (MAP-V13-01..
     expect(params).not.toHaveProperty("QUERY");
   });
 
-  // ── Test 16-B: active non-expired view → LAYERS=<viewName>, _mv=<materializeVersion> ──
-  it("Test 16-B: with non-expired entry having viewName + materializeVersion, ImageWMS constructed with LAYERS=<viewName> and _mv=<version>", async () => {
+  // ── Test 16-B: active non-expired combo view → LAYERS=<comboViewName>, _mv=<materializeVersion> ──
+  // Phase 92: migrated to filterCombinationStore — Effect 2 reads combo registry via vizToHash[l:<id>].
+  it("Test 16-B: with non-expired combo entry for l:1 having viewName + materializeVersion, ImageWMS constructed with LAYERS=<viewName> and _mv=<version>", async () => {
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
-    _filterViewState.views = {
-      10: {
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"x\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"x\"": {
         viewName: "_kbi_filt_u1_d1_t10_sabc",
         expiresAt: Date.now() + 60_000,
         materializing: false,
         materializeVersion: 3,
+        refCount: 1,
         dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
       },
     };
     await act(async () => {
@@ -1545,10 +1566,13 @@ describe("MapChartRenderer — Phase 16 LAYERS-swap + _mv emission (MAP-V13-01..
     expect(params).not.toHaveProperty("_mv");
   });
 
-  // ── Test 16-D: Effect 3 updateParams fires when viewsKey changes (re-materialize) ──
-  it("Test 16-D: when useFilterViewStore.views[tableId] mutates from no-entry to active, Effect 3 calls source.updateParams with LAYERS=<viewName> and _mv=<version>", async () => {
+  // ── Test 16-D: Effect 3 updateParams fires when comboViewsKey changes (re-materialize) ──
+  // Phase 92: migrated to filterCombinationStore — comboViewsKey changes when vizToHash[l:<id>]
+  // or registry[hash] mutates (new view name / materializeVersion).
+  it("Test 16-D: when filterCombinationStore.vizToHash[l:1] mutates from no-entry to active, Effect 3 calls source.updateParams with LAYERS=<comboViewName> and _mv=<version>", async () => {
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
-    _filterViewState.views = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
     const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     // Wait for initial mount + Effect 2 to construct the source.
     await act(async () => {
@@ -1558,25 +1582,29 @@ describe("MapChartRenderer — Phase 16 LAYERS-swap + _mv emission (MAP-V13-01..
     const source = allImageWmsInstances[0];
     source.updateParams.mockClear();
 
-    // Mutate the view-store and trigger a re-render so the viewsKey selector picks up the change.
-    _filterViewState.views = {
-      10: {
-        viewName: "_kbi_filt_u1_d1_t10_sabc",
+    // Mutate the combo store and trigger a re-render so the comboViewsKey selector picks up the change.
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"x\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"x\"": {
+        viewName: "_kbi_combo_t10_cabc1234",
         expiresAt: Date.now() + 60_000,
         materializing: false,
         materializeVersion: 5,
+        refCount: 1,
         dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
       },
     };
     await act(async () => {
       rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     });
 
-    // Effect 3 should have called updateParams at least once with LAYERS=<viewName> and _mv=5.
+    // Effect 3 should have called updateParams at least once with LAYERS=<comboViewName> and _mv=5.
     expect(source.updateParams).toHaveBeenCalled();
     const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
     const params = lastCall[0];
-    expect(params.LAYERS).toBe("_kbi_filt_u1_d1_t10_sabc");
+    expect(params.LAYERS).toBe("_kbi_combo_t10_cabc1234");
     expect(params._mv).toBe("5");
   });
 
@@ -1600,6 +1628,8 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
     _filterState.filterVersion = 0;
     _layersState.layers = [];
     _filterViewState.views = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
     lastMapInstance = null;
     lastBasemapLayerInstance = null;
     lastResizeObserverCallback = null;
@@ -1616,11 +1646,22 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
     vi.restoreAllMocks();
   });
 
-  // ── Spec 1: no WMS updateParams while materializing ────────────────────────────
-  it("Spec 17-02-1: no WMS updateParams fires for a layer while its tableId is materializing", async () => {
-    // Set materializing=true for tableId=10 BEFORE render
-    _filterViewState.views = {
-      10: { viewName: "", expiresAt: 0, materializing: true, materializeVersion: 0, dashboardId: 1 },
+  // ── Spec 1: no WMS updateParams while combo entry is materializing ──────────────────────────
+  // Phase 92: migrated to filterCombinationStore — suspend gate is comboEntry?.materializing.
+  it("Spec 17-02-1: no WMS updateParams fires for a layer while its combo entry is materializing", async () => {
+    // Set combo entry materializing=true for layer id=1 BEFORE render
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"x\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"x\"": {
+        viewName: "",
+        expiresAt: 0,
+        materializing: true,
+        materializeVersion: 0,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
     };
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
 
@@ -1645,10 +1686,21 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
   });
 
   // ── Spec 2: WMS fires once with LAYERS=<view> when materializing clears ────────────────────
-  it("Spec 17-02-2: WMS updateParams fires with LAYERS=<view> when materializing flips false via setView", async () => {
-    // Start with materializing=true
-    _filterViewState.views = {
-      10: { viewName: "", expiresAt: 0, materializing: true, materializeVersion: 0, dashboardId: 1 },
+  // Phase 92: migrated to filterCombinationStore — materializing flag lives in combo registry.
+  it("Spec 17-02-2: WMS updateParams fires with LAYERS=<comboView> when combo entry materializing flips false", async () => {
+    // Start with combo entry materializing=true
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"x\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"x\"": {
+        viewName: "",
+        expiresAt: 0,
+        materializing: true,
+        materializeVersion: 0,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
     };
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
 
@@ -1666,34 +1718,58 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
     });
     expect(source.updateParams).not.toHaveBeenCalled();
 
-    // Simulate setView: materializing flips false, viewName populated, viewsKey changes
-    _filterViewState.views = {
-      10: {
-        viewName: "_kbi_filt_test",
-        expiresAt: Date.now() + 300000,
-        materializing: false,
-        materializeVersion: 1,
-        dashboardId: 1,
-      },
+    // Simulate combo view materialization completing: materializing flips false, viewName populated, comboViewsKey changes
+    _comboRegistry["table:10:status|eq|\"x\""] = {
+      viewName: "_kbi_combo_t10_cabc1234",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+      materializeVersion: 1,
+      refCount: 1,
+      dashboardId: 1,
+      sourceType: "table",
+      sourceId: 10,
     };
     source.updateParams.mockClear();
     await act(async () => {
       rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     });
 
-    // Effect 3 fires: materializing=false → updateParams called with LAYERS=<viewName>
+    // Effect 3 fires: materializing=false → updateParams called with LAYERS=<comboViewName>
     expect(source.updateParams).toHaveBeenCalled();
     const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
-    expect(lastCall[0].LAYERS).toBe("_kbi_filt_test");
+    expect(lastCall[0].LAYERS).toBe("_kbi_combo_t10_cabc1234");
   });
 
-  // ── Spec 3: cross-tableId isolation (PITFALL C-02) ────────────────────────────
-  it("Spec 17-02-3: WMS for layer on tableId B fires normally when tableId A is materializing (C-02 isolation)", async () => {
-    // layerA: tableId=10, materializing=true
-    // layerB: tableId=11, materializing=false, viewName populated
-    _filterViewState.views = {
-      10: { viewName: "", expiresAt: 0, materializing: true, materializeVersion: 0, dashboardId: 1 },
-      11: { viewName: "ki_home.tableB", expiresAt: Date.now() + 300000, materializing: false, materializeVersion: 1, dashboardId: 1 },
+  // ── Spec 3: cross-layer isolation (PITFALL C-02) ─────────────────────────────
+  // Phase 92: migrated to filterCombinationStore — isolation is per-layer (l: vizKey), not per-tableId.
+  it("Spec 17-02-3: WMS for layer B fires normally when layer A's combo entry is materializing (cross-layer isolation)", async () => {
+    // layerA (id=1, tableId=10): combo entry materializing=true
+    // layerB (id=2, tableId=11): combo entry ready with viewName
+    _comboVizToHash = {
+      "l:1": "table:10:status|eq|\"x\"",
+      "l:2": "table:11:region|eq|\"us\"",
+    };
+    _comboRegistry = {
+      "table:10:status|eq|\"x\"": {
+        viewName: "",
+        expiresAt: 0,
+        materializing: true,
+        materializeVersion: 0,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
+      "table:11:region|eq|\"us\"": {
+        viewName: "_kbi_combo_t11_cdef5678",
+        expiresAt: Date.now() + 300000,
+        materializing: false,
+        materializeVersion: 1,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 11,
+      },
     };
     _layersState.layers = [
       makeLayer({ id: 1, position: 0, table_id: 10 }),
@@ -1709,7 +1785,7 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
     expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(2);
 
     // Note: ImageWMS instances are ordered by construction order (layer add order in Effect 2)
-    // layerA (table_id=10, position=0) is processed before layerB (table_id=11, position=1)
+    // layerA (id=1, position=0) is processed before layerB (id=2, position=1)
     const sourceA = allImageWmsInstances[0];
     const sourceB = allImageWmsInstances[1];
 
@@ -1723,20 +1799,30 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
       rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     });
 
-    // Phase 17-03 follow-up: with the per-layer params fingerprint guard, neither layer's
-    // updateParams should fire on a filterVersion bump that doesn't change either layer's params.
-    // LayerA: suspended (materializing=true → skip).
+    // Phase 17-03 follow-up: with the per-layer params fingerprint guard:
+    // LayerA: suspended (comboEntry.materializing=true → skip).
     // LayerB: params unchanged from construction → fingerprint matches → skip.
-    // The C-02 isolation goal is now structural: layer B does not re-issue a WMS GetMap when
-    // a filter on a different tableId ticks filterVersion.
+    // The C-02 isolation goal is structural: layer B does not re-issue a WMS GetMap when
+    // a filter on a different layer ticks filterVersion.
     expect(sourceA.updateParams).not.toHaveBeenCalled();
     expect(sourceB.updateParams).not.toHaveBeenCalled();
   });
 
   // ── Spec 4: layer params actually change → updateParams fires (proves the guard isn't over-eager) ─
-  it("Spec 17-03 follow-up: WMS updateParams fires when materializeVersion increments (cache-bust path)", async () => {
-    _filterViewState.views = {
-      10: { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000, materializing: false, materializeVersion: 1, dashboardId: 1 },
+  // Phase 92: migrated to filterCombinationStore — materializeVersion bumps via combo registry update.
+  it("Spec 17-03 follow-up: WMS updateParams fires when combo entry materializeVersion increments (cache-bust path)", async () => {
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"x\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"x\"": {
+        viewName: "_kbi_combo_t10_cv1",
+        expiresAt: Date.now() + 300000,
+        materializing: false,
+        materializeVersion: 1,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
     };
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
 
@@ -1748,8 +1834,15 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
     source.updateParams.mockClear();
 
     // Bump materializeVersion (same viewName, CREATE OR REPLACE re-materialize) → params change.
-    _filterViewState.views = {
-      10: { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000, materializing: false, materializeVersion: 2, dashboardId: 1 },
+    _comboRegistry["table:10:status|eq|\"x\""] = {
+      viewName: "_kbi_combo_t10_cv1",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+      materializeVersion: 2,
+      refCount: 1,
+      dashboardId: 1,
+      sourceType: "table",
+      sourceId: 10,
     };
     _filterState.filterVersion = 1;
     await act(async () => {
@@ -1758,8 +1851,197 @@ describe("MapChartRenderer — Phase 17-02 pre-materialize WMS suspend gate", ()
 
     expect(source.updateParams).toHaveBeenCalled();
     const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
-    expect(lastCall[0].LAYERS).toBe("_kbi_filt_v1");
+    expect(lastCall[0].LAYERS).toBe("_kbi_combo_t10_cv1");
     expect(lastCall[0]._mv).toBe("2");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 92 / COMBO-V118-04 — map WMS read via filterCombinationStore */
+/* ------------------------------------------------------------------ */
+
+describe("Phase 92 / COMBO-V118-04 — default accept-all WMS read via filterCombinationStore", () => {
+  beforeEach(() => {
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    _filterViewState.dvViews = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
+    lastMapInstance = null;
+    lastBasemapLayerInstance = null;
+    lastResizeObserverCallback = null;
+    lastResizeObserverInstance = null;
+    tileLoadListeners = {};
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    lastViewportElement = null;
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Test 92-A: combo viewName flows into updateParams LAYERS ────────────
+  it("Test 92-A: when filterCombinationStore.vizToHash[l:1] is set, Effect 3 calls source.updateParams with LAYERS=<comboViewName>", async () => {
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
+    // Start with no combo entry
+    _comboVizToHash = {};
+    _comboRegistry = {};
+
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const source = allImageWmsInstances[0];
+    source.updateParams.mockClear();
+
+    // Combo entry arrives (orchestrator materializes the view) → comboViewsKey changes
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"active\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"active\"": {
+        viewName: "_kbi_combo_t10_c92a0001",
+        expiresAt: Date.now() + 60_000,
+        materializing: false,
+        materializeVersion: 1,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
+    };
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    // Effect 3 re-fires because comboViewsKey changed; should call updateParams with combo view name
+    expect(source.updateParams).toHaveBeenCalled();
+    const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
+    expect(lastCall[0].LAYERS).toBe("_kbi_combo_t10_c92a0001");
+    expect(lastCall[0]._mv).toBe("1");
+  });
+
+  // ── Test 92-B: undefined hash (no combo / NOFILTER) → base table ────────────
+  it("Test 92-B: undefined vizToHash (no combo entry) → LAYERS is the base table ref (rawTableRef)", async () => {
+    // No combo entry: _comboVizToHash = {} (set in beforeEach)
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    expect(params.LAYERS).toBe("public.t10");
+    expect(params).not.toHaveProperty("_mv");
+  });
+
+  it("Test 92-B (NOFILTER hash): vizToHash[l:1]='table:10:NOFILTER' → LAYERS is still the base table ref", async () => {
+    // NOFILTER sentinel: hash ends with ':NOFILTER' — treat as no-entry, fall back to rawTableRef
+    _comboVizToHash = { "l:1": "table:10:NOFILTER" };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    expect(params.LAYERS).toBe("public.t10");
+    expect(params).not.toHaveProperty("_mv");
+  });
+
+  // ── Test 92-C: comboEntry.materializing=true → Effect 3 skips updateParams ─
+  it("Test 92-C: comboEntry.materializing=true → Effect 3 skips updateParams (suspend gate)", async () => {
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"active\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"active\"": {
+        viewName: "",
+        expiresAt: 0,
+        materializing: true,
+        materializeVersion: 0,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const source = allImageWmsInstances[0];
+    source.updateParams.mockClear();
+
+    // Trigger Effect 3 via filterVersion bump
+    _filterState.filterVersion = 1;
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    // materializing=true → suspend gate should have blocked updateParams
+    expect(source.updateParams).not.toHaveBeenCalled();
+  });
+
+  // ── Test 92-D: filterViewStore NOT consulted — only combo store ──────────
+  it("Test 92-D (pure-consumer-lock extension): for a table-bound layer, filterViewStore.views is NOT consulted — only filterCombinationStore", async () => {
+    // Set BOTH stores with DIFFERENT view names.
+    // filterViewStore has the old path name; combo store has the new combination name.
+    // Renderer must use the combo store's name, NOT filterViewStore's.
+    _filterViewState.views = {
+      10: {
+        viewName: "_legacy_filter_view",
+        expiresAt: Date.now() + 60_000,
+        materializing: false,
+        materializeVersion: 99,
+        dashboardId: 1,
+      },
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10 })];
+    // Start with no combo entry — initial render uses rawTableRef
+    _comboVizToHash = {};
+    _comboRegistry = {};
+
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const source = allImageWmsInstances[0];
+    source.updateParams.mockClear();
+
+    // Now populate the combo store — comboViewsKey changes, Effect 3 re-fires
+    _comboVizToHash = { "l:1": "table:10:status|eq|\"active\"" };
+    _comboRegistry = {
+      "table:10:status|eq|\"active\"": {
+        viewName: "_kbi_combo_t10_c92d0001",
+        expiresAt: Date.now() + 60_000,
+        materializing: false,
+        materializeVersion: 7,
+        refCount: 1,
+        dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
+      },
+    };
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(source.updateParams).toHaveBeenCalled();
+    const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
+    // Must use combo store value, NOT filterViewStore value
+    expect(lastCall[0].LAYERS).toBe("_kbi_combo_t10_c92d0001");
+    expect(lastCall[0]._mv).toBe("7");
+    // Must NOT be the legacy filter view name
+    expect(lastCall[0].LAYERS).not.toBe("_legacy_filter_view");
   });
 });
 
@@ -4203,6 +4485,8 @@ describe("Phase 29 Selection + Delete (SHAPE-V15-04)", () => {
 
 describe("MapChartRenderer — Phase 35 per-layer dynamic-view binding (DV-V16-13/14)", () => {
   beforeEach(() => {
+    _comboVizToHash = {};
+    _comboRegistry = {};
     _filterState.filters = {};
     _filterState.filterVersion = 0;
     _layersState.layers = [];
@@ -5341,6 +5625,8 @@ describe("60.1 — overlaid info_enabled:0 drops layer from eligibleLayers (read
 
 describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-04)", () => {
   beforeEach(() => {
+    _comboVizToHash = {};
+    _comboRegistry = {};
     _filterState.filters = {};
     _filterState.filterVersion = 0;
     _layersState.layers = [];
@@ -5627,6 +5913,8 @@ describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation 
     _layersState.layers = [];
     _filterViewState.views = {};
     _filterViewState.dvViews = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
     _dynamicViewState.views = {};
     _dynamicViewState.dynamicViewVersion = 0;
     lastMapInstance = null;
@@ -5645,20 +5933,23 @@ describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation 
     vi.restoreAllMocks();
   });
 
-  // ── Cal-TABLE: calendar drill on table → WMS map for same tableId FROM-swaps to filtered view ──
-  // The calendar cell click writes markMaterializing → setView → views[tableId].viewName.
-  // After materialization (materializing:false, non-empty viewName), a map layer on the same
-  // tableId must have buildWmsParams called with tableRef===filtered viewName (not raw schema.table).
-  it("Cal-TABLE: table-bound calendar BETWEEN filter (materialized) → WMS LAYERS=<filtered viewName> + _mv present", async () => {
-    // Seed useFilterViewStore.views[10] as a materialized calendar-style filter view
-    // (same state as after: markMaterializing → setView({viewName, expiresAt}))
-    _filterViewState.views = {
-      10: {
+  // ── Cal-TABLE: calendar drill on table → WMS map for same tableId FROM-swaps to combo view ──
+  // Phase 92: calendar drill writes to filterCombinationStore (via orchestrator), so the map
+  // layer reads the combo view via vizToHash[l:<id>] → registry[hash].viewName.
+  it("Cal-TABLE: table-bound calendar BETWEEN filter (materialized) → WMS LAYERS=<combo viewName> + _mv present", async () => {
+    // Seed filterCombinationStore with a materialized combo view for layer id=1 on table 10
+    // (same state as after orchestrator materializes the combination view for the calendar filter)
+    _comboVizToHash = { "l:1": "table:10:time|between|[start,end]" };
+    _comboRegistry = {
+      "table:10:time|between|[start,end]": {
         viewName: "_kbi_filt_cal_d1_t10_sabc",
         expiresAt: Date.now() + 60_000,
         materializing: false,
         materializeVersion: 2,
+        refCount: 1,
         dashboardId: 1,
+        sourceType: "table",
+        sourceId: 10,
       },
     };
     // Render a table-bound WMS layer on tableId=10 (same table the calendar filtered)
@@ -5671,7 +5962,7 @@ describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation 
     expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
     const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
     const params = ImageWmsCtor.mock.calls[0][0].params;
-    // buildWmsParams received tableRef===calendar's filtered viewName (not raw "public.t10")
+    // buildWmsParams received tableRef===combo viewName (not raw "public.t10")
     expect(params.LAYERS).toBe("_kbi_filt_cal_d1_t10_sabc");
     expect(params._mv).toBe("2");
     // The raw table name must NOT appear in LAYERS
