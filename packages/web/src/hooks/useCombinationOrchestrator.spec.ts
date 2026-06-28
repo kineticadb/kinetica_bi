@@ -25,7 +25,7 @@ import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
 import { stableComboHash } from "../lib/stableComboHash";
-import type { WidgetDto } from "../api/client";
+import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import type { ActiveFilter } from "../store/filterStore";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,31 @@ function makeWidget(overrides: {
       ...(overrides.tableId !== undefined ? { tableId: overrides.tableId } : {}),
       ...(overrides.filterSelection ? { filterSelection: overrides.filterSelection } : {}),
     },
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-06-01T00:00:00Z",
+  };
+}
+
+function makeLayer(overrides: {
+  id: number;
+  tableId?: number;
+  dynamic_view_id?: number | null;
+  filterScope?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: number[] };
+}): DashboardLayerDto {
+  return {
+    id: overrides.id,
+    dashboard_id: DASH_ID,
+    table_id: overrides.tableId ?? TABLE_A,
+    layer_type: "KineticaWms",
+    position: 0,
+    config: {},
+    info_enabled: 0,
+    info_columns: null,
+    info_template: null,
+    dynamic_view_id: overrides.dynamic_view_id ?? null,
+    cb_config: null,
+    track_config: null,
+    ...(overrides.filterScope ? { filterScope: overrides.filterScope } : {}),
     created_at: "2026-06-01T00:00:00Z",
     updated_at: "2026-06-01T00:00:00Z",
   };
@@ -123,7 +148,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
   // Scenario 1: No trigger widgets → zero POSTs
   // -------------------------------------------------------------------------
   it("1: empty widgets array → zero POSTs fired", async () => {
-    renderHook(() => useCombinationOrchestrator(DASH_ID, []));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], []));
     bumpFilterVersion();
     advanceDebounce();
     // Let all microtasks settle
@@ -139,7 +164,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
   it("2: single widget with no active filters → NOFILTER → zero POSTs; vizToHash undefined", async () => {
     const w = makeWidget({ id: 1, tableId: TABLE_A });
     // No filters in store for TABLE_A → resolveFilterSet returns [] → NOFILTER hash
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
     bumpFilterVersion();
     advanceDebounce();
     await act(async () => {
@@ -160,7 +185,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     const w = makeWidget({ id: 1, tableId: TABLE_A });
     useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
     bumpFilterVersion();
     advanceDebounce();
 
@@ -191,7 +216,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     const w2 = makeWidget({ id: 2, tableId: TABLE_A });
     useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2], []));
     bumpFilterVersion();
     advanceDebounce();
 
@@ -237,7 +262,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
       .mockResolvedValueOnce({ viewName: "_kbi_combo_v1", expiresAt: 9_999_999_999 })
       .mockResolvedValueOnce({ viewName: "_kbi_combo_v2", expiresAt: 9_999_999_999 });
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2], []));
     bumpFilterVersion();
     advanceDebounce();
 
@@ -265,7 +290,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
 
     const { rerender } = renderHook(
       ({ widgets }: { widgets: WidgetDto[] }) =>
-        useCombinationOrchestrator(DASH_ID, widgets),
+        useCombinationOrchestrator(DASH_ID, widgets, []),
       { initialProps: { widgets: [w1] } },
     );
 
@@ -322,7 +347,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     // Make materializeFilter never resolve (simulates in-flight)
     (materializeFilter as Mock).mockReturnValue(new Promise(() => {}));
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
     bumpFilterVersion();
     advanceDebounce();
     await act(async () => {
@@ -376,7 +401,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
       .mockResolvedValueOnce({ viewName: "_kbi_combo_v1", expiresAt: 9_999_999_999 })
       .mockResolvedValueOnce({ viewName: "_kbi_combo_v2", expiresAt: 9_999_999_999 });
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2, w3]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2, w3], []));
     bumpFilterVersion();
     advanceDebounce();
 
@@ -416,7 +441,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     });
     useFilterCombinationStore.setState({ markMaterializing: markSpy } as Parameters<typeof useFilterCombinationStore.setState>[0]);
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
     bumpFilterVersion();
     advanceDebounce();
     await act(async () => {
@@ -442,7 +467,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     const w = makeWidget({ id: 1, tableId: TABLE_A });
     useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
 
-    renderHook(() => useCombinationOrchestrator(DASH_ID, [w]));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
 
     // Tick 1: establish the combo
     bumpFilterVersion();
@@ -509,7 +534,7 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
     const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
 
     const { unmount } = renderHook(() =>
-      useCombinationOrchestrator(DASH_ID, [w]),
+      useCombinationOrchestrator(DASH_ID, [w], []),
     );
 
     bumpFilterVersion();
@@ -552,5 +577,165 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
 
     // Restore
     useFilterCombinationStore.setState({ setEntry: origSetEntry } as Parameters<typeof useFilterCombinationStore.setState>[0]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 92 — layer enumeration (READ-V118-02 / COMBO-V118-04)
+// ---------------------------------------------------------------------------
+describe("Phase 92 — layer enumeration (READ-V118-02 / COMBO-V118-04)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10 } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_v", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // -------------------------------------------------------------------------
+  // L1: single table-bound layer with one active filter → ONE POST; vizToHash["l:<id>"] set
+  // -------------------------------------------------------------------------
+  it("L1: single table-bound layer with one active filter → ONE POST; vizToHash['l:1'] set", async () => {
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    const layer = makeLayer({ id: 1, tableId: TABLE_A });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [layer]));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    expect(call.combinationKey).toBe(expectedHash);
+    expect(call.tableId).toBe(TABLE_A);
+
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["l:1"]).toBe(expectedHash);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // L2: dv-bound layer (dynamic_view_id !== null) → NO POST; vizToHash["l:<id>"] absent
+  // -------------------------------------------------------------------------
+  it("L2: dv-bound layer (dynamic_view_id !== null) is SKIPPED → no POST, vizToHash['l:1'] absent", async () => {
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    const dvLayer = makeLayer({ id: 1, tableId: TABLE_A, dynamic_view_id: 7 });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [dvLayer]));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(materializeFilter).not.toHaveBeenCalled();
+    const state = useFilterCombinationStore.getState();
+    expect(state.vizToHash["l:1"]).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // L3: layer + widget on same table, default accept-all → ONE POST (shared); refCount 2
+  // -------------------------------------------------------------------------
+  it("L3: layer + widget on same table, default accept-all → ONE POST (shared); refCount 2", async () => {
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    const widget = makeWidget({ id: 1, tableId: TABLE_A });
+    const layer = makeLayer({ id: 2, tableId: TABLE_A });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [widget], [layer]));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["w:1"]).toBe(expectedHash);
+      expect(state.vizToHash["l:2"]).toBe(expectedHash);
+    });
+
+    await waitFor(() => {
+      const entry = useFilterCombinationStore.getState().registry[expectedHash];
+      expect(entry).toBeDefined();
+      expect(entry!.refCount).toBe(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // L4: layer NOFILTER (no active filters on its table) → no POST; vizToHash["l:<id>"] undefined
+  // -------------------------------------------------------------------------
+  it("L4: layer NOFILTER (no active filters on table) → no POST; vizToHash['l:1'] undefined", async () => {
+    useFilterStore.setState({ filters: {} } as Parameters<typeof useFilterStore.setState>[0]);
+    const layer = makeLayer({ id: 1, tableId: TABLE_A });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [layer]));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(materializeFilter).not.toHaveBeenCalled();
+    const state = useFilterCombinationStore.getState();
+    const vizVal = state.vizToHash["l:1"];
+    expect(vizVal === undefined || !("l:1" in state.vizToHash)).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // L5: layer removed on tick 2 → release + dropCombinationView when refCount hits 0
+  // -------------------------------------------------------------------------
+  it("L5: layer removed on tick 2 → release + dropCombinationView when refCount hits 0", async () => {
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    const layer = makeLayer({ id: 1, tableId: TABLE_A });
+
+    const { rerender } = renderHook(
+      ({ layers }: { layers: ReturnType<typeof makeLayer>[] }) =>
+        useCombinationOrchestrator(DASH_ID, [], layers),
+      { initialProps: { layers: [layer] } },
+    );
+
+    // Tick 1: establish the combo
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    await waitFor(() => {
+      expect(useFilterCombinationStore.getState().registry[expectedHash]).toBeDefined();
+    });
+
+    const viewName = useFilterCombinationStore.getState().registry[expectedHash]?.viewName;
+    expect(viewName).toBeTruthy();
+
+    // Tick 2: remove the layer
+    act(() => {
+      rerender({ layers: [] });
+    });
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(dropCombinationView).toHaveBeenCalledWith(
+        expect.objectContaining({ viewName }),
+      );
+    });
+
+    expect(useFilterCombinationStore.getState().registry[expectedHash]).toBeUndefined();
   });
 });

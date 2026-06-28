@@ -441,16 +441,17 @@ const DashboardOpen = ({
   // materializes (AggregatedWidgetRenderer stays sole materialize trigger).
   useViewKeepAlive(dashboard.id);
 
+  // Phase 12: Layer store subscription
+  const layers = useDashboardLayersStore((s) => s.layers);
+  const setLayers = useDashboardLayersStore((s) => s.setLayers);
+
   // Phase 90 (COMBO-V118-01 / COMBO-V118-03): dashboard-level combination-view orchestrator.
   // Fires one POST per UNIQUE resolved filter combination per filterVersion tick, ref-counts +
   // DROPs at 0, and enforces the per-table ceiling (env var via /api/me) with all-filters fallback.
   // DUAL-TRIGGER (Phase 90): runs ALONGSIDE AggregatedWidgetRenderer Effect 1 — combination views
   // carry a distinct _c<hash8> suffix and are not read by any renderer until Phase 91/92.
-  useCombinationOrchestrator(dashboard.id, widgets);
-
-  // Phase 12: Layer store subscription
-  const layers = useDashboardLayersStore((s) => s.layers);
-  const setLayers = useDashboardLayersStore((s) => s.setLayers);
+  // Phase 92 (READ-V118-02): orchestrator now enumerates BOTH widgets and table-bound layers.
+  useCombinationOrchestrator(dashboard.id, widgets, layers);
 
   // Phase 58 Plan 02 (ENGINE-V111-02) / Phase 60 Plan 01 (RADIO-V111-03):
   // applyWidgetAction dispatch closure.
