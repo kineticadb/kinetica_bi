@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 91-02-PLAN.md
-last_updated: "2026-06-28T01:07:32.618Z"
+stopped_at: Completed 91-01-PLAN.md
+last_updated: "2026-06-28T01:21:27.872Z"
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -616,6 +616,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 90 P02 | 7 | 2 tasks | 5 files |
 | Phase 90 P03 | 8min | 3 tasks | 3 files |
 | Phase 91 P02 | 8m | 2 tasks | 4 files |
+| Phase 91 P01 | 13min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -918,6 +919,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 90]: combinationVersion excluded from Effect deps — adding it would cause infinite re-fire loop; proven by spec scenario 10 (no-loop test)
 - [Phase 90]: NON_TRIGGER_TYPES copied not imported in orchestrator — circular dep risk; extended with radiogroup + calendar beyond useMapOnlySpatialMaterialize original
 - [Phase 91]: vizKey='w:<widget.id>' primitive selectors in Timeline+NumericLine read from filterCombinationStore (not filterViewStore.views[tableId]); commitFilter+markMaterializing unchanged
+- [Phase 91]: comboKey single primitive selector (viewName:expiresAt:materializing) over three separate selectors — mirrors MapChartRenderer.viewsKey, avoids triple subscription (S-02)
+- [Phase 91]: LIFE-V13-02 retry uses clearEntry(comboHash) + base-table fallthrough — no inline materializeFilter in table path (orchestrator owns re-materialize)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1324,6 +1327,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-28T01:07:32.608Z
-Stopped at: Completed 91-02-PLAN.md
+Last session: 2026-06-28T01:13:56.236Z
+Stopped at: Completed 91-01-PLAN.md
 Resume file: None
