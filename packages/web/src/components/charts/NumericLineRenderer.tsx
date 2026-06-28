@@ -34,6 +34,8 @@ import { runSql } from "../../api/client";
 import type { TableDto, WidgetDto } from "../../api/client";
 import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
+import { useFilterCombinationStore } from "../../store/filterCombinationStore";
+import { NOFILTER_SENTINEL } from "../../lib/stableComboHash";
 import { useDashboardContext } from "../DashboardContext";
 import {
   pickNumericBinWidth,
@@ -183,12 +185,27 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
   const filterVersion = useFilterStore((s) => s.filterVersion);
 
   // ----- Materialized filter-view subscriptions (mirrors TimelineRenderer) -----
+  // Phase 91 (READ-V118-01): table-bound read flips from filterViewStore.views[tableId]
+  // to filterCombinationStore (orchestrator-owned combo registry). dv path unchanged
+  // (the fetch effect already gates fvViewName behind dynamicViewId === undefined).
+  // PITFALL S-02 lock: primitive selectors scoped to this widget's vizKey — never the registry object.
+  // undefined hash (orchestrator not yet run) or NOFILTER hash → "" viewName → base table.
+  const vizKey = `w:${widget.id}`;
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const fvViewName = useFilterViewStore((s) => s.views[tableId]?.viewName);
+  const fvViewName = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    return h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? (s.registry[h]?.viewName ?? "") : "";
+  });
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const fvExpiresAt = useFilterViewStore((s) => s.views[tableId]?.expiresAt ?? 0);
+  const fvExpiresAt = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    return h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? (s.registry[h]?.expiresAt ?? 0) : 0;
+  });
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const fvMaterializing = useFilterViewStore((s) => s.views[tableId]?.materializing ?? false);
+  const fvMaterializing = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    return h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? (s.registry[h]?.materializing ?? false) : false;
+  });
   // Theme-aware grid/axis colors (SVG strokes can't read CSS vars).
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { grid: GRID_COLOR, axis: X_AXIS_COLOR } = useChartAxisColors();
@@ -227,7 +244,9 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
     if (dynamicViewId === undefined) {
       if (fvMaterializing) return; // suspend while the view materializes
       if (fvViewName && fvExpiresAt > 0 && Date.now() >= fvExpiresAt) {
-        useFilterViewStore.getState().clearView(tableId);
+        // Phase 91: clear the combo entry; orchestrator re-materializes on its next tick.
+        const h = useFilterCombinationStore.getState().vizToHash[vizKey];
+        if (h) useFilterCombinationStore.getState().clearEntry(h);
         return;
       }
     }

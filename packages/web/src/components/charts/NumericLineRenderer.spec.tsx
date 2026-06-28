@@ -38,7 +38,12 @@ const mockSetBulkFilters = vi.fn();
 const mockMarkMaterializing = vi.fn();
 let mockFilters: Record<number, unknown[]> = {};
 let mockFilterVersion = 0;
+// Kept for filterViewStore mock (commitFilter still uses markMaterializing via filterViewStore).
 let mockViews: Record<number, unknown> = {};
+// Phase 91 (READ-V118-01): filterCombinationStore mock state.
+let mockVizToHash: Record<string, string | undefined> = {};
+let mockRegistry: Record<string, { viewName: string; expiresAt: number; materializing: boolean }> = {};
+let mockCombinationVersion = 0;
 
 vi.mock("../../store/filterStore", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -56,6 +61,9 @@ vi.mock("../../store/filterStore", async (importOriginal) => {
 
 vi.mock("../../store/filterViewStore", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
+  // commitFilter still calls useFilterViewStore.getState().markMaterializing — keep this mock.
+  // The read selectors (fvViewName/fvExpiresAt/fvMaterializing) have moved to filterCombinationStore
+  // in Phase 91, so mockViews is no longer used for read-path tests; retained for commitFilter wiring.
   const useFilterViewStore = ((selector?: (s: unknown) => unknown) => {
     const state = { views: mockViews, clearView: () => {} };
     return selector ? selector(state) : state;
@@ -66,6 +74,27 @@ vi.mock("../../store/filterViewStore", async (importOriginal) => {
     markMaterializing: mockMarkMaterializing,
   });
   return { ...actual, useFilterViewStore };
+});
+
+// Phase 91 (READ-V118-01): selector-aware filterCombinationStore mock.
+// Mirrors TimelineRenderer.spec.tsx mock exactly.
+vi.mock("../../store/filterCombinationStore", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const useFilterCombinationStore = ((selector?: (s: unknown) => unknown) => {
+    const state = {
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+    };
+    return selector ? selector(state) : state;
+  }) as unknown as { getState: () => unknown };
+  useFilterCombinationStore.getState = () => ({
+    vizToHash: mockVizToHash,
+    registry: mockRegistry,
+    combinationVersion: mockCombinationVersion,
+    clearEntry: vi.fn(),
+  });
+  return { ...actual, useFilterCombinationStore };
 });
 
 import { runSql } from "../../api/client";
@@ -122,6 +151,10 @@ beforeEach(() => {
   mockFilters = {};
   mockFilterVersion = 0;
   mockViews = {};
+  // Phase 91: reset combination store mock state.
+  mockVizToHash = {};
+  mockRegistry = {};
+  mockCombinationVersion = 0;
   (runSql as unknown as ReturnType<typeof vi.fn>).mockReset();
 });
 
@@ -147,25 +180,44 @@ describe("NumericLineRenderer", () => {
     expect(metricSql).toContain("FROM demo.nyctaxi");
   });
 
-  it("with an active filter-view, range + metric queries target the view (not the base table)", async () => {
-    mockViews = { 1: { viewName: "_kbi_filt_test", materializing: false, expiresAt: Date.now() + 60_000 } };
+  it("with an active combo entry, range + metric queries target the combo view (not the base table)", async () => {
+    // Phase 91 (READ-V118-01): simulate an orchestrator-set combination view for widget id=100.
+    const hash = "table:1:trip_distance|between|[0,50]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "_kbi_combo_test", materializing: false, expiresAt: Date.now() + 60_000 };
     mockRangeAndMetric(0, 100, [[{ bucket: 0, value: 1 }]]);
     render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
     await waitFor(() => {
       expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
     const calls = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls[0][0] as string).toContain("FROM _kbi_filt_test");
+    expect(calls[0][0] as string).toContain("FROM _kbi_combo_test");
     expect(calls[0][0] as string).not.toContain("FROM demo.nyctaxi");
-    expect(calls[1][0] as string).toContain("FROM _kbi_filt_test");
+    expect(calls[1][0] as string).toContain("FROM _kbi_combo_test");
   });
 
-  it("suspends (no query) while the filter-view is materializing", async () => {
-    mockViews = { 1: { viewName: undefined, materializing: true, expiresAt: 0 } };
+  it("suspends (no query) while the combo entry is materializing (viewName='')", async () => {
+    // Phase 91: a materializing combo entry → fvMaterializing = true → suspend gate fires.
+    const hash = "table:1:trip_distance|between|[0,50]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "", materializing: true, expiresAt: 0 };
     mockRangeAndMetric(0, 100, [[{ bucket: 0, value: 1 }]]);
     render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
     await new Promise((r) => setTimeout(r, 50));
     expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+  });
+
+  it("NOFILTER hash (no combo entry) → base table queried (no FROM-swap)", async () => {
+    // Phase 91: when vizToHash maps to a NOFILTER hash, fvViewName="" → base table fallback.
+    mockVizToHash["w:100"] = "table:1:NOFILTER";
+    mockRangeAndMetric(0, 100, [[{ bucket: 0, value: 5 }]]);
+    render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const firstSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    // NOFILTER → base table; no view name in FROM clause.
+    expect(firstSql).toContain("FROM demo.nyctaxi");
   });
 
   it("renders the empty-state when no X-axis column is configured", () => {
