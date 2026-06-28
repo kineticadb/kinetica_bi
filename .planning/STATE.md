@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 92-01-PLAN.md
-last_updated: "2026-06-28T03:33:24.374Z"
+stopped_at: Completed 92-02-PLAN.md
+last_updated: "2026-06-28T14:00:02.938Z"
 progress:
   total_phases: 9
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -618,6 +618,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 91 P02 | 8m | 2 tasks | 4 files |
 | Phase 91 P01 | 13min | 2 tasks | 2 files |
 | Phase 92-mapchartrenderer-wiring P01 | 6min | 2 tasks | 4 files |
+| Phase 92-mapchartrenderer-wiring P02 | 10min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -924,6 +925,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 91]: LIFE-V13-02 retry uses clearEntry(comboHash) + base-table fallthrough — no inline materializeFilter in table path (orchestrator owns re-materialize)
 - [Phase 92-01]: l:<layerId> vizKey contract: map layers use l:<id> vizKeys enabling Plan 02 to read filterCombinationStore.vizToHash['l:<id>'] for WMS view name
 - [Phase 92-01]: filterScope added as optional TOP-LEVEL field on DashboardLayerDto in Phase 92 (undefined until Phase 93 adds SQLite column); eliminates as-any cast; resolveFilterSet(undefined,...) = accept-all
+- [Phase 92-mapchartrenderer-wiring]: Both buildWmsParams sites (Effect 2 + Effect 3) swapped atomically to filterCombinationStore per-layer combo view reads — the recurring missed-path gotcha explicitly avoided
+- [Phase 92-mapchartrenderer-wiring]: filterViewStore.views[tableId] WMS read eliminated from both Effects; filterViewStore retained only for dvViews (dv-filter path) and info popup query
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1330,6 +1333,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-28T03:33:24.364Z
-Stopped at: Completed 92-01-PLAN.md
+Last session: 2026-06-28T13:54:11.742Z
+Stopped at: Completed 92-02-PLAN.md
 Resume file: None
