@@ -34,15 +34,29 @@ import { useFilterCombinationStore, MAX_COMBINATION_VIEWS_PER_TABLE } from "../s
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
 import { resolveFilterSet } from "../lib/resolveFilterSet";
+import { resolveSpatialShapes } from "../lib/resolveSpatialShapes";
 import { stableComboHash, NOFILTER_SENTINEL } from "../lib/stableComboHash";
+import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
+import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { materializeFilter, dropCombinationView } from "../api/client";
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import type { FilterSelectionConfig } from "../types/filterSelection";
+import type { Shape } from "../store/spatialFilterStore";
+import type { SpatialTarget } from "../lib/spatialTargets";
 
 // ---------------------------------------------------------------------------
-// Non-trigger widget types — COPIED from useMapOnlySpatialMaterialize.ts:43.
-// Do NOT import to avoid circular-dep risk. Extend with "radiogroup" and "calendar"
-// which WidgetRenderer dispatch never routes to AggregatedWidgetRenderer.
+// Non-trigger widget types — AUTHORITATIVE source (useMapOnlySpatialMaterialize
+// was deleted in Phase 93.5-02; this set is the sole canonical definition).
+// Do NOT import to avoid circular-dep risk. Extend with "radiogroup", "calendar",
+// and "records" which are never routed through AggregatedWidgetRenderer:
+//   - "radiogroup", "calendar" — WidgetRenderer dispatch never routes to AWR.
+//   - "records" — RecordsTableRenderer is its OWN renderer; reads filterViewStore
+//     (not combo store) and runs its own legacy spatial materialize trigger. Adding
+//     records here stops the orchestrator from minting an orphan combo view that
+//     no renderer consumes. Records remains a self-contained legacy island.
+//     NOTE: "table" is intentionally NOT in this set — widget.type "table"
+//     (TableRenderer) is rendered INSIDE AggregatedWidgetRenderer and correctly
+//     reads the combo store.
 // ---------------------------------------------------------------------------
 const NON_TRIGGER_TYPES = new Set([
   "map",
@@ -53,6 +67,7 @@ const NON_TRIGGER_TYPES = new Set([
   "numericline",
   "radiogroup",
   "calendar",
+  "records",
 ]);
 
 const isTriggerType = (t: string) => !NON_TRIGGER_TYPES.has(t);
@@ -76,6 +91,9 @@ export function useCombinationOrchestrator(
 ): void {
   // --- 1. Primitive subscriptions (S-02 compliant — primitives only) ---
   const filterVersion = useFilterStore((s) => s.filterVersion);
+  // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop
+  // (same reasoning as filterVersion; combinationVersion remains EXCLUDED).
+  const spatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
   // Read ceiling from auth store (set by /api/me from MAX_COMBINATION_VIEWS_PER_TABLE env var).
   // Falls back to the web-side constant if the field is not yet set.
   const ceiling =
@@ -120,9 +138,10 @@ export function useCombinationOrchestrator(
   );
 
   // --- 5. Main orchestration effect ---
-  // CRITICAL: deps = [filterVersion, dashboardId, widgetsKey, layersKey, ceiling].
+  // CRITICAL: deps = [filterVersion, spatialFilterVersion, dashboardId, widgetsKey, layersKey, ceiling].
   // combinationVersion is intentionally EXCLUDED — it bumps on every setEntry and
   // would cause this effect to re-fire after each materialize, creating an infinite loop.
+  // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -131,9 +150,13 @@ export function useCombinationOrchestrator(
       // Read live state via getState() — NOT subscriptions (S-02).
       // ----------------------------------------------------------------
       const filterState = useFilterStore.getState();
+      // Shapes read imperatively — avoids stale closure + re-render storm.
+      const shapes = useSpatialFilterStore.getState().shapes;
+      // Build per-table spatial targets once (pure, synchronous).
+      const targetsByTable = aggregateSpatialTargetsByTable(widgets);
 
-      // Map<tableId, Map<hash, { resolved: ActiveFilter[]; widgetIds: number[] }>>
-      type HashEntry = { resolved: ReturnType<typeof resolveFilterSet>; widgetIds: number[] };
+      // Map<tableId, Map<hash, { resolved: ActiveFilter[]; widgetIds: number[]; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget }>>
+      type HashEntry = { resolved: ReturnType<typeof resolveFilterSet>; widgetIds: number[]; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget };
       const byTable = new Map<number, Map<string, HashEntry>>();
 
       // vizKey ("w:<widgetId>") → hash | undefined (undefined = NOFILTER)
@@ -147,7 +170,13 @@ export function useCombinationOrchestrator(
         const cfg = w.config.filterSelection as FilterSelectionConfig | undefined;
         const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, allFilters);
-        const hash = stableComboHash("table", tableId, resolved);
+        const acceptedShapes = resolveSpatialShapes(cfg, shapes);
+        const spatialTarget = targetsByTable.get(tableId);
+        // Pitfall 1 guard: only fold spatial into hash when an eligible target exists AND
+        // accepted shapes are non-empty. Without an eligible target, the hash must stay
+        // column-only so all vizs on that table share the same (column-only) dedup hash.
+        const shapesForHash = (spatialTarget && acceptedShapes.length > 0) ? acceptedShapes : [];
+        const hash = stableComboHash("table", tableId, resolved, shapesForHash);
 
         if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
           vizKeyToHash.set(`w:${w.id}`, undefined);
@@ -161,7 +190,7 @@ export function useCombinationOrchestrator(
         }
         let e = hm.get(hash);
         if (!e) {
-          e = { resolved, widgetIds: [] };
+          e = { resolved, widgetIds: [], acceptedShapes: shapesForHash, spatialTarget };
           hm.set(hash, e);
         }
         e.widgetIds.push(w.id);
@@ -179,7 +208,11 @@ export function useCombinationOrchestrator(
         const cfg = layer.filter_scope ?? undefined;
         const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, allFilters);
-        const hash = stableComboHash("table", tableId, resolved);
+        const acceptedShapes = resolveSpatialShapes(cfg, shapes);
+        const spatialTarget = targetsByTable.get(tableId);
+        // Pitfall 1 guard: only fold spatial when eligible target exists AND shapes accepted.
+        const shapesForHash = (spatialTarget && acceptedShapes.length > 0) ? acceptedShapes : [];
+        const hash = stableComboHash("table", tableId, resolved, shapesForHash);
         if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
           vizKeyToHash.set(`l:${layer.id}`, undefined);
           continue;
@@ -187,7 +220,7 @@ export function useCombinationOrchestrator(
         let hm = byTable.get(tableId);
         if (!hm) { hm = new Map<string, HashEntry>(); byTable.set(tableId, hm); }
         let e = hm.get(hash);
-        if (!e) { e = { resolved, widgetIds: [] }; hm.set(hash, e); }
+        if (!e) { e = { resolved, widgetIds: [], acceptedShapes: shapesForHash, spatialTarget }; hm.set(hash, e); }
         e.widgetIds.push(layer.id);   // widgetIds holds widget AND layer ids (internal; not renamed)
         vizKeyToHash.set(`l:${layer.id}`, hash);
       }
@@ -237,7 +270,9 @@ export function useCombinationOrchestrator(
           hashMap.delete(hash);
         }
 
-        // Add fallback hash to hashMap if not NOFILTER and not already present
+        // Add fallback hash to hashMap if not NOFILTER and not already present.
+        // Fallback (ceiling) is always column-only — acceptedShapes:[] spatialTarget:undefined.
+        // This is intentional: the fallback drops per-viz customization including spatial.
         if (!fallbackIsNoFilter) {
           const existing = hashMap.get(fallbackHash);
           if (!existing) {
@@ -253,7 +288,7 @@ export function useCombinationOrchestrator(
                 }
               }
             }
-            hashMap.set(fallbackHash, { resolved: allFilters, widgetIds: remappedWidgetIds });
+            hashMap.set(fallbackHash, { resolved: allFilters, widgetIds: remappedWidgetIds, acceptedShapes: [], spatialTarget: undefined });
           } else {
             // Add any remapped widgetIds to existing fallback entry
             for (const [vizKey, h] of vizKeyToHash) {
@@ -277,13 +312,13 @@ export function useCombinationOrchestrator(
       // ----------------------------------------------------------------
       // STEP C — Build desired hash set (post-ceiling)
       // ----------------------------------------------------------------
-      // Map<hash, { tableId, resolved }>
-      type DesiredEntry = { tableId: number; resolved: ReturnType<typeof resolveFilterSet> };
+      // Map<hash, { tableId, resolved, acceptedShapes, spatialTarget? }>
+      type DesiredEntry = { tableId: number; resolved: ReturnType<typeof resolveFilterSet>; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget };
       const desired = new Map<string, DesiredEntry>();
       for (const [tableId, hashMap] of byTable) {
         for (const [hash, entry] of hashMap) {
           if (!hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
-            desired.set(hash, { tableId, resolved: entry.resolved });
+            desired.set(hash, { tableId, resolved: entry.resolved, acceptedShapes: entry.acceptedShapes, spatialTarget: entry.spatialTarget });
           }
         }
       }
@@ -294,7 +329,7 @@ export function useCombinationOrchestrator(
       const current = useFilterCombinationStore.getState().registry;
       const storeActions = useFilterCombinationStore.getState();
 
-      for (const [hash, { tableId, resolved }] of desired) {
+      for (const [hash, { tableId, resolved, acceptedShapes, spatialTarget }] of desired) {
         // Guard: never process NOFILTER (belt-and-suspenders)
         if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) continue;
 
@@ -322,9 +357,19 @@ export function useCombinationOrchestrator(
         const ctrl = new AbortController();
         controllersRef.current.set(hash, ctrl);
 
+        // Build spatial args — only when accepted shapes are non-empty AND an eligible target exists.
+        // The hash already encodes the shapes (Plan 01 4th param), so combinationKey:hash is the
+        // correct per-spatial-combo dedup key. dv path is never reached here (already skipped).
+        const spatialArgs = (acceptedShapes.length > 0 && spatialTarget)
+          ? {
+              spatialFilters: acceptedShapes.map((s) => ({ id: s.id, wkt: s.wkt })),
+              spatialTarget,
+            }
+          : {};
+
         // Fire the POST (non-blocking — we don't await here; each call resolves independently)
         materializeFilter(
-          { dashboardId, tableId, filters: resolved, combinationKey: hash },
+          { dashboardId, tableId, filters: resolved, combinationKey: hash, ...spatialArgs },
           ctrl.signal,
         )
           .then((res) => {
@@ -442,5 +487,5 @@ export function useCombinationOrchestrator(
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, dashboardId, widgetsKey, layersKey, ceiling]);
+  }, [filterVersion, spatialFilterVersion, dashboardId, widgetsKey, layersKey, ceiling]);
 }
