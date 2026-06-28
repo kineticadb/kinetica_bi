@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 93.5-01-PLAN.md
-last_updated: "2026-06-28T23:26:00Z"
+stopped_at: Completed 93.5-02-PLAN.md
+last_updated: "2026-06-28T23:37:01.508Z"
 progress:
   total_phases: 10
-  completed_phases: 6
-  total_plans: 16
-  completed_plans: 13
+  completed_phases: 7
+  total_plans: 14
+  completed_plans: 14
 ---
 
 # Project State
@@ -622,6 +622,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 92-mapchartrenderer-wiring P01 | 6min | 2 tasks | 4 files |
 | Phase 92-mapchartrenderer-wiring P02 | 10min | 2 tasks | 2 files |
 | Phase 93-filter-scope-config-ui P02 | 982 | 3 tasks | 12 files |
+| Phase 93.5 P02 | 780 | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -932,6 +933,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 92-mapchartrenderer-wiring]: filterViewStore.views[tableId] WMS read eliminated from both Effects; filterViewStore retained only for dvViews (dv-filter path) and info popup query
 - [Phase 93-02]: filter_scope travels as OBJECT on wire: route stringifies FilterSelectionConfig on write, mapDashboardLayer parses on read; updateDashboardLayer re-stringifies existing.filter_scope in preserve-on-omit fallback
 - [Phase 93-02]: snake_case filter_scope on both DTO and DB column (matches cb_config/track_config); local prop names filterScope in KineticaWmsLayerForm are TypeScript-internal only
+- [Phase 93.5]: records added to NON_TRIGGER_TYPES: orchestrator was minting orphan combo views for records widgets (no consumer reads them); records stays on self-contained filterViewStore legacy island
+- [Phase 93.5]: spatialFilterVersion added to orchestrator dep array (safe: bumps only on draw/remove/clear, not on setEntry)
+- [Phase 93.5]: useMapOnlySpatialMaterialize deleted: orchestrator layer enumeration (Phase 92) + spatial fold-in now subsumes its map-only gap
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1338,6 +1342,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-28T18:42:17.446Z
-Stopped at: Completed 93-02-PLAN.md
+Last session: 2026-06-28T23:37:01.497Z
+Stopped at: Completed 93.5-02-PLAN.md
 Resume file: None
