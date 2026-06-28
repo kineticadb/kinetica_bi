@@ -36,6 +36,8 @@ import {
   type ActiveFilter,
 } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
+import { useFilterCombinationStore } from "../../store/filterCombinationStore";
+import { NOFILTER_SENTINEL } from "../../lib/stableComboHash";
 // Phase 35 Plan 05 (DV-V16-13/14): dynamic-view scoped selectors for dv-bound widgets.
 // Effect 2 (chart-query) flips viewName source to useDynamicViewStore when
 // widget.config.dynamicViewId is set; render-body status gates branch on dvStatus.
@@ -403,29 +405,22 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // which would prevent useEffect from re-firing. The version counter always advances on mutation.
   const filterVersion = useFilterStore((state) => state.filterVersion);
 
-  // Phase 15-02: scoped selector to useFilterViewStore.views[tableId]?.viewName.
-  // Triggers chart-query effect re-fire when materialize completes.
-  const viewName = useFilterViewStore((s) =>
-    tableId !== undefined ? s.views[tableId]?.viewName : undefined
-  );
-  // Phase 15-04 (LIFE-V13-01): scoped selector to expiresAt for proactive expiry check.
-  const expiresAt = useFilterViewStore((s) =>
-    tableId !== undefined ? s.views[tableId]?.expiresAt ?? 0 : 0
-  );
-  // Phase 17-02 gap-closure: suspend gate — Effect 2 skips when materialize is in flight.
-  // Phase 17-03: this gate is now reliable because dispatchDrillDown calls markMaterializing
-  // SYNCHRONOUSLY with addFilter (in the click handler), so by the time Effect 2 runs, the
-  // entry exists with materializing=true. Pre-17-03, markMaterializing was called inside
-  // Effect 1's 300ms setTimeout, leaving a t=0..t=300 window where Effect 2 raced ahead.
-  const materializing = useFilterViewStore((s) =>
-    tableId !== undefined ? s.views[tableId]?.materializing ?? false : false
-  );
-  // Phase 17-02: clearMaterializingVersion is the dep that lifts the Effect 2 suspend gate on
-  // materialize error (clearMaterializing from Effect 1 catch). Using the materializing flag
-  // directly as a dep would also trigger Effect 2 cleanup on markMaterializing (gate-up),
-  // aborting in-flight queries inside LIFE-V13-02. clearMaterializingVersion increments ONLY
-  // when clearMaterializing makes a non-no-op state change — isolating the re-fire trigger.
-  const clearMaterializingVersion = useFilterViewStore((s) => s.clearMaterializingVersion);
+  // Phase 91 (READ-V118-01): table-bound read flips from filterViewStore.views[tableId]
+  // to filterCombinationStore (orchestrator-owned combo registry). dv path is unchanged.
+  // vizKey is stable for the component's life — widget.id never changes while mounted.
+  const vizKey = `w:${widget.id}`;
+  // PITFALL S-02 lock: ONE primitive comboKey selector (viewName:expiresAt:materializing),
+  // mirrors MapChartRenderer.viewsKey. NEVER subscribe to s.registry (object) — re-render storm.
+  // NOFILTER hashes (end ":NOFILTER") and an undefined hash (orchestrator not yet run) both
+  // resolve to viewName "" → base table (fromSwap("") === fromSwap(undefined)).
+  const comboKey = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    const e = h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? s.registry[h] : undefined;
+    return `${e?.viewName ?? ""}:${e?.expiresAt ?? 0}:${e?.materializing ? "1" : "0"}`;
+  });
+  // combinationVersion replaces clearMaterializingVersion as the Effect 2 suspend-lift dep.
+  // setEntry / markMaterializing / clearEntry all bump it (covers success AND error).
+  const combinationVersion = useFilterCombinationStore((s) => s.combinationVersion);
 
   // Phase 35 Plan 05 (DV-V16-13): scoped selectors to useDynamicViewStore for dv-bound widgets.
   // PITFALL C-02 lock — scope to s.views[dynamicViewId], NEVER the whole views map.
@@ -541,72 +536,16 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
         return;
       }
 
-      // ── Table path (UNCHANGED) ───────────────────────────────────────────────
-      // Defensive: the table path requires a tableId (dv-only widgets returned above).
-      if (tableId === undefined) return;
-      // Abort prior in-flight materialize before firing a new one.
-      materializeAbortRef.current?.abort();
-      const controller = new AbortController();
-      materializeAbortRef.current = controller;
-
-      // Phase 30: read shapes IMPERATIVELY (one-shot) inside the debounce callback.
-      // Not a selector — avoids re-rendering on every store mutation; spatialFilterVersion
-      // is the dep that drives re-fire. Stale-closure-safe because Effect 1 re-creates on
-      // spatialFilterVersion change.
-      const shapes = useSpatialFilterStore.getState().shapes;
-      const hasShapesForThisTable = myTarget !== undefined && shapes.length > 0;
-
-      // Phase 30 DROP guard extension: drop the view when there is NOTHING to filter on
-      // for this table. tableFilters empty + (no eligible target for this table OR no
-      // shapes drawn) → no WHERE clause needed → drop any stale view.
-      if (tableFilters.length === 0 && !hasShapesForThisTable) {
-        // V13-P-12: ignore drop errors — cleanup, nothing to surface.
-        dropFilterView({ dashboardId, tableId }).catch(() => {});
-        useFilterViewStore.getState().clearView(tableId);
-        return;
-      }
-
-      // Non-empty filters branch — markMaterializing → await → setView.
-      useFilterViewStore.getState().markMaterializing(tableId, dashboardId);
-      try {
-        // Phase 30 payload extension: project Shape → SpatialFilter (id + wkt only) at the
-        // wire boundary; UI-only fields (type, label, measurement, addedAt) stay client-side.
-        // Server contract: pair-completeness — spatialFilters + spatialTarget go together
-        // or both are omitted. When hasShapesForThisTable is false, omit BOTH.
-        // BYTE-PARITY with server SpatialFilter at spatialWhereClause.ts:63 — { id, wkt }.
-        const args: import("../../api/client").MaterializeFilterArgs = hasShapesForThisTable
-          ? {
-              dashboardId,
-              tableId,
-              filters: tableFilters,
-              spatialFilters: shapes.map((s) => ({ id: s.id, wkt: s.wkt })),
-              spatialTarget: myTarget,
-            }
-          : { dashboardId, tableId, filters: tableFilters };
-        const result = await materializeFilter(args, controller.signal);
-        // setView at filterViewStore.ts:67 bumps materializeVersion → _mv cache-buster fires.
-        useFilterViewStore.getState().setView(tableId, result, dashboardId);
-      } catch (err) {
-        // AbortError is expected on rapid filter changes — silent (matches Phase 9 lock).
-        if ((err as Error)?.name === "AbortError") return;
-        // Phase 17-02: clearMaterializing lifts the Effect 2 suspend gate so the chart query
-        // falls through to raw FROM <table>. Without this, the entry stays with materializing=true
-        // indefinitely after an error and the chart query is permanently blocked.
-        if (tableId !== undefined) {
-          useFilterViewStore.getState().clearMaterializing(tableId);
-        }
-        useToastStore.getState().showToast((err as Error).message, "error");
-      }
+      // Phase 91: table path REMOVED — the orchestrator (useCombinationOrchestrator) owns
+      // table-bound combination view materialization. AggregatedWidgetRenderer no longer
+      // calls materializeFilter for the table path; this prevents dual-trigger split-brain.
     }, 300);
     return () => clearTimeout(timer);
-    // PITFALL S-02: filterVersion + spatialFilterVersion are primitive deps; tableFilters
-    // and shapes references are unstable when empty. myTarget is NOT in deps — it changes
-    // only when widgets changes, which triggers a render that re-creates this effect anyway.
-    // Phase 63: dvStatus + dynamicViewId added so the dv-filter materialize branch re-fires
-    // when the dv becomes materialized or the binding changes. filterVersion (bumped by
-    // addDvFilter) already covers add/remove/clear of dv filters.
+    // Phase 91: dep array trimmed — table-only deps (tableId, spatialFilterVersion) removed.
+    // Only the dv branch remains in this effect; dv deps stay.
+    // filterVersion stays — addDvFilter bumps it, driving dv-filter re-materialize.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sql, filterVersion, dashboardId, tableId, spatialFilterVersion, dvStatus, dynamicViewId]);
+  }, [sql, filterVersion, dashboardId, dynamicViewId, dvStatus]);
 
   // Phase 15-04 (LIFE-V13-02): retry tracking — max 1 reactive retry per chart-query invocation.
   // useRef survives effect re-creates within the same component instance; reset on viewName change
@@ -635,11 +574,15 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       return;
     }
 
-    // Phase 17-02: suspend gate — do not fire chart query while filter-view materialize is in flight.
-    // Phase 17-03: relies on dispatchDrillDown calling markMaterializing synchronously with addFilter,
-    // so the entry exists with materializing=true by the time this effect runs. Lifts on setView
-    // (success) or clearMaterializing (error → fromSwap below falls through to raw FROM <table>).
-    if (materializing) return;
+    // Phase 91: imperative entry read for table-bound suspend gate (avoids stale closure —
+    // mirrors the `shapes` imperative read in Effect 1). comboKey/combinationVersion are the
+    // reactive deps; actual entry fields read here at effect-call time for accuracy.
+    const comboHash = useFilterCombinationStore.getState().vizToHash[vizKey];
+    const comboEntry =
+      comboHash && !comboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+        ? useFilterCombinationStore.getState().registry[comboHash]
+        : undefined;
+    if (dynamicViewId === undefined && comboEntry?.materializing) return; // table suspend gate
 
     // Phase 35 Plan 05 (research finding #7): extend the suspend-gate to dvStatus === "pending"
     // for dv-bound widgets. Without this, the chart query race-fires against the prior (stale)
@@ -661,19 +604,19 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       // dvStatus === "materialized" → fall through to fromSwap + runSql with dv viewName.
     }
 
-    // LIFE-V13-01 PROACTIVE: if filter view exists and is past expiresAt, clear it.
-    // Phase 35 Plan 05: applies ONLY to filter-view path (legacy / non-dv-bound widgets).
-    // Dynamic-view TTL/expiry is owned by the orchestrator hook; this widget does not
-    // touch useFilterViewStore.clearView for dv-bound widgets.
+    // LIFE-V13-01 PROACTIVE: if combo view exists and is past expiresAt, clear the entry.
+    // Phase 91: replaced filterViewStore.clearView(tableId) with clearEntry(comboHash).
+    // The orchestrator re-materializes on its next filterVersion tick.
+    // Phase 35 Plan 05: applies ONLY to table-bound path (dv expiry owned by orchestrator).
     if (
       dynamicViewId === undefined &&
-      viewName &&
-      expiresAt > 0 &&
-      Date.now() >= expiresAt &&
-      tableId !== undefined
+      comboEntry?.viewName &&
+      comboEntry.expiresAt > 0 &&
+      Date.now() >= comboEntry.expiresAt &&
+      comboHash
     ) {
-      useFilterViewStore.getState().clearView(tableId);
-      return; // effect will re-fire when viewName selector flips to undefined
+      useFilterCombinationStore.getState().clearEntry(comboHash);
+      return; // orchestrator re-materializes on next tick; effect re-fires on combinationVersion
     }
 
     // Phase 35 Plan 05 (Pitfall 4 lock from 35-RESEARCH.md): viewName source selection.
@@ -694,7 +637,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       }
       effectiveViewName = dvSource;
     } else {
-      effectiveViewName = viewName;
+      // Phase 91: table path reads combo entry (NOFILTER/undefined → "" → base table).
+      effectiveViewName = comboEntry?.viewName ?? "";
     }
 
     // Reset retry budget when viewName changes (fresh view = fresh retry budget)
@@ -717,57 +661,23 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
         // (would flash red error UI on every filter mutation).
         if ((err as Error)?.name === "AbortError") return;
 
-        // LIFE-V13-02 REACTIVE: detect view-not-found, attempt silent re-materialize + retry ONCE.
+        // LIFE-V13-02 REACTIVE: detect view-not-found.
         // Phase 35 Plan 05: scoped to non-dv-bound widgets — dv-bound widget retry is owned by
         // the orchestrator hook (retryDynamicView from DashboardContext, surfaced via the Retry
         // button in the error-state render gate below).
+        // Phase 91: table path no longer re-materializes inline (orchestrator owns it).
+        // Clear the stale entry so the orchestrator re-materializes on its next tick,
+        // and render base-table data now (no flash of error). Open Decision 2 → option (a).
         if (
           dynamicViewId === undefined &&
           isViewNotFoundError(err) &&
-          viewName &&
-          tableId !== undefined &&
+          comboEntry?.viewName &&
+          comboHash &&
           !retryRef.current.retried
         ) {
-          retryRef.current = { viewName, retried: true };
-          useFilterViewStore.getState().clearView(tableId);
-
-          // Re-fire markMaterializing → materializeFilter → setView (badge consistency
-          // per Open Question 4 recommendation). Reuse the materializeAbortRef so a
-          // subsequent filterVersion change can abort this in-flight retry materialize too.
-          materializeAbortRef.current?.abort();
-          const retryController = new AbortController();
-          materializeAbortRef.current = retryController;
-
-          if (tableFilters.length === 0) {
-            // Edge case: filters cleared between original materialize and this catch.
-            // Drop view + fall through to raw FROM <table> on the next chart-query run.
-            dropFilterView({ dashboardId, tableId }).catch(() => {});
-            return;
-          }
-
-          useFilterViewStore.getState().markMaterializing(tableId, dashboardId);
-          try {
-            const result = await materializeFilter(
-              { dashboardId, tableId, filters: tableFilters },
-              retryController.signal
-            );
-            useFilterViewStore.getState().setView(tableId, result, dashboardId);
-            // Phase 17-02: do NOT explicitly re-run runChartQuery here. setView sets materializing=false
-            // and updates viewName, causing Effect 2 (clearMaterializingVersion or viewName dep) to
-            // re-fire with the new viewName. This avoids a double-fire between the explicit call and
-            // the dep-triggered re-fire. The "exactly one chart SQL query fires after setView" truth
-            // (17-02-PLAN.md) holds because only invocation C (Effect 2 re-fire) runs the query.
-          } catch (retryMatErr) {
-            if ((retryMatErr as Error)?.name === "AbortError") return;
-            // Phase 17-02: clearMaterializing lifts suspend gate on retry materialize failure.
-            if (tableId !== undefined) {
-              useFilterViewStore.getState().clearMaterializing(tableId);
-            }
-            // Retry's materialize itself failed (PermissionError / UpstreamError / etc.) — toast + fall through to raw.
-            useToastStore.getState().showToast((retryMatErr as Error).message, "error");
-            // Fall-through: run chart query with raw FROM <table> (no viewName).
-            await runChartQuery(fromSwap(sql, undefined));
-          }
+          retryRef.current = { viewName: comboEntry.viewName, retried: true };
+          useFilterCombinationStore.getState().clearEntry(comboHash);
+          await runChartQuery(fromSwap(sql, undefined));
           return;
         }
 
@@ -786,22 +696,19 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     runChartQuery(finalSql).finally(() => setLoading(false));
 
     return () => controller.abort();
-    // PITFALL S-02: filterVersion stays in deps; viewName + expiresAt drive view-flip + expiry triggers.
-    // clearMaterializingVersion dep (Phase 17-02): triggers re-fire specifically when clearMaterializing
-    // makes a non-no-op change (materialize error from Effect 1). Using `materializing` directly would
-    // also fire on markMaterializing (gate-up), aborting in-flight queries inside LIFE-V13-02.
-    // Phase 35 Plan 05 (DV-V16-13): added dynamicViewId, dvStatus, dvViewName as primitive deps —
-    // re-fires when the dv-binding flips OR when the dynamic-view's status/viewName changes
-    // (e.g., pending → materialized after orchestrator cascade completes).
+    // PITFALL S-02: filterVersion stays in deps; comboKey drives re-fire on combo-entry changes
+    // (viewName/expiresAt/materializing encoded as primitive string). combinationVersion replaces
+    // clearMaterializingVersion as the suspend-gate lift dep — bumped by setEntry/markMaterializing/
+    // clearEntry (covers success, error, and stale-view-clear paths).
+    // Phase 91: viewName/expiresAt/clearMaterializingVersion removed; comboKey+combinationVersion added.
+    // Phase 35 Plan 05 (DV-V16-13): dv deps unchanged.
+    // Phase 63 (DVDRILL-V112-04): dvFilterViewName + dvFilterMaterializing unchanged.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // Phase 63 (DVDRILL-V112-04): dvFilterViewName + dvFilterMaterializing are deps so the chart
-    // re-queries when the dv-filter view appears / is cleared, and the suspend gate engages/lifts.
   }, [
     sql,
     filterVersion,
-    viewName,
-    expiresAt,
-    clearMaterializingVersion,
+    comboKey,
+    combinationVersion,
     dynamicViewId,
     dvStatus,
     dvViewName,
