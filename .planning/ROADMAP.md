@@ -150,7 +150,9 @@
   3. A visualization whose source allow-list EXCLUDES spatial draws reads a combination view WITHOUT the spatial predicate, while a sibling accepting spatial reads one WITH it — different view names, confirmed via filterCombinationStore.vizToHash.
   4. Two visualizations accepting the same column filters + the same spatial shapes share ONE combination view (dedup holds across spatial); changing/removing a shape re-derives the hash and ref-counts/DROPs correctly.
   5. resolveSpatialShapes has unit coverage (accept-all default, allow-list include/exclude, empty-shapes passthrough); stableComboHash spatial extension has determinism + order-independence unit coverage; web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 93.5-01-PLAN.md — stableComboHash optional `shapes?` 4th param (WKT-sorted, order-independent, no-break) + resolveSpatialShapes pure fn (all-or-nothing via SPATIAL_DRAWS_SENTINEL) + unit specs (FRONTEND-ONLY; SPATIAL-V118-01)
+- [ ] 93.5-02-PLAN.md — orchestrator spatial fold-in (imperative shapes read, resolveSpatialShapes + aggregateSpatialTargetsByTable per viz, spatialFilters/spatialTarget in materialize, spatialFilterVersion dep) + remove useMapOnlySpatialMaterialize + records excluded from enumeration + spatial spec scenarios + sole-trigger gate (FRONTEND-ONLY; SPATIAL-V118-01)
 
 #### Phase 94: Dynamic View Filter Scope Wiring
 **Goal**: Dynamic-view-backed widgets apply filter-scope selection against their dvFilters (not the base-table filters), gated behind a deploy-time disable env flag that hides the dv filter-scope UI when not wanted.
@@ -214,7 +216,7 @@
 | 91 | v1.18 | 0/TBD | Not started | — |
 | 92 | v1.18 | 0/2 | Planned | — |
 | 93 | v1.18 | 0/2 | Planned | — |
-| 93.5 | v1.18 | 0/TBD | Not started | — |
+| 93.5 | v1.18 | 0/2 | Planned | — |
 | 94 | v1.18 | 0/TBD | Not started | — |
 | 95 | v1.18 | 0/TBD | Not started | — |
 | 96 | v1.18 | 0/TBD | Not started | — |

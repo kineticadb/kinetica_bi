@@ -22,7 +22,7 @@
 
 ### Spatial Filters (SPATIAL)
 
-- [ ] **SPATIAL-V118-01**: Spatial (map-draw) filters participate in the per-combination view model — each visualization's RESOLVED set and dedup hash incorporate the spatial shapes it accepts (per the source allow-list's **spatial-draws** entry); the combination orchestrator includes `spatialFilters` + `spatialTarget` in the materialize for combos that have accepted shapes (the server **already** composes spatial ∧ column WHERE via `composeWhereClause`, and view-naming already supports the `_c{hash8}` combo suffix); and the existing per-table spatial materialize paths (`useMapOnlySpatialMaterialize`) are reconciled so spatial is **neither dropped** for tables shared between a chart and a map **nor double-materialized**. With **default (accept-all)** config, spatial stays applied to all spatial-capable widgets — byte-identical to v1.5/v1.17 behavior.
+- [x] **SPATIAL-V118-01**: Spatial (map-draw) filters participate in the per-combination view model — each visualization's RESOLVED set and dedup hash incorporate the spatial shapes it accepts (per the source allow-list's **spatial-draws** entry); the combination orchestrator includes `spatialFilters` + `spatialTarget` in the materialize for combos that have accepted shapes (the server **already** composes spatial ∧ column WHERE via `composeWhereClause`, and view-naming already supports the `_c{hash8}` combo suffix); and the existing per-table spatial materialize paths (`useMapOnlySpatialMaterialize`) are reconciled so spatial is **neither dropped** for tables shared between a chart and a map **nor double-materialized**. With **default (accept-all)** config, spatial stays applied to all spatial-capable widgets — byte-identical to v1.5/v1.17 behavior.
 
 ### Read-Path Binding (READ)
 
@@ -65,7 +65,7 @@
 | COMBO-V118-02 | Phase 89 | Complete |
 | COMBO-V118-03 | Phase 90 | Complete |
 | COMBO-V118-04 | Phase 91 | Complete |
-| SPATIAL-V118-01 | Phase 93.5 | Pending |
+| SPATIAL-V118-01 | Phase 93.5 | Complete |
 | READ-V118-01 | Phase 91 | Complete |
 | READ-V118-02 | Phase 92 | Complete |
 | COMM-V118-01 | Phase 95 | Pending |
