@@ -18,7 +18,7 @@
  * combinationVersion INVARIANT: `combinationVersion` from filterCombinationStore is NEVER
  * in this hook's Effect dep array. `setEntry` bumps `combinationVersion` — if it were a dep,
  * every successful materialize would re-fire the orchestrator, causing an infinite loop.
- * The Effect deps are EXACTLY: [filterVersion, dashboardId, widgetsKey, ceiling].
+ * The Effect deps are EXACTLY: [filterVersion, dashboardId, widgetsKey, layersKey, ceiling].
  *
  * Mount site: `DashboardsPage.tsx` `DashboardOpen`, immediately after `useViewKeepAlive`.
  * Single instance per open dashboard.
@@ -36,7 +36,7 @@ import { useToastStore } from "../store/toast";
 import { resolveFilterSet } from "../lib/resolveFilterSet";
 import { stableComboHash, NOFILTER_SENTINEL } from "../lib/stableComboHash";
 import { materializeFilter, dropCombinationView } from "../api/client";
-import type { WidgetDto } from "../api/client";
+import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import type { FilterSelectionConfig } from "../types/filterSelection";
 
 // ---------------------------------------------------------------------------
@@ -67,10 +67,12 @@ const isTriggerType = (t: string) => !NON_TRIGGER_TYPES.has(t);
  *
  * @param dashboardId - The currently-open dashboard id.
  * @param widgets     - All widgets on the dashboard (synced from DashboardOpen state).
+ * @param layers      - All layers on the dashboard (Phase 92 — table-bound layers enumerated alongside widgets).
  */
 export function useCombinationOrchestrator(
   dashboardId: number,
   widgets: WidgetDto[],
+  layers: DashboardLayerDto[],   // NEW — Phase 92 (READ-V118-02)
 ): void {
   // --- 1. Primitive subscriptions (S-02 compliant — primitives only) ---
   const filterVersion = useFilterStore((s) => s.filterVersion);
@@ -94,6 +96,17 @@ export function useCombinationOrchestrator(
     [widgets],
   );
 
+  // --- 2b. Stable primitive key for table-bound layers (Phase 92 — S-02 compliant) ---
+  const layersKey = useMemo(
+    () =>
+      layers
+        .filter((l) => l.dynamic_view_id === null || l.dynamic_view_id === undefined)
+        .map((l) => `${l.id}:${l.table_id}`)
+        .sort()
+        .join(","),
+    [layers],
+  );
+
   // --- 3. AbortController-per-hash Map (cross-hash isolation; survives re-renders) ---
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
 
@@ -107,7 +120,7 @@ export function useCombinationOrchestrator(
   );
 
   // --- 5. Main orchestration effect ---
-  // CRITICAL: deps = [filterVersion, dashboardId, widgetsKey, ceiling].
+  // CRITICAL: deps = [filterVersion, dashboardId, widgetsKey, layersKey, ceiling].
   // combinationVersion is intentionally EXCLUDED — it bumps on every setEntry and
   // would cause this effect to re-fire after each materialize, creating an infinite loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +166,30 @@ export function useCombinationOrchestrator(
         }
         e.widgetIds.push(w.id);
         vizKeyToHash.set(`w:${w.id}`, hash);
+      }
+
+      // Phase 92 (READ-V118-02): enumerate table-bound map layers alongside widgets.
+      // dv-bound layers (dynamic_view_id !== null) are Phase 94 scope — skipped here.
+      // widgetIds in HashEntry now also stores layer ids (internal; not renamed to avoid churn).
+      for (const layer of layers) {
+        if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) continue;
+        const tableId = layer.table_id;
+        // filterScope is a TOP-LEVEL field (threaded like track_config). Undefined in Phase 92
+        // (no config UI yet) → resolveFilterSet(undefined, ...) = accept-all = byte-identical to v1.17.
+        const cfg = layer.filterScope as FilterSelectionConfig | undefined;
+        const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;
+        const resolved = resolveFilterSet(cfg, allFilters);
+        const hash = stableComboHash("table", tableId, resolved);
+        if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
+          vizKeyToHash.set(`l:${layer.id}`, undefined);
+          continue;
+        }
+        let hm = byTable.get(tableId);
+        if (!hm) { hm = new Map<string, HashEntry>(); byTable.set(tableId, hm); }
+        let e = hm.get(hash);
+        if (!e) { e = { resolved, widgetIds: [] }; hm.set(hash, e); }
+        e.widgetIds.push(layer.id);   // widgetIds holds widget AND layer ids (internal; not renamed)
+        vizKeyToHash.set(`l:${layer.id}`, hash);
       }
 
       // ----------------------------------------------------------------
@@ -319,15 +356,19 @@ export function useCombinationOrchestrator(
       // ----------------------------------------------------------------
       const prevVizToHash = useFilterCombinationStore.getState().vizToHash;
 
-      // Build set of vizKeys present in this tick's widget set
+      // Build set of vizKeys present in this tick's widget + layer set
       const currentVizKeys = new Set<string>();
       for (const w of widgets) {
         currentVizKeys.add(`w:${w.id}`);
       }
+      for (const layer of layers) {
+        if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) continue;
+        currentVizKeys.add(`l:${layer.id}`);
+      }
 
-      // Handle widgets that LEFT the dashboard (in store but not in this tick's widgets)
+      // Handle widgets/layers that LEFT the dashboard (in store but not in this tick's set)
       for (const vizKey of Object.keys(prevVizToHash)) {
-        if (!vizKey.startsWith("w:")) continue;
+        if (!vizKey.startsWith("w:") && !vizKey.startsWith("l:")) continue;
         if (currentVizKeys.has(vizKey)) continue;
         // Widget removed from dashboard
         const oldHash = prevVizToHash[vizKey];
@@ -377,9 +418,9 @@ export function useCombinationOrchestrator(
       }
 
       // Handle vizKeys that were previously set but are no longer in vizKeyToHash
-      // (e.g., widget became dv-bound or non-trigger this tick)
+      // (e.g., widget became dv-bound or non-trigger this tick, or layer became dv-bound)
       for (const vizKey of Object.keys(prevVizToHash)) {
-        if (!vizKey.startsWith("w:")) continue;
+        if (!vizKey.startsWith("w:") && !vizKey.startsWith("l:")) continue;
         if (!currentVizKeys.has(vizKey)) continue; // already handled above
         if (vizKeyToHash.has(vizKey)) continue;    // handled in the loop above
 
@@ -401,5 +442,5 @@ export function useCombinationOrchestrator(
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, dashboardId, widgetsKey, ceiling]);
+  }, [filterVersion, dashboardId, widgetsKey, layersKey, ceiling]);
 }

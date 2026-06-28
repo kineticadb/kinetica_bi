@@ -638,6 +638,11 @@ export type DashboardLayerDto = {
   // and gates Lane C emission on isCbConfigConfigured.
   cb_config: string | null;
   track_config: string | null;
+  // v1.18 Phase 92 (FSCOPE-V118-02): per-layer filter scope, TOP-LEVEL field threaded like
+  // track_config — NEVER read off layer.config. Optional + undefined until Phase 93 adds the
+  // SQLite column + config UI + persistence; Phase 92 reads it (always undefined for now) so the
+  // orchestrator avoids an `as any` cast. resolveFilterSet(undefined, ...) = accept-all.
+  filterScope?: import("../types/filterSelection").FilterSelectionConfig;
   created_at: string;
   updated_at: string;
 };
