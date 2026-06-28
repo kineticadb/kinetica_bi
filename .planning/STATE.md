@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 93-01-PLAN.md
-last_updated: "2026-06-28T18:22:00Z"
+stopped_at: Completed 93-02-PLAN.md
+last_updated: "2026-06-28T18:42:17.456Z"
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -620,6 +620,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 91 P01 | 13min | 2 tasks | 2 files |
 | Phase 92-mapchartrenderer-wiring P01 | 6min | 2 tasks | 4 files |
 | Phase 92-mapchartrenderer-wiring P02 | 10min | 2 tasks | 2 files |
+| Phase 93-filter-scope-config-ui P02 | 982 | 3 tasks | 12 files |
 
 ### Quick Tasks Completed
 
@@ -928,6 +929,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 92-01]: filterScope added as optional TOP-LEVEL field on DashboardLayerDto in Phase 92 (undefined until Phase 93 adds SQLite column); eliminates as-any cast; resolveFilterSet(undefined,...) = accept-all
 - [Phase 92-mapchartrenderer-wiring]: Both buildWmsParams sites (Effect 2 + Effect 3) swapped atomically to filterCombinationStore per-layer combo view reads — the recurring missed-path gotcha explicitly avoided
 - [Phase 92-mapchartrenderer-wiring]: filterViewStore.views[tableId] WMS read eliminated from both Effects; filterViewStore retained only for dvViews (dv-filter path) and info popup query
+- [Phase 93-02]: filter_scope travels as OBJECT on wire: route stringifies FilterSelectionConfig on write, mapDashboardLayer parses on read; updateDashboardLayer re-stringifies existing.filter_scope in preserve-on-omit fallback
+- [Phase 93-02]: snake_case filter_scope on both DTO and DB column (matches cb_config/track_config); local prop names filterScope in KineticaWmsLayerForm are TypeScript-internal only
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1334,6 +1337,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-28T13:54:11.742Z
-Stopped at: Completed 92-02-PLAN.md
+Last session: 2026-06-28T18:42:17.446Z
+Stopped at: Completed 93-02-PLAN.md
 Resume file: None

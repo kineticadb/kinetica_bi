@@ -104,6 +104,82 @@ describe("stableComboHash", () => {
   });
 });
 
+// ── Spatial extension tests (Phase 93.5) ───────────────────────────────────────
+describe("stableComboHash — spatial extension", () => {
+  const fA = { column: "city", value: "NYC", dataType: "string" as const, operator: undefined as undefined, sourceWidgetId: undefined, addedAt: 0 };
+
+  // NO-BREAK: empty/absent shapes are byte-identical to the 3-arg call
+  it("empty shapes array produces byte-identical output to 3-arg call", () => {
+    const threeArg = stableComboHash("table", 1, [fA]);
+    const fourArgEmpty = stableComboHash("table", 1, [fA], []);
+    const fourArgUndef = stableComboHash("table", 1, [fA], undefined);
+    expect(fourArgEmpty).toBe(threeArg);
+    expect(fourArgUndef).toBe(threeArg);
+  });
+
+  // NO-BREAK: empty everything still returns NOFILTER sentinel
+  it("returns NOFILTER sentinel when both filters and shapes are empty/absent", () => {
+    const result = stableComboHash("table", 5, [], []);
+    expect(result).toBe(`table:5:${NOFILTER_SENTINEL}`);
+    const resultUndef = stableComboHash("table", 5, [], undefined);
+    expect(resultUndef).toBe(`table:5:${NOFILTER_SENTINEL}`);
+  });
+
+  // Spatial-only (no column filters): must NOT return NOFILTER and must have correct form
+  it("spatial-only hash does not end with NOFILTER and has form 'table:5:s:POLYGON_X'", () => {
+    const result = stableComboHash("table", 5, [], [{ wkt: "POLYGON_X" }]);
+    expect(result).not.toMatch(/:NOFILTER$/);
+    expect(result).toBe("table:5:s:POLYGON_X");
+  });
+
+  // DETERMINISM: same inputs → same output
+  it("produces identical strings on two calls with the same columns + shapes", () => {
+    const shapes = [{ wkt: "POLYGON((0 0,1 0,1 1,0 1,0 0))" }, { wkt: "POLYGON((2 2,3 2,3 3,2 3,2 2))" }];
+    const hash1 = stableComboHash("table", 1, [fA], shapes);
+    const hash2 = stableComboHash("table", 1, [fA], shapes);
+    expect(hash1).toBe(hash2);
+  });
+
+  // ORDER-INDEPENDENCE: reversed shapes array must produce the same hash
+  it("produces the same hash regardless of shape array order", () => {
+    const shapes1 = [{ wkt: "AAA" }, { wkt: "BBB" }];
+    const shapes2 = [{ wkt: "BBB" }, { wkt: "AAA" }];
+    const hash1 = stableComboHash("table", 1, [fA], shapes1);
+    const hash2 = stableComboHash("table", 1, [fA], shapes2);
+    expect(hash1).toBe(hash2);
+  });
+
+  // DISTINCTNESS: different WKTs → different hashes
+  it("produces different hashes when WKT sets differ", () => {
+    const hashA = stableComboHash("table", 1, [fA], [{ wkt: "POLYGON_A" }]);
+    const hashB = stableComboHash("table", 1, [fA], [{ wkt: "POLYGON_B" }]);
+    expect(hashA).not.toBe(hashB);
+  });
+
+  it("same columns + different shapes → different hashes", () => {
+    const hashNoShapes = stableComboHash("table", 1, [fA]);
+    const hashWithShapes = stableComboHash("table", 1, [fA], [{ wkt: "POLYGON_X" }]);
+    expect(hashNoShapes).not.toBe(hashWithShapes);
+  });
+
+  // WKT-ONLY identity: two shapes with identical wkt but different id/label/addedAt hash identically
+  it("hashes identically when shapes have same wkt but different id/label/addedAt", () => {
+    const shape1 = { wkt: "POLYGON_Q" };
+    const shape2 = { wkt: "POLYGON_Q" };
+    const hash1 = stableComboHash("table", 1, [fA], [shape1]);
+    const hash2 = stableComboHash("table", 1, [fA], [shape2]);
+    expect(hash1).toBe(hash2);
+  });
+
+  // NO-MUTATION: the passed shapes array must not be reordered in place
+  it("does not mutate the caller's shapes array", () => {
+    const shapes = Object.freeze([{ wkt: "BBB" }, { wkt: "AAA" }]) as { wkt: string }[];
+    const originalOrder = [shapes[0].wkt, shapes[1].wkt];
+    stableComboHash("table", 1, [fA], shapes);
+    expect([shapes[0].wkt, shapes[1].wkt]).toEqual(originalOrder);
+  });
+});
+
 describe("comboShortHash", () => {
   // Test 9: shape — returns an 8-char lowercase hex string
   it("returns an 8-character lowercase hex string", () => {
