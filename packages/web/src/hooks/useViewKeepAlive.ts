@@ -20,7 +20,7 @@
  * WidgetRenderer/MapChartRenderer handles real expiry.
  *
  * Mount: DashboardsPage.tsx DashboardOpen, alongside useDynamicViewMaterializeChain and
- * useMapOnlySpatialMaterialize.
+ * useCombinationOrchestrator (the map-only spatial hook was removed in Phase 93.5-02).
  */
 
 import { useEffect, useRef } from "react";

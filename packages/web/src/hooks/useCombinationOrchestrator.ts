@@ -45,8 +45,8 @@ import type { Shape } from "../store/spatialFilterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
 
 // ---------------------------------------------------------------------------
-// Non-trigger widget types — AUTHORITATIVE source (useMapOnlySpatialMaterialize
-// was deleted in Phase 93.5-02; this set is the sole canonical definition).
+// Non-trigger widget types — AUTHORITATIVE source (Phase 93.5-02 removed the prior
+// map-only hook; this set is the sole canonical definition).
 // Do NOT import to avoid circular-dep risk. Extend with "radiogroup", "calendar",
 // and "records" which are never routed through AggregatedWidgetRenderer:
 //   - "radiogroup", "calendar" — WidgetRenderer dispatch never routes to AWR.
