@@ -117,7 +117,9 @@
   3. Both buildWmsParams call sites in MapChartRenderer (Effect 2 and Effect 3) have been updated — grep confirms no remaining filterViewStore.views[tableId] reads in either effect for the table-backed path.
   4. The comboViewsKey selector (not viewsKey) is in both Effect 2 and Effect 3 dep arrays — confirmed by code inspection.
   5. Web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 92-01-PLAN.md — Orchestrator layer enumeration (l:<id> vizKeys, layersKey dep, STEP E guard) + DashboardLayerDto.filterScope? + DashboardOpen mount
+- [ ] 92-02-PLAN.md — MapChartRenderer both buildWmsParams sites read combo view (comboViewsKey, uniqueTableIds removed, dv path untouched) + COMBO-V118-04 byte-identical spec
 
 #### Phase 93: Filter Scope Config UI
 **Goal**: Designers can configure each visualization's filter scope via a "Filter Scope" section in ChartConfigPanel (chart widgets) and KineticaWmsLayerForm (per layer), and the config persists correctly — layer.filterScope stored as a top-level field, not nested in layer.config.
@@ -193,7 +195,7 @@
 | 89 | v1.18 | 0/TBD | Not started | — |
 | 90 | v1.18 | 0/3 | Planned | — |
 | 91 | v1.18 | 0/TBD | Not started | — |
-| 92 | v1.18 | 0/TBD | Not started | — |
+| 92 | v1.18 | 0/2 | Planned | — |
 | 93 | v1.18 | 0/TBD | Not started | — |
 | 94 | v1.18 | 0/TBD | Not started | — |
 | 95 | v1.18 | 0/TBD | Not started | — |
