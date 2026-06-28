@@ -14,7 +14,9 @@ export type FilterSelectionConfig = {
   // "allowlist" = accept only filters whose sourceWidgetId ∈ allowedSourceWidgetIds.
   sourceMode: "all" | "allowlist";
   // Only consulted when sourceMode === "allowlist".
-  allowedSourceWidgetIds: number[];
+  // Widened to (number | string)[] in Phase 93 to accommodate the
+  // SPATIAL_DRAWS_SENTINEL string reserved id (stored only; resolver is Phase 93.5).
+  allowedSourceWidgetIds: (number | string)[];
 };
 
 // Opt-out default: absent/undefined config behaves identically to this.
