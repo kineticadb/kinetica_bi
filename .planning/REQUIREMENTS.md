@@ -22,7 +22,7 @@
 
 ### Read-Path Binding (READ)
 
-- [ ] **READ-V118-01**: Standard chart widgets (`WidgetRenderer`/`AggregatedWidgetRenderer`, `TimelineRenderer`, `NumericLineRenderer`) bind to their combination's view via the FROM-swap read path.
+- [x] **READ-V118-01**: Standard chart widgets (`WidgetRenderer`/`AggregatedWidgetRenderer`, `TimelineRenderer`, `NumericLineRenderer`) bind to their combination's view via the FROM-swap read path.
 - [ ] **READ-V118-02**: Map **WMS layers** bind to their combination's view by pointing the WMS request at the correct per-combination materialized **view name** — filters are NEVER passed in the WMS request itself, so the only change is which view the layer reads from. Update BOTH `buildWmsParams` call sites to resolve the combination view name + add the combination key to their dependency keys so the layer re-requests when its bound view changes (the recurring missed-path gotcha).
 
 ### Communication (COMM)
@@ -61,7 +61,7 @@
 | COMBO-V118-02 | Phase 89 | Complete |
 | COMBO-V118-03 | Phase 90 | Complete |
 | COMBO-V118-04 | Phase 91 | Complete |
-| READ-V118-01 | Phase 91 | Pending |
+| READ-V118-01 | Phase 91 | Complete |
 | READ-V118-02 | Phase 92 | Pending |
 | COMM-V118-01 | Phase 95 | Pending |
 | VERIFY-V118-01 | Phase 96 | Pending |

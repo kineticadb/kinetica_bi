@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 90-03-PLAN.md
-last_updated: "2026-06-27T23:49:33.812Z"
+stopped_at: Completed 91-02-PLAN.md
+last_updated: "2026-06-28T01:07:32.618Z"
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 90 — combination-orchestrator
+**Current focus:** Phase 91 — widgetrenderer-wiring
 
 ## Current Position
 
-Phase: 90 (combination-orchestrator) — EXECUTING
-Plan: 2 of 3
+Phase: 91 (widgetrenderer-wiring) — EXECUTING
+Plan: 1 of 2
 
 ### v1.18 Phase Map
 
@@ -615,6 +615,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 90-combination-orchestrator P01 | 300 | 1 tasks | 2 files |
 | Phase 90 P02 | 7 | 2 tasks | 5 files |
 | Phase 90 P03 | 8min | 3 tasks | 3 files |
+| Phase 91 P02 | 8m | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -916,6 +917,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 90]: DUAL-TRIGGER: useCombinationOrchestrator runs alongside AggregatedWidgetRenderer Effect 1 (combination views have _c<hash8> suffix — no collision); renderers read filterViewStore until Phase 91/92 flips the read path
 - [Phase 90]: combinationVersion excluded from Effect deps — adding it would cause infinite re-fire loop; proven by spec scenario 10 (no-loop test)
 - [Phase 90]: NON_TRIGGER_TYPES copied not imported in orchestrator — circular dep risk; extended with radiogroup + calendar beyond useMapOnlySpatialMaterialize original
+- [Phase 91]: vizKey='w:<widget.id>' primitive selectors in Timeline+NumericLine read from filterCombinationStore (not filterViewStore.views[tableId]); commitFilter+markMaterializing unchanged
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1322,6 +1324,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-27T23:42:44.069Z
-Stopped at: Completed 90-03-PLAN.md
+Last session: 2026-06-28T01:07:32.608Z
+Stopped at: Completed 91-02-PLAN.md
 Resume file: None
