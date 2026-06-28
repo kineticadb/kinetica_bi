@@ -36,7 +36,9 @@ import { useWmsCapabilitiesStore } from "../../store/wmsCapabilities";
 import { useToastStore } from "../../store/toast";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { POINT_SHAPES, type PointShape } from "../../lib/wmsUrlBuilder";
-import type { DashboardLayerDto, DynamicViewRow, TableDto } from "../../api/client";
+import type { DashboardLayerDto, DynamicViewRow, TableDto, WidgetDto } from "../../api/client";
+import type { FilterSelectionConfig } from "../../types/filterSelection";
+import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import {
   normalizeAARRGGBB,
   rgbFromAARRGGBB,
@@ -100,6 +102,12 @@ type KineticaWmsLayerFormProps = {
   cbTableName?: string;
   cbTableRef?: string;
   cbAutoSuggestDisabledReason?: string;
+  // v1.18 Phase 93 (FSCOPE-V118-02): Filter Scope section. Layers omit selfWidgetId (layers
+  // are not widgets — no self-exclusion needed). Optional with empty defaults so existing callers
+  // (MapConfigPanel embeds this form WITHOUT a layer DTO) compile unchanged.
+  widgets?: WidgetDto[];
+  filterScope?: DashboardLayerDto["filter_scope"];
+  onChangeFilterScope?: (next: FilterSelectionConfig | undefined) => void;
 };
 
 // ─── RenderMode type ──────────────────────────────────────────────────────────
@@ -206,6 +214,10 @@ export default function KineticaWmsLayerForm({
   cbTableName,
   cbTableRef,
   cbAutoSuggestDisabledReason,
+  // v1.18 Phase 93 (FSCOPE-V118-02): Filter Scope props
+  widgets = [],
+  filterScope,
+  onChangeFilterScope,
 }: KineticaWmsLayerFormProps): JSX.Element {
   const capabilities = useWmsCapabilitiesStore((s) => s.capabilities);
 
@@ -1632,6 +1644,16 @@ export default function KineticaWmsLayerForm({
             HTML is rendered as-is — do not paste templates from untrusted sources.
           </div>
         </div>
+
+        {/* v1.18 Phase 93 (FSCOPE-V118-02): Filter Scope section — LAST config-group.
+            filter_scope is TOP-LEVEL, never inside layer.config (mirrors track_config pattern).
+            selfWidgetId is NOT passed — layers are not widgets; no self-exclusion needed.
+            FilterSelectionPanel renders its own config-group wrapper; no double-wrap needed. */}
+        <FilterSelectionPanel
+          value={filterScope ?? undefined}
+          onChange={(next: FilterSelectionConfig | undefined) => onChangeFilterScope?.(next)}
+          widgets={widgets}
+        />
 
       </div>
     </div>

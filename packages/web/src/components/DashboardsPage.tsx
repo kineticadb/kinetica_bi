@@ -1194,6 +1194,7 @@ const DashboardOpen = ({
           layers={layers}
           associatedTables={associatedTables}
           dynamicViews={dynamicViews}
+          widgets={widgets}
           onClose={handleLayersModalClose}
           onCreate={handleLayerCreate}
           onDelete={handleLayerDelete}

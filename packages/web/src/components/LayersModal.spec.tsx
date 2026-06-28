@@ -483,4 +483,73 @@ describe("LayersModal", () => {
     // the spec just locks that the field was touched, not the specific suggestion).
     expect(patch.config.spatialMode).toBeDefined();
   });
+
+  // ── v1.18 Phase 93 (FSCOPE-V118-02): Filter Scope widget-threading + top-level split ──
+
+  it("Test 20 (Phase 93 FSCOPE-V118-02): widgets prop threads to FilterSelectionPanel — filter-producing widget appears in checklist when allowlist mode is active", () => {
+    const widgetFixture = [
+      {
+        id: 42,
+        dashboard_id: 1,
+        title: "Revenue Bar",
+        type: "bar",
+        position: 0,
+        config: {},
+        created_at: "2026-06-01T00:00:00Z",
+        updated_at: "2026-06-01T00:00:00Z",
+      },
+    ];
+    // Pass a layer already in allowlist mode so the checklist renders immediately
+    // (LayersModal is a controlled component — the parent controls filter_scope state)
+    const layerWithScope = mkLayer(1, 10, {
+      filter_scope: { sourceMode: "allowlist", allowedSourceWidgetIds: [] },
+    });
+    render(
+      <LayersModal
+        {...baseProps}
+        layers={[layerWithScope]}
+        widgets={widgetFixture as any}
+      />
+    );
+    // The bar widget should appear in the source checklist (it's a filter-producing type)
+    expect(screen.getByLabelText("Revenue Bar")).toBeInTheDocument();
+  });
+
+  it("Test 21 (Phase 93 FSCOPE-V118-02): onChangeFilterScope fires onPatch with filter_scope at TOP LEVEL — NOT merged into config", () => {
+    const onPatch = vi.fn();
+    const widgetFixture = [
+      {
+        id: 42,
+        dashboard_id: 1,
+        title: "Revenue Bar",
+        type: "bar",
+        position: 0,
+        config: {},
+        created_at: "2026-06-01T00:00:00Z",
+        updated_at: "2026-06-01T00:00:00Z",
+      },
+    ];
+    render(
+      <LayersModal
+        {...baseProps}
+        layers={[mkLayer(1, 10)]}
+        widgets={widgetFixture as any}
+        onPatch={onPatch}
+      />
+    );
+    // Click Customize — this fires onPatch with { filter_scope: { sourceMode:"allowlist", allowedSourceWidgetIds:[] } }
+    const customizeCheckbox = screen.getByLabelText("Customize");
+    fireEvent.click(customizeCheckbox);
+
+    expect(onPatch).toHaveBeenCalledWith(
+      1, // layerId
+      expect.objectContaining({ filter_scope: expect.anything() })
+    );
+    const [, patchArg] = onPatch.mock.calls[0] as [number, Record<string, unknown>];
+    // filter_scope must be at the TOP LEVEL of the patch object
+    expect(patchArg.filter_scope).toBeDefined();
+    // The patch's config MUST NOT contain filter_scope — Pitfall 1 guard: filter_scope must
+    // NEVER be merged into the config blob (would silently break orchestrator's top-level read)
+    expect((patchArg.config as Record<string, unknown> | undefined)?.filter_scope).toBeUndefined();
+  });
 });

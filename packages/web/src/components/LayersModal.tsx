@@ -40,7 +40,7 @@ import { autoSuggestSpatialMode } from "../lib/columnTypes";
 import { isTrackTable } from "../lib/trackDetect";
 import { coalesceTrackConfig } from "../lib/trackConfig";
 import { isLayerEffectivelyVisible, hasValidSource } from "../lib/layerVisibility";
-import type { DashboardLayerDto, DynamicViewRow, TableDto } from "../api/client";
+import type { DashboardLayerDto, DynamicViewRow, TableDto, WidgetDto } from "../api/client";
 
 type LayersModalProps = {
   layers: DashboardLayerDto[];
@@ -54,6 +54,10 @@ type LayersModalProps = {
    * default so existing call sites + spec fixtures compile unchanged.
    */
   dynamicViews?: DynamicViewRow[];
+  // v1.18 Phase 93 (FSCOPE-V118-02): widget list threaded from DashboardsPage so the
+  // Filter Scope checklist in KineticaWmsLayerForm lists real source widgets.
+  // Optional with empty-array default so existing call sites + spec fixtures compile unchanged.
+  widgets?: WidgetDto[];
   onClose: () => void;
   onCreate: () => void;               // parent posts blank layer
   onDelete: (layerId: number) => void;
@@ -68,6 +72,8 @@ export default function LayersModal({
   // dynamicViews threaded from DashboardOpen — consumed by the Data Source picker
   // (Plan 35-06) and by `formColumns` derivation when a layer is dv-bound (post-VERIFY fix).
   dynamicViews = [],
+  // v1.18 Phase 93 (FSCOPE-V118-02): widget list for the Filter Scope checklist
+  widgets = [],
   onClose,
   onCreate,
   onDelete,
@@ -585,6 +591,12 @@ export default function LayersModal({
                   associatedTables={associatedTables}
                   dynamicViews={dynamicViews}
                   onDataSourceChange={handleDataSourceChange}
+                  // v1.18 Phase 93 (FSCOPE-V118-02): filter_scope is TOP-LEVEL — follows the
+                  // onChangeInfoConfig pattern (NOT the config-merge block). Pitfall 1 guard:
+                  // do NOT add filter_scope to the config={{...}} merge above.
+                  widgets={widgets}
+                  filterScope={selectedLayer.filter_scope ?? undefined}
+                  onChangeFilterScope={(next) => onPatch(selectedLayer.id, { filter_scope: next ?? null })}
                 />
               </>
             ) : (

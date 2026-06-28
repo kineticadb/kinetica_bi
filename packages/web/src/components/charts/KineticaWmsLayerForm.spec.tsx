@@ -465,7 +465,10 @@ describe("KineticaWmsLayerForm — Phase 22 INFO POPUP section", () => {
     const labels = Array.from(document.querySelectorAll(".config-group-label")).map(
       (e) => e.textContent
     );
-    expect(labels[labels.length - 1]).toBe("INFO POPUP");
+    // v1.18 Phase 93 (FSCOPE-V118-02): Filter Scope is now the LAST config-group section
+    // (after INFO POPUP). INFO POPUP is second-to-last.
+    expect(labels[labels.length - 1]).toBe("Filter Scope");
+    expect(labels[labels.length - 2]).toBe("INFO POPUP");
   });
 
   // L2: default-toggle-on — infoEnabled=1 means toggle is checked
