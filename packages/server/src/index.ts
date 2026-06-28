@@ -991,7 +991,19 @@ export const createApp = async (): Promise<express.Express> => {
       // shapes (Phase 37 OQ-4) so server validation is intentionally absent.
       | "cb_config"
       | "track_config"
+      // v1.18 Phase 93 (FSCOPE-V118-02): filter_scope — TOP-LEVEL column, never inside config.
+      // Body field is typed string | null (column shape), but client sends a FilterSelectionConfig
+      // OBJECT. Route stringifies on write so updateDashboardLayer receives a string. Both the
+      // write=stringify (here) and read=JSON.parse (mapDashboardLayer) sides are explicit so the
+      // object round-trips cleanly and server tsc stays clean.
+      | "filter_scope"
     >>;
+    // v1.18 Phase 93: stringify filter_scope object → string before persisting.
+    // Guarded by "filter_scope" in body so omitted field stays absent (preserve-on-omit).
+    if ("filter_scope" in body) {
+      const rawFilterScope = (body as any).filter_scope;
+      body.filter_scope = rawFilterScope == null ? null : JSON.stringify(rawFilterScope);
+    }
     const updated = updateDashboardLayer(layerId, body);
     if (!updated) return res.status(404).json({ error: "Layer not found." });
     return res.json(updated);

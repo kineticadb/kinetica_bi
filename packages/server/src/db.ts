@@ -106,6 +106,9 @@ const SCHEMA_DDL = `
     -- existing v1.4/v1.5/v1.6 deployments; this CREATE TABLE block covers fresh installs.
     cb_config TEXT,
     track_config TEXT,
+    -- v1.18 Phase 93 (FSCOPE-V118-02): per-layer filter scope as JSON string. NULL = not
+    -- configured = accept-all. Mirrors cb_config / track_config TEXT NULL pattern.
+    filter_scope TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -342,6 +345,11 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!layerColNames.has("track_config")) {
     instance.exec("ALTER TABLE dashboard_layers ADD COLUMN track_config TEXT");
   }
+  // v1.18 Phase 93 (FSCOPE-V118-02): add filter_scope TEXT column to existing deployments.
+  // Idempotent: second boot is a no-op (PRAGMA guard prevents double-ALTER).
+  if (!layerColNames.has("filter_scope")) {
+    instance.exec("ALTER TABLE dashboard_layers ADD COLUMN filter_scope TEXT");
+  }
 
   // v1.8 RBAC (SCHEMA-V18-01): idempotent built-in role + default-mapping seed.
   // Runs every boot; INSERT OR IGNORE makes it a no-op on subsequent restarts.
@@ -424,6 +432,12 @@ const mapDashboardLayer = (row: any): DashboardLayer => ({
   // Phase 40 form code reads track_config via inline JSON.parse.
   cb_config: row.cb_config ?? null,
   track_config: row.track_config ?? null,
+  // v1.18 Phase 93 (FSCOPE-V118-02): filter_scope stored as JSON string in DB, emitted as
+  // parsed object on the DTO (read side). Route stringifies on write (write side).
+  // cast to any: DashboardLayer.filter_scope is string | null (column shape); the DTO wire
+  // format carries FilterSelectionConfig | undefined (parsed object). Both sides explicit
+  // so the object round-trips cleanly.
+  filter_scope: (row.filter_scope ? JSON.parse(row.filter_scope) : undefined) as any,
   created_at: row.created_at,
   updated_at: row.updated_at
 });
@@ -701,12 +715,13 @@ export const updateDashboardLayer = (
     | "dynamic_view_id"
     | "cb_config"
     | "track_config"
+    | "filter_scope"
   >>
 ): DashboardLayer | undefined => {
   const existing = getDashboardLayer(id);
   if (!existing) return undefined;
   db.prepare(
-    "UPDATE dashboard_layers SET table_id = ?, position = ?, config = ?, info_enabled = ?, info_columns = ?, info_template = ?, dynamic_view_id = ?, cb_config = ?, track_config = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE dashboard_layers SET table_id = ?, position = ?, config = ?, info_enabled = ?, info_columns = ?, info_template = ?, dynamic_view_id = ?, cb_config = ?, track_config = ?, filter_scope = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(
     attrs.table_id ?? existing.table_id,
     attrs.position ?? existing.position,
@@ -728,6 +743,16 @@ export const updateDashboardLayer = (
     // (operator unbinding cb_config back to "not configured"); omitting the key PRESERVES.
     "cb_config" in attrs ? attrs.cb_config : existing.cb_config,
     "track_config" in attrs ? attrs.track_config : existing.track_config,
+    // v1.18 Phase 93 (FSCOPE-V118-02): filter_scope — same discriminant pattern. Value is
+    // already a STRING at this layer (route stringified the FilterSelectionConfig object before
+    // calling updateDashboardLayer). Explicit null CLEARS; omitting PRESERVES.
+    // NOTE: existing.filter_scope comes from mapDashboardLayer which parses it to an object;
+    // when preserving we must re-stringify so better-sqlite3 receives a valid bindable value.
+    "filter_scope" in attrs
+      ? attrs.filter_scope
+      : (existing.filter_scope == null
+          ? existing.filter_scope
+          : JSON.stringify(existing.filter_scope)),
     id
   );
   return getDashboardLayer(id);

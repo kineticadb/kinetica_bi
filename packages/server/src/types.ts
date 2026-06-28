@@ -88,6 +88,11 @@ export type DashboardLayer = {
   // TEXT NULL — existing pre-v1.7 rows surface as null and render as raster.
   cb_config: string | null;
   track_config: string | null;
+  // v1.18 Phase 93 (FSCOPE-V118-02): per-layer filter scope stored as a JSON string
+  // in the dashboard_layers table. NULL = "not configured" = accept-all (default).
+  // Route stringifies the client-sent FilterSelectionConfig object on write;
+  // mapDashboardLayer parses it back to an object on read (object on the wire, string in DB).
+  filter_scope: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -22,7 +22,7 @@
 - ✅ **v1.15 Column Formatting & View Lifecycle** — Phases 74-79 (shipped 2026-06-22) — see `milestones/v1.15-ROADMAP.md`
 - ✅ **v1.16 White-Label Theming** — Phases 80-84 (shipped 2026-06-26) — see `milestones/v1.16-ROADMAP.md`
 - ✅ **v1.17 Chart Number Formatting** — Phases 85-87 (shipped 2026-06-27) — see `milestones/v1.17-ROADMAP.md`
-- 🚧 **v1.18 Per-Visualization Filter Selection** — Phases 88-96 (in progress)
+- 🚧 **v1.18 Per-Visualization Filter Selection** — Phases 88-96 incl. 93.5 (in progress)
 
 ---
 
@@ -35,7 +35,8 @@
 - [ ] **Phase 90: Combination-Orchestrator** — Sole-materialize-trigger hook: computes unique combinations, diffs registry, fires one POST per new combination, enforces ceiling with fallback *(research pass required)*
 - [ ] **Phase 91: WidgetRenderer Wiring** — Replace filterViewStore.views selectors with combination-store selectors; rewrite Effect 1 + Effect 2 in WidgetRenderer; correctness gate: default accept-all is byte-identical to v1.17
 - [ ] **Phase 92: MapChartRenderer Wiring** — Replace viewsKey with comboViewsKey; wire BOTH buildWmsParams call sites (Effect 2 + Effect 3) + update both dep arrays
-- [ ] **Phase 93: Filter Scope Config UI** — FilterSelectionPanel in ChartConfigPanel + KineticaWmsLayerForm; layer.filterScope as top-level field; orphan-source warning; SQLite migration for dv filter_selection column
+- [ ] **Phase 93: Filter Scope Config UI** — FilterSelectionPanel in ChartConfigPanel + KineticaWmsLayerForm (source allow-list incl. a spatial-draws entry); chart filterScope via widget.config; layer.filterScope as a TOP-LEVEL field persisted like track_config (server layer-PATCH threading); orphan-source warning
+- [ ] **Phase 93.5: Spatial Filters in the Combination Model** — Fold spatial (map-draw) filters into the per-combination view: extend stableComboHash + add resolveSpatialShapes; orchestrator reads shapes + includes spatialFilters/spatialTarget in the materialize; reconcile useMapOnlySpatialMaterialize so spatial isn't dropped for chart∧map shared tables nor double-materialized *(research pass required)*
 - [ ] **Phase 94: Dynamic View Filter Scope Wiring** — Extend dv-bound widget path in WidgetRenderer to use resolveFilterSet against dvFilters; gated behind deploy-time disable env flag *(research pass required)*
 - [ ] **Phase 95: On-Widget Badge Indicator** — Badge "N of M filters" in widget header shown only when ≥1 active filter is ignored; hover tooltip with applied/ignored breakdown
 - [ ] **Phase 96: Verification + Live UAT** — Green automated gates (both stacks) + blocking live operator walk-through; all gaps fixed in-session
@@ -123,9 +124,9 @@
 
 #### Phase 93: Filter Scope Config UI
 **Goal**: Designers can configure each visualization's filter scope via a "Filter Scope" section in ChartConfigPanel (chart widgets) and KineticaWmsLayerForm (per layer), and the config persists correctly — layer.filterScope stored as a top-level field, not nested in layer.config.
-**Stack**: BOTH (frontend-heavy; server adds filter_selection column to dashboard_dynamic_views via SQLite migration + extends PATCH /api/dynamic-view/:id)
+**Stack**: BOTH (frontend-heavy; server adds `filterScope` persistence to the dashboard-layers path — threaded TOP-LEVEL exactly like `track_config`/`cb_config`: DTO + updateLayer Pick + PATCH route body + updateDashboardLayer + SQLite column. Chart-widget filterScope persists via the existing widget.config JSON blob — no schema change. NO dynamic-view migration here — that is Phase 94.)
 **Depends on**: Phase 91 (the engine is wired, so absent filterScope already falls through to accept-all; UI can be added safely)
-**Requirements**: FSCOPE-V118-01 (source-widget allow-list UI; only filter-PRODUCING widgets listed; default accept-all), FSCOPE-V118-02 (chart widgets + map WMS layers; layer.filterScope top-level field threaded like track_config)
+**Requirements**: FSCOPE-V118-01 (source-widget allow-list UI; only filter-PRODUCING widgets listed — chart drill-downs, DataFilter widget, map spatial-draws sentinel; NOT records/info-popup/legend; default accept-all), FSCOPE-V118-02 (chart widgets + map WMS layers; layer.filterScope top-level field threaded like track_config)
 **Research flag**: None — config panel patterns well-established; ARCHITECTURE.md has the exact config shape
 **Success Criteria** (what must be TRUE):
   1. Opening a chart widget's config panel shows a "Filter Scope" section with an opt-out toggle (default: accept all) and a source-widget checklist listing only filter-producing widgets (chart drill-downs, DataFilter, map spatial draws) — NOT records table, map info popup, or legend.
@@ -133,6 +134,22 @@
   3. When a referenced source widget is deleted from the dashboard, the FilterSelectionPanel shows an orphan warning (mirrors RadioGroupConfigPanel pattern).
   4. Saving a filter-scope config persists via the existing PATCH routes and survives a page reload — the widget re-opens with the configured allow-list intact.
   5. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean; theme-guard green.
+**Plans**: 2 plans
+- [ ] 93-01-PLAN.md — Shared FilterSelectionPanel + filter-source enumeration constant + ChartConfigPanel integration + widgetId self-exclusion (FRONTEND-ONLY; FSCOPE-V118-01)
+- [ ] 93-02-PLAN.md — Layer filter_scope top-level persistence (track_config mirror, 6 gaps + naming reconcile) + KineticaWmsLayerForm integration + widget threading + both-auth-mode supertests (BOTH; FSCOPE-V118-02)
+
+#### Phase 93.5: Spatial Filters in the Combination Model
+**Goal**: Spatial (map-draw) filters flow through the same one-view-per-unique-combination model as column filters — each visualization's resolved set + dedup hash incorporate the spatial shapes it accepts (per its source allow-list's spatial-draws entry), the orchestrator owns spatial materialization (no per-renderer trigger), and a table shared between a chart and a map no longer drops spatial. Default accept-all keeps spatial applied everywhere — byte-identical to prior behavior.
+**Stack**: FRONTEND-ONLY (server `composeWhereClause` already composes spatial ∧ column WHERE; `buildFilterViewName` already appends the `_c{hash8}` combo suffix; `materializeFilter` already sends `spatialFilters`/`spatialTarget` — all reusable as-is)
+**Depends on**: Phase 90 (orchestrator owns materialization), Phase 91/92 (read paths already consume the combo view by name), Phase 93 (config UI writes the spatial-draws allow-list entry the resolver reads)
+**Requirements**: SPATIAL-V118-01
+**Research flag**: Planning research pass required — reconcile the existing spatial trigger paths (`useMapOnlySpatialMaterialize` + the dv-branch Effect 1) against orchestrator ownership; lock how spatial shapes hash into stableComboHash (sorted shape-WKT hashes, order-independent) and how `spatialFilterVersion` enters the orchestrator dep array WITHOUT a re-render loop (mirror the combinationVersion exclusion rule).
+**Success Criteria** (what must be TRUE):
+  1. A table shown on BOTH a chart and a map, with an active spatial draw and default (accept-all) config, materializes ONE combination view that includes the spatial predicate, and both the chart and the map read it — spatial is not dropped (the post-Phase-91 gap is closed) and not double-materialized.
+  2. With default accept-all, a single spatial draw produces exactly one POST /api/filter/materialize per affected table (carrying spatialFilters + spatialTarget) — confirmed in the network tab; behavior matches v1.5/v1.17.
+  3. A visualization whose source allow-list EXCLUDES spatial draws reads a combination view WITHOUT the spatial predicate, while a sibling accepting spatial reads one WITH it — different view names, confirmed via filterCombinationStore.vizToHash.
+  4. Two visualizations accepting the same column filters + the same spatial shapes share ONE combination view (dedup holds across spatial); changing/removing a shape re-derives the hash and ref-counts/DROPs correctly.
+  5. resolveSpatialShapes has unit coverage (accept-all default, allow-list include/exclude, empty-shapes passthrough); stableComboHash spatial extension has determinism + order-independence unit coverage; web vitest 100%; web tsc clean; theme-guard green.
 **Plans**: TBD
 
 #### Phase 94: Dynamic View Filter Scope Wiring
@@ -196,7 +213,8 @@
 | 90 | v1.18 | 0/3 | Planned | — |
 | 91 | v1.18 | 0/TBD | Not started | — |
 | 92 | v1.18 | 0/2 | Planned | — |
-| 93 | v1.18 | 0/TBD | Not started | — |
+| 93 | v1.18 | 0/2 | Planned | — |
+| 93.5 | v1.18 | 0/TBD | Not started | — |
 | 94 | v1.18 | 0/TBD | Not started | — |
 | 95 | v1.18 | 0/TBD | Not started | — |
 | 96 | v1.18 | 0/TBD | Not started | — |

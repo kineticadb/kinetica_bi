@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 92-02-PLAN.md
-last_updated: "2026-06-28T14:00:02.938Z"
+stopped_at: Completed 93-01-PLAN.md
+last_updated: "2026-06-28T18:22:00Z"
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 12
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 92 — mapchartrenderer-wiring
+**Current focus:** Phase 93 — filter-scope-config-ui
 
 ## Current Position
 
-Phase: 92 (mapchartrenderer-wiring) — EXECUTING
-Plan: 1 of 2
+Phase: 93 (filter-scope-config-ui) — EXECUTING
+Plan: 2 of 2
 
 ### v1.18 Phase Map
 
@@ -84,6 +84,7 @@ BOTH stacks (web-heavy; small server touch). Key locked decisions:
 
 ### v1.18 Key Architectural Decisions (locked)
 
+- **Phase 93-01 (2026-06-28):** `records` excluded from FILTER_PRODUCING_TYPES — it is a filter TARGET, never SOURCE; `allowedSourceWidgetIds` widened to `(number | string)[]` for SPATIAL_DRAWS_SENTINEL; sentinel stored in Phase 93 only, resolver deferred to Phase 93.5; `widgetId` threaded as optional prop into ChartConfigPanel for self-exclusion.
 - **New store:** `filterCombinationStore` keyed by stableComboHash string (not tableId); parallel to filterViewStore pattern; becomes the 9th store in both cleanup chains (App.tsx + DashboardsPage.tsx).
 - **stableComboHash:** deterministic sorted-JSON key encoding sourceType + sourceId + resolved filter array; NOFILTER sentinel for empty (no view created); comboShortHash (FNV-1a 8-char) for Kinetica view name suffix.
 - **Orchestrator hook:** mirrors useDynamicViewMaterializeChain; fires on filterVersion tick; computes unique combinations; diffs registry; fires exactly one POST per new combination; enforces MAX_COMBINATION_VIEWS_PER_TABLE ceiling with fallback to global view.

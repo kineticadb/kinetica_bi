@@ -313,6 +313,94 @@ describe("layers", () => {
     expect(patchRes.body).toMatchObject({ id: layer.id, dynamic_view_id: 7, position: 1 });
   });
 
+  // ─── v1.18 Phase 93 (FSCOPE-V118-02): PATCH filter_scope round-trip ──────────
+
+  it("PATCH accepts filter_scope and round-trips it (AUTH_MODE=password)", async () => {
+    const app = await buildTestApp();
+    const dashboard = await createDashboard(app);
+    const table = await createTable(app);
+
+    const createRes = await app
+      .post(`/api/dashboards/${dashboard.id}/layers`)
+      .set("Cookie", cookie)
+      .send({ table_id: table.id });
+    expect(createRes.status).toBe(201);
+    const layer = createRes.body as { id: number; filter_scope: unknown };
+    // Fresh layer has no filter_scope configured
+    expect(layer.filter_scope == null).toBe(true);
+
+    const filterScopeObj = { sourceMode: "allowlist", allowedSourceWidgetIds: [5] };
+    const patchRes = await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", cookie)
+      .send({ filter_scope: filterScopeObj });
+
+    expect(patchRes.status).toBe(200);
+    // mapDashboardLayer parses the JSON string on read — body carries the object, not the string.
+    expect(patchRes.body.filter_scope).toEqual(filterScopeObj);
+  });
+
+  it("PATCH { filter_scope: null } clears a previously-set filter_scope (AUTH_MODE=password)", async () => {
+    const app = await buildTestApp();
+    const dashboard = await createDashboard(app);
+    const table = await createTable(app);
+
+    const createRes = await app
+      .post(`/api/dashboards/${dashboard.id}/layers`)
+      .set("Cookie", cookie)
+      .send({ table_id: table.id });
+    expect(createRes.status).toBe(201);
+    const layer = createRes.body as { id: number };
+
+    // Set filter_scope
+    const setRes = await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", cookie)
+      .send({ filter_scope: { sourceMode: "allowlist", allowedSourceWidgetIds: [5] } });
+    expect(setRes.status).toBe(200);
+    expect(setRes.body.filter_scope).toBeTruthy();
+
+    // Clear filter_scope
+    const clearRes = await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", cookie)
+      .send({ filter_scope: null });
+
+    expect(clearRes.status).toBe(200);
+    // null or undefined — either way it is falsy/cleared (not the object)
+    expect(clearRes.body.filter_scope == null).toBe(true);
+  });
+
+  it("PATCH that omits filter_scope preserves the existing value (AUTH_MODE=password)", async () => {
+    const app = await buildTestApp();
+    const dashboard = await createDashboard(app);
+    const table = await createTable(app);
+
+    const createRes = await app
+      .post(`/api/dashboards/${dashboard.id}/layers`)
+      .set("Cookie", cookie)
+      .send({ table_id: table.id });
+    expect(createRes.status).toBe(201);
+    const layer = createRes.body as { id: number };
+
+    const filterScopeObj = { sourceMode: "allowlist", allowedSourceWidgetIds: [5] };
+    // Set filter_scope
+    await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", cookie)
+      .send({ filter_scope: filterScopeObj });
+
+    // PATCH a different field — filter_scope must be preserved
+    const patchRes = await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", cookie)
+      .send({ position: 1 });
+
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.filter_scope).toEqual(filterScopeObj);
+    expect(patchRes.body.position).toBe(1);
+  });
+
   // ─── DELETE /api/dashboards/:id/layers/:layerId ──────────────────────────────
 
   it("DELETE returns 204 and layer disappears from subsequent GET", async () => {
@@ -621,5 +709,98 @@ describe("layers PATCH dynamic_view_id — AUTH_MODE=oidc smoke", () => {
 
     expect(clearRes.status).toBe(200);
     expect(clearRes.body).toMatchObject({ id: layer.id, dynamic_view_id: null });
+  });
+});
+
+// ─── v1.18 Phase 93 (FSCOPE-V118-02): filter_scope OIDC smoke ─────────────────
+describe("layers PATCH filter_scope — AUTH_MODE=oidc smoke", () => {
+  let oidcCookie: string;
+
+  beforeEach(() => {
+    vi.stubEnv("AUTH_MODE", "oidc");
+    vi.stubEnv("AUTH_OIDC_ISSUER_URL", "https://idp.example.com");
+    vi.stubEnv("AUTH_OIDC_CLIENT_ID", "kinetica-bi");
+    vi.stubEnv("AUTH_OIDC_CLIENT_SECRET", "secret");
+    vi.stubEnv("AUTH_OIDC_REDIRECT_URI", "https://bi.example.com/api/auth/oidc/callback");
+
+    db.exec("DELETE FROM dashboard_layers");
+    db.exec("DELETE FROM widgets");
+    db.exec("DELETE FROM dashboard_table_views");
+    db.exec("DELETE FROM dashboard_tables");
+    db.exec("DELETE FROM dashboards");
+    db.exec("DELETE FROM tables");
+    db.exec("DELETE FROM sessions");
+
+    resetOidcClientForTests();
+
+    const adminUsername = process.env.APP_ADMIN_USERNAME || "admin";
+    const seeded = seedOidcSession(adminUsername);
+    oidcCookie = seeded.cookie;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const createDashboardOidc = async (app: Awaited<ReturnType<typeof buildTestApp>>, name = "Test Dashboard") => {
+    const res = await app.post("/api/dashboards").set("Cookie", oidcCookie).send({ name });
+    expect(res.status).toBe(201);
+    return res.body as { id: number };
+  };
+
+  const createTableOidc = async (app: Awaited<ReturnType<typeof buildTestApp>>, name = "test_table") => {
+    const res = await app.post("/api/tables").set("Cookie", oidcCookie).send({ name, schema: "demo" });
+    expect(res.status).toBe(201);
+    return res.body as { id: number };
+  };
+
+  it("PATCH accepts filter_scope and round-trips it (AUTH_MODE=oidc)", async () => {
+    const app = await buildTestApp();
+    const dashboard = await createDashboardOidc(app);
+    const table = await createTableOidc(app);
+
+    const createRes = await app
+      .post(`/api/dashboards/${dashboard.id}/layers`)
+      .set("Cookie", oidcCookie)
+      .send({ table_id: table.id });
+    expect(createRes.status).toBe(201);
+    const layer = createRes.body as { id: number };
+
+    const filterScopeObj = { sourceMode: "allowlist", allowedSourceWidgetIds: [5] };
+    const patchRes = await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", oidcCookie)
+      .send({ filter_scope: filterScopeObj });
+
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.filter_scope).toEqual(filterScopeObj);
+  });
+
+  it("PATCH { filter_scope: null } clears a previously-set filter_scope (AUTH_MODE=oidc)", async () => {
+    const app = await buildTestApp();
+    const dashboard = await createDashboardOidc(app);
+    const table = await createTableOidc(app);
+
+    const createRes = await app
+      .post(`/api/dashboards/${dashboard.id}/layers`)
+      .set("Cookie", oidcCookie)
+      .send({ table_id: table.id });
+    expect(createRes.status).toBe(201);
+    const layer = createRes.body as { id: number };
+
+    // Set
+    await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", oidcCookie)
+      .send({ filter_scope: { sourceMode: "allowlist", allowedSourceWidgetIds: [5] } });
+
+    // Clear
+    const clearRes = await app
+      .patch(`/api/dashboards/${dashboard.id}/layers/${layer.id}`)
+      .set("Cookie", oidcCookie)
+      .send({ filter_scope: null });
+
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.body.filter_scope == null).toBe(true);
   });
 });
