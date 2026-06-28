@@ -60,6 +60,8 @@ import { infoQuery, type InfoSpatialMode } from "../../api/client";
 import { wrapLongitude } from "../../lib/geoWrap";
 import { useFilterStore } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
+import { useFilterCombinationStore } from "../../store/filterCombinationStore";
+import { NOFILTER_SENTINEL } from "../../lib/stableComboHash";
 import { useDashboardContextOptional } from "../DashboardContext";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { isViewExpired } from "../../lib/viewExpiry";
@@ -547,28 +549,19 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     applyDvOrphanCheck,
   ]);
 
-  // Phase 16 (MAP-V13-04): viewsKey drives Effect 3 re-fires when relevant per-layer
-  // useFilterViewStore entries mutate. Stable string identity → re-renders only when
-  // an included layer's viewName or materializeVersion changes.
-  // PITFALL C-02 lock: per-layer scope (uniqueTableIds), not whole `s.views`.
-  // Sorted ascending by tableId for stability across drag-reorder of includedLayers.
-  // De-duplicated by tableId so two layers sharing the same table_id contribute one segment.
-  const uniqueTableIds = useMemo(() => {
-    const ids = Array.from(new Set(includedLayers.map((l) => l.table_id)));
-    return ids.sort((a, b) => a - b);
-  }, [includedLayers]);
-
-  // Phase 17-02 gap-closure: materializing bit appended to each segment so viewsKey changes when
-  // materializing flips false (on materialize error via clearMaterializing, or on success when the
-  // store is updated with the new viewName). Without this bit, viewsKey would not change on the
-  // error path (viewName/materializeVersion unchanged), and Effect 3 would not re-fire.
-  // PITFALL C-02 lock: per-tableId scope maintained (uniqueTableIds, not whole s.views).
-  const viewsKey = useFilterViewStore((s) =>
-    uniqueTableIds
-      .map((id) =>
-        `${id}:${s.views[id]?.viewName ?? ''}:${s.views[id]?.materializeVersion ?? 0}:${s.views[id]?.materializing ? '1' : '0'}`
-      )
-      .join('|')
+  // Phase 92 (READ-V118-02): per-layer combination view dep-key. Replaces viewsKey.
+  // Scoped to THIS map's includedLayers (Pitfall 3 — NOT the whole registry), table-bound only,
+  // per-layer (two layers on the same table can have distinct future filterScopes). Primitive
+  // joined string (S-02 — Pitfall 2) so Effects 2+3 re-fire only when a bound combo view changes.
+  const comboViewsKey = useFilterCombinationStore((s) =>
+    includedLayers
+      .filter((l) => l.dynamic_view_id === null || l.dynamic_view_id === undefined)
+      .map((l) => {
+        const hash = s.vizToHash[`l:${l.id}`];
+        const entry = hash && !hash.endsWith(`:${NOFILTER_SENTINEL}`) ? s.registry[hash] : undefined;
+        return `${l.id}:${entry?.viewName ?? ""}:${entry?.materializeVersion ?? 0}:${entry?.materializing ? "1" : "0"}`;
+      })
+      .join("|"),
   );
 
   // Phase 35 (DV-V16-13) — Pitfall 7 lock (35-RESEARCH.md §"Pitfall 7" verbatim):
@@ -1213,11 +1206,17 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         }
       }
 
-      // Phase 16 (PITFALL C-02): per-layer view-store snapshot at effect-fire time.
-      const entry = useFilterViewStore.getState().views[tableId];
-      const expired = isViewExpired(entry);
-      const viewName = !expired ? entry?.viewName : undefined;
-      const materializeVersion = !expired ? entry?.materializeVersion : undefined;
+      // Phase 92 (READ-V118-02): per-layer combination view snapshot (replaces filterViewStore.views[tableId]).
+      // Filters NEVER travel in the WMS request — only the view NAME changes. undefined/NOFILTER → base table.
+      const layerVizKey = `l:${layer.id}`;
+      const comboHash = useFilterCombinationStore.getState().vizToHash[layerVizKey];
+      const comboEntry =
+        comboHash && !comboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+          ? useFilterCombinationStore.getState().registry[comboHash]
+          : undefined;
+      const expired = comboEntry ? isViewExpired(comboEntry) : false;
+      const viewName = comboEntry && !expired ? comboEntry.viewName : undefined;
+      const materializeVersion = comboEntry && !expired ? comboEntry.materializeVersion : undefined;
 
       // Phase 17-03: `||` not `??` — empty-string falls through to rawTableRef.
       const wmsConfigInput = { ...cfg, tableId, tableRef: viewName || rawTableRef } as MapWidgetConfig;
@@ -1417,8 +1416,9 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // when any bound dv's viewName or status changes (e.g. pending → materialized after
     // orchestrator cascade completes).
     // Phase 63.1: dvFilterViewsKey added so Effect 2 re-fires when a dv-filter is applied/cleared.
+    // Phase 92 (READ-V118-02): comboViewsKey (per-layer combo dep-key) replaces viewsKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includedLayers, widgetConfig, imageLoadFunctionFor, tables, viewsKey, dynamicViewsKey, dvFilterViewsKey]);
+  }, [includedLayers, widgetConfig, imageLoadFunctionFor, tables, comboViewsKey, dynamicViewsKey, dvFilterViewsKey]);
 
   // ── Effect 3: Per-layer filter subscription (M-02 lock; fires on filterVersion + viewsKey) ──
   // PT16-E: filterVersion stays in dep array (300ms debounce window before view-store writes).
@@ -1460,13 +1460,18 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         }
       }
 
-      // Phase 16 (PITFALL C-02): per-layer view-store snapshot. viewsKey at top is re-render trigger.
-      const entry = useFilterViewStore.getState().views[tableId];
-      // Phase 17-02 suspend gate: skip updateParams while materializing (C-02 per-tableId check).
-      if (entry?.materializing) continue;
-      const expired = isViewExpired(entry);
-      const viewName = !expired ? entry?.viewName : undefined;
-      const materializeVersion = !expired ? entry?.materializeVersion : undefined;
+      // Phase 92 (READ-V118-02): per-layer combination view snapshot + suspend gate.
+      const layerVizKey = `l:${layer.id}`;
+      const comboHash = useFilterCombinationStore.getState().vizToHash[layerVizKey];
+      const comboEntry =
+        comboHash && !comboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+          ? useFilterCombinationStore.getState().registry[comboHash]
+          : undefined;
+      // Phase 17-02 suspend gate: skip updateParams while this layer's combo view materializes.
+      if (comboEntry?.materializing) continue;
+      const expired = comboEntry ? isViewExpired(comboEntry) : false;
+      const viewName = comboEntry && !expired ? comboEntry.viewName : undefined;
+      const materializeVersion = comboEntry && !expired ? comboEntry.materializeVersion : undefined;
 
       // Phase 17-03: `||` not `??` — empty-string falls through to rawTableRef (M-02 lock).
       const wmsConfigInput = { ...cfg, tableId, tableRef: viewName || rawTableRef } as MapWidgetConfig;
@@ -1491,11 +1496,12 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       lastEmittedParamsRef.current.set(layer.id, fingerprint);
       source.updateParams(wmsParams);
     }
-    // PITFALL S-02 + PT16-E + Pitfall 7: filterVersion (chip-state) + viewsKey (post-materialize)
+    // PITFALL S-02 + PT16-E + Pitfall 7: filterVersion (chip-state) + comboViewsKey (post-materialize)
     // + dynamicViewsKey (dv re-materialize / status flip).
     // Phase 63.1: dvFilterViewsKey added so Effect 3 re-fires when a dv-filter is applied/cleared.
+    // Phase 92 (READ-V118-02): comboViewsKey (per-layer combo dep-key) replaces viewsKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, viewsKey, dynamicViewsKey, dvFilterViewsKey, includedLayers, tables]);
+  }, [filterVersion, comboViewsKey, dynamicViewsKey, dvFilterViewsKey, includedLayers, tables]);
 
   // ── Effect 4: Basemap swap — swap source, NOT Map rebuild ─────────────────
   // Fires on a basemap config change OR an app-theme toggle (both move
