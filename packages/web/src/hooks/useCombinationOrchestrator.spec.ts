@@ -13,8 +13,12 @@
  *   9  NOFILTER sentinel guard → no markMaterializing, no POST, setVizHash undefined
  *  10  filterVersion dep isolation → combinationVersion bump does NOT re-fire orchestrator
  *  11  Unmount abort → AbortController aborted; no setEntry after unmount
+ *
+ * Phase 93.5 spatial scenarios (SC1-SC6) + sole-trigger grep gate.
  */
 
+import * as fs from "fs";
+import * as path from "path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import type { Mock } from "vitest";
@@ -24,7 +28,9 @@ import { useFilterStore } from "../store/filterStore";
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
+import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { stableComboHash } from "../lib/stableComboHash";
+import { SPATIAL_DRAWS_SENTINEL } from "../components/charts/filterSourceTypes";
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import type { ActiveFilter } from "../store/filterStore";
 
@@ -49,11 +55,29 @@ const DASH_ID = 42;
 const TABLE_A = 100;
 const TABLE_B = 200;
 
+/** Build a map widget with an eligible latlon spatial target for the given tableId. */
+function makeMapWidgetWithTarget(id: number, tableId: number): WidgetDto {
+  return {
+    id,
+    dashboard_id: DASH_ID,
+    title: `Map ${id}`,
+    type: "map",
+    position: id,
+    config: {
+      spatialTargets: [
+        { tableId, spatialMode: "latlon", lonCol: "lon", latCol: "lat" },
+      ],
+    },
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-06-01T00:00:00Z",
+  };
+}
+
 function makeWidget(overrides: {
   id: number;
   type?: string;
   tableId?: number;
-  filterSelection?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: number[] };
+  filterSelection?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: (number | string)[] };
 }): WidgetDto {
   return {
     id: overrides.id,
@@ -108,6 +132,20 @@ const FILTER_B: ActiveFilter = {
   dataType: "string",
   addedAt: 2000,
 };
+
+// Bump spatialFilterVersion to trigger the orchestrator (mirrors bumpFilterVersion)
+function bumpSpatialFilterVersion() {
+  act(() => {
+    useSpatialFilterStore.setState((s) => ({ spatialFilterVersion: s.spatialFilterVersion + 1 }));
+  });
+}
+
+// Set shapes + bump spatialFilterVersion atomically
+function setShapes(shapes: { id: string; type: "bbox" | "lasso" | "circle"; wkt: string; label: string; measurement: string; addedAt: number }[]) {
+  act(() => {
+    useSpatialFilterStore.setState({ shapes, spatialFilterVersion: shapes.length > 0 ? 1 : 0 });
+  });
+}
 
 // Advance the 300ms debounce using fake timers
 function advanceDebounce() {
@@ -737,5 +775,355 @@ describe("Phase 92 — layer enumeration (READ-V118-02 / COMBO-V118-04)", () => 
     });
 
     expect(useFilterCombinationStore.getState().registry[expectedHash]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 93.5 — spatial in combination model (SPATIAL-V118-01)
+// ---------------------------------------------------------------------------
+
+// Shared shape fixture
+const SHAPE_1 = {
+  id: "shape-1",
+  type: "bbox" as const,
+  wkt: "POLYGON((0 0,1 0,1 1,0 1,0 0))",
+  label: "Bbox 1",
+  measurement: "1km × 1km",
+  addedAt: 5000,
+};
+
+const SHAPE_2 = {
+  id: "shape-2",
+  type: "bbox" as const,
+  wkt: "POLYGON((2 2,3 2,3 3,2 3,2 2))",
+  label: "Bbox 2",
+  measurement: "1km × 1km",
+  addedAt: 6000,
+};
+
+describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useSpatialFilterStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10 } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_spatial_v", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // -------------------------------------------------------------------------
+  // SC1: Accept-all shared view — SPATIAL-V118-01 SC1
+  // Chart widget (accept-all) + map widget (with spatialTarget) + layer on TABLE_A.
+  // One column filter + one shape → ONE POST carrying spatial + column, both vizKeys share hash.
+  // -------------------------------------------------------------------------
+  it("SC1: accept-all — chart + map layer share ONE spatial combo view", async () => {
+    // Map widget provides the spatial target for TABLE_A
+    const mapWidget = makeMapWidgetWithTarget(10, TABLE_A);
+    // Chart widget (accept-all, default cfg)
+    const chartWidget = makeWidget({ id: 11, type: "bar", tableId: TABLE_A });
+    // Layer on TABLE_A (accept-all by default)
+    const layer = makeLayer({ id: 20, tableId: TABLE_A });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    setShapes([SHAPE_1]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [mapWidget, chartWidget], [layer]));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      // Should be ONE POST total (chart + layer share the same hash)
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    // Must carry spatialFilters
+    expect(call.spatialFilters).toBeDefined();
+    expect(call.spatialFilters).toHaveLength(1);
+    expect(call.spatialFilters[0].wkt).toBe(SHAPE_1.wkt);
+    expect(call.spatialFilters[0].id).toBe(SHAPE_1.id);
+    // Must carry spatialTarget
+    expect(call.spatialTarget).toBeDefined();
+    expect(call.spatialTarget.tableId).toBe(TABLE_A);
+    expect(call.spatialTarget.spatialMode).toBe("latlon");
+    // combinationKey must be the spatial-extended hash
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A], [SHAPE_1]);
+    expect(call.combinationKey).toBe(expectedHash);
+
+    // Both chart vizKey and layer vizKey point to the SAME hash
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["w:11"]).toBe(expectedHash);
+      expect(state.vizToHash["l:20"]).toBe(expectedHash);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SC2: One POST per table, carries spatial — SPATIAL-V118-01 SC2
+  // Default accept-all + single shape + NO column filter → spatial-only hash, NOT NOFILTER.
+  // -------------------------------------------------------------------------
+  it("SC2: spatial-only (no column filter) → ONE POST with spatialFilters present", async () => {
+    const mapWidget = makeMapWidgetWithTarget(10, TABLE_A);
+    const chartWidget = makeWidget({ id: 11, type: "bar", tableId: TABLE_A });
+
+    // No column filters for TABLE_A
+    useFilterStore.setState({ filters: {} } as Parameters<typeof useFilterStore.setState>[0]);
+    setShapes([SHAPE_1]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [mapWidget, chartWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    expect(call.spatialFilters).toBeDefined();
+    expect(call.spatialFilters).toHaveLength(1);
+    expect(call.spatialTarget).toBeDefined();
+
+    // Hash is NOT NOFILTER (spatial-only hash is a real hash)
+    const expectedHash = stableComboHash("table", TABLE_A, [], [SHAPE_1]);
+    expect(call.combinationKey).toBe(expectedHash);
+    expect(expectedHash).not.toContain("NOFILTER");
+  });
+
+  // -------------------------------------------------------------------------
+  // SC3: Exclude vs accept → distinct hashes — SPATIAL-V118-01 SC3
+  // Widget A: accept-all (accepts spatial via sentinel).
+  // Widget B: allowlist with NO sentinel (excludes spatial).
+  // No column filter → B resolves to NOFILTER (undefined in vizToHash), A has spatial hash.
+  // -------------------------------------------------------------------------
+  it("SC3: exclude vs accept — excluding viz gets no spatial in hash, accepting viz does", async () => {
+    const mapWidget = makeMapWidgetWithTarget(10, TABLE_A);
+    // Widget A: accept-all (accepts spatial)
+    const widgetA = makeWidget({ id: 11, type: "bar", tableId: TABLE_A });
+    // Widget B: allowlist with empty list (excludes ALL, including spatial sentinel)
+    const widgetB = makeWidget({
+      id: 12,
+      type: "bar",
+      tableId: TABLE_A,
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [] },
+    });
+
+    // No column filters
+    useFilterStore.setState({ filters: {} } as Parameters<typeof useFilterStore.setState>[0]);
+    setShapes([SHAPE_1]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [mapWidget, widgetA, widgetB], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    // Widget A accepts spatial → has a hash (spatial-only hash)
+    // Widget B excludes all → NOFILTER → vizToHash["w:12"] is undefined
+    const state = useFilterCombinationStore.getState();
+    const hashA = state.vizToHash["w:11"];
+    const hashB = state.vizToHash["w:12"];
+
+    expect(hashA).toBeDefined();
+    expect(hashA).not.toContain("NOFILTER");
+
+    // B has no spatial and no column filters → NOFILTER → undefined in vizToHash
+    expect(hashB === undefined || !("w:12" in state.vizToHash)).toBe(true);
+
+    // A and B hash must differ (A has spatial, B does not)
+    if (hashA && hashB) {
+      expect(hashA).not.toBe(hashB);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // SC4: Dedup across spatial + DROP on shape removal — SPATIAL-V118-01 SC4
+  // Two widgets both accept-all on TABLE_A, one shape → ONE POST (shared hash, refCount 2).
+  // Remove shape → orchestrator re-fires → old spatial hash released → dropCombinationView.
+  // -------------------------------------------------------------------------
+  it("SC4: dedup across spatial (ONE POST); removing shape drops old spatial hash", async () => {
+    const mapWidget = makeMapWidgetWithTarget(10, TABLE_A);
+    const w1 = makeWidget({ id: 11, type: "bar", tableId: TABLE_A });
+    const w2 = makeWidget({ id: 12, type: "bar", tableId: TABLE_A });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    setShapes([SHAPE_1]);
+
+    const { rerender } = renderHook(
+      ({ widgets }: { widgets: WidgetDto[] }) =>
+        useCombinationOrchestrator(DASH_ID, widgets, []),
+      { initialProps: { widgets: [mapWidget, w1, w2] } },
+    );
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      // Only ONE POST (shared hash)
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const spatialHash = stableComboHash("table", TABLE_A, [FILTER_A], [SHAPE_1]);
+    await waitFor(() => {
+      const entry = useFilterCombinationStore.getState().registry[spatialHash];
+      expect(entry).toBeDefined();
+      expect(entry!.refCount).toBe(2);
+    });
+
+    // Record view name for DROP assertion
+    const spatialViewName = useFilterCombinationStore.getState().registry[spatialHash]?.viewName;
+    expect(spatialViewName).toBeTruthy();
+
+    // Remove the shape — bump spatialFilterVersion
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_column_only_v", expiresAt: 9_999_999_999 });
+    act(() => {
+      useSpatialFilterStore.setState({ shapes: [], spatialFilterVersion: 2 });
+    });
+    advanceDebounce();
+
+    await waitFor(() => {
+      // Drop must have been called for the old spatial hash view
+      expect(dropCombinationView).toHaveBeenCalledWith(
+        expect.objectContaining({ viewName: spatialViewName }),
+      );
+    });
+
+    // Old spatial hash entry should be gone from registry
+    await waitFor(() => {
+      expect(useFilterCombinationStore.getState().registry[spatialHash]).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SC5: No eligible target → spatial NOT folded — Pitfall 1
+  // Table B has no map widget (no spatial target) → hash stays column-only.
+  // -------------------------------------------------------------------------
+  it("SC5: no eligible target for TABLE_B → column-only hash, no spatialFilters in args", async () => {
+    // No map widget for TABLE_B → aggregateSpatialTargetsByTable returns nothing for TABLE_B
+    const chartWidget = makeWidget({ id: 20, type: "bar", tableId: TABLE_B });
+    const chartWidget2 = makeWidget({ id: 21, type: "bar", tableId: TABLE_B });
+
+    useFilterStore.setState({ filters: { [TABLE_B]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    // Shape drawn, but no eligible target → must NOT be folded
+    setShapes([SHAPE_1]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [chartWidget, chartWidget2], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    // No spatialFilters in args (no eligible target)
+    expect(call.spatialFilters).toBeUndefined();
+    expect(call.spatialTarget).toBeUndefined();
+    // combinationKey is column-only (no spatial segment)
+    const expectedColumnOnlyHash = stableComboHash("table", TABLE_B, [FILTER_A]);
+    expect(call.combinationKey).toBe(expectedColumnOnlyHash);
+
+    // Both widgets share the same column-only hash
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["w:20"]).toBe(expectedColumnOnlyHash);
+      expect(state.vizToHash["w:21"]).toBe(expectedColumnOnlyHash);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SC6: Records excluded from orchestrator enumeration
+  // A "records" widget on TABLE_A → orchestrator must NOT mint a combo entry for it.
+  // -------------------------------------------------------------------------
+  it("SC6: records widget → no combo entry / no materializeFilter call for it", async () => {
+    const recordsWidget = makeWidget({ id: 30, type: "records", tableId: TABLE_A });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [recordsWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => { await Promise.resolve(); });
+
+    // No POST for records widget
+    expect(materializeFilter).not.toHaveBeenCalled();
+
+    // vizToHash has no entry for the records widget
+    const state = useFilterCombinationStore.getState();
+    const vizVal = state.vizToHash["w:30"];
+    expect(vizVal === undefined || !("w:30" in state.vizToHash)).toBe(true);
+  });
+
+  // SC6b: sibling "bar" widget on same table still materializes normally
+  it("SC6b: sibling bar + records on TABLE_A — bar materializes, records does not", async () => {
+    const recordsWidget = makeWidget({ id: 30, type: "records", tableId: TABLE_A });
+    const barWidget = makeWidget({ id: 31, type: "bar", tableId: TABLE_A });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [recordsWidget, barWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    // Only w:31 (bar) has a vizToHash entry
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["w:31"]).toBeDefined();
+      const recordsVal = state.vizToHash["w:30"];
+      expect(recordsVal === undefined || !("w:30" in state.vizToHash)).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SOLE-TRIGGER GREP GATE
+  // After Phase 93.5:
+  //   (a) The map-only hook file no longer exists.
+  //   (b) The orchestrator is the ONLY hook that calls materializeFilter with BOTH
+  //       spatialFilters AND combinationKey (grep the orchestrator source).
+  //   The gate: "after Phase 93.5, ONLY useCombinationOrchestrator materializes
+  //   the table+spatial path for chart+layer vizs; records remains a self-contained
+  //   legacy island."
+  // -------------------------------------------------------------------------
+  it("SOLE-TRIGGER GATE: map-only hook file deleted; orchestrator is sole spatial+combinationKey caller", () => {
+    const hooksDir = path.resolve(__dirname);
+
+    // (a) The deleted hook file must not exist
+    const deletedHookPath = path.join(hooksDir, "useMapOnlySpatialMaterialize.ts");
+    expect(fs.existsSync(deletedHookPath)).toBe(false);
+
+    // (b) The orchestrator file must contain both "spatialFilters" and "combinationKey"
+    //     in the same materializeFilter call (confirming it is the sole spatial+combo caller)
+    const orchestratorPath = path.join(hooksDir, "useCombinationOrchestrator.ts");
+    const orchestratorSrc = fs.readFileSync(orchestratorPath, "utf-8");
+
+    expect(orchestratorSrc).toContain("spatialFilters");
+    expect(orchestratorSrc).toContain("combinationKey: hash");
+
+    // (c) No OTHER hook file in this directory calls materializeFilter with spatialFilters
+    //     (records' legacy path is in components/charts/WidgetRenderer.tsx, not hooks/)
+    const hookFiles = fs.readdirSync(hooksDir)
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".spec.ts") && f !== "useCombinationOrchestrator.ts");
+
+    for (const file of hookFiles) {
+      const src = fs.readFileSync(path.join(hooksDir, file), "utf-8");
+      // No hook file other than the orchestrator should call materializeFilter with spatialFilters
+      if (src.includes("materializeFilter") && src.includes("spatialFilters")) {
+        throw new Error(
+          `Sole-trigger gate FAILED: ${file} calls materializeFilter with spatialFilters. ` +
+          "Only useCombinationOrchestrator should own the spatial+combination path."
+        );
+      }
+    }
   });
 });
