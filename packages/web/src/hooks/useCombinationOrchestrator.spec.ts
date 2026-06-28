@@ -74,7 +74,7 @@ function makeLayer(overrides: {
   id: number;
   tableId?: number;
   dynamic_view_id?: number | null;
-  filterScope?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: number[] };
+  filter_scope?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: number[] };
 }): DashboardLayerDto {
   return {
     id: overrides.id,
@@ -89,7 +89,7 @@ function makeLayer(overrides: {
     dynamic_view_id: overrides.dynamic_view_id ?? null,
     cb_config: null,
     track_config: null,
-    ...(overrides.filterScope ? { filterScope: overrides.filterScope } : {}),
+    ...(overrides.filter_scope ? { filter_scope: overrides.filter_scope } : {}),
     created_at: "2026-06-01T00:00:00Z",
     updated_at: "2026-06-01T00:00:00Z",
   };

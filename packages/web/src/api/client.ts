@@ -638,11 +638,11 @@ export type DashboardLayerDto = {
   // and gates Lane C emission on isCbConfigConfigured.
   cb_config: string | null;
   track_config: string | null;
-  // v1.18 Phase 92 (FSCOPE-V118-02): per-layer filter scope, TOP-LEVEL field threaded like
-  // track_config — NEVER read off layer.config. Optional + undefined until Phase 93 adds the
-  // SQLite column + config UI + persistence; Phase 92 reads it (always undefined for now) so the
-  // orchestrator avoids an `as any` cast. resolveFilterSet(undefined, ...) = accept-all.
-  filterScope?: import("../types/filterSelection").FilterSelectionConfig;
+  // v1.18 Phase 93 (FSCOPE-V118-02): per-layer filter scope, TOP-LEVEL field threaded like
+  // track_config — NEVER read off layer.config. snake_case matches DB column + cb_config /
+  // track_config convention. mapDashboardLayer parses the JSON string to an object on read;
+  // PATCH route stringifies on write. resolveFilterSet(undefined, ...) = accept-all default.
+  filter_scope?: import("../types/filterSelection").FilterSelectionConfig | null;
   created_at: string;
   updated_at: string;
 };
@@ -688,6 +688,7 @@ export const updateLayer = async (
     | "dynamic_view_id"
     | "cb_config"
     | "track_config"
+    | "filter_scope"
   >>
 ): Promise<DashboardLayerDto> => {
   const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/layers/${layerId}`, {

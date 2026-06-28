@@ -174,9 +174,9 @@ export function useCombinationOrchestrator(
       for (const layer of layers) {
         if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) continue;
         const tableId = layer.table_id;
-        // filterScope is a TOP-LEVEL field (threaded like track_config). Undefined in Phase 92
-        // (no config UI yet) → resolveFilterSet(undefined, ...) = accept-all = byte-identical to v1.17.
-        const cfg = layer.filterScope as FilterSelectionConfig | undefined;
+        // filter_scope is a TOP-LEVEL field (threaded like track_config). Undefined until Phase 93
+        // config UI + persistence lands → resolveFilterSet(undefined, ...) = accept-all = byte-identical to v1.17.
+        const cfg = layer.filter_scope ?? undefined;
         const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, allFilters);
         const hash = stableComboHash("table", tableId, resolved);
