@@ -32,6 +32,34 @@ import * as clientModule from "../../api/client";
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
 import type { FormatSpecNumber } from "../../lib/columnFormatter";
 
+// Phase 91 (READ-V118-01 / COMBO-V118-04): filterCombinationStore mock state.
+// These let-bindings drive the selector-aware mock; reset in beforeEach.
+// vizKey convention: "w:<widgetId>" — must match what AggregatedWidgetRenderer computes.
+let mockVizToHash: Record<string, string | undefined> = {};
+let mockRegistry: Record<string, { viewName: string; expiresAt: number; materializing: boolean }> = {};
+let mockCombinationVersion = 0;
+
+// Selector-aware mock for useFilterCombinationStore.
+// Mirrors the TimelineRenderer.spec.tsx pattern (lines 97-113).
+vi.mock("../../store/filterCombinationStore", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const useFilterCombinationStore = ((selector?: (s: unknown) => unknown) => {
+    const state = {
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+    };
+    return selector ? selector(state) : state;
+  }) as unknown as { getState: () => unknown };
+  useFilterCombinationStore.getState = () => ({
+    vizToHash: mockVizToHash,
+    registry: mockRegistry,
+    combinationVersion: mockCombinationVersion,
+    clearEntry: vi.fn(),
+  });
+  return { ...actual, useFilterCombinationStore };
+});
+
 // Phase 15-02: mock materializeFilter + dropFilterView alongside runSql.
 // vi.spyOn still works on vi.fn() mocks — existing tests use spyOn pattern.
 vi.mock("../../api/client", async (importOriginal) => {
@@ -49,8 +77,12 @@ vi.mock("../../api/client", async (importOriginal) => {
 
 // Clear all mock call histories between tests to prevent cross-test contamination.
 // vi.restoreAllMocks() restores spies but does NOT clear vi.fn() call counts.
+// Phase 91: also reset combo store mock state.
 beforeEach(() => {
   vi.clearAllMocks();
+  mockVizToHash = {};
+  mockRegistry = {};
+  mockCombinationVersion = 0;
 });
 
 // Phase 15-02: wrap helper — all AggregatedWidgetRenderer renders need this provider.
@@ -851,45 +883,34 @@ describe("AggregatedWidgetRenderer — FILT-V13-01 (FROM-swap on materialize suc
     useFilterViewStore.getState().reset();
   });
 
-  it("substitutes FROM <table> with FROM <view> after materialize completes", async () => {
-    vi.spyOn(clientModule, "materializeFilter").mockResolvedValue({
-      viewName: "_kbi_filt_u1_d1_t99_sabcdef12",
+  it("substitutes FROM <table> with FROM <view> when combo entry has viewName (Phase 91: reads filterCombinationStore)", async () => {
+    // Phase 91: Effect 1 table branch is gone — the orchestrator populates filterCombinationStore.
+    // Simulate the orchestrator having run: pre-seed mockVizToHash + mockRegistry.
+    // Widget id=1 (makeAggregatedWidget default), tableId=99, vizKey="w:1".
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c1234abcd",
       expiresAt: Date.now() + 5 * 60 * 1000,
-    });
+      materializing: false,
+    };
+
     vi.spyOn(clientModule, "runSql").mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
-
-    // Seed a chip filter so the materialize trigger fires
-    useFilterStore.getState().addFilter(99, {
-      column: "g",
-      value: "A",
-      dataType: "string",
-      addedAt: Date.now(),
-    });
 
     const widget = makeAggregatedWidget();
     render(wrap(<WidgetRenderer widget={widget} />));
 
-    // Wait for the 300ms debounce + materialize await + chart-query re-run
-    await waitFor(
-      () => {
-        expect(clientModule.materializeFilter).toHaveBeenCalledWith(
-          expect.objectContaining({ dashboardId: 1, tableId: 99 }),
-          expect.any(AbortSignal)
-        );
-      },
-      { timeout: 1500 }
-    );
-
-    // After materialize completes + chart-query re-fires, runSql must have been called
-    // with the view name swapped in
+    // runSql must have been called with the combo view name swapped in via FROM-swap.
+    // materializeFilter is NOT called — orchestrator owns the table path after Phase 91.
     await waitFor(() => {
       const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
       const swapped = calls.some((args: unknown[]) =>
-        typeof args[0] === "string" && (args[0] as string).includes("FROM _kbi_filt_u1_d1_t99_sabcdef12")
+        typeof args[0] === "string" && (args[0] as string).includes("FROM _kbi_combo_c1234abcd")
       );
       expect(swapped).toBe(true);
     });
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
   });
 });
 
@@ -921,27 +942,23 @@ describe("AggregatedWidgetRenderer — FILT-V13-03 (no filters → no materializ
 });
 
 describe("AggregatedWidgetRenderer — FILT-V13-04 (Filtering badge during materialize)", () => {
+  // Phase 91: AggregatedWidgetRenderer no longer calls filterViewStore.markMaterializing for
+  // table-bound widgets (the orchestrator owns combination view materialization).
+  // FilteringBadge reads from filterViewStore.views[tableId]?.materializing — the badge will
+  // be driven by the orchestrator's writes to filterCombinationStore in subsequent phases.
+  // For now, the badge behavior (Phase 95 COMM-V118-01) is out of Phase 91 scope.
+  // This test verifies the basic rendering wiring is intact (badge does not error when rendered).
   afterEach(() => {
     vi.restoreAllMocks();
     useFilterStore.getState().reset();
     useFilterViewStore.getState().reset();
   });
 
-  it("FilteringBadge renders 'Filtering...' while materializing=true, disappears after setView", async () => {
-    let resolveMaterialize: ((v: { viewName: string; expiresAt: number }) => void) | undefined;
-    vi.spyOn(clientModule, "materializeFilter").mockImplementation(
-      () => new Promise((res) => { resolveMaterialize = res; })
-    );
+  it("FilteringBadge renders null (not materializing) when combo entry is absent / materializing=false", async () => {
     vi.spyOn(clientModule, "runSql").mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
 
-    useFilterStore.getState().addFilter(99, {
-      column: "g", value: "A", dataType: "string", addedAt: Date.now(),
-    });
-
     const widget = makeAggregatedWidget();
-    // Render the WidgetRenderer AND a sibling FilteringBadge for the same tableId
-    // (mirrors how DashboardsPage embeds the badge in widget card header)
     render(wrap(
       <>
         <FilteringBadge tableId={99} />
@@ -949,32 +966,25 @@ describe("AggregatedWidgetRenderer — FILT-V13-04 (Filtering badge during mater
       </>
     ));
 
-    // After debounce, markMaterializing fires → badge appears
-    await waitFor(() => {
-      expect(screen.getByText("Filtering...")).toBeInTheDocument();
-    }, { timeout: 1500 });
-
-    // Resolve the materialize → setView fires → materializing flips to false → badge disappears
-    resolveMaterialize?.({ viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000 });
-
-    await waitFor(() => {
-      expect(screen.queryByText("Filtering...")).toBeNull();
-    });
+    // Badge must not crash and must not show "Filtering..." (no filterViewStore.markMaterializing fires
+    // for table widgets in Phase 91 — orchestrator-owned path).
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByText("Filtering...")).toBeNull();
   });
 });
 
 describe("AggregatedWidgetRenderer — toast routing on materialize failure", () => {
+  // Phase 91: AggregatedWidgetRenderer no longer calls materializeFilter for table widgets.
+  // Toast on materialize failure is now handled by the orchestrator (useCombinationOrchestrator).
+  // This describe block is kept as a no-op placeholder; the orchestrator-side toast is tested
+  // in useCombinationOrchestrator.spec.ts. The dv path still calls materializeFilter — see DV tests.
   afterEach(() => {
     vi.restoreAllMocks();
     useFilterStore.getState().reset();
     useFilterViewStore.getState().reset();
   });
 
-  it("PermissionError → toast + chart falls through to raw FROM <table>", async () => {
-    const { PermissionError } = await import("../../api/client");
-    vi.spyOn(clientModule, "materializeFilter").mockRejectedValue(
-      new PermissionError("Filtering not enabled for your account")
-    );
+  it("Phase 91: materializeFilter is NOT called from AggregatedWidgetRenderer for table-bound widgets (orchestrator owns toast/error)", async () => {
     vi.spyOn(clientModule, "runSql").mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     vi.spyOn(clientModule, "dropFilterView").mockResolvedValue({ dropped: true });
 
@@ -982,21 +992,10 @@ describe("AggregatedWidgetRenderer — toast routing on materialize failure", ()
       column: "g", value: "A", dataType: "string", addedAt: Date.now(),
     });
 
-    // Spy on useToastStore.showToast
-    const { useToastStore } = await import("../../store/toast");
-    const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
-
     render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
 
-    await waitFor(() => {
-      expect(showToastSpy).toHaveBeenCalledWith(
-        "Filtering not enabled for your account",
-        "error"
-      );
-    }, { timeout: 1500 });
-
-    // setView was NOT called — viewName is undefined → chart fell through to raw table
-    expect(useFilterViewStore.getState().views[99]?.viewName).toBeFalsy();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
   });
 });
 
@@ -1200,13 +1199,27 @@ describe("AggregatedWidgetRenderer — LIFE-V13-01 (proactive TTL expiry)", () =
     useFilterViewStore.getState().reset();
   });
 
-  it("clears expired view BEFORE running chart query (Date.now() >= expiresAt)", async () => {
-    // Seed an expired view
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() - 1000 }, // 1 second ago
-      1
-    );
+  it("clears expired combo entry BEFORE running chart query (Phase 91: clearEntry via filterCombinationStore)", async () => {
+    // Phase 91: proactive expiry now calls filterCombinationStore.getState().clearEntry(comboHash).
+    // Seed an expired combo entry in the mock state.
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c_expired",
+      expiresAt: Date.now() - 1000, // 1 second ago — expired
+      materializing: false,
+    };
+
+    // Track clearEntry calls via a spy on the mock's getState().clearEntry.
+    // The clearEntry spy is fresh per beforeEach (vi.clearAllMocks() clears vi.fn() mocks).
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    const clearEntrySpy = vi.fn();
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: clearEntrySpy,
+    });
 
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
       column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
@@ -1214,18 +1227,30 @@ describe("AggregatedWidgetRenderer — LIFE-V13-01 (proactive TTL expiry)", () =
 
     render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
 
-    // Wait for clearView to be fired (effect runs synchronously on mount; clearView is sync state mutation)
+    // Wait for clearEntry to be fired (effect runs on mount; clearEntry is called synchronously within effect)
     await waitFor(() => {
-      expect(useFilterViewStore.getState().views[99]).toBeUndefined();
-    });
+      expect(clearEntrySpy).toHaveBeenCalledWith(comboHash);
+    }, { timeout: 500 });
   });
 
-  it("does NOT clear view when expiresAt is in the future (no proactive trigger)", async () => {
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 60000 }, // 60s in future
-      1
-    );
+  it("does NOT clear entry when expiresAt is in the future (no proactive trigger)", async () => {
+    // Seed a non-expired combo entry.
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c_fresh",
+      expiresAt: Date.now() + 60000, // 60s in future
+      materializing: false,
+    };
+
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    const clearEntrySpy = vi.fn();
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: clearEntrySpy,
+    });
 
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
       column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
@@ -1233,10 +1258,9 @@ describe("AggregatedWidgetRenderer — LIFE-V13-01 (proactive TTL expiry)", () =
 
     render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
 
-    // Wait through any microtask flush
+    // Wait through any microtask flush — clearEntry must NOT have been called.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(useFilterViewStore.getState().views[99]).toBeDefined();
-    expect(useFilterViewStore.getState().views[99].viewName).toBe("_kbi_filt_v1");
+    expect(clearEntrySpy).not.toHaveBeenCalled();
   });
 });
 
@@ -1275,182 +1299,138 @@ describe("AggregatedWidgetRenderer — LIFE-V13-02 (reactive isViewNotFoundError
     useFilterViewStore.getState().reset();
   });
 
-  it("on view-not-found: clears view, re-materializes, retries chart query ONCE with new viewName", async () => {
-    // Seed: chip filter present + initial view (so the materialize-trigger debounce has a viewName already)
-    useFilterStore.getState().addFilter(99, {
-      column: "g", value: "A", dataType: "string", addedAt: Date.now(),
-    } as import("../../store/filterStore").ActiveFilter);
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_OLD", expiresAt: Date.now() + 60000 },
-      1
-    );
+  it("Phase 91: on view-not-found, calls clearEntry(comboHash) + falls through to raw base table (no inline re-materialize)", async () => {
+    // Phase 91: LIFE-V13-02 no longer calls materializeFilter inline for table widgets.
+    // Instead: clearEntry(comboHash) signals the orchestrator to re-materialize; widget queries
+    // raw base table immediately (no flash of error). Pitfall 3 lock: max 1 retry per invocation.
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c_stale",
+      expiresAt: Date.now() + 60000,
+      materializing: false,
+    };
 
-    // First runSql call rejects with view-not-found; second call (after retry) resolves
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    const clearEntrySpy = vi.fn();
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: clearEntrySpy,
+    });
+
+    let runSqlCallCount = 0;
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockImplementation((sql: string) => {
+      runSqlCallCount++;
+      // First call (with the combo view name) → view-not-found.
+      if (sql.includes("FROM _kbi_combo_c_stale") && runSqlCallCount === 1) {
+        return Promise.reject(new Error("SqlEngine: Object '_kbi_combo_c_stale' not found (S/SDc:1513)"));
+      }
+      return Promise.resolve({
+        column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
+      });
+    });
+
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+
+    // clearEntry must have fired for the stale hash.
+    await waitFor(() => {
+      expect(clearEntrySpy).toHaveBeenCalledWith(comboHash);
+    }, { timeout: 1500 });
+
+    // runSql must have been called twice: first with the combo view (rejected), then with raw table.
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const rawCall = calls.some(
+        (args) => typeof args[0] === "string" && !(args[0] as string).includes("_kbi_combo_c_stale")
+      );
+      expect(rawCall).toBe(true);
+    }, { timeout: 1500 });
+
+    // materializeFilter must NOT have been called — orchestrator owns table materialize.
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
+  });
+
+  it("max-1-retry — second view-not-found for base-table falls through silently (Pitfall 3 lock: no infinite loop)", async () => {
+    // Phase 91: after clearEntry the widget queries the base table.
+    // If the base table query also fails (non-view error), it just surfaces normally.
+    // The retried=true flag prevents a second LIFE-V13-02 loop.
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c_stale",
+      expiresAt: Date.now() + 60000,
+      materializing: false,
+    };
+
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: vi.fn(),
+    });
+
     let runSqlCallCount = 0;
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockImplementation(() => {
       runSqlCallCount++;
-      if (runSqlCallCount === 1) {
-        return Promise.reject(new Error("SqlEngine: Object '_kbi_filt_OLD' not found (S/SDc:1513)"));
-      }
-      return Promise.resolve({
-        column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
-      });
-    });
-
-    // Retry materialize returns a NEW viewName
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
-      viewName: "_kbi_filt_NEW",
-      expiresAt: Date.now() + 60000,
-    });
-
-    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
-
-    // Wait for the reactive recovery to complete: clearView fires, materialize re-fires, second runSql succeeds
-    await waitFor(() => {
-      // Final viewName in the store is the NEW one
-      expect(useFilterViewStore.getState().views[99]?.viewName).toBe("_kbi_filt_NEW");
-    }, { timeout: 2000 });
-
-    // Second runSql call used the new viewName
-    await waitFor(() => {
-      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
-      const retried = calls.some(
-        (args) => typeof args[0] === "string" && args[0].includes("FROM _kbi_filt_NEW")
-      );
-      expect(retried).toBe(true);
-    });
-  });
-
-  it("max-1-retry — second view-not-found resolves successfully (Pitfall 3 lock: no infinite retry loop)", async () => {
-    // Pitfall 3 lock: max 1 reactive retry per CHART-QUERY INVOCATION. The retryRef is reset when
-    // viewName changes, so each new viewName gets 1 retry budget. The key guard: retryRef.retried=true
-    // prevents the same invocation from looping. Phase 17-02 gate note: the materializing suspend gate
-    // blocks the Effect 2 re-fire with viewName=undefined (after clearView), so the fallthrough path
-    // now flows through the fresh Effect 2 re-fire after setView, not through an immediate raw query.
-    // The test verifies: (a) no infinite loop and (b) data eventually loads.
-    useFilterStore.getState().addFilter(99, {
-      column: "g", value: "A", dataType: "string", addedAt: Date.now(),
-    } as import("../../store/filterStore").ActiveFilter);
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_OLD", expiresAt: Date.now() + 60000 },
-      1
-    );
-
-    let runSqlCallCount = 0;
-    (clientModule.runSql as ReturnType<typeof vi.fn>).mockImplementation((sql: string) => {
-      runSqlCallCount++;
-      // First two FROM _kbi_filt_ calls reject with view-not-found; subsequent calls succeed.
-      // Phase 17-02: the first two view-not-found rejections trigger LIFE-V13-02 retry cycles;
-      // the third call (same view name, count > 2) succeeds, breaking the chain without looping.
-      if (sql.includes("FROM _kbi_filt_") && runSqlCallCount <= 2) {
+      if (runSqlCallCount <= 2) {
         return Promise.reject(new Error("SqlEngine: Object 'whatever' not found (S/SDc:1513)"));
       }
-      return Promise.resolve({
-        column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
-      });
+      return Promise.resolve({ column_headers: ["g", "value"], column_1: ["A"], column_2: [10] });
     });
 
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
-      viewName: "_kbi_filt_RETRY",
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+
+    // Wait for the retry fallthrough to complete — must not loop infinitely.
+    await waitFor(() => {
+      expect((clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    }, { timeout: 2500 });
+
+    // Phase 91: materializeFilter NOT called.
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
+  });
+
+  it("non-view-not-found error → no clearEntry, no retry, error surfaces normally", async () => {
+    // Seed combo entry (widget queries combo view first).
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c1",
       expiresAt: Date.now() + 60000,
+      materializing: false,
+    };
+
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    const clearEntrySpy = vi.fn();
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: clearEntrySpy,
     });
-
-    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
-
-    // With the Phase 17-02 suspend gate, view-not-found on the retry view triggers another
-    // LIFE-V13-02 cycle (for the new retryRef context). The third FROM _kbi_filt_ call (count>2)
-    // resolves. The Pitfall 3 lock holds: each invocation only retries once (retried=true blocks
-    // re-entry); the system converges and data loads.
-    await waitFor(() => {
-      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
-      // Assert data eventually loads (some call with _kbi_filt_ resolves)
-      expect(calls.length).toBeGreaterThanOrEqual(3);
-    }, { timeout: 2500 });
-
-    // Pitfall 3 lock: the critical guard is that materializeFilter is not called unboundedly.
-    // With the Phase 17-02 gate, reactive retries are bounded by the retryRef.retried flag
-    // per invocation. Effect 1 debounce (300ms) also fires once, adding at most 1 extra call.
-    // Total materializeFilter calls within 2500ms should be bounded (≤ 5 is a safe upper bound).
-    const matCallCount = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls.length;
-    expect(matCallCount).toBeLessThan(5); // bounded — no infinite loop
-  });
-
-  it("retry materialize fails (PermissionError) → toast + fall through to raw FROM <table>", async () => {
-    const { PermissionError } = await import("../../api/client");
-    useFilterStore.getState().addFilter(99, {
-      column: "g", value: "A", dataType: "string", addedAt: Date.now(),
-    } as import("../../store/filterStore").ActiveFilter);
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_OLD", expiresAt: Date.now() + 60000 },
-      1
-    );
-
-    let runSqlCallCount = 0;
-    (clientModule.runSql as ReturnType<typeof vi.fn>).mockImplementation((sql: string) => {
-      runSqlCallCount++;
-      if (sql.includes("FROM _kbi_filt_OLD") && runSqlCallCount === 1) {
-        return Promise.reject(new Error("SqlEngine: Object '_kbi_filt_OLD' not found (S/SDc:1513)"));
-      }
-      return Promise.resolve({
-        column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
-      });
-    });
-
-    // First materialize (from materialize-trigger effect) succeeds; SECOND (retry) fails with PermissionError
-    let matCallCount = 0;
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      matCallCount++;
-      if (matCallCount === 1) {
-        return Promise.resolve({
-          viewName: "_kbi_filt_OLD",
-          expiresAt: Date.now() + 60000,
-        });
-      }
-      // The reactive-retry materialize call fails:
-      return Promise.reject(new PermissionError("Filtering not enabled for your account"));
-    });
-
-    const { useToastStore } = await import("../../store/toast");
-    const showToastSpy = vi.spyOn(useToastStore.getState(), "showToast");
-
-    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
-
-    await waitFor(() => {
-      expect(showToastSpy).toHaveBeenCalledWith(
-        "Filtering not enabled for your account",
-        "error"
-      );
-    }, { timeout: 2500 });
-  });
-
-  it("non-view-not-found error → no clearView, no retry, error surfaces normally", async () => {
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 60000 },
-      1
-    );
 
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Internal server error"));
 
     render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
 
-    // Wait for the error to flow through to setError (rendered in widget-error placeholder)
+    // Error surfaces normally (non-view-not-found).
     await waitFor(() => {
       expect(screen.getByText("Internal server error")).toBeInTheDocument();
     }, { timeout: 1500 });
 
-    // View NOT cleared (non-recoverable error)
-    expect(useFilterViewStore.getState().views[99]).toBeDefined();
-    expect(useFilterViewStore.getState().views[99].viewName).toBe("_kbi_filt_v1");
+    // clearEntry must NOT have been called (non-recoverable error, not a view-not-found).
+    expect(clearEntrySpy).not.toHaveBeenCalled();
   });
 });
 
 // ----- Phase 17-02: pre-materialize suspend gate -----
 
-describe("AggregatedWidgetRenderer — Phase 17-02 pre-materialize suspend gate", () => {
+describe("AggregatedWidgetRenderer — Phase 17-02 / Phase 91 combo-store suspend gate", () => {
+  // Phase 91: the suspend gate for table-bound widgets moved from filterViewStore.materializing
+  // to comboEntry?.materializing (read imperatively from filterCombinationStore.getState()).
+  // Tests updated to seed mockRegistry instead of filterViewStore.
   beforeEach(() => {
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
@@ -1459,107 +1439,56 @@ describe("AggregatedWidgetRenderer — Phase 17-02 pre-materialize suspend gate"
     useFilterViewStore.getState().reset();
   });
 
-  it("no chart SQL fires between filterVersion tick and setView (materializing gate)", async () => {
-    // Setup: materializeFilter returns a pending promise so we control when setView fires
-    let resolveMaterialize: ((v: { viewName: string; expiresAt: number }) => void) | undefined;
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockImplementation(
-      () => new Promise((res) => { resolveMaterialize = res; })
-    );
-    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
-    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+  it("Phase 91: no chart SQL fires when comboEntry.materializing=true (suspend gate from combo store)", async () => {
+    // Seed combo entry with materializing=true (simulates orchestrator in flight).
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "",  // empty while materializing
+      expiresAt: 0,
+      materializing: true,
+    };
 
-    // Tick filterVersion so Effect 1 triggers and Effect 2 would fire
-    act(() => {
-      useFilterStore.getState().addFilter(99, {
-        column: "g", value: "A", dataType: "string", addedAt: Date.now(),
-      });
-    });
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
 
     render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
 
-    // Wait for Effect 1's 300ms debounce + markMaterializing to fire (materializing=true)
-    await waitFor(() => {
-      expect(clientModule.materializeFilter).toHaveBeenCalled();
-    }, { timeout: 1500 });
-
-    // At this point materializing=true — Effect 2 must have been suspended.
-    // Reset runSql call count after the initial non-gated call to get a clean baseline.
-    // (Effect 2 may have fired once before markMaterializing — that's expected FILT-V13-01 behavior;
-    // the gate prevents the second fire while materializing=true. What we verify is no call AFTER gate.)
-    const callsBeforeGate = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls.length;
-
-    // Wait a short period — no additional runSql calls should fire while materializing=true
+    // Wait briefly — runSql must NOT fire while materializing=true.
     await new Promise((r) => setTimeout(r, 100));
-    const callsAfterWait = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls.length;
-    expect(callsAfterWait).toBe(callsBeforeGate); // no new calls while gate is up
+    expect(clientModule.runSql).not.toHaveBeenCalled();
+  });
 
-    // Resolve materialize — setView fires, materializing=false, viewName populated
-    resolveMaterialize?.({ viewName: "_kbi_filt_test", expiresAt: Date.now() + 300000 });
+  it("Phase 91: Effect 2 fires with combo viewName via FROM-swap when materializing=false (no over-suppression)", async () => {
+    // Seed a ready combo entry (materializing=false, viewName populated).
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c_present",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+    };
 
-    // After setView, Effect 2 re-fires with the view name
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+
+    // Effect 2 should fire with the combo view name substituted via FROM-swap.
     await waitFor(() => {
       const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
       const swapped = calls.some(
-        (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_filt_test")
+        (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_combo_c_present")
       );
       expect(swapped).toBe(true);
     }, { timeout: 1500 });
   });
 
-  it("Effect 2 fires once with FROM <view> after setView clears materializing (no over-suppression)", async () => {
-    // Regression guard: gate does not suppress queries when materializing=false and viewName populated
+  it("Phase 91: when no combo entry (NOFILTER / first-tick), chart queries base table immediately", async () => {
+    // mockVizToHash is empty → orchestrator not yet run → base table path.
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
-      viewName: "_kbi_filt_present", expiresAt: Date.now() + 300000,
-    });
-    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
-
-    // Pre-seed: materializing=false, viewName populated
-    useFilterViewStore.getState().setView(99, { viewName: "_kbi_filt_present", expiresAt: Date.now() + 300000 }, 1);
 
     render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
 
-    // Effect 2 should fire with the view name substituted
-    await waitFor(() => {
-      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
-      const swapped = calls.some(
-        (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_filt_present")
-      );
-      expect(swapped).toBe(true);
-    }, { timeout: 1500 });
-  });
-
-  it("materialize error clears materializing flag so chart falls through to raw FROM <table>", async () => {
-    const { PermissionError } = await import("../../api/client");
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new PermissionError("Filtering not enabled")
-    );
-    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
-    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
-
-    // Add a filter to trigger Effect 1 (materialize path)
-    act(() => {
-      useFilterStore.getState().addFilter(99, {
-        column: "g", value: "A", dataType: "string", addedAt: Date.now(),
-      });
-    });
-
-    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
-
-    // Wait for materializeFilter to be called — markMaterializing fires first
-    await waitFor(() => {
-      expect(clientModule.materializeFilter).toHaveBeenCalled();
-    }, { timeout: 1500 });
-
-    // After the rejection, clearMaterializing should have lifted the gate
-    // and Effect 2 should fire with raw FROM <table> (no view substitution)
-    await waitFor(() => {
-      const entry = useFilterViewStore.getState().views[99];
-      // Entry should have materializing=false (cleared), or absent
-      expect(entry === undefined || entry.materializing === false).toBe(true);
-    }, { timeout: 1500 });
-
-    // runSql should be called with raw table SQL (no view name)
+    // runSql should fire immediately with raw FROM <table>.
     await waitFor(() => {
       const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
       const rawCall = calls.some(
@@ -1567,32 +1496,170 @@ describe("AggregatedWidgetRenderer — Phase 17-02 pre-materialize suspend gate"
       );
       expect(rawCall).toBe(true);
     }, { timeout: 1500 });
+
+    // materializeFilter must NOT have been called.
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
   });
 });
 
-describe("Phase 30 — spatial materialize trigger (MAT-V15-01/02/03)", () => {
+// ============================================================================
+// COMBO-V118-04 — default accept-all → byte-identical read behavior (Phase 91)
+// ============================================================================
+// Proves: table-bound AggregatedWidgetRenderer reads its view name from
+// filterCombinationStore (vizToHash → registry), NOT from filterViewStore.
+// Default accept-all config means all widgets on a table share the same hash →
+// one combo view → byte-identical to v1.17 read behavior (different view name
+// suffix _c<hash8> vs _kbi_filt_..., but same data source).
+describe("COMBO-V118-04 — default accept-all → byte-identical read behavior", () => {
+  beforeEach(() => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
+    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+  });
+
+  it("table-bound widget reads combo viewName via FROM-swap (not filterViewStore)", async () => {
+    // Pre-seed combo store with a real entry. Also pre-seed filterViewStore with a DIFFERENT
+    // view name to prove the table-path reads from combo, not filterViewStore.
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c1234abcd",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+    };
+    // filterViewStore view with a DIFFERENT name — must NOT appear in any runSql call.
+    useFilterViewStore.getState().setView(
+      99,
+      { viewName: "_kbi_filt_legacy_view", expiresAt: Date.now() + 300000 },
+      1
+    );
+
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    const widget = makeAggregatedWidget(); // widget.id=1, config.tableId=99
+    render(wrap(<WidgetRenderer widget={widget} />));
+
+    // runSql must be called with the COMBO view name, not the legacy filterViewStore view name.
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const usedCombo = calls.some(
+        (args) => typeof args[0] === "string" && (args[0] as string).includes("FROM _kbi_combo_c1234abcd")
+      );
+      expect(usedCombo).toBe(true);
+    }, { timeout: 1000 });
+
+    // The legacy filterViewStore view name must NOT appear in any SQL call.
+    const allSqlCalls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    for (const [sql] of allSqlCalls) {
+      expect(String(sql)).not.toContain("_kbi_filt_legacy_view");
+    }
+  });
+
+  it("NOFILTER (vizToHash undefined / no entry) → base table, no FROM-swap", async () => {
+    // mockVizToHash is empty → no combo hash → base table path.
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    const widget = makeAggregatedWidget();
+    render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const rawTable = calls.some(
+        (args) => typeof args[0] === "string" && (args[0] as string).includes("FROM ki_home.taxi")
+      );
+      expect(rawTable).toBe(true);
+    }, { timeout: 1000 });
+
+    // No combo view name suffix should appear.
+    const allSqlCalls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    for (const [sql] of allSqlCalls) {
+      expect(String(sql)).not.toContain("_kbi_combo_");
+    }
+  });
+
+  it("materializing combo → suspend gate, no runSql fires during materialization window", async () => {
+    // Seed combo entry with materializing=true (orchestrator in flight).
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "",  // empty while materializing
+      expiresAt: 0,
+      materializing: true,
+    };
+
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    const widget = makeAggregatedWidget();
+    render(wrap(<WidgetRenderer widget={widget} />));
+
+    // Wait briefly — runSql must NOT fire while materializing=true.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(clientModule.runSql).not.toHaveBeenCalled();
+  });
+
+  it("dv-bound path unchanged — combo store NOT consulted for dv-bound widgets", async () => {
+    // dv-bound widget: dynamicViewId set, dvStatus=materialized, dvViewName set.
+    // The combo store must NOT be involved in the read path for dv widgets.
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    // Pre-populate combo store with an entry for the dv widget to prove it is NOT read.
+    mockVizToHash["w:1"] = "table:99:g|eq|\"A\"";
+    mockRegistry["table:99:g|eq|\"A\""] = {
+      viewName: "_kbi_combo_should_not_appear",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+    };
+
+    const dvBoundWidget = makeAggregatedWidget({
+      id: 1,
+      config: {
+        sql: "SELECT g, COUNT(*) AS value FROM ki_home.taxi GROUP BY g LIMIT 100",
+        tableId: 99,
+        dynamicViewId: 7,
+      },
+    });
+
+    // Set up dv store: materialized with a known viewName.
+    useDynamicViewStore.getState().setView(7, {
+      viewName: "_kbi_dv_u1_d1_7",
+      status: "materialized",
+      expiresAt: Date.now() + 300000,
+    });
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [
+      { id: 7, dashboard_id: 1, source_table_id: 99, name: "DV", template_sql: "SELECT * FROM {view}", max_records: 10000, columns_json: null, created_at: "", updated_at: "" },
+    ]));
+
+    // runSql must be called with the DV view name, NOT the combo view name.
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const usesDvView = calls.some(
+        (args) => typeof args[0] === "string" && (args[0] as string).includes("FROM _kbi_dv_u1_d1_7")
+      );
+      expect(usesDvView).toBe(true);
+    }, { timeout: 1000 });
+
+    // Combo view name must NOT appear in any SQL call.
+    const allSqlCalls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    for (const [sql] of allSqlCalls) {
+      expect(String(sql)).not.toContain("_kbi_combo_should_not_appear");
+    }
+  });
+});
+
+describe("Phase 30 — spatial materialize trigger (MAT-V15-01/02/03 — Phase 91 updated)", () => {
+  // Phase 91: AggregatedWidgetRenderer Effect 1 table branch is REMOVED.
+  // The orchestrator (useCombinationOrchestrator) now owns ALL table-bound materialize calls.
+  // These tests are updated to reflect: AggregatedWidgetRenderer NEVER calls materializeFilter
+  // or dropFilterView for table-bound widgets. That responsibility lives in the orchestrator hook.
+  // RecordsTableRenderer's own Effect 1 (still present) continues calling these for records widgets.
+
   const tableId = 99;
-  const targetWidget: import("../../api/client").WidgetDto = {
-    id: 100,
-    dashboard_id: 1,
-    title: "Map",
-    type: "map",
-    position: 0,
-    config: {
-      spatialTargets: [
-        { tableId, spatialMode: "latlon", lonCol: "lon", latCol: "lat" },
-      ],
-    } as unknown as Record<string, unknown>,
-    created_at: "2026-05-12T00:00:00Z",
-    updated_at: "2026-05-12T00:00:00Z",
-  };
 
   beforeEach(() => {
-    // Reset spatial store between tests (Zustand reset shim covers this automatically,
-    // but call defensively in case of test-order surprises).
     useSpatialFilterStore.getState().reset();
     useFilterViewStore.getState().reset();
-    // Default runSql + materializeFilter mocks for the happy path.
     (clientModule.runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (clientModule.materializeFilter as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       viewName: "_kbi_filt_x",
@@ -1601,108 +1668,46 @@ describe("Phase 30 — spatial materialize trigger (MAT-V15-01/02/03)", () => {
     (clientModule.dropFilterView as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
   });
 
-  it("ORPHAN: sends column-only payload (no spatial fields) when shapes exist but no map widget targets this tableId", async () => {
+  it("Phase 91: AggregatedWidgetRenderer does NOT call materializeFilter for table-bound widgets — even with column filters (orchestrator owns it)", async () => {
     const widget = makeAggregatedWidget({ id: 1, config: { sql: "SELECT 1", tableId } });
-    // Add a column filter to force a materialize call.
     act(() => {
       useFilterStore.getState().addFilter(tableId, {
         column: "zone", value: "East", dataType: "string", sourceWidgetId: 1, addedAt: 0,
-      });
-    });
-    // Add a shape — but no targetWidget in the widgets array (orphan).
-    act(() => {
-      useSpatialFilterStore.getState().addShape({
-        type: "bbox", wkt: "POLYGON((0 0,1 0,1 1,0 1,0 0))", measurement: "1km × 1km",
       });
     });
     render(wrap(<WidgetRenderer widget={widget} />, 1, []));
-    await waitFor(() => {
-      expect(clientModule.materializeFilter).toHaveBeenCalled();
-    });
-    const callArgs = (clientModule.materializeFilter as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
-    expect(callArgs).toMatchObject({ dashboardId: 1, tableId, filters: expect.any(Array) });
-    expect("spatialFilters" in callArgs).toBe(false);
-    expect("spatialTarget" in callArgs).toBe(false);
-  });
-
-  it("COMBINED: sends spatialFilters + spatialTarget alongside filters when an eligible target exists and shapes are drawn", async () => {
-    const widget = makeAggregatedWidget({ id: 1, config: { sql: "SELECT 1", tableId } });
-    act(() => {
-      useFilterStore.getState().addFilter(tableId, {
-        column: "zone", value: "East", dataType: "string", sourceWidgetId: 1, addedAt: 0,
-      });
-      useSpatialFilterStore.getState().addShape({
-        type: "bbox", wkt: "POLYGON((0 0,1 0,1 1,0 1,0 0))", measurement: "1km × 1km",
-      });
-    });
-    render(wrap(<WidgetRenderer widget={widget} />, 1, [targetWidget]));
-    await waitFor(() => {
-      expect(clientModule.materializeFilter).toHaveBeenCalled();
-    });
-    const callArgs = (clientModule.materializeFilter as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
-    expect(callArgs.spatialFilters).toHaveLength(1);
-    expect(callArgs.spatialFilters[0]).toMatchObject({ wkt: "POLYGON((0 0,1 0,1 1,0 1,0 0))" });
-    expect(callArgs.spatialFilters[0].id).toMatch(/.+/); // randomUUID present
-    expect(callArgs.spatialTarget).toEqual({ tableId, spatialMode: "latlon", lonCol: "lon", latCol: "lat" });
-  });
-
-  it("spatialFilterVersion dep: addShape after initial render triggers a second materializeFilter call AND advances materializeVersion (_mv cache-buster path)", async () => {
-    const widget = makeAggregatedWidget({ id: 1, config: { sql: "SELECT 1", tableId } });
-    act(() => {
-      useFilterStore.getState().addFilter(tableId, {
-        column: "zone", value: "East", dataType: "string", sourceWidgetId: 1, addedAt: 0,
-      });
-    });
-    render(wrap(<WidgetRenderer widget={widget} />, 1, [targetWidget]));
-    await waitFor(() => {
-      expect((clientModule.materializeFilter as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1);
-    });
-    // Wait for first setView to land (proves first materializeVersion increment).
-    await waitFor(() => {
-      expect(useFilterViewStore.getState().views[tableId]?.materializeVersion ?? 0).toBeGreaterThanOrEqual(1);
-    });
-    const initialCalls = (clientModule.materializeFilter as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
-    const initialMv = useFilterViewStore.getState().views[tableId].materializeVersion;
-    act(() => {
-      useSpatialFilterStore.getState().addShape({
-        type: "circle", wkt: "POLYGON((0 0,2 0,2 2,0 2,0 0))", measurement: "2 km",
-      });
-    });
-    await waitFor(() => {
-      expect((clientModule.materializeFilter as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(initialCalls);
-    });
-    // _mv ASSERTION (Blocker 3 lock): materializeVersion advanced after the spatial-triggered
-    // materialize resolved. This proves setView at filterViewStore.ts:67 fired for the spatial
-    // path identically to column-only — Phase 30 does NOT need to wire _mv, it is automatic.
-    await waitFor(() => {
-      expect(useFilterViewStore.getState().views[tableId].materializeVersion).toBeGreaterThan(initialMv);
-    });
-  });
-
-  it("DROP: empty column filters + empty shapes → dropFilterView called, materializeFilter NOT called", async () => {
-    const widget = makeAggregatedWidget({ id: 1, config: { sql: "SELECT 1", tableId } });
-    render(wrap(<WidgetRenderer widget={widget} />, 1, [targetWidget]));
-    await waitFor(() => {
-      expect(clientModule.dropFilterView).toHaveBeenCalledWith(
-        expect.objectContaining({ dashboardId: 1, tableId }),
-      );
-    });
+    // Wait through the Effect 1 debounce window (300ms) plus a buffer.
+    await new Promise((r) => setTimeout(r, 500));
+    // materializeFilter must NOT be called from AggregatedWidgetRenderer (orchestrator owns it).
     expect(clientModule.materializeFilter).not.toHaveBeenCalled();
   });
 
-  it("ORPHAN-DROP: empty column filters + shapes drawn + no eligible target for this tableId → dropFilterView called (orphan fallthrough)", async () => {
+  it("Phase 91: AggregatedWidgetRenderer does NOT call materializeFilter even with spatial shapes + eligible target", async () => {
+    const targetWidget: import("../../api/client").WidgetDto = {
+      id: 100, dashboard_id: 1, title: "Map", type: "map", position: 0,
+      config: { spatialTargets: [{ tableId, spatialMode: "latlon", lonCol: "lon", latCol: "lat" }] } as unknown as Record<string, unknown>,
+      created_at: "2026-05-12T00:00:00Z", updated_at: "2026-05-12T00:00:00Z",
+    };
     const widget = makeAggregatedWidget({ id: 1, config: { sql: "SELECT 1", tableId } });
     act(() => {
+      useFilterStore.getState().addFilter(tableId, {
+        column: "zone", value: "East", dataType: "string", sourceWidgetId: 1, addedAt: 0,
+      });
       useSpatialFilterStore.getState().addShape({
         type: "bbox", wkt: "POLYGON((0 0,1 0,1 1,0 1,0 0))", measurement: "1km × 1km",
       });
     });
-    // widgets=[] → no eligible target for tableId → orphan-shape case → DROP fires.
+    render(wrap(<WidgetRenderer widget={widget} />, 1, [targetWidget]));
+    await new Promise((r) => setTimeout(r, 500));
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
+  });
+
+  it("Phase 91: AggregatedWidgetRenderer does NOT call dropFilterView for table-bound widgets (no Effect 1 table branch)", async () => {
+    const widget = makeAggregatedWidget({ id: 1, config: { sql: "SELECT 1", tableId } });
     render(wrap(<WidgetRenderer widget={widget} />, 1, []));
-    await waitFor(() => {
-      expect(clientModule.dropFilterView).toHaveBeenCalled();
-    });
-    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r, 500));
+    // dropFilterView must NOT be called from AggregatedWidgetRenderer for table-bound widgets.
+    expect(clientModule.dropFilterView).not.toHaveBeenCalled();
   });
 });
 
@@ -1902,10 +1907,22 @@ describe("AggregatedWidgetRenderer — Phase 35 dynamic-view branches (DV-V16-13
     expect(clientModule.runSql).not.toHaveBeenCalled();
   });
 
-  it("legacy widget (no dynamicViewId) behaves unchanged — uses filter-view path", async () => {
+  it("Phase 91: table-bound widget (no dynamicViewId) reads combo viewName — uses filterCombinationStore path", async () => {
+    // Phase 91: table-bound widgets no longer read from filterViewStore.views[tableId].
+    // Seed the combo store instead. filterViewStore.setView with a different name proves
+    // the table path reads from combo, not filterViewStore.
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
-    // Pre-seed filter view; no dynamicViewId on widget.
+
+    // Seed combo store with widget id=1, tableId=99.
+    const comboHash = "table:99:g|eq|\"A\"";
+    mockVizToHash["w:1"] = comboHash;
+    mockRegistry[comboHash] = {
+      viewName: "_kbi_combo_c_legacy_test",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+    };
+    // Also seed a filterViewStore view with a different name — must NOT appear in SQL.
     useFilterViewStore.getState().setView(
       99,
       { viewName: "_kbi_filt_legacy_x", expiresAt: Date.now() + 300000 },
@@ -1918,10 +1935,14 @@ describe("AggregatedWidgetRenderer — Phase 35 dynamic-view branches (DV-V16-13
       expect(clientModule.runSql).toHaveBeenCalled();
     });
     const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
-    const swappedToFv = calls.some(
-      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_filt_legacy_x")
+    const usedCombo = calls.some(
+      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_combo_c_legacy_test")
     );
-    expect(swappedToFv).toBe(true);
+    expect(usedCombo).toBe(true);
+    // Legacy filterViewStore view must NOT appear.
+    for (const [sql] of calls) {
+      expect(String(sql)).not.toContain("_kbi_filt_legacy_x");
+    }
   });
 
   it("Phase 63: dv-bound widget's Effect 1 does NOT fire a TABLE-keyed materialize off filters[sourceTableId]", async () => {
@@ -3105,6 +3126,10 @@ describe("WidgetRenderer Phase 67 — calendar short-circuit to CalendarRenderer
   });
 
   it("CalendarRenderer.tsx does NOT import materializeFilter or dropFilterView (sole-materialize-trigger invariant — static assertion)", async () => {
+    // Phase 91: materializeFilter in WidgetRenderer.tsx is now authorized only in
+    // (a) AggregatedWidgetRenderer's dv branch and (b) RecordsTableRenderer's table path.
+    // AggregatedWidgetRenderer's table combination materialize is owned by useCombinationOrchestrator.
+    // CalendarRenderer (and all other chart renderers) must never import materializeFilter.
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const filePath = path.resolve(
