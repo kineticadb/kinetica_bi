@@ -60,6 +60,8 @@ import WidgetRenderer from "./charts/WidgetRenderer";
 import { DashboardContextProvider } from "./DashboardContext";
 import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
+import { WidgetFilterBadge } from "./WidgetFilterBadge";
+import type { FilterSelectionConfig } from "../types/filterSelection";
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
@@ -1116,7 +1118,18 @@ const DashboardOpen = ({
                   {w.type === "map" ? (
                     <MapFilteringBadge tableIds={mapTableIds} />
                   ) : (
-                    <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
+                    <>
+                      <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
+                      <WidgetFilterBadge
+                        cfg={(w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined}
+                        tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined}
+                        dynamicViewId={(w.config as Record<string, unknown> | undefined)?.dynamicViewId as number | undefined}
+                        spatialCapable={(() => {
+                          const tid = (w.config as Record<string, unknown> | undefined)?.tableId as number | undefined;
+                          return tid !== undefined && targetsByTable.has(tid);
+                        })()}
+                      />
+                    </>
                   )}
                   <div className="widget-actions">
                     {canConfigure && (

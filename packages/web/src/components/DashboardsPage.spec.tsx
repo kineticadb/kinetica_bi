@@ -1228,3 +1228,113 @@ describe("Admin/designer see all rows (LISTUX-V110-03)", () => {
     expect(openBtns).toHaveLength(2);
   });
 });
+
+// ─── Phase 95 (COMM-V118-01): WidgetFilterBadge integration in widget header ─
+
+describe("Phase 95 — WidgetFilterBadge integration (COMM-V118-01)", () => {
+  const dashboardId = 1;
+  const tableId = 55;
+  const dashboard = {
+    id: dashboardId,
+    name: "Badge Test Dashboard",
+    created_at: "2026-06-29T00:00:00Z",
+    updated_at: "2026-06-29T00:00:00Z",
+  };
+
+  // A chart widget with an allowlist that excludes sourceWidgetId 7
+  const chartWidgetWithAllowlist = {
+    id: 200,
+    dashboard_id: dashboardId,
+    title: "Bar Widget",
+    type: "bar",
+    position: 0,
+    config: {
+      tableId,
+      filterSelection: {
+        sourceMode: "allowlist",
+        allowedSourceWidgetIds: [99], // 99 is allowed, 7 is NOT
+      },
+    },
+    created_at: "2026-06-29T00:00:00Z",
+    updated_at: "2026-06-29T00:00:00Z",
+  };
+
+  // A chart widget with default accept-all config (no filterSelection set)
+  const chartWidgetAcceptAll = {
+    id: 201,
+    dashboard_id: dashboardId,
+    title: "Line Widget",
+    type: "line",
+    position: 1,
+    config: {
+      tableId,
+      // No filterSelection → accept-all; badge must NOT render
+    },
+    created_at: "2026-06-29T00:00:00Z",
+    updated_at: "2026-06-29T00:00:00Z",
+  };
+
+  const openDashboardWithWidgets = async (widgets: unknown[]) => {
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue(widgets);
+    (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: tableId, schema_name: "demo", table_name: "sales", columns: {} },
+    ]);
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const openBtn = await screen.findByRole("button", { name: /^open$/i });
+    await userEvent.click(openBtn);
+    await waitFor(() => {
+      expect(listWidgets).toHaveBeenCalled();
+    });
+  };
+
+  beforeEach(() => {
+    seedDesignerStore();
+    useFilterStore.getState().reset();
+    useFilterViewStore.getState().reset();
+    useSpatialFilterStore.getState().reset();
+  });
+
+  it("shows '{N} of {M} filters' badge for a widget whose allowlist excludes >=1 active filter (SC2)", async () => {
+    await openDashboardWithWidgets([chartWidgetWithAllowlist]);
+
+    // Add an active filter with sourceWidgetId=7 (not in the widget's allowlist of [99])
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, {
+        column: "region",
+        value: "west",
+        dataType: "string",
+        sourceWidgetId: 7,
+        addedAt: Date.now(),
+      });
+    });
+
+    // The widget ignores the filter (0 applied of 1 total) → badge should appear
+    await waitFor(() => {
+      expect(screen.getByText("0 of 1 filters")).toBeInTheDocument();
+    });
+  });
+
+  it("shows NO badge for a widget with accept-all config even when a filter is active (SC1)", async () => {
+    await openDashboardWithWidgets([chartWidgetAcceptAll]);
+
+    // Add an active filter — accept-all widget applies all of them
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, {
+        column: "region",
+        value: "west",
+        dataType: "string",
+        sourceWidgetId: 7,
+        addedAt: Date.now(),
+      });
+    });
+
+    // appliedCount === totalCount → badge returns null → "of" text must NOT appear
+    // Allow a brief wait in case of async rendering, then assert absence
+    await waitFor(() => {
+      expect(screen.queryByText(/of \d+ filters/)).toBeNull();
+    });
+  });
+});
