@@ -748,6 +748,7 @@ const ChartConfigPanel = ({
               onChange={(next) => set("filterSelection", next)}
               widgets={filterSourceWidgets}
               selfWidgetId={widgetId}
+              allowSpatial={draftDynamicViewId === undefined}
             />
           );
         })()}

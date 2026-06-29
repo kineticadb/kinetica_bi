@@ -1663,6 +1663,7 @@ export default function KineticaWmsLayerForm({
             widgets={layer?.dynamic_view_id != null
               ? widgets.filter((w) => (w.config.dynamicViewId as number | undefined) === layer.dynamic_view_id)
               : widgets}
+            allowSpatial={layer?.dynamic_view_id == null}
           />
         )}
 
