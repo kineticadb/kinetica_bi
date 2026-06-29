@@ -2807,6 +2807,25 @@ input[type="checkbox"],
   margin-left: var(--space-2);
 }
 
+/* Phase 95 (COMM-V118-01): on-widget "N of M filters" badge. Header sibling of .widget-title,
+   mirrors .widget-filtering-badge layout. Shown ONLY when a chart widget ignores >=1 active
+   filter (WidgetFilterBadge returns null otherwise). Accent-on-accent-text pill; theme tokens
+   only. Hover breakdown via native title= attr (no popover component exists). */
+.widget-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: default;
+}
+
 .widget-filtering-spinner {
   width: 10px;
   height: 10px;
