@@ -1,5 +1,7 @@
 /**
  * Phase 16 (MAP-V13-04): MapFilteringBadge spec.
+ * Phase 96-01 GAP fix: migrated to read filterCombinationStore (table-combo materializing by
+ * sourceId) instead of the legacy filterViewStore.
  *
  * Asserts: any-of-N-tableIds materializing semantics; null-rendering when none materialize;
  * empty tableIds renders null.
@@ -7,36 +9,47 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 
-const _filterViewState: {
-  views: Record<number, {
+const _comboState: {
+  registry: Record<string, {
     viewName: string;
     expiresAt: number;
     materializing: boolean;
     materializeVersion: number;
+    refCount: number;
     dashboardId: number;
+    sourceType: "table" | "dv";
+    sourceId: number;
   }>;
-} = { views: {} };
+} = { registry: {} };
 
-vi.mock("../store/filterViewStore", () => {
-  const hook = (selector: (s: any) => any) => selector({ views: _filterViewState.views });
-  (hook as any).getState = () => ({ views: _filterViewState.views });
-  return { useFilterViewStore: hook };
+vi.mock("../store/filterCombinationStore", () => {
+  const hook = (selector: (s: any) => any) => selector({ registry: _comboState.registry });
+  (hook as any).getState = () => ({ registry: _comboState.registry });
+  return { useFilterCombinationStore: hook };
 });
 
 import { MapFilteringBadge } from "./MapFilteringBadge";
 
-const entry = (overrides: Partial<{ materializing: boolean }> = {}) => ({
-  viewName: "_kbi_filt_u1_d1_tX_sabc",
-  expiresAt: Date.now() + 60_000,
-  materializing: false,
-  materializeVersion: 1,
-  dashboardId: 1,
-  ...overrides,
-});
+// Build a registry seeded with one table-combo entry per tableId.
+const seed = (entries: Array<{ tableId: number; materializing: boolean }>) => {
+  _comboState.registry = {};
+  for (const { tableId, materializing } of entries) {
+    _comboState.registry[`table:${tableId}:seed`] = {
+      viewName: materializing ? "" : `_kbi_filt_t${tableId}_sabc`,
+      expiresAt: Date.now() + 60_000,
+      materializing,
+      materializeVersion: 1,
+      refCount: 1,
+      dashboardId: 1,
+      sourceType: "table",
+      sourceId: tableId,
+    };
+  }
+};
 
 describe("MapFilteringBadge — any-of-N-tableIds materializing", () => {
   beforeEach(() => {
-    _filterViewState.views = {};
+    _comboState.registry = {};
   });
 
   afterEach(() => {
@@ -44,13 +57,13 @@ describe("MapFilteringBadge — any-of-N-tableIds materializing", () => {
   });
 
   it("Test M-A: renders nothing when no entries are materializing", () => {
-    _filterViewState.views = {};
+    seed([{ tableId: 10, materializing: false }, { tableId: 11, materializing: false }]);
     const { container } = render(<MapFilteringBadge tableIds={[10, 11]} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("Test M-B: renders the badge when ANY of the tableIds has materializing=true", () => {
-    _filterViewState.views = { 10: entry({ materializing: true }) };
+    seed([{ tableId: 10, materializing: true }]);
     const { container } = render(<MapFilteringBadge tableIds={[10, 11]} />);
     const badge = container.querySelector(".widget-filtering-badge");
     expect(badge).not.toBeNull();
@@ -58,17 +71,23 @@ describe("MapFilteringBadge — any-of-N-tableIds materializing", () => {
   });
 
   it("Test M-C: renders the badge when one tableId materializes and another does not (any-of-N semantics)", () => {
-    _filterViewState.views = {
-      10: entry({ materializing: false }),
-      11: entry({ materializing: true }),
-    };
+    seed([
+      { tableId: 10, materializing: false },
+      { tableId: 11, materializing: true },
+    ]);
     const { container } = render(<MapFilteringBadge tableIds={[10, 11]} />);
     expect(container.querySelector(".widget-filtering-badge")).not.toBeNull();
   });
 
   it("Test M-D: renders nothing when tableIds is empty", () => {
-    _filterViewState.views = { 10: entry({ materializing: true }) };
+    seed([{ tableId: 10, materializing: true }]);
     const { container } = render(<MapFilteringBadge tableIds={[]} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("Test M-E: a materializing combo for a tableId NOT in the map's set does not show the badge", () => {
+    seed([{ tableId: 99, materializing: true }]);
+    const { container } = render(<MapFilteringBadge tableIds={[10, 11]} />);
     expect(container.firstChild).toBeNull();
   });
 });

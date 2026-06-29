@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFilterViewStore } from "../store/filterViewStore";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
 
 /**
  * Phase 16 (MAP-V13-04 / default per 16-CONTEXT § "Filtering...
@@ -30,10 +30,17 @@ export const MapFilteringBadge = ({ tableIds }: { tableIds: number[] }) => {
     [tableIds],
   );
 
-  const anyMaterializing = useFilterViewStore((s) => {
+  // Phase 96-01 GAP fix: read the combination store (sourceType "table" combos) instead of the
+  // legacy filterViewStore — same migration as FilteringBadge. ANY table-combo whose sourceId is
+  // one of the map's included tableIds and is materializing → show the badge.
+  const anyMaterializing = useFilterCombinationStore((s) => {
     if (tableIdsKey === "") return false;
-    const ids = tableIdsKey.split(",").map(Number);
-    return ids.some((id) => s.views[id]?.materializing === true);
+    const ids = new Set(tableIdsKey.split(",").map(Number));
+    for (const hash in s.registry) {
+      const e = s.registry[hash];
+      if (e.sourceType === "table" && ids.has(e.sourceId) && e.materializing) return true;
+    }
+    return false;
   });
 
   if (!anyMaterializing) return null;
