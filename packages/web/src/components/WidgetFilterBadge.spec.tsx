@@ -104,3 +104,4 @@ describe("WidgetFilterBadge", () => {
     expect(globalCss).toContain(".widget-filter-badge");
   });
 });
+

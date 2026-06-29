@@ -17,6 +17,7 @@ import { resolveFilterSet } from "./resolveFilterSet";
 import { resolveSpatialShapes } from "./resolveSpatialShapes";
 import { useFilterStore } from "../store/filterStore";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
+import { useAuthStore } from "../store/auth";
 import type { ActiveFilter } from "../store/filterStore";
 import type { Shape } from "../store/spatialFilterStore";
 import type { FilterSelectionConfig } from "../types/filterSelection";
@@ -88,6 +89,9 @@ export function useFilterScopeSummary(args: {
   // SCOPED primitive selectors to drive re-renders on mutation (PITFALL S-02)
   const filterVersion = useFilterStore((s) => s.filterVersion);
   const spatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
+  // GAP 3 / Test 7: when dvFilterScopeDisabled is set, dv-bound sources revert to accept-all
+  // (saved filterSelection is ignored → no badge/indicator for dv widgets/layers).
+  const dvFilterScopeDisabled = useAuthStore((s) => s.dvFilterScopeDisabled);
 
   return useMemo(() => {
     const filterState = useFilterStore.getState();
@@ -106,11 +110,15 @@ export function useFilterScopeSummary(args: {
 
     const activeShapes = effectiveSpatialCapable ? spatialState.shapes : [];
 
+    // GAP 3 / Test 7: dv-bound + dvFilterScopeDisabled → pass cfg=undefined (accept-all).
+    // Table-bound sources are never affected by this flag.
+    const effectiveCfg = isDv && dvFilterScopeDisabled ? undefined : cfg;
+
     return computeFilterScopeSummary({
-      cfg,
+      cfg: effectiveCfg,
       activeFilters,
       activeShapes,
       spatialCapable: effectiveSpatialCapable,
     });
-  }, [cfg, tableId, dynamicViewId, spatialCapable, filterVersion, spatialFilterVersion]);
+  }, [cfg, tableId, dynamicViewId, spatialCapable, filterVersion, spatialFilterVersion, dvFilterScopeDisabled]);
 }
