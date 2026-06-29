@@ -1632,13 +1632,11 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const drillEnabled =
     !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   // Phase 17-03: dashboardId from DashboardContext for synchronous markMaterializing in row-click drill.
-  // Phase 30 follow-up: also read widgets so this renderer can fire spatial materialize for its
-  // own tableId when no sibling AggregatedWidgetRenderer exists. Without this, a dashboard with
-  // ONLY a records table + a map widget on the same table would see shapes drawn on the map
-  // produce no chip / no view (DELETE-only flow) because the v1.3 sole-trigger lock left
-  // RecordsTable as a passive consumer.
+  // Phase 96-01 GAP 2: records is now part of the combination model (orchestrator owns
+  // materialization, incl. spatial), so this renderer no longer reads `widgets` to fire its own
+  // spatial materialize — that legacy island was removed.
   // Phase 35 Plan 05 (DV-V16-13): also read dynamicViews (orphan detection) + retryDynamicView (error retry).
-  const { dashboardId, widgets, dynamicViews: dashboardDynamicViews, retryDynamicView } =
+  const { dashboardId, dynamicViews: dashboardDynamicViews, retryDynamicView } =
     useDashboardContext();
   const recordsTableFilters = useFilterStore((state) =>
     tableId !== undefined ? state.filters[tableId] ?? [] : []
