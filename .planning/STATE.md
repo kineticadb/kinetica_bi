@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 94-02-PLAN.md
-last_updated: "2026-06-29T13:25:45.382Z"
+stopped_at: Completed 94-01-PLAN.md
+last_updated: "2026-06-29T13:41:50.695Z"
 progress:
   total_phases: 10
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 ## Current Position
 
-Phase: 94 (dynamic-view-filter-scope-wiring) — EXECUTING
-Plan: 1 of 2
+Phase: 94 (dynamic-view-filter-scope-wiring) — COMPLETE
+Plan: 2 of 2
 
 ### v1.18 Phase Map
 
@@ -624,6 +624,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 93-filter-scope-config-ui P02 | 982 | 3 tasks | 12 files |
 | Phase 93.5 P02 | 780 | 3 tasks | 6 files |
 | Phase 94 P02 | 7 | 3 tasks | 7 files |
+| Phase 94 P01 | multi-session | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -939,6 +940,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 93.5]: useMapOnlySpatialMaterialize deleted: orchestrator layer enumeration (Phase 92) + spatial fold-in now subsumes its map-only gap
 - [Phase 94]: DISABLE_DV_FILTER_SCOPE uses simple boolean string compare (=== 'true'), not readPositiveIntEnv; fetchMe parser uses === true for absent-field-defaults-to-false backward compat
 - [Phase 94]: Same-dv source list (LOCKED DECISION #8) computed inline at ChartConfigPanel + KineticaWmsLayerForm call sites — no new FilterSelectionPanel prop; auth.routes.spec.ts oidc failures pre-existing TD-V16-TEST-ISOLATION (Issuer constructor mock)
+- [Phase 94]: dv path column-only: stableComboHash('dv', dvId, resolved) with no shapes arg; server rejects dv+spatial with 400
+- [Phase 94]: vizKey for dv-bound WIDGET is w:<id> (not dv:<id>): dv: prefix used only in dvWidgetsKey/dvLayersKey memo strings
+- [Phase 94]: markDvMaterializing retained in dispatchDrillDown: RecordsTableRenderer legacy island reads filterViewStore.dvViews for its own suspend gate
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1345,6 +1349,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-29T13:25:45.372Z
-Stopped at: Completed 94-02-PLAN.md
+Last session: 2026-06-29T13:41:50.684Z
+Stopped at: Completed 94-01-PLAN.md
 Resume file: None
