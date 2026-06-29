@@ -247,7 +247,8 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 74 (SETTINGS-V115-03): /api/me also returns the keep-alive lead-time
 // (default 1) for the Phase 78 TTL keep-alive to consume.
 // Phase 90 (COMBO-V118-03): /api/me returns the per-table combination ceiling (default 10).
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number };
+// Phase 94 (FSCOPE-V118-03): /api/me returns the dv filter-scope disable flag (default false = enabled).
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -287,6 +288,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     ttlKeepaliveLeadMinutes: typeof json.ttlKeepaliveLeadMinutes === "number" ? json.ttlKeepaliveLeadMinutes : 1,
     // Phase 90 (COMBO-V118-03): coalesce to 10 — an older server build that omits the field must never yield undefined.
     maxCombinationViewsPerTable: typeof json.maxCombinationViewsPerTable === "number" ? json.maxCombinationViewsPerTable : 10,
+    // Phase 94 (FSCOPE-V118-03): === true (not truthy) — an older server omitting the field defaults to false (enabled).
+    dvFilterScopeDisabled: json.dvFilterScopeDisabled === true,
   };
 };
 

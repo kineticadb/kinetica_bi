@@ -174,6 +174,11 @@ export const createApp = async (): Promise<express.Express> => {
   // Default 10 matches the web-side MAX_COMBINATION_VIEWS_PER_TABLE constant (filterCombinationStore.ts).
   const MAX_COMBINATION_VIEWS_PER_TABLE = readPositiveIntEnv("MAX_COMBINATION_VIEWS_PER_TABLE", 10);
 
+  // ---- Phase 94 (FSCOPE-V118-03): deploy-time disable switch for the dv filter-scope UI ----
+  // Boolean — absent or anything but "true" → enabled (default, UI shown). "true" → UI hidden for dv-bound vizs.
+  // Unlike the TTL/ceiling ints, this is boolean — simple string compare, NOT readPositiveIntEnv.
+  const DISABLE_DV_FILTER_SCOPE = process.env.DISABLE_DV_FILTER_SCOPE === "true";
+
   // Dev-mode split-port workaround (TD-V11-01): when set, prefixes post-OIDC-callback
   // redirects with an absolute origin so the SPA on Vite loads after login. Empty in
   // production (Express serves the built SPA same-origin, so relative paths just work).
@@ -407,7 +412,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
