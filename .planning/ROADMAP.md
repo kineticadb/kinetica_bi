@@ -151,8 +151,8 @@
   4. Two visualizations accepting the same column filters + the same spatial shapes share ONE combination view (dedup holds across spatial); changing/removing a shape re-derives the hash and ref-counts/DROPs correctly.
   5. resolveSpatialShapes has unit coverage (accept-all default, allow-list include/exclude, empty-shapes passthrough); stableComboHash spatial extension has determinism + order-independence unit coverage; web vitest 100%; web tsc clean; theme-guard green.
 **Plans**: 2 plans
-- [ ] 93.5-01-PLAN.md — stableComboHash optional `shapes?` 4th param (WKT-sorted, order-independent, no-break) + resolveSpatialShapes pure fn (all-or-nothing via SPATIAL_DRAWS_SENTINEL) + unit specs (FRONTEND-ONLY; SPATIAL-V118-01)
-- [ ] 93.5-02-PLAN.md — orchestrator spatial fold-in (imperative shapes read, resolveSpatialShapes + aggregateSpatialTargetsByTable per viz, spatialFilters/spatialTarget in materialize, spatialFilterVersion dep) + remove useMapOnlySpatialMaterialize + records excluded from enumeration + spatial spec scenarios + sole-trigger gate (FRONTEND-ONLY; SPATIAL-V118-01)
+- [x] 93.5-01-PLAN.md — stableComboHash optional `shapes?` 4th param (WKT-sorted, order-independent, no-break) + resolveSpatialShapes pure fn (all-or-nothing via SPATIAL_DRAWS_SENTINEL) + unit specs (FRONTEND-ONLY; SPATIAL-V118-01)
+- [x] 93.5-02-PLAN.md — orchestrator spatial fold-in (imperative shapes read, resolveSpatialShapes + aggregateSpatialTargetsByTable per viz, spatialFilters/spatialTarget in materialize, spatialFilterVersion dep) + remove useMapOnlySpatialMaterialize + records excluded from enumeration + spatial spec scenarios + sole-trigger gate (FRONTEND-ONLY; SPATIAL-V118-01)
 
 #### Phase 94: Dynamic View Filter Scope Wiring
 **Goal**: Dynamic-view-backed widgets apply filter-scope selection against their dvFilters (not the base-table filters), gated behind a deploy-time disable env flag that hides the dv filter-scope UI when not wanted.
@@ -165,7 +165,9 @@
   2. When the deploy-time disable flag is set (env var), the "Filter Scope" section is absent from dv-bound widget config panels — confirmed by checking the flag value and reloading.
   3. A dv-bound layer's filter scope uses the dynamicViewId as the stableComboHash source key (not the tableId) — combination registry entry shows sourceType "dv".
   4. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 94-01-PLAN.md — Orchestrator dv enumeration (widgets + layers) + remove WidgetRenderer Effect 1 dv-branch + dv renderer read-path flip (WidgetRenderer + MapChartRenderer) to filterCombinationStore + three-source-type spec scenarios (FRONTEND-ONLY; FSCOPE-V118-03 engine half)
+- [ ] 94-02-PLAN.md — DISABLE_DV_FILTER_SCOPE env flag across 5 mirror sites (boot → /api/me → MeResponse → fetchMe → auth store) + FilterSelectionPanel UI gating for dv-bound vizs + same-dv source list + both-auth-mode /api/me supertests (BOTH; FSCOPE-V118-03 env-flag half)
 
 #### Phase 95: On-Widget Badge Indicator
 **Goal**: Each visualization that is ignoring at least one active filter surfaces a visible "N of M filters" badge in its widget header, giving designers and analysts immediate feedback on which filters are applied without opening config.
@@ -217,7 +219,7 @@
 | 92 | v1.18 | 0/2 | Planned | — |
 | 93 | v1.18 | 0/2 | Planned | — |
 | 93.5 | v1.18 | 0/2 | Planned | — |
-| 94 | v1.18 | 0/TBD | Not started | — |
+| 94 | v1.18 | 0/2 | Planned | — |
 | 95 | v1.18 | 0/TBD | Not started | — |
 | 96 | v1.18 | 0/TBD | Not started | — |
 

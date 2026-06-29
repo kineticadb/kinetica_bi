@@ -11,7 +11,7 @@
 
 - [x] **FSCOPE-V118-01**: A user can configure, per visualization, which active filters it applies — via a **source-widget allow-list** that lists only filter-PRODUCING widgets (chart drill-downs, the DataFilter widget, map spatial draws) and NOT non-source widgets (records table, map info popup, legend). Defaults to **accept-all** (opt-out) — no config means every filter applies.
 - [x] **FSCOPE-V118-02**: Filter-scope config is available on **chart widgets** and **map WMS layers**; for layers it is a TOP-LEVEL `filterScope` field (threaded like `track_config`, never read off `layer.config`).
-- [ ] **FSCOPE-V118-03**: **Dynamic views** also support a filter-scope config, gated behind a **deploy-time disable switch** (env flag exposed to the client) so a deployment can hide the dynamic-view filter-scope UI when not wanted.
+- [x] **FSCOPE-V118-03**: **Dynamic views** also support a filter-scope config, gated behind a **deploy-time disable switch** (env flag exposed to the client) so a deployment can hide the dynamic-view filter-scope UI when not wanted.
 
 ### View Deduplication & Lifecycle (COMBO)
 
@@ -60,7 +60,7 @@
 |-------------|-------|--------|
 | FSCOPE-V118-01 | Phase 93 | Complete |
 | FSCOPE-V118-02 | Phase 93 | Complete |
-| FSCOPE-V118-03 | Phase 94 | Pending |
+| FSCOPE-V118-03 | Phase 94 | Complete |
 | COMBO-V118-01 | Phase 90 | Complete |
 | COMBO-V118-02 | Phase 89 | Complete |
 | COMBO-V118-03 | Phase 90 | Complete |

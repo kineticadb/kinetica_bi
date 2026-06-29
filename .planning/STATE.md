@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 93.5-02-PLAN.md
-last_updated: "2026-06-28T23:37:01.508Z"
+stopped_at: Completed 94-02-PLAN.md
+last_updated: "2026-06-29T13:25:45.382Z"
 progress:
   total_phases: 10
   completed_phases: 7
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 16
+  completed_plans: 15
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 93.5 — spatial-filters-in-the-combination-model
+**Current focus:** Phase 94 — dynamic-view-filter-scope-wiring
 
 ## Current Position
 
-Phase: 93.5 (spatial-filters-in-the-combination-model) — EXECUTING
-Plan: 2 of 2
+Phase: 94 (dynamic-view-filter-scope-wiring) — EXECUTING
+Plan: 1 of 2
 
 ### v1.18 Phase Map
 
@@ -623,6 +623,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 92-mapchartrenderer-wiring P02 | 10min | 2 tasks | 2 files |
 | Phase 93-filter-scope-config-ui P02 | 982 | 3 tasks | 12 files |
 | Phase 93.5 P02 | 780 | 3 tasks | 6 files |
+| Phase 94 P02 | 7 | 3 tasks | 7 files |
 
 ### Quick Tasks Completed
 
@@ -936,6 +937,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 93.5]: records added to NON_TRIGGER_TYPES: orchestrator was minting orphan combo views for records widgets (no consumer reads them); records stays on self-contained filterViewStore legacy island
 - [Phase 93.5]: spatialFilterVersion added to orchestrator dep array (safe: bumps only on draw/remove/clear, not on setEntry)
 - [Phase 93.5]: useMapOnlySpatialMaterialize deleted: orchestrator layer enumeration (Phase 92) + spatial fold-in now subsumes its map-only gap
+- [Phase 94]: DISABLE_DV_FILTER_SCOPE uses simple boolean string compare (=== 'true'), not readPositiveIntEnv; fetchMe parser uses === true for absent-field-defaults-to-false backward compat
+- [Phase 94]: Same-dv source list (LOCKED DECISION #8) computed inline at ChartConfigPanel + KineticaWmsLayerForm call sites — no new FilterSelectionPanel prop; auth.routes.spec.ts oidc failures pre-existing TD-V16-TEST-ISOLATION (Issuer constructor mock)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1342,6 +1345,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-28T23:37:01.497Z
-Stopped at: Completed 93.5-02-PLAN.md
+Last session: 2026-06-29T13:25:45.372Z
+Stopped at: Completed 94-02-PLAN.md
 Resume file: None
