@@ -1598,18 +1598,59 @@ describe("COMBO-V118-04 — default accept-all → byte-identical read behavior"
     expect(clientModule.runSql).not.toHaveBeenCalled();
   });
 
-  it("dv-bound path unchanged — combo store NOT consulted for dv-bound widgets", async () => {
-    // dv-bound widget: dynamicViewId set, dvStatus=materialized, dvViewName set.
-    // The combo store must NOT be involved in the read path for dv widgets.
+  it("Phase 94: dv-bound widget reads combo viewName from filterCombinationStore (NOT filterViewStore.dvViews)", async () => {
+    // Phase 94 (FSCOPE-V118-03): the combo store IS now consulted for dv-bound widgets.
+    // When a dv-combination entry exists in the combo store, it takes precedence over the raw dv view.
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
 
-    // Pre-populate combo store with an entry for the dv widget to prove it is NOT read.
-    mockVizToHash["w:1"] = "table:99:g|eq|\"A\"";
-    mockRegistry["table:99:g|eq|\"A\""] = {
-      viewName: "_kbi_combo_should_not_appear",
+    const dvBoundWidget = makeAggregatedWidget({
+      id: 1,
+      config: {
+        sql: "SELECT g, COUNT(*) AS value FROM ki_home.taxi GROUP BY g LIMIT 100",
+        tableId: 99,
+        dynamicViewId: 7,
+      },
+    });
+
+    // Set up dv store: materialized with a known viewName (raw dv fallback).
+    useDynamicViewStore.getState().setView(7, {
+      viewName: "_kbi_dv_u1_d1_7",
+      status: "materialized",
+      expiresAt: Date.now() + 300000,
+    });
+
+    // Pre-populate combo store with a dv-combination entry (simulates orchestrator having run).
+    const dvHash = "dv:7:g|eq|\"A\"";
+    mockVizToHash["w:1"] = dvHash;
+    mockRegistry[dvHash] = {
+      viewName: "_kbi_filt_dv7_c1234abcd",
       expiresAt: Date.now() + 300000,
       materializing: false,
     };
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [
+      { id: 7, dashboard_id: 1, source_table_id: 99, name: "DV", template_sql: "SELECT * FROM {view}", max_records: 10000, columns_json: null, created_at: "", updated_at: "" },
+    ]));
+
+    // runSql must be called with the DV COMBO view name (not the raw dv view).
+    await waitFor(() => {
+      const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+      const usedCombo = calls.some(
+        (args) => typeof args[0] === "string" && (args[0] as string).includes("FROM _kbi_filt_dv7_c1234abcd")
+      );
+      expect(usedCombo).toBe(true);
+    }, { timeout: 1000 });
+
+    // Raw dv view name must NOT appear (combo takes precedence).
+    const allSqlCalls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    for (const [sql] of allSqlCalls) {
+      expect(String(sql)).not.toContain("FROM _kbi_dv_u1_d1_7");
+    }
+  });
+
+  it("Phase 94: dv-bound widget with NO combo entry (Case C) falls back to raw dv view", async () => {
+    // When vizToHash["w:<id>"] is undefined (NOFILTER/no-combo), fall back to raw dv view.
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
 
     const dvBoundWidget = makeAggregatedWidget({
       id: 1,
@@ -1626,25 +1667,56 @@ describe("COMBO-V118-04 — default accept-all → byte-identical read behavior"
       status: "materialized",
       expiresAt: Date.now() + 300000,
     });
+    // mockVizToHash is empty — no combo entry → Case C (no dvFilters / NOFILTER)
 
     render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [
       { id: 7, dashboard_id: 1, source_table_id: 99, name: "DV", template_sql: "SELECT * FROM {view}", max_records: 10000, columns_json: null, created_at: "", updated_at: "" },
     ]));
 
-    // runSql must be called with the DV view name, NOT the combo view name.
+    // runSql must be called with the raw dv view name (combo fallback).
     await waitFor(() => {
       const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
-      const usesDvView = calls.some(
+      const usedRaw = calls.some(
         (args) => typeof args[0] === "string" && (args[0] as string).includes("FROM _kbi_dv_u1_d1_7")
       );
-      expect(usesDvView).toBe(true);
+      expect(usedRaw).toBe(true);
     }, { timeout: 1000 });
+  });
 
-    // Combo view name must NOT appear in any SQL call.
-    const allSqlCalls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
-    for (const [sql] of allSqlCalls) {
-      expect(String(sql)).not.toContain("_kbi_combo_should_not_appear");
-    }
+  it("Phase 94: dv-bound widget with combo entry materializing=true → suspend gate fires (no runSql)", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    const dvBoundWidget = makeAggregatedWidget({
+      id: 1,
+      config: {
+        sql: "SELECT g, COUNT(*) AS value FROM ki_home.taxi GROUP BY g LIMIT 100",
+        tableId: 99,
+        dynamicViewId: 7,
+      },
+    });
+
+    useDynamicViewStore.getState().setView(7, {
+      viewName: "_kbi_dv_u1_d1_7",
+      status: "materialized",
+      expiresAt: Date.now() + 300000,
+    });
+
+    // Seed combo entry with materializing=true — suspend gate should fire.
+    const dvHash = "dv:7:g|eq|\"A\"";
+    mockVizToHash["w:1"] = dvHash;
+    mockRegistry[dvHash] = {
+      viewName: "",
+      expiresAt: 0,
+      materializing: true,
+    };
+
+    render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [
+      { id: 7, dashboard_id: 1, source_table_id: 99, name: "DV", template_sql: "SELECT * FROM {view}", max_records: 10000, columns_json: null, created_at: "", updated_at: "" },
+    ]));
+
+    // runSql must NOT fire while dv combo is materializing.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(clientModule.runSql).not.toHaveBeenCalled();
   });
 });
 
@@ -2662,7 +2734,7 @@ describe("WidgetRenderer Phase 63 — dv-aware drill dispatch (DVDRILL-V112-01/0
     expect(tableFilters).toHaveLength(0);
   });
 
-  it("dv drill flips dvViews[7].materializing = true synchronously with addDvFilter", async () => {
+  it("dv drill flips dvViews[7].materializing synchronously via dispatchDrillDown (Phase 94: Effect 1 gone but click-handler markDvMaterializing retained for RecordsTableRenderer)", async () => {
     const container = await renderDvDrillRows();
 
     // No dv-filter view entry pre-click.
@@ -2674,9 +2746,13 @@ describe("WidgetRenderer Phase 63 — dv-aware drill dispatch (DVDRILL-V112-01/0
       await new Promise((r) => setTimeout(r, 350));
     });
 
+    // dispatchDrillDown still calls markDvMaterializing synchronously (needed for
+    // RecordsTableRenderer's legacy dvViews suspend gate — see Phase 94 authorized exception).
     const dvEntry = useFilterViewStore.getState().dvViews[7];
     expect(dvEntry).toBeDefined();
     expect(dvEntry!.materializing).toBe(true);
+    // NOTE: AggregatedWidgetRenderer (this widget type) no longer reads dvViews[7].materializing
+    // in Effect 2 (Phase 94: dvFilterMaterializing selector retired; dv-combo suspend gate added).
     // Table-keyed filter-view store must NOT have been touched by a dv drill.
     expect(useFilterViewStore.getState().views[42]).toBeUndefined();
   });
@@ -2719,17 +2795,17 @@ describe("WidgetRenderer Phase 63 — dv-aware drill dispatch (DVDRILL-V112-01/0
 });
 
 // ============================================================================
-// Phase 63 Plan 03 (DVDRILL-V112-02): dv-filter materialize trigger in Effect 1
+// Phase 63 Plan 03 (DVDRILL-V112-02) — REPOINTED for Phase 94:
 // ============================================================================
 //
-// When a dv-bound widget has a materialized dv AND dvFilters[dvId] is non-empty,
-// the existing per-renderer Effect 1 gains a branch that materializes the dv-filter
-// FROM the dv view: materializeFilter({ dashboardId, dynamicViewId, filters }) →
-// setDvView. Empty dvFilters → dropFilterView({ dashboardId, dynamicViewId }) +
-// clearDvView. Gated on dvStatus === "materialized" (mirrors the pending early-return).
+// Phase 94 (FSCOPE-V118-03): AggregatedWidgetRenderer Effect 1 dv-branch is REMOVED.
+// The orchestrator (useCombinationOrchestrator) is now the SOLE materialize trigger.
+// These tests are repointed to assert: AggregatedWidgetRenderer NEVER calls
+// materializeFilter or dropFilterView for the dv path (mirrors the Phase 91 repoint
+// of the table-path tests).
 // ============================================================================
 
-describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", () => {
+describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger (Phase 94 repoint: orchestrator owns it)", () => {
   beforeEach(() => {
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
@@ -2748,7 +2824,9 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
     },
   });
 
-  it("materializes the dv-filter (materializeFilter with dynamicViewId, NOT tableId) when a dv filter is active + dv materialized", async () => {
+  it("Phase 94: AggregatedWidgetRenderer NEVER calls materializeFilter for dv path (orchestrator owns it)", async () => {
+    // Phase 94: Effect 1 dv-branch is REMOVED. Even with a dv filter active + dv materialized,
+    // AggregatedWidgetRenderer must NOT call materializeFilter. Orchestrator owns the dv materialize.
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
       viewName: "_kbi_filt_dv7_sX",
@@ -2762,7 +2840,8 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
         status: "materialized",
         expiresAt: Date.now() + 300000,
       });
-      // dv filter present (the drill landed here)
+      // dv filter present — previously this would have triggered Effect 1 dv-branch.
+      // Phase 94: NO trigger from AggregatedWidgetRenderer.
       useFilterStore.getState().addDvFilter(7, {
         column: "g", value: "A", dataType: "string", addedAt: Date.now(),
       });
@@ -2770,36 +2849,22 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
 
     render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
 
-    await waitFor(
-      () => {
-        expect(clientModule.materializeFilter).toHaveBeenCalled();
-      },
-      { timeout: 1500 },
-    );
+    // Wait 500ms (longer than the debounce) — materializeFilter must NEVER be called by this renderer.
+    await new Promise((r) => setTimeout(r, 500));
 
-    const calls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls;
-    const dvCall = calls.find(
-      ([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7,
-    );
-    expect(dvCall).toBeDefined();
-    const arg = dvCall![0] as { dashboardId: number; dynamicViewId: number; filters: unknown[]; tableId?: number };
-    expect(arg.dashboardId).toBe(1);
-    expect(arg.dynamicViewId).toBe(7);
-    expect(arg.tableId).toBeUndefined();
-    expect(arg.filters).toHaveLength(1);
+    // AggregatedWidgetRenderer must NOT call materializeFilter for the dv path.
+    const dvMatCalls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7);
+    expect(dvMatCalls).toHaveLength(0);
 
-    // setDvView populated dvViews[7] from the result.
-    await waitFor(() => {
-      expect(useFilterViewStore.getState().dvViews[7]?.viewName).toBe("_kbi_filt_dv7_sX");
-    });
+    // dropFilterView must also NOT be called for the dv path by AggregatedWidgetRenderer.
+    const dvDropCalls = (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7);
+    expect(dvDropCalls).toHaveLength(0);
   });
 
-  it("drops the dv-filter view + clears dvViews[7] when dvFilters[7] is empty", async () => {
+  it("Phase 94: AggregatedWidgetRenderer NEVER calls materializeFilter for dv path — empty dvFilters case", async () => {
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
-      viewName: "_kbi_filt_dv7_sX",
-      expiresAt: Date.now() + 300000,
-    });
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
 
     act(() => {
@@ -2808,29 +2873,22 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
         status: "materialized",
         expiresAt: Date.now() + 300000,
       });
-      // Seed a stale dv-filter view, then clear the dv filters (drill removed).
-      useFilterViewStore.getState().setDvView(7, { viewName: "_kbi_filt_dv7_sX", expiresAt: Date.now() + 300000 }, 1);
-      useFilterStore.getState().addDvFilter(7, { column: "g", value: "A", dataType: "string", addedAt: Date.now() });
-      useFilterStore.getState().clearDvFilters(7);
+      // dvFilters empty — previously this would have called dropFilterView + clearDvView.
+      // Phase 94: NO dropFilterView from AggregatedWidgetRenderer.
     });
 
     render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
 
-    await waitFor(
-      () => {
-        const calls = (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mock.calls;
-        const dvDrop = calls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7);
-        expect(dvDrop).toBeDefined();
-      },
-      { timeout: 1500 },
-    );
-    // dvViews[7] cleared.
-    await waitFor(() => {
-      expect(useFilterViewStore.getState().dvViews[7]).toBeUndefined();
-    });
-    // materializeFilter must NOT have been called for the dv (empty filters → drop only).
-    const matCalls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls;
-    expect(matCalls.find(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7)).toBeUndefined();
+    // Wait 500ms — neither materializeFilter nor dropFilterView must be called for dv path.
+    await new Promise((r) => setTimeout(r, 500));
+
+    const dvDropCalls = (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7);
+    expect(dvDropCalls).toHaveLength(0);
+
+    const dvMatCalls = (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([args]) => (args as { dynamicViewId?: number }).dynamicViewId === 7);
+    expect(dvMatCalls).toHaveLength(0);
   });
 
   it("gate holds: dvStatus !== materialized + a dv filter → materializeFilter NOT called for the dv", async () => {
@@ -2842,7 +2900,7 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
 
     act(() => {
-      // dv NOT materialized (pending) — the gate must block a dv-filter materialize.
+      // dv NOT materialized (pending) — the gate must block any dv-path calls.
       useDynamicViewStore.getState().markPending(7, "_kbi_dv_u1_d1_7");
       useFilterStore.getState().addDvFilter(7, { column: "g", value: "A", dataType: "string", addedAt: Date.now() });
     });
@@ -2858,16 +2916,17 @@ describe("AggregatedWidgetRenderer Phase 63 — dv-filter materialize trigger", 
 });
 
 // ============================================================================
-// Phase 63 Plan 03 (DVDRILL-V112-04): dv read-path FROM-swap precedence
+// Phase 63 Plan 03 (DVDRILL-V112-04) — UPDATED for Phase 94:
+// dv read-path FROM-swap precedence (now reads filterCombinationStore)
 // ============================================================================
 //
-// A dv-bound widget's data query FROM-swaps to the filtered-dv view
-// (dvViews[dvId].viewName) when a dv filter is active; falls back to the raw dv
-// view (dynamicViewStore viewName) when cleared. Precedence filtered-dv → dv.
-// Over-threshold / pending dv states preserve the existing UX (no runSql crash).
+// Phase 94 (FSCOPE-V118-03): AggregatedWidgetRenderer effectiveViewName dv branch
+// now reads filterCombinationStore.vizToHash["w:<id>"] → registry[hash].viewName,
+// falling back to the raw dv view (dvViewName). The old filterViewStore.dvViews read
+// path is RETIRED — these tests are updated to use mockVizToHash/mockRegistry.
 // ============================================================================
 
-describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedence", () => {
+describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedence (Phase 94: reads combo store)", () => {
   beforeEach(() => {
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockReset();
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
@@ -2875,6 +2934,9 @@ describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedenc
     useFilterStore.getState().reset();
     useFilterViewStore.getState().reset();
     useDynamicViewStore.getState().reset();
+    // Clear combo mock state for each test
+    Object.keys(mockVizToHash).forEach((k) => delete mockVizToHash[k]);
+    Object.keys(mockRegistry).forEach((k) => delete mockRegistry[k]);
   });
 
   const dvBoundWidget: WidgetDto = makeAggregatedWidget({
@@ -2886,7 +2948,7 @@ describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedenc
     },
   });
 
-  it("FROM-swaps to the filtered-dv view name when a dv-filter view is present", async () => {
+  it("FROM-swaps to the dv-combination view name when a combo entry is present (Phase 94)", async () => {
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
     act(() => {
@@ -2895,30 +2957,33 @@ describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedenc
         status: "materialized",
         expiresAt: Date.now() + 300000,
       });
-      // Filtered-dv view present (the dv-filter materialize completed).
-      useFilterViewStore.getState().setDvView(
-        7,
-        { viewName: "_kbi_filt_d1_dv7_sABC", expiresAt: Date.now() + 300000 },
-        1,
-      );
     });
+
+    // Phase 94: seed combo store with dv-combination entry (simulates orchestrator having run).
+    const dvHash = "dv:7:g|eq|\"A\"";
+    mockVizToHash["w:1"] = dvHash;
+    mockRegistry[dvHash] = {
+      viewName: "_kbi_filt_dv7_sABC",
+      expiresAt: Date.now() + 300000,
+      materializing: false,
+    };
 
     render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));
 
     await waitFor(() => expect(clientModule.runSql).toHaveBeenCalled());
     const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
     const usedFiltered = calls.some(
-      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_filt_d1_dv7_sABC"),
+      (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_filt_dv7_sABC"),
     );
     const usedRaw = calls.some(
       (args) => typeof args[0] === "string" && (args[0] as string).includes("_kbi_dv_u1_d1_7"),
     );
     expect(usedFiltered).toBe(true);
-    // Precedence: the filtered-dv view wins over the raw dv view.
+    // Precedence: the combo view wins over the raw dv view.
     expect(usedRaw).toBe(false);
   });
 
-  it("reverts to the raw dv view when the dv-filter view is cleared", async () => {
+  it("reverts to the raw dv view when there is no combo entry (NOFILTER / Case C) (Phase 94)", async () => {
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
     act(() => {
@@ -2927,7 +2992,7 @@ describe("AggregatedWidgetRenderer Phase 63 — dv read-path FROM-swap precedenc
         status: "materialized",
         expiresAt: Date.now() + 300000,
       });
-      // No dv-filter view (cleared) → falls back to the raw dv view.
+      // No combo entry (mockVizToHash cleared in beforeEach) → falls back to the raw dv view.
     });
 
     render(wrap(<WidgetRenderer widget={dvBoundWidget} />, 1, [], [makeDvRow({ id: 7 })]));

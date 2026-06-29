@@ -41,8 +41,8 @@ import { NOFILTER_SENTINEL } from "../../lib/stableComboHash";
 // Phase 35 Plan 05 (DV-V16-13/14): dynamic-view scoped selectors for dv-bound widgets.
 // Effect 2 (chart-query) flips viewName source to useDynamicViewStore when
 // widget.config.dynamicViewId is set; render-body status gates branch on dvStatus.
-// Effect 1 (filter-view materialize trigger) is UNCHANGED — locked from research
-// finding #2: the filter view is the `{view}` substitution source for the dv template.
+// Phase 94 (FSCOPE-V118-03): Effect 1 (AggregatedWidgetRenderer filter-view materialize trigger)
+// REMOVED — the combination orchestrator (useCombinationOrchestrator) is now the sole trigger.
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useDashboardContext } from "../DashboardContext";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
@@ -437,16 +437,10 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // narrow-your-filters message (a filter IS applied but its result is too large).
   const dvReason = dvEntry?.reason;
 
-  // Phase 63 (DVDRILL-V112-04): the FILTERED-dv view entry (the dv-filter sub-view materialized
-  // off dvFilters[dvId]). PITFALL C-02 lock — scope to s.dvViews[dynamicViewId], NEVER the whole
-  // dvViews map. The read-path FROM-swap prefers this view over the raw dv view (precedence
-  // filtered-dv → dv). dvFilterMaterializing suspends the chart query while the dv-filter
-  // materialize is in flight (mirrors the table-path materializing suspend gate).
-  const dvFilterEntry = useFilterViewStore((s) =>
-    dynamicViewId !== undefined ? s.dvViews[dynamicViewId] : undefined,
-  );
-  const dvFilterViewName = dvFilterEntry?.viewName;
-  const dvFilterMaterializing = dvFilterEntry?.materializing ?? false;
+  // Phase 94 (FSCOPE-V118-03): dvFilterEntry / dvFilterViewName / dvFilterMaterializing RETIRED.
+  // The dv-filter materialize trigger was moved to the orchestrator (useCombinationOrchestrator).
+  // The effectiveViewName dv branch now reads filterCombinationStore.vizToHash[vizKey] instead of
+  // filterViewStore.dvViews[dynamicViewId]. See effectiveViewName dv branch in Effect 2 below.
 
   // Phase 15-02: dashboardId from DashboardContext (15-01 ships the provider).
   // Throws if no provider — tests MUST wrap in <DashboardContextProvider dashboardId={N}>.
@@ -484,68 +478,13 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // Effect 1 below — mirrors PITFALL S-02 lock (counter, NOT array reference, in dep array).
   const spatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
 
-  // V13-P-10 lock: materializeAbortRef is SEPARATE from the chart-query AbortController
-  // so rapid filter changes can cancel in-flight materialize without aborting the
-  // chart-query that's about to FROM-swap.
-  const materializeAbortRef = useRef<AbortController | null>(null);
-
-  // Effect 1 (NEW) — Materialize trigger (debounced 300ms).
-  // V13-P-01 lock: markMaterializing → await materializeFilter → setView (POST-200 only).
-  // V13-P-09 accepted: multi-tab same-user same-session = last-write-wins on view content.
-  // Phase 30 (MAT-V15-01): spatialFilterVersion is the 5th dep; payload includes
-  // spatialFilters + spatialTarget when myTarget exists AND shapes.length > 0 (orphan-shape
-  // fallthrough: missing myTarget falls back to v1.3 column-only path silently).
-  // _mv cache-buster: setView at filterViewStore.ts:67 increments materializeVersion on
-  // every successful resolve — fires identically for column-only and spatial-triggered
-  // materializes; no new wiring needed in this effect for _mv.
-  useEffect(() => {
-    // Phase 63: a dv-bound widget runs this effect even with no tableId — the dv branch
-    // below materializes the dv-filter. Only short-circuit when BOTH bindings are absent.
-    if (tableId === undefined && dynamicViewId === undefined) return;
-    const timer = setTimeout(async () => {
-      // ── Phase 63 (DVDRILL-V112-02) dv-filter materialize trigger ─────────────
-      // When this widget is dv-bound, materialize a filtered sub-view FROM the dv view
-      // (Phase 62 server path) and store it in dvViews[dvId]. Gate on a materialized dv
-      // (mirrors the dvStatus === "pending" early-return in Effect 2): a not-yet-materialized
-      // / over-threshold dv has no FROM view to filter against. dvFilters is read imperatively
-      // (mirrors `shapes`) — filterVersion is the dep that drives re-fire.
-      if (dynamicViewId !== undefined) {
-        if (dvStatus !== "materialized") return;
-        materializeAbortRef.current?.abort();
-        const controller = new AbortController();
-        materializeAbortRef.current = controller;
-        const dvFilters = useFilterStore.getState().dvFilters[dynamicViewId] ?? [];
-        if (dvFilters.length === 0) {
-          // No dv filter → drop any stale dv-filter view, revert to the raw dv view.
-          dropFilterView({ dashboardId, dynamicViewId }).catch(() => {});
-          useFilterViewStore.getState().clearDvView(dynamicViewId);
-          return;
-        }
-        useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
-        try {
-          const result = await materializeFilter(
-            { dashboardId, dynamicViewId, filters: dvFilters },
-            controller.signal,
-          );
-          useFilterViewStore.getState().setDvView(dynamicViewId, result, dashboardId);
-        } catch (err) {
-          if ((err as Error)?.name === "AbortError") return;
-          useFilterViewStore.getState().clearDvView(dynamicViewId);
-          useToastStore.getState().showToast((err as Error).message, "error");
-        }
-        return;
-      }
-
-      // Phase 91: table path REMOVED — the orchestrator (useCombinationOrchestrator) owns
-      // table-bound combination view materialization. AggregatedWidgetRenderer no longer
-      // calls materializeFilter for the table path; this prevents dual-trigger split-brain.
-    }, 300);
-    return () => clearTimeout(timer);
-    // Phase 91: dep array trimmed — table-only deps (tableId, spatialFilterVersion) removed.
-    // Only the dv branch remains in this effect; dv deps stay.
-    // filterVersion stays — addDvFilter bumps it, driving dv-filter re-materialize.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sql, filterVersion, dashboardId, dynamicViewId, dvStatus]);
+  // Phase 94 (FSCOPE-V118-03): Effect 1 REMOVED entirely.
+  // Phase 91 had already removed the table-path materialize branch; Phase 94 removes the
+  // dv-branch (materializeFilter({ dynamicViewId, filters: dvFilters }) → setDvView).
+  // The orchestrator (useCombinationOrchestrator) is now the SOLE materialize trigger for
+  // the dv combination path. AggregatedWidgetRenderer is a READ-ONLY consumer of
+  // filterCombinationStore (dv path reads vizToHash[vizKey] → registry[hash] in Effect 2).
+  // materializeAbortRef also removed — it was only used by the dv-branch.
 
   // Phase 15-04 (LIFE-V13-02): retry tracking — max 1 reactive retry per chart-query invocation.
   // useRef survives effect re-creates within the same component instance; reset on viewName change
@@ -589,10 +528,11 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // dv viewName during cascade re-materialize.
     if (dynamicViewId !== undefined && dvStatus === "pending") return;
 
-    // Phase 63 (DVDRILL-V112-04): suspend the chart query while a dv-FILTER materialize is in
-    // flight (mirrors the table-path `materializing` gate) so the chart doesn't race against a
-    // stale dv-filter view name.
-    if (dynamicViewId !== undefined && dvFilterMaterializing) return;
+    // Phase 94 (FSCOPE-V118-03): dv suspend gate — reads the dv-combo entry's materializing flag
+    // via the same imperative comboEntry path as the table gate above (comboEntry reads vizToHash[vizKey]).
+    // The comboEntry variable already handles both table AND dv paths (vizKey = "w:<id>" in both cases;
+    // the hash prefix determines the path). If a dv-combo is materializing, suspend the chart query.
+    if (dynamicViewId !== undefined && comboEntry?.materializing) return;
 
     // Phase 35 Plan 05: short-circuit for non-materialized dv statuses. Render-body status
     // gates below render the appropriate empty/error JSX; here we just skip runSql.
@@ -620,15 +560,20 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     }
 
     // Phase 35 Plan 05 (Pitfall 4 lock from 35-RESEARCH.md): viewName source selection.
-    //   - dv-bound + materialized → dvViewName (already guarded above; status === "materialized" here)
-    //   - legacy / non-dv-bound → fvViewName (existing path)
+    //   - dv-bound + materialized → combo view (Phase 94) or raw dv view (Phase 94 fallback)
+    //   - legacy / non-dv-bound → combo entry viewName (existing path)
     // Pitfall 4 defense-in-depth: materialized with empty viewName is an internal error.
     let effectiveViewName: string | undefined;
     if (dynamicViewId !== undefined) {
-      // Phase 63 (DVDRILL-V112-04): precedence filtered-dv → dv. Prefer the filtered-dv view
-      // (dvFilterViewName) when a dv filter is active; fall back to the raw dv view.
-      // `||` not `??` — the markDvMaterializing empty-string placeholder must fall through.
-      const dvSource = dvFilterViewName || dvViewName;
+      // Phase 94 (FSCOPE-V118-03): prefer the dv-combination view (from filterCombinationStore)
+      // when available; fall back to the raw dv view (dvViewName).
+      // Imperative getState() read — same S-02 pattern as the table-path comboEntry read above.
+      const dvComboHash = useFilterCombinationStore.getState().vizToHash[vizKey];
+      const dvComboEntry =
+        dvComboHash && !dvComboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+          ? useFilterCombinationStore.getState().registry[dvComboHash]
+          : undefined;
+      const dvSource = dvComboEntry?.viewName || dvViewName;
       if (!dvSource) {
         setData([]);
         setLoading(false);
@@ -701,8 +646,9 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // clearMaterializingVersion as the suspend-gate lift dep — bumped by setEntry/markMaterializing/
     // clearEntry (covers success, error, and stale-view-clear paths).
     // Phase 91: viewName/expiresAt/clearMaterializingVersion removed; comboKey+combinationVersion added.
-    // Phase 35 Plan 05 (DV-V16-13): dv deps unchanged.
-    // Phase 63 (DVDRILL-V112-04): dvFilterViewName + dvFilterMaterializing unchanged.
+    // Phase 35 Plan 05 (DV-V16-13): dv deps (dvStatus, dvViewName) unchanged.
+    // Phase 94 (FSCOPE-V118-03): dvFilterViewName + dvFilterMaterializing REMOVED (retired selectors);
+    // comboKey/combinationVersion now drive the dv-combo path (same primitives as the table path).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     sql,
@@ -712,8 +658,6 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     dynamicViewId,
     dvStatus,
     dvViewName,
-    dvFilterViewName,
-    dvFilterMaterializing,
   ]);
 
   if (!sql?.trim()) {
