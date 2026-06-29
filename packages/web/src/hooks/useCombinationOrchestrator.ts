@@ -76,7 +76,8 @@ const NON_TRIGGER_TYPES = new Set([
   "numericline",
   "radiogroup",
   "calendar",
-  "records",
+  // Phase 96-01 GAP 2: "records" removed — RecordsTableRenderer is now a pure combo-store
+  // consumer; useCombinationOrchestrator is the sole materialize trigger for records widgets too.
 ]);
 
 const isTriggerType = (t: string) => !NON_TRIGGER_TYPES.has(t);
@@ -193,6 +194,9 @@ export function useCombinationOrchestrator(
       const shapes = useSpatialFilterStore.getState().shapes;
       // Build per-table spatial targets once (pure, synchronous).
       const targetsByTable = aggregateSpatialTargetsByTable(widgets);
+      // Phase 96-01 GAP 3: read dvFilterScopeDisabled imperatively (S-02 pattern).
+      // When true, treat ALL dv-bound vizs as accept-all (ignore saved filterSelection / filter_scope).
+      const dvScopeDisabled = useAuthStore.getState().dvFilterScopeDisabled;
 
       // Map<tableId, Map<hash, { resolved: ActiveFilter[]; widgetIds: number[]; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget }>>
       type HashEntry = { resolved: ReturnType<typeof resolveFilterSet>; widgetIds: number[]; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget };
@@ -285,7 +289,8 @@ export function useCombinationOrchestrator(
         // Pitfall 5 — imperative getState() inside setTimeout (same as shapes read).
         if (useDynamicViewStore.getState().views[dvId]?.status !== "materialized") continue;
 
-        const cfg = w.config.filterSelection as FilterSelectionConfig | undefined;
+        // Phase 96-01 GAP 3: when dvScopeDisabled, treat as accept-all (cfg=undefined → resolveFilterSet returns all dvFilters).
+        const cfg = dvScopeDisabled ? undefined : (w.config.filterSelection as FilterSelectionConfig | undefined);
         // dvFilters keyed by dvId — imperative read (Pitfall 4 — never subscribe to dvFilters array)
         const dvFilters = (filterState.dvFilters[dvId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, dvFilters);
@@ -314,7 +319,8 @@ export function useCombinationOrchestrator(
         // Gate: dv must be fully materialized
         if (useDynamicViewStore.getState().views[dvId]?.status !== "materialized") continue;
 
-        const cfg = layer.filter_scope ?? undefined;
+        // Phase 96-01 GAP 3: when dvScopeDisabled, treat layer as accept-all (cfg=undefined).
+        const cfg = dvScopeDisabled ? undefined : (layer.filter_scope ?? undefined);
         const dvFilters = (filterState.dvFilters[dvId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, dvFilters);
         // NO spatial — dv path is column-only
@@ -363,6 +369,9 @@ export function useCombinationOrchestrator(
         const fallbackHash = stableComboHash("table", tableId, allFilters);
         const fallbackIsNoFilter = fallbackHash.endsWith(`:${NOFILTER_SENTINEL}`);
 
+        // Collect the set of hashes that remain valid (kept + fallback)
+        const removedHashes: string[] = [];
+
         // Remap over-ceiling widgets
         for (const [hash, entry] of sorted.slice(ceiling - 1)) {
           if (keep.has(hash)) continue; // within the kept set, skip
@@ -375,7 +384,23 @@ export function useCombinationOrchestrator(
               vizKeyToHash.set(vizKey, fallbackHash);
             }
           }
+          removedHashes.push(hash);
           hashMap.delete(hash);
+        }
+
+        // Phase 96-01 GAP 1 — ORPHAN FIX: after remap, clear any removed hash that is still
+        // sitting in the registry as materializing:true with no active controller and no viz
+        // still bound to it. Without this, those entries never resolve → permanent spinner.
+        for (const removedHash of removedHashes) {
+          const regEntry = useFilterCombinationStore.getState().registry[removedHash];
+          if (!regEntry) continue;
+          if (!regEntry.materializing) continue;
+          // No controller = no in-flight POST → stale placeholder; clear it.
+          if (controllersRef.current.has(removedHash)) continue;
+          // Confirm no viz is still bound to this hash (belt-and-suspenders)
+          const stillBound = [...vizKeyToHash.values()].some((h) => h === removedHash);
+          if (stillBound) continue;
+          useFilterCombinationStore.getState().clearEntry(removedHash);
         }
 
         // Add fallback hash to hashMap if not NOFILTER and not already present.
@@ -384,6 +409,14 @@ export function useCombinationOrchestrator(
         if (!fallbackIsNoFilter) {
           const existing = hashMap.get(fallbackHash);
           if (!existing) {
+            // Phase 96-01 GAP 1 — FALLBACK PLACEHOLDER FIX: if the fallback hash already has
+            // a stale materializing:true placeholder from a prior tick (with no controller),
+            // clear it now so STEP D fires a fresh POST rather than skipping it.
+            const fallbackReg = useFilterCombinationStore.getState().registry[fallbackHash];
+            if (fallbackReg?.materializing && !controllersRef.current.has(fallbackHash)) {
+              useFilterCombinationStore.getState().clearEntry(fallbackHash);
+            }
+
             // Gather all widgetIds that were remapped to this fallback
             const remappedWidgetIds: number[] = [];
             for (const [vizKey, h] of vizKeyToHash) {

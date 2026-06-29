@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 96-02-PLAN.md
-last_updated: "2026-06-29T18:45:30.134Z"
+stopped_at: Completed 96-03-PLAN.md
+last_updated: "2026-06-29T18:55:39.729Z"
 progress:
   total_phases: 10
   completed_phases: 9
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -627,6 +627,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 94 P01 | multi-session | 3 tasks | 6 files |
 | Phase 95-on-widget-badge-indicator P01 | 452 | 3 tasks | 7 files |
 | Phase 96 P02 | 17min | 2 tasks | 4 files |
+| Phase 96-verification-live-uat P03 | 1822 | 2 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -950,6 +951,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 95-01]: .widget-filter-badge CSS added before WidgetFilterBadge.tsx created to satisfy theme-guard SC4 ordering requirement
 - [Phase 96]: allowSpatial=false passed to FilterSelectionPanel from ChartConfigPanel (draftDynamicViewId===undefined) and KineticaWmsLayerForm (layer?.dynamic_view_id==null) suppresses spatial sentinel for dv-bound vizs
 - [Phase 96]: Customize-on pre-populates allowedSourceWidgetIds with all current source ids + sentinel (when allowSpatial) so start state == accept-all; accept-none warning preserved for manual-uncheck-all
+- [Phase 96-verification-live-uat]: Reused widget-filter-badge class for legend indicator (no invented CSS, no raw hex)
+- [Phase 96-verification-live-uat]: filterSummary computed by MapChartRenderer caller not LayersLegendPanel (preserves PANEL-V17-01 store-free lock)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1356,6 +1359,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-29T18:45:29.829Z
-Stopped at: Completed 96-02-PLAN.md
+Last session: 2026-06-29T18:55:39.686Z
+Stopped at: Completed 96-03-PLAN.md
 Resume file: None

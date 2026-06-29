@@ -1048,12 +1048,11 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
       column_1: ["A"],
       column_2: [10],
     });
-    // Pre-seed the view (no materialize call needed — pure consumer)
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000 },
-      1
-    );
+    // Phase 96-01: RecordsTableRenderer reads filterCombinationStore, not filterViewStore.
+    // Seed a combo entry for vizKey "w:2" (makeRecordsWidget id=2).
+    const comboHash = "table:99:g|eq|A";
+    mockVizToHash["w:2"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000, materializing: false };
 
     render(wrap(<WidgetRenderer widget={makeRecordsWidget()} />));
 
@@ -1071,11 +1070,10 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
       column_headers: ["total"],
       column_1: [12345],
     });
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000 },
-      1
-    );
+    // Phase 96-01: seed combo store for vizKey "w:2".
+    const comboHash = "table:99:g|eq|A";
+    mockVizToHash["w:2"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000, materializing: false };
 
     render(wrap(<WidgetRenderer widget={makeRecordsWidget()} />));
 
@@ -1096,7 +1094,7 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
 
     const { rerender } = render(wrap(<WidgetRenderer widget={makeRecordsWidget()} />));
 
-    // Initial mount — count should fire with raw table
+    // Initial mount — count should fire with raw table (no combo entry yet)
     await waitFor(() => {
       const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
       const initialCount = calls.some(
@@ -1105,12 +1103,12 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
       expect(initialCount).toBe(true);
     });
 
-    // Activate view → COUNT effect must re-fire with the view name
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000 },
-      1
-    );
+    // Phase 96-01: activate view via combo store — bump combinationVersion so
+    // recordsComboKey selector change drives the dep-array re-fire (Pitfall 7 pattern).
+    const comboHash = "table:99:g|eq|A";
+    mockVizToHash["w:2"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_filt_v1", expiresAt: Date.now() + 300000, materializing: false };
+    mockCombinationVersion = 1;
     rerender(wrap(<WidgetRenderer widget={makeRecordsWidget()} />));
 
     await waitFor(() => {
@@ -1122,17 +1120,11 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
     });
   });
 
-  // Phase 30 follow-up: the v1.3 VSTORE-V13-02 pure-consumer lock for RecordsTableRenderer
-  // has been RELAXED. RecordsTable now fires its own materialize trigger so that dashboards
-  // with no aggregated chart on a spatial-target table still get filtering. The new
-  // contract: with active filters (column OR spatial), RecordsTable calls materialize;
-  // with neither, it calls dropFilterView. Mirrors AggregatedWidgetRenderer's Effect 1.
-  it("calls materializeFilter when active column chip filters exist (Phase 30 follow-up relaxation)", async () => {
+  // Phase 96-01 GAP 2: RecordsTableRenderer is no longer a materialize trigger — the
+  // combination orchestrator is the SOLE trigger. RecordsTableRenderer is a pure consumer:
+  // it reads the combo store via vizToHash and never calls materializeFilter or dropFilterView.
+  it("does NOT call materializeFilter when active column chip filters exist (Phase 96-01: orchestrator is sole trigger)", async () => {
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
-    (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockResolvedValue({
-      viewName: "_kbi_filt_records",
-      expiresAt: Date.now() + 300000,
-    });
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockReset();
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
       column_headers: ["g", "value"],
@@ -1146,33 +1138,25 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
 
     render(wrap(<WidgetRenderer widget={makeRecordsWidget()} />));
 
-    // Wait through the 300ms debounce + buffer
+    // Wait well past any debounce window
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    expect(clientModule.materializeFilter).toHaveBeenCalledTimes(1);
-    expect(clientModule.materializeFilter).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tableId: 99,
-        filters: expect.arrayContaining([
-          expect.objectContaining({ column: "g", value: "A" }),
-        ]),
-      }),
-      expect.any(Object), // AbortSignal
-    );
+    // RecordsTableRenderer must NOT call materializeFilter — orchestrator owns table materializes.
+    expect(clientModule.materializeFilter).not.toHaveBeenCalled();
+    // Neither should it call dropFilterView.
     expect(clientModule.dropFilterView).not.toHaveBeenCalled();
   });
 
-  it("calls dropFilterView when no column filters AND no spatial shapes apply (idle DROP)", async () => {
+  it("does NOT call dropFilterView when no column filters AND no spatial shapes apply (Phase 96-01: orchestrator is sole trigger)", async () => {
     (clientModule.materializeFilter as ReturnType<typeof vi.fn>).mockReset();
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockReset();
-    (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
       column_headers: ["g", "value"],
       column_1: ["A"],
       column_2: [10],
     });
 
-    // No column filters, no shapes — DROP branch fires.
+    // No column filters, no shapes.
     useFilterStore.getState().reset();
     useSpatialFilterStore.getState().reset();
 
@@ -1180,11 +1164,9 @@ describe("RecordsTableRenderer — FILT-V13-02 (FROM-swap on page + count querie
 
     await new Promise((resolve) => setTimeout(resolve, 600));
 
+    // RecordsTableRenderer must NOT call dropFilterView — orchestrator owns all DROP calls.
     expect(clientModule.materializeFilter).not.toHaveBeenCalled();
-    expect(clientModule.dropFilterView).toHaveBeenCalledTimes(1);
-    expect(clientModule.dropFilterView).toHaveBeenCalledWith(
-      expect.objectContaining({ tableId: 99 }),
-    );
+    expect(clientModule.dropFilterView).not.toHaveBeenCalled();
   });
 });
 
@@ -1271,12 +1253,21 @@ describe("RecordsTableRenderer — LIFE-V13-01 (proactive TTL expiry, both effec
     useFilterViewStore.getState().reset();
   });
 
-  it("page-fetch effect clears expired view before running its runSql", async () => {
-    useFilterViewStore.getState().setView(
-      99,
-      { viewName: "_kbi_filt_v1", expiresAt: Date.now() - 1000 },
-      1
-    );
+  it("page-fetch effect clears expired combo entry before running its runSql", async () => {
+    // Phase 96-01: RecordsTableRenderer now reads filterCombinationStore, not filterViewStore.
+    // Seed an expired combo entry for vizKey "w:2" (makeRecordsWidget id=2).
+    const comboHash = "table:99:g|eq|A";
+    mockVizToHash["w:2"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_filt_v1", expiresAt: Date.now() - 1000, materializing: false };
+
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    const clearEntrySpy = vi.fn();
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: clearEntrySpy,
+    });
 
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
       column_headers: ["g", "value"], column_1: ["A"], column_2: [10],
@@ -1284,9 +1275,10 @@ describe("RecordsTableRenderer — LIFE-V13-01 (proactive TTL expiry, both effec
 
     render(wrap(<WidgetRenderer widget={makeRecordsWidget()} />));
 
+    // Page-fetch effect must call clearEntry for the expired hash.
     await waitFor(() => {
-      expect(useFilterViewStore.getState().views[99]).toBeUndefined();
-    });
+      expect(clearEntrySpy).toHaveBeenCalledWith(comboHash);
+    }, { timeout: 500 });
   });
 });
 
@@ -3044,23 +3036,24 @@ describe("RecordsTableRenderer Phase 63 — dv read-path FROM-swap precedence", 
   });
 
   it("page-fetch + count FROM-swap to the filtered-dv view when present", async () => {
+    // Phase 96-01: RecordsTableRenderer reads filterCombinationStore for dv-combo views.
+    // The effectiveViewName for dv branch = comboEntry?.viewName || recordsDvViewName.
+    // Seed a combo entry so comboEntry?.viewName wins over recordsDvViewName.
     (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
       column_headers: ["g", "value"],
       column_1: ["A"],
       column_2: [10],
     });
     (clientModule.dropFilterView as ReturnType<typeof vi.fn>).mockResolvedValue({ dropped: true });
+    const comboHash = "dv:7:g|eq|A";
+    mockVizToHash["w:2"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_filt_records_dv7", expiresAt: Date.now() + 300000, materializing: false };
     act(() => {
       useDynamicViewStore.getState().setView(7, {
         viewName: "_kbi_dv_records_7",
         status: "materialized",
         expiresAt: Date.now() + 300000,
       });
-      useFilterViewStore.getState().setDvView(
-        7,
-        { viewName: "_kbi_filt_records_dv7", expiresAt: Date.now() + 300000 },
-        1,
-      );
     });
 
     render(wrap(<WidgetRenderer widget={dvBoundRecordsWidget} />, 1, [], [makeDvRow({ id: 7 })]));

@@ -1643,48 +1643,21 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const recordsTableFilters = useFilterStore((state) =>
     tableId !== undefined ? state.filters[tableId] ?? [] : []
   );
-  // Phase 30 follow-up: per-table eligible spatial target lookup. Memoized on `widgets`;
-  // map widgets' spatialTargets[] flow in here. WKB / incomplete targets are filtered by
-  // isSpatialTargetEligible inside the helper — myTarget is GUARANTEED eligible or undefined.
-  const recordsTargetsByTable = useMemo(
-    () => aggregateSpatialTargetsByTable(widgets),
-    [widgets],
-  );
-  const recordsMyTarget = tableId !== undefined
-    ? recordsTargetsByTable.get(tableId)
-    : undefined;
-  // Phase 30 follow-up: subscribe to spatialFilterVersion primitive so this effect re-fires
-  // on shape mutations (PITFALL S-02 lock — counter, not array reference).
-  const recordsSpatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
-  // Phase 30 follow-up: column-filter version primitive — required to dedupe Effect 1 fires
-  // when only column filters change (mirrors AggregatedWidget's filterVersion dep).
-  const recordsFilterVersion = useFilterStore((s) => s.filterVersion);
-  // Phase 30 follow-up: separate AbortController ref for the records-table's own materialize
-  // pipeline. Kept distinct from any chart-query controller (matches V13-P-10 separation).
-  const recordsMaterializeAbortRef = useRef<AbortController | null>(null);
-  // Phase 15-03 (FILT-V13-02): scoped selector for viewName.
-  // V13-LIMIT-01: pure consumer; materialize fires from sibling AggregatedWidgetRenderer
-  // on the same tableId. Records-table-only dashboard = no filtering until v1.4 (acceptable
-  // per v1.3 lock — VSTORE-V13-02 / FILT-V13). Phase 17 verification surfaces if it bites users.
-  const viewName = useFilterViewStore((s) =>
-    tableId !== undefined ? s.views[tableId]?.viewName : undefined
-  );
-  // Phase 15-04 (LIFE-V13-01): scoped selector to expiresAt for proactive expiry check.
-  const recordsTableExpiresAt = useFilterViewStore((s) =>
-    tableId !== undefined ? s.views[tableId]?.expiresAt ?? 0 : 0
-  );
-  // Phase 17-03 gap-closure: materializing-flag suspend gate (entry-based, mirrors
-  // AggregatedWidgetRenderer 17-02). Suspends only when an entry exists with materializing=true —
-  // i.e., a sibling chart on the same tableId triggered markMaterializing. For V13-LIMIT-01
-  // (records-table-only dashboard, no chart driver), no entry is ever created, so the gate
-  // never engages and the records-table renders raw FROM <table> as the accepted limitation.
-  // Reliable because dispatchDrillDown calls markMaterializing synchronously with addFilter
-  // (in the click handler), so the entry exists by the time these effects run.
-  const recordsTableMaterializing = useFilterViewStore((s) =>
-    tableId !== undefined ? s.views[tableId]?.materializing ?? false : false
-  );
+  // Phase 96-01 GAP 2: migrated into the combination model — selectors now read
+  // filterCombinationStore (vizToHash → registry) instead of the legacy filterViewStore.
+  // Mirrors AggregatedWidgetRenderer's combo-read pattern (Phase 91).
+  const recordsVizKey = `w:${widget.id}`;
+  // PITFALL S-02 lock: ONE primitive comboKey selector (viewName:expiresAt:materializing).
+  const recordsComboKey = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[recordsVizKey];
+    const e = h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? s.registry[h] : undefined;
+    return `${e?.viewName ?? ""}:${e?.expiresAt ?? 0}:${e?.materializing ? "1" : "0"}`;
+  });
+  // combinationVersion is the suspend-lift dep (mirrors AggregatedWidgetRenderer pattern).
+  const recordsCombinationVersion = useFilterCombinationStore((s) => s.combinationVersion);
   // Phase 35 Plan 05 (DV-V16-13): scoped dv selectors for dv-bound records-table widgets.
   // PITFALL C-02 lock — scope to s.views[dynamicViewId], NEVER the whole views map.
+  // KEPT as fallback for dv path (combo view prefers dv-combo entry, falls back to raw dv view).
   const recordsDvEntry = useDynamicViewStore((s) =>
     dynamicViewId !== undefined ? s.views[dynamicViewId] : undefined,
   );
@@ -1692,14 +1665,6 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const recordsDvViewName = recordsDvEntry?.viewName;
   const recordsDvError = recordsDvEntry?.error;
   const recordsDvReason = recordsDvEntry?.reason;
-  // Phase 63 (DVDRILL-V112-04): the FILTERED-dv view entry for this records widget. PITFALL C-02
-  // lock — scope to s.dvViews[dynamicViewId]. Read-path prefers this over the raw dv view
-  // (precedence filtered-dv → dv); recordsDvFilterMaterializing suspends fetch during materialize.
-  const recordsDvFilterEntry = useFilterViewStore((s) =>
-    dynamicViewId !== undefined ? s.dvViews[dynamicViewId] : undefined,
-  );
-  const recordsDvFilterViewName = recordsDvFilterEntry?.viewName;
-  const recordsDvFilterMaterializing = recordsDvFilterEntry?.materializing ?? false;
   // Phase 35 Plan 05: orphan detection — dynamicViewId set + no entry + not in dashboard list.
   const isOrphanRecordsDynamicView =
     dynamicViewId !== undefined &&
@@ -1743,10 +1708,14 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     const controller = new AbortController();
     exportAbortRef.current = controller;
 
-    // Resolve source — REUSE existing view-name logic (same as the fetch effects).
-    // Phase 63 (DVDRILL-V112-04): CSV honors the active dv filter — precedence filtered-dv → dv.
-    const effectiveViewNameCsv =
-      dynamicViewId !== undefined ? (recordsDvFilterViewName || recordsDvViewName) : viewName;
+    // Phase 96-01 GAP 2: Resolve source via combo store (mirrors page-fetch effect).
+    const comboHashCsv = useFilterCombinationStore.getState().vizToHash[recordsVizKey];
+    const comboEntryCsv = comboHashCsv && !comboHashCsv.endsWith(`:${NOFILTER_SENTINEL}`)
+      ? useFilterCombinationStore.getState().registry[comboHashCsv]
+      : undefined;
+    const effectiveViewNameCsv = dynamicViewId !== undefined
+      ? (comboEntryCsv?.viewName || recordsDvViewName)
+      : (comboEntryCsv?.viewName ?? "");
     const fromSourceCsv = effectiveViewNameCsv || table;
 
     // Columns: use columnOrder if non-empty (on-screen order), else fall back to effectiveColumns
@@ -1814,98 +1783,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     setPage(1);
   }, [sortField, sortDir]);
 
-  // ─── Phase 30 follow-up: spatial materialize trigger for the records-table ─────
-  // Mirrors AggregatedWidgetRenderer's Effect 1: 300ms debounce, abort prior in-flight,
-  // post combined { filters, spatialFilters, spatialTarget } when shapes apply to this
-  // tableId — otherwise DROP. RecordsTable was previously a pure view-consumer
-  // (V13-LIMIT-01); with no AggregatedWidget on the same tableId, no materialize fired
-  // and spatial filters silently did nothing. This effect closes that gap.
-  //
-  // NOTE on duplicate triggers: if BOTH an aggregated widget AND this records table
-  // exist on the same tableId, both fire. Each has its own debounce + abort, both
-  // converge on the SAME viewName via the server's CREATE OR REPLACE — slightly
-  // redundant but correct (last-write-wins per V13-P-09 lock).
-  useEffect(() => {
-    // Phase 63: a dv-bound records widget runs this effect even with no tableId.
-    if (tableId === undefined && dynamicViewId === undefined) return;
-    const timer = setTimeout(async () => {
-      // ── Phase 63 (DVDRILL-V112-02) dv-filter materialize trigger (records) ────
-      // Symmetric to AggregatedWidgetRenderer Effect 1's dv branch. Both renderers firing
-      // for the same dv converge on the same dv-filter view via the server's CREATE OR
-      // REPLACE (redundant-but-correct duplicate-trigger note already covers the table path).
-      if (dynamicViewId !== undefined) {
-        if (recordsDvStatus !== "materialized") return;
-        recordsMaterializeAbortRef.current?.abort();
-        const controller = new AbortController();
-        recordsMaterializeAbortRef.current = controller;
-        const dvFilters = useFilterStore.getState().dvFilters[dynamicViewId] ?? [];
-        if (dvFilters.length === 0) {
-          dropFilterView({ dashboardId, dynamicViewId }).catch(() => {});
-          useFilterViewStore.getState().clearDvView(dynamicViewId);
-          return;
-        }
-        useFilterViewStore.getState().markDvMaterializing(dynamicViewId, dashboardId);
-        try {
-          const result = await materializeFilter(
-            { dashboardId, dynamicViewId, filters: dvFilters },
-            controller.signal,
-          );
-          useFilterViewStore.getState().setDvView(dynamicViewId, result, dashboardId);
-        } catch (err) {
-          if ((err as Error)?.name === "AbortError") return;
-          useFilterViewStore.getState().clearDvView(dynamicViewId);
-          useToastStore.getState().showToast((err as Error).message, "error");
-        }
-        return;
-      }
-
-      // ── Table path (UNCHANGED) ───────────────────────────────────────────────
-      if (tableId === undefined) return;
-      recordsMaterializeAbortRef.current?.abort();
-      const controller = new AbortController();
-      recordsMaterializeAbortRef.current = controller;
-
-      const shapes = useSpatialFilterStore.getState().shapes;
-      const hasShapesForThisTable = recordsMyTarget !== undefined && shapes.length > 0;
-      const hasCol = recordsTableFilters.length > 0;
-
-      // DROP when nothing to filter on for this table.
-      if (!hasCol && !hasShapesForThisTable) {
-        dropFilterView({ dashboardId, tableId }).catch(() => {});
-        useFilterViewStore.getState().clearView(tableId);
-        return;
-      }
-
-      // Mark + materialize + setView. Same shape as AggregatedWidget Effect 1.
-      useFilterViewStore.getState().markMaterializing(tableId, dashboardId);
-      try {
-        const args: import("../../api/client").MaterializeFilterArgs = hasShapesForThisTable
-          ? {
-              dashboardId,
-              tableId,
-              filters: recordsTableFilters,
-              spatialFilters: shapes.map((s) => ({ id: s.id, wkt: s.wkt })),
-              spatialTarget: recordsMyTarget,
-            }
-          : { dashboardId, tableId, filters: recordsTableFilters };
-        const result = await materializeFilter(args, controller.signal);
-        useFilterViewStore.getState().setView(tableId, result, dashboardId);
-      } catch (err) {
-        if ((err as Error)?.name === "AbortError") return;
-        if (tableId !== undefined) {
-          useFilterViewStore.getState().clearMaterializing(tableId);
-        }
-        useToastStore.getState().showToast((err as Error).message, "error");
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-    // PITFALL S-02 deps: recordsFilterVersion + recordsSpatialFilterVersion are the primitive
-    // re-fire signals; tableFilters / shapes references would be unstable when empty.
-    // Phase 63: recordsDvStatus + dynamicViewId added so the dv-filter materialize branch
-    // re-fires when the dv becomes materialized or the binding changes (recordsFilterVersion,
-    // bumped by addDvFilter, covers dv-filter add/remove/clear).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordsFilterVersion, recordsSpatialFilterVersion, dashboardId, tableId, recordsDvStatus, dynamicViewId]);
+  // Phase 96-01 GAP 2: The records-table materialize-trigger effect has been REMOVED.
+  // The combination orchestrator (useCombinationOrchestrator) is now the SOLE trigger for
+  // records' combination view. RecordsTableRenderer is a READ-ONLY consumer of
+  // filterCombinationStore (reads vizToHash[recordsVizKey] → registry[hash] in page/count effects).
 
   // Effective columns: user-configured list, or empty (SELECT * — Kinetica always
   // returns positional keys column_N, but parseKineticaResponse remaps them via
@@ -1913,10 +1794,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const effectiveColumns = safeColumns;
 
   // Fetch one page of records
-  // Phase 35 Plan 05 (DV-V16-13): for dv-bound widgets, viewName source flips to
-  // useDynamicViewStore.views[dynamicViewId]?.viewName. Suspend-gate extends to
-  // recordsDvStatus === "pending" (research finding #7). Status short-circuits skip the
-  // fetch for over_threshold / error / orphan — render-body gates handle the JSX.
+  // Phase 96-01 GAP 2: reads combo store imperatively (mirrors AggregatedWidgetRenderer Effect 2).
+  // Suspend gate: comboEntry?.materializing (replaces legacy recordsTableMaterializing).
+  // effectiveViewName: comboEntry?.viewName (table) or dvComboEntry?.viewName || recordsDvViewName (dv).
+  // Phase 35 Plan 05 (DV-V16-13): for dv-bound widgets, dv status gates apply (pending / error / etc.).
   useEffect(() => {
     if (!table) {
       setData([]);
@@ -1927,14 +1808,20 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       setError(`Invalid table name: ${table}`);
       return;
     }
-    // Phase 17-03: materializing-flag suspend gate — see selector docs above.
-    if (recordsTableMaterializing) return;
+
+    // Phase 96-01: imperative combo read (avoids stale closure — mirrors AWR Effect 2).
+    // recordsComboKey / recordsCombinationVersion are the reactive deps; actual entry fields
+    // read here at effect-call time for accuracy (PITFALL S-02 pattern).
+    const comboHash = useFilterCombinationStore.getState().vizToHash[recordsVizKey];
+    const comboEntry = comboHash && !comboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+      ? useFilterCombinationStore.getState().registry[comboHash]
+      : undefined;
+
+    // Suspend gate: combo materializing (covers both table and dv paths via same vizKey).
+    if (comboEntry?.materializing) return;
 
     // Phase 35 Plan 05 (research finding #7): extend suspend-gate to dv pending status.
     if (dynamicViewId !== undefined && recordsDvStatus === "pending") return;
-
-    // Phase 63 (DVDRILL-V112-04): suspend the page fetch while a dv-FILTER materialize is in flight.
-    if (dynamicViewId !== undefined && recordsDvFilterMaterializing) return;
 
     // Phase 35 Plan 05: short-circuit for non-materialized dv statuses.
     if (dynamicViewId !== undefined) {
@@ -1945,30 +1832,29 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       // recordsDvStatus === "materialized" → fall through with effectiveViewName below.
     }
 
-    // LIFE-V13-01 PROACTIVE: clear stale view; sibling AggregatedWidgetRenderer's materialize-trigger
-    // re-materializes; this effect re-fires when viewName selector flips back to truthy.
-    // Phase 35 Plan 05: applies only to non-dv-bound widgets (filter-view path).
+    // LIFE-V13-01 PROACTIVE: clear stale combo entry; orchestrator re-materializes on next tick.
+    // Phase 96-01: replaced filterViewStore.clearView with clearEntry(comboHash).
     if (
       dynamicViewId === undefined &&
-      viewName &&
-      recordsTableExpiresAt > 0 &&
-      Date.now() >= recordsTableExpiresAt &&
-      tableId !== undefined
+      comboEntry?.viewName &&
+      comboEntry.expiresAt > 0 &&
+      Date.now() >= comboEntry.expiresAt &&
+      comboHash
     ) {
-      useFilterViewStore.getState().clearView(tableId);
-      return; // effect re-fires when viewName selector flips
+      useFilterCombinationStore.getState().clearEntry(comboHash);
+      return; // effect re-fires when recordsComboKey selector flips
     }
+
     const colsClause = effectiveColumns.length > 0 ? effectiveColumns.join(", ") : "*";
     const orderBy = sortField && IDENT_RE.test(sortField)
       ? ` ORDER BY ${sortField} ${sortDir.toUpperCase()}`
       : "";
     const offset = (page - 1) * pageSize;
-    // FILT-V13-02 + Phase 35 Plan 05: FROM-swap viewName source — dv-bound widget uses
-    // recordsDvViewName; legacy widget uses viewName. `||` (not `??`) — empty-string
-    // placeholder from markMaterializing must fall through to `table` (Phase 17-03 lock).
-    // Phase 63 (DVDRILL-V112-04): precedence filtered-dv → dv for the dv-bound widget.
-    const effectiveViewName =
-      dynamicViewId !== undefined ? (recordsDvFilterViewName || recordsDvViewName) : viewName;
+    // Phase 96-01: FROM-swap — dv path prefers dv-combo view, falls back to raw dv view.
+    // table path uses combo entry viewName ("" → base table). `||` not `??` — empty string falls through.
+    const effectiveViewName = dynamicViewId !== undefined
+      ? (comboEntry?.viewName || recordsDvViewName)
+      : (comboEntry?.viewName ?? "");
     const fromSource = effectiveViewName || table;
     const sql = `SELECT ${colsClause} FROM ${fromSource}${orderBy} LIMIT ${pageSize} OFFSET ${offset}`;
 
@@ -1984,47 +1870,43 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-    // Phase 17-03: recordsTableMaterializing in deps so the gate re-evaluates on flip (setView
-    // → false → re-fire with FROM <view>; clearMaterializing → false → re-fire with raw FROM table).
-    // Phase 35 Plan 05: dynamicViewId + recordsDvStatus + recordsDvViewName are the primitive
-    // deps that drive re-fire when dv binding / status / viewName changes.
+    // Phase 96-01: recordsComboKey + recordsCombinationVersion replace legacy filterViewStore deps.
+    // dynamicViewId + recordsDvStatus + recordsDvViewName still drive dv re-fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // Phase 63 (DVDRILL-V112-04): recordsDvFilterViewName + recordsDvFilterMaterializing deps so
-    // the page re-fetches when the dv-filter view appears / is cleared and the gate engages/lifts.
   }, [
     table,
-    viewName,
-    recordsTableExpiresAt,
+    recordsComboKey,
+    recordsCombinationVersion,
     effectiveColumns.join(","),
     sortField,
     sortDir,
     page,
     pageSize,
-    recordsTableMaterializing,
     dynamicViewId,
     recordsDvStatus,
     recordsDvViewName,
-    recordsDvFilterViewName,
-    recordsDvFilterMaterializing,
   ]);
 
-  // Fetch total count — Phase 15-03 (FILT-V13-02 success criterion #2): re-fires on viewName change
-  // so the count narrows when filter is activated. Pitfall 7 lock from 15-RESEARCH.md.
-  // Phase 35 Plan 05 (DV-V16-13): mirrors page-fetch effect — viewName source flips for dv-bound,
-  // suspend-gate extends to recordsDvStatus === "pending", non-materialized dv → skip fetch.
+  // Fetch total count — Phase 15-03 (FILT-V13-02 success criterion #2): re-fires on comboKey change
+  // so the count narrows when filter is activated.
+  // Phase 96-01 GAP 2: mirrors page-fetch effect — reads combo store, same suspend gate.
   useEffect(() => {
     if (!table || !IDENT_RE.test(table)) {
       setTotalCount(null);
       return;
     }
-    // Phase 17-03: materializing-flag suspend gate (mirrors page-fetch effect).
-    if (recordsTableMaterializing) return;
+
+    // Phase 96-01: imperative combo read (mirrors page-fetch effect).
+    const comboHash = useFilterCombinationStore.getState().vizToHash[recordsVizKey];
+    const comboEntry = comboHash && !comboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+      ? useFilterCombinationStore.getState().registry[comboHash]
+      : undefined;
+
+    // Suspend gate: combo materializing.
+    if (comboEntry?.materializing) return;
 
     // Phase 35 Plan 05 (research finding #7): extend suspend-gate to dv pending status.
     if (dynamicViewId !== undefined && recordsDvStatus === "pending") return;
-
-    // Phase 63 (DVDRILL-V112-04): suspend the count fetch while a dv-FILTER materialize is in flight.
-    if (dynamicViewId !== undefined && recordsDvFilterMaterializing) return;
 
     // Phase 35 Plan 05: short-circuit for non-materialized dv statuses.
     if (dynamicViewId !== undefined) {
@@ -2032,27 +1914,24 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       if (recordsDvStatus === undefined) return;
       if (recordsDvStatus === "over_threshold") return;
       if (recordsDvStatus === "error") return;
-      // recordsDvStatus === "materialized" → fall through.
     }
 
-    // LIFE-V13-01 PROACTIVE: clear stale view before count query; sibling AggregatedWidgetRenderer
-    // re-materializes on the next filterVersion cycle.
-    // Phase 35 Plan 05: applies only to non-dv-bound widgets (filter-view path).
+    // LIFE-V13-01 PROACTIVE: clear stale combo entry.
     if (
       dynamicViewId === undefined &&
-      viewName &&
-      recordsTableExpiresAt > 0 &&
-      Date.now() >= recordsTableExpiresAt &&
-      tableId !== undefined
+      comboEntry?.viewName &&
+      comboEntry.expiresAt > 0 &&
+      Date.now() >= comboEntry.expiresAt &&
+      comboHash
     ) {
-      useFilterViewStore.getState().clearView(tableId);
+      useFilterCombinationStore.getState().clearEntry(comboHash);
       return;
     }
-    // Phase 17-03 + Phase 35 Plan 05: `||` not `??` — empty-string placeholder must fall through.
-    // viewName source flips per dynamicViewId binding.
-    // Phase 63 (DVDRILL-V112-04): precedence filtered-dv → dv so the count narrows to the slice.
-    const effectiveViewName =
-      dynamicViewId !== undefined ? (recordsDvFilterViewName || recordsDvViewName) : viewName;
+
+    // Phase 96-01: FROM-swap via combo store.
+    const effectiveViewName = dynamicViewId !== undefined
+      ? (comboEntry?.viewName || recordsDvViewName)
+      : (comboEntry?.viewName ?? "");
     const fromSource = effectiveViewName || table;
     runSql<Record<string, unknown>>(`SELECT COUNT(*) AS total FROM ${fromSource}`)
       .then((res) => {
@@ -2065,14 +1944,11 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     table,
-    viewName,
-    recordsTableExpiresAt,
-    recordsTableMaterializing,
+    recordsComboKey,
+    recordsCombinationVersion,
     dynamicViewId,
     recordsDvStatus,
     recordsDvViewName,
-    recordsDvFilterViewName,
-    recordsDvFilterMaterializing,
   ]);
 
   const handleHeaderClick = (col: string) => {

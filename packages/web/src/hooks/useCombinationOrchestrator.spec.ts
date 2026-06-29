@@ -463,6 +463,102 @@ describe("useCombinationOrchestrator (Phase 90 COMBO-V118-01/03)", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Phase 96-01 GAP 1 — CEILING-NO-STUCK: fallback placeholder must resolve, not stick
+  // -------------------------------------------------------------------------
+  it("CEILING-NO-STUCK: pre-seeded stale fallback materializing:true (no controller) → cleared; STEP D fires fresh POST; vizs resolve", async () => {
+    const CEILING = 2;
+    act(() => {
+      useAuthStore.setState({ maxCombinationViewsPerTable: CEILING } as Parameters<typeof useAuthStore.setState>[0]);
+    });
+
+    const filterC: ActiveFilter = { column: "col1", value: "A", dataType: "string", sourceWidgetId: 10, addedAt: 3000 };
+    const filterD: ActiveFilter = { column: "col2", value: "B", dataType: "string", sourceWidgetId: 20, addedAt: 4000 };
+    const filterE: ActiveFilter = { column: "col3", value: "C", dataType: "string", sourceWidgetId: 30, addedAt: 5000 };
+
+    const w1 = makeWidget({ id: 1, tableId: TABLE_A, filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [10] } });
+    const w2 = makeWidget({ id: 2, tableId: TABLE_A, filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [20] } });
+    const w3 = makeWidget({ id: 3, tableId: TABLE_A, filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [30] } });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [filterC, filterD, filterE] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    // Pre-seed the fallback hash as materializing:true with no controller.
+    // Without the GAP 1 fix, STEP D sees liveEntry (materializing:true) and skips the POST —
+    // leaving every over-ceiling viz permanently stuck on "Filtering…".
+    const allFilters: ActiveFilter[] = [filterC, filterD, filterE];
+    const fallbackHash = stableComboHash("table", TABLE_A, allFilters);
+    useFilterCombinationStore.getState().markMaterializing(fallbackHash, DASH_ID, "table", TABLE_A);
+    // No AbortController → orphaned placeholder
+
+    const origShowToast = useToastStore.getState().showToast;
+    useToastStore.setState({ showToast: vi.fn() } as Parameters<typeof useToastStore.setState>[0]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2, w3], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    // STEP B clears the stale fallback placeholder; STEP D fires a fresh POST.
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalled();
+    }, { timeout: 1000 });
+
+    // After the POST resolves, the fallback entry must NOT be materializing.
+    await waitFor(() => {
+      const reg = useFilterCombinationStore.getState().registry[fallbackHash];
+      // Either the entry was cleared and re-created (materializing:false), or
+      // it was never re-seeded (no entry → also not stuck).
+      expect(reg?.materializing ?? false).toBe(false);
+    }, { timeout: 1000 });
+
+    useToastStore.setState({ showToast: origShowToast } as Parameters<typeof useToastStore.setState>[0]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 96-01 GAP 1 — ORPHANED-CLEARED: over-ceiling removed hash must be cleared
+  // -------------------------------------------------------------------------
+  it("ORPHANED-CLEARED: over-ceiling removed hash with stale materializing:true (no controller) → cleared after STEP B", async () => {
+    const CEILING = 2;
+    act(() => {
+      useAuthStore.setState({ maxCombinationViewsPerTable: CEILING } as Parameters<typeof useAuthStore.setState>[0]);
+    });
+
+    const filterC: ActiveFilter = { column: "col1", value: "A", dataType: "string", sourceWidgetId: 10, addedAt: 3000 };
+    const filterD: ActiveFilter = { column: "col2", value: "B", dataType: "string", sourceWidgetId: 20, addedAt: 4000 };
+    const filterE: ActiveFilter = { column: "col3", value: "C", dataType: "string", sourceWidgetId: 30, addedAt: 5000 };
+
+    const w1 = makeWidget({ id: 1, tableId: TABLE_A, filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [10] } });
+    const w2 = makeWidget({ id: 2, tableId: TABLE_A, filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [20] } });
+    const w3 = makeWidget({ id: 3, tableId: TABLE_A, filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [30] } });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [filterC, filterD, filterE] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    // Pre-seed one of the per-viz hashes as materializing:true (no controller).
+    // After ceiling remap, this hash is removed from hashMap — without GAP 1 fix it stays
+    // orphaned in the registry as materializing:true forever.
+    const orphanHash = stableComboHash("table", TABLE_A, [filterE]);
+    useFilterCombinationStore.getState().markMaterializing(orphanHash, DASH_ID, "table", TABLE_A);
+
+    const origShowToast = useToastStore.getState().showToast;
+    useToastStore.setState({ showToast: vi.fn() } as Parameters<typeof useToastStore.setState>[0]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w1, w2, w3], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The orphaned hash must have been cleared (no longer materializing).
+    await waitFor(() => {
+      const reg = useFilterCombinationStore.getState().registry[orphanHash];
+      expect(reg?.materializing ?? false).toBe(false);
+    }, { timeout: 1000 });
+
+    useToastStore.setState({ showToast: origShowToast } as Parameters<typeof useToastStore.setState>[0]);
+  });
+
+  // -------------------------------------------------------------------------
   // Scenario 9: NOFILTER sentinel guard (explicit markMaterializing not called)
   // -------------------------------------------------------------------------
   it("9: NOFILTER sentinel guard → no markMaterializing, no POST, setVizHash undefined", async () => {
@@ -1038,10 +1134,10 @@ describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => 
   });
 
   // -------------------------------------------------------------------------
-  // SC6: Records excluded from orchestrator enumeration
-  // A "records" widget on TABLE_A → orchestrator must NOT mint a combo entry for it.
+  // SC6: Phase 96-01 GAP 2 — Records IS now enumerated by the orchestrator.
+  // A "records" widget on TABLE_A with active filters → ONE POST; vizToHash["w:30"] set.
   // -------------------------------------------------------------------------
-  it("SC6: records widget → no combo entry / no materializeFilter call for it", async () => {
+  it("SC6: records widget with active filter → ONE POST; vizToHash set (Phase 96-01: records no longer in NON_TRIGGER_TYPES)", async () => {
     const recordsWidget = makeWidget({ id: 30, type: "records", tableId: TABLE_A });
 
     useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
@@ -1050,19 +1146,43 @@ describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => 
     bumpFilterVersion();
     advanceDebounce();
 
-    await act(async () => { await Promise.resolve(); });
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
 
-    // No POST for records widget
-    expect(materializeFilter).not.toHaveBeenCalled();
-
-    // vizToHash has no entry for the records widget
+    // vizToHash must have an entry for the records widget
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
     const state = useFilterCombinationStore.getState();
-    const vizVal = state.vizToHash["w:30"];
-    expect(vizVal === undefined || !("w:30" in state.vizToHash)).toBe(true);
+    expect(state.vizToHash["w:30"]).toBe(expectedHash);
   });
 
-  // SC6b: sibling "bar" widget on same table still materializes normally
-  it("SC6b: sibling bar + records on TABLE_A — bar materializes, records does not", async () => {
+  // SC6b: Phase 96-01 GAP 2 — records + bar on same table → ONE shared POST; refCount 2.
+  it("SC6b: bar + records on TABLE_A → ONE POST (shared hash); refCount 2", async () => {
+    const recordsWidget = makeWidget({ id: 30, type: "records", tableId: TABLE_A });
+    const barWidget = makeWidget({ id: 31, type: "bar", tableId: TABLE_A });
+
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [recordsWidget, barWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    // Only ONE POST — both widgets share the same combination hash.
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    // Both vizToHash entries must equal the same hash (shared entry, refCount 2).
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["w:30"]).toBe(expectedHash);
+      expect(state.vizToHash["w:31"]).toBe(expectedHash);
+    });
+  });
+
+  // SC6c: records widget + bar on same table → same vizToHash, refCount 2.
+  it("SC6c: records + bar same TABLE_A → same vizToHash value; ONE POST (refCount 2)", async () => {
     const recordsWidget = makeWidget({ id: 30, type: "records", tableId: TABLE_A });
     const barWidget = makeWidget({ id: 31, type: "bar", tableId: TABLE_A });
 
@@ -1076,26 +1196,26 @@ describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => 
       expect(materializeFilter).toHaveBeenCalledTimes(1);
     });
 
-    // Only w:31 (bar) has a vizToHash entry
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
     await waitFor(() => {
       const state = useFilterCombinationStore.getState();
-      expect(state.vizToHash["w:31"]).toBeDefined();
-      const recordsVal = state.vizToHash["w:30"];
-      expect(recordsVal === undefined || !("w:30" in state.vizToHash)).toBe(true);
+      // Both widgets share the same hash value.
+      expect(state.vizToHash["w:30"]).toBe(state.vizToHash["w:31"]);
+      expect(state.vizToHash["w:30"]).toBe(expectedHash);
     });
   });
 
   // -------------------------------------------------------------------------
   // SOLE-TRIGGER GREP GATE
-  // After Phase 93.5:
+  // After Phase 93.5 + Phase 96-01 GAP 2:
   //   (a) The map-only hook file no longer exists.
   //   (b) The orchestrator is the ONLY hook that calls materializeFilter with BOTH
   //       spatialFilters AND combinationKey (grep the orchestrator source).
-  //   The gate: "after Phase 93.5, ONLY useCombinationOrchestrator materializes
-  //   the table+spatial path for chart+layer vizs; records remains a self-contained
-  //   legacy island."
+  //   (c) Records is no longer a self-contained legacy island — the orchestrator owns
+  //       records widgets too. WidgetRenderer RecordsTableRenderer section must NOT
+  //       contain its own materializeFilter / dropFilterView call sites.
   // -------------------------------------------------------------------------
-  it("SOLE-TRIGGER GATE: map-only hook file deleted; orchestrator is sole spatial+combinationKey caller", () => {
+  it("SOLE-TRIGGER GATE: map-only hook file deleted; orchestrator is sole spatial+combinationKey caller; RecordsTableRenderer has no materialize call sites", () => {
     const hooksDir = path.resolve(__dirname);
 
     // (a) The deleted hook file must not exist
@@ -1111,17 +1231,42 @@ describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => 
     expect(orchestratorSrc).toContain("combinationKey: hash");
 
     // (c) No OTHER hook file in this directory calls materializeFilter with spatialFilters
-    //     (records' legacy path is in components/charts/WidgetRenderer.tsx, not hooks/)
     const hookFiles = fs.readdirSync(hooksDir)
       .filter((f) => f.endsWith(".ts") && !f.endsWith(".spec.ts") && f !== "useCombinationOrchestrator.ts");
 
     for (const file of hookFiles) {
       const src = fs.readFileSync(path.join(hooksDir, file), "utf-8");
-      // No hook file other than the orchestrator should call materializeFilter with spatialFilters
       if (src.includes("materializeFilter") && src.includes("spatialFilters")) {
         throw new Error(
           `Sole-trigger gate FAILED: ${file} calls materializeFilter with spatialFilters. ` +
           "Only useCombinationOrchestrator should own the spatial+combination path."
+        );
+      }
+    }
+
+    // (d) Phase 96-01 GAP 2: The RecordsTableRenderer section of WidgetRenderer.tsx
+    //     (everything after the RecordsTableRenderer boundary) must contain zero
+    //     materializeFilter / dropFilterView / setView / clearView call sites.
+    //     These have been migrated to the orchestrator (sole-trigger contract).
+    const widgetRendererPath = path.resolve(
+      hooksDir,
+      "../components/charts/WidgetRenderer.tsx",
+    );
+    const widgetRendererSrc = fs.readFileSync(widgetRendererPath, "utf-8");
+    // Find the RecordsTableRenderer boundary (arrow function component declaration)
+    const recordsBoundaryIdx = widgetRendererSrc.indexOf("const RecordsTableRenderer =");
+    expect(recordsBoundaryIdx).toBeGreaterThan(0);
+    const recordsSection = widgetRendererSrc.slice(recordsBoundaryIdx);
+    // These call patterns must not appear in the RecordsTableRenderer section
+    const forbiddenPatterns = [
+      /(?<!\/\/.*)materializeFilter\(/,
+      /(?<!\/\/.*)dropFilterView\(/,
+    ];
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(recordsSection)) {
+        throw new Error(
+          `Sole-trigger gate FAILED: RecordsTableRenderer still contains '${pattern.source}'. ` +
+          "Phase 96-01 GAP 2 requires orchestrator-only materialize; RecordsTableRenderer must be a pure consumer."
         );
       }
     }
@@ -1206,7 +1351,7 @@ describe("Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)", () 
     useFilterCombinationStore.getState().reset();
     useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
     useDynamicViewStore.getState().reset();
-    useAuthStore.setState({ maxCombinationViewsPerTable: 10 } as Parameters<typeof useAuthStore.setState>[0]);
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
     (materializeFilter as Mock).mockReset();
     (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_dv_v", expiresAt: 9_999_999_999 });
     (dropCombinationView as Mock).mockReset();
@@ -1215,6 +1360,8 @@ describe("Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)", () 
 
   afterEach(() => {
     vi.useRealTimers();
+    // Phase 96-01 GAP 3: reset dvFilterScopeDisabled so it doesn't leak into other tests.
+    useAuthStore.setState({ dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
   });
 
   // -------------------------------------------------------------------------
@@ -1518,9 +1665,101 @@ describe("Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)", () 
   });
 
   // -------------------------------------------------------------------------
+  // Phase 96-01 GAP 3 — DV-DISABLE: dvFilterScopeDisabled=true → accept-all (ignore saved allowlist)
+  // -------------------------------------------------------------------------
+  it("DV-DISABLE: dvFilterScopeDisabled=true → both dv widgets treated as accept-all; same hash; ONE POST", async () => {
+    // wA has a non-matching allowlist (would normally exclude the dvFilter → NOFILTER)
+    // wB has no filterSelection (accept-all).
+    // With dvScopeDisabled, both must resolve to accept-all → same hash → ONE POST.
+    const dvFilter: ActiveFilter = {
+      column: "status", value: "active", dataType: "string", addedAt: 1000, sourceWidgetId: 99,
+    };
+
+    const wA = makeDvWidget({
+      id: 10,
+      dynamicViewId: DV_ID,
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [99] },
+    });
+    const wB = makeDvWidget({ id: 11, dynamicViewId: DV_ID }); // accept-all by default
+
+    seedDvMaterialized(DV_ID);
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+      // Enable dvScopeDisabled
+      useAuthStore.setState({ dvFilterScopeDisabled: true } as Parameters<typeof useAuthStore.setState>[0]);
+    });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [wA, wB], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    // Both vizToHash entries must be equal (accept-all hash = stableComboHash("dv", DV_ID, [dvFilter]))
+    const expectedHash = stableComboHash("dv", DV_ID, [dvFilter]);
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["w:10"]).toBe(expectedHash);
+      expect(state.vizToHash["w:11"]).toBe(expectedHash);
+    });
+  });
+
+  it("DV-DISABLE flag-off: dvFilterScopeDisabled=false → saved filterSelection still respected; non-matching allowlist → NOFILTER", async () => {
+    const dvFilter: ActiveFilter = {
+      column: "status", value: "active", dataType: "string", addedAt: 1000, sourceWidgetId: 99,
+    };
+
+    // wA allowlist [99] matches sourceWidgetId 99 → should get the hash
+    const wA = makeDvWidget({
+      id: 10,
+      dynamicViewId: DV_ID,
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [99] },
+    });
+    // wB allowlist [50] does NOT match sourceWidgetId 99 → resolveFilterSet returns [] → NOFILTER
+    const wB = makeDvWidget({
+      id: 11,
+      dynamicViewId: DV_ID,
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [50] },
+    });
+
+    seedDvMaterialized(DV_ID);
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+      // Flag OFF — saved filterSelection applies
+      useAuthStore.setState({ dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [wA, wB], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const expectedHash = stableComboHash("dv", DV_ID, [dvFilter]);
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      // wA (matching allowlist) gets the hash
+      expect(state.vizToHash["w:10"]).toBe(expectedHash);
+      // wB (non-matching allowlist) is NOFILTER → vizToHash absent/undefined
+      const wBVal = state.vizToHash["w:11"];
+      expect(wBVal === undefined || !("w:11" in state.vizToHash)).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Sole-trigger grep gate (Phase 94 dv path)
   // -------------------------------------------------------------------------
-  it("SOLE-TRIGGER-DV GATE: orchestrator contains stableComboHash('dv') and markMaterializing dv call", () => {
+  it("SOLE-TRIGGER-DV GATE: orchestrator contains stableComboHash('dv') and markMaterializing dv call; dvFilterScopeDisabled data-path wired", () => {
     const orchestratorPath = path.resolve(__dirname, "useCombinationOrchestrator.ts");
     const src = fs.readFileSync(orchestratorPath, "utf-8");
 
@@ -1528,5 +1767,7 @@ describe("Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)", () 
     expect(src).toContain('stableComboHash("dv"');
     // Must contain the markMaterializing dv call
     expect(src).toContain('"dv", dvId');
+    // Phase 96-01 GAP 3: must contain dvFilterScopeDisabled read (data-path wired)
+    expect(src).toContain("dvFilterScopeDisabled");
   });
 });
