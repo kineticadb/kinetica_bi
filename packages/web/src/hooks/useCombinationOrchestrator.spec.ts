@@ -1127,3 +1127,406 @@ describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)
+// ---------------------------------------------------------------------------
+
+import { useDynamicViewStore } from "../store/dynamicViewStore";
+import { NOFILTER_SENTINEL } from "../lib/stableComboHash";
+
+const DV_ID = 7;
+
+/** Build a dv-bound trigger widget. vizKey is "w:<id>" */
+function makeDvWidget(overrides: {
+  id: number;
+  type?: string;
+  dynamicViewId: number;
+  filterSelection?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: (number | string)[] };
+}): WidgetDto {
+  return {
+    id: overrides.id,
+    dashboard_id: DASH_ID,
+    title: `DvWidget ${overrides.id}`,
+    type: overrides.type ?? "bar",
+    position: 0,
+    config: {
+      dynamicViewId: overrides.dynamicViewId,
+      ...(overrides.filterSelection ? { filterSelection: overrides.filterSelection } : {}),
+    },
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-06-01T00:00:00Z",
+  };
+}
+
+/** Build a dv-bound layer. vizKey is "l:<id>" */
+function makeDvLayer(overrides: {
+  id: number;
+  dynamic_view_id: number;
+  filter_scope?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: number[] };
+}): DashboardLayerDto {
+  return {
+    id: overrides.id,
+    dashboard_id: DASH_ID,
+    table_id: TABLE_A,
+    layer_type: "KineticaWms",
+    position: 0,
+    config: {},
+    info_enabled: 0,
+    info_columns: null,
+    info_template: null,
+    dynamic_view_id: overrides.dynamic_view_id,
+    cb_config: null,
+    track_config: null,
+    ...(overrides.filter_scope ? { filter_scope: overrides.filter_scope } : {}),
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-06-01T00:00:00Z",
+  };
+}
+
+/** Seed the dynamicViewStore with a "materialized" dv entry */
+function seedDvMaterialized(dvId: number, viewName = `_kbi_dv_${dvId}`) {
+  act(() => {
+    useDynamicViewStore.setState((s) => ({
+      views: {
+        ...s.views,
+        [dvId]: {
+          status: "materialized",
+          viewName,
+        },
+      },
+      dynamicViewVersion: s.dynamicViewVersion + 1,
+    }));
+  });
+}
+
+describe("Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10 } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_dv_v", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // -------------------------------------------------------------------------
+  // CASE A (regression): table-bound viz with active filters still materializes
+  // via stableComboHash("table", ...). dv changes did NOT alter the table path.
+  // -------------------------------------------------------------------------
+  it("A: table-bound widget with active filters → ONE POST with sourceType 'table' (regression)", async () => {
+    const w = makeWidget({ id: 1, tableId: TABLE_A });
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    expect(call.tableId).toBe(TABLE_A);
+    expect(call.dynamicViewId).toBeUndefined();
+    expect(call.combinationKey).toBeDefined();
+    // combinationKey must use stableComboHash("table", ...)
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    expect(call.combinationKey).toBe(expectedHash);
+
+    // Registry entry has sourceType "table"
+    await waitFor(() => {
+      const entry = useFilterCombinationStore.getState().registry[expectedHash];
+      expect(entry?.sourceType).toBe("table");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // CASE B: dv-bound widget (config.dynamicViewId set, dv "materialized") with
+  // non-empty dvFilters[dvId] → exactly ONE materializeFilter call with
+  // { dynamicViewId, filters: resolved, combinationKey: hash }; NO spatialFilters.
+  // registry sourceType "dv", sourceId = dvId; vizToHash["w:<id>"] = dv hash.
+  // -------------------------------------------------------------------------
+  it("B: dv-bound widget with active dvFilters → ONE POST with dynamicViewId + combinationKey; sourceType 'dv'", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    seedDvMaterialized(DV_ID);
+
+    const dvFilter: ActiveFilter = {
+      column: "status",
+      value: "active",
+      dataType: "string",
+      addedAt: 1000,
+      sourceWidgetId: 10,
+    };
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+    });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    // Must have dynamicViewId, NOT tableId
+    expect(call.dynamicViewId).toBe(DV_ID);
+    expect(call.tableId).toBeUndefined();
+    // combinationKey must be a dv-sourced hash
+    const expectedHash = stableComboHash("dv", DV_ID, [dvFilter]);
+    expect(call.combinationKey).toBe(expectedHash);
+    // NO spatialFilters (dv path is column-only)
+    expect(call.spatialFilters).toBeUndefined();
+    expect(call.spatialTarget).toBeUndefined();
+    // dashboardId present
+    expect(call.dashboardId).toBe(DASH_ID);
+
+    // Registry entry has sourceType "dv", sourceId = dvId
+    await waitFor(() => {
+      const entry = useFilterCombinationStore.getState().registry[expectedHash];
+      expect(entry).toBeDefined();
+      expect(entry!.sourceType).toBe("dv");
+      expect(entry!.sourceId).toBe(DV_ID);
+      expect(entry!.viewName).toBe("_kbi_combo_dv_v");
+    });
+
+    // vizToHash["w:10"] = the dv hash (NOTE: vizKey uses "w:" prefix, NOT "dv:")
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash[`w:${w.id}`]).toBe(expectedHash);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // CASE C: dv-bound widget with EMPTY dvFilters[dvId] → resolveFilterSet(cfg, []) = []
+  // → hash ends :NOFILTER → NO materializeFilter call; vizToHash["w:<id>"] = undefined.
+  // -------------------------------------------------------------------------
+  it("C: dv-bound widget with EMPTY dvFilters → NOFILTER → no POST; vizToHash['w:10'] absent/undefined", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    seedDvMaterialized(DV_ID);
+    // No dvFilters for DV_ID → dvFilters[DV_ID] = [] (empty)
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // No POST — NOFILTER hash means no combo materialization
+    expect(materializeFilter).not.toHaveBeenCalled();
+
+    // vizToHash["w:10"] must be absent or undefined (NOFILTER → cleared/not set)
+    const state = useFilterCombinationStore.getState();
+    const vizVal = state.vizToHash["w:10"];
+    expect(vizVal === undefined || !("w:10" in state.vizToHash)).toBe(true);
+
+    // Verify the hash would indeed end with NOFILTER_SENTINEL
+    const hash = stableComboHash("dv", DV_ID, []);
+    expect(hash.endsWith(`:${NOFILTER_SENTINEL}`)).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // dv NOT-materialized gate: dv status "pending" → dv-bound widget skipped
+  // -------------------------------------------------------------------------
+  it("dv-not-materialized gate: dv 'pending' → widget skipped (no materializeFilter, no vizToHash entry)", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    // Seed dv as "pending" (not materialized)
+    act(() => {
+      useDynamicViewStore.setState((s) => ({
+        views: {
+          ...s.views,
+          [DV_ID]: {
+            status: "pending",
+            viewName: `_kbi_dv_${DV_ID}`, // viewName is always populated even in pending state
+          },
+        },
+        dynamicViewVersion: s.dynamicViewVersion + 1,
+      }));
+    });
+
+    const dvFilter: ActiveFilter = { column: "col", value: "val", dataType: "string", addedAt: 1000 };
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+    });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(materializeFilter).not.toHaveBeenCalled();
+    const state = useFilterCombinationStore.getState();
+    expect(state.vizToHash["w:10"]).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // dv-bound LAYER with active dvFilters → materializeFilter with dynamicViewId;
+  // vizToHash["l:<id>"] set; sourceType "dv".
+  // -------------------------------------------------------------------------
+  it("dv-bound layer with active dvFilters → ONE POST with dynamicViewId; vizToHash['l:20'] set", async () => {
+    const layer = makeDvLayer({ id: 20, dynamic_view_id: DV_ID });
+    seedDvMaterialized(DV_ID);
+
+    const dvFilter: ActiveFilter = {
+      column: "region",
+      value: "west",
+      dataType: "string",
+      addedAt: 2000,
+    };
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+    });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [layer]));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    expect(call.dynamicViewId).toBe(DV_ID);
+    expect(call.tableId).toBeUndefined();
+    expect(call.spatialFilters).toBeUndefined();
+
+    const expectedHash = stableComboHash("dv", DV_ID, [dvFilter]);
+    expect(call.combinationKey).toBe(expectedHash);
+
+    await waitFor(() => {
+      const state = useFilterCombinationStore.getState();
+      expect(state.vizToHash["l:20"]).toBe(expectedHash);
+    });
+
+    await waitFor(() => {
+      const entry = useFilterCombinationStore.getState().registry[expectedHash];
+      expect(entry?.sourceType).toBe("dv");
+      expect(entry?.sourceId).toBe(DV_ID);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // dv + table shared-store refCount: dv combo + table combo coexist without
+  // cross-contamination; cleanup loops iterate all entries regardless of sourceType.
+  // -------------------------------------------------------------------------
+  it("dv + table shared-store refCount: both coexist in registry; distinct hashes; no cross-contamination", async () => {
+    // Table-bound widget
+    const tableWidget = makeWidget({ id: 1, tableId: TABLE_A });
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+
+    // dv-bound widget
+    const dvWidget = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    seedDvMaterialized(DV_ID);
+    const dvFilter: ActiveFilter = { column: "col", value: "val", dataType: "string", addedAt: 1000 };
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+    });
+
+    (materializeFilter as Mock)
+      .mockResolvedValueOnce({ viewName: "_kbi_combo_table_v", expiresAt: 9_999_999_999 })
+      .mockResolvedValueOnce({ viewName: "_kbi_combo_dv_v2", expiresAt: 9_999_999_999 });
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [tableWidget, dvWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(2);
+    });
+
+    const tableHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    const dvHash = stableComboHash("dv", DV_ID, [dvFilter]);
+
+    // Both hashes must be distinct
+    expect(tableHash).not.toBe(dvHash);
+
+    await waitFor(() => {
+      const reg = useFilterCombinationStore.getState().registry;
+      expect(reg[tableHash]).toBeDefined();
+      expect(reg[dvHash]).toBeDefined();
+      // No cross-contamination of sourceType
+      expect(reg[tableHash]!.sourceType).toBe("table");
+      expect(reg[dvHash]!.sourceType).toBe("dv");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // NO spatial on dv: even when shapes exist, dv materializeFilter call has no
+  // spatialFilters key (resolveSpatialShapes is never called for dv vizs).
+  // -------------------------------------------------------------------------
+  it("NO spatial on dv: dv materializeFilter call has NO spatialFilters even when shapes exist", async () => {
+    const mapWidget = makeMapWidgetWithTarget(5, TABLE_A); // provides spatial target for TABLE_A
+    const dvWidget = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    seedDvMaterialized(DV_ID);
+
+    const dvFilter: ActiveFilter = { column: "col", value: "val", dataType: "string", addedAt: 1000 };
+    act(() => {
+      useFilterStore.setState((s) => ({
+        dvFilters: { ...s.dvFilters, [DV_ID]: [dvFilter] },
+        filterVersion: s.filterVersion + 1,
+      }));
+    });
+    // Add a shape — should NOT affect dv path
+    setShapes([SHAPE_1]);
+
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [mapWidget, dvWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+
+    await waitFor(() => {
+      // At least one POST fired (could be 1 or 2 depending on whether table widget exists)
+      expect(materializeFilter).toHaveBeenCalled();
+    });
+
+    // Find the dv call (the one with dynamicViewId)
+    const dvCall = (materializeFilter as Mock).mock.calls
+      .map((c: unknown[]) => c[0] as Record<string, unknown>)
+      .find((c) => c.dynamicViewId === DV_ID);
+
+    expect(dvCall).toBeDefined();
+    expect(dvCall!.spatialFilters).toBeUndefined();
+    expect(dvCall!.spatialTarget).toBeUndefined();
+    // combinationKey is a dv hash (no spatial segment)
+    const expectedHash = stableComboHash("dv", DV_ID, [dvFilter]);
+    expect(dvCall!.combinationKey).toBe(expectedHash);
+  });
+
+  // -------------------------------------------------------------------------
+  // Sole-trigger grep gate (Phase 94 dv path)
+  // -------------------------------------------------------------------------
+  it("SOLE-TRIGGER-DV GATE: orchestrator contains stableComboHash('dv') and markMaterializing dv call", () => {
+    const orchestratorPath = path.resolve(__dirname, "useCombinationOrchestrator.ts");
+    const src = fs.readFileSync(orchestratorPath, "utf-8");
+
+    // Must contain the dv hash call
+    expect(src).toContain('stableComboHash("dv"');
+    // Must contain the markMaterializing dv call
+    expect(src).toContain('"dv", dvId');
+  });
+});

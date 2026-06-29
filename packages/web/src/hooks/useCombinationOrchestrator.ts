@@ -11,20 +11,28 @@
  * MAX_COMBINATION_VIEWS_PER_TABLE env var) with fallback to the all-filters view + one
  * "info" toast per table per tick.
  *
- * DUAL-TRIGGER (Phase 90): runs ALONGSIDE AggregatedWidgetRenderer Effect 1. Combination
- * views carry a distinct _c<hash8> suffix and are NOT read by any renderer until Phase 91/92.
- * Effect 1 in AggregatedWidgetRenderer must NOT be touched in this phase.
+ * Phase 94 (FSCOPE-V118-03): also enumerates dv-bound widgets + layers, hashes with
+ * stableComboHash("dv", dvId, resolved) (COLUMN-ONLY — no spatial 4th arg; server rejects
+ * spatial on dv path with 400). The orchestrator is the SOLE materialize trigger for the
+ * dv combination path; WidgetRenderer Effect 1 dv-branch is REMOVED (Phase 94).
  *
  * combinationVersion INVARIANT: `combinationVersion` from filterCombinationStore is NEVER
  * in this hook's Effect dep array. `setEntry` bumps `combinationVersion` — if it were a dep,
  * every successful materialize would re-fire the orchestrator, causing an infinite loop.
- * The Effect deps are EXACTLY: [filterVersion, dashboardId, widgetsKey, layersKey, ceiling].
+ * The Effect deps are EXACTLY:
+ *   [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId,
+ *    widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, ceiling].
+ *
+ * dynamicViewVersion SAFETY: bumps ONLY on dv materialize events (markPending/setView/
+ * setError/clearView — inside useDynamicViewMaterializeChain). NEVER called by the
+ * orchestrator or filterCombinationStore.setEntry → no feedback loop. Safe dep.
  *
  * Mount site: `DashboardsPage.tsx` `DashboardOpen`, immediately after `useViewKeepAlive`.
  * Single instance per open dashboard.
  *
  * Requirements: COMBO-V118-01 (one view per unique combination; dedup + ref-count DROP)
  *               COMBO-V118-03 (ceiling enforcement + fallback + warning)
+ *               FSCOPE-V118-03 (dv-bound widgets + layers — Phase 94)
  */
 
 import { useEffect, useMemo, useRef } from "react";
@@ -38,6 +46,7 @@ import { resolveSpatialShapes } from "../lib/resolveSpatialShapes";
 import { stableComboHash, NOFILTER_SENTINEL } from "../lib/stableComboHash";
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
+import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { materializeFilter, dropCombinationView } from "../api/client";
 import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import type { FilterSelectionConfig } from "../types/filterSelection";
@@ -94,6 +103,12 @@ export function useCombinationOrchestrator(
   // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop
   // (same reasoning as filterVersion; combinationVersion remains EXCLUDED).
   const spatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
+  // Phase 94 (FSCOPE-V118-03): dynamicViewVersion bumps ONLY on dv materialize events
+  // (markPending/setView/setError/clearView in useDynamicViewMaterializeChain). NEVER
+  // called by the orchestrator or filterCombinationStore.setEntry → no feedback loop.
+  // Needed so the orchestrator re-fires when a dv materializes AFTER the last filterVersion
+  // bump (the dv-materializes-after-last-filter edge case). Safe dep.
+  const dynamicViewVersion = useDynamicViewStore((s) => s.dynamicViewVersion);
   // Read ceiling from auth store (set by /api/me from MAX_COMBINATION_VIEWS_PER_TABLE env var).
   // Falls back to the web-side constant if the field is not yet set.
   const ceiling =
@@ -125,6 +140,28 @@ export function useCombinationOrchestrator(
     [layers],
   );
 
+  // --- 2c. Phase 94: Stable primitive keys for dv-bound trigger widgets + layers ---
+  // (S-02 compliant — joined primitive strings, NOT widget/layer arrays)
+  const dvWidgetsKey = useMemo(
+    () =>
+      widgets
+        .filter((w) => isTriggerType(w.type) && typeof w.config.dynamicViewId === "number")
+        .map((w) => `dv:${w.config.dynamicViewId as number}:${w.id}`)
+        .sort()
+        .join(","),
+    [widgets],
+  );
+
+  const dvLayersKey = useMemo(
+    () =>
+      layers
+        .filter((l) => l.dynamic_view_id !== null && l.dynamic_view_id !== undefined)
+        .map((l) => `dv:${l.dynamic_view_id!}:${l.id}`)
+        .sort()
+        .join(","),
+    [layers],
+  );
+
   // --- 3. AbortController-per-hash Map (cross-hash isolation; survives re-renders) ---
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
 
@@ -138,10 +175,12 @@ export function useCombinationOrchestrator(
   );
 
   // --- 5. Main orchestration effect ---
-  // CRITICAL: deps = [filterVersion, spatialFilterVersion, dashboardId, widgetsKey, layersKey, ceiling].
+  // CRITICAL deps = [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId,
+  //                  widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, ceiling].
   // combinationVersion is intentionally EXCLUDED — it bumps on every setEntry and
   // would cause this effect to re-fire after each materialize, creating an infinite loop.
   // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop.
+  // dynamicViewVersion bumps ONLY on dv materialize events → safe, no loop (Phase 94).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -198,7 +237,7 @@ export function useCombinationOrchestrator(
       }
 
       // Phase 92 (READ-V118-02): enumerate table-bound map layers alongside widgets.
-      // dv-bound layers (dynamic_view_id !== null) are Phase 94 scope — skipped here.
+      // dv-bound layers (dynamic_view_id !== null) are handled in the dv loop below.
       // widgetIds in HashEntry now also stores layer ids (internal; not renamed to avoid churn).
       for (const layer of layers) {
         if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) continue;
@@ -222,6 +261,75 @@ export function useCombinationOrchestrator(
         let e = hm.get(hash);
         if (!e) { e = { resolved, widgetIds: [], acceptedShapes: shapesForHash, spatialTarget }; hm.set(hash, e); }
         e.widgetIds.push(layer.id);   // widgetIds holds widget AND layer ids (internal; not renamed)
+        vizKeyToHash.set(`l:${layer.id}`, hash);
+      }
+
+      // ----------------------------------------------------------------
+      // Phase 94 (FSCOPE-V118-03): enumerate dv-bound trigger widgets + layers.
+      // dv path is COLUMN-ONLY — resolveSpatialShapes / aggregateSpatialTargetsByTable
+      // are NOT called for dv vizs (server rejects spatial on dv path with 400).
+      // No ceiling for dv path — naturally bounded by dvFilters length which is capped
+      // by FILTER_CAP_PER_TABLE; see 94-RESEARCH §STEP B.
+      // ----------------------------------------------------------------
+      // DvHashEntry: no spatial fields (dv is column-only)
+      type DvHashEntry = { resolved: ReturnType<typeof resolveFilterSet>; vizIds: string[] };
+      const byDv = new Map<number, Map<string, DvHashEntry>>();
+
+      // --- dv-bound trigger widgets ---
+      for (const w of widgets) {
+        if (!isTriggerType(w.type)) continue;
+        const dvId = w.config.dynamicViewId as number | undefined;
+        if (dvId === undefined) continue; // table-bound handled above
+
+        // Gate: dv must be fully materialized before we can query off it.
+        // Pitfall 5 — imperative getState() inside setTimeout (same as shapes read).
+        if (useDynamicViewStore.getState().views[dvId]?.status !== "materialized") continue;
+
+        const cfg = w.config.filterSelection as FilterSelectionConfig | undefined;
+        // dvFilters keyed by dvId — imperative read (Pitfall 4 — never subscribe to dvFilters array)
+        const dvFilters = (filterState.dvFilters[dvId] ?? []) as ReturnType<typeof resolveFilterSet>;
+        const resolved = resolveFilterSet(cfg, dvFilters);
+        // NO 4th shapes arg — dv + spatial is server-rejected 400 (94-RESEARCH §"dv + Spatial Deferred Boundary")
+        const hash = stableComboHash("dv", dvId, resolved);
+
+        if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
+          // Case C: no dv filters → no combo entry; fall back to raw dv view
+          vizKeyToHash.set(`w:${w.id}`, undefined);
+          continue;
+        }
+
+        let hm = byDv.get(dvId);
+        if (!hm) { hm = new Map<string, DvHashEntry>(); byDv.set(dvId, hm); }
+        let e = hm.get(hash);
+        if (!e) { e = { resolved, vizIds: [] }; hm.set(hash, e); }
+        e.vizIds.push(`w:${w.id}`);
+        vizKeyToHash.set(`w:${w.id}`, hash);
+      }
+
+      // --- dv-bound layers ---
+      for (const layer of layers) {
+        const dvId = layer.dynamic_view_id;
+        if (dvId === null || dvId === undefined) continue; // table-bound handled above
+
+        // Gate: dv must be fully materialized
+        if (useDynamicViewStore.getState().views[dvId]?.status !== "materialized") continue;
+
+        const cfg = layer.filter_scope ?? undefined;
+        const dvFilters = (filterState.dvFilters[dvId] ?? []) as ReturnType<typeof resolveFilterSet>;
+        const resolved = resolveFilterSet(cfg, dvFilters);
+        // NO spatial — dv path is column-only
+        const hash = stableComboHash("dv", dvId, resolved);
+
+        if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
+          vizKeyToHash.set(`l:${layer.id}`, undefined);
+          continue;
+        }
+
+        let hm = byDv.get(dvId);
+        if (!hm) { hm = new Map<string, DvHashEntry>(); byDv.set(dvId, hm); }
+        let e = hm.get(hash);
+        if (!e) { e = { resolved, vizIds: [] }; hm.set(hash, e); }
+        e.vizIds.push(`l:${layer.id}`);
         vizKeyToHash.set(`l:${layer.id}`, hash);
       }
 
@@ -312,13 +420,33 @@ export function useCombinationOrchestrator(
       // ----------------------------------------------------------------
       // STEP C — Build desired hash set (post-ceiling)
       // ----------------------------------------------------------------
-      // Map<hash, { tableId, resolved, acceptedShapes, spatialTarget? }>
-      type DesiredEntry = { tableId: number; resolved: ReturnType<typeof resolveFilterSet>; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget };
+      // Phase 94: DesiredEntry extended with optional dvId + sourceType discriminator.
+      // table entries: sourceType "table", dvId undefined.
+      // dv entries: sourceType "dv", tableId undefined (acceptedShapes/spatialTarget empty).
+      type DesiredEntry = {
+        tableId?: number;
+        dvId?: number;
+        sourceType: "table" | "dv";
+        resolved: ReturnType<typeof resolveFilterSet>;
+        acceptedShapes: Shape[];
+        spatialTarget?: SpatialTarget;
+      };
       const desired = new Map<string, DesiredEntry>();
+
+      // Table-bound entries (post-ceiling)
       for (const [tableId, hashMap] of byTable) {
         for (const [hash, entry] of hashMap) {
           if (!hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
-            desired.set(hash, { tableId, resolved: entry.resolved, acceptedShapes: entry.acceptedShapes, spatialTarget: entry.spatialTarget });
+            desired.set(hash, { tableId, sourceType: "table", resolved: entry.resolved, acceptedShapes: entry.acceptedShapes, spatialTarget: entry.spatialTarget });
+          }
+        }
+      }
+
+      // Phase 94: dv-bound entries (no ceiling — see comment at STEP A dv loop)
+      for (const [dvId, hashMap] of byDv) {
+        for (const [hash, entry] of hashMap) {
+          if (!hash.endsWith(`:${NOFILTER_SENTINEL}`)) {
+            desired.set(hash, { dvId, sourceType: "dv", resolved: entry.resolved, acceptedShapes: [], spatialTarget: undefined });
           }
         }
       }
@@ -326,10 +454,11 @@ export function useCombinationOrchestrator(
       // ----------------------------------------------------------------
       // STEP D — Diff vs current registry + dispatch
       // ----------------------------------------------------------------
-      const current = useFilterCombinationStore.getState().registry;
       const storeActions = useFilterCombinationStore.getState();
 
-      for (const [hash, { tableId, resolved, acceptedShapes, spatialTarget }] of desired) {
+      for (const [hash, desiredEntry] of desired) {
+        const { sourceType, tableId, dvId, resolved, acceptedShapes, spatialTarget } = desiredEntry;
+
         // Guard: never process NOFILTER (belt-and-suspenders)
         if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) continue;
 
@@ -349,48 +478,81 @@ export function useCombinationOrchestrator(
           continue;
         }
 
-        // Call markMaterializing SYNCHRONOUSLY before any await (Pitfall 6 dedup guard).
-        storeActions.markMaterializing(hash, dashboardId, "table", tableId);
+        if (sourceType === "table") {
+          // ── Table path ────────────────────────────────────────────────
+          // Call markMaterializing SYNCHRONOUSLY before any await (Pitfall 6 dedup guard).
+          storeActions.markMaterializing(hash, dashboardId, "table", tableId!);
 
-        // Set up AbortController for this hash (abort any prior in-flight)
-        controllersRef.current.get(hash)?.abort();
-        const ctrl = new AbortController();
-        controllersRef.current.set(hash, ctrl);
+          // Set up AbortController for this hash (abort any prior in-flight)
+          controllersRef.current.get(hash)?.abort();
+          const ctrl = new AbortController();
+          controllersRef.current.set(hash, ctrl);
 
-        // Build spatial args — only when accepted shapes are non-empty AND an eligible target exists.
-        // The hash already encodes the shapes (Plan 01 4th param), so combinationKey:hash is the
-        // correct per-spatial-combo dedup key. dv path is never reached here (already skipped).
-        const spatialArgs = (acceptedShapes.length > 0 && spatialTarget)
-          ? {
-              spatialFilters: acceptedShapes.map((s) => ({ id: s.id, wkt: s.wkt })),
-              spatialTarget,
-            }
-          : {};
+          // Build spatial args — only when accepted shapes are non-empty AND an eligible target exists.
+          const spatialArgs = (acceptedShapes.length > 0 && spatialTarget)
+            ? {
+                spatialFilters: acceptedShapes.map((s) => ({ id: s.id, wkt: s.wkt })),
+                spatialTarget,
+              }
+            : {};
 
-        // Fire the POST (non-blocking — we don't await here; each call resolves independently)
-        materializeFilter(
-          { dashboardId, tableId, filters: resolved, combinationKey: hash, ...spatialArgs },
-          ctrl.signal,
-        )
-          .then((res) => {
-            if (ctrl.signal.aborted) return;
-            useFilterCombinationStore.getState().setEntry(hash, {
-              viewName: res.viewName,
-              expiresAt: res.expiresAt,
-              materializing: false,
-              materializeVersion: 0,
-              refCount: useFilterCombinationStore.getState().registry[hash]?.refCount ?? 0,
-              dashboardId,
-              sourceType: "table",
-              sourceId: tableId,
+          // Fire the POST (non-blocking — we don't await here; each call resolves independently)
+          materializeFilter(
+            { dashboardId, tableId: tableId!, filters: resolved, combinationKey: hash, ...spatialArgs },
+            ctrl.signal,
+          )
+            .then((res) => {
+              if (ctrl.signal.aborted) return;
+              useFilterCombinationStore.getState().setEntry(hash, {
+                viewName: res.viewName,
+                expiresAt: res.expiresAt,
+                materializing: false,
+                materializeVersion: 0,
+                refCount: useFilterCombinationStore.getState().registry[hash]?.refCount ?? 0,
+                dashboardId,
+                sourceType: "table",
+                sourceId: tableId!,
+              });
+            })
+            .catch((err) => {
+              if ((err as Error)?.name === "AbortError") return;
+              if (ctrl.signal.aborted) return;
+              // Clear the placeholder so a retry can re-fire
+              useFilterCombinationStore.getState().clearEntry(hash);
             });
-          })
-          .catch((err) => {
-            if ((err as Error)?.name === "AbortError") return;
-            if (ctrl.signal.aborted) return;
-            // Clear the placeholder so a retry can re-fire
-            useFilterCombinationStore.getState().clearEntry(hash);
-          });
+        } else {
+          // ── Phase 94: dv path ──────────────────────────────────────────
+          // NO spatial args — dv path is column-only (server enforces 400 on spatial + dvId).
+          // Pitfall 6: markMaterializing SYNCHRONOUSLY before any await.
+          storeActions.markMaterializing(hash, dashboardId, "dv", dvId!);
+
+          controllersRef.current.get(hash)?.abort();
+          const ctrl = new AbortController();
+          controllersRef.current.set(hash, ctrl);
+
+          materializeFilter(
+            { dashboardId, dynamicViewId: dvId!, filters: resolved, combinationKey: hash },
+            ctrl.signal,
+          )
+            .then((res) => {
+              if (ctrl.signal.aborted) return;
+              useFilterCombinationStore.getState().setEntry(hash, {
+                viewName: res.viewName,
+                expiresAt: res.expiresAt,
+                materializing: false,
+                materializeVersion: 0,
+                refCount: useFilterCombinationStore.getState().registry[hash]?.refCount ?? 0,
+                dashboardId,
+                sourceType: "dv",
+                sourceId: dvId!,
+              });
+            })
+            .catch((err) => {
+              if ((err as Error)?.name === "AbortError") return;
+              if (ctrl.signal.aborted) return;
+              useFilterCombinationStore.getState().clearEntry(hash);
+            });
+        }
       }
 
       // ----------------------------------------------------------------
@@ -406,8 +568,9 @@ export function useCombinationOrchestrator(
       for (const w of widgets) {
         currentVizKeys.add(`w:${w.id}`);
       }
+      // Phase 94: include ALL layers (table-bound AND dv-bound) so dv-bound `l:<id>` keys are
+      // tracked for release-on-removal. Previously dv-bound layers were skipped here.
       for (const layer of layers) {
-        if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) continue;
         currentVizKeys.add(`l:${layer.id}`);
       }
 
@@ -487,5 +650,5 @@ export function useCombinationOrchestrator(
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, spatialFilterVersion, dashboardId, widgetsKey, layersKey, ceiling]);
+  }, [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId, widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, ceiling]);
 }
