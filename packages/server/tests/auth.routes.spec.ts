@@ -379,7 +379,8 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
 
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
-    expect(meRes.body).toEqual({ user: { username: "alice" }, authMode: "password", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10 });
+    // Phase 94 fix: include roles + permissions (alice → analyst fallback) + dvFilterScopeDisabled (default false).
+    expect(meRes.body).toEqual({ user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] }, authMode: "password", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false });
   });
 
   it("returns authMode='oidc' in oidc mode for an authenticated session", async () => {
@@ -390,7 +391,8 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
     const agent = await buildTestApp();
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
-    expect(meRes.body).toEqual({ user: { username: "alice" }, authMode: "oidc", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10 });
+    // Phase 94 fix: include roles + permissions (alice → analyst fallback) + dvFilterScopeDisabled (default false).
+    expect(meRes.body).toEqual({ user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] }, authMode: "oidc", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false });
   });
 
   it("returns 401 + REAUTH_REQUIRED with no authMode field in password mode (no session)", async () => {
@@ -454,6 +456,36 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
     expect(meRes.body.maxCombinationViewsPerTable).toBe(4);
+    // env var is restored by the global afterEach vi.unstubAllEnvs()
+  });
+
+  it("DISABLE_DV_FILTER_SCOPE=true surfaces as dvFilterScopeDisabled: true on /api/me (Phase 94 FSCOPE-V118-03)", async () => {
+    vi.stubEnv("DISABLE_DV_FILTER_SCOPE", "true");
+    mockKineticaLoginOK();
+    const agent = await buildTestApp();
+    const loginRes = await agent
+      .post("/api/auth/login")
+      .send({ username: "alice", password: "hunter2" });
+    expect(loginRes.status).toBe(200);
+    const cookieHeader = loginRes.headers["set-cookie"] as string[];
+    const cookie = cookieHeader[0].split(";")[0];
+
+    const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.dvFilterScopeDisabled).toBe(true);
+    // env var is restored by the global afterEach vi.unstubAllEnvs()
+  });
+
+  it("DISABLE_DV_FILTER_SCOPE=true surfaces as dvFilterScopeDisabled: true on /api/me in oidc mode (Phase 94 FSCOPE-V118-03)", async () => {
+    vi.stubEnv("DISABLE_DV_FILTER_SCOPE", "true");
+    stubOidcEnv();
+    const accessToken = makeJwt({ sub: "alice", exp: Math.floor(Date.now() / 1000) + 3600 });
+    const { cookie } = seedOidcSession(accessToken);
+
+    const agent = await buildTestApp();
+    const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.dvFilterScopeDisabled).toBe(true);
     // env var is restored by the global afterEach vi.unstubAllEnvs()
   });
 });

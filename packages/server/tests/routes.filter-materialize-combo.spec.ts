@@ -319,6 +319,38 @@ describe("POST/DELETE /api/filter/materialize COMBO — AUTH_MODE=oidc", () => {
     expect(auth).toBe(`Bearer ${token}`);
   });
 
+  it("PRESENT combinationKey (oidc session, dv path): viewName gains _c<hash8> suffix after _dv<id> segment", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId);
+    const { cookie, token } = seedOidcSession("john.doe@kinetica.com");
+    const res = await agent
+      .post("/api/filter/materialize")
+      .set("Cookie", cookie)
+      .send({
+        dashboardId: dashId,
+        dynamicViewId: dv.id,
+        filters: [{ column: "zone", value: "East", dataType: "string", addedAt: 0 }],
+        combinationKey: COMBO_KEY,
+      });
+    expect(res.status).toBe(200);
+    const expectedSuffix = hashKey8(COMBO_KEY);
+    // oidc username prefix is the full email-derived form; dv segment is _dv<id>.
+    expect(res.body.viewName).toMatch(
+      new RegExp(`^_kbi_filt_ujohn_doe_kinetica_com_d${dashId}_dv${dv.id}_s\\w{8}_c[0-9a-f]{8}$`),
+    );
+    // Exact suffix equality — cross-stack contract proof.
+    expect((res.body.viewName as string).endsWith(`_c${expectedSuffix}`)).toBe(true);
+    // Bearer (oidc) credential branch exercised on the dv path too.
+    const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("/execute/sql"));
+    const auth = ((call![1] as RequestInit).headers as Record<string, string>).Authorization;
+    expect(auth).toBe(`Bearer ${token}`);
+  });
+
   it("DELETE ?viewName= (oidc session): drops combination view by name, returns { dropped: true }", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(successKineticaBody), { status: 200 }),
