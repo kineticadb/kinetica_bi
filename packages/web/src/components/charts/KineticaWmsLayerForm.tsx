@@ -35,6 +35,7 @@ import { coalesceTrackConfig, TRACK_DEFAULTS, type TrackConfig } from "../../lib
 import { useWmsCapabilitiesStore } from "../../store/wmsCapabilities";
 import { useToastStore } from "../../store/toast";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
+import { useAuthStore } from "../../store/auth";
 import { POINT_SHAPES, type PointShape } from "../../lib/wmsUrlBuilder";
 import type { DashboardLayerDto, DynamicViewRow, TableDto, WidgetDto } from "../../api/client";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
@@ -220,6 +221,8 @@ export default function KineticaWmsLayerForm({
   onChangeFilterScope,
 }: KineticaWmsLayerFormProps): JSX.Element {
   const capabilities = useWmsCapabilitiesStore((s) => s.capabilities);
+  // Phase 94 (FSCOPE-V118-03): deploy-time dv filter-scope disable gate.
+  const dvFilterScopeDisabled = useAuthStore((s) => s.dvFilterScopeDisabled);
 
   // Phase 44 follow-up: dynamic-view-aware auto-suggest target resolution.
   // When the layer is bound to a dynamic view, the class-break auto-suggest
@@ -1648,12 +1651,20 @@ export default function KineticaWmsLayerForm({
         {/* v1.18 Phase 93 (FSCOPE-V118-02): Filter Scope section — LAST config-group.
             filter_scope is TOP-LEVEL, never inside layer.config (mirrors track_config pattern).
             selfWidgetId is NOT passed — layers are not widgets; no self-exclusion needed.
-            FilterSelectionPanel renders its own config-group wrapper; no double-wrap needed. */}
-        <FilterSelectionPanel
-          value={filterScope ?? undefined}
-          onChange={(next: FilterSelectionConfig | undefined) => onChangeFilterScope?.(next)}
-          widgets={widgets}
-        />
+            FilterSelectionPanel renders its own config-group wrapper; no double-wrap needed.
+            Phase 94 (FSCOPE-V118-03): hidden for dv-bound layers when dvFilterScopeDisabled.
+            Table-bound layers (layer.dynamic_view_id == null) are NEVER affected.
+            Phase 94 (LOCKED DECISION #8): same-dv source list — dv-bound layer's checklist
+            restricted to sibling widgets on the same dynamicViewId. Table-bound: full list. */}
+        {!(layer?.dynamic_view_id != null && dvFilterScopeDisabled) && (
+          <FilterSelectionPanel
+            value={filterScope ?? undefined}
+            onChange={(next: FilterSelectionConfig | undefined) => onChangeFilterScope?.(next)}
+            widgets={layer?.dynamic_view_id != null
+              ? widgets.filter((w) => (w.config.dynamicViewId as number | undefined) === layer.dynamic_view_id)
+              : widgets}
+          />
+        )}
 
       </div>
     </div>

@@ -6,6 +6,7 @@ import { isColumnDrillDownSafe, inferDataTypeFromColumn } from "../../lib/column
 import type { DynamicViewRow, WidgetDto } from "../../api/client";
 import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
+import { useAuthStore } from "../../store/auth";
 
 type TableInfo = {
   id: number;
@@ -88,6 +89,8 @@ const ChartConfigPanel = ({
   onCancel,
 }: Props) => {
   const chartDef = getChartType(widgetType);
+  // Phase 94 (FSCOPE-V118-03): deploy-time dv filter-scope disable gate.
+  const dvFilterScopeDisabled = useAuthStore((s) => s.dvFilterScopeDisabled);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [titleDraft, setTitleDraft] = useState<string>(title);
   // Phase 11 11-08: CustomConfigPanel can signal Apply-disable via isValid callback.
@@ -728,15 +731,26 @@ const ChartConfigPanel = ({
 
         {/* Phase 93 (FSCOPE-V118-01): Filter Scope section — visible whenever the widget
             has a data source (same gate as Drill-Down). FilterSelectionPanel renders its
-            own config-group wrapper; do NOT wrap it in another config-group. */}
-        {selectedSource && (
-          <FilterSelectionPanel
-            value={draft.filterSelection as FilterSelectionConfig | undefined}
-            onChange={(next) => set("filterSelection", next)}
-            widgets={widgets ?? []}
-            selfWidgetId={widgetId}
-          />
-        )}
+            own config-group wrapper; do NOT wrap it in another config-group.
+            Phase 94 (FSCOPE-V118-03): hidden for dv-bound widgets when dvFilterScopeDisabled.
+            Table-bound widgets (draftDynamicViewId === undefined) are NEVER affected — the
+            && short-circuits to false only when BOTH dv-bound AND disabled.
+            Phase 94 (LOCKED DECISION #8): same-dv source list — dv-bound widget's checklist
+            restricted to sibling widgets on the same dynamicViewId. Table-bound: full list. */}
+        {(() => {
+          const filterSourceWidgets =
+            draftDynamicViewId !== undefined
+              ? (widgets ?? []).filter((w) => (w.config.dynamicViewId as number | undefined) === draftDynamicViewId)
+              : (widgets ?? []);
+          return selectedSource && !(draftDynamicViewId !== undefined && dvFilterScopeDisabled) && (
+            <FilterSelectionPanel
+              value={draft.filterSelection as FilterSelectionConfig | undefined}
+              onChange={(next) => set("filterSelection", next)}
+              widgets={filterSourceWidgets}
+              selfWidgetId={widgetId}
+            />
+          );
+        })()}
 
         {/* Chart-specific field groups */}
         {groups.map((group) => (
