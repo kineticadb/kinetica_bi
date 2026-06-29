@@ -494,3 +494,57 @@ describe("COLAPPLY-V115-04: layers legend is NOT affected by column display conf
     expect(src).not.toMatch(/tableId/);
   });
 });
+
+// ── GAP 6 / COMM-V118-02 + GAP 3 legend portion: per-layer filter indicator ────────────────
+
+describe("COMM-V118-02: per-layer filter-scope indicator in LayersLegendPanel", () => {
+  it("shows 'X of Y filters' badge when filterSummary.appliedCount < filterSummary.totalCount", () => {
+    const layer = makeResolvedLayer({ id: 600 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      filterSummary: { appliedCount: 1, totalCount: 3 },
+    };
+    render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    expect(screen.getByText("1 of 3 filters")).toBeInTheDocument();
+    const badge = screen.getByText("1 of 3 filters");
+    expect(badge).toHaveClass("widget-filter-badge");
+    expect(badge.getAttribute("role")).toBe("status");
+  });
+
+  it("does NOT render indicator when filterSummary.appliedCount === filterSummary.totalCount (accept-all)", () => {
+    const layer = makeResolvedLayer({ id: 601 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      filterSummary: { appliedCount: 2, totalCount: 2 },
+    };
+    render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    expect(screen.queryByText(/of \d+ filters/)).toBeNull();
+  });
+
+  it("does NOT render indicator when filterSummary is undefined", () => {
+    const layer = makeResolvedLayer({ id: 602 });
+    // no filterSummary field — normal case (no filter computed)
+    render(<LayersLegendPanel {...defaultProps()} layers={[layer]} />);
+    expect(screen.queryByText(/of \d+ filters/)).toBeNull();
+  });
+
+  it("indicator uses aria-label with applied/total counts", () => {
+    const layer = makeResolvedLayer({ id: 603 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      filterSummary: { appliedCount: 2, totalCount: 4 },
+    };
+    render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const badge = screen.getByRole("status");
+    expect(badge.getAttribute("aria-label")).toContain("2 of 4 filters");
+  });
+
+  it("LayersLegendPanel source uses widget-filter-badge class for the indicator", () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "./LayersLegendPanel.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("widget-filter-badge");
+    expect(src).toContain("filterSummary");
+  });
+});

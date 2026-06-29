@@ -99,6 +99,8 @@ import MapZoomToolbar from "./MapZoomToolbar";
 import { LayersLegendPanel } from "../LayersLegendPanel";
 import type { ResolvedLegendLayer, DvLayerStatus } from "../LayersLegendPanel";
 import { resolveLegendLayers } from "../../lib/resolveLegendLayers";
+import { computeFilterScopeSummary } from "../../lib/useFilterScopeSummary";
+import { useAuthStore } from "../../store/auth";
 import { applyLayerOverrides } from "../../lib/applyLayerOverrides";
 import { useLayerVisibilityToggle } from "../../hooks/useLayerVisibilityToggle";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
@@ -651,17 +653,76 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // the dv store (state-time, not subscribed here) — dynamicViewsKey above is the
     // re-render trigger and is already in this useMemo's deps via the outer effect chain.
     const dvViews = useDynamicViewStore.getState().views;
+
+    // COMM-V118-02 (GAP 6) + GAP 3 legend portion: compute per-layer filterSummary.
+    // Imperative getState() reads (state-time) — filterVersion + shapesKey are the
+    // re-render triggers already in this useMemo's dep array. dvFilterScopeDisabled
+    // is read from auth store (same state-time pattern).
+    const filterState = useFilterStore.getState();
+    const spatialState = useSpatialFilterStore.getState();
+    const dvFilterScopeDisabled = useAuthStore.getState().dvFilterScopeDisabled;
+
     return base.map((entry) => {
       const dvId = entry.layer.dynamic_view_id;
-      if (dvId === null || dvId === undefined) return entry; // base-table layer — no status
-      const dvEntry = dvViews[dvId];
-      const dvStatus: DvLayerStatus = dvEntry ? dvEntry.status : "absent";
-      return { ...entry, dvStatus };
+      const isDv = dvId !== null && dvId !== undefined;
+
+      // dvStatus enrichment (Phase 44 follow-up)
+      let dvStatus: DvLayerStatus | undefined;
+      if (isDv) {
+        const dvEntry = dvViews[dvId!];
+        dvStatus = dvEntry ? dvEntry.status : "absent";
+      }
+
+      // COMM-V118-02: per-layer filter-scope indicator.
+      // - dv-bound: use dvFilters[dvId], spatialCapable=false (dv+spatial deferred).
+      // - table-bound: use filters[tableId], spatialCapable = layer has an eligible SpatialTarget.
+      // - GAP 3: when dvFilterScopeDisabled + isDv → cfg=undefined (accept-all → no indicator).
+      // layer.filter_scope is a TOP-LEVEL field (track_config-toplevel-field pattern).
+      const rawCfg = isDv && dvFilterScopeDisabled
+        ? undefined
+        : (entry.layer.filter_scope ?? undefined);
+
+      let activeFilters;
+      let activeShapes: ReturnType<typeof spatialState.shapes.slice>;
+      let spatialCapable: boolean;
+
+      if (isDv) {
+        activeFilters = (filterState.dvFilters ?? {})[dvId!] ?? [];
+        activeShapes = [];
+        spatialCapable = false;
+      } else {
+        activeFilters = filterState.filters[entry.layer.table_id] ?? [];
+        // spatialCapable: this map widget's spatialTargets must include this layer's table.
+        // Reuse the existing getSpatialTargets + isSpatialTargetEligible pattern
+        // (same as eligibleTargetTableNames ~lines 686-694 above). Single widget, NOT array.
+        spatialCapable = getSpatialTargets({
+          config: widget.config as Pick<MapWidgetConfig, "spatialTargets">,
+        })
+          .filter(isSpatialTargetEligible)
+          .some((t) => t.tableId === entry.layer.table_id);
+        activeShapes = spatialCapable ? spatialState.shapes : [];
+      }
+
+      const summary = computeFilterScopeSummary({
+        cfg: rawCfg,
+        activeFilters,
+        activeShapes,
+        spatialCapable,
+      });
+
+      const filterSummary = {
+        appliedCount: summary.appliedCount,
+        totalCount: summary.totalCount,
+      };
+
+      return { ...entry, dvStatus, filterSummary };
     });
     // legendKey is the read-trigger; includedLayerIdsForLegend is the filter trigger;
     // dynamicViewsKey is the dv-state re-render trigger.
+    // filterVersion drives re-computation when filters change (already subscribed above).
+    // shapesKey drives re-computation when spatial shapes change (already subscribed above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legendKey, includedLayerIdsForLegend, dynamicViewsKey]);
+  }, [legendKey, includedLayerIdsForLegend, dynamicViewsKey, filterVersion, shapesKey]);
 
   // v1.7 Phase 41 (PANEL-V17-06): session-only collapse state. NOT persisted to MapWidgetConfig.
   const [legendCollapsed, setLegendCollapsed] = useState<boolean>(false);

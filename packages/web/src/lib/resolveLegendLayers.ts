@@ -34,6 +34,13 @@ export type ResolvedLegendLayer = {
   visible: boolean;
   /** Optional dv-materialization status; only set when layer.dynamic_view_id != null. */
   dvStatus?: DvLayerStatus;
+  /**
+   * Phase 96 Plan 03 (COMM-V118-02): per-layer filter-scope indicator data.
+   * Computed by the caller (MapChartRenderer) via computeFilterScopeSummary.
+   * LayersLegendPanel renders "X of Y filters" ONLY when appliedCount < totalCount.
+   * undefined = no filter computation performed (e.g. no active filters at all).
+   */
+  filterSummary?: { appliedCount: number; totalCount: number };
 };
 
 /**

@@ -209,7 +209,7 @@ export function LayersLegendPanel({
               No layers configured on this widget.
             </div>
           ) : (
-            layers.map(({ layer, visible, dvStatus }) => {
+            layers.map(({ layer, visible, dvStatus, filterSummary }) => {
               const renderMode =
                 ((layer.config as { renderMode?: string })?.renderMode) ?? "raster";
               const cb = coalesceCbConfig(layer.cb_config);
@@ -298,6 +298,18 @@ export function LayersLegendPanel({
                         title={`Layer is not rendering — ${badgeLabel}`}
                       >
                         {badgeLabel}
+                      </span>
+                    )}
+                    {/* COMM-V118-02 (GAP 6 + GAP 3 legend): per-layer "X of Y filters" indicator.
+                        Rendered ONLY when the layer ignores ≥1 active filter (appliedCount < totalCount).
+                        Reuses the existing widget-filter-badge class — no invented class names, no raw hex. */}
+                    {filterSummary && filterSummary.appliedCount < filterSummary.totalCount && (
+                      <span
+                        className="widget-filter-badge"
+                        role="status"
+                        aria-label={`${filterSummary.appliedCount} of ${filterSummary.totalCount} filters applied`}
+                      >
+                        {filterSummary.appliedCount} of {filterSummary.totalCount} filters
                       </span>
                     )}
                   </div>
