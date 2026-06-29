@@ -1,10 +1,17 @@
 /**
- * FilterSelectionPanel.tsx — Phase 93 (FSCOPE-V118-01)
+ * FilterSelectionPanel.tsx — Phase 93 (FSCOPE-V118-01) + Phase 96 gap-closure (96-02)
  *
  * Shared "Filter Scope" config section used by both ChartConfigPanel (chart widgets)
  * and KineticaWmsLayerForm (map WMS layers — Plan 02).
  *
  * Pure presentational component: no store reads. All state lives in props.
+ *
+ * Gap-closure changes (96-02):
+ *  - allowSpatial prop (default true): false for dv-bound vizs (dv+spatial is server-rejected).
+ *    When false, the SPATIAL_DRAWS_SENTINEL row is hidden.
+ *  - handleCustomizeToggle now pre-populates allowedSourceWidgetIds with ALL currently-listed
+ *    source ids (+ sentinel when allowSpatial) so the start state == accept-all (GAP 4).
+ *    The accept-none warning is preserved for the manual-uncheck-all case.
  *
  * CSS: reuses ONLY existing global.css classes:
  *   config-group, config-group-label, config-toggle, config-hint
@@ -27,6 +34,14 @@ type FilterSelectionPanelProps = {
    * cannot list itself as a filter source. Omit for map WMS layers (Plan 02).
    */
   selfWidgetId?: number;
+  /**
+   * Whether to show the "Spatial draws (map)" sentinel row.
+   * Pass false for dv-bound vizs — dv+spatial is server-rejected (400).
+   * Defaults to true (table-bound vizs accept spatial draws).
+   *
+   * Phase 96-02 gap-closure (GAP 5): suppresses sentinel row for dv-bound vizs.
+   */
+  allowSpatial?: boolean;
 };
 
 export function FilterSelectionPanel({
@@ -34,8 +49,14 @@ export function FilterSelectionPanel({
   onChange,
   widgets,
   selfWidgetId,
+  allowSpatial = true,
 }: FilterSelectionPanelProps) {
   const isAllowlist = value !== undefined && value.sourceMode === "allowlist";
+
+  // ── Compute the live source widget list (moved above handlers so pre-check can use it) ──
+  const sources = widgets.filter(
+    (w) => isFilterProducingWidget(w.type) && w.id !== selfWidgetId,
+  );
 
   // ── Customize toggle ────────────────────────────────────────────────────────
   const handleCustomizeToggle = () => {
@@ -43,8 +64,12 @@ export function FilterSelectionPanel({
       // Uncheck → revert to accept-all
       onChange(undefined);
     } else {
-      // Check → enter allowlist mode with empty selection
-      onChange({ sourceMode: "allowlist", allowedSourceWidgetIds: [] });
+      // Check → enter allowlist mode, pre-checked to ALL current sources (start == accept-all)
+      // Phase 96-02 (GAP 4): pre-populate with every currently-listed source id + sentinel
+      // so the start state equals accept-all; user unchecks to exclude.
+      const ids: (number | string)[] = sources.map((w) => w.id);
+      if (allowSpatial) ids.push(SPATIAL_DRAWS_SENTINEL);
+      onChange({ sourceMode: "allowlist", allowedSourceWidgetIds: ids });
     }
   };
 
@@ -58,11 +83,6 @@ export function FilterSelectionPanel({
     onChange({ ...value, allowedSourceWidgetIds: next });
   };
 
-  // ── Compute the live source widget list ──────────────────────────────────────
-  const sources = widgets.filter(
-    (w) => isFilterProducingWidget(w.type) && w.id !== selfWidgetId,
-  );
-
   // ── Orphan detection (numeric ids only — sentinel is never an orphan) ────────
   const liveIds = new Set(widgets.map((w) => w.id));
   const orphanIds: number[] = isAllowlist && value
@@ -72,7 +92,9 @@ export function FilterSelectionPanel({
     : [];
 
   // ── Accept-none warning: shown when allowlist has NO live selected source
-  //    and DOES NOT include the spatial sentinel ─────────────────────────────
+  //    AND (when allowSpatial=true) DOES NOT include the spatial sentinel.
+  //    When allowSpatial=false, spatial sentinel cannot be selected; warning
+  //    depends only on whether any live numeric source is checked. ─────────────
   const hasSentinel =
     isAllowlist && value
       ? value.allowedSourceWidgetIds.includes(SPATIAL_DRAWS_SENTINEL)
@@ -83,7 +105,10 @@ export function FilterSelectionPanel({
           (id) => typeof id === "number" && liveIds.has(id),
         )
       : false;
-  const showAcceptNoneWarning = isAllowlist && !hasSentinel && !hasLiveSelection;
+  // When allowSpatial=true: warning if no live widget AND no sentinel
+  // When allowSpatial=false: warning if no live widget (sentinel cannot be selected)
+  const showAcceptNoneWarning =
+    isAllowlist && !hasLiveSelection && (allowSpatial ? !hasSentinel : true);
 
   return (
     <div className="config-group">
@@ -133,16 +158,19 @@ export function FilterSelectionPanel({
             ))
           )}
 
-          {/* Spatial draws sentinel row — ALWAYS rendered, not self-excluded, not orphan-checked */}
-          <label className="config-toggle">
-            <input
-              type="checkbox"
-              checked={hasSentinel}
-              onChange={() => toggleSource(SPATIAL_DRAWS_SENTINEL)}
-              aria-label="Spatial draws (map)"
-            />
-            Spatial draws (map)
-          </label>
+          {/* Spatial draws sentinel row — suppressed for dv-bound vizs (allowSpatial=false)
+              Phase 96-02 (GAP 5): dv+spatial is server-rejected; hide for dv-bound vizs */}
+          {allowSpatial && (
+            <label className="config-toggle">
+              <input
+                type="checkbox"
+                checked={hasSentinel}
+                onChange={() => toggleSource(SPATIAL_DRAWS_SENTINEL)}
+                aria-label="Spatial draws (map)"
+              />
+              Spatial draws (map)
+            </label>
+          )}
 
           {/* Orphan warnings for numeric ids no longer on the dashboard */}
           {orphanIds.map((id) => (
