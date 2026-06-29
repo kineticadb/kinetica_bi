@@ -31,7 +31,7 @@
 
 ### Communication (COMM)
 
-- [ ] **COMM-V118-01**: Each visualization surfaces an **on-widget indicator** of which active filters it is applying vs ignoring — a badge ("N of M filters") shown ONLY when ≥1 active filter is being ignored (no badge in the default accept-all case), with a hover breakdown of applied/ignored filters. The existing top filter-bar (global active filters) is unchanged.
+- [x] **COMM-V118-01**: Each visualization surfaces an **on-widget indicator** of which active filters it is applying vs ignoring — a badge ("N of M filters") shown ONLY when ≥1 active filter is being ignored (no badge in the default accept-all case), with a hover breakdown of applied/ignored filters. The existing top filter-bar (global active filters) is unchanged.
 
 ### Verification (VERIFY)
 
@@ -41,6 +41,7 @@
 
 - **FSCOPE-V2-02**: Per-column / per-individual-filter exclusion within a visualization (beyond the source-widget allow-list). Dropped from v1.18 — the source-widget allow-list is sufficient and avoids the novel per-column granularity; revisit if a customer needs it.
 - **COMM-V2-01**: Annotate each top filter-bar chip with "(ignored by N widgets)".
+- **COMM-V2-02**: On-MAP per-layer filter-scope indicator (e.g. in the LayersLegendPanel) — the Phase-95 "N of M filters" header badge covers single-scope chart widgets; a map aggregates multiple per-layer/per-table scopes, so a single map-level badge is ill-defined and a per-layer indicator deserves its own UX. Deferred from v1.18 (decided 2026-06-29).
 - **PERF-V2-01**: Per-widget dependency key instead of the global `filterVersion` counter (re-render optimization), if profiling warrants.
 - **FSCOPE-V2-01**: Filter scope on additional visualization types if any new ones are added.
 
@@ -68,7 +69,7 @@
 | SPATIAL-V118-01 | Phase 93.5 | Complete |
 | READ-V118-01 | Phase 91 | Complete |
 | READ-V118-02 | Phase 92 | Complete |
-| COMM-V118-01 | Phase 95 | Pending |
+| COMM-V118-01 | Phase 95 | Complete |
 | VERIFY-V118-01 | Phase 96 | Pending |
 
 **Coverage:**

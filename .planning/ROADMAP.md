@@ -37,7 +37,7 @@
 - [ ] **Phase 92: MapChartRenderer Wiring** — Replace viewsKey with comboViewsKey; wire BOTH buildWmsParams call sites (Effect 2 + Effect 3) + update both dep arrays
 - [ ] **Phase 93: Filter Scope Config UI** — FilterSelectionPanel in ChartConfigPanel + KineticaWmsLayerForm (source allow-list incl. a spatial-draws entry); chart filterScope via widget.config; layer.filterScope as a TOP-LEVEL field persisted like track_config (server layer-PATCH threading); orphan-source warning
 - [ ] **Phase 93.5: Spatial Filters in the Combination Model** — Fold spatial (map-draw) filters into the per-combination view: extend stableComboHash + add resolveSpatialShapes; orchestrator reads shapes + includes spatialFilters/spatialTarget in the materialize; reconcile useMapOnlySpatialMaterialize so spatial isn't dropped for chart∧map shared tables nor double-materialized *(research pass required)*
-- [ ] **Phase 94: Dynamic View Filter Scope Wiring** — Extend dv-bound widget path in WidgetRenderer to use resolveFilterSet against dvFilters; gated behind deploy-time disable env flag *(research pass required)*
+- [x] **Phase 94: Dynamic View Filter Scope Wiring** — Extend dv-bound widget path in WidgetRenderer to use resolveFilterSet against dvFilters; gated behind deploy-time disable env flag *(research pass required)*
 - [ ] **Phase 95: On-Widget Badge Indicator** — Badge "N of M filters" in widget header shown only when ≥1 active filter is ignored; hover tooltip with applied/ignored breakdown
 - [ ] **Phase 96: Verification + Live UAT** — Green automated gates (both stacks) + blocking live operator walk-through; all gaps fixed in-session
 
@@ -166,8 +166,8 @@
   3. A dv-bound layer's filter scope uses the dynamicViewId as the stableComboHash source key (not the tableId) — combination registry entry shows sourceType "dv".
   4. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean; theme-guard green.
 **Plans**: 2 plans
-- [ ] 94-01-PLAN.md — Orchestrator dv enumeration (widgets + layers) + remove WidgetRenderer Effect 1 dv-branch + dv renderer read-path flip (WidgetRenderer + MapChartRenderer) to filterCombinationStore + three-source-type spec scenarios (FRONTEND-ONLY; FSCOPE-V118-03 engine half)
-- [ ] 94-02-PLAN.md — DISABLE_DV_FILTER_SCOPE env flag across 5 mirror sites (boot → /api/me → MeResponse → fetchMe → auth store) + FilterSelectionPanel UI gating for dv-bound vizs + same-dv source list + both-auth-mode /api/me supertests (BOTH; FSCOPE-V118-03 env-flag half)
+- [x] 94-01-PLAN.md — Orchestrator dv enumeration (widgets + layers) + remove WidgetRenderer Effect 1 dv-branch + dv renderer read-path flip (WidgetRenderer + MapChartRenderer) to filterCombinationStore + three-source-type spec scenarios (FRONTEND-ONLY; FSCOPE-V118-03 engine half)
+- [x] 94-02-PLAN.md — DISABLE_DV_FILTER_SCOPE env flag across 5 mirror sites (boot → /api/me → MeResponse → fetchMe → auth store) + FilterSelectionPanel UI gating for dv-bound vizs + same-dv source list + both-auth-mode /api/me supertests (BOTH; FSCOPE-V118-03 env-flag half)
 
 #### Phase 95: On-Widget Badge Indicator
 **Goal**: Each visualization that is ignoring at least one active filter surfaces a visible "N of M filters" badge in its widget header, giving designers and analysts immediate feedback on which filters are applied without opening config.
@@ -181,7 +181,8 @@
   3. Hovering the badge shows a breakdown of which filters are applied and which are ignored, with a reason annotation for ignored ones (source excluded).
   4. The widget-filter-badge CSS class exists in global.css before use — theme-guard green; no invented class names.
   5. Web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 95-01-PLAN.md — Pure useFilterScopeSummary helper (reuses resolveFilterSet + resolveSpatialShapes) + WidgetFilterBadge component + widget-filter-badge global.css class + header integration (non-map, maps deferred) + render specs (COMM-V118-01)
 
 #### Phase 96: Verification + Live UAT
 **Goal**: The milestone is proven complete — all automated gates pass on both stacks and a live operator walk-through covering every v1.18 feature passes with no unresolved gaps.
@@ -219,7 +220,7 @@
 | 92 | v1.18 | 0/2 | Planned | — |
 | 93 | v1.18 | 0/2 | Planned | — |
 | 93.5 | v1.18 | 0/2 | Planned | — |
-| 94 | v1.18 | 0/2 | Planned | — |
+| 94 | v1.18 | 2/2 | Complete | 2026-06-29 |
 | 95 | v1.18 | 0/TBD | Not started | — |
 | 96 | v1.18 | 0/TBD | Not started | — |
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.18
 milestone_name: Per-Visualization Filter Selection
 status: unknown
-stopped_at: Completed 94-01-PLAN.md
-last_updated: "2026-06-29T13:41:50.695Z"
+stopped_at: Completed 95-01-PLAN.md
+last_updated: "2026-06-29T14:21:26.188Z"
 progress:
   total_phases: 10
-  completed_phases: 8
-  total_plans: 16
-  completed_plans: 16
+  completed_phases: 9
+  total_plans: 17
+  completed_plans: 17
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 94 — dynamic-view-filter-scope-wiring
+**Current focus:** Phase 95 — on-widget-badge-indicator
 
 ## Current Position
 
-Phase: 94 (dynamic-view-filter-scope-wiring) — COMPLETE
-Plan: 2 of 2
+Phase: 95 (on-widget-badge-indicator) — EXECUTING
+Plan: 1 of 1
 
 ### v1.18 Phase Map
 
@@ -625,6 +625,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 93.5 P02 | 780 | 3 tasks | 6 files |
 | Phase 94 P02 | 7 | 3 tasks | 7 files |
 | Phase 94 P01 | multi-session | 3 tasks | 6 files |
+| Phase 95-on-widget-badge-indicator P01 | 452 | 3 tasks | 7 files |
 
 ### Quick Tasks Completed
 
@@ -943,6 +944,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 94]: dv path column-only: stableComboHash('dv', dvId, resolved) with no shapes arg; server rejects dv+spatial with 400
 - [Phase 94]: vizKey for dv-bound WIDGET is w:<id> (not dv:<id>): dv: prefix used only in dvWidgetsKey/dvLayersKey memo strings
 - [Phase 94]: markDvMaterializing retained in dispatchDrillDown: RecordsTableRenderer legacy island reads filterViewStore.dvViews for its own suspend gate
+- [Phase 95-01]: REUSED targetsByTable useMemo already in DashboardsPage for spatialCapable flag — no duplicate useMemo needed
+- [Phase 95-01]: buildBreakdownTitle co-located in WidgetFilterBadge.tsx (not in hook); pure fn for isolated testability
+- [Phase 95-01]: .widget-filter-badge CSS added before WidgetFilterBadge.tsx created to satisfy theme-guard SC4 ordering requirement
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1349,6 +1353,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-29T13:41:50.684Z
-Stopped at: Completed 94-01-PLAN.md
+Last session: 2026-06-29T14:21:26.178Z
+Stopped at: Completed 95-01-PLAN.md
 Resume file: None

@@ -1,12 +1,14 @@
 /**
- * FilterSelectionPanel spec — Phase 93 plan 01
- * TDD RED: written before the component exists.
+ * FilterSelectionPanel spec — Phase 93 plan 01 + Phase 96 gap-closure (96-02)
  *
  * Tests cover:
  *  - Default (value=undefined): shows "Filter Scope" + unchecked Customize + accept-all hint; no checklist
- *  - Checking Customize fires onChange with { sourceMode:"allowlist", allowedSourceWidgetIds:[] }
+ *  - Checking Customize (allowSpatial=true) fires onChange with ALL source ids + SPATIAL_DRAWS_SENTINEL (GAP 4)
+ *  - Checking Customize (allowSpatial=false, dv-bound) fires onChange with only widget ids, NO sentinel (GAP 4+5)
+ *  - allowSpatial=false hides the spatial draws row (GAP 5)
+ *  - allowSpatial=true (default) shows the spatial draws row
  *  - Allowlist mode: checklist shows ONLY filter-producing widget types (not records/legend/map/etc.)
- *  - Spatial draws (map) sentinel row ALWAYS renders in allowlist mode, even with empty widget list
+ *  - Spatial draws (map) sentinel row renders in allowlist mode when allowSpatial=true (default)
  *  - Checking/unchecking the spatial sentinel adds/removes SPATIAL_DRAWS_SENTINEL from the array
  *  - selfWidgetId excludes that widget from the list; sentinel is exempt from self-exclusion
  *  - Checking a source row fires onChange adding the id; unchecking removes it
@@ -14,6 +16,7 @@
  *  - ONLY spatial sentinel selected: NO accept-none warning (a source IS selected)
  *  - Unchecking Customize fires onChange(undefined)
  *  - Orphan: numeric id not in widgets renders danger hint; string sentinel is NOT orphaned
+ *  - accept-none warning fires when manually unchecking all sources (allowSpatial=false path)
  */
 
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -101,7 +104,7 @@ describe("FilterSelectionPanel — default (accept-all)", () => {
     expect(checkboxes).toHaveLength(1);
   });
 
-  it("checking Customize fires onChange with sourceMode=allowlist and empty allowedSourceWidgetIds", () => {
+  it("checking Customize (no widgets) fires onChange with sourceMode=allowlist; only sentinel in allowedSourceWidgetIds (default allowSpatial=true)", () => {
     const onChange = vi.fn();
     render(
       <FilterSelectionPanel
@@ -115,7 +118,8 @@ describe("FilterSelectionPanel — default (accept-all)", () => {
     expect(onChange).toHaveBeenCalledOnce();
     const arg = onChange.mock.calls[0][0] as FilterSelectionConfig;
     expect(arg.sourceMode).toBe("allowlist");
-    expect(arg.allowedSourceWidgetIds).toEqual([]);
+    // No widget sources, allowSpatial=true → only the sentinel
+    expect(arg.allowedSourceWidgetIds).toContain(SPATIAL_DRAWS_SENTINEL);
   });
 });
 
@@ -439,5 +443,168 @@ describe("FilterSelectionPanel — empty source list", () => {
       />
     );
     expect(screen.getByText(/spatial draws \(map\)/i)).toBeTruthy();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 10. GAP 4 — Customize-on defaults to ALL-CHECKED (accept-all start state)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("FilterSelectionPanel — GAP 4: Customize-on pre-checks all sources", () => {
+  it("enabling Customize pre-checks both sibling widget ids AND sentinel (allowSpatial=true default)", () => {
+    const onChange = vi.fn();
+    render(
+      <FilterSelectionPanel
+        value={undefined}
+        onChange={onChange}
+        widgets={[makeWidget(1, "bar", "Revenue Bar"), makeWidget(2, "datafilter", "Global Filter")]}
+      />
+    );
+    const customize = screen.getByRole("checkbox", { name: /customize/i });
+    fireEvent.click(customize);
+    expect(onChange).toHaveBeenCalledOnce();
+    const arg = onChange.mock.calls[0][0] as FilterSelectionConfig;
+    expect(arg.sourceMode).toBe("allowlist");
+    // Both widget ids AND the sentinel pre-checked
+    expect(arg.allowedSourceWidgetIds).toContain(1);
+    expect(arg.allowedSourceWidgetIds).toContain(2);
+    expect(arg.allowedSourceWidgetIds).toContain(SPATIAL_DRAWS_SENTINEL);
+    // No accept-none warning rendered (since arg represents all-checked start state)
+  });
+
+  it("all source checkboxes start CHECKED when Customize is enabled (no warning shown)", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [1, 2, SPATIAL_DRAWS_SENTINEL as unknown as number] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar", "Revenue Bar"), makeWidget(2, "datafilter", "Global Filter")]}
+      />
+    );
+    const revenueCheckbox = screen.getByRole("checkbox", { name: /Revenue Bar/i });
+    const filterCheckbox = screen.getByRole("checkbox", { name: /Global Filter/i });
+    const sentinelCheckbox = screen.getByRole("checkbox", { name: /spatial draws/i });
+    expect((revenueCheckbox as HTMLInputElement).checked).toBe(true);
+    expect((filterCheckbox as HTMLInputElement).checked).toBe(true);
+    expect((sentinelCheckbox as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByText(/no sources selected/i)).toBeNull();
+  });
+
+  it("enabling Customize with allowSpatial=false pre-checks widget ids ONLY (no sentinel)", () => {
+    const onChange = vi.fn();
+    render(
+      <FilterSelectionPanel
+        value={undefined}
+        onChange={onChange}
+        widgets={[makeWidget(3, "bar", "DV Widget"), makeWidget(4, "datafilter", "DV Filter")]}
+        allowSpatial={false}
+      />
+    );
+    const customize = screen.getByRole("checkbox", { name: /customize/i });
+    fireEvent.click(customize);
+    expect(onChange).toHaveBeenCalledOnce();
+    const arg = onChange.mock.calls[0][0] as FilterSelectionConfig;
+    expect(arg.sourceMode).toBe("allowlist");
+    expect(arg.allowedSourceWidgetIds).toContain(3);
+    expect(arg.allowedSourceWidgetIds).toContain(4);
+    // Spatial sentinel must NOT be included for dv-bound
+    expect(arg.allowedSourceWidgetIds).not.toContain(SPATIAL_DRAWS_SENTINEL);
+  });
+
+  it("accept-none warning still fires when user manually unchecks all sources (allowSpatial=false)", () => {
+    // Start with only one widget checked; uncheck it → empty allowlist
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(5, "bar", "Only Widget")]}
+        allowSpatial={false}
+      />
+    );
+    // Empty allowlist + no sentinel = warning shown
+    expect(screen.getByText(/no sources selected/i)).toBeTruthy();
+  });
+
+  it("selfWidgetId-excluded sources are NOT included in the pre-checked set", () => {
+    const onChange = vi.fn();
+    render(
+      <FilterSelectionPanel
+        value={undefined}
+        onChange={onChange}
+        widgets={[makeWidget(1, "bar", "Self Bar"), makeWidget(2, "bar", "Other Bar")]}
+        selfWidgetId={1}
+      />
+    );
+    const customize = screen.getByRole("checkbox", { name: /customize/i });
+    fireEvent.click(customize);
+    const arg = onChange.mock.calls[0][0] as FilterSelectionConfig;
+    // Widget 1 is self — excluded from source list → not pre-checked
+    expect(arg.allowedSourceWidgetIds).not.toContain(1);
+    // Widget 2 is a valid source
+    expect(arg.allowedSourceWidgetIds).toContain(2);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 11. GAP 5 — Suppress spatial row for dv-bound vizs (allowSpatial=false)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("FilterSelectionPanel — GAP 5: allowSpatial=false hides the spatial row", () => {
+  it("does NOT render the 'Spatial draws (map)' row when allowSpatial=false", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar", "DV Bar")]}
+        allowSpatial={false}
+      />
+    );
+    expect(screen.queryByText(/spatial draws \(map\)/i)).toBeNull();
+  });
+
+  it("does NOT render the spatial row even in accept-all mode when allowSpatial=false", () => {
+    render(
+      <FilterSelectionPanel
+        value={undefined}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar", "DV Bar")]}
+        allowSpatial={false}
+      />
+    );
+    expect(screen.queryByText(/spatial draws \(map\)/i)).toBeNull();
+  });
+
+  it("DOES render the 'Spatial draws (map)' row when allowSpatial=true (explicit)", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar")]}
+        allowSpatial={true}
+      />
+    );
+    expect(screen.getByText(/spatial draws \(map\)/i)).toBeTruthy();
+  });
+
+  it("DOES render the sentinel row when allowSpatial is omitted (default=true)", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar")]}
+      />
+    );
+    expect(screen.getByText(/spatial draws \(map\)/i)).toBeTruthy();
+  });
+
+  it("accept-none warning fires when allowSpatial=false and allowlist is empty (no live widget, no sentinel)", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar")]}
+        allowSpatial={false}
+      />
+    );
+    expect(screen.getByText(/no sources selected/i)).toBeTruthy();
   });
 });
