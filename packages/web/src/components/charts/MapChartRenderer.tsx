@@ -586,19 +586,20 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       .join('|')
   );
 
-  // Phase 63.1 (DVDRILL-V112-02/-04): dv-FILTER re-render subscription. The existing
-  // dynamicViewsKey tracks the RAW dv store only — it does NOT move when the filter store's
-  // dvViews slice changes, so a dv-filter apply/clear left the map stuck. Mirror viewsKey
-  // but over useFilterViewStore.dvViews, scoped to includedLayers' dv ids, sorted ascending.
-  const dvFilterViewsKey = useFilterViewStore((s) =>
+  // Phase 94 (FSCOPE-V118-03): dv-COMBO re-render subscription. Replaces Phase 63.1 dvFilterViewsKey
+  // (which read filterViewStore.dvViews). MapChartRenderer dv-layer read-path is now
+  // filterCombinationStore.vizToHash["l:<id>"] → registry[hash], matching the table path.
+  // Primitive joined string (S-02) — Effects 2+3 re-fire only when a dv-layer combo entry changes.
+  // Filtered to dv-bound layers only (dynamic_view_id !== null), keyed by layer id (l:<id>).
+  const dvComboViewsKey = useFilterCombinationStore((s) =>
     includedLayers
       .filter((l) => l.dynamic_view_id !== null && l.dynamic_view_id !== undefined)
-      .map((l) => l.dynamic_view_id!)
-      .sort((a, b) => a - b)
-      .map((id) =>
-        `${id}:${s.dvViews[id]?.viewName ?? ''}:${s.dvViews[id]?.materializeVersion ?? 0}:${s.dvViews[id]?.materializing ? '1' : '0'}`
-      )
-      .join('|')
+      .map((l) => {
+        const hash = s.vizToHash[`l:${l.id}`];
+        const entry = hash && !hash.endsWith(`:${NOFILTER_SENTINEL}`) ? s.registry[hash] : undefined;
+        return `${l.id}:${entry?.viewName ?? ""}:${entry?.materializeVersion ?? 0}:${entry?.materializing ? "1" : "0"}`;
+      })
+      .join("|"),
   );
 
   // PITFALL S-02 lock: primitive shapesKey selector (joined ids) — Effect 7's dep array key.
@@ -1191,18 +1192,22 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           ? useDynamicViewStore.getState().dynamicViewVersion
           : undefined;
 
-      // Phase 63.1: filtered-dv → raw-dv → skip precedence. When this layer's dv has an active
-      // materialized dv-filter (materializing===false + non-empty viewName), FROM-swap to the
-      // filtered-dv view (a regular Kinetica view → buildWmsParams Case 1) with the filter's
-      // materializeVersion as the _mv cache-buster (the filtered-dv NAME is session-stable across
-      // re-drills). Else fall through to the raw-dv dvEntry/dvVersion computed above (unchanged).
+      // Phase 94 (FSCOPE-V118-03): dv-combo → raw-dv precedence. Replaces Phase 63.1 filterViewStore.dvViews read.
+      // When this layer's dv has an active combo entry (materializing===false + non-empty viewName) in
+      // filterCombinationStore.vizToHash["l:<id>"] → registry[hash], FROM-swap to the combo view with
+      // the combo entry's materializeVersion as _mv. Else fall through to raw-dv dvEntry/dvVersion.
       let resolvedDvEntry = dvEntry !== undefined ? { status: dvEntry.status, viewName: dvEntry.viewName } : undefined;
       let resolvedDvVersion = dvVersion;
       if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) {
-        const dvFilter = useFilterViewStore.getState().dvViews[layer.dynamic_view_id];
-        if (dvFilter && dvFilter.materializing === false && typeof dvFilter.viewName === "string" && dvFilter.viewName.length > 0) {
-          resolvedDvEntry = { status: "materialized", viewName: dvFilter.viewName };
-          resolvedDvVersion = dvFilter.materializeVersion;
+        const dvLayerVizKey = `l:${layer.id}`;
+        const dvComboHash = useFilterCombinationStore.getState().vizToHash[dvLayerVizKey];
+        const dvComboEntry =
+          dvComboHash && !dvComboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+            ? useFilterCombinationStore.getState().registry[dvComboHash]
+            : undefined;
+        if (dvComboEntry && !dvComboEntry.materializing && dvComboEntry.viewName) {
+          resolvedDvEntry = { status: "materialized", viewName: dvComboEntry.viewName };
+          resolvedDvVersion = dvComboEntry.materializeVersion;
         }
       }
 
@@ -1415,10 +1420,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // PITFALL S-02 + Pitfall 7 (35-RESEARCH.md): dynamicViewsKey added so Effect 2 re-fires
     // when any bound dv's viewName or status changes (e.g. pending → materialized after
     // orchestrator cascade completes).
-    // Phase 63.1: dvFilterViewsKey added so Effect 2 re-fires when a dv-filter is applied/cleared.
     // Phase 92 (READ-V118-02): comboViewsKey (per-layer combo dep-key) replaces viewsKey.
+    // Phase 94 (FSCOPE-V118-03): dvComboViewsKey replaces dvFilterViewsKey — dv-layer read-path
+    // now reads filterCombinationStore.vizToHash["l:<id>"] (not filterViewStore.dvViews).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includedLayers, widgetConfig, imageLoadFunctionFor, tables, comboViewsKey, dynamicViewsKey, dvFilterViewsKey]);
+  }, [includedLayers, widgetConfig, imageLoadFunctionFor, tables, comboViewsKey, dynamicViewsKey, dvComboViewsKey]);
 
   // ── Effect 3: Per-layer filter subscription (M-02 lock; fires on filterVersion + viewsKey) ──
   // PT16-E: filterVersion stays in dep array (300ms debounce window before view-store writes).
@@ -1446,17 +1452,20 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           ? useDynamicViewStore.getState().dynamicViewVersion
           : undefined;
 
-      // Phase 63.1: filtered-dv → raw-dv → skip precedence. Same logic as Effect 2's dv-filter
-      // resolution block. NOTE: the table suspend gate below (entry?.materializing) is orthogonal —
-      // it gates on the TABLE entry for table-backed layers; the dv-filter check is a SEPARATE
-      // guard inside the dv branch and does not affect the table suspend gate.
+      // Phase 94 (FSCOPE-V118-03): dv-combo → raw-dv precedence (Effect 3). Same logic as Effect 2's
+      // dv-combo resolution block. Replaces Phase 63.1 filterViewStore.dvViews read.
       let resolvedDvEntry = dvEntry !== undefined ? { status: dvEntry.status, viewName: dvEntry.viewName } : undefined;
       let resolvedDvVersion = dvVersion;
       if (layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined) {
-        const dvFilter = useFilterViewStore.getState().dvViews[layer.dynamic_view_id];
-        if (dvFilter && dvFilter.materializing === false && typeof dvFilter.viewName === "string" && dvFilter.viewName.length > 0) {
-          resolvedDvEntry = { status: "materialized", viewName: dvFilter.viewName };
-          resolvedDvVersion = dvFilter.materializeVersion;
+        const dvLayerVizKey = `l:${layer.id}`;
+        const dvComboHash = useFilterCombinationStore.getState().vizToHash[dvLayerVizKey];
+        const dvComboEntry =
+          dvComboHash && !dvComboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+            ? useFilterCombinationStore.getState().registry[dvComboHash]
+            : undefined;
+        if (dvComboEntry && !dvComboEntry.materializing && dvComboEntry.viewName) {
+          resolvedDvEntry = { status: "materialized", viewName: dvComboEntry.viewName };
+          resolvedDvVersion = dvComboEntry.materializeVersion;
         }
       }
 
@@ -1498,10 +1507,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     }
     // PITFALL S-02 + PT16-E + Pitfall 7: filterVersion (chip-state) + comboViewsKey (post-materialize)
     // + dynamicViewsKey (dv re-materialize / status flip).
-    // Phase 63.1: dvFilterViewsKey added so Effect 3 re-fires when a dv-filter is applied/cleared.
     // Phase 92 (READ-V118-02): comboViewsKey (per-layer combo dep-key) replaces viewsKey.
+    // Phase 94 (FSCOPE-V118-03): dvComboViewsKey replaces dvFilterViewsKey — dv-layer read-path
+    // now reads filterCombinationStore.vizToHash["l:<id>"] (not filterViewStore.dvViews).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, comboViewsKey, dynamicViewsKey, dvFilterViewsKey, includedLayers, tables]);
+  }, [filterVersion, comboViewsKey, dynamicViewsKey, dvComboViewsKey, includedLayers, tables]);
 
   // ── Effect 4: Basemap swap — swap source, NOT Map rebuild ─────────────────
   // Fires on a basemap config change OR an app-theme toggle (both move

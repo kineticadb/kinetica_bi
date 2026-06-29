@@ -5650,20 +5650,21 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     vi.restoreAllMocks();
   });
 
-  // ── Test A (bug-fix): active dv-filter → LAYERS=filtered-dv + _mv from dvFilter.materializeVersion ──
-  it("Test A: dv-backed layer with active materialized dv-filter → LAYERS=<filtered-dv viewName> + _mv=<dvFilter.materializeVersion>", async () => {
+  // ── Test A (bug-fix): active dv-combo → LAYERS=combo viewName + _mv from combo.materializeVersion ──
+  // Phase 94 (FSCOPE-V118-03): updated to use combo store (vizToHash["l:1"]/registry) instead of filterViewStore.dvViews.
+  it("Test A: dv-backed layer with active materialized dv-combo entry → LAYERS=<combo viewName> + _mv=<combo.materializeVersion>", async () => {
     _dynamicViewState.views = {
       7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
     };
     _dynamicViewState.dynamicViewVersion = 4;
-    _filterViewState.dvViews = {
-      7: {
-        viewName: "_kbi_filt_u1_d1_dv7_sabc",
-        materializing: false,
-        materializeVersion: 9,
-        expiresAt: Date.now() + 60_000,
-        dashboardId: 1,
-      },
+    // Phase 94: seed combo store for layer l:1
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_u1_d1_dv7_sabc",
+      materializing: false,
+      materializeVersion: 9,
+      expiresAt: Date.now() + 60_000,
     };
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
 
@@ -5674,9 +5675,9 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
     const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
     const params = ImageWmsCtor.mock.calls[0][0].params;
-    // Active dv-filter → LAYERS=<filtered-dv view name>, NOT the raw _kbi_dv_ name.
+    // Active dv-combo → LAYERS=<combo view name>, NOT the raw _kbi_dv_ name.
     expect(params.LAYERS).toBe("_kbi_filt_u1_d1_dv7_sabc");
-    // _mv must come from dvFilter.materializeVersion (9), NOT raw dvVersion (4).
+    // _mv must come from combo.materializeVersion (9), NOT raw dvVersion (4).
     expect(params._mv).toBe("9");
   });
 
@@ -5759,22 +5760,22 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     expect(params._mv).toBe("4");
   });
 
-  // ── Test E (dv-isolation): two dv layers; filter for dv 7 ONLY → each swaps independently ──
-  it("Test E: two dv-backed layers (dv 7 + dv 8), active filter only for dv 7 → layer-7 uses filtered-dv; layer-8 uses raw dv", async () => {
+  // ── Test E (dv-isolation): two dv layers; combo only for l:1 → each swaps independently ──
+  // Phase 94: updated to use combo store (vizToHash["l:<id>"]/registry) instead of filterViewStore.dvViews.
+  it("Test E: two dv-backed layers (dv 7 + dv 8), active combo only for l:1 (dv 7) → layer-7 uses combo view; layer-8 uses raw dv", async () => {
     _dynamicViewState.views = {
       7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
       8: { viewName: "_kbi_dv_u1_d1_8", status: "materialized", expiresAt: Date.now() + 60_000 },
     };
     _dynamicViewState.dynamicViewVersion = 4;
-    _filterViewState.dvViews = {
-      7: {
-        viewName: "_kbi_filt_u1_d1_dv7_sabc",
-        materializing: false,
-        materializeVersion: 9,
-        expiresAt: Date.now() + 60_000,
-        dashboardId: 1,
-      },
-      // dv 8 has NO filter entry
+    // Phase 94: combo entry only for layer l:1 (dv 7); l:2 (dv 8) has no combo entry.
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_u1_d1_dv7_sabc",
+      materializing: false,
+      materializeVersion: 9,
+      expiresAt: Date.now() + 60_000,
     };
     _layersState.layers = [
       makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 }),
@@ -5787,11 +5788,11 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
 
     expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(2);
     const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
-    // First call is for layer id=1 (dv 7) — should use filtered-dv.
+    // First call is for layer id=1 (dv 7) — should use combo view.
     const params1 = ImageWmsCtor.mock.calls[0][0].params;
     expect(params1.LAYERS).toBe("_kbi_filt_u1_d1_dv7_sabc");
     expect(params1._mv).toBe("9");
-    // Second call is for layer id=2 (dv 8) — should use raw dv (no filter).
+    // Second call is for layer id=2 (dv 8) — should use raw dv (no combo entry).
     const params2 = ImageWmsCtor.mock.calls[1][0].params;
     expect(params2.LAYERS).toBe("_kbi_dv_u1_d1_8");
     expect(params2._mv).toBe("4");
@@ -5822,13 +5823,13 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     expect(params).not.toHaveProperty("_mv");
   });
 
-  // ── Test G (re-render on apply): dvViews changes from {} to active filter → Effect 3 re-fires ──
-  it("Test G: applying a dv-filter (dvViews goes from {} to active) moves dvFilterViewsKey → Effect 3 re-fires with LAYERS=filtered-dv + _mv=9", async () => {
+  // ── Test G (re-render on apply): dvComboViewsKey changes from empty to active → Effect 3 re-fires ──
+  // Phase 94: updated to use combo store (vizToHash["l:1"]/registry) instead of filterViewStore.dvViews.
+  it("Test G: applying a dv-combo entry (vizToHash[l:1] goes from undefined to active) moves dvComboViewsKey → Effect 3 re-fires with LAYERS=combo view + _mv=9", async () => {
     _dynamicViewState.views = {
       7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
     };
     _dynamicViewState.dynamicViewVersion = 4;
-    _filterViewState.dvViews = {};
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
 
     const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
@@ -5839,21 +5840,20 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     const source = allImageWmsInstances[0];
     source.updateParams.mockClear();
 
-    // Apply a dv-filter (simulate setDvView): set dvViews and trigger re-render.
-    _filterViewState.dvViews = {
-      7: {
-        viewName: "_kbi_filt_u1_d1_dv7_sabc",
-        materializing: false,
-        materializeVersion: 9,
-        expiresAt: Date.now() + 60_000,
-        dashboardId: 1,
-      },
+    // Apply a dv-combo entry (simulate orchestrator completing dv materialize): set combo store.
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_u1_d1_dv7_sabc",
+      materializing: false,
+      materializeVersion: 9,
+      expiresAt: Date.now() + 60_000,
     };
     await act(async () => {
       rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     });
 
-    // Effect 3 must have re-fired with LAYERS=filtered-dv + _mv=9.
+    // Effect 3 must have re-fired with LAYERS=combo view + _mv=9.
     expect(source.updateParams).toHaveBeenCalled();
     const lastCall = source.updateParams.mock.calls[source.updateParams.mock.calls.length - 1];
     const params = lastCall[0];
@@ -5861,20 +5861,21 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     expect(params._mv).toBe("9");
   });
 
-  // ── Test H (re-render on clear): dvViews goes from active to {} → Effect 3 reverts to raw dv ──
-  it("Test H: clearing a dv-filter (dvViews goes from active to {}) moves dvFilterViewsKey → Effect 3 re-fires with LAYERS=raw-dv + _mv=4", async () => {
+  // ── Test H (re-render on clear): dvComboViewsKey goes from active to empty → Effect 3 reverts to raw dv ──
+  // Phase 94: updated to use combo store (vizToHash["l:1"]/registry) instead of filterViewStore.dvViews.
+  it("Test H: clearing a dv-combo entry (vizToHash[l:1] goes from active to undefined) moves dvComboViewsKey → Effect 3 re-fires with LAYERS=raw-dv + _mv=4", async () => {
     _dynamicViewState.views = {
       7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
     };
     _dynamicViewState.dynamicViewVersion = 4;
-    _filterViewState.dvViews = {
-      7: {
-        viewName: "_kbi_filt_u1_d1_dv7_sabc",
-        materializing: false,
-        materializeVersion: 9,
-        expiresAt: Date.now() + 60_000,
-        dashboardId: 1,
-      },
+    // Phase 94: start with active combo entry for l:1
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_u1_d1_dv7_sabc",
+      materializing: false,
+      materializeVersion: 9,
+      expiresAt: Date.now() + 60_000,
     };
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
 
@@ -5886,8 +5887,9 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     const source = allImageWmsInstances[0];
     source.updateParams.mockClear();
 
-    // Clear the dv-filter (simulate clearDvView): empty dvViews and trigger re-render.
-    _filterViewState.dvViews = {};
+    // Clear the dv-combo (simulate orchestrator clearEntry): empty combo store.
+    delete _comboVizToHash["l:1"];
+    delete _comboRegistry[dvHash];
     await act(async () => {
       rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     });
@@ -5898,6 +5900,150 @@ describe("MapChartRenderer — Phase 63.1 dv-filter FROM-swap (DVDRILL-V112-02/-
     const params = lastCall[0];
     expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
     expect(params._mv).toBe("4");
+  });
+});
+
+// ── Phase 94 (FSCOPE-V118-03): dv-layer combo-store read-path (dvComboViewsKey) ───────────────
+// MapChartRenderer dv-layer read-path flipped from filterViewStore.dvViews to
+// filterCombinationStore.vizToHash["l:<id>"] → registry[hash].viewName.
+// These tests use _comboVizToHash/_comboRegistry (the existing combo mock state).
+describe("MapChartRenderer — Phase 94 dv-layer combo-store read-path (FSCOPE-V118-03)", () => {
+  beforeEach(() => {
+    _comboVizToHash = {};
+    _comboRegistry = {};
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    _filterViewState.dvViews = {};
+    _dynamicViewState.views = {};
+    _dynamicViewState.dynamicViewVersion = 0;
+    lastMapInstance = null;
+    lastBasemapLayerInstance = null;
+    lastResizeObserverCallback = null;
+    lastResizeObserverInstance = null;
+    tileLoadListeners = {};
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    lastViewportElement = null;
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Test 94-A: dv-layer with populated combo entry → LAYERS=combo viewName ──
+  it("94-A: dv-bound layer with populated combo entry (vizToHash[l:1]) → LAYERS=combo viewName NOT raw dv", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    // Phase 94: combo entry for layer l:1 (layer id=1, dv 7)
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_dv7_combo_labc",
+      materializeVersion: 9,
+      materializing: false,
+      expiresAt: Date.now() + 60_000,
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // combo entry present → LAYERS=combo view name, NOT raw dv.
+    expect(params.LAYERS).toBe("_kbi_filt_dv7_combo_labc");
+    expect(params._mv).toBe("9");
+  });
+
+  // ── Test 94-B: dv-layer with no combo entry → falls back to raw dv view ──
+  it("94-B: dv-bound layer with no combo entry (vizToHash undefined) → falls back to raw dv view", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    // No combo entry for l:1 (NOFILTER / Case C)
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
+    expect(params._mv).toBe("4");
+  });
+
+  // ── Test 94-C: combo entry materializing=true → falls through to raw dv ──
+  it("94-C: dv-bound layer with combo entry materializing=true → falls through to raw dv (not yet active)", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_dv7_combo_labc",
+      materializeVersion: 0,
+      materializing: true,  // still materializing → fall back
+      expiresAt: Date.now() + 60_000,
+    };
+    _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params = ImageWmsCtor.mock.calls[0][0].params;
+    // materializing → not active, falls through to raw dv.
+    expect(params.LAYERS).toBe("_kbi_dv_u1_d1_7");
+    expect(params._mv).toBe("4");
+  });
+
+  // ── Test 94-D: per-layer isolation — two dv layers, combo only for layer 1 ──
+  it("94-D: two dv layers; combo only for l:1 → l:1 uses combo view; l:2 uses raw dv", async () => {
+    _dynamicViewState.views = {
+      7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
+      8: { viewName: "_kbi_dv_u1_d1_8", status: "materialized", expiresAt: Date.now() + 60_000 },
+    };
+    _dynamicViewState.dynamicViewVersion = 4;
+    const dvHash = "dv:7:g|eq|\"A\"";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_dv7_combo_labc",
+      materializeVersion: 9,
+      materializing: false,
+      expiresAt: Date.now() + 60_000,
+    };
+    // l:2 has no combo entry
+    _layersState.layers = [
+      makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 }),
+      makeLayer({ id: 2, position: 1, table_id: 11, dynamic_view_id: 8 }),
+    ];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(2);
+    const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
+    const params1 = ImageWmsCtor.mock.calls[0][0].params;
+    expect(params1.LAYERS).toBe("_kbi_filt_dv7_combo_labc");
+    expect(params1._mv).toBe("9");
+    const params2 = ImageWmsCtor.mock.calls[1][0].params;
+    expect(params2.LAYERS).toBe("_kbi_dv_u1_d1_8");
+    expect(params2._mv).toBe("4");
   });
 });
 
@@ -5969,27 +6115,24 @@ describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation 
     expect(params.LAYERS).not.toBe("public.t10");
   });
 
-  // ── Cal-DV: calendar drill on dv → WMS map for same dvId FROM-swaps to filtered-dv view ──
-  // The calendar cell click writes markDvMaterializing → setDvView → dvViews[dvId].viewName.
-  // After materialization (materializing:false, non-empty viewName), a map layer on the same
-  // dynamic_view_id must have buildWmsParams called with resolvedDvEntry.viewName===filtered dv view
-  // (Phase 63.1 dv FROM-swap path already handles this; this spec proves it for calendar drills).
-  it("Cal-DV: dv-bound calendar BETWEEN filter (materialized) → WMS LAYERS=<filtered-dv viewName> + _mv from dvFilter.materializeVersion", async () => {
+  // ── Cal-DV: calendar drill on dv → WMS map for same dvId FROM-swaps to combo view ──
+  // Phase 94 (FSCOPE-V118-03): updated from filterViewStore.dvViews to filterCombinationStore.
+  // The calendar cell click calls addDvFilter → orchestrator materializes dv-combo for l:<id>.
+  // After materialization, the map layer reads combo store: vizToHash["l:1"] → registry[hash].viewName.
+  it("Cal-DV: dv-bound calendar BETWEEN filter (materialized) → WMS LAYERS=<combo viewName> + _mv from combo.materializeVersion (Phase 94)", async () => {
     // Seed the raw dv in dynamicViewStore (required for layer to render at all)
     _dynamicViewState.views = {
       7: { viewName: "_kbi_dv_u1_d1_7", status: "materialized", expiresAt: Date.now() + 60_000 },
     };
     _dynamicViewState.dynamicViewVersion = 5;
-    // Seed useFilterViewStore.dvViews[7] as a materialized calendar-style dv-filter view
-    // (same state as after: markDvMaterializing → setDvView({viewName, expiresAt}))
-    _filterViewState.dvViews = {
-      7: {
-        viewName: "_kbi_filt_cal_d1_dv7_sabc",
-        materializing: false,
-        materializeVersion: 3,
-        expiresAt: Date.now() + 60_000,
-        dashboardId: 1,
-      },
+    // Phase 94: seed combo store (post-orchestrator-materialize state) for layer l:1
+    const dvHash = "dv:7:g|between|2024-01-01|2024-01-31";
+    _comboVizToHash["l:1"] = dvHash;
+    _comboRegistry[dvHash] = {
+      viewName: "_kbi_filt_cal_d1_dv7_sabc",
+      materializing: false,
+      materializeVersion: 3,
+      expiresAt: Date.now() + 60_000,
     };
     // Render a dv-bound WMS layer on dynamic_view_id=7 (same dv the calendar filtered)
     _layersState.layers = [makeLayer({ id: 1, position: 0, table_id: 10, dynamic_view_id: 7 })];
@@ -6001,9 +6144,9 @@ describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation 
     expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
     const ImageWmsCtor = (await import("ol/source/ImageWMS")).default as any;
     const params = ImageWmsCtor.mock.calls[0][0].params;
-    // Phase 63.1 dv FROM-swap: resolvedDvEntry.viewName===calendar's filtered dv view
+    // Phase 94 dv-combo path: resolvedDvEntry.viewName===calendar's combo dv view
     expect(params.LAYERS).toBe("_kbi_filt_cal_d1_dv7_sabc");
-    // _mv must come from dvFilter.materializeVersion (3), NOT raw dvVersion (5)
+    // _mv must come from combo.materializeVersion (3), NOT raw dvVersion (5)
     expect(params._mv).toBe("3");
     // The raw dv name must NOT appear in LAYERS
     expect(params.LAYERS).not.toBe("_kbi_dv_u1_d1_7");
