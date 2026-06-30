@@ -524,7 +524,7 @@ describe("FilterSelectionPanel — GAP 4: Customize-on pre-checks all sources", 
     expect(screen.getByText(/no sources selected/i)).toBeTruthy();
   });
 
-  it("selfWidgetId-excluded sources are NOT included in the pre-checked set", () => {
+  it("self (own-selections) IS pre-checked on Customize-enable (default ON), alongside siblings", () => {
     const onChange = vi.fn();
     render(
       <FilterSelectionPanel
@@ -537,10 +537,56 @@ describe("FilterSelectionPanel — GAP 4: Customize-on pre-checks all sources", 
     const customize = screen.getByRole("checkbox", { name: /customize/i });
     fireEvent.click(customize);
     const arg = onChange.mock.calls[0][0] as FilterSelectionConfig;
-    // Widget 1 is self — excluded from source list → not pre-checked
-    expect(arg.allowedSourceWidgetIds).not.toContain(1);
-    // Widget 2 is a valid source
-    expect(arg.allowedSourceWidgetIds).toContain(2);
+    // Phase 96 UAT gap: self is now an explicit "own selections" entry, default ON.
+    expect(arg.allowedSourceWidgetIds).toContain(1); // self pre-checked
+    expect(arg.allowedSourceWidgetIds).toContain(2); // sibling pre-checked
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 10b. Self "own selections" row (Phase 96 UAT gap)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("FilterSelectionPanel — self own-selections row", () => {
+  it("renders a 'This widget's own selections' row when selfWidgetId is a filter-producing widget", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [1] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar", "Self Bar")]}
+        selfWidgetId={1}
+      />
+    );
+    expect(screen.getByText(/own selections/i)).toBeTruthy();
+    // The self widget is NOT shown by its title (shown as the own-selections row instead).
+    expect(screen.queryByText(/Self Bar/)).toBeNull();
+  });
+
+  it("unchecking the own-selections row removes self from allowedSourceWidgetIds", () => {
+    const onChange = vi.fn();
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [1, 2] }}
+        onChange={onChange}
+        widgets={[makeWidget(1, "bar", "Self Bar"), makeWidget(2, "bar", "Other Bar")]}
+        selfWidgetId={1}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /own selections/i }));
+    const arg = onChange.mock.calls[0][0] as FilterSelectionConfig;
+    expect(arg.allowedSourceWidgetIds).not.toContain(1); // self removed
+    expect(arg.allowedSourceWidgetIds).toContain(2); // sibling retained
+  });
+
+  it("no own-selections row for layers (selfWidgetId undefined)", () => {
+    render(
+      <FilterSelectionPanel
+        value={{ sourceMode: "allowlist", allowedSourceWidgetIds: [] }}
+        onChange={vi.fn()}
+        widgets={[makeWidget(1, "bar", "Some Bar")]}
+      />
+    );
+    expect(screen.queryByText(/own selections/i)).toBeNull();
   });
 });
 

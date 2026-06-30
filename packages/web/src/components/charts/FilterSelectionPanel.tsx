@@ -54,9 +54,20 @@ export function FilterSelectionPanel({
   const isAllowlist = value !== undefined && value.sourceMode === "allowlist";
 
   // ── Compute the live source widget list (moved above handlers so pre-check can use it) ──
+  // Sibling sources = filter-producing widgets OTHER than the one being configured.
   const sources = widgets.filter(
     (w) => isFilterProducingWidget(w.type) && w.id !== selfWidgetId,
   );
+
+  // ── Self "own selections" entry (Phase 96 UAT gap) ──────────────────────────
+  // The widget being configured, when it is itself filter-producing (drills), gets an explicit
+  // "This widget's own selections" row (default ON via the pre-check below). Checked → the widget
+  // applies its own drill clicks (v1.17 behavior); unchecked → it drills others but shows full data.
+  // Layers (selfWidgetId undefined) and non-drilling widgets (records) have no self row.
+  const selfWidget =
+    selfWidgetId !== undefined
+      ? widgets.find((w) => w.id === selfWidgetId && isFilterProducingWidget(w.type))
+      : undefined;
 
   // ── Customize toggle ────────────────────────────────────────────────────────
   const handleCustomizeToggle = () => {
@@ -65,9 +76,10 @@ export function FilterSelectionPanel({
       onChange(undefined);
     } else {
       // Check → enter allowlist mode, pre-checked to ALL current sources (start == accept-all)
-      // Phase 96-02 (GAP 4): pre-populate with every currently-listed source id + sentinel
+      // Phase 96-02 (GAP 4): pre-populate with every currently-listed source id + self + sentinel
       // so the start state equals accept-all; user unchecks to exclude.
       const ids: (number | string)[] = sources.map((w) => w.id);
+      if (selfWidget) ids.push(selfWidget.id);
       if (allowSpatial) ids.push(SPATIAL_DRAWS_SENTINEL);
       onChange({ sourceMode: "allowlist", allowedSourceWidgetIds: ids });
     }
@@ -139,8 +151,22 @@ export function FilterSelectionPanel({
             </span>
           )}
 
-          {/* Widget source checklist */}
-          {sources.length === 0 ? (
+          {/* Self "own selections" row (Phase 96 UAT gap) — the widget applies its own
+              drill clicks when checked. Listed first; default ON via the pre-check above. */}
+          {selfWidget && (
+            <label className="config-toggle">
+              <input
+                type="checkbox"
+                checked={value!.allowedSourceWidgetIds.includes(selfWidget.id)}
+                onChange={() => toggleSource(selfWidget.id)}
+                aria-label="This widget's own selections"
+              />
+              This widget's own selections
+            </label>
+          )}
+
+          {/* Sibling widget source checklist */}
+          {sources.length === 0 && !selfWidget ? (
             <span className="config-hint">
               No filter-producing widgets on this dashboard.
             </span>
