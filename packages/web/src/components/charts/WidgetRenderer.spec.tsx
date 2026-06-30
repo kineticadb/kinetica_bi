@@ -3883,3 +3883,65 @@ describe("resolveAggregatedDrillTarget (drill on group-by column)", () => {
     expect(out.value).toBe("LA");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 98 Plan 02 (VIZSQL-V119-02/03) — customWhere WHERE injection in RecordsTableRenderer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 98-02 — RecordsTableRenderer customWhere page-fetch SQL injection", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("injects WHERE (<predicate>) before LIMIT when customWhere is set", async () => {
+    const runSqlSpy = vi
+      .spyOn(clientModule, "runSql")
+      .mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    const widget = makeWidget({
+      type: "records",
+      config: {
+        table: "events",
+        tableId: 42,
+        columns: "id, name",
+        pageSize: 25,
+        customWhere: "q = 1",
+      },
+    });
+
+    render(wrap(<WidgetRenderer widget={widget} />));
+
+    // Page-fetch effect fires; assert SQL contains WHERE clause before LIMIT
+    await waitFor(() => expect(runSqlSpy).toHaveBeenCalled());
+    const sql: string = String(runSqlSpy.mock.calls[0][0]);
+    expect(sql).toContain("WHERE (q = 1)");
+    // WHERE must appear before LIMIT
+    expect(sql.indexOf("WHERE")).toBeLessThan(sql.indexOf("LIMIT"));
+  });
+
+  it("byte-identical SQL when customWhere is absent (VIZSQL-V119-03)", async () => {
+    const runSqlSpy = vi
+      .spyOn(clientModule, "runSql")
+      .mockResolvedValue(EMPTY_RESPONSE as unknown as Record<string, unknown>);
+
+    const widget = makeWidget({
+      type: "records",
+      config: {
+        table: "events",
+        tableId: 42,
+        columns: "id, name",
+        pageSize: 25,
+        // No customWhere key
+      },
+    });
+
+    render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => expect(runSqlSpy).toHaveBeenCalled());
+    const sql: string = String(runSqlSpy.mock.calls[0][0]);
+    // No WHERE clause injected
+    expect(sql).not.toContain("WHERE");
+    // Standard form: SELECT <cols> FROM <table> LIMIT <pageSize> OFFSET 0
+    expect(sql).toBe("SELECT id, name FROM events LIMIT 25 OFFSET 0");
+  });
+});

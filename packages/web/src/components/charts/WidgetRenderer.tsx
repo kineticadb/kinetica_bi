@@ -73,6 +73,7 @@ import {
   DEFAULT_TABLE_BAR_COLOR,
   DEFAULT_BIGNUMBER_COLOR,
 } from "../../lib/chartTheme";
+import { whereCustomWhere } from "../../lib/customWhere";
 
 type Props = {
   widget: WidgetDto;
@@ -1611,6 +1612,9 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const pageSize = Math.max(1, Number(cfg.pageSize) || 25);
   const compact = cfg.compact !== false; // default compact to match the compact theme
   const striped = cfg.striped !== false;
+  // Phase 98-02 (VIZSQL-V119-02): compute WHERE clause for non-empty customWhere.
+  // whereCustomWhere returns ' WHERE (<predicate>)' with leading space, or '' for empty/absent.
+  const cw = whereCustomWhere((cfg.customWhere as string | undefined) ?? "");
 
   // Phase 10 DRILL-01 + DRILL-04: drill-down config + filter subscription.
   // RESEARCH.md Pitfall 3: RecordsTableRenderer was previously NOT subscribed to
@@ -1733,7 +1737,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       while (all.length < csvDownloadRowCap) {
         const remaining = csvDownloadRowCap - all.length;
         const limit = Math.min(PAGE, remaining);
-        const sql = `SELECT ${colsClause} FROM ${fromSourceCsv}${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+        const sql = `SELECT ${colsClause} FROM ${fromSourceCsv}${cw}${orderBy} LIMIT ${limit} OFFSET ${offset}`;
         const res = await runSql<Record<string, unknown>>(sql, undefined, controller.signal);
         const rows = parseKineticaResponse(res);
         all.push(...rows);
@@ -1854,7 +1858,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       ? (comboEntry?.viewName || recordsDvViewName)
       : (comboEntry?.viewName ?? "");
     const fromSource = effectiveViewName || table;
-    const sql = `SELECT ${colsClause} FROM ${fromSource}${orderBy} LIMIT ${pageSize} OFFSET ${offset}`;
+    const sql = `SELECT ${colsClause} FROM ${fromSource}${cw}${orderBy} LIMIT ${pageSize} OFFSET ${offset}`;
 
     setLoading(true);
     setError(null);
