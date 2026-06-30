@@ -23,6 +23,8 @@ type Props = {
   tableId: number | undefined;
   dynamicViewId: number | undefined;
   spatialCapable: boolean;
+  /** Widget id — enables ceiling-fallback detection via the combination store binding. */
+  widgetId?: number;
 };
 
 // ─── Breakdown title builder ──────────────────────────────────────────────────
@@ -56,8 +58,30 @@ export function buildBreakdownTitle(summary: FilterScopeSummary): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export const WidgetFilterBadge = (props: Props) => {
-  const summary = useFilterScopeSummary(props);
+export const WidgetFilterBadge = ({ widgetId, ...rest }: Props) => {
+  const summary = useFilterScopeSummary({
+    ...rest,
+    vizKey: widgetId !== undefined ? `w:${widgetId}` : undefined,
+  });
+
+  // Phase 96 UAT (ceiling fallback): the orchestrator remapped this widget to the all-filters
+  // view because the per-table combination limit was exceeded. Its CONFIGURED narrower scope is
+  // NOT what it renders — surface that instead of the misleading "N of M" configured label.
+  if (summary.fellBack) {
+    const limitTitle =
+      `Combination limit reached — showing all ${summary.totalCount} filters ` +
+      `(configured scope: ${summary.appliedCount} of ${summary.totalCount}).`;
+    return (
+      <span
+        className="widget-filter-badge"
+        title={limitTitle}
+        role="status"
+        aria-label={limitTitle}
+      >
+        All filters (limit)
+      </span>
+    );
+  }
 
   // Locked decision #4: render ONLY when >=1 active filter (or shape) is ignored.
   if (summary.appliedCount >= summary.totalCount) return null;

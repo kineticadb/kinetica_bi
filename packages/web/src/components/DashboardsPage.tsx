@@ -1121,6 +1121,7 @@ const DashboardOpen = ({
                     <>
                       <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
                       <WidgetFilterBadge
+                        widgetId={w.id}
                         cfg={(w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined}
                         tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined}
                         dynamicViewId={(w.config as Record<string, unknown> | undefined)?.dynamicViewId as number | undefined}

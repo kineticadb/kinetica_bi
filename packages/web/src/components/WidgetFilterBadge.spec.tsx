@@ -29,6 +29,7 @@ function summaryAllApplied(n = 3): FilterScopeSummary {
     totalCount: n,
     applied: { filters: [], shapes: [] },
     ignored: [],
+    fellBack: false,
   };
 }
 
@@ -40,7 +41,12 @@ function summaryWithIgnored(applied: number, total: number): FilterScopeSummary 
     totalCount: total,
     applied: { filters: [f1], shapes: [] },
     ignored: [{ kind: "filter", filter: f2, reason: "source excluded" }],
+    fellBack: false,
   };
+}
+
+function summaryFellBack(applied: number, total: number): FilterScopeSummary {
+  return { ...summaryWithIgnored(applied, total), fellBack: true };
 }
 
 const defaultProps = {
@@ -95,6 +101,25 @@ describe("WidgetFilterBadge", () => {
     expect(title).toContain("Applied:");
     expect(title).toContain("Ignored");
     expect(title).toContain("source excluded");
+  });
+
+  // Phase 96 UAT (ceiling fallback): fellBack=true → distinct "All filters (limit)" badge
+  it("renders 'All filters (limit)' when the widget fell back to the all-filters view", () => {
+    mockUseFilterScopeSummary.mockReturnValue(summaryFellBack(1, 3));
+    render(<WidgetFilterBadge {...defaultProps} widgetId={5} />);
+    const badge = screen.getByText("All filters (limit)");
+    expect(badge).toHaveClass("widget-filter-badge");
+    const title = badge.getAttribute("title") ?? "";
+    expect(title).toContain("Combination limit reached");
+    expect(title).toContain("showing all 3 filters");
+  });
+
+  // fellBack takes precedence over the normal "N of M" label
+  it("fellBack badge is shown instead of the configured 'N of M' label", () => {
+    mockUseFilterScopeSummary.mockReturnValue(summaryFellBack(1, 3));
+    render(<WidgetFilterBadge {...defaultProps} widgetId={5} />);
+    expect(screen.queryByText("1 of 3 filters")).toBeNull();
+    expect(screen.getByText("All filters (limit)")).toBeInTheDocument();
   });
 
   // CSS-before-use guard: .widget-filter-badge must exist in global.css

@@ -15,8 +15,10 @@
 import { useMemo } from "react";
 import { resolveFilterSet } from "./resolveFilterSet";
 import { resolveSpatialShapes } from "./resolveSpatialShapes";
+import { stableComboHash, NOFILTER_SENTINEL } from "./stableComboHash";
 import { useFilterStore } from "../store/filterStore";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useAuthStore } from "../store/auth";
 import type { ActiveFilter } from "../store/filterStore";
 import type { Shape } from "../store/spatialFilterStore";
@@ -33,6 +35,12 @@ export type FilterScopeSummary = {
   totalCount: number;     // M — badge label RHS (includes spatial for spatial-capable table-bound)
   applied: { filters: ActiveFilter[]; shapes: Shape[] };
   ignored: IgnoredItem[];
+  // Phase 96 UAT (ceiling fallback): true when the orchestrator remapped this viz to the
+  // all-filters fallback view (combination ceiling exceeded) — its CONFIGURED narrower scope
+  // is NOT what it actually renders. Computed in the hook (needs the combo store); the pure fn
+  // always returns false. The badge surfaces this so a fallen-back widget doesn't misleadingly
+  // claim its configured scope.
+  fellBack: boolean;
 };
 
 // ─── Pure Function ────────────────────────────────────────────────────────────
@@ -69,7 +77,8 @@ export function computeFilterScopeSummary(args: {
   const applied = { filters: appliedFilters, shapes: appliedShapes };
   const ignored: IgnoredItem[] = [...ignoredFilters, ...ignoredShapes];
 
-  return { appliedCount, totalCount, applied, ignored };
+  // Pure fn cannot know the orchestrator binding → fellBack is computed in the hook.
+  return { appliedCount, totalCount, applied, ignored, fellBack: false };
 }
 
 // ─── React Hook ──────────────────────────────────────────────────────────────
@@ -83,8 +92,15 @@ export function useFilterScopeSummary(args: {
   tableId: number | undefined;        // table-bound source
   dynamicViewId: number | undefined;  // dv-bound source (mutually exclusive with tableId)
   spatialCapable: boolean;            // true only for table-bound widget with an eligible SpatialTarget
+  /**
+   * The viz's combination-store key ("w:<widgetId>" / "l:<layerId>"). When provided, the hook
+   * detects ceiling FALLBACK by comparing the viz's actual bound hash (vizToHash[vizKey]) to its
+   * CONFIGURED hash — if they differ, the viz was remapped to the all-filters fallback view.
+   * Omit to skip fallback detection (fellBack stays false).
+   */
+  vizKey?: string;
 }): FilterScopeSummary {
-  const { cfg, tableId, dynamicViewId, spatialCapable } = args;
+  const { cfg, tableId, dynamicViewId, spatialCapable, vizKey } = args;
 
   // SCOPED primitive selectors to drive re-renders on mutation (PITFALL S-02)
   const filterVersion = useFilterStore((s) => s.filterVersion);
@@ -92,6 +108,8 @@ export function useFilterScopeSummary(args: {
   // GAP 3 / Test 7: when dvFilterScopeDisabled is set, dv-bound sources revert to accept-all
   // (saved filterSelection is ignored → no badge/indicator for dv widgets/layers).
   const dvFilterScopeDisabled = useAuthStore((s) => s.dvFilterScopeDisabled);
+  // combinationVersion drives re-render when the orchestrator rebinds vizToHash (ceiling fallback).
+  const combinationVersion = useFilterCombinationStore((s) => s.combinationVersion);
 
   return useMemo(() => {
     const filterState = useFilterStore.getState();
@@ -114,11 +132,38 @@ export function useFilterScopeSummary(args: {
     // Table-bound sources are never affected by this flag.
     const effectiveCfg = isDv && dvFilterScopeDisabled ? undefined : cfg;
 
-    return computeFilterScopeSummary({
+    const summary = computeFilterScopeSummary({
       cfg: effectiveCfg,
       activeFilters,
       activeShapes,
       spatialCapable: effectiveSpatialCapable,
     });
-  }, [cfg, tableId, dynamicViewId, spatialCapable, filterVersion, spatialFilterVersion, dvFilterScopeDisabled]);
+
+    // ── Ceiling fallback detection ──────────────────────────────────────────
+    // Compare the viz's CONFIGURED hash (what the orchestrator would mint for this viz) to its
+    // ACTUAL bound hash (vizToHash). They differ ONLY when the ceiling remapped this viz to the
+    // all-filters fallback. Mirrors the orchestrator's hash inputs exactly:
+    //   resolved = summary.applied.filters; shapesForHash = summary.applied.shapes (already gated
+    //   by spatialCapable in computeFilterScopeSummary).
+    let fellBack = false;
+    if (vizKey) {
+      const sourceId = isDv ? dynamicViewId : tableId;
+      if (sourceId !== undefined) {
+        const configuredHash = isDv
+          ? stableComboHash("dv", sourceId, summary.applied.filters)
+          : stableComboHash("table", sourceId, summary.applied.filters, summary.applied.shapes);
+        // NOFILTER configs never get a binding (read raw) → never "fall back".
+        if (!configuredHash.endsWith(`:${NOFILTER_SENTINEL}`)) {
+          const actualHash = useFilterCombinationStore.getState().vizToHash[vizKey];
+          fellBack =
+            actualHash !== undefined &&
+            !actualHash.endsWith(`:${NOFILTER_SENTINEL}`) &&
+            actualHash !== configuredHash;
+        }
+      }
+    }
+
+    return { ...summary, fellBack };
+    // combinationVersion is a re-render trigger (vizToHash read imperatively above).
+  }, [cfg, tableId, dynamicViewId, spatialCapable, vizKey, filterVersion, spatialFilterVersion, dvFilterScopeDisabled, combinationVersion]);
 }

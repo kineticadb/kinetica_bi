@@ -8,8 +8,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useFilterScopeSummary } from "./useFilterScopeSummary";
+import { resolveFilterSet } from "./resolveFilterSet";
+import { stableComboHash } from "./stableComboHash";
 import { useAuthStore } from "../store/auth";
 import { useFilterStore } from "../store/filterStore";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
 
 describe("useFilterScopeSummary — GAP 3 / Test 7: dvFilterScopeDisabled", () => {
   const dvId = 99;
@@ -98,5 +101,63 @@ describe("useFilterScopeSummary — GAP 3 / Test 7: dvFilterScopeDisabled", () =
     );
     expect(result.current.totalCount).toBe(1);
     expect(result.current.appliedCount).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 96 UAT (ceiling fallback): fellBack detection via vizToHash comparison
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("useFilterScopeSummary — fellBack (ceiling fallback) detection", () => {
+  const tableId = 5;
+  // Two active filters on the table; widget cfg applies ONLY source 3 (region).
+  const region = { column: "region", value: "east", dataType: "string" as const, sourceWidgetId: 3, addedAt: 1 };
+  const status = { column: "status", value: "open", dataType: "string" as const, sourceWidgetId: 8, addedAt: 2 };
+  const cfg = { sourceMode: "allowlist" as const, allowedSourceWidgetIds: [3] };
+  const vizKey = "w:1";
+
+  // Configured combo = {region}; fallback combo = {region,status} (all-filters).
+  const configuredHash = stableComboHash("table", tableId, resolveFilterSet(cfg, [region, status]), []);
+  const fallbackHash = stableComboHash("table", tableId, [region, status], []);
+
+  beforeEach(() => {
+    act(() => {
+      useAuthStore.setState({ dvFilterScopeDisabled: false });
+      useFilterStore.setState((s) => ({ ...s, filters: { [tableId]: [region, status] }, filterVersion: (s.filterVersion ?? 0) + 1 }));
+      useFilterCombinationStore.getState().reset();
+    });
+  });
+
+  it("fellBack=true when the viz's bound hash differs from its configured hash (remapped to fallback)", () => {
+    act(() => {
+      useFilterCombinationStore.getState().setVizHash(vizKey, fallbackHash);
+    });
+    const { result } = renderHook(() =>
+      useFilterScopeSummary({ cfg, tableId, dynamicViewId: undefined, spatialCapable: false, vizKey }),
+    );
+    expect(result.current.fellBack).toBe(true);
+    // Configured scope still computed (1 of 2) — the badge uses fellBack to override the label.
+    expect(result.current.appliedCount).toBe(1);
+    expect(result.current.totalCount).toBe(2);
+  });
+
+  it("fellBack=false when the viz is bound to its own configured hash (no fallback)", () => {
+    act(() => {
+      useFilterCombinationStore.getState().setVizHash(vizKey, configuredHash);
+    });
+    const { result } = renderHook(() =>
+      useFilterScopeSummary({ cfg, tableId, dynamicViewId: undefined, spatialCapable: false, vizKey }),
+    );
+    expect(result.current.fellBack).toBe(false);
+  });
+
+  it("fellBack=false when no vizKey is provided (detection disabled)", () => {
+    act(() => {
+      useFilterCombinationStore.getState().setVizHash(vizKey, fallbackHash);
+    });
+    const { result } = renderHook(() =>
+      useFilterScopeSummary({ cfg, tableId, dynamicViewId: undefined, spatialCapable: false }),
+    );
+    expect(result.current.fellBack).toBe(false);
   });
 });
