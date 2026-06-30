@@ -20,6 +20,9 @@ const line: ChartTypeDefinition = {
     { key: "showLegend", label: "Show Legend", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showGrid", label: "Show Grid Lines", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showTooltip", label: "Show Tooltip", type: "boolean", defaultValue: true, group: "Display" },
+
+    // Advanced
+    { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
     yFieldLabel: "",
@@ -31,6 +34,7 @@ const line: ChartTypeDefinition = {
     showLegend: true,
     showGrid: true,
     showTooltip: true,
+    customWhere: "",
   },
 };
 

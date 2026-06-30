@@ -18,6 +18,9 @@ const records: ChartTypeDefinition = {
     { key: "compact", label: "Compact Mode", type: "boolean", defaultValue: true, group: "Display" },
     { key: "enableCsvDownload", label: "Enable CSV Download", type: "boolean", defaultValue: true, group: "Display" },
     { key: "csvDownloadRowCap", label: "CSV Download Row Cap", type: "number", defaultValue: 100000, group: "Display", hint: "Maximum rows to export (min 1)" },
+
+    // Advanced
+    { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
     columns: "",
@@ -28,6 +31,7 @@ const records: ChartTypeDefinition = {
     compact: true,
     enableCsvDownload: true,
     csvDownloadRowCap: 100000,
+    customWhere: "",
   },
 };
 

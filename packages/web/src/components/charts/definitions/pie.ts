@@ -24,6 +24,9 @@ const pie: ChartTypeDefinition = {
     // Display
     { key: "showLegend", label: "Show Legend", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showTooltip", label: "Show Tooltip", type: "boolean", defaultValue: true, group: "Display" },
+
+    // Advanced
+    { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
     innerRadius: 0,
@@ -37,6 +40,7 @@ const pie: ChartTypeDefinition = {
     color6: "#ef4444",
     showLegend: true,
     showTooltip: true,
+    customWhere: "",
   },
 };
 

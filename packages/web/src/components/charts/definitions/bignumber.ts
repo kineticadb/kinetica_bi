@@ -30,6 +30,9 @@ const bignumber: ChartTypeDefinition = {
       hint: "Override the value color when it falls in a range. First matching rule wins; leave Min or Max blank for an open end." },
     { key: "showDelta", label: "Show Delta", type: "boolean", defaultValue: false, group: "Appearance" },
     { key: "deltaField", label: "Delta Field", type: "text", defaultValue: "", group: "Appearance", hint: "Column for the comparison value" },
+
+    // Advanced
+    { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
     label: "",
@@ -42,6 +45,7 @@ const bignumber: ChartTypeDefinition = {
     colorRules: [],
     showDelta: false,
     deltaField: "",
+    customWhere: "",
   },
 };
 

@@ -23,6 +23,9 @@ const bar: ChartTypeDefinition = {
     { key: "showTooltip", label: "Show Tooltip", type: "boolean", defaultValue: true, group: "Display" },
     { key: "showValueLabels", label: "Show Value Labels", type: "boolean", defaultValue: false, group: "Display", hint: "Print each bar's value at its end" },
     { key: "yAxisFormat", label: "Value-Axis Number Format", type: "formatSpec", defaultValue: null, group: "Display", hint: "Defaults to the metric column's format; pick Smart abbreviation for compact ticks (1.2M)" },
+
+    // Advanced
+    { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
     yFieldLabel: "",
@@ -37,6 +40,7 @@ const bar: ChartTypeDefinition = {
     showTooltip: true,
     showValueLabels: false,
     yAxisFormat: null,
+    customWhere: "",
   },
 };
 

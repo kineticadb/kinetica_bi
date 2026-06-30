@@ -25,6 +25,9 @@ const table: ChartTypeDefinition = {
     // Color is user-configurable; default matches the Reveal Data Table look.
     { key: "showValueBars", label: "Show Value Bars", type: "boolean", defaultValue: true, group: "Display" },
     { key: "barColor", label: "Bar Color", type: "color", defaultValue: "#8b5cf6", group: "Display" },
+
+    // Advanced
+    { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
     columns: "",
@@ -36,6 +39,7 @@ const table: ChartTypeDefinition = {
     sortDirection: "asc",
     showValueBars: true,
     barColor: "#8b5cf6",
+    customWhere: "",
   },
 };
 
