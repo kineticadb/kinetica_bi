@@ -28,8 +28,10 @@ import {
   VALID_DOMAIN_SUBDOMAIN,
   isValidCombo,
   CELL_LIMIT,
+  SMART_SCALES,
+  SMART_SCALE_TO_PAIR,
 } from "../../lib/calendarBin";
-import type { CalendarDomain, CalendarSubdomain } from "../../lib/calendarBin";
+import type { CalendarDomain, CalendarSubdomain, SmartScale } from "../../lib/calendarBin";
 import {
   estimateCalendarCells,
   buildCalendarRangeQuery,
@@ -53,6 +55,9 @@ export type CalendarConfig = {
   respondToFilters?: boolean;  // Phase 68-03: OFF = always read unfiltered source (default). ON = Phase 67 filter-aware behavior.
   layoutMode?: "wrap" | "strip";              // CALUX-V113-01: "wrap" = GitHub-style week blocks (default); "strip" = continuous horizontal strip
   showDomainSubdomainControls?: boolean;       // CALUX-V113-02: viewer dropdowns to change grouping live (default false / OFF)
+  controlMode?: "advanced" | "smart";         // Phase 97: absent → "advanced" (byte-identical legacy)
+  smartScale?: SmartScale;                     // selected Time scale when controlMode === "smart"
+  allowedSmartScales?: SmartScale[];           // designer-restricted offered scales; default = all four
 };
 
 export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
@@ -65,6 +70,9 @@ export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
   respondToFilters: false,
   layoutMode: "wrap",
   showDomainSubdomainControls: false,
+  controlMode: "advanced",
+  smartScale: "day",
+  allowedSmartScales: ["month", "week", "day", "hour"],
 };
 
 /* ------------------------------------------------------------------ */
@@ -127,6 +135,12 @@ export default function CalendarConfigPanel({
   const respondToFilters = cfg.respondToFilters ?? false;
   const layoutMode = (cfg.layoutMode ?? DEFAULT_CALENDAR_CONFIG.layoutMode) as "wrap" | "strip";
   const showDomainSubdomainControls = cfg.showDomainSubdomainControls ?? false;
+  const controlMode = (cfg.controlMode ?? DEFAULT_CALENDAR_CONFIG.controlMode) as "advanced" | "smart";
+  const smartScale = (cfg.smartScale ?? DEFAULT_CALENDAR_CONFIG.smartScale) as SmartScale;
+  const allowedSmartScales: SmartScale[] =
+    cfg.allowedSmartScales && cfg.allowedSmartScales.length > 0
+      ? cfg.allowedSmartScales
+      : (DEFAULT_CALENDAR_CONFIG.allowedSmartScales as SmartScale[]);
 
   const allTables = tables ?? [];
 
@@ -351,6 +365,26 @@ export default function CalendarConfigPanel({
     patch({ domain: newDomain, subdomain: newSub });
   };
 
+  const handleSmartScaleChange = (scale: SmartScale) => {
+    const pair = SMART_SCALE_TO_PAIR[scale];
+    patch({ smartScale: scale, domain: pair.domain, subdomain: pair.subdomain });
+  };
+
+  const toggleAllowedScale = (scale: SmartScale, checked: boolean) => {
+    let next: SmartScale[];
+    if (checked) {
+      next = SMART_SCALES.filter((s) => allowedSmartScales.includes(s) || s === scale);
+    } else {
+      // enforce ≥1: refuse to remove the last remaining allowed scale
+      if (allowedSmartScales.length <= 1) return;
+      next = allowedSmartScales.filter((s) => s !== scale);
+    }
+    // if the currently-selected smartScale is no longer allowed, snap it to the first allowed
+    const nextSmart = next.includes(smartScale) ? smartScale : next[0];
+    const pair = SMART_SCALE_TO_PAIR[nextSmart];
+    patch({ allowedSmartScales: next, smartScale: nextSmart, domain: pair.domain, subdomain: pair.subdomain });
+  };
+
   /* ---------------------------------------------------------------- */
   /*  Render                                                          */
   /* ---------------------------------------------------------------- */
@@ -463,45 +497,94 @@ export default function CalendarConfigPanel({
             </select>
           </div>
 
-          {/* ---- Domain ---- */}
+          {/* ---- Control mode (Phase 97) ---- */}
           <div className="ds-field">
-            <span className="ds-field-label">Domain (rows)</span>
+            <span className="ds-field-label">Time grouping control</span>
             <select
               className="ds-select"
-              aria-label="Domain"
-              value={domain}
-              onChange={(e) => handleDomainChange(e.target.value as CalendarDomain)}
+              aria-label="Time grouping control"
+              value={controlMode}
+              onChange={(e) => patch({ controlMode: e.target.value as "advanced" | "smart" })}
             >
-              {(Object.keys(VALID_DOMAIN_SUBDOMAIN) as CalendarDomain[]).map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
+              <option value="advanced">Advanced (domain + subdomain)</option>
+              <option value="smart">Smart (single time scale)</option>
             </select>
           </div>
 
-          {/* ---- Subdomain — dependent on domain ---- */}
-          <div className="ds-field">
-            <span className="ds-field-label">Subdomain (cells)</span>
-            <select
-              className="ds-select"
-              aria-label="Subdomain"
-              value={subdomain}
-              onChange={(e) => patch({ subdomain: e.target.value as CalendarSubdomain })}
-            >
-              {validSubdomains.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          {controlMode === "advanced" && (
+            <>
+              {/* ---- Domain ---- */}
+              <div className="ds-field">
+                <span className="ds-field-label">Domain (rows)</span>
+                <select
+                  className="ds-select"
+                  aria-label="Domain"
+                  value={domain}
+                  onChange={(e) => handleDomainChange(e.target.value as CalendarDomain)}
+                >
+                  {(Object.keys(VALID_DOMAIN_SUBDOMAIN) as CalendarDomain[]).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* ---- Combo-invalid defense-in-depth hint (normally unreachable) ---- */}
-          {!comboValid && (
-            <div className="config-hint" style={{ color: "var(--danger)" }}>
-              Invalid domain/subdomain combination. Please pick a valid pair.
-            </div>
+              {/* ---- Subdomain — dependent on domain ---- */}
+              <div className="ds-field">
+                <span className="ds-field-label">Subdomain (cells)</span>
+                <select
+                  className="ds-select"
+                  aria-label="Subdomain"
+                  value={subdomain}
+                  onChange={(e) => patch({ subdomain: e.target.value as CalendarSubdomain })}
+                >
+                  {validSubdomains.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* ---- Combo-invalid defense-in-depth hint (normally unreachable) ---- */}
+              {!comboValid && (
+                <div className="config-hint" style={{ color: "var(--danger)" }}>
+                  Invalid domain/subdomain combination. Please pick a valid pair.
+                </div>
+              )}
+            </>
+          )}
+
+          {controlMode === "smart" && (
+            <>
+              <div className="ds-field">
+                <span className="ds-field-label">Time scale</span>
+                <select
+                  className="ds-select"
+                  aria-label="Time scale"
+                  value={smartScale}
+                  onChange={(e) => handleSmartScaleChange(e.target.value as SmartScale)}
+                >
+                  {SMART_SCALES.filter((s) => allowedSmartScales.includes(s)).map((s) => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="config-group-label" style={{ marginTop: 8 }}>ALLOWED TIME SCALES</div>
+              {SMART_SCALES.map((s) => (
+                <label key={s} className="config-toggle">
+                  <input
+                    type="checkbox"
+                    className="accent-checkbox"
+                    checked={allowedSmartScales.includes(s)}
+                    onChange={(e) => toggleAllowedScale(s, e.target.checked)}
+                    aria-label={`Allow ${s}`}
+                  />
+                  <span>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                </label>
+              ))}
+            </>
           )}
 
           {/* ---- Color palette (Sequential only) ---- */}

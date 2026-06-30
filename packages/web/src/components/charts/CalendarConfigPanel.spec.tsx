@@ -405,3 +405,149 @@ describe("CalendarConfigPanel", () => {
     expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("showDomainSubdomainControls", false);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 97: smart mode tests                                         */
+/* ------------------------------------------------------------------ */
+
+describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
+  beforeEach(() => {
+    mockRunSql.mockResolvedValue(makeSqlResponse(0, 172_800));
+  });
+
+  it("Test S1: absent controlMode renders Domain select (advanced mode is default)", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events", timeCol: "ts" });
+    // Domain select must be visible
+    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
+    // Time scale select must NOT be present
+    expect(screen.queryByLabelText("Time scale")).not.toBeInTheDocument();
+  });
+
+  it("Test S2: controlMode:'advanced' renders Domain + Subdomain selects and no Time scale select", () => {
+    renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "advanced",
+    } as Partial<CalendarConfig>);
+    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
+    expect(screen.getByLabelText("Subdomain")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Time scale")).not.toBeInTheDocument();
+  });
+
+  it("Test S3: controlMode:'smart' hides Domain/Subdomain selects and shows Time scale select", () => {
+    renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+    } as Partial<CalendarConfig>);
+    expect(screen.queryByLabelText("Domain")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Subdomain")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Time scale")).toBeInTheDocument();
+  });
+
+  it("Test S4: Time scale select lists all four options by default (month/week/day/hour)", () => {
+    renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+    } as Partial<CalendarConfig>);
+    const sel = screen.getByLabelText("Time scale") as HTMLSelectElement;
+    const opts = Array.from(sel.querySelectorAll("option")).map((o) => o.value);
+    expect(opts).toContain("month");
+    expect(opts).toContain("week");
+    expect(opts).toContain("day");
+    expect(opts).toContain("hour");
+  });
+
+  it("Test S5: selecting 'week' in Time scale calls onChange with smartScale:'week', domain:'month', subdomain:'week'", () => {
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+    } as Partial<CalendarConfig>);
+    const sel = screen.getByLabelText("Time scale");
+    fireEvent.change(sel, { target: { value: "week" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ smartScale: "week", domain: "month", subdomain: "week" }),
+    );
+  });
+
+  it("Test S6: selecting 'hour' maps to domain:'day', subdomain:'hour'", () => {
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+    } as Partial<CalendarConfig>);
+    const sel = screen.getByLabelText("Time scale");
+    fireEvent.change(sel, { target: { value: "hour" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ smartScale: "hour", domain: "day", subdomain: "hour" }),
+    );
+  });
+
+  it("Test S7: unchecking a scale from allowed list removes it from Time scale options", () => {
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+      allowedSmartScales: ["month", "week", "day", "hour"],
+    } as Partial<CalendarConfig>);
+    // Uncheck 'month'
+    const monthCheckbox = screen.getByLabelText("Allow month");
+    fireEvent.click(monthCheckbox);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedSmartScales: expect.not.arrayContaining(["month"]),
+      }),
+    );
+  });
+
+  it("Test S8: unchecking the last allowed scale does NOT call onChange (≥1 enforced)", () => {
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+      allowedSmartScales: ["day"],
+    } as Partial<CalendarConfig>);
+    // 'day' is the only allowed scale — uncheck should be blocked
+    const dayCheckbox = screen.getByLabelText("Allow day");
+    fireEvent.click(dayCheckbox);
+    // onChange must NOT have been called with an empty allowedSmartScales
+    const calls = onChange.mock.calls;
+    const badCall = calls.find(
+      (c) =>
+        Array.isArray(c[0]?.allowedSmartScales) && c[0].allowedSmartScales.length === 0,
+    );
+    expect(badCall).toBeUndefined();
+  });
+
+  it("Test S9: switching mode control to 'advanced' shows Domain select again and hides Time scale", () => {
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+    } as Partial<CalendarConfig>);
+    const modeSelect = screen.getByLabelText("Time grouping control");
+    fireEvent.change(modeSelect, { target: { value: "advanced" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ controlMode: "advanced" }),
+    );
+  });
+
+  it("Test S10: DEFAULT_CALENDAR_CONFIG has controlMode:'advanced', smartScale:'day', allowedSmartScales with all four", () => {
+    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("controlMode", "advanced");
+    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("smartScale", "day");
+    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("allowedSmartScales");
+    const scales = (DEFAULT_CALENDAR_CONFIG as Record<string, unknown>).allowedSmartScales as string[];
+    expect(scales).toEqual(expect.arrayContaining(["month", "week", "day", "hour"]));
+    expect(scales).toHaveLength(4);
+  });
+});
