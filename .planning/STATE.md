@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 97-02-PLAN.md
-last_updated: "2026-06-30T19:51:42.950Z"
+stopped_at: Completed 98-per-visualization-custom-where-clause/98-01-PLAN.md
+last_updated: "2026-06-30T20:54:06.165Z"
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 5
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 97 — calendar-smart-domain-control
+**Current focus:** Phase 98 — per-visualization-custom-where-clause
 
 ## Current Position
 
-Phase: 97 (calendar-smart-domain-control) — EXECUTING
-Plan: 1 of 2
+Phase: 98 (per-visualization-custom-where-clause) — EXECUTING
+Plan: 1 of 3
 
 ### v1.19 Phase Map
 
@@ -703,6 +703,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 96-verification-live-uat P03 | 1822 | 2 tasks | 6 files |
 | Phase 97 P01 | 7 | 2 tasks | 4 files |
 | Phase 97 P02 | 2 | 1 tasks | 2 files |
+| Phase 98-per-visualization-custom-where-clause P01 | 5 | 2 tasks | 8 files |
 
 ### Quick Tasks Completed
 
@@ -1035,6 +1036,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 97]: SMART_SCALE_TO_PAIR is SINGLE SOURCE OF TRUTH in calendarBin.ts; controlMode absent → 'advanced' (byte-identical legacy)
 - [Phase 97]: toggleAllowedScale enforces ≥1 allowed scale; SMART_SCALES.filter preserves canonical coarsest→finest order
 - [Phase 97]: controlMode === 'advanced' gate for showControls — explicit positive check, robust if third mode introduced; absent controlMode coalesces to 'advanced' (zero change for existing calendars)
+- [Phase 98]: andCustomWhere returns leading-space ' AND (...)' string for zero-friction splice before GROUP BY; whereCustomWhere exported now for 98-02 aggregated paths
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1441,6 +1443,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-30T19:51:42.939Z
-Stopped at: Completed 97-02-PLAN.md
+Last session: 2026-06-30T20:54:06.155Z
+Stopped at: Completed 98-per-visualization-custom-where-clause/98-01-PLAN.md
 Resume file: None

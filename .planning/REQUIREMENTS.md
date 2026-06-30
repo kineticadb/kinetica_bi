@@ -16,8 +16,8 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 ### Per-Visualization Custom WHERE Clause (VIZSQL)
 
 - [ ] **VIZSQL-V119-01**: On each plain-SQL widget (calendar, line, timeline, pie, bar, records table, big number, and other SQL-running widgets — excluding map/WMS layers), the designer can enter a freeform raw-SQL WHERE expression in the widget config.
-- [ ] **VIZSQL-V119-02**: A non-empty custom WHERE is ANDed into that widget's read query on top of all active drill-down / per-viz-selection filters, against the materialized view the widget already reads.
-- [ ] **VIZSQL-V119-03**: An empty/absent custom WHERE leaves the widget's query byte-identical to current behavior.
+- [x] **VIZSQL-V119-02**: A non-empty custom WHERE is ANDed into that widget's read query on top of all active drill-down / per-viz-selection filters, against the materialized view the widget already reads.
+- [x] **VIZSQL-V119-03**: An empty/absent custom WHERE leaves the widget's query byte-identical to current behavior.
 - [ ] **VIZSQL-V119-04**: An invalid WHERE expression surfaces the query error on that widget without breaking the dashboard (other widgets unaffected).
 
 ### Custom Metrics per Table (METRIC)
@@ -79,8 +79,8 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | CALSMART-V119-02 | Phase 97 | Complete |
 | CALSMART-V119-03 | Phase 97 | Complete |
 | VIZSQL-V119-01 | Phase 98 | Pending |
-| VIZSQL-V119-02 | Phase 98 | Pending |
-| VIZSQL-V119-03 | Phase 98 | Pending |
+| VIZSQL-V119-02 | Phase 98 | Complete |
+| VIZSQL-V119-03 | Phase 98 | Complete |
 | VIZSQL-V119-04 | Phase 98 | Pending |
 | METRIC-V119-01 | Phase 99 + Phase 100 | Pending |
 | METRIC-V119-02 | Phase 99 | Pending |

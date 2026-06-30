@@ -73,7 +73,11 @@
   2. A non-empty custom WHERE narrows that widget's data, applied on top of any active drill-down / per-viz filters (ANDed against the same materialized view), while other widgets are unaffected.
   3. An empty/absent custom WHERE leaves the widget's query byte-identical to current behavior (backward-compat locked by test).
   4. An invalid WHERE surfaces the query error on that widget only; the rest of the dashboard keeps rendering.
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 98-01-PLAN.md — Shared customWhere helper + thread into the 3 own-SQL builders (timeline/numeric-line/calendar), byte-identical-when-empty locked
+- [ ] 98-02-PLAN.md — Field on 7 registry widgets + WHERE injection in aggregated config.sql (ChartConfigPanel) + records SQL (RecordsTableRenderer)
+- [ ] 98-03-PLAN.md — Field in the 3 CustomConfigPanels + thread customWhere through their renderers into the builders
 
 ### Phase 99: Custom Metrics — Server + Store Foundation
 **Goal**: A per-table custom-metrics config (label + SQL aggregate expression) is persisted server-side with full CRUD, and a client store exposes it — the foundation the Tables editor and metric pickers build on.
