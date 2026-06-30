@@ -115,7 +115,11 @@ export default function CalendarRenderer({
   const respondToFilters = cfg.respondToFilters ?? false;
   // Phase 68.1-03: layout mode + viewer control bar gate.
   const layoutMode = cfg.layoutMode ?? "wrap";
-  const showControls = cfg.showDomainSubdomainControls ?? false;
+  // Phase 97 (CALSMART): controlMode "smart" is fixed at config time — the v1.13 viewer-live
+  // grouping control bar is an ADVANCED-mode-only feature. Absent controlMode → "advanced".
+  const controlMode = cfg.controlMode ?? "advanced";
+  const showControls =
+    controlMode === "advanced" && (cfg.showDomainSubdomainControls ?? false);
 
   // ---- Empty-state gates (before hooks — mirroring TimelineRenderer eslint-disable pattern) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
