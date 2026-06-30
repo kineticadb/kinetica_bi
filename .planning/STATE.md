@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 97-01-PLAN.md
-last_updated: "2026-06-30T19:47:01.570Z"
+stopped_at: Completed 97-02-PLAN.md
+last_updated: "2026-06-30T19:51:42.950Z"
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -702,6 +702,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 96 P02 | 17min | 2 tasks | 4 files |
 | Phase 96-verification-live-uat P03 | 1822 | 2 tasks | 6 files |
 | Phase 97 P01 | 7 | 2 tasks | 4 files |
+| Phase 97 P02 | 2 | 1 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -1033,6 +1034,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 97]: Smart mode writes domain+subdomain into config via SMART_SCALE_TO_PAIR; renderer unchanged (config+UI only)
 - [Phase 97]: SMART_SCALE_TO_PAIR is SINGLE SOURCE OF TRUTH in calendarBin.ts; controlMode absent → 'advanced' (byte-identical legacy)
 - [Phase 97]: toggleAllowedScale enforces ≥1 allowed scale; SMART_SCALES.filter preserves canonical coarsest→finest order
+- [Phase 97]: controlMode === 'advanced' gate for showControls — explicit positive check, robust if third mode introduced; absent controlMode coalesces to 'advanced' (zero change for existing calendars)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1439,6 +1441,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-30T19:47:01.560Z
-Stopped at: Completed 97-01-PLAN.md
+Last session: 2026-06-30T19:51:42.939Z
+Stopped at: Completed 97-02-PLAN.md
 Resume file: None
