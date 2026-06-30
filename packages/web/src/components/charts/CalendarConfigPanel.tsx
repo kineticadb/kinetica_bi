@@ -58,6 +58,7 @@ export type CalendarConfig = {
   controlMode?: "advanced" | "smart";         // Phase 97: absent → "advanced" (byte-identical legacy)
   smartScale?: SmartScale;                     // selected Time scale when controlMode === "smart"
   allowedSmartScales?: SmartScale[];           // designer-restricted offered scales; default = all four
+  customWhere?: string;                        // Phase 98 (VIZSQL-V119-01): raw SQL predicate ANDed into the query; absent → byte-identical
 };
 
 export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
@@ -141,6 +142,7 @@ export default function CalendarConfigPanel({
     cfg.allowedSmartScales && cfg.allowedSmartScales.length > 0
       ? cfg.allowedSmartScales
       : (DEFAULT_CALENDAR_CONFIG.allowedSmartScales as SmartScale[]);
+  const customWhere = cfg.customWhere ?? "";
 
   const allTables = tables ?? [];
 
@@ -651,6 +653,19 @@ export default function CalendarConfigPanel({
               >ⓘ</span>
             </span>
           </label>
+
+          {/* ---- Custom filter (SQL) — Phase 98 (VIZSQL-V119-01) ---- */}
+          <div className="config-group-label" style={{ marginTop: 16 }}>CUSTOM FILTER</div>
+          <div className="ds-field">
+            <span className="ds-field-label">Custom filter (SQL)</span>
+            <textarea
+              className="config-textarea"
+              value={customWhere}
+              onChange={(e) => patch({ customWhere: e.target.value })}
+              placeholder="Raw SQL predicate ANDed with active filters, e.g. region = 'West'"
+              rows={3}
+            />
+          </div>
 
           {/* ---- Cap probe status ---- */}
           {capState === "checking" && (

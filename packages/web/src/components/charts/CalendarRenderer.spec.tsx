@@ -1241,3 +1241,44 @@ describe("CalendarRenderer", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 98 (VIZSQL-V119-02/03): CalendarRenderer — customWhere injection
+// ---------------------------------------------------------------------------
+
+describe("CalendarRenderer — customWhere injection (Phase 98, VIZSQL-V119-02/03)", () => {
+  it("CW1: buildCalendarSql is called with customWhere='x = 1' → emitted SQL contains ' AND (x = 1)'", async () => {
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(CANNED_ROWS));
+    render(
+      <CalendarRenderer
+        widget={makeWidget({ customWhere: "x = 1" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain(" AND (x = 1)");
+  });
+
+  it("CW2: absent customWhere → emitted SQL has no AND clause (byte-identical)", async () => {
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(CANNED_ROWS));
+    render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("IS NOT NULL");
+    expect(sql).not.toContain(" AND (");
+  });
+
+  it("CW3: CalendarRenderer source contains customWhere in buildCalendarSql args (not andCustomWhere call)", () => {
+    const src = readFileSync(resolve(__dirname, "CalendarRenderer.tsx"), "utf-8");
+    // Must pass customWhere to buildCalendarSql args
+    expect(src).toContain("customWhere,");
+    // Must NOT call andCustomWhere or whereCustomWhere directly in renderer
+    expect(src).not.toMatch(/andCustomWhere\s*\(/);
+    expect(src).not.toMatch(/whereCustomWhere\s*\(/);
+  });
+});

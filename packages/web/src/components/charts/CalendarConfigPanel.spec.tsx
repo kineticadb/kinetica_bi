@@ -551,3 +551,45 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
     expect(scales).toHaveLength(4);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 98 (VIZSQL-V119-01): Custom filter (SQL) textarea            */
+/* ------------------------------------------------------------------ */
+
+describe("CalendarConfigPanel — Custom filter (SQL) (Phase 98)", () => {
+  beforeEach(() => {
+    mockRunSql.mockResolvedValue(makeSqlResponse(0, 172_800));
+  });
+
+  it("CW1: Custom filter (SQL) textarea renders and pre-fills from cfg.customWhere", () => {
+    renderPanel({
+      tableId: 1, tableRef: "demo.events", timeCol: "ts",
+      customWhere: "region = 'West'",
+    } as Partial<CalendarConfig>);
+    const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i) as HTMLTextAreaElement;
+    expect(textarea).toBeInTheDocument();
+    expect(textarea.value).toBe("region = 'West'");
+  });
+
+  it("CW2: typing in the textarea fires onChange with config.customWhere set", () => {
+    const { onChange } = renderPanel({
+      tableId: 1, tableRef: "demo.events", timeCol: "ts",
+    } as Partial<CalendarConfig>);
+    const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i);
+    fireEvent.change(textarea, { target: { value: "x = 1" } });
+    const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as CalendarConfig;
+    expect(call.customWhere).toBe("x = 1");
+  });
+
+  it("CW3: absent customWhere → textarea value is empty string (byte-identical gate)", () => {
+    renderPanel({
+      tableId: 1, tableRef: "demo.events", timeCol: "ts",
+    } as Partial<CalendarConfig>);
+    const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("");
+  });
+
+  it("CW4: DEFAULT_CALENDAR_CONFIG does NOT include a customWhere property (byte-identical for existing widgets)", () => {
+    expect(Object.prototype.hasOwnProperty.call(DEFAULT_CALENDAR_CONFIG, "customWhere")).toBe(false);
+  });
+});

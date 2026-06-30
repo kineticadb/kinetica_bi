@@ -111,6 +111,7 @@ export default function CalendarRenderer({
   const domain: CalendarDomain = cfg.domain ?? "month";
   const subdomain: CalendarSubdomain = cfg.subdomain ?? "day";
   const colorTheme = cfg.colorTheme ?? "Greens";
+  const customWhere = cfg.customWhere ?? "";
   // Phase 68-03: OFF (default) = always read unfiltered source; ON = Phase 67 filter-aware behavior.
   const respondToFilters = cfg.respondToFilters ?? false;
   // Phase 68.1-03: layout mode + viewer control bar gate.
@@ -303,6 +304,7 @@ export default function CalendarRenderer({
           aggregation,
           domain: effDomain,
           subdomain: effSubdomain,
+          customWhere,
         });
         const resp = await runSql(sql, undefined, ctrl.signal);
         const rows = decodeSqlResponse(resp).map((r) => ({
@@ -355,6 +357,8 @@ export default function CalendarRenderer({
     // dv materialization lifecycle stays live regardless of respondToFilters.
     dvViewName,
     dvStatus,
+    // Phase 98: re-fetch when the custom predicate changes.
+    customWhere,
   ]);
 
   // ---- Gap-fill (useMemo) — per-group, date-range-aware (68.2-03) ----
