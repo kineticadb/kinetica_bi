@@ -17,6 +17,7 @@
 import type { CalendarDomain, CalendarSubdomain } from "./calendarBin";
 import { CELL_LIMIT } from "./calendarBin";
 import type { TimelineAggregation } from "./timelineBin"; // reuse the aggregation set
+import { andCustomWhere } from "./customWhere";
 
 export type BuildCalendarSqlArgs = {
   /**
@@ -33,6 +34,11 @@ export type BuildCalendarSqlArgs = {
   domain: CalendarDomain;    // DATE_TRUNC('<domain>', timeCol)  → domain_bucket
   subdomain: CalendarSubdomain; // DATE_TRUNC('<subdomain>', timeCol) → subdomain_bucket
   limit?: number;            // defaults to CELL_LIMIT (10000)
+  /**
+   * Phase 98 (VIZSQL-V119-02): raw-SQL predicate ANDed after the existing IS-NOT-NULL
+   * clause; absent/empty → byte-identical output (VIZSQL-V119-03).
+   */
+  customWhere?: string;
 };
 
 /**
@@ -73,17 +79,20 @@ export function buildCalendarSql(args: BuildCalendarSqlArgs): string {
     domain,
     subdomain,
     limit,
+    customWhere,
   } = args;
 
   const agg = aggExpr(aggregation, metricColumn);
   const lim = limit ?? CELL_LIMIT;
+  // Phase 98: compute once; returns "" when absent/empty (byte-identical no-op).
+  const cw = andCustomWhere(customWhere);
 
   return (
     `SELECT DATE_TRUNC('${domain}', ${timeCol}) AS domain_bucket, ` +
     `DATE_TRUNC('${subdomain}', ${timeCol}) AS subdomain_bucket, ` +
     `${agg} AS value ` +
     `FROM ${fromTarget} ` +
-    `WHERE ${timeCol} IS NOT NULL ` +
+    `WHERE ${timeCol} IS NOT NULL${cw} ` +
     `GROUP BY domain_bucket, subdomain_bucket ` +
     `ORDER BY domain_bucket ASC, subdomain_bucket ASC ` +
     `LIMIT ${lim}`

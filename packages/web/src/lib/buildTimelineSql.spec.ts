@@ -213,3 +213,56 @@ describe("buildTimelineSql — grouped (Phase 72)", () => {
     expect(sql).toContain(`LIMIT ${200 * 2}`);
   });
 });
+
+describe("buildTimelineSql — customWhere (Phase 98-01)", () => {
+  const hourEntry = INTERVAL_LADDER.find((i) => i.key === "hour")! as TimelineInterval;
+  const baseMetric: TimelineMetric = {
+    column: "fare_amount",
+    aggregation: "SUM",
+    color: "FF66C2A5",
+  };
+
+  // Byte-identical regression lock: omitting customWhere must yield EXACT same string as Test 1.
+  it("absent customWhere → byte-identical to baseline (regression lock)", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('hour', pickup_time) AS bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL GROUP BY bucket ORDER BY bucket ASC LIMIT 200"
+    );
+  });
+
+  it("ungrouped + non-empty customWhere → AND (...) appended after IS NOT NULL, before GROUP BY", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+      customWhere: "status = 'active'",
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('hour', pickup_time) AS bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL AND (status = 'active') GROUP BY bucket ORDER BY bucket ASC LIMIT 200"
+    );
+  });
+
+  it("grouped + non-empty customWhere → AND (...) appended LAST before GROUP BY", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric,
+      interval: hourEntry,
+      maxIntervals: 200,
+      groupByColumn: "vendor",
+      customWhere: "status = 'active'",
+    });
+    expect(sql).toContain("AND vendor IS NOT NULL AND (status = 'active') GROUP BY bucket, series");
+  });
+});

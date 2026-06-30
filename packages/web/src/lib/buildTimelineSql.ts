@@ -13,6 +13,7 @@
 import type { TimelineInterval, TimelineMetric } from "./timelineBin";
 import { buildTimelineBucket } from "./timelineBin";
 import { MAX_SERIES } from "./groupedSeries";
+import { andCustomWhere } from "./customWhere";
 
 export type BuildTimelineSqlArgs = {
   schema: string; // empty string for DV-bound (viewName-as-table); see Phase 44 follow-up
@@ -34,6 +35,11 @@ export type BuildTimelineSqlArgs = {
    * selected series is clipped mid-range.
    */
   seriesIn?: (string | number)[];
+  /**
+   * Phase 98 (VIZSQL-V119-02): raw-SQL predicate ANDed after the existing IS-NOT-NULL
+   * clause; absent/empty → byte-identical output (VIZSQL-V119-03).
+   */
+  customWhere?: string;
 };
 
 /** Format a seriesIn value for SQL: numbers verbatim, strings single-quoted with internal quotes doubled. */
@@ -79,19 +85,21 @@ function aggExpr(metric: TimelineMetric): string {
  * where row data keys are `{ bucket: string; value: number | null }`.
  */
 export function buildTimelineSql(args: BuildTimelineSqlArgs): string {
-  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn } = args;
+  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn, customWhere } = args;
   // Phase 44 follow-up: empty schema means the table arg is a bare unprefixed
   // identifier (e.g. a dynamic view's materialized view name).
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
   const bucket = buildTimelineBucket(timeCol, interval);
   const agg = aggExpr(metric);
+  // Phase 98: compute once; returns "" when absent/empty (byte-identical no-op).
+  const cw = andCustomWhere(customWhere);
 
   // Ungrouped path — kept literally identical for the byte-for-byte backward-compat lock.
   if (!groupByColumn) {
     return (
       `SELECT ${bucket} AS bucket, ${agg} AS value ` +
       `FROM ${fromTarget} ` +
-      `WHERE ${timeCol} IS NOT NULL ` +
+      `WHERE ${timeCol} IS NOT NULL${cw} ` +
       `GROUP BY bucket ` +
       `ORDER BY bucket ASC ` +
       `LIMIT ${maxIntervals}`
@@ -107,7 +115,7 @@ export function buildTimelineSql(args: BuildTimelineSqlArgs): string {
   return (
     `SELECT ${bucket} AS bucket, ${groupByColumn} AS series, ${agg} AS value ` +
     `FROM ${fromTarget} ` +
-    `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause} ` +
+    `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause}${cw} ` +
     `GROUP BY bucket, series ` +
     `ORDER BY bucket ASC ` +
     `LIMIT ${limit}`

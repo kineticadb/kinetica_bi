@@ -186,3 +186,35 @@ describe("buildCalendarSql", () => {
     expect(sql).toContain("GROUP BY domain_bucket, subdomain_bucket");
   });
 });
+
+describe("buildCalendarSql — customWhere (Phase 98-01)", () => {
+  // Byte-identical regression lock: omitting customWhere must yield EXACT same string as Test 1.
+  it("absent customWhere → byte-identical to baseline (regression lock)", () => {
+    const sql = buildCalendarSql({
+      fromTarget: "demo.nyctaxi",
+      timeCol: "pickup_time",
+      metricColumn: "fare_amount",
+      aggregation: "SUM",
+      domain: "month",
+      subdomain: "day",
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('month', pickup_time) AS domain_bucket, DATE_TRUNC('day', pickup_time) AS subdomain_bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL GROUP BY domain_bucket, subdomain_bucket ORDER BY domain_bucket ASC, subdomain_bucket ASC LIMIT 10000"
+    );
+  });
+
+  it("non-empty customWhere → AND (...) appended after IS NOT NULL, before GROUP BY", () => {
+    const sql = buildCalendarSql({
+      fromTarget: "demo.nyctaxi",
+      timeCol: "pickup_time",
+      metricColumn: "fare_amount",
+      aggregation: "SUM",
+      domain: "month",
+      subdomain: "day",
+      customWhere: "status = 'active'",
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('month', pickup_time) AS domain_bucket, DATE_TRUNC('day', pickup_time) AS subdomain_bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL AND (status = 'active') GROUP BY domain_bucket, subdomain_bucket ORDER BY domain_bucket ASC, subdomain_bucket ASC LIMIT 10000"
+    );
+  });
+});

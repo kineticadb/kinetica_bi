@@ -15,6 +15,7 @@
 
 import type { NumericMetric } from "./numericBin";
 import { MAX_SERIES } from "./groupedSeries";
+import { andCustomWhere } from "./customWhere";
 
 export type BuildNumericLineSqlArgs = {
   schema: string; // empty string → unprefixed FROM (filter-view name / DV-bound)
@@ -35,6 +36,11 @@ export type BuildNumericLineSqlArgs = {
    * `AND <groupByColumn> IN (<values>)` and scales LIMIT by the list length.
    */
   seriesIn?: (string | number)[];
+  /**
+   * Phase 98 (VIZSQL-V119-02): raw-SQL predicate ANDed after the existing IS-NOT-NULL
+   * clause; absent/empty → byte-identical output (VIZSQL-V119-03).
+   */
+  customWhere?: string;
 };
 
 /** COUNT_DISTINCT is not a Kinetica function — emit COUNT(DISTINCT col). */
@@ -78,17 +84,19 @@ function formatSeriesInValue(v: string | number): string {
  * cap (or the seriesIn count) so no series is clipped mid-range.
  */
 export function buildNumericLineSql(args: BuildNumericLineSqlArgs): string {
-  const { schema, table, xField, binWidth, metric, maxBuckets, groupByColumn, seriesIn } = args;
+  const { schema, table, xField, binWidth, metric, maxBuckets, groupByColumn, seriesIn, customWhere } = args;
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
   const bucket = `FLOOR(${xField} / ${binWidth}) * ${binWidth}`;
   const agg = aggExpr(metric);
+  // Phase 98: compute once; returns "" when absent/empty (byte-identical no-op).
+  const cw = andCustomWhere(customWhere);
 
   // Ungrouped path — kept literally identical for the byte-for-byte backward-compat lock.
   if (!groupByColumn) {
     return (
       `SELECT ${bucket} AS bucket, ${agg} AS value ` +
       `FROM ${fromTarget} ` +
-      `WHERE ${xField} IS NOT NULL ` +
+      `WHERE ${xField} IS NOT NULL${cw} ` +
       `GROUP BY bucket ` +
       `ORDER BY bucket ASC ` +
       `LIMIT ${maxBuckets + 1}`
@@ -105,7 +113,7 @@ export function buildNumericLineSql(args: BuildNumericLineSqlArgs): string {
   return (
     `SELECT ${bucket} AS bucket, ${groupByColumn} AS series, ${agg} AS value ` +
     `FROM ${fromTarget} ` +
-    `WHERE ${xField} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause} ` +
+    `WHERE ${xField} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause}${cw} ` +
     `GROUP BY bucket, series ` +
     `ORDER BY bucket ASC ` +
     `LIMIT ${limit}`

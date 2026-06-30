@@ -115,3 +115,53 @@ describe("buildNumericLineSql — grouped (Phase 72)", () => {
     expect(sql).toContain(`LIMIT ${51 * 2}`);
   });
 });
+
+describe("buildNumericLineSql — customWhere (Phase 98-01)", () => {
+  // Byte-identical regression lock: omitting customWhere must yield EXACT same string as baseline.
+  it("absent customWhere → byte-identical to baseline (regression lock)", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+    });
+    expect(sql).toBe(
+      "SELECT FLOOR(trip_distance / 5) * 5 AS bucket, SUM(fare_amount) AS value " +
+        "FROM demo.nyctaxi WHERE trip_distance IS NOT NULL " +
+        "GROUP BY bucket ORDER BY bucket ASC LIMIT 51",
+    );
+  });
+
+  it("ungrouped + non-empty customWhere → AND (...) appended after IS NOT NULL, before GROUP BY", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+      customWhere: "status = 'active'",
+    });
+    expect(sql).toBe(
+      "SELECT FLOOR(trip_distance / 5) * 5 AS bucket, SUM(fare_amount) AS value " +
+        "FROM demo.nyctaxi WHERE trip_distance IS NOT NULL AND (status = 'active') " +
+        "GROUP BY bucket ORDER BY bucket ASC LIMIT 51",
+    );
+  });
+
+  it("grouped + non-empty customWhere → AND (...) appended LAST before GROUP BY", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(),
+      maxBuckets: 50,
+      groupByColumn: "vendor",
+      customWhere: "status = 'active'",
+    });
+    expect(sql).toContain("AND vendor IS NOT NULL AND (status = 'active') GROUP BY bucket, series");
+  });
+});
