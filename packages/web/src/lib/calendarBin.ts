@@ -80,6 +80,32 @@ export function isValidCombo(
   return (allowed as readonly string[]).includes(subdomain);
 }
 
+/**
+ * Phase 97 (CALSMART-V119-02): the four "smart" time scales offered by the
+ * single-dropdown smart calendar mode. Each maps to a domain+subdomain pair
+ * that is already valid in VALID_DOMAIN_SUBDOMAIN.
+ */
+export type SmartScale = "month" | "week" | "day" | "hour";
+
+/** Ordered list for rendering the Time-scale picker (coarsest → finest). */
+export const SMART_SCALES: readonly SmartScale[] = ["month", "week", "day", "hour"];
+
+/**
+ * The smart→pair mapping. SINGLE SOURCE OF TRUTH — the config panel writes the
+ * mapped domain+subdomain into config when a smart scale is selected, and the
+ * renderer consumes the resulting domain+subdomain (no special-casing there).
+ * Every pair is a valid combo in VALID_DOMAIN_SUBDOMAIN.
+ */
+export const SMART_SCALE_TO_PAIR: Record<
+  SmartScale,
+  { domain: CalendarDomain; subdomain: CalendarSubdomain }
+> = {
+  month: { domain: "year",  subdomain: "month" },
+  week:  { domain: "month", subdomain: "week" },
+  day:   { domain: "month", subdomain: "day" },
+  hour:  { domain: "day",   subdomain: "hour" },
+};
+
 /** LIMIT safety cap emitted by buildCalendarSql. */
 export const CELL_LIMIT = 10000;
 

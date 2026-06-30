@@ -23,8 +23,10 @@ import {
   isValidCombo,
   CELL_LIMIT,
   computeCellBounds,
+  SMART_SCALES,
+  SMART_SCALE_TO_PAIR,
 } from "./calendarBin";
-import type { CalendarDomain, CalendarSubdomain } from "./calendarBin";
+import type { CalendarDomain, CalendarSubdomain, SmartScale } from "./calendarBin";
 
 describe("calendarBin — constants", () => {
   it("KINETICA_DATE_TRUNC_UNITS contains exactly ['year','month','week','day','hour']", () => {
@@ -178,5 +180,37 @@ describe("calendarBin — computeCellBounds", () => {
     expect(end).toBe("2024-03-10T02:59:59.999Z");
     const spanMs = new Date(end).getTime() - new Date(start).getTime() + 1;
     expect(spanMs).toBe(3_600_000);
+  });
+});
+
+describe("calendarBin — smart scale mapping (Phase 97)", () => {
+  it("SMART_SCALES equals exactly ['month','week','day','hour'] in that order", () => {
+    expect(SMART_SCALES).toEqual(["month", "week", "day", "hour"]);
+  });
+
+  it("SMART_SCALE_TO_PAIR.month deep-equals { domain: 'year', subdomain: 'month' }", () => {
+    expect(SMART_SCALE_TO_PAIR.month).toEqual({ domain: "year", subdomain: "month" });
+  });
+
+  it("SMART_SCALE_TO_PAIR.week deep-equals { domain: 'month', subdomain: 'week' }", () => {
+    expect(SMART_SCALE_TO_PAIR.week).toEqual({ domain: "month", subdomain: "week" });
+  });
+
+  it("SMART_SCALE_TO_PAIR.day deep-equals { domain: 'month', subdomain: 'day' }", () => {
+    expect(SMART_SCALE_TO_PAIR.day).toEqual({ domain: "month", subdomain: "day" });
+  });
+
+  it("SMART_SCALE_TO_PAIR.hour deep-equals { domain: 'day', subdomain: 'hour' }", () => {
+    expect(SMART_SCALE_TO_PAIR.hour).toEqual({ domain: "day", subdomain: "hour" });
+  });
+
+  it("every pair in SMART_SCALE_TO_PAIR satisfies isValidCombo", () => {
+    for (const s of SMART_SCALES) {
+      const pair = SMART_SCALE_TO_PAIR[s as SmartScale];
+      expect(
+        isValidCombo(pair.domain, pair.subdomain),
+        `Expected isValidCombo('${pair.domain}', '${pair.subdomain}') for scale '${s}' to be true`,
+      ).toBe(true);
+    }
   });
 });
