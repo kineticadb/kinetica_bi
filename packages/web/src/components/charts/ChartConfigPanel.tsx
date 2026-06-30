@@ -7,6 +7,7 @@ import type { DynamicViewRow, WidgetDto } from "../../api/client";
 import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
 import { useAuthStore } from "../../store/auth";
+import { whereCustomWhere } from "../../lib/customWhere";
 
 type TableInfo = {
   id: number;
@@ -289,6 +290,10 @@ const ChartConfigPanel = ({
     const table = draft.table as string;
     if (!table) return "";
 
+    // Phase 98-02 (VIZSQL-V119-02): compute WHERE clause for non-empty customWhere.
+    // whereCustomWhere returns ' WHERE (<predicate>)' or '' for empty/absent — byte-identical.
+    const cw = whereCustomWhere(draft.customWhere as string | undefined);
+
     // Records-table style: SELECT [cols] FROM table ORDER BY sortField DIR
     // (pagination LIMIT/OFFSET applied at render time, not stored in widget config)
     if (!usesAggregation) {
@@ -298,7 +303,7 @@ const ChartConfigPanel = ({
       const sortField = (draft.sortField as string) || "";
       const sortDir = ((draft.sortDirection as string) || "asc").toUpperCase() === "DESC" ? "DESC" : "ASC";
       const orderBy = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(sortField) ? ` ORDER BY ${sortField} ${sortDir}` : "";
-      return `SELECT ${colsClause} FROM ${table}${orderBy}`;
+      return `SELECT ${colsClause} FROM ${table}${cw}${orderBy}`;
     }
 
     // Aggregated chart style
@@ -315,7 +320,7 @@ const ChartConfigPanel = ({
       const aggExpr = aggregation === "COUNT_DISTINCT"
         ? `COUNT(DISTINCT ${metricColumn})`
         : `${aggregation}(${metricColumn})`;
-      return `SELECT ${aggExpr} AS value FROM ${table}`;
+      return `SELECT ${aggExpr} AS value FROM ${table}${cw}`;
     }
 
     // Grouped variant (bar / line / pie / scatter / table):
@@ -331,8 +336,8 @@ const ChartConfigPanel = ({
     const ALLOWED_LIMITS = [5, 10, 25, 50, 100, 250, 500];
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
-    return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
-  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.sortDir, draft.limit]);
+    return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
+  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.sortDir, draft.limit, draft.customWhere]);
 
   if (!chartDef) {
     return (

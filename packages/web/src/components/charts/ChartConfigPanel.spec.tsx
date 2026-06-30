@@ -751,3 +751,204 @@ describe("ChartConfigPanel — formatSpec field type (bar Y-axis number format)"
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 98 Plan 02 (VIZSQL-V119-02/03) — customWhere WHERE injection in generatedSql
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Stable chart-def stubs for each SQL shape.
+const GROUPED_DEF: import("./registry").ChartTypeDefinition = {
+  type: "pie",
+  label: "Pie",
+  icon: "O",
+  fields: [],
+  defaultConfig: {},
+  usesAggregation: true,
+  requiresGroupBy: true,
+  supportsDrillDown: true,
+};
+
+const SCALAR_DEF: import("./registry").ChartTypeDefinition = {
+  type: "bignumber",
+  label: "Big Number",
+  icon: "1",
+  fields: [],
+  defaultConfig: {},
+  usesAggregation: true,
+  requiresGroupBy: false,
+};
+
+const RECORDS_DEF: import("./registry").ChartTypeDefinition = {
+  type: "records",
+  label: "Records Table",
+  icon: "[R]",
+  fields: [],
+  defaultConfig: {},
+  usesAggregation: false,
+};
+
+describe("Phase 98-02 — customWhere WHERE injection in generatedSql", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── grouped (bar/line/pie/scatter/table) ───────────────────────────────────
+
+  it("grouped: non-empty customWhere injects WHERE (...) before GROUP BY in generated SQL", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(GROUPED_DEF);
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="pie"
+        title="Pie"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          customWhere: "status = 'active'",
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).toContain("WHERE (status = 'active')");
+    // WHERE must appear before GROUP BY
+    expect(sql.indexOf("WHERE")).toBeLessThan(sql.indexOf("GROUP BY"));
+  });
+
+  it("grouped: empty customWhere → byte-identical SQL (no WHERE clause)", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(GROUPED_DEF);
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="pie"
+        title="Pie"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          customWhere: "",
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).not.toContain("WHERE");
+    expect(sql).toBe(
+      "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  // ── scalar (bignumber) ─────────────────────────────────────────────────────
+
+  it("scalar: non-empty customWhere injects WHERE (...) after FROM <table>", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(SCALAR_DEF);
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bignumber"
+        title="BN"
+        config={{
+          table: "orders",
+          metricColumn: "revenue",
+          aggregation: "SUM",
+          customWhere: "region = 'West'",
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).toContain("WHERE (region = 'West')");
+    expect(sql).toBe("SELECT SUM(revenue) AS value FROM orders WHERE (region = 'West')");
+  });
+
+  it("scalar: absent customWhere → byte-identical SQL", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(SCALAR_DEF);
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bignumber"
+        title="BN"
+        config={{
+          table: "orders",
+          metricColumn: "revenue",
+          aggregation: "SUM",
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).not.toContain("WHERE");
+    expect(sql).toBe("SELECT SUM(revenue) AS value FROM orders");
+  });
+
+  // ── records-style (usesAggregation false) ─────────────────────────────────
+
+  it("records-style: non-empty customWhere injects WHERE (...) after FROM <table>", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(RECORDS_DEF);
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="records"
+        title="R"
+        config={{
+          table: "events",
+          customWhere: "q = 1",
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).toContain("WHERE (q = 1)");
+    // WHERE must appear before ORDER BY (if any) and before end of string
+    const whereIdx = sql.indexOf("WHERE");
+    const orderIdx = sql.indexOf("ORDER BY");
+    if (orderIdx !== -1) {
+      expect(whereIdx).toBeLessThan(orderIdx);
+    }
+  });
+
+  it("records-style: absent customWhere → byte-identical SQL", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(RECORDS_DEF);
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="records"
+        title="R"
+        config={{
+          table: "events",
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).not.toContain("WHERE");
+    expect(sql).toBe("SELECT * FROM events");
+  });
+});
