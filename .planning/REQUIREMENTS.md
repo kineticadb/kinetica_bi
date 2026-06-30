@@ -1,82 +1,109 @@
-# Requirements: Kinetica BI — v1.18 Per-Visualization Filter Selection
+# Requirements: Kinetica BI — v1.19 Visualization Customization
 
-**Defined:** 2026-06-27
+**Defined:** 2026-06-30
 **Core Value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
 
-> v1.18 lets each visualization choose which active filters it applies (instead of every widget sharing one view of all filters), while keeping Kinetica view creation minimal by materializing **one view per UNIQUE filter combination** and binding each visualization to the view it needs. **Opt-out (accept-all) default → byte-identical to v1.17** for unconfigured dashboards. Research-locked design (`.planning/research/SUMMARY.md`): reuse the existing `fingerprint()` dedup pattern (no new deps), a ref-counted `combinationViews` slice + a combination-orchestrator, both read paths wired, bounded view creation. Small SERVER touch (additive `combinationKey?` materialize param + env-config plumbing) — NOT frontend-only.
+## v1.19 Requirements
 
-## v1 Requirements
+Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 
-### Filter Scope Configuration (FSCOPE)
+### Calendar Smart Domain Control (CALSMART)
 
-- [x] **FSCOPE-V118-01**: A user can configure, per visualization, which active filters it applies — via a **source-widget allow-list** that lists only filter-PRODUCING widgets (chart drill-downs, the DataFilter widget, map spatial draws) and NOT non-source widgets (records table, map info popup, legend). Defaults to **accept-all** (opt-out) — no config means every filter applies.
-- [x] **FSCOPE-V118-02**: Filter-scope config is available on **chart widgets** and **map WMS layers**; for layers it is a TOP-LEVEL `filterScope` field (threaded like `track_config`, never read off `layer.config`).
-- [x] **FSCOPE-V118-03**: **Dynamic views** also support a filter-scope config, gated behind a **deploy-time disable switch** (env flag exposed to the client) so a deployment can hide the dynamic-view filter-scope UI when not wanted.
+- [x] **CALSMART-V119-01**: Designer can switch a calendar widget between the advanced two-dropdown (domain + subdomain) UI and a smart single-dropdown UI; existing calendars with no smart config keep the two-dropdown behavior unchanged.
+- [x] **CALSMART-V119-02**: In smart mode, selecting month / week / day / hour auto-applies the mapped domain+subdomain pair (month→year/month, week→month/week, day→month/day, hour→day/hour).
+- [x] **CALSMART-V119-03**: Designer can restrict which smart options (month / week / day / hour) are selectable by the viewer.
 
-### View Deduplication & Lifecycle (COMBO)
+### Per-Visualization Custom WHERE Clause (VIZSQL)
 
-- [x] **COMBO-V118-01**: The app computes each visualization's RESOLVED filter set (source allow-list ∩ active filters), derives a stable dedup key, and materializes **one Kinetica view per UNIQUE combination** across all visualizations — no duplicate WHERE clauses / no redundant views. Each visualization reads only the view matching its filter set.
-- [x] **COMBO-V118-02**: Combination views are **ref-counted and shared** (N visualizations on the same combination share one view), **dropped when no visualization uses them**, **cleared on dashboard switch / logout** (the new store joins the lifecycle reset chain at both `App.tsx` and `DashboardsPage`), and **kept alive** while in use (extending the v1.15 keep-alive touch).
-- [x] **COMBO-V118-03**: The number of unique combination-views per table is **bounded by a deploy-time env var** (default ~10, read once at boot with fallback+warn, mirroring v1.15's TTL env vars); when the ceiling is exceeded, additional combinations **fall back to the full all-filters view** (correct data, less customization) and a warning is surfaced.
-- [x] **COMBO-V118-04**: With **default (accept-all)** config, rendering is **byte-identical to v1.17** — one view per table, every widget on it, no dashboard migration. (Correctness gate for the renderer-wiring phases.)
+- [ ] **VIZSQL-V119-01**: On each plain-SQL widget (calendar, line, timeline, pie, bar, records table, big number, and other SQL-running widgets — excluding map/WMS layers), the designer can enter a freeform raw-SQL WHERE expression in the widget config.
+- [ ] **VIZSQL-V119-02**: A non-empty custom WHERE is ANDed into that widget's read query on top of all active drill-down / per-viz-selection filters, against the materialized view the widget already reads.
+- [ ] **VIZSQL-V119-03**: An empty/absent custom WHERE leaves the widget's query byte-identical to current behavior.
+- [ ] **VIZSQL-V119-04**: An invalid WHERE expression surfaces the query error on that widget without breaking the dashboard (other widgets unaffected).
 
-### Spatial Filters (SPATIAL)
+### Custom Metrics per Table (METRIC)
 
-- [x] **SPATIAL-V118-01**: Spatial (map-draw) filters participate in the per-combination view model — each visualization's RESOLVED set and dedup hash incorporate the spatial shapes it accepts (per the source allow-list's **spatial-draws** entry); the combination orchestrator includes `spatialFilters` + `spatialTarget` in the materialize for combos that have accepted shapes (the server **already** composes spatial ∧ column WHERE via `composeWhereClause`, and view-naming already supports the `_c{hash8}` combo suffix); and the existing per-table spatial materialize paths (`useMapOnlySpatialMaterialize`) are reconciled so spatial is **neither dropped** for tables shared between a chart and a map **nor double-materialized**. With **default (accept-all)** config, spatial stays applied to all spatial-capable widgets — byte-identical to v1.5/v1.17 behavior.
+- [ ] **METRIC-V119-01**: From the Tables area, a user can define a custom metric on a table as a labeled SQL aggregate expression (e.g. `SUM(revenue)/SUM(cost)`).
+- [ ] **METRIC-V119-02**: Custom metrics are persisted server-side per table and reused across all dashboards using that table; a user can edit and delete them.
+- [ ] **METRIC-V119-03**: Custom metrics appear in every visualization metric picker alongside real columns.
+- [ ] **METRIC-V119-04**: When a custom metric is selected, its aggregate expression is emitted directly into the widget's SQL with no further aggregation wrapper applied.
 
-### Read-Path Binding (READ)
+### Smart / Logarithmic Y-Axis (YAXIS)
 
-- [x] **READ-V118-01**: Standard chart widgets (`WidgetRenderer`/`AggregatedWidgetRenderer`, `TimelineRenderer`, `NumericLineRenderer`) bind to their combination's view via the FROM-swap read path.
-- [x] **READ-V118-02**: Map **WMS layers** bind to their combination's view by pointing the WMS request at the correct per-combination materialized **view name** — filters are NEVER passed in the WMS request itself, so the only change is which view the layer reads from. Update BOTH `buildWmsParams` call sites to resolve the combination view name + add the combination key to their dependency keys so the layer re-requests when its bound view changes (the recurring missed-path gotcha).
+- [ ] **YAXIS-V119-01**: On line, timeline, and bar charts, the designer can choose a Y-axis scale mode: Zero-based (default), Smart, or Logarithmic.
+- [ ] **YAXIS-V119-02**: Smart mode derives the Y-axis min/max from the data range and does not force a 0 baseline.
+- [ ] **YAXIS-V119-03**: Logarithmic mode renders the value axis on a log scale.
+- [ ] **YAXIS-V119-04**: Absent config defaults to Zero-based — current behavior is unchanged for existing widgets.
 
-### Communication (COMM)
+### Multi-Column Group-By on Bar Chart (BARGRP)
 
-- [x] **COMM-V118-01**: Each visualization surfaces an **on-widget indicator** of which active filters it is applying vs ignoring — a badge ("N of M filters") shown ONLY when ≥1 active filter is being ignored (no badge in the default accept-all case), with a hover breakdown of applied/ignored filters. The existing top filter-bar (global active filters) is unchanged.
+- [ ] **BARGRP-V119-01**: On the bar chart, the designer can select more than one group-by column.
+- [ ] **BARGRP-V119-02**: Multiple group-by columns render nested/hierarchically, with a designer toggle for grouped (clustered) vs stacked.
+- [ ] **BARGRP-V119-03**: The number of group-by columns / resulting series is capped via a deploy-time env var (read once at boot, fallback+warn), with graceful handling when the cap is exceeded.
+- [ ] **BARGRP-V119-04**: A single-column group-by (or none) renders byte-identical to current bar-chart behavior.
 
 ### Verification (VERIFY)
 
-- [ ] **VERIFY-V118-01**: The milestone is proven via green automated gates (frontend vitest 100% from `packages/web`; web `tsc` clean; server `tsc` clean + supertests in BOTH auth modes for the touched materialize/env endpoints; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; theme-guard green) AND a blocking live operator walk-through (per-viz filter selection on chart widgets + WMS layers + dynamic views; dedup to shared views confirmed; ceiling fallback; on-widget badge; default-accept-all unchanged; cleanup on dashboard switch/logout), with any gaps fixed in-session and re-walked to PASS.
+- [ ] **VERIFY-V119-01**: All five features verified via green automated gates (web vitest 100% from `packages/web`, web + server `tsc` clean, theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION) plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
 
-## Future Requirements (deferred)
+## Future Requirements
 
-- **FSCOPE-V2-02**: Per-column / per-individual-filter exclusion within a visualization (beyond the source-widget allow-list). Dropped from v1.18 — the source-widget allow-list is sufficient and avoids the novel per-column granularity; revisit if a customer needs it.
-- **COMM-V2-01**: Annotate each top filter-bar chip with "(ignored by N widgets)".
-- **COMM-V2-02**: On-MAP per-layer filter-scope indicator (e.g. in the LayersLegendPanel) — the Phase-95 "N of M filters" header badge covers single-scope chart widgets; a map aggregates multiple per-layer/per-table scopes, so a single map-level badge is ill-defined and a per-layer indicator deserves its own UX. Deferred from v1.18 (decided 2026-06-29).
-- **PERF-V2-01**: Per-widget dependency key instead of the global `filterVersion` counter (re-render optimization), if profiling warrants.
-- **FSCOPE-V2-01**: Filter scope on additional visualization types if any new ones are added.
+Deferred to a later milestone. Tracked but not in the current roadmap.
+
+### Visualization Customization (deferred)
+
+- **VIZSQL-V2-01**: Custom WHERE clause on map / WMS layers (separate WMS render path).
+- **METRIC-V2-01**: Row-level computed columns (non-aggregate expressions the viz then aggregates).
+- **METRIC-V2-02**: Per-dashboard custom-metric overrides (v1.19 is global per-table).
+- **YAXIS-V2-01**: Smart / log Y-axis on pie / calendar / other chart types.
 
 ## Out of Scope
 
+Explicitly excluded for v1.19. Documented to prevent scope creep.
+
 | Feature | Reason |
 |---------|--------|
-| Cross-dashboard filter sharing / scoping | This milestone is within-dashboard per-visualization selection only. |
-| Changing the drill-down equality/BETWEEN filter semantics | v1.18 changes WHICH filters a viz applies, not how filters are produced. |
-| Server-side WHERE-injection per query | The materialized-view model is retained and extended (one view per combination), not replaced with inline WHERE. |
-| Filter scope on non-target widgets (map info popup, legend) | The info popup is transient; the legend mirrors a map. Records table IS a filter target but never a filter SOURCE. |
-| Per-token raw editing of the dedup hash / view names | Internal; not user-facing. |
+| Custom WHERE on map / WMS layers | Maps use a separate WMS-param render path, not plain SQL; deferred to VIZSQL-V2-01 |
+| Row-level computed columns | v1.19 custom metrics are pre-aggregated expressions only; row-level deferred to METRIC-V2-01 |
+| New RBAC permission for custom metrics | Reuse the existing `datasets:manage` for writes / ungated read, mirroring `column_display_config` (v1.15) — avoids a permission ripple |
+| Viewer-editable WHERE / metrics at runtime | Both are designer config-time fields persisted in config; no runtime viewer-entry surface |
+| Smart / log Y-axis on pie / calendar | Scoped to line / timeline / bar only |
+| Sandboxing / parsing of user SQL | Custom WHERE + metric expressions are raw SQL bounded by the user's own Kinetica creds (same trust model as existing SQL paths); no server-side SQL sandbox added |
 
 ## Traceability
 
+Which phases cover which requirements. Populated during roadmap creation (2026-06-30).
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FSCOPE-V118-01 | Phase 93 | Complete |
-| FSCOPE-V118-02 | Phase 93 | Complete |
-| FSCOPE-V118-03 | Phase 94 | Complete |
-| COMBO-V118-01 | Phase 90 | Complete |
-| COMBO-V118-02 | Phase 89 | Complete |
-| COMBO-V118-03 | Phase 90 | Complete |
-| COMBO-V118-04 | Phase 91 | Complete |
-| SPATIAL-V118-01 | Phase 93.5 | Complete |
-| READ-V118-01 | Phase 91 | Complete |
-| READ-V118-02 | Phase 92 | Complete |
-| COMM-V118-01 | Phase 95 | Complete |
-| VERIFY-V118-01 | Phase 96 | Pending |
+| CALSMART-V119-01 | Phase 97 | Complete |
+| CALSMART-V119-02 | Phase 97 | Complete |
+| CALSMART-V119-03 | Phase 97 | Complete |
+| VIZSQL-V119-01 | Phase 98 | Pending |
+| VIZSQL-V119-02 | Phase 98 | Pending |
+| VIZSQL-V119-03 | Phase 98 | Pending |
+| VIZSQL-V119-04 | Phase 98 | Pending |
+| METRIC-V119-01 | Phase 99 + Phase 100 | Pending |
+| METRIC-V119-02 | Phase 99 | Pending |
+| METRIC-V119-03 | Phase 100 | Pending |
+| METRIC-V119-04 | Phase 100 | Pending |
+| YAXIS-V119-01 | Phase 101 | Pending |
+| YAXIS-V119-02 | Phase 101 | Pending |
+| YAXIS-V119-03 | Phase 101 | Pending |
+| YAXIS-V119-04 | Phase 101 | Pending |
+| BARGRP-V119-01 | Phase 102 | Pending |
+| BARGRP-V119-02 | Phase 102 | Pending |
+| BARGRP-V119-03 | Phase 102 | Pending |
+| BARGRP-V119-04 | Phase 102 | Pending |
+| VERIFY-V119-01 | Phase 103 | Pending |
+
+> METRIC-V119-01 is the only requirement spanning two phases: its server-persistence half lands in Phase 99 (the `custom_metrics` table + CRUD) and its Tables-area authoring-UI half in Phase 100. Every other requirement maps to exactly one phase.
 
 **Coverage:**
-- v1 requirements: 12 total
-- Mapped to phases: 12
-- Unmapped: 0 ✓
+- v1.19 requirements: 20 total
+- Mapped to phases: 20/20 ✓
+- Unmapped: 0
+- Phases: 7 (97 Calendar Smart Domain · 98 Custom WHERE · 99 Custom Metrics Foundation · 100 Custom Metrics UI/Picker · 101 Smart/Log Y-Axis · 102 Multi-Column Bar Group-By · 103 Verification + Live UAT)
 
 ---
-*Requirements defined: 2026-06-27*
-*Last updated: 2026-06-28 — SPATIAL-V118-01 added (spatial folded into the combination model); Phase 93.5 inserted*
+*Requirements defined: 2026-06-30*
+*Last updated: 2026-06-30 — roadmap created, traceability mapped (Phases 97-103)*

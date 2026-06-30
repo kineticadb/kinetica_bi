@@ -22,181 +22,156 @@
 - ✅ **v1.15 Column Formatting & View Lifecycle** — Phases 74-79 (shipped 2026-06-22) — see `milestones/v1.15-ROADMAP.md`
 - ✅ **v1.16 White-Label Theming** — Phases 80-84 (shipped 2026-06-26) — see `milestones/v1.16-ROADMAP.md`
 - ✅ **v1.17 Chart Number Formatting** — Phases 85-87 (shipped 2026-06-27) — see `milestones/v1.17-ROADMAP.md`
-- 🚧 **v1.18 Per-Visualization Filter Selection** — Phases 88-96 incl. 93.5 (in progress)
+- ✅ **v1.18 Per-Visualization Filter Selection** — Phases 88-96 incl. 93.5 (shipped 2026-06-30) — see `milestones/v1.18-ROADMAP.md`
+- 🚧 **v1.19 Visualization Customization** — Phases 97-103 (IN PROGRESS, started 2026-06-30)
 
 ---
 
-## v1.18 Per-Visualization Filter Selection — IN PROGRESS
+## v1.19 Visualization Customization — IN PROGRESS (started 2026-06-30)
+
+**Goal:** Give designers per-visualization control over data and presentation — a custom WHERE clause and custom table-level metrics for tailoring the data each viz queries, plus smarter axes/grouping/calendar controls — without touching the shared filter/materialize engine.
+
+**Granularity:** standard. **Phases:** 7 (97-103). **Coverage:** 20/20 requirements mapped.
+
+**Invariant (every phase):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger. The custom WHERE (VIZSQL) is applied WITHIN each widget's existing read query (ANDed against the materialized view it already reads) — NEVER a new materialize path. Static grep: `grep -rE "materializeFilter|dropFilterView" packages/web/src/components/charts/` finds only authorized call sites.
 
 ### Phases
 
-- [ ] **Phase 88: Foundation — Pure Logic + Types** — Filter-selection types, resolveFilterSet, stableComboHash pure functions + unit tests
-- [ ] **Phase 89: Store + Server Foundation** — filterCombinationStore, lifecycle cleanup chain (9th store), keep-alive extension, server viewNaming + materialize param
-- [ ] **Phase 90: Combination-Orchestrator** — Sole-materialize-trigger hook: computes unique combinations, diffs registry, fires one POST per new combination, enforces ceiling with fallback *(research pass required)*
-- [ ] **Phase 91: WidgetRenderer Wiring** — Replace filterViewStore.views selectors with combination-store selectors; rewrite Effect 1 + Effect 2 in WidgetRenderer; correctness gate: default accept-all is byte-identical to v1.17
-- [ ] **Phase 92: MapChartRenderer Wiring** — Replace viewsKey with comboViewsKey; wire BOTH buildWmsParams call sites (Effect 2 + Effect 3) + update both dep arrays
-- [ ] **Phase 93: Filter Scope Config UI** — FilterSelectionPanel in ChartConfigPanel + KineticaWmsLayerForm (source allow-list incl. a spatial-draws entry); chart filterScope via widget.config; layer.filterScope as a TOP-LEVEL field persisted like track_config (server layer-PATCH threading); orphan-source warning
-- [ ] **Phase 93.5: Spatial Filters in the Combination Model** — Fold spatial (map-draw) filters into the per-combination view: extend stableComboHash + add resolveSpatialShapes; orchestrator reads shapes + includes spatialFilters/spatialTarget in the materialize; reconcile useMapOnlySpatialMaterialize so spatial isn't dropped for chart∧map shared tables nor double-materialized *(research pass required)*
-- [x] **Phase 94: Dynamic View Filter Scope Wiring** — Extend dv-bound widget path in WidgetRenderer to use resolveFilterSet against dvFilters; gated behind deploy-time disable env flag *(research pass required)*
-- [ ] **Phase 95: On-Widget Badge Indicator** — Badge "N of M filters" in widget header shown only when ≥1 active filter is ignored; hover tooltip with applied/ignored breakdown
-- [ ] **Phase 96: Verification + Live UAT** — Green automated gates (both stacks) + blocking live operator walk-through; all gaps fixed in-session
+- [ ] **Phase 97: Calendar Smart Domain Control** — FRONTEND-ONLY — alternative single-dropdown smart mode (month/week/day/hour) auto-mapping to domain+subdomain, alongside the existing two-dropdown UI.
+- [ ] **Phase 98: Per-Visualization Custom WHERE Clause** — FRONTEND-ONLY — freeform raw-SQL WHERE on every plain-SQL widget, ANDed on top of the existing drill-down/per-viz-selection filter pipeline against the already-filtered materialized view (excludes map/WMS).
+- [ ] **Phase 99: Custom Metrics — Server + Store Foundation** — BOTH — per-table `custom_metrics` config table + CRUD (read ungated / write `datasets:manage`, NO new permission) + client store/helpers.
+- [ ] **Phase 100: Custom Metrics — Tables-Area Editor + Metric-Picker Integration** — FRONTEND-ONLY — define/edit/delete metrics from the Tables area (mirroring the Column Format editor) + surface them in every viz metric picker, emitted directly into SQL with no extra aggregation wrapper.
+- [ ] **Phase 101: Smart / Logarithmic Y-Axis** — FRONTEND-ONLY — per-widget Y-axis scale mode (Zero-based / Smart / Logarithmic) on line, timeline, and bar charts.
+- [ ] **Phase 102: Multi-Column Group-By on Bar Chart** — FRONTEND-ONLY — arbitrary N group-by columns (env-var capped), nested/hierarchical, with a grouped (clustered) vs stacked toggle.
+- [ ] **Phase 103: Verification + Live UAT** — BOTH + operator — green automated gates on both stacks + a blocking live operator walk-through of all five features.
 
-### Phase Details
+## Phase Details
 
-#### Phase 88: Foundation — Pure Logic + Types
-**Goal**: The codebase has a tested, dependency-free pure-function layer that every subsequent phase imports — filter-selection types, filter resolution, and combination hashing.
-**Stack**: FRONTEND-ONLY
-**Depends on**: Nothing (first phase of v1.18)
-**Requirements**: FSCOPE-V118-01 (partial — types + resolution logic), COMBO-V118-01 (partial — dedup key)
-**Research flag**: None — pure-function patterns are well-established in this codebase
+### Phase 97: Calendar Smart Domain Control
+**Goal**: Designers can configure a calendar to expose a single "smart" time-granularity dropdown (month / week / day / hour) that auto-maps to the correct domain+subdomain pair, without disturbing existing two-dropdown calendars.
+**Stack**: FRONTEND-ONLY (`packages/web` — `CalendarConfigPanel.tsx` / `CalendarRenderer.tsx` + config model; mirrors the v1.13 Phase 68.1 view-local-control pattern).
+**Depends on**: Nothing (independent feature; can run in parallel with 98 / 101 / 102).
+**Requirements**: CALSMART-V119-01, CALSMART-V119-02, CALSMART-V119-03
+**Invariant**: `AggregatedWidgetRenderer` stays the sole materialize trigger — this is config + render only; no new SQL/materialize path.
 **Success Criteria** (what must be TRUE):
-  1. A widget with no filterSelection config (absent/undefined) resolves to all active filters unchanged — unit test asserts this explicitly.
-  2. A widget with a source-allow-list resolves to only filters whose sourceWidgetId is in the list — unit test covers include and exclude cases.
-  3. Two widgets with identical resolved filter arrays produce the same stableComboHash string; two with different arrays produce different hashes — unit tests confirm determinism and collision-resistance.
-  4. The NOFILTER sentinel is returned when the resolved filter array is empty, and is never confused with a real hash — unit test asserts the sentinel value.
-  5. Frontend vitest 100% green; web tsc clean; theme-guard green.
-**Plans**: 1 plan
-- [ ] 88-01-PLAN.md — Filter-selection types + resolveFilterSet (allow-list ∩ active, accept-all default) + stableComboHash/comboShortHash/NOFILTER sentinel + unit specs
-
-#### Phase 89: Store + Server Foundation
-**Goal**: The filterCombinationStore exists as the 9th store in both cleanup chains, the keep-alive hook covers combination views, and the server endpoint accepts the optional combinationKey param — all additive, backward-compatible, no renderer wiring yet.
-**Stack**: BOTH (frontend-heavy; server adds optional param + viewNaming helper)
-**Depends on**: Phase 88 (store imports pure functions from Phase 88)
-**Requirements**: COMBO-V118-02 (store + lifecycle + keep-alive), COMBO-V118-03 (ceiling constant defined in store), COMBO-V118-04 (partial — server extension is byte-identical when combinationKey absent)
-**Research flag**: None — direct extension of established parallel-slice and lifecycle patterns
-**Success Criteria** (what must be TRUE):
-  1. filterCombinationStore.reset() is called in BOTH App.tsx (logout) and DashboardsPage.tsx (dashboard switch), with a snapshot-then-DROP loop before reset — grep confirms both sites.
-  2. useViewKeepAlive covers combination-registry entries alongside existing filter and dynamic-view entries — a combination view's expiresAt is extended by the keep-alive touch.
-  3. POST /api/filter/materialize with no combinationKey in the body produces a view name byte-identical to v1.17 — existing supertest vectors pass unchanged.
-  4. POST /api/filter/materialize with a combinationKey appends _c{hash8} to the view name — new supertest confirms the extended shape.
-  5. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean.
+  1. A designer can switch a calendar widget between the advanced two-dropdown (domain + subdomain) UI and a smart single-dropdown UI from the config panel.
+  2. In smart mode, selecting month / week / day / hour renders the calendar with the mapped pair (month→year/month, week→month/week, day→month/day, hour→day/hour).
+  3. A designer can restrict which smart options are selectable by the viewer; only the allowed options appear in the viewer dropdown.
+  4. An existing calendar with no smart config keeps its current two-dropdown behavior byte-identically (backward-compat locked by test).
 **Plans**: 2 plans
-- [ ] 89-01-PLAN.md — filterCombinationStore (9th store) + ref-count lifecycle + snapshot-then-DROP cleanup at BOTH reset sites + keep-alive extension + MAX_COMBINATION_VIEWS_PER_TABLE (COMBO-V118-02, COMBO-V118-03)
-- [ ] 89-02-PLAN.md — server hashKey8 (exact Phase-88 djb2) + buildFilterViewName combinationKey suffix + POST/DELETE materialize param + both-auth-mode supertests (COMBO-V118-04)
+- [ ] 97-01-PLAN.md — Smart→pair mapping (calendarBin.ts) + controlMode/smartScale/allowedSmartScales config model & mode-branched panel UI
+- [ ] 97-02-PLAN.md — Renderer reconciliation: suppress viewer control bar in smart mode + backward-compat lock
 
-#### Phase 90: Combination-Orchestrator
-**Goal**: A single hook owns all combination-view materializations — it computes unique combinations across all dashboard widgets on each filterVersion tick, diffs the registry, fires exactly one POST per new combination, enforces the per-table ceiling with fallback to the global view, and manages ref-counting. Individual renderers never call materializeFilter.
-**Stack**: FRONTEND-ONLY
-**Depends on**: Phase 88 (pure functions), Phase 89 (store + server param)
-**Requirements**: COMBO-V118-01 (one view per unique combination; dedup + ref-count), COMBO-V118-03 (ceiling enforcement + fallback + warning)
-**Research flag**: Planning research pass required — most architecturally novel phase; ownership semantics and diff/dispatch algorithm must be documented before coding; reference useDynamicViewMaterializeChain in dynamicViewStore.ts
+### Phase 98: Per-Visualization Custom WHERE Clause
+**Goal**: On every plain-SQL widget, a designer can enter a freeform raw-SQL WHERE expression that is ANDed on top of the active drill-down / per-viz-selection filters against the materialized view the widget already reads — never a new materialize path.
+**Stack**: FRONTEND-ONLY (`packages/web` — per-widget config field + read-query WHERE injection in the chart/records/big-number read paths; excludes `MapChartRenderer` / WMS).
+**Depends on**: Nothing (independent feature; parallel-safe with 97 / 101 / 102).
+**Requirements**: VIZSQL-V119-01, VIZSQL-V119-02, VIZSQL-V119-03, VIZSQL-V119-04
+**Invariant**: The custom WHERE is appended WITHIN the widget's existing read query — ANDed against the already-filtered materialized view, on top of the existing drill-down / per-viz-selection pipeline (NOT a base-table query, NOT a new materialize). `AggregatedWidgetRenderer` stays the sole materialize trigger. Map / WMS layers are explicitly excluded.
 **Success Criteria** (what must be TRUE):
-  1. A single filter click on a dashboard with three widgets all accepting all filters produces exactly one POST /api/filter/materialize call (not three) — network tab confirms one POST per unique combination per filterVersion tick.
-  2. When the number of unique combinations for a table would exceed MAX_COMBINATION_VIEWS_PER_TABLE, the excess widgets fall back to the global all-filters view and a console warning is emitted — unit test confirms the ceiling cap and fallback assignment.
-  3. When the last widget using a combination leaves the dashboard (or changes its filter selection), the combination view is DROPped — unit test confirms refCount→0 triggers DROP.
-  4. Static grep: grep -r "materializeFilter\|dropFilterView" packages/web/src/components/charts/ finds only authorized call sites — no individual chart renderer calls these functions.
-  5. Web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 3 plans
-- [ ] 90-01-PLAN.md — client.ts cache-key fix: combinationKey on MaterializeFilterArgs + per-combination in-flight branch (COMBO-V118-01)
-- [ ] 90-02-PLAN.md — env-var ceiling plumbing: server boot read → /api/me → MeResponse/fetchMe → web auth store, both-auth-mode supertest (COMBO-V118-03)
-- [ ] 90-03-PLAN.md — useCombinationOrchestrator hook (diff/dispatch + ref-count DROP + ceiling fallback + info toast) + 11-scenario spec + DashboardOpen mount (COMBO-V118-01, COMBO-V118-03)
-
-#### Phase 91: WidgetRenderer Wiring
-**Goal**: Standard chart widgets (WidgetRenderer/AggregatedWidgetRenderer, TimelineRenderer, NumericLineRenderer) read their view name from filterCombinationStore instead of filterViewStore.views[tableId], and an existing dashboard with no filterScope config behaves byte-identically to v1.17.
-**Stack**: FRONTEND-ONLY
-**Depends on**: Phase 90 (orchestrator must exist before renderers become read-only consumers)
-**Requirements**: READ-V118-01 (WidgetRenderer FROM-swap bound to combination view), COMBO-V118-04 (default accept-all is byte-identical to v1.17 — correctness gate for this phase)
-**Research flag**: None — ARCHITECTURE.md documents exact file:line references for all integration points
-**Success Criteria** (what must be TRUE):
-  1. An existing dashboard with no filterScope config on any widget produces at most one POST /api/filter/materialize per table per filter change — same as v1.17, confirmed in the network tab.
-  2. A widget with a source-allow-list that excludes one active filter reads from a different (narrower) combination view than a widget accepting all filters on the same table — confirmed by inspecting filterCombinationStore.vizToHash in devtools.
-  3. While a new combination view is materializing, the widget shows a loading state and does not render the old (stale) view or the raw unfiltered table.
-  4. Frontend vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 2 plans
-- [ ] 91-01-PLAN.md — AggregatedWidgetRenderer: flip table read to filterCombinationStore + remove Effect 1 table branch + Effect 2 rewire (clearEntry retry) + COMBO-V118-04 byte-identical spec (READ-V118-01, COMBO-V118-04)
-- [ ] 91-02-PLAN.md — TimelineRenderer + NumericLineRenderer: selector-only flip to filterCombinationStore + clearEntry expiry + NOFILTER/suspend specs (READ-V118-01)
-
-#### Phase 92: MapChartRenderer Wiring
-**Goal**: WMS map layers bind to their combination view by name — both buildWmsParams call sites (Effect 2 ADD/REMOVE and Effect 3 updateParams) resolve the per-layer combination view, and the comboViewsKey dep-key selector causes layer re-requests when the bound combination view changes.
-**Stack**: FRONTEND-ONLY
-**Depends on**: Phase 91 (combination store is stable; wiring both renderer paths in one milestone window reduces regression risk)
-**Requirements**: READ-V118-02 (both buildWmsParams sites + dep keys; filters never in WMS request — only view name changes), COMBO-V118-04 (cross-cutting correctness gate: default accept-all map layers read the same single view as v1.17)
-**Research flag**: None — ARCHITECTURE.md documents exact line numbers and selector patterns for both call sites
-**Success Criteria** (what must be TRUE):
-  1. A map layer with default (accept-all) filterScope continues to receive WMS tiles from the same view as a chart widget on the same table — byte-identical to v1.17 map behavior.
-  2. A map layer with a source-allow-list receives WMS tiles from its own combination view, independent of the all-filters view used by other widgets on the same table — confirmed by comparing WMS tile request URLs in the network tab.
-  3. Both buildWmsParams call sites in MapChartRenderer (Effect 2 and Effect 3) have been updated — grep confirms no remaining filterViewStore.views[tableId] reads in either effect for the table-backed path.
-  4. The comboViewsKey selector (not viewsKey) is in both Effect 2 and Effect 3 dep arrays — confirmed by code inspection.
-  5. Web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 2 plans
-- [ ] 92-01-PLAN.md — Orchestrator layer enumeration (l:<id> vizKeys, layersKey dep, STEP E guard) + DashboardLayerDto.filterScope? + DashboardOpen mount
-- [ ] 92-02-PLAN.md — MapChartRenderer both buildWmsParams sites read combo view (comboViewsKey, uniqueTableIds removed, dv path untouched) + COMBO-V118-04 byte-identical spec
-
-#### Phase 93: Filter Scope Config UI
-**Goal**: Designers can configure each visualization's filter scope via a "Filter Scope" section in ChartConfigPanel (chart widgets) and KineticaWmsLayerForm (per layer), and the config persists correctly — layer.filterScope stored as a top-level field, not nested in layer.config.
-**Stack**: BOTH (frontend-heavy; server adds `filterScope` persistence to the dashboard-layers path — threaded TOP-LEVEL exactly like `track_config`/`cb_config`: DTO + updateLayer Pick + PATCH route body + updateDashboardLayer + SQLite column. Chart-widget filterScope persists via the existing widget.config JSON blob — no schema change. NO dynamic-view migration here — that is Phase 94.)
-**Depends on**: Phase 91 (the engine is wired, so absent filterScope already falls through to accept-all; UI can be added safely)
-**Requirements**: FSCOPE-V118-01 (source-widget allow-list UI; only filter-PRODUCING widgets listed — chart drill-downs, DataFilter widget, map spatial-draws sentinel; NOT records/info-popup/legend; default accept-all), FSCOPE-V118-02 (chart widgets + map WMS layers; layer.filterScope top-level field threaded like track_config)
-**Research flag**: None — config panel patterns well-established; ARCHITECTURE.md has the exact config shape
-**Success Criteria** (what must be TRUE):
-  1. Opening a chart widget's config panel shows a "Filter Scope" section with an opt-out toggle (default: accept all) and a source-widget checklist listing only filter-producing widgets (chart drill-downs, DataFilter, map spatial draws) — NOT records table, map info popup, or legend.
-  2. Opening a map layer's form shows the same "Filter Scope" section at the layer level (not at the map widget level), and the config is stored on layer.filterScope (top-level), not inside layer.config.
-  3. When a referenced source widget is deleted from the dashboard, the FilterSelectionPanel shows an orphan warning (mirrors RadioGroupConfigPanel pattern).
-  4. Saving a filter-scope config persists via the existing PATCH routes and survives a page reload — the widget re-opens with the configured allow-list intact.
-  5. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 2 plans
-- [ ] 93-01-PLAN.md — Shared FilterSelectionPanel + filter-source enumeration constant + ChartConfigPanel integration + widgetId self-exclusion (FRONTEND-ONLY; FSCOPE-V118-01)
-- [ ] 93-02-PLAN.md — Layer filter_scope top-level persistence (track_config mirror, 6 gaps + naming reconcile) + KineticaWmsLayerForm integration + widget threading + both-auth-mode supertests (BOTH; FSCOPE-V118-02)
-
-#### Phase 93.5: Spatial Filters in the Combination Model
-**Goal**: Spatial (map-draw) filters flow through the same one-view-per-unique-combination model as column filters — each visualization's resolved set + dedup hash incorporate the spatial shapes it accepts (per its source allow-list's spatial-draws entry), the orchestrator owns spatial materialization (no per-renderer trigger), and a table shared between a chart and a map no longer drops spatial. Default accept-all keeps spatial applied everywhere — byte-identical to prior behavior.
-**Stack**: FRONTEND-ONLY (server `composeWhereClause` already composes spatial ∧ column WHERE; `buildFilterViewName` already appends the `_c{hash8}` combo suffix; `materializeFilter` already sends `spatialFilters`/`spatialTarget` — all reusable as-is)
-**Depends on**: Phase 90 (orchestrator owns materialization), Phase 91/92 (read paths already consume the combo view by name), Phase 93 (config UI writes the spatial-draws allow-list entry the resolver reads)
-**Requirements**: SPATIAL-V118-01
-**Research flag**: Planning research pass required — reconcile the existing spatial trigger paths (`useMapOnlySpatialMaterialize` + the dv-branch Effect 1) against orchestrator ownership; lock how spatial shapes hash into stableComboHash (sorted shape-WKT hashes, order-independent) and how `spatialFilterVersion` enters the orchestrator dep array WITHOUT a re-render loop (mirror the combinationVersion exclusion rule).
-**Success Criteria** (what must be TRUE):
-  1. A table shown on BOTH a chart and a map, with an active spatial draw and default (accept-all) config, materializes ONE combination view that includes the spatial predicate, and both the chart and the map read it — spatial is not dropped (the post-Phase-91 gap is closed) and not double-materialized.
-  2. With default accept-all, a single spatial draw produces exactly one POST /api/filter/materialize per affected table (carrying spatialFilters + spatialTarget) — confirmed in the network tab; behavior matches v1.5/v1.17.
-  3. A visualization whose source allow-list EXCLUDES spatial draws reads a combination view WITHOUT the spatial predicate, while a sibling accepting spatial reads one WITH it — different view names, confirmed via filterCombinationStore.vizToHash.
-  4. Two visualizations accepting the same column filters + the same spatial shapes share ONE combination view (dedup holds across spatial); changing/removing a shape re-derives the hash and ref-counts/DROPs correctly.
-  5. resolveSpatialShapes has unit coverage (accept-all default, allow-list include/exclude, empty-shapes passthrough); stableComboHash spatial extension has determinism + order-independence unit coverage; web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 2 plans
-- [x] 93.5-01-PLAN.md — stableComboHash optional `shapes?` 4th param (WKT-sorted, order-independent, no-break) + resolveSpatialShapes pure fn (all-or-nothing via SPATIAL_DRAWS_SENTINEL) + unit specs (FRONTEND-ONLY; SPATIAL-V118-01)
-- [x] 93.5-02-PLAN.md — orchestrator spatial fold-in (imperative shapes read, resolveSpatialShapes + aggregateSpatialTargetsByTable per viz, spatialFilters/spatialTarget in materialize, spatialFilterVersion dep) + remove useMapOnlySpatialMaterialize + records excluded from enumeration + spatial spec scenarios + sole-trigger gate (FRONTEND-ONLY; SPATIAL-V118-01)
-
-#### Phase 94: Dynamic View Filter Scope Wiring
-**Goal**: Dynamic-view-backed widgets apply filter-scope selection against their dvFilters (not the base-table filters), gated behind a deploy-time disable env flag that hides the dv filter-scope UI when not wanted.
-**Stack**: BOTH (frontend extends dv-bound Effect 1 path; server exposes the disable flag on /api/me mirroring v1.15's ttlKeepaliveLeadMinutes)
-**Depends on**: Phase 93 (FilterSelectionPanel exists and can be conditionally shown for dv-bound widgets based on the env flag)
-**Requirements**: FSCOPE-V118-03 (dv filter-scope config + deploy-time disable switch exposed to client)
-**Research flag**: Planning research pass required — three source-type cases (table-bound, dv-bound with dv-filter, dv-bound without dv-filter) must be enumerated; confirm server buildFilterViewName branches cover both table and dv paths with combinationKey symmetrically
-**Success Criteria** (what must be TRUE):
-  1. A dv-bound chart widget with a filter-scope allow-list re-materializes its dv-filter combination view when dvFilters change, using the combination key derived from resolveFilterSet(dv.filterSelection, dvFilters[dvId]) — confirmed by observing one POST /api/filter/materialize for the dv path with a combinationKey in the body.
-  2. When the deploy-time disable flag is set (env var), the "Filter Scope" section is absent from dv-bound widget config panels — confirmed by checking the flag value and reloading.
-  3. A dv-bound layer's filter scope uses the dynamicViewId as the stableComboHash source key (not the tableId) — combination registry entry shows sourceType "dv".
-  4. Server tsc clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 2 plans
-- [x] 94-01-PLAN.md — Orchestrator dv enumeration (widgets + layers) + remove WidgetRenderer Effect 1 dv-branch + dv renderer read-path flip (WidgetRenderer + MapChartRenderer) to filterCombinationStore + three-source-type spec scenarios (FRONTEND-ONLY; FSCOPE-V118-03 engine half)
-- [x] 94-02-PLAN.md — DISABLE_DV_FILTER_SCOPE env flag across 5 mirror sites (boot → /api/me → MeResponse → fetchMe → auth store) + FilterSelectionPanel UI gating for dv-bound vizs + same-dv source list + both-auth-mode /api/me supertests (BOTH; FSCOPE-V118-03 env-flag half)
-
-#### Phase 95: On-Widget Badge Indicator
-**Goal**: Each visualization that is ignoring at least one active filter surfaces a visible "N of M filters" badge in its widget header, giving designers and analysts immediate feedback on which filters are applied without opening config.
-**Stack**: FRONTEND-ONLY
-**Depends on**: Phase 91 (filterCombinationStore.vizToHash is populated; resolved filter counts are available), Phase 93 (filter scope config exists so meaningful ignore cases can occur)
-**Requirements**: COMM-V118-01 (badge shown only when ≥1 active filter is ignored; hover breakdown of applied/ignored filters; global filter-bar unchanged)
-**Research flag**: None — pure render work; badge UX fully specified; all dependencies exist after Phase 91
-**Success Criteria** (what must be TRUE):
-  1. A widget accepting all active filters (default or configured) shows no badge — zero visual change from v1.17 in the default case.
-  2. A widget ignoring at least one active filter shows a badge reading "N of M filters" (e.g. "2 of 3 filters") in its widget header, using theme tokens (var(--accent) / var(--accent-text)), with no hardcoded hex.
-  3. Hovering the badge shows a breakdown of which filters are applied and which are ignored, with a reason annotation for ignored ones (source excluded).
-  4. The widget-filter-badge CSS class exists in global.css before use — theme-guard green; no invented class names.
-  5. Web vitest 100%; web tsc clean; theme-guard green.
-**Plans**: 1 plan
-- [ ] 95-01-PLAN.md — Pure useFilterScopeSummary helper (reuses resolveFilterSet + resolveSpatialShapes) + WidgetFilterBadge component + widget-filter-badge global.css class + header integration (non-map, maps deferred) + render specs (COMM-V118-01)
-
-#### Phase 96: Verification + Live UAT
-**Goal**: The milestone is proven complete — all automated gates pass on both stacks and a live operator walk-through covering every v1.18 feature passes with no unresolved gaps.
-**Stack**: BOTH (gates) + operator
-**Depends on**: Phase 95 (all feature phases complete)
-**Requirements**: VERIFY-V118-01 (green automated gates + blocking live operator walk-through; all gaps fixed in-session)
-**Research flag**: None
-**Success Criteria** (what must be TRUE):
-  1. Automated gates pass: frontend vitest 100% from packages/web; web tsc clean; server tsc clean; server supertests in BOTH auth modes; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION; theme-guard green.
-  2. Live walk: per-viz filter selection on chart widgets works — widgets with different filter scopes receive different combination views and show different filtered data simultaneously on the same dashboard.
-  3. Live walk: WMS map layers respond to per-layer filter scope — a layer with an allow-list shows different map tiles than an all-filters layer on the same table.
-  4. Live walk: default accept-all dashboards (no filterScope config) are byte-identical to v1.17 — one materialize per table, no badge, no behavior change.
-  5. Live walk: combination dedup, ceiling fallback, on-widget badge, and cleanup on dashboard switch/logout all verified; any gaps fixed in-session and re-walked to PASS.
+  1. On a plain-SQL widget (calendar, line, timeline, pie, bar, records table, big number, etc.), the designer can enter a raw-SQL WHERE expression in the widget config and it persists.
+  2. A non-empty custom WHERE narrows that widget's data, applied on top of any active drill-down / per-viz filters (ANDed against the same materialized view), while other widgets are unaffected.
+  3. An empty/absent custom WHERE leaves the widget's query byte-identical to current behavior (backward-compat locked by test).
+  4. An invalid WHERE surfaces the query error on that widget only; the rest of the dashboard keeps rendering.
 **Plans**: TBD
+
+### Phase 99: Custom Metrics — Server + Store Foundation
+**Goal**: A per-table custom-metrics config (label + SQL aggregate expression) is persisted server-side with full CRUD, and a client store exposes it — the foundation the Tables editor and metric pickers build on.
+**Stack**: BOTH (server: new `custom_metrics` SQLite table + CRUD endpoints — composite-keyed per table, read ungated / write `datasets:manage`, NO new RBAC permission, mirroring v1.15 `column_display_config`; client: store + helpers mirroring `columnDisplayConfigStore`).
+**Depends on**: Nothing (server/store foundation; unblocks Phase 100). Can run in parallel with 97 / 98 / 101 / 102.
+**Requirements**: METRIC-V119-01 (server persistence portion), METRIC-V119-02
+**Invariant**: `AggregatedWidgetRenderer` stays the sole materialize trigger — custom metrics are config CRUD + a read-time SQL fragment, never a new materialize path. NO new permission (reuse `datasets:manage` for writes, ungated reads).
+**Success Criteria** (what must be TRUE):
+  1. A custom metric (label + SQL aggregate expression, e.g. `SUM(revenue)/SUM(cost)`) can be created, edited, and deleted against a table via the CRUD endpoints, scoped per table.
+  2. Custom metrics persist server-side and are returned per table for reuse across all dashboards using that table.
+  3. Writes are gated by the existing `datasets:manage` permission; reads are ungated — no new permission is introduced (byte-parity check on the permission catalog).
+  4. The client store loads a table's custom metrics and exposes them to consumers (mirrors the v1.15 column-config store pattern).
+**Plans**: TBD
+
+### Phase 100: Custom Metrics — Tables-Area Editor + Metric-Picker Integration
+**Goal**: Users define/edit/delete custom metrics from the Tables area (mirroring the Column Format editor), and those metrics appear in every visualization's metric picker, emitted directly into the widget SQL with no extra aggregation wrapper.
+**Stack**: FRONTEND-ONLY (`packages/web` — Tables-area editor modal + metric-picker integration across config panels + SQL emission).
+**Depends on**: Phase 99 (needs the persisted store + CRUD helpers).
+**Requirements**: METRIC-V119-01 (Tables-area authoring UI portion), METRIC-V119-03, METRIC-V119-04
+**Invariant**: When a custom metric is selected, its aggregate expression is emitted DIRECTLY into the widget's SELECT with NO additional aggregation wrapper applied (it is already an aggregate). `AggregatedWidgetRenderer` stays the sole materialize trigger.
+**Success Criteria** (what must be TRUE):
+  1. From the Tables area, a user can define / edit / delete a labeled custom metric (mirroring the Column Format editor reach + layout).
+  2. Custom metrics appear in every visualization's metric picker alongside real columns, labeled.
+  3. Selecting a custom metric emits its aggregate expression directly into the widget SQL with no further aggregation wrapper, and the widget renders the computed value.
+  4. Widgets using only real columns are byte-identical to current behavior.
+**Plans**: TBD
+
+### Phase 101: Smart / Logarithmic Y-Axis
+**Goal**: On line, timeline, and bar charts, a designer can choose the Y-axis scale mode — Zero-based (default), Smart, or Logarithmic — per widget.
+**Stack**: FRONTEND-ONLY (`packages/web` — per-widget config field + recharts axis `domain`/`scale` in the line / timeline / bar renderers; mirrors the v1.17 per-widget Y-axis-format pattern).
+**Depends on**: Nothing (independent feature; parallel-safe with 97 / 98 / 102).
+**Requirements**: YAXIS-V119-01, YAXIS-V119-02, YAXIS-V119-03, YAXIS-V119-04
+**Invariant**: Pure render-config — `AggregatedWidgetRenderer` stays the sole materialize trigger; no SQL/materialize change. Scoped to line / timeline / bar only (pie / calendar excluded — deferred YAXIS-V2-01).
+**Success Criteria** (what must be TRUE):
+  1. On a line, timeline, or bar chart, the designer can pick a Y-axis scale mode: Zero-based, Smart, or Logarithmic.
+  2. Smart mode derives the Y-axis min/max from the data range and does not force a 0 baseline.
+  3. Logarithmic mode renders the value axis on a log scale.
+  4. A widget with no scale-mode config defaults to Zero-based — current behavior unchanged for existing widgets (backward-compat locked by test).
+**Plans**: TBD
+
+### Phase 102: Multi-Column Group-By on Bar Chart
+**Goal**: On the bar chart, a designer can select arbitrary N group-by columns (env-var capped), rendered nested/hierarchically with a grouped (clustered) vs stacked toggle.
+**Stack**: FRONTEND-ONLY (`packages/web` — bar config panel + bar renderer + group-by SQL; new boot-time env var for the column/series cap, exposed to the client via `/api/auth/me` mirroring `ttlKeepaliveLeadMinutes` — a tiny server touch noted but kept FRONTEND-ONLY-primary). NOTE: if the env-var exposure requires a server diff (`/api/auth/me` payload), treat this phase as BOTH at plan time; the feature logic itself is web-only.
+**Depends on**: Nothing (independent feature; parallel-safe with 97 / 98 / 101).
+**Requirements**: BARGRP-V119-01, BARGRP-V119-02, BARGRP-V119-03, BARGRP-V119-04
+**Invariant**: `AggregatedWidgetRenderer` stays the sole materialize trigger. The group-by column / series cap is a deploy-time ENV VAR read once at boot with fallback+warn (mirroring v1.15 TTL env vars / v1.18 `MAX_COMBINATION_VIEWS_PER_TABLE`) — over-cap is handled gracefully, never a fail-fast.
+**Success Criteria** (what must be TRUE):
+  1. On the bar chart, the designer can select more than one group-by column.
+  2. Multiple group-by columns render nested/hierarchically, and a designer toggle switches between grouped (clustered) and stacked.
+  3. The number of group-by columns / resulting series is capped via a deploy-time env var (read once at boot, fallback+warn); exceeding the cap is handled gracefully (truncate + warn, no crash).
+  4. A single-column group-by (or none) renders byte-identical to current bar-chart behavior (backward-compat locked by test).
+**Plans**: TBD
+
+### Phase 103: Verification + Live UAT
+**Goal**: All five features verified green on both stacks plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
+**Stack**: BOTH + operator.
+**Depends on**: Phases 97, 98, 99, 100, 101, 102 (verifies after all feature phases land).
+**Requirements**: VERIFY-V119-01
+**Invariant**: Re-assert sole-materialize-trigger (static grep) across all five features; theme-tokens-only (no raw hex); server vitest set-based ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
+**Success Criteria** (what must be TRUE):
+  1. Automated gates green: web vitest 100% from `packages/web`, web + server `tsc` clean (separate gates), theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION.
+  2. A blocking live operator walk-through exercises all five features (smart calendar, custom WHERE incl. invalid-error isolation, custom metrics end-to-end, smart/log Y-axis, multi-column bar group-by) and attests PASS.
+  3. Any gaps found in the walk are fixed in-session (with regression tests) and re-walked to PASS.
+**Plans**: TBD
+
+### Phase Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 97. Calendar Smart Domain Control | 0/2 | Planned | - |
+| 98. Per-Visualization Custom WHERE Clause | 0/? | Not started | - |
+| 99. Custom Metrics — Server + Store Foundation | 0/? | Not started | - |
+| 100. Custom Metrics — Editor + Metric-Picker Integration | 0/? | Not started | - |
+| 101. Smart / Logarithmic Y-Axis | 0/? | Not started | - |
+| 102. Multi-Column Group-By on Bar Chart | 0/? | Not started | - |
+| 103. Verification + Live UAT | 0/? | Not started | - |
+
+---
+
+## v1.18 Per-Visualization Filter Selection — SHIPPED 2026-06-30
+
+<details>
+<summary>✅ v1.18 (Phases 88-96 incl. 93.5) — SHIPPED 2026-06-30 — full phase details archived in milestones/v1.18-ROADMAP.md</summary>
+
+- [x] Phase 88: Foundation — Pure Logic + Types (1/1 plan)
+- [x] Phase 89: Store + Server Foundation (2/2 plans)
+- [x] Phase 90: Combination-Orchestrator (3/3 plans)
+- [x] Phase 91: WidgetRenderer Wiring (2/2 plans)
+- [x] Phase 92: MapChartRenderer Wiring (2/2 plans)
+- [x] Phase 93: Filter Scope Config UI (2/2 plans)
+- [x] Phase 93.5: Spatial Filters in the Combination Model (2/2 plans)
+- [x] Phase 94: Dynamic View Filter Scope Wiring (2/2 plans)
+- [x] Phase 95: On-Widget Badge Indicator (1/1 plan)
+- [x] Phase 96: Verification + Live UAT (3/3 plans + UAT gap closure; operator UAT 11/11)
+
+**Delivered:** Per-visualization filter selection — each chart widget, WMS map layer, and dynamic-view-backed widget chooses which active filters it applies via a source-widget allow-list (incl. self-filter + spatial-draws sources), materializing one Kinetica view per UNIQUE filter combination (deduped, ref-counted, env-bounded with all-filters fallback). Spatial draws folded into the combination model; deploy-time dv disable flag; on-widget "N of M filters" badge + per-layer legend indicator + "All filters (limit)" fallback badge. Default accept-all byte-identical to v1.17. 13/13 requirements; operator UAT 11/11 (6 gaps + 2 scope additions fixed in-session). See `MILESTONES.md` + `milestones/v1.18-ROADMAP.md`.
+
+</details>
 
 ---
 
@@ -213,16 +188,8 @@
 | 74–79 | v1.15 | 11/11 | Complete | 2026-06-22 |
 | 80–84 | v1.16 | 13/13 | Complete (UAT 14/14) | 2026-06-26 |
 | 85–87 | v1.17 | 3/3 | Complete (UAT 6/6) | 2026-06-27 |
-| 88 | v1.18 | 0/TBD | Not started | — |
-| 89 | v1.18 | 0/TBD | Not started | — |
-| 90 | v1.18 | 0/3 | Planned | — |
-| 91 | v1.18 | 0/TBD | Not started | — |
-| 92 | v1.18 | 0/2 | Planned | — |
-| 93 | v1.18 | 0/2 | Planned | — |
-| 93.5 | v1.18 | 0/2 | Planned | — |
-| 94 | v1.18 | 2/2 | Complete | 2026-06-29 |
-| 95 | v1.18 | 0/TBD | Not started | — |
-| 96 | v1.18 | 0/TBD | Not started | — |
+| 88–96 incl. 93.5 | v1.18 | 20/20 | Complete (UAT 11/11) | 2026-06-30 |
+| 97–103 | v1.19 | 0/? | In progress | — |
 
 ---
 

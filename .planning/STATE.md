@@ -1,30 +1,103 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.18
-milestone_name: Per-Visualization Filter Selection
+milestone: v1.19
+milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 96-03-PLAN.md
-last_updated: "2026-06-29T18:55:39.729Z"
+stopped_at: Completed 97-01-PLAN.md
+last_updated: "2026-06-30T19:47:01.570Z"
 progress:
-  total_phases: 10
-  completed_phases: 9
-  total_plans: 20
-  completed_plans: 19
+  total_phases: 7
+  completed_phases: 0
+  total_plans: 2
+  completed_plans: 1
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-27 — v1.18 STARTED)
+See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 95 — on-widget-badge-indicator
+**Current focus:** Phase 97 — calendar-smart-domain-control
 
 ## Current Position
 
-Phase: 95 (on-widget-badge-indicator) — EXECUTING
-Plan: 1 of 1
+Phase: 97 (calendar-smart-domain-control) — EXECUTING
+Plan: 1 of 2
+
+### v1.19 Phase Map
+
+| Phase | Name | Stack | Key Requirements | Research Flag |
+|-------|------|-------|------------------|---------------|
+| 97 | Calendar Smart Domain Control | FRONTEND-ONLY | CALSMART-V119-01/02/03 | None |
+| 98 | Per-Visualization Custom WHERE Clause | FRONTEND-ONLY | VIZSQL-V119-01/02/03/04 | None |
+| 99 | Custom Metrics — Server + Store Foundation | BOTH | METRIC-V119-01 (server), METRIC-V119-02 | None |
+| 100 | Custom Metrics — Tables-Area Editor + Metric-Picker Integration | FRONTEND-ONLY | METRIC-V119-01 (UI), METRIC-V119-03/04 | None |
+| 101 | Smart / Logarithmic Y-Axis | FRONTEND-ONLY | YAXIS-V119-01/02/03/04 | None |
+| 102 | Multi-Column Group-By on Bar Chart | FRONTEND-ONLY (env-var → possible tiny server touch) | BARGRP-V119-01/02/03/04 | None |
+| 103 | Verification + Live UAT | BOTH + operator | VERIFY-V119-01 | None |
+
+**The five feature areas are INDEPENDENT** (no cross-feature dependency). The only intra-milestone dependency is **99 → 100** (custom-metrics UI needs the server table + store). So the execution graph is:
+
+**Dependency spine:** {97, 98, 101, 102, 99} all parallel-safe → 100 (needs 99) → 103 (verifies after all six feature phases land). Concretely: 99 → 100; 97 / 98 / 101 / 102 have no predecessors; 103 depends on 97+98+99+100+101+102.
+
+**Stack rationale (locked scope):**
+
+- **Custom metrics (99 + 100) is the ONLY BOTH-stack feature.** Phase 99 adds a per-table `custom_metrics` SQLite config table + CRUD — composite-keyed, **read ungated / write `datasets:manage`, NO new RBAC permission** — mirroring v1.15's `column_display_config`; plus the client store/helpers (mirror `columnDisplayConfigStore`). Phase 100 is the FRONTEND-ONLY Tables-area editor + metric-picker integration.
+- **Calendar smart domain (97), per-viz WHERE (98), smart/log Y-axis (101), and multi-column bar group-by (102) are all FRONTEND-ONLY** (`packages/web`). Phase 102 introduces a deploy-time env var for the group-by column/series cap; **if exposing it to the client requires an `/api/auth/me` payload diff, treat 102 as BOTH at plan time** — the feature logic itself is web-only.
+
+**Why the metrics split (99 + 100) and not one BOTH phase:** keeps the server table+CRUD+store foundation as a clean, separately-verifiable unit (server gates in both auth modes) that unblocks the purely-frontend authoring UI + picker integration — the same 75→{76,77} foundation-then-UI shape used in v1.15, and the 89→{91,92} shape in v1.18.
+
+### v1.19 Scope (locked 2026-06-30)
+
+BOTH stacks (web-heavy; custom-metrics is the only server touch). Key locked decisions:
+
+1. **Custom WHERE is a read-query AND, never a materialize.** A non-empty per-viz WHERE is appended WITHIN each plain-SQL widget's existing read query — ANDed on TOP of the existing drill-down / per-viz-selection filter pipeline, against the already-filtered materialized view the widget already reads (NOT a base-table query, NOT a new materialize path). **Map / WMS layers are excluded** (separate WMS render path → deferred VIZSQL-V2-01). Invalid WHERE surfaces the query error on that widget only; other widgets unaffected (VIZSQL-V119-04).
+2. **Empty/absent custom WHERE → byte-identical to current behavior** (VIZSQL-V119-03, backward-compat gate).
+3. **Custom metrics = pre-aggregated SQL expression, global per-table.** Label + SQL aggregate (e.g. `SUM(revenue)/SUM(cost)`), persisted server-side per table (`custom_metrics` table), reused across all dashboards using that table. When selected, the expression is emitted DIRECTLY into the widget SELECT with **no further aggregation wrapper** (METRIC-V119-04). **NO new RBAC permission** — writes reuse `datasets:manage`, reads ungated (mirrors `column_display_config`). Row-level computed columns + per-dashboard overrides are out of scope (deferred METRIC-V2-01/02).
+4. **Smart/log Y-axis scoped to line / timeline / bar only.** Per-widget mode: Zero-based (default) / Smart (data-derived min/max, no forced 0) / Logarithmic. Absent config → Zero-based (YAXIS-V119-04, backward-compat). Pie / calendar excluded (deferred YAXIS-V2-01).
+5. **Multi-column bar group-by capped via a deploy-time ENV VAR** (read once at boot, fallback+warn, mirroring v1.15 TTL env vars / v1.18 `MAX_COMBINATION_VIEWS_PER_TABLE`); over-cap handled gracefully (truncate + warn, never fail-fast). Nested/hierarchical render with a grouped (clustered) vs stacked toggle. Single-column / no group-by → byte-identical (BARGRP-V119-04).
+6. **Calendar smart domain is an ADD-ON UI mode**, not a replacement: a single-dropdown smart mode (month/week/day/hour) auto-mapping to domain+subdomain pairs, alongside the existing two-dropdown UI; designer picks which UI + which smart options are selectable; existing calendars with no smart config are unchanged (CALSMART-V119-01).
+7. **No new RBAC permission this milestone; no SQL sandbox** — custom WHERE + metric expressions are raw SQL bounded by the user's own Kinetica creds (same trust model as existing SQL paths).
+
+### v1.19 Test Gates (every phase)
+
+- **Frontend phases (97, 98, 100, 101, and 102 unless its env-var exposure forces a server diff):** web vitest 100% from `packages/web`; web `tsc` clean; theme-guard green (theme tokens only, no raw hex).
+- **BOTH / server-touching phases (99, and 102 if it touches `/api/auth/me`):** ALL of the above + supertests in BOTH auth modes (password + oidc); server `tsc` clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
+- **Phase 103 (verification):** ALL of the above on both stacks + a blocking live operator walk-through of all five features, with any gaps fixed in-session (regression-tested) and re-walked to PASS.
+- **Invariant (all phases):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger — static grep `grep -rE "materializeFilter|dropFilterView" packages/web/src/components/charts/` finds only authorized call sites. The custom WHERE is applied WITHIN the widget's existing read query (ANDed against the materialized view it already reads), never as a new materialize path. Theme-tokens-only / no raw hex throughout.
+
+### v1.19 Requirement Coverage
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| CALSMART-V119-01 | Phase 97 | Pending |
+| CALSMART-V119-02 | Phase 97 | Pending |
+| CALSMART-V119-03 | Phase 97 | Pending |
+| VIZSQL-V119-01 | Phase 98 | Pending |
+| VIZSQL-V119-02 | Phase 98 | Pending |
+| VIZSQL-V119-03 | Phase 98 | Pending |
+| VIZSQL-V119-04 | Phase 98 | Pending |
+| METRIC-V119-01 | Phase 99 + Phase 100 | Pending |
+| METRIC-V119-02 | Phase 99 | Pending |
+| METRIC-V119-03 | Phase 100 | Pending |
+| METRIC-V119-04 | Phase 100 | Pending |
+| YAXIS-V119-01 | Phase 101 | Pending |
+| YAXIS-V119-02 | Phase 101 | Pending |
+| YAXIS-V119-03 | Phase 101 | Pending |
+| YAXIS-V119-04 | Phase 101 | Pending |
+| BARGRP-V119-01 | Phase 102 | Pending |
+| BARGRP-V119-02 | Phase 102 | Pending |
+| BARGRP-V119-03 | Phase 102 | Pending |
+| BARGRP-V119-04 | Phase 102 | Pending |
+| VERIFY-V119-01 | Phase 103 | Pending |
+
+**Coverage: 20/20 (100%)** — METRIC-V119-01 spans 99 (server persistence) + 100 (Tables-area authoring UI); every other requirement maps to exactly one phase.
+
+### v1.19 Open Tech Debt (carried from v1.18)
+
+TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
 
 ### v1.18 Phase Map
 
@@ -628,6 +701,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 95-on-widget-badge-indicator P01 | 452 | 3 tasks | 7 files |
 | Phase 96 P02 | 17min | 2 tasks | 4 files |
 | Phase 96-verification-live-uat P03 | 1822 | 2 tasks | 6 files |
+| Phase 97 P01 | 7 | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -953,6 +1027,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 96]: Customize-on pre-populates allowedSourceWidgetIds with all current source ids + sentinel (when allowSpatial) so start state == accept-all; accept-none warning preserved for manual-uncheck-all
 - [Phase 96-verification-live-uat]: Reused widget-filter-badge class for legend indicator (no invented CSS, no raw hex)
 - [Phase 96-verification-live-uat]: filterSummary computed by MapChartRenderer caller not LayersLegendPanel (preserves PANEL-V17-01 store-free lock)
+- [Phase 96]: GAP 1 fix in STEP B only (not STEP D) to preserve race-guard Scenario 7 behavior
+- [Phase 96]: records removed from NON_TRIGGER_TYPES; RecordsTableRenderer is pure combo consumer, orchestrator is sole trigger
+- [Phase 96]: dvFilterScopeDisabled read imperatively (getState()) per S-02, not in deps array, applies to both dv widget and layer loops
+- [Phase 97]: Smart mode writes domain+subdomain into config via SMART_SCALE_TO_PAIR; renderer unchanged (config+UI only)
+- [Phase 97]: SMART_SCALE_TO_PAIR is SINGLE SOURCE OF TRUTH in calendarBin.ts; controlMode absent → 'advanced' (byte-identical legacy)
+- [Phase 97]: toggleAllowedScale enforces ≥1 allowed scale; SMART_SCALES.filter preserves canonical coarsest→finest order
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1359,6 +1439,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-29T18:55:39.686Z
-Stopped at: Completed 96-03-PLAN.md
+Last session: 2026-06-30T19:47:01.560Z
+Stopped at: Completed 97-01-PLAN.md
 Resume file: None
