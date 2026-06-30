@@ -45,6 +45,7 @@ import {
   type NumericMetric,
 } from "../../lib/numericBin";
 import { buildNumericLineSql } from "../../lib/buildNumericLineSql";
+import { andCustomWhere } from "../../lib/customWhere";
 import { MAX_SERIES, selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
@@ -113,6 +114,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
   const showTooltip = cfg.showTooltip ?? true;
   const vertical = cfg.vertical ?? false;
   const colorTheme = cfg.colorTheme ?? DEFAULT_COLOR_THEME;
+  const customWhere = cfg.customWhere ?? "";
 
   // Defensive: hard-cap to MAX_METRICS even if config persisted more. When grouped,
   // the chart uses a SINGLE metric (metrics[0]) split into one series per group value.
@@ -290,7 +292,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
           const topSql =
             `SELECT ${groupByColumn} AS series, ${aggSql} AS value ` +
             `FROM ${fromTarget} ` +
-            `WHERE ${xField} IS NOT NULL AND ${groupByColumn} IS NOT NULL ` +
+            `WHERE ${xField} IS NOT NULL AND ${groupByColumn} IS NOT NULL${andCustomWhere(customWhere)} ` +
             `GROUP BY series ` +
             `ORDER BY value DESC ` +
             `LIMIT ${MAX_SERIES * 4}`;
@@ -309,6 +311,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
             maxBuckets,
             groupByColumn,
             seriesIn: top.series,
+            customWhere,
           });
           const groupedRows = decodeSqlResponse(await runSql(mainSql, undefined, ctrl.signal));
           // numericBuckets:true → buckets sort numerically (mirrors the ungrouped Number() sort).
@@ -345,6 +348,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
               binWidth: width,
               metric: m,
               maxBuckets,
+              customWhere,
             });
             return runSql(sql, undefined, ctrl.signal).then(decodeSqlResponse);
           }),
@@ -392,6 +396,8 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
     JSON.stringify(metrics.map((m) => `${m.column}:${m.aggregation}`)),
     filterVersion,
     fvViewName, fvExpiresAt, fvMaterializing,
+    // Phase 98: re-fetch when the custom predicate changes.
+    customWhere,
   ]);
 
   // ----- Drag state machine -----

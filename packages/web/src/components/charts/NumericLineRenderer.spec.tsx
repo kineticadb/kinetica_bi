@@ -458,3 +458,59 @@ describe("NumericLineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03
     expect(src).toContain("content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn}");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 98 (VIZSQL-V119-02/03): NumericLineRenderer — customWhere injection
+// ---------------------------------------------------------------------------
+
+describe("NumericLineRenderer — customWhere injection (Phase 98, VIZSQL-V119-02/03)", () => {
+  it("CW1: ungrouped metric SQL with customWhere='x = 1' contains ' AND (x = 1)'", async () => {
+    const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [100] };
+    const metricResp = {
+      column_headers: ["bucket", "value"],
+      column_1: [0],
+      column_2: [10],
+    };
+    let call = 0;
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (call === 0) { call++; return Promise.resolve(rangeResp); }
+      call++;
+      return Promise.resolve(metricResp);
+    });
+
+    render(
+      <NumericLineRenderer
+        widget={makeWidget({ customWhere: "x = 1" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(metricSql).toContain(" AND (x = 1)");
+  });
+
+  it("CW2: empty/absent customWhere → ungrouped metric SQL has no AND clause (byte-identical)", async () => {
+    const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [100] };
+    const metricResp = {
+      column_headers: ["bucket", "value"],
+      column_1: [0],
+      column_2: [10],
+    };
+    let call = 0;
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (call === 0) { call++; return Promise.resolve(rangeResp); }
+      call++;
+      return Promise.resolve(metricResp);
+    });
+
+    render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(metricSql).toContain("IS NOT NULL");
+    expect(metricSql).not.toContain(" AND (");
+  });
+});

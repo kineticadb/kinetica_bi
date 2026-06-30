@@ -299,4 +299,39 @@ describe("NumericLineConfigPanel", () => {
       expect(call.yAxisFormat).toBeUndefined();
     });
   });
+
+  // ---- Phase 98 (VIZSQL-V119-01): Custom filter (SQL) textarea ----
+
+  describe("Custom filter (SQL) (Phase 98)", () => {
+    it("CW1: Custom filter (SQL) textarea renders and pre-fills from cfg.customWhere", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+        customWhere: "region = 'West'",
+      });
+      const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i) as HTMLTextAreaElement;
+      expect(textarea).toBeInTheDocument();
+      expect(textarea.value).toBe("region = 'West'");
+    });
+
+    it("CW2: typing in the textarea fires onChange with config.customWhere set", () => {
+      const { onChange } = renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i);
+      fireEvent.change(textarea, { target: { value: "x = 1" } });
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.customWhere).toBe("x = 1");
+    });
+
+    it("CW3: absent customWhere → textarea value is empty string", () => {
+      renderPanel({
+        tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance",
+        metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+      });
+      const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i) as HTMLTextAreaElement;
+      expect(textarea.value).toBe("");
+    });
+  });
 });

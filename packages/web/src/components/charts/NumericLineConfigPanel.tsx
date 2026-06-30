@@ -39,6 +39,7 @@ export type NumericLineConfig = {
   showTooltip: boolean;
   vertical: boolean; // true → render with the bucket axis vertical (Recharts layout="vertical")
   colorTheme: string; // ColorBrewer scheme id; default "Set2"
+  customWhere?: string; // Phase 98 (VIZSQL-V119-01): raw SQL predicate ANDed into the query; absent → byte-identical
 };
 
 const AGGREGATIONS: { value: NumericAggregation; label: string }[] = [
@@ -86,6 +87,7 @@ export default function NumericLineConfigPanel({
   const showTooltip = cfg.showTooltip ?? true;
   const vertical = cfg.vertical ?? false;
   const colorTheme = cfg.colorTheme ?? DEFAULT_COLOR_THEME;
+  const customWhere = cfg.customWhere ?? "";
 
   const selectedTable = useMemo(
     () => (tableId !== undefined ? allTables.find((t) => t.id === tableId) : undefined),
@@ -500,6 +502,19 @@ export default function NumericLineConfigPanel({
           <div className="config-hint">
             Applied to the Y-axis tick labels only (tooltips + data labels keep their column
             formatting). Applied to all Y-axis metrics. Clear to use the bound column&apos;s default.
+          </div>
+
+          {/* Custom filter (SQL) — Phase 98 (VIZSQL-V119-01) */}
+          <div className="config-group-label" style={{ marginTop: 16 }}>CUSTOM FILTER</div>
+          <div className="ds-field">
+            <span className="ds-field-label">Custom filter (SQL)</span>
+            <textarea
+              className="config-textarea"
+              value={customWhere}
+              onChange={(e) => patch({ customWhere: e.target.value })}
+              placeholder="Raw SQL predicate ANDed with active filters, e.g. region = 'West'"
+              rows={3}
+            />
           </div>
         </>
       )}
