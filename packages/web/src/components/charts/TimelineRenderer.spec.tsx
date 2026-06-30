@@ -619,3 +619,97 @@ describe("TimelineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03)",
     expect(src).toContain("content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn}");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 98 (VIZSQL-V119-02/03): TimelineRenderer — customWhere injection
+// ---------------------------------------------------------------------------
+
+describe("TimelineRenderer — customWhere injection (Phase 98, VIZSQL-V119-02/03)", () => {
+  it("CW1: ungrouped SQL with customWhere='x = 1' contains ' AND (x = 1)'", async () => {
+    // range → [0] + metric → [1]
+    const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [86400] };
+    const metricResp = {
+      column_headers: ["bucket", "value"],
+      column_1: ["2024-01-01 00:00:00"],
+      column_2: [10],
+    };
+    let call = 0;
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (call === 0) { call++; return Promise.resolve(rangeResp); }
+      call++;
+      return Promise.resolve(metricResp);
+    });
+
+    render(
+      <TimelineRenderer
+        widget={makeWidget({ customWhere: "x = 1" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(metricSql).toContain(" AND (x = 1)");
+  });
+
+  it("CW2: empty customWhere → ungrouped SQL is byte-identical to baseline (no AND clause)", async () => {
+    // Baseline: no customWhere in config → metric SQL must NOT contain ' AND ('
+    const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [86400] };
+    const metricResp = {
+      column_headers: ["bucket", "value"],
+      column_1: ["2024-01-01 00:00:00"],
+      column_2: [10],
+    };
+    let call = 0;
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (call === 0) { call++; return Promise.resolve(rangeResp); }
+      call++;
+      return Promise.resolve(metricResp);
+    });
+
+    render(<TimelineRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    // byte-identical: the IS NOT NULL clause is present and no AND (x = 1) appended
+    expect(metricSql).toContain("IS NOT NULL");
+    expect(metricSql).not.toContain(" AND (");
+  });
+
+  it("CW3: grouped top-N SQL with customWhere='x = 1' contains ' AND (x = 1)' (top-N pre-query consistency)", async () => {
+    const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [86400] };
+    const topResp = {
+      column_headers: ["series", "value"],
+      column_1: ["A"], column_2: [100],
+    };
+    const groupedResp = {
+      column_headers: ["bucket", "series", "value"],
+      column_1: ["2024-01-01 00:00:00"], column_2: ["A"], column_3: [10],
+    };
+    let call = 0;
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (call === 0) { call++; return Promise.resolve(rangeResp); }
+      if (call === 1) { call++; return Promise.resolve(topResp); }
+      call++;
+      return Promise.resolve(groupedResp);
+    });
+
+    render(
+      <TimelineRenderer
+        widget={makeWidget({ groupByColumn: "driver_id", customWhere: "x = 1" })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+    const topSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    const mainSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[2][0] as string;
+    // top-N pre-query also includes the predicate (consistent series ranking)
+    expect(topSql).toContain(" AND (x = 1)");
+    // main grouped SQL also includes the predicate
+    expect(mainSql).toContain(" AND (x = 1)");
+  });
+});

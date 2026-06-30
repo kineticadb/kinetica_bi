@@ -54,6 +54,7 @@ import {
   type TimelineMetric,
 } from "../../lib/timelineBin";
 import { buildTimelineSql } from "../../lib/buildTimelineSql";
+import { andCustomWhere } from "../../lib/customWhere";
 import { MAX_SERIES, selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
@@ -124,6 +125,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   const vertical = cfg.vertical ?? false;
   const colorTheme = cfg.colorTheme ?? DEFAULT_COLOR_THEME;
   const dateFormatOverride = cfg.dateFormatOverride ?? "";
+  const customWhere = cfg.customWhere ?? "";
 
   // Defensive: hard-cap to MAX_METRICS even if config persisted more. When grouped,
   // the chart uses a SINGLE metric (metrics[0]) split into one series per group value.
@@ -314,7 +316,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
           const topSql =
             `SELECT ${groupByColumn} AS series, ${aggSql} AS value ` +
             `FROM ${fromTarget} ` +
-            `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL ` +
+            `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL${andCustomWhere(customWhere)} ` +
             `GROUP BY series ` +
             `ORDER BY value DESC ` +
             `LIMIT ${MAX_SERIES * 4}`;
@@ -333,6 +335,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
             maxIntervals,
             groupByColumn,
             seriesIn: top.series,
+            customWhere,
           });
           const groupedRows = decodeSqlResponse(await runSql(mainSql, undefined, ctrl.signal));
           const pivoted = pivotSeriesRows(
@@ -367,6 +370,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
               metric: m,
               interval: chosen,
               maxIntervals,
+              customWhere,
             });
             return runSql(sql, undefined, ctrl.signal).then(decodeSqlResponse);
           }),
@@ -416,6 +420,8 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
     filterVersion,
     // Re-fetch when the filter-view materializes / changes / expires (FROM-swap target).
     fvViewName, fvExpiresAt, fvMaterializing,
+    // Phase 98: re-fetch when the custom predicate changes.
+    customWhere,
   ]);
 
   // ----- Drag state machine -----
