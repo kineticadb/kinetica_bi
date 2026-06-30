@@ -1159,4 +1159,85 @@ describe("CalendarRenderer", () => {
     expect(screen.queryByTestId("calendar-loading")).toBeNull();
     resolveSecond(makeCalendarResponse(CANNED_ROWS)); // unblock the hung fetch
   });
+
+  /* ---------------------------------------------------------------- */
+  /*  Phase 97 — smart mode (CALSMART-V119-01 / CALSMART-V119-02)    */
+  /* ---------------------------------------------------------------- */
+
+  describe("CalendarRenderer — smart mode (Phase 97)", () => {
+    // SMART_SCALE_TO_PAIR.week maps to domain:"month" / subdomain:"week".
+    // Use this pair to build fixture configs that match a real smart scale.
+
+    it("Test P97-1 (smart + showDomainSubdomainControls:true → control bar absent): controlMode 'smart' suppresses the viewer control bar even when showDomainSubdomainControls is true", async () => {
+      render(
+        <CalendarRenderer
+          widget={makeWidget({
+            controlMode: "smart",
+            showDomainSubdomainControls: true,
+            // week smart scale writes month→week pair into config
+            domain: "month",
+            subdomain: "week",
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+      });
+      // Smart mode: viewer control bar must NOT appear, regardless of showDomainSubdomainControls.
+      expect(screen.queryByTestId("calendar-control-bar")).toBeNull();
+    });
+
+    it("Test P97-2 (advanced explicit + showDomainSubdomainControls:true → control bar present): controlMode 'advanced' with showDomainSubdomainControls keeps the v1.13 viewer control bar", async () => {
+      render(
+        <CalendarRenderer
+          widget={makeWidget({
+            controlMode: "advanced",
+            showDomainSubdomainControls: true,
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("calendar-control-bar")).toBeInTheDocument();
+      });
+    });
+
+    // BACKWARD-COMPAT LOCK (success criterion 4): a config with NO controlMode field AND
+    // showDomainSubdomainControls:true must behave byte-identically to advanced mode —
+    // the viewer control bar must be present. This test locks that invariant so a future
+    // change cannot silently break existing calendars that rely on the v1.13 control bar.
+    it("Test P97-3 (backward-compat: no controlMode field → advanced behavior): an existing config with showDomainSubdomainControls:true and NO controlMode still shows the control bar", async () => {
+      render(
+        <CalendarRenderer
+          widget={makeWidget({
+            // controlMode intentionally absent — simulates a pre-Phase-97 calendar config
+            showDomainSubdomainControls: true,
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("calendar-control-bar")).toBeInTheDocument();
+      });
+    });
+
+    it("Test P97-4 (smart config renders grid at mapped pair): a smart config with domain 'month'/subdomain 'week' (SMART_SCALE_TO_PAIR.week) renders the calendar grid without errors", async () => {
+      render(
+        <CalendarRenderer
+          widget={makeWidget({
+            controlMode: "smart",
+            domain: "month",
+            subdomain: "week",
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("calendar-renderer")).toBeInTheDocument();
+      });
+      // The grid must appear — layout path is unchanged in smart mode.
+      expect(screen.queryByTestId("calendar-control-bar")).toBeNull();
+    });
+  });
 });
