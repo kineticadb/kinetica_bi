@@ -36,6 +36,7 @@ import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useColumnDisplayConfigStore } from "../store/columnDisplayConfigStore";
+import { useCustomMetricsStore } from "../store/customMetricsStore";  // Phase 99 (METRIC-V119-01/02)
 import { applyWidgetAction, applyWidgetActions } from "../lib/applyWidgetAction";
 import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
@@ -534,6 +535,10 @@ const DashboardOpen = ({
       // Phase 75 Plan 03 (COLCFG-V115-03): 8th store — column display config cache; global
       // per-table config but reset to prevent stale entries accumulating across sessions.
       useColumnDisplayConfigStore.getState().reset();
+      // Phase 99 (METRIC-V119-01/02): 10th store — custom-metrics cache; global per-table
+      // config but reset to prevent stale entries accumulating across dashboard sessions
+      // (mirrors columnDisplayConfigStore reset above).
+      useCustomMetricsStore.getState().reset();
       // Phase 89 (COMBO-V118-02): 9th store — combination-view registry. Snapshot BEFORE reset so
       // the loop can read entry.dashboardId + entry.viewName. Dashboard-A combination views MUST NOT
       // leak into dashboard-B (mirrors filterViewStore DROP loop — V13-P-12 carry-forward).
