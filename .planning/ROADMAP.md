@@ -105,7 +105,11 @@ Plans:
   2. Custom metrics appear in every visualization's metric picker alongside real columns, labeled.
   3. Selecting a custom metric emits its aggregate expression directly into the widget SQL with no further aggregation wrapper, and the widget renders the computed value.
   4. Widgets using only real columns are byte-identical to current behavior.
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 100-01-PLAN.md — CustomMetricsEditorModal (two-pane CRUD) + DatasetsPage reach (METRIC-V119-01 UI)
+- [ ] 100-02-PLAN.md — Shared customMetricSql helper + metricId marker + branch all 4 SQL-emission sites (byte-identical + custom tests) (METRIC-V119-04)
+- [ ] 100-03-PLAN.md — Custom-metrics picker in all 4 config panels (optgroup, hide-agg, deleted-marker) + renderer tableId threading (METRIC-V119-03 + -01 picker)
 
 ### Phase 101: Smart / Logarithmic Y-Axis
 **Goal**: On line, timeline, and bar charts, a designer can choose the Y-axis scale mode — Zero-based (default), Smart, or Logarithmic — per widget.
@@ -152,7 +156,7 @@ Plans:
 | 97. Calendar Smart Domain Control | 0/2 | Planned | - |
 | 98. Per-Visualization Custom WHERE Clause | 0/? | Not started | - |
 | 99. Custom Metrics — Server + Store Foundation | 0/2 | Planned | - |
-| 100. Custom Metrics — Editor + Metric-Picker Integration | 0/? | Not started | - |
+| 100. Custom Metrics — Editor + Metric-Picker Integration | 0/3 | Planned | - |
 | 101. Smart / Logarithmic Y-Axis | 0/? | Not started | - |
 | 102. Multi-Column Group-By on Bar Chart | 0/? | Not started | - |
 | 103. Verification + Live UAT | 0/? | Not started | - |
