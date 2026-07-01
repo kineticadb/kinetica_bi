@@ -26,6 +26,7 @@ import type { TimelineMetric, TimelineAggregation } from "../../lib/timelineBin"
 import { DEFAULT_MAX_INTERVALS } from "../../lib/timelineBin";
 import { type FormatSpec } from "../../lib/columnFormatter";
 import { FormatSpecEditor } from "./FormatSpecEditor";
+import { type YAxisScaleMode } from "../../lib/yAxisScale";
 import {
   isCustomSelection,
   encodeCustomValue,
@@ -45,6 +46,7 @@ export type TimelineConfig = {
   timeCol: string;
   groupByColumn?: string;     // Phase 72: optional group-by dimension. Non-empty → single-metric series-split.
   yAxisFormat?: FormatSpec;   // Phase 86: per-widget Y-axis tick formatter override. Absent → bound column default.
+  yAxisScale?: YAxisScaleMode; // Phase 101 (YAXIS-V119-01): absent → no axis props (byte-identical)
   metrics: TimelineMetric[];  // length 0..4
   maxIntervals: number;       // default 200
   showLegend: boolean;
@@ -95,6 +97,7 @@ export default function TimelineConfigPanel({
   const groupByColumn = cfg.groupByColumn ?? "";
   const grouped = groupByColumn !== "";
   const yAxisFormat = cfg.yAxisFormat ?? null;
+  const yAxisScale = cfg.yAxisScale;
   const metrics = cfg.metrics ?? [];
   const maxIntervals = cfg.maxIntervals ?? DEFAULT_MAX_INTERVALS;
   const showLegend = cfg.showLegend ?? true;
@@ -581,6 +584,22 @@ export default function TimelineConfigPanel({
           <div className="config-hint">
             Applied to the Y-axis tick labels only (tooltips + data labels keep their column
             formatting). Applied to all Y-axis metrics. Clear to use the bound column&apos;s default.
+          </div>
+
+          {/* Y-axis scale — Phase 101 (YAXIS-V119-01) */}
+          <div className="ds-field">
+            <span className="ds-field-label">Y-axis scale</span>
+            <select
+              className="ds-select"
+              aria-label="Y-axis scale"
+              value={yAxisScale ?? ""}
+              onChange={(e) => patch({ yAxisScale: (e.target.value || undefined) as YAxisScaleMode | undefined })}
+            >
+              <option value="">Default</option>
+              <option value="zero">Zero-based</option>
+              <option value="smart">Smart</option>
+              <option value="log">Logarithmic</option>
+            </select>
           </div>
 
           {/* Custom filter (SQL) — Phase 98 (VIZSQL-V119-01) */}
