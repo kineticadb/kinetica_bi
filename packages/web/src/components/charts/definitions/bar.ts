@@ -15,7 +15,7 @@ const bar: ChartTypeDefinition = {
     { key: "horizontal", label: "Horizontal Bars", type: "boolean", defaultValue: false, group: "Appearance" },
     { key: "color", label: "Bar Color", type: "color", defaultValue: "#22c55e", group: "Appearance" },
     { key: "barRadius", label: "Corner Radius", type: "range", defaultValue: 4, min: 0, max: 20, step: 1, group: "Appearance" },
-    { key: "stacked", label: "Stacked", type: "boolean", defaultValue: false, group: "Appearance" },
+    { key: "stacked", label: "Stacked", type: "boolean", defaultValue: false, group: "Appearance", hint: "With 2+ group-by columns: stack the series instead of clustering them." },
 
     // Display
     { key: "showLegend", label: "Show Legend", type: "boolean", defaultValue: true, group: "Display" },
@@ -51,6 +51,8 @@ const bar: ChartTypeDefinition = {
     yAxisFormat: null,
     yAxisScale: "",
     customWhere: "",
+    // Phase 102 (BARGRP): ordered [col1(x-axis), col2..N(series)]; length<=1 → legacy single-groupByColumn path.
+    groupByColumns: [] as string[],
   },
 };
 
