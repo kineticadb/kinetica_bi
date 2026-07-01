@@ -88,6 +88,11 @@ import {
   listColumnDisplayConfig,
   upsertColumnDisplayConfig,
   deleteColumnDisplayConfig,
+  // v1.19 Phase 99 (METRIC-V119-01/02): custom metrics CRUD helpers.
+  listCustomMetrics,
+  createCustomMetric,
+  updateCustomMetric,
+  deleteCustomMetric,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -2393,6 +2398,83 @@ export const createApp = async (): Promise<express.Express> => {
       const columnName = req.params.columnName;
       const ok = deleteColumnDisplayConfig(tableId, columnName);
       if (!ok) return res.status(404).json({ error: "Column display config not found." });
+      return res.status(204).send();
+    }
+  );
+
+  // v1.19 Phase 99 (METRIC-V119-01/02): per-table custom metric CRUD.
+  // GET ungated (requireAuth only) — any authenticated viewer/Phase-100 picker can read metrics.
+  // Writes gated by datasets:manage — NO new RBAC permission (mirrors column_display_config).
+  // Divergence from column_display_config: id-keyed POST create / PUT:id / DELETE:id because
+  // a custom metric has no natural business key (label may be edited without losing widget refs).
+
+  // GET — ungated (requireAuth only). Lists a table's custom metrics.
+  app.get("/api/tables/:tableId/custom-metrics", requireAuth, (req, res) => {
+    const tableId = Number(req.params.tableId);
+    return res.json({ data: listCustomMetrics(tableId) });
+  });
+
+  // CREATE — datasets:manage. Validates non-empty label + expression; UNIQUE(table_id,label) -> 409.
+  app.post(
+    "/api/tables/:tableId/custom-metrics",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      const tableId = Number(req.params.tableId);
+      const { label, expression, format_spec } = req.body as {
+        label?: string; expression?: string; format_spec?: unknown;
+      };
+      const trimmedLabel = (label ?? "").trim();
+      const trimmedExpr = (expression ?? "").trim();
+      if (!trimmedLabel || !trimmedExpr) {
+        return res.status(400).json({ error: "label and expression are required." });
+      }
+      try {
+        const row = createCustomMetric(tableId, trimmedLabel, trimmedExpr, format_spec ?? null);
+        return res.status(201).json(row);
+      } catch (e: any) {
+        if (String(e?.code).startsWith("SQLITE_CONSTRAINT")) {
+          return res.status(409).json({ error: "A custom metric with this label already exists on this table." });
+        }
+        throw e;
+      }
+    }
+  );
+
+  // UPDATE — datasets:manage. Same validation; rename-to-existing-label -> 409; missing id -> 404.
+  app.put(
+    "/api/tables/:tableId/custom-metrics/:id",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      const id = Number(req.params.id);
+      const { label, expression, format_spec } = req.body as {
+        label?: string; expression?: string; format_spec?: unknown;
+      };
+      const trimmedLabel = (label ?? "").trim();
+      const trimmedExpr = (expression ?? "").trim();
+      if (!trimmedLabel || !trimmedExpr) {
+        return res.status(400).json({ error: "label and expression are required." });
+      }
+      try {
+        const row = updateCustomMetric(id, trimmedLabel, trimmedExpr, format_spec ?? null);
+        if (!row) return res.status(404).json({ error: "Custom metric not found." });
+        return res.json(row);
+      } catch (e: any) {
+        if (String(e?.code).startsWith("SQLITE_CONSTRAINT")) {
+          return res.status(409).json({ error: "A custom metric with this label already exists on this table." });
+        }
+        throw e;
+      }
+    }
+  );
+
+  // DELETE — datasets:manage. Missing id -> 404.
+  app.delete(
+    "/api/tables/:tableId/custom-metrics/:id",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      const id = Number(req.params.id);
+      const ok = deleteCustomMetric(id);
+      if (!ok) return res.status(404).json({ error: "Custom metric not found." });
       return res.status(204).send();
     }
   );
