@@ -25,6 +25,14 @@ import { DEFAULT_MAX_BUCKETS } from "../../lib/numericBin";
 import { MAX_METRICS, DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { type FormatSpec } from "../../lib/columnFormatter";
 import { FormatSpecEditor } from "./FormatSpecEditor";
+import {
+  isCustomSelection,
+  encodeCustomValue,
+  decodeMetricSelection,
+  metricSelectValue,
+  isOrphanedMetric,
+} from "../../lib/customMetricSql";
+import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 
 export type NumericLineConfig = {
   tableId?: number;
@@ -126,19 +134,36 @@ export default function NumericLineConfigPanel({
     [columns, xField],
   );
 
+  // Phase 100 (METRIC-V119-01/03): subscribe to configVersion so metric rows re-render on edits.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  void customMetricsConfigVersion; // reactive via subscription
+
+  // Load custom metrics for the current table on mount / table change.
+  useEffect(() => {
+    if (tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId]);
+
+  // Phase 100: custom metrics for the current table (always independent of numeric-only filter).
+  const customMetrics = tableId !== undefined ? selectMetrics(tableId) : [];
+
   // Form validity:
   //  - ungrouped: tableId + xField + 1..MAX_METRICS, each metric complete.
+  //    Phase 100: a row with a custom metric (isCustomSelection) counts as complete.
   //  - grouped: tableId + xField + groupByColumn + a complete metrics[0] (metrics[1..] ignored).
   const formValid = useMemo(() => {
     if (tableId === undefined || xField === "") return false;
     if (grouped) {
       const m0 = metrics[0];
-      return m0 !== undefined && m0.column !== "" && m0.aggregation !== undefined;
+      if (m0 === undefined) return false;
+      return isCustomSelection(m0.metricId) || (m0.column !== "" && m0.aggregation !== undefined);
     }
     return (
       metrics.length >= 1 &&
       metrics.length <= MAX_METRICS &&
-      metrics.every((m) => m.column !== "" && m.aggregation !== undefined)
+      metrics.every((m) => isCustomSelection(m.metricId) || (m.column !== "" && m.aggregation !== undefined))
     );
   }, [tableId, xField, grouped, metrics]);
 
@@ -368,16 +393,34 @@ export default function NumericLineConfigPanel({
                 data-testid={`numericline-metric-row-${idx}`}
                 style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}
               >
+                {/* Phase 100: custom-metric-aware metric column picker. */}
                 <select
                   className="ds-select"
                   aria-label={`Metric ${idx + 1} column`}
-                  value={m.column}
-                  onChange={(e) => updateMetric(idx, { column: e.target.value })}
+                  value={metricSelectValue(m.metricId, m.column)}
+                  onChange={(e) => {
+                    const sel = decodeMetricSelection(e.target.value);
+                    if (sel.kind === "custom") {
+                      updateMetric(idx, { metricId: sel.metricId, column: "" });
+                    } else {
+                      updateMetric(idx, { metricId: undefined, column: sel.column });
+                    }
+                  }}
                 >
                   <option value="">Pick a column...</option>
                   {metricColumns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <optgroup label="Custom metrics">
+                    {isOrphanedMetric(m.metricId, cfg.tableId) && (
+                      <option value={encodeCustomValue(m.metricId!)}>(deleted metric)</option>
+                    )}
+                    {customMetrics.map((cm) => (
+                      <option key={cm.id} value={encodeCustomValue(cm.id)}>{cm.label}</option>
+                    ))}
+                  </optgroup>
                 </select>
 
+                {/* Aggregation: hidden per-row when that row has a custom metric selected. */}
+                {!isCustomSelection(m.metricId) && (
                 <select
                   className="ds-select"
                   aria-label={`Metric ${idx + 1} aggregation`}
@@ -387,6 +430,7 @@ export default function NumericLineConfigPanel({
                 >
                   {AGGREGATIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
+                )}
 
                 {/* Per-metric color swatch — hidden when grouped: series colors come from
                     the Color palette above. v1.14 Phase 72 follow-up. */}
