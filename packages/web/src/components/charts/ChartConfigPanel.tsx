@@ -8,7 +8,15 @@ import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
 import { useAuthStore } from "../../store/auth";
 import { whereCustomWhere } from "../../lib/customWhere";
-import { resolveMetricExpr, isCustomSelection } from "../../lib/customMetricSql";
+import {
+  resolveMetricExpr,
+  isCustomSelection,
+  encodeCustomValue,
+  decodeMetricSelection,
+  metricSelectValue,
+  isOrphanedMetric,
+} from "../../lib/customMetricSql";
+import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 
 type TableInfo = {
   id: number;
@@ -99,6 +107,10 @@ const ChartConfigPanel = ({
   // Starts as true (enabled); panels call isValid(false) to disable Apply.
   const [customPanelValid, setCustomPanelValid] = useState<boolean>(true);
 
+  // Phase 100 (METRIC-V119-01/03): subscribe to configVersion so picker re-renders on metric edits.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  void customMetricsConfigVersion; // reactive via subscription
+
   useEffect(() => {
     const defaults = chartDef?.defaultConfig ?? {};
     setDraft({ ...defaults, ...config });
@@ -107,6 +119,16 @@ const ChartConfigPanel = ({
   useEffect(() => {
     setTitleDraft(title);
   }, [title]);
+
+  // Phase 100 (METRIC-V119-01/03): load custom metrics for the current table on mount/table change.
+  // Lazy: no-op when tableId is unknown; store deduplicates repeated fetches via setConfig bump.
+  useEffect(() => {
+    const tableId = typeof draft.tableId === "number" ? draft.tableId : undefined;
+    if (tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.tableId]);
 
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 35 (DV-V16-12): dataSourceOptions union extended with the "dynamic" kind.
@@ -617,25 +639,62 @@ const ChartConfigPanel = ({
             {/* Metric column / Aggregation / Group By — only for aggregated chart types */}
             {usesAggregation && selectedSource && (
               <>
-                <label className="ds-field">
-                  <span className="ds-field-label">Metric Column</span>
-                  <select
-                    className="ds-select"
-                    value={(draft.metricColumn as string) || ""}
-                    onChange={(e) => set("metricColumn", e.target.value)}
-                    disabled={dvColumnsMissing}
-                    aria-label="Metric Column"
-                  >
-                    <option value="">Select a numeric column...</option>
-                    {numericColumns.map((c) => (
-                      <option key={c.name} value={c.name}>
-                        {c.name} ({c.type})
-                      </option>
-                    ))}
-                  </select>
-                  <span className="config-hint">Numeric column to aggregate</span>
-                </label>
+                {/* Phase 100 (METRIC-V119-01/03): custom-metric-aware metric picker.
+                    Uses cm:<id> sentinel values so a single <select> covers both real
+                    columns and custom metrics. The "Custom metrics" optgroup is always
+                    rendered (independent of the numeric-only filter). */}
+                {(() => {
+                  const chartTableId = selectedTable?.id;
+                  const customMetricsForTable = chartTableId !== undefined ? selectMetrics(chartTableId) : [];
+                  const storedMetricId = draft.metricId as number | undefined;
+                  const pickerValue = metricSelectValue(storedMetricId, (draft.metricColumn as string) || "");
+                  const orphaned = isOrphanedMetric(storedMetricId, chartTableId);
+                  const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+                    const sel = decodeMetricSelection(e.target.value);
+                    if (sel.kind === "custom") {
+                      set("metricId", sel.metricId);
+                      set("metricColumn", "");
+                    } else {
+                      set("metricId", undefined);
+                      set("metricColumn", sel.column);
+                    }
+                  };
+                  return (
+                    <label className="ds-field">
+                      <span className="ds-field-label">Metric Column</span>
+                      <select
+                        className="ds-select"
+                        value={pickerValue}
+                        onChange={handleMetricChange}
+                        disabled={dvColumnsMissing}
+                        aria-label="Metric Column"
+                      >
+                        <option value="">Select a numeric column...</option>
+                        <optgroup label="Columns">
+                          {numericColumns.map((c) => (
+                            <option key={c.name} value={c.name}>
+                              {c.name} ({c.type})
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Custom metrics">
+                          {orphaned && (
+                            <option value={encodeCustomValue(storedMetricId!)}>(deleted metric)</option>
+                          )}
+                          {customMetricsForTable.map((m) => (
+                            <option key={m.id} value={encodeCustomValue(m.id)}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                      <span className="config-hint">Numeric column to aggregate</span>
+                    </label>
+                  );
+                })()}
 
+                {/* Aggregation: hidden when a custom metric is selected (expression is pre-aggregated) */}
+                {!isCustomSelection(draft.metricId as number | undefined) && (
                 <label className="ds-field">
                   <span className="ds-field-label">Aggregation</span>
                   <select
@@ -649,6 +708,7 @@ const ChartConfigPanel = ({
                     ))}
                   </select>
                 </label>
+                )}
 
                 {/* Group By is hidden for scalar aggregated charts (bignumber) — those
                     return a single AGG(metric) value with no group dimension. */}

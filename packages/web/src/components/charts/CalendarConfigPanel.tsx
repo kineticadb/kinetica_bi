@@ -22,6 +22,14 @@ import {
   inferDataTypeFromColumn,
   isColumnDrillDownSafe,
 } from "../../lib/columnTypes";
+import {
+  isCustomSelection,
+  encodeCustomValue,
+  decodeMetricSelection,
+  metricSelectValue,
+  isOrphanedMetric,
+} from "../../lib/customMetricSql";
+import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 import { CB_COLOR_THEMES } from "../../lib/cbColorThemes";
 import type { TimelineAggregation } from "../../lib/timelineBin";
 import {
@@ -48,6 +56,7 @@ export type CalendarConfig = {
   dynamicViewId?: number;      // set ONLY for dv binding (mutually exclusive intent)
   timeCol: string;
   metricColumn: string;        // "*" allowed (default) for COUNT
+  metricId?: number;           // Phase 100 (METRIC-V119-01): custom metric id marker; absent → real column (byte-identical)
   aggregation: TimelineAggregation;
   domain: CalendarDomain;
   subdomain: CalendarSubdomain;
@@ -129,6 +138,7 @@ export default function CalendarConfigPanel({
   const dynamicViewId = cfg.dynamicViewId;
   const timeCol = cfg.timeCol ?? "";
   const metricColumn = cfg.metricColumn ?? DEFAULT_CALENDAR_CONFIG.metricColumn;
+  const metricId = cfg.metricId as number | undefined;
   const aggregation = cfg.aggregation ?? DEFAULT_CALENDAR_CONFIG.aggregation;
   const domain = (cfg.domain ?? DEFAULT_CALENDAR_CONFIG.domain) as CalendarDomain;
   const subdomain = (cfg.subdomain ?? DEFAULT_CALENDAR_CONFIG.subdomain) as CalendarSubdomain;
@@ -145,6 +155,21 @@ export default function CalendarConfigPanel({
   const customWhere = cfg.customWhere ?? "";
 
   const allTables = tables ?? [];
+
+  // Phase 100 (METRIC-V119-01/03): subscribe to configVersion so picker re-renders on metric edits.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  void customMetricsConfigVersion; // reactive via subscription
+
+  // Load custom metrics for the current table on mount / table change.
+  useEffect(() => {
+    if (tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId]);
+
+  // Phase 100: custom metrics for the current table (always independent of numeric-only filter).
+  const customMetrics = tableId !== undefined ? selectMetrics(tableId) : [];
 
   // Cap probe state
   const [capState, setCapState] = useState<"idle" | "checking" | "ok" | "over">("idle");
@@ -462,14 +487,21 @@ export default function CalendarConfigPanel({
             )}
           </div>
 
-          {/* ---- Metric column ---- */}
+          {/* ---- Metric column (Phase 100: custom-metric-aware) ---- */}
           <div className="ds-field">
             <span className="ds-field-label">Metric column</span>
             <select
               className="ds-select"
               aria-label="Metric column"
-              value={metricColumn}
-              onChange={(e) => patch({ metricColumn: e.target.value })}
+              value={metricSelectValue(metricId, metricColumn)}
+              onChange={(e) => {
+                const sel = decodeMetricSelection(e.target.value);
+                if (sel.kind === "custom") {
+                  patch({ metricId: sel.metricId, metricColumn: "" });
+                } else {
+                  patch({ metricId: undefined, metricColumn: sel.column });
+                }
+              }}
             >
               <option value="*">* (count rows)</option>
               {metricColumns.map((c) => (
@@ -477,10 +509,21 @@ export default function CalendarConfigPanel({
                   {c}
                 </option>
               ))}
+              <optgroup label="Custom metrics">
+                {isOrphanedMetric(metricId, tableId) && (
+                  <option value={encodeCustomValue(metricId!)}>(deleted metric)</option>
+                )}
+                {customMetrics.map((m) => (
+                  <option key={m.id} value={encodeCustomValue(m.id)}>
+                    {m.label}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
-          {/* ---- Aggregation ---- */}
+          {/* ---- Aggregation: hidden when a custom metric is selected ---- */}
+          {!isCustomSelection(metricId) && (
           <div className="ds-field">
             <span className="ds-field-label">Aggregation</span>
             <select
@@ -498,6 +541,7 @@ export default function CalendarConfigPanel({
               ))}
             </select>
           </div>
+          )}
 
           {/* ---- Control mode (Phase 97) ---- */}
           <div className="ds-field">
