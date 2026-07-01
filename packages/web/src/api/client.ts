@@ -248,7 +248,8 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // (default 1) for the Phase 78 TTL keep-alive to consume.
 // Phase 90 (COMBO-V118-03): /api/me returns the per-table combination ceiling (default 10).
 // Phase 94 (FSCOPE-V118-03): /api/me returns the dv filter-scope disable flag (default false = enabled).
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean };
+// Phase 102 (BARGRP-V119-03): /api/me returns the deploy-time bar group-by series cap (default 12).
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -290,6 +291,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     maxCombinationViewsPerTable: typeof json.maxCombinationViewsPerTable === "number" ? json.maxCombinationViewsPerTable : 10,
     // Phase 94 (FSCOPE-V118-03): === true (not truthy) — an older server omitting the field defaults to false (enabled).
     dvFilterScopeDisabled: json.dvFilterScopeDisabled === true,
+    // Phase 102 (BARGRP-V119-03): coalesce to 12 — an older server build that omits the field must never yield undefined.
+    maxBarGroupBySeriesCap: typeof json.maxBarGroupBySeriesCap === "number" ? json.maxBarGroupBySeriesCap : 12,
   };
 };
 
