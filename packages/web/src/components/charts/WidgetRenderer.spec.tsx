@@ -3945,3 +3945,53 @@ describe("Phase 98-02 — RecordsTableRenderer customWhere page-fetch SQL inject
     expect(sql).toBe("SELECT id, name FROM events LIMIT 25 OFFSET 0");
   });
 });
+
+// ── Phase 101 (YAXIS-V119-04): bar renderer byte-identical + spread tests ──
+// Mode-output math (absent→{}, smart→['auto','auto'], log→[posMin,'auto']+scale+allowDataOverflow,
+// no-positive→{}) is runtime-locked in src/lib/yAxisScale.spec.ts (plan 101-01). These tests
+// verify only that the STRUCTURAL WIRING is correct in WidgetRenderer's BarRenderer: the spread
+// reaches BOTH value-axis elements (horizontal XAxis + vertical YAxis) and NOT the category axes.
+describe("Phase 101 — BarRenderer yAxisScaleProps wiring (static-source assertions)", () => {
+  it("value axes derive scale props only via yAxisScaleProps (byte-identical when absent)", () => {
+    const { readFileSync } = require("node:fs");
+    const { resolve } = require("node:path");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // yAxisScaleProps must be imported
+    expect(src).toMatch(/import.*yAxisScaleProps.*from.*yAxisScale/);
+    // helper must be called and result assigned to scaleProps
+    expect(src).toMatch(/scaleProps\s*=\s*yAxisScaleProps\(/);
+    // No hardcoded domain or scale literals on axis elements (props must come from helper)
+    expect(src).not.toMatch(/domain=\{\[0/);
+    expect(src).not.toMatch(/scale="log"/);
+  });
+
+  it("scale-props spread reaches both value axes (horizontal XAxis + vertical YAxis), not category axes", () => {
+    const { readFileSync } = require("node:fs");
+    const { resolve } = require("node:path");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // 2 value-axis elements must carry {...scaleProps} in BarRenderer
+    const spreadMatches = src.match(/\{\.\.\.(scaleProps)\}/g) ?? [];
+    expect(spreadMatches.length).toBeGreaterThanOrEqual(2);
+    // The category YAxis (type="category") must NOT carry scaleProps
+    const categoryYAxisBlock = src.match(/YAxis\s+type="category"[^>]*\/?>/g) ?? [];
+    for (const block of categoryYAxisBlock) {
+      expect(block).not.toContain("scaleProps");
+    }
+    // The category XAxis (dataKey={x} in vertical layout) must NOT carry scaleProps
+    // Assert by verifying that {dataKey={x}...} lines don't have the spread
+    const xAxisCategoryBlock = src.match(/XAxis\s+dataKey=\{x\}[^>]*\/?>/g) ?? [];
+    for (const block of xAxisCategoryBlock) {
+      expect(block).not.toContain("scaleProps");
+    }
+  });
+
+  it("BarRenderer reads config.yAxisScale and coalesces empty string to undefined", () => {
+    const { readFileSync } = require("node:fs");
+    const { resolve } = require("node:path");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // yAxisScale is read from config
+    expect(src).toMatch(/yAxisScale/);
+    // '' coalesced to undefined so absent/empty → no-props path
+    expect(src).toMatch(/\|\|\s*undefined/);
+  });
+});

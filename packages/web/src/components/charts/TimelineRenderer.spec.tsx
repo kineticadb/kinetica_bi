@@ -712,4 +712,42 @@ describe("TimelineRenderer — customWhere injection (Phase 98, VIZSQL-V119-02/0
     // main grouped SQL also includes the predicate
     expect(mainSql).toContain(" AND (x = 1)");
   });
+
+  // ── Phase 101 (YAXIS-V119-04): byte-identical + spread tests ──────────────
+  // Mode-output math (absent→{}, smart→['auto','auto'], log→[posMin,'auto']+scale+allowDataOverflow,
+  // no-positive→{}) is runtime-locked in src/lib/yAxisScale.spec.ts (plan 101-01). These tests
+  // verify only that the STRUCTURAL WIRING is correct: the spread reaches every value axis (not
+  // the category axis) and flows exclusively through yAxisScaleProps.
+
+  it("Phase 101: value axes derive scale props only via yAxisScaleProps (byte-identical when absent)", () => {
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    // yAxisScaleProps must be imported and called
+    expect(src).toMatch(/import.*yAxisScaleProps.*from.*yAxisScale/);
+    expect(src).toMatch(/yAxisScaleProps\(/);
+    // The spread variable is assigned from the helper (not a literal)
+    expect(src).toMatch(/scaleProps\s*=\s*yAxisScaleProps\(/);
+    // No hardcoded domain or scale literals on axis elements (props must come from helper)
+    expect(src).not.toMatch(/domain=\{\[0/);
+    expect(src).not.toMatch(/scale="log"/);
+  });
+
+  it("Phase 101: scale-props spread reaches every value axis (4 branches), not the category axis", () => {
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    // 4 value-axis branches must each carry {...scaleProps}
+    const spreadMatches = src.match(/\{\.\.\.(scaleProps)\}/g) ?? [];
+    expect(spreadMatches.length).toBeGreaterThanOrEqual(4);
+    // Category axes (type="category") must NOT carry the spread
+    // Split on type="category" occurrences and assert scaleProps is NOT in the immediately following element
+    const categoryAxisBlock = src.match(/type="category"[^>]*\/?>/g) ?? [];
+    for (const block of categoryAxisBlock) {
+      expect(block).not.toContain("scaleProps");
+    }
+  });
+
+  it("Phase 101: renderer reads cfg.yAxisScale", () => {
+    const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
+    expect(src).toMatch(/yAxisScale/);
+    // Specifically reads from cfg
+    expect(src).toMatch(/cfg\.yAxisScale/);
+  });
 });
