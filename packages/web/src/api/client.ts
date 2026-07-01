@@ -1609,3 +1609,60 @@ export const deleteColumnDisplayConfig = async (tableId: number, columnName: str
   );
   if (!response.ok) await throwForStatus(response, "Failed to delete column display config");
 };
+
+// --- Custom Metrics (Phase 99 v1.19 METRIC-V119-01/02) ---
+
+export type CustomMetricRow = {
+  id: number;
+  table_id: number;
+  label: string;
+  expression: string;
+  format_spec: FormatSpec | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const listCustomMetrics = async (tableId: number): Promise<CustomMetricRow[]> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/custom-metrics`);
+  if (!response.ok) await throwForStatus(response, "Failed to load custom metrics");
+  const json = await response.json();
+  return json.data as CustomMetricRow[];
+};
+
+export const createCustomMetric = async (
+  tableId: number,
+  label: string,
+  expression: string,
+  formatSpec: FormatSpec | null,
+): Promise<CustomMetricRow> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/custom-metrics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, expression, format_spec: formatSpec }),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to create custom metric");
+  return (await response.json()) as CustomMetricRow;
+};
+
+export const updateCustomMetric = async (
+  tableId: number,
+  id: number,
+  label: string,
+  expression: string,
+  formatSpec: FormatSpec | null,
+): Promise<CustomMetricRow> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/custom-metrics/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, expression, format_spec: formatSpec }),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to update custom metric");
+  return (await response.json()) as CustomMetricRow;
+};
+
+export const deleteCustomMetric = async (tableId: number, id: number): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/custom-metrics/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to delete custom metric");
+};
