@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 101-02-PLAN.md
-last_updated: "2026-07-01T16:38:47.968Z"
+stopped_at: Completed 102-01-PLAN.md
+last_updated: "2026-07-01T19:04:08.906Z"
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 101 — smart-logarithmic-y-axis
+**Current focus:** Phase 102 — multi-column-group-by-on-bar-chart
 
 ## Current Position
 
-Phase: 101 (smart-logarithmic-y-axis) — COMPLETE
-Plan: 2 of 2 (all plans done)
+Phase: 102 (multi-column-group-by-on-bar-chart) — EXECUTING
+Plan: 1 of 3
 
 ### v1.19 Phase Map
 
@@ -712,6 +712,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 100-custom-metrics-tables-area-editor-metric-picker-integration P03 | 45 | 4 tasks | 10 files |
 | Phase 101 P01 | 2 | 2 tasks | 2 files |
 | Phase 101 P02 | 17 | 4 tasks | 9 files |
+| Phase 102 P01 | 8 | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -1062,6 +1063,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 101]: log mode with no finite positive values returns {} (graceful degrade), never crashes renderer — YAXIS-V119-03
 - [Phase 101]: scaleProps computed as plain call not useMemo (after early returns, no hook violation)
 - [Phase 101]: Bar defaultConfig yAxisScale='' coalesced with || undefined before passing to helper (byte-identical no-props path)
+- [Phase 102]: BAR_SERIES_SEPARATOR=' / ' compound key — collision is an accepted known edge-case (RESEARCH.md Pitfall 3), not engineered around
+- [Phase 102]: maxBarGroupBySeriesCap default 12 — matches MAX_SERIES in groupedSeries.ts and web auth-store initial value; isMultiColumnBarGroupBy guards length >= 2 for backward-compat (BARGRP-V119-04)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1468,6 +1471,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-01T16:38:47.957Z
-Stopped at: Completed 101-02-PLAN.md
+Last session: 2026-07-01T19:04:08.892Z
+Stopped at: Completed 102-01-PLAN.md
 Resume file: None

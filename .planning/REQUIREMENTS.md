@@ -38,7 +38,7 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 
 - [ ] **BARGRP-V119-01**: On the bar chart, the designer can select more than one group-by column.
 - [ ] **BARGRP-V119-02**: Multiple group-by columns render nested/hierarchically, with a designer toggle for grouped (clustered) vs stacked.
-- [ ] **BARGRP-V119-03**: The number of group-by columns / resulting series is capped via a deploy-time env var (read once at boot, fallback+warn), with graceful handling when the cap is exceeded.
+- [x] **BARGRP-V119-03**: The number of group-by columns / resulting series is capped via a deploy-time env var (read once at boot, fallback+warn), with graceful handling when the cap is exceeded.
 - [ ] **BARGRP-V119-04**: A single-column group-by (or none) renders byte-identical to current bar-chart behavior.
 
 ### Verification (VERIFY)
@@ -92,7 +92,7 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | YAXIS-V119-04 | Phase 101 | Complete |
 | BARGRP-V119-01 | Phase 102 | Pending |
 | BARGRP-V119-02 | Phase 102 | Pending |
-| BARGRP-V119-03 | Phase 102 | Pending |
+| BARGRP-V119-03 | Phase 102 | Complete |
 | BARGRP-V119-04 | Phase 102 | Pending |
 | VERIFY-V119-01 | Phase 103 | Pending |
 

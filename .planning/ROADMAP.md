@@ -129,7 +129,7 @@ Plans:
 
 ### Phase 102: Multi-Column Group-By on Bar Chart
 **Goal**: On the bar chart, a designer can select arbitrary N group-by columns (env-var capped), rendered nested/hierarchically with a grouped (clustered) vs stacked toggle.
-**Stack**: FRONTEND-ONLY (`packages/web` — bar config panel + bar renderer + group-by SQL; new boot-time env var for the column/series cap, exposed to the client via `/api/auth/me` mirroring `ttlKeepaliveLeadMinutes` — a tiny server touch noted but kept FRONTEND-ONLY-primary). NOTE: if the env-var exposure requires a server diff (`/api/auth/me` payload), treat this phase as BOTH at plan time; the feature logic itself is web-only.
+**Stack**: BOTH (`packages/web` — bar group-by builder in ChartConfigPanel + BarRenderer multi-series path + pure barGroupedSeries helper; feature logic is web-only. The one server touch: `MAX_BAR_GROUP_BY_SERIES` env var read at boot + a single `maxBarGroupBySeriesCap` field on `/api/auth/me`, mirroring `maxCombinationViewsPerTable` — dual-auth supertests apply).
 **Depends on**: Nothing (independent feature; parallel-safe with 97 / 98 / 101).
 **Requirements**: BARGRP-V119-01, BARGRP-V119-02, BARGRP-V119-03, BARGRP-V119-04
 **Invariant**: `AggregatedWidgetRenderer` stays the sole materialize trigger. The group-by column / series cap is a deploy-time ENV VAR read once at boot with fallback+warn (mirroring v1.15 TTL env vars / v1.18 `MAX_COMBINATION_VIEWS_PER_TABLE`) — over-cap is handled gracefully, never a fail-fast.
@@ -138,7 +138,12 @@ Plans:
   2. Multiple group-by columns render nested/hierarchically, and a designer toggle switches between grouped (clustered) and stacked.
   3. The number of group-by columns / resulting series is capped via a deploy-time env var (read once at boot, fallback+warn); exceeding the cap is handled gracefully (truncate + warn, no crash).
   4. A single-column group-by (or none) renders byte-identical to current bar-chart behavior (backward-compat locked by test).
-**Plans**: TBD
+**Approach note**: EXTEND the generic `ChartConfigPanel` with a bar-only multi-column builder + a guarded multi-column `generatedSql` branch (NOT a new `BarConfigPanel`) — preserves the bar's already-cohesive Phase 98 customWhere / Phase 100 custom-metric / Phase 101 yAxisScale wiring.
+**Plans**: 3 plans
+Plans:
+- [ ] 102-01-PLAN.md — BOTH-stack foundation: MAX_BAR_GROUP_BY_SERIES env var + /api/auth/me field + web MeResponse/fetchMe/auth-store plumbing (dual-auth supertests) + pure barGroupedSeries pivot helper
+- [ ] 102-02-PLAN.md — ChartConfigPanel bar-only N-column group-by builder + multi-column generatedSql branch (generous LIMIT) + byte-identical backward-compat
+- [ ] 102-03-PLAN.md — WidgetRenderer BarRenderer multi-series render (N <Bar>, grouped/stacked via reused `stacked`, top-N cap + truncation note, ColorBrewer colors, col1 drill) + byte-identical single-series lock
 
 ### Phase 103: Verification + Live UAT
 **Goal**: All five features verified green on both stacks plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
@@ -161,7 +166,7 @@ Plans:
 | 99. Custom Metrics — Server + Store Foundation | 0/2 | Planned | - |
 | 100. Custom Metrics — Editor + Metric-Picker Integration | 0/3 | Planned | - |
 | 101. Smart / Logarithmic Y-Axis | 0/2 | Planned | - |
-| 102. Multi-Column Group-By on Bar Chart | 0/? | Not started | - |
+| 102. Multi-Column Group-By on Bar Chart | 0/3 | Planned | - |
 | 103. Verification + Live UAT | 0/? | Not started | - |
 
 ---
