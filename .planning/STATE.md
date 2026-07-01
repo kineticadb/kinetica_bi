@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 98-per-visualization-custom-where-clause/98-01-PLAN.md
-last_updated: "2026-06-30T20:54:06.165Z"
+stopped_at: Completed 98-per-visualization-custom-where-clause/98-03-PLAN.md
+last_updated: "2026-06-30T21:06:25.798Z"
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 5
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 ## Current Position
 
-Phase: 98 (per-visualization-custom-where-clause) — EXECUTING
-Plan: 1 of 3
+Phase: 98 (per-visualization-custom-where-clause) — COMPLETE
+Plan: 3 of 3
 
 ### v1.19 Phase Map
 
@@ -704,6 +704,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 97 P01 | 7 | 2 tasks | 4 files |
 | Phase 97 P02 | 2 | 1 tasks | 2 files |
 | Phase 98-per-visualization-custom-where-clause P01 | 5 | 2 tasks | 8 files |
+| Phase 98 P02 | 9 | 3 tasks | 11 files |
 
 ### Quick Tasks Completed
 
@@ -1037,6 +1038,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 97]: toggleAllowedScale enforces ≥1 allowed scale; SMART_SCALES.filter preserves canonical coarsest→finest order
 - [Phase 97]: controlMode === 'advanced' gate for showControls — explicit positive check, robust if third mode introduced; absent controlMode coalesces to 'advanced' (zero change for existing calendars)
 - [Phase 98]: andCustomWhere returns leading-space ' AND (...)' string for zero-friction splice before GROUP BY; whereCustomWhere exported now for 98-02 aggregated paths
+- [Phase 98]: whereCustomWhere computed once at top of generatedSql useMemo; spliced into all 3 real-SELECT shapes; SELECT * FROM placeholder guards unchanged
+- [Phase 98]: cw computed at RecordsTableRenderer component top (not inside effects) so it serves both page-fetch and CSV export SQL sites
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1443,6 +1446,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-30T20:54:06.155Z
-Stopped at: Completed 98-per-visualization-custom-where-clause/98-01-PLAN.md
+Last session: 2026-06-30T21:06:25.788Z
+Stopped at: Completed 98-per-visualization-custom-where-clause/98-02-PLAN.md
 Resume file: None

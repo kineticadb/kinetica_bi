@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { ColumnDisplayConfigRow, Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
+import { ColumnDisplayConfigRow, CustomMetricRow, Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
 import { seedRbac } from "./lib/rbacSeed";
 
 const ensureDir = (dbPath: string) => {
@@ -244,6 +244,26 @@ const SCHEMA_DDL = `
     PRIMARY KEY (table_id, column_name)
   );
   CREATE INDEX IF NOT EXISTS idx_column_display_config_table_id ON column_display_config (table_id);
+
+  -- v1.19 Phase 99 (METRIC-V119-01/02): per-table custom metric definitions.
+  -- Each metric is a named SQL aggregate expression reusable across all dashboards
+  -- using a given table. id is an opaque autoincrement key so Phase 100 widget
+  -- references survive label/expression edits -- deliberate divergence from the
+  -- column_display_config PUT-upsert-by-name pattern. format_spec is JSON-as-TEXT
+  -- (NULL = no metric-level format), matching the column_display_config null-guard.
+  -- UNIQUE(table_id, label) enforces unique label per table (the 409 source).
+  -- CREATE TABLE IF NOT EXISTS covers fresh + existing installs (no ALTER needed).
+  CREATE TABLE IF NOT EXISTS custom_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_id INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    expression TEXT NOT NULL,
+    format_spec TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(table_id, label)
+  );
+  CREATE INDEX IF NOT EXISTS idx_custom_metrics_table_id ON custom_metrics (table_id);
 
   -- v1.16 Phase 81 (BRANDFND-01): global singleton brand configuration.
   -- Single row enforced by CHECK(id = 1) + INSERT OR IGNORE seed. Follows the
@@ -932,5 +952,65 @@ export const deleteColumnDisplayConfig = (tableId: number, columnName: string): 
   const result = db
     .prepare("DELETE FROM column_display_config WHERE table_id = ? AND column_name = ?")
     .run(tableId, columnName);
+  return result.changes > 0;
+};
+
+// --- Custom Metrics (Phase 99 v1.19 METRIC-V119-01/02) ---
+
+const mapCustomMetric = (row: any): CustomMetricRow => ({
+  id: row.id,
+  table_id: row.table_id,
+  label: row.label,
+  expression: row.expression,
+  // JSON-as-TEXT — null-guard mirrors mapColumnDisplayConfig (never JSON.parse(null)).
+  format_spec: row.format_spec ? JSON.parse(row.format_spec) : null,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+export const listCustomMetrics = (tableId: number): CustomMetricRow[] =>
+  db.prepare("SELECT * FROM custom_metrics WHERE table_id = ? ORDER BY label ASC")
+    .all(tableId)
+    .map(mapCustomMetric);
+
+export const getCustomMetric = (id: number): CustomMetricRow | undefined => {
+  const row = db.prepare("SELECT * FROM custom_metrics WHERE id = ?").get(id);
+  return row ? mapCustomMetric(row) : undefined;
+};
+
+export const createCustomMetric = (
+  tableId: number,
+  label: string,
+  expression: string,
+  formatSpec: unknown | null
+): CustomMetricRow => {
+  const info = db.prepare(`
+    INSERT INTO custom_metrics (table_id, label, expression, format_spec)
+    VALUES (?, ?, ?, ?)
+  `).run(tableId, label, expression, formatSpec ? JSON.stringify(formatSpec) : null);
+  return getCustomMetric(Number(info.lastInsertRowid))!;
+};
+
+export const updateCustomMetric = (
+  id: number,
+  label: string,
+  expression: string,
+  formatSpec: unknown | null
+): CustomMetricRow | undefined => {
+  // Existence-check semantics (NOT result.changes): a no-op update — same
+  // values written to an existing row — reports changes:0 in SQLite, which
+  // would otherwise spuriously 404 an idempotent save (Phase 100 editors may
+  // re-save unchanged metrics). Gate the 404 on row existence, not changes.
+  if (!getCustomMetric(id)) return undefined;
+  db.prepare(`
+    UPDATE custom_metrics SET
+      label = ?, expression = ?, format_spec = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(label, expression, formatSpec ? JSON.stringify(formatSpec) : null, id);
+  return getCustomMetric(id);
+};
+
+export const deleteCustomMetric = (id: number): boolean => {
+  const result = db.prepare("DELETE FROM custom_metrics WHERE id = ?").run(id);
   return result.changes > 0;
 };

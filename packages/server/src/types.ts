@@ -110,3 +110,20 @@ export type ColumnDisplayConfigRow = {
   created_at: string;
   updated_at: string;
 };
+
+// v1.19 Phase 99 (METRIC-V119-01/02): per-table custom metric definition row.
+// `id` is an opaque stable autoincrement key (deliberate divergence from
+// column_display_config's composite-key upsert pattern — Phase 100 widget
+// references must survive label/expression edits). `format_spec` is TEXT in
+// SQLite (JSON-encoded FormatSpec); decoded to an object on read. The server
+// treats it as opaque JSON — the FormatSpec discriminated union lives on the
+// web side.
+export type CustomMetricRow = {
+  id: number;
+  table_id: number;
+  label: string;
+  expression: string;
+  format_spec: unknown | null; // FormatSpec on the web side; opaque JSON on server
+  created_at: string;
+  updated_at: string;
+};
