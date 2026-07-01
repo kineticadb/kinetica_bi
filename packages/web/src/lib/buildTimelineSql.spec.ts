@@ -214,6 +214,89 @@ describe("buildTimelineSql — grouped (Phase 72)", () => {
   });
 });
 
+describe("buildTimelineSql — custom metrics branch (Phase 100-02)", () => {
+  const hourEntry = INTERVAL_LADDER.find((i) => i.key === "hour")! as TimelineInterval;
+  const baseMetric: TimelineMetric = {
+    column: "fare_amount",
+    aggregation: "SUM",
+    color: "FF66C2A5",
+  };
+
+  // Byte-identical regression lock: absent metricId → EXACT same string as Test 1.
+  it("absent metricId on metric → byte-identical to baseline (regression lock, criterion 4)", () => {
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: baseMetric, // no metricId
+      interval: hourEntry,
+      maxIntervals: 200,
+      tableId: 42,
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('hour', pickup_time) AS bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL GROUP BY bucket ORDER BY bucket ASC LIMIT 200"
+    );
+  });
+
+  it("custom metricId on metric + store seeded → ungrouped emits raw expression (no AGG wrapper)", async () => {
+    const { useCustomMetricsStore } = await import("../store/customMetricsStore");
+    useCustomMetricsStore.getState().setConfig(42, [
+      {
+        id: 7,
+        table_id: 42,
+        label: "ROAS",
+        expression: "SUM(revenue)/SUM(cost)",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: { ...baseMetric, metricId: 7 },
+      interval: hourEntry,
+      maxIntervals: 200,
+      tableId: 42,
+    });
+    expect(sql).toContain("SUM(revenue)/SUM(cost) AS value");
+    expect(sql).not.toContain("SUM(SUM(");
+    expect(sql).not.toContain("SUM()");
+    expect(sql).not.toContain("SUM(fare_amount) AS value");
+    useCustomMetricsStore.getState().reset();
+  });
+
+  it("custom metricId on metric + store seeded → grouped emits raw expression (no AGG wrapper)", async () => {
+    const { useCustomMetricsStore } = await import("../store/customMetricsStore");
+    useCustomMetricsStore.getState().setConfig(42, [
+      {
+        id: 7,
+        table_id: 42,
+        label: "ROAS",
+        expression: "SUM(revenue)/SUM(cost)",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const sql = buildTimelineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      timeCol: "pickup_time",
+      metric: { ...baseMetric, metricId: 7 },
+      interval: hourEntry,
+      maxIntervals: 200,
+      groupByColumn: "vendor",
+      tableId: 42,
+    });
+    expect(sql).toContain("SUM(revenue)/SUM(cost) AS value");
+    expect(sql).not.toContain("SUM(SUM(");
+    expect(sql).not.toContain("SUM(fare_amount) AS value");
+    useCustomMetricsStore.getState().reset();
+  });
+});
+
 describe("buildTimelineSql — customWhere (Phase 98-01)", () => {
   const hourEntry = INTERVAL_LADDER.find((i) => i.key === "hour")! as TimelineInterval;
   const baseMetric: TimelineMetric = {

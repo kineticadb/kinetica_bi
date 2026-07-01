@@ -16,6 +16,7 @@
 import type { NumericMetric } from "./numericBin";
 import { MAX_SERIES } from "./groupedSeries";
 import { andCustomWhere } from "./customWhere";
+import { resolveMetricExpr } from "./customMetricSql";
 
 export type BuildNumericLineSqlArgs = {
   schema: string; // empty string → unprefixed FROM (filter-view name / DV-bound)
@@ -41,6 +42,12 @@ export type BuildNumericLineSqlArgs = {
    * clause; absent/empty → byte-identical output (VIZSQL-V119-03).
    */
   customWhere?: string;
+  /**
+   * Phase 100 (METRIC-V119-04): table id used only to resolve custom metric ids
+   * via selectMetrics(tableId). Absent/undefined → real-column path (byte-identical).
+   * The custom metric id itself lives on metric.metricId.
+   */
+  tableId?: number;
 };
 
 /** COUNT_DISTINCT is not a Kinetica function — emit COUNT(DISTINCT col). */
@@ -84,10 +91,13 @@ function formatSeriesInValue(v: string | number): string {
  * cap (or the seriesIn count) so no series is clipped mid-range.
  */
 export function buildNumericLineSql(args: BuildNumericLineSqlArgs): string {
-  const { schema, table, xField, binWidth, metric, maxBuckets, groupByColumn, seriesIn, customWhere } = args;
+  const { schema, table, xField, binWidth, metric, maxBuckets, groupByColumn, seriesIn, customWhere, tableId } = args;
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
   const bucket = `FLOOR(${xField} / ${binWidth}) * ${binWidth}`;
-  const agg = aggExpr(metric);
+  const realAgg = aggExpr(metric);
+  const resolved = resolveMetricExpr(metric.metricId, realAgg, tableId);
+  // orphaned custom id → realAgg (col likely "" for a custom selection → existing empty/error state, per Phase 100 orphan decision)
+  const agg = resolved ?? realAgg;
   // Phase 98: compute once; returns "" when absent/empty (byte-identical no-op).
   const cw = andCustomWhere(customWhere);
 

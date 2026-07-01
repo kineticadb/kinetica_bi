@@ -116,6 +116,84 @@ describe("buildNumericLineSql — grouped (Phase 72)", () => {
   });
 });
 
+describe("buildNumericLineSql — custom metrics branch (Phase 100-02)", () => {
+  // Byte-identical regression lock: absent metricId → EXACT same string as baseline.
+  it("absent metricId on metric → byte-identical to baseline (regression lock, criterion 4)", () => {
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric(), // no metricId
+      maxBuckets: 50,
+      tableId: 42,
+    });
+    expect(sql).toBe(
+      "SELECT FLOOR(trip_distance / 5) * 5 AS bucket, SUM(fare_amount) AS value " +
+        "FROM demo.nyctaxi WHERE trip_distance IS NOT NULL " +
+        "GROUP BY bucket ORDER BY bucket ASC LIMIT 51",
+    );
+  });
+
+  it("custom metricId on metric + store seeded → ungrouped emits raw expression (no AGG wrapper)", async () => {
+    const { useCustomMetricsStore } = await import("../store/customMetricsStore");
+    useCustomMetricsStore.getState().setConfig(42, [
+      {
+        id: 7,
+        table_id: 42,
+        label: "ROAS",
+        expression: "SUM(revenue)/SUM(cost)",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric({ metricId: 7 }),
+      maxBuckets: 50,
+      tableId: 42,
+    });
+    expect(sql).toContain("SUM(revenue)/SUM(cost) AS value");
+    expect(sql).not.toContain("SUM(SUM(");
+    expect(sql).not.toContain("SUM()");
+    expect(sql).not.toContain("SUM(fare_amount) AS value");
+    useCustomMetricsStore.getState().reset();
+  });
+
+  it("custom metricId on metric + store seeded → grouped emits raw expression (no AGG wrapper)", async () => {
+    const { useCustomMetricsStore } = await import("../store/customMetricsStore");
+    useCustomMetricsStore.getState().setConfig(42, [
+      {
+        id: 7,
+        table_id: 42,
+        label: "ROAS",
+        expression: "SUM(revenue)/SUM(cost)",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const sql = buildNumericLineSql({
+      schema: "demo",
+      table: "nyctaxi",
+      xField: "trip_distance",
+      binWidth: 5,
+      metric: metric({ metricId: 7 }),
+      maxBuckets: 50,
+      groupByColumn: "vendor",
+      tableId: 42,
+    });
+    expect(sql).toContain("SUM(revenue)/SUM(cost) AS value");
+    expect(sql).not.toContain("SUM(SUM(");
+    expect(sql).not.toContain("SUM(fare_amount) AS value");
+    useCustomMetricsStore.getState().reset();
+  });
+});
+
 describe("buildNumericLineSql — customWhere (Phase 98-01)", () => {
   // Byte-identical regression lock: omitting customWhere must yield EXACT same string as baseline.
   it("absent customWhere → byte-identical to baseline (regression lock)", () => {

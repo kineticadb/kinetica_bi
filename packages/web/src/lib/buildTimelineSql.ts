@@ -14,6 +14,7 @@ import type { TimelineInterval, TimelineMetric } from "./timelineBin";
 import { buildTimelineBucket } from "./timelineBin";
 import { MAX_SERIES } from "./groupedSeries";
 import { andCustomWhere } from "./customWhere";
+import { resolveMetricExpr } from "./customMetricSql";
 
 export type BuildTimelineSqlArgs = {
   schema: string; // empty string for DV-bound (viewName-as-table); see Phase 44 follow-up
@@ -40,6 +41,12 @@ export type BuildTimelineSqlArgs = {
    * clause; absent/empty → byte-identical output (VIZSQL-V119-03).
    */
   customWhere?: string;
+  /**
+   * Phase 100 (METRIC-V119-04): table id used only to resolve custom metric ids
+   * via selectMetrics(tableId). Absent/undefined → real-column path (byte-identical).
+   * The custom metric id itself lives on metric.metricId.
+   */
+  tableId?: number;
 };
 
 /** Format a seriesIn value for SQL: numbers verbatim, strings single-quoted with internal quotes doubled. */
@@ -85,12 +92,15 @@ function aggExpr(metric: TimelineMetric): string {
  * where row data keys are `{ bucket: string; value: number | null }`.
  */
 export function buildTimelineSql(args: BuildTimelineSqlArgs): string {
-  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn, customWhere } = args;
+  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn, customWhere, tableId } = args;
   // Phase 44 follow-up: empty schema means the table arg is a bare unprefixed
   // identifier (e.g. a dynamic view's materialized view name).
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
   const bucket = buildTimelineBucket(timeCol, interval);
-  const agg = aggExpr(metric);
+  const realAgg = aggExpr(metric);
+  const resolved = resolveMetricExpr(metric.metricId, realAgg, tableId);
+  // orphaned custom id → realAgg (col likely "" for a custom selection → existing empty/error state, per Phase 100 orphan decision)
+  const agg = resolved ?? realAgg;
   // Phase 98: compute once; returns "" when absent/empty (byte-identical no-op).
   const cw = andCustomWhere(customWhere);
 

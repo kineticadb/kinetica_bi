@@ -18,6 +18,7 @@ import type { CalendarDomain, CalendarSubdomain } from "./calendarBin";
 import { CELL_LIMIT } from "./calendarBin";
 import type { TimelineAggregation } from "./timelineBin"; // reuse the aggregation set
 import { andCustomWhere } from "./customWhere";
+import { resolveMetricExpr } from "./customMetricSql";
 
 export type BuildCalendarSqlArgs = {
   /**
@@ -39,6 +40,17 @@ export type BuildCalendarSqlArgs = {
    * clause; absent/empty → byte-identical output (VIZSQL-V119-03).
    */
   customWhere?: string;
+  /**
+   * Phase 100 (METRIC-V119-04): table id used only to resolve custom metric ids
+   * via selectMetrics(tableId). Absent/undefined → real-column path (byte-identical).
+   */
+  tableId?: number;
+  /**
+   * Phase 100 (METRIC-V119-04): opaque custom-metric id marker. When set, the
+   * `value` term emits the metric's RAW expression (no AGG wrapper). When absent,
+   * the existing aggExpr(aggregation, metricColumn) path is used unchanged.
+   */
+  metricId?: number;
 };
 
 /**
@@ -80,9 +92,14 @@ export function buildCalendarSql(args: BuildCalendarSqlArgs): string {
     subdomain,
     limit,
     customWhere,
+    tableId,
+    metricId,
   } = args;
 
-  const agg = aggExpr(aggregation, metricColumn);
+  const realAgg = aggExpr(aggregation, metricColumn);
+  const resolved = resolveMetricExpr(metricId, realAgg, tableId);
+  // orphaned custom id → realAgg (col likely "" for a custom selection → invalid SQL → existing empty/error state, per Phase 100 orphan decision)
+  const agg = resolved ?? realAgg;
   const lim = limit ?? CELL_LIMIT;
   // Phase 98: compute once; returns "" when absent/empty (byte-identical no-op).
   const cw = andCustomWhere(customWhere);

@@ -187,6 +187,73 @@ describe("buildCalendarSql", () => {
   });
 });
 
+describe("buildCalendarSql — custom metrics branch (Phase 100-02)", () => {
+  // Import here so the module resolves after the store is wired.
+  // These tests use dynamic imports via the store directly.
+
+  // Byte-identical regression lock: absent metricId → EXACT same string as Test 1.
+  it("absent metricId → byte-identical to baseline (regression lock, criterion 4)", () => {
+    const sql = buildCalendarSql({
+      fromTarget: "demo.nyctaxi",
+      timeCol: "pickup_time",
+      metricColumn: "fare_amount",
+      aggregation: "SUM",
+      domain: "month",
+      subdomain: "day",
+      tableId: 42,
+    });
+    expect(sql).toBe(
+      "SELECT DATE_TRUNC('month', pickup_time) AS domain_bucket, DATE_TRUNC('day', pickup_time) AS subdomain_bucket, SUM(fare_amount) AS value FROM demo.nyctaxi WHERE pickup_time IS NOT NULL GROUP BY domain_bucket, subdomain_bucket ORDER BY domain_bucket ASC, subdomain_bucket ASC LIMIT 10000"
+    );
+  });
+
+  it("custom metricId set + store seeded → emits raw expression (no AGG wrapper)", async () => {
+    const { useCustomMetricsStore } = await import("../store/customMetricsStore");
+    useCustomMetricsStore.getState().setConfig(42, [
+      {
+        id: 7,
+        table_id: 42,
+        label: "ROAS",
+        expression: "SUM(revenue)/SUM(cost)",
+        format_spec: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const sql = buildCalendarSql({
+      fromTarget: "demo.nyctaxi",
+      timeCol: "pickup_time",
+      metricColumn: "fare_amount",
+      aggregation: "SUM",
+      domain: "month",
+      subdomain: "day",
+      tableId: 42,
+      metricId: 7,
+    });
+    expect(sql).toContain("SUM(revenue)/SUM(cost) AS value");
+    expect(sql).not.toContain("SUM(SUM(");
+    expect(sql).not.toContain("SUM()");
+    expect(sql).not.toContain("SUM(fare_amount) AS value");
+    useCustomMetricsStore.getState().reset();
+  });
+
+  it("no tableId + metricId → orphan falls back to real aggExpr", () => {
+    // When tableId is absent, resolveMetricExpr returns null → orphan fallback
+    const sql = buildCalendarSql({
+      fromTarget: "demo.nyctaxi",
+      timeCol: "pickup_time",
+      metricColumn: "fare_amount",
+      aggregation: "SUM",
+      domain: "month",
+      subdomain: "day",
+      metricId: 7,
+      // tableId intentionally absent → orphan path
+    });
+    // Falls back to realAgg (fare_amount likely "" in custom scenario but here metricColumn = "fare_amount")
+    expect(sql).toContain("SUM(fare_amount) AS value");
+  });
+});
+
 describe("buildCalendarSql — customWhere (Phase 98-01)", () => {
   // Byte-identical regression lock: omitting customWhere must yield EXACT same string as Test 1.
   it("absent customWhere → byte-identical to baseline (regression lock)", () => {
