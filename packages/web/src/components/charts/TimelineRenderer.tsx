@@ -69,6 +69,8 @@ import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 // Phase 100 (METRIC-V119-01/03): custom metric store for configVersion re-fetch + loadConfig.
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
+// Phase 101 (YAXIS-V119-01/02/03/04): Y-axis scale mode — absent → {} → byte-identical.
+import { yAxisScaleProps } from "../../lib/yAxisScale";
 
 type Props = {
   widget: WidgetDto;
@@ -128,6 +130,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   const colorTheme = cfg.colorTheme ?? DEFAULT_COLOR_THEME;
   const dateFormatOverride = cfg.dateFormatOverride ?? "";
   const customWhere = cfg.customWhere ?? "";
+  const yAxisScale = cfg.yAxisScale;
 
   // Defensive: hard-cap to MAX_METRICS even if config persisted more. When grouped,
   // the chart uses a SINGLE metric (metrics[0]) split into one series per group value.
@@ -509,10 +512,12 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   // width, so short SI labels ("18M") reclaim left-edge space for the plot while long raw
   // values ("1,234,567") still fit. recharts 2.x YAxis width is a fixed number (no "auto").
   const yValueKeys = grouped ? top.series : metrics.map((_, i) => `metric_${i}`);
-  const yAxisWidth = estimateValueAxisWidth(
-    data.flatMap((row) => yValueKeys.map((k) => Number((row as Record<string, unknown>)[k]))),
-    (v) => yAxisTickFormatter(v),
-  );
+  const numericValues = data.flatMap((row) => yValueKeys.map((k) => Number((row as Record<string, unknown>)[k])));
+  const yAxisWidth = estimateValueAxisWidth(numericValues, (v) => yAxisTickFormatter(v));
+
+  // Phase 101 (YAXIS-V119-01/02/03/04): plain call (not a hook) — data is only available here,
+  // after early returns; absent mode → {} → no props emitted (YAXIS-V119-04 byte-identical).
+  const scaleProps = yAxisScaleProps(yAxisScale, numericValues);
 
   return (
     <div
@@ -601,6 +606,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                 stroke={X_AXIS_COLOR}
                 tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
                 tickFormatter={yAxisTickFormatter}
+                {...scaleProps}
               />
             ) : (
               <YAxis
@@ -611,6 +617,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                 stroke={X_AXIS_COLOR}
                 tick={{ fill: X_AXIS_COLOR, fontSize: 11 }}
                 tickFormatter={yAxisTickFormatter}
+                {...scaleProps}
               />
             )
           ) : (
@@ -626,6 +633,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                     stroke={toCssColor(m.color)}
                     tick={tickStyle}
                     tickFormatter={yAxisTickFormatter}
+                    {...scaleProps}
                   />
                 );
               }
@@ -639,6 +647,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
                   stroke={toCssColor(m.color)}
                   tick={tickStyle}
                   tickFormatter={yAxisTickFormatter}
+                  {...scaleProps}
                 />
               );
             })
