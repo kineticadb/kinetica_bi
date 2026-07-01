@@ -29,7 +29,7 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 
 ### Smart / Logarithmic Y-Axis (YAXIS)
 
-- [ ] **YAXIS-V119-01**: On line, timeline, and bar charts, the designer can choose a Y-axis scale mode: Zero-based (default), Smart, or Logarithmic.
+- [x] **YAXIS-V119-01**: On line, timeline, and bar charts, the designer can choose a Y-axis scale mode: Zero-based (default), Smart, or Logarithmic.
 - [x] **YAXIS-V119-02**: Smart mode derives the Y-axis min/max from the data range and does not force a 0 baseline.
 - [x] **YAXIS-V119-03**: Logarithmic mode renders the value axis on a log scale.
 - [x] **YAXIS-V119-04**: Absent config defaults to Zero-based — current behavior is unchanged for existing widgets.
@@ -86,7 +86,7 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | METRIC-V119-02 | Phase 99 | Complete |
 | METRIC-V119-03 | Phase 100 | Complete |
 | METRIC-V119-04 | Phase 100 | Complete |
-| YAXIS-V119-01 | Phase 101 | Pending |
+| YAXIS-V119-01 | Phase 101 | Complete |
 | YAXIS-V119-02 | Phase 101 | Complete |
 | YAXIS-V119-03 | Phase 101 | Complete |
 | YAXIS-V119-04 | Phase 101 | Complete |
