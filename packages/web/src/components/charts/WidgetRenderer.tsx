@@ -74,6 +74,8 @@ import {
   DEFAULT_BIGNUMBER_COLOR,
 } from "../../lib/chartTheme";
 import { whereCustomWhere } from "../../lib/customWhere";
+// Phase 101 (YAXIS-V119-01/02/03/04): Y-axis scale mode — absent → {} → byte-identical.
+import { yAxisScaleProps } from "../../lib/yAxisScale";
 
 type Props = {
   widget: WidgetDto;
@@ -939,6 +941,11 @@ const BarRenderer = ({
     }, 300);
   };
 
+  // Phase 101 (YAXIS-V119-01/02/03/04): Y-axis scale. Bar defaultConfig is "" (not undefined),
+  // so coalesce "" → undefined to hit the no-props path (byte-identical when unset).
+  const yAxisScale = ((config.yAxisScale as ("zero" | "smart" | "log" | "")) || undefined);
+  const scaleProps = yAxisScaleProps(yAxisScale, data.map((r) => Number((r as Record<string, unknown>)[y])));
+
   // Phase 87 (UAT): value-axis number format — per-widget override → bound metric column
   // default → raw. Mirrors the timeline/line hybrid; unconfigured bars keep their raw tick
   // appearance. Applied to the VALUE axis (YAxis when vertical, XAxis when horizontal).
@@ -981,13 +988,13 @@ const BarRenderer = ({
         {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={horizontal} horizontal={!horizontal} />}
         {horizontal ? (
           <>
-            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
             <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
             <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
-            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} />
+            <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
           </>
         )}
         {showTooltip && (
