@@ -24,15 +24,15 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 
 - [x] **METRIC-V119-01**: From the Tables area, a user can define a custom metric on a table as a labeled SQL aggregate expression (e.g. `SUM(revenue)/SUM(cost)`). _(Server/CRUD half done in Phase 99; Tables-area authoring UI in Phase 100.)_
 - [x] **METRIC-V119-02**: Custom metrics are persisted server-side per table and reused across all dashboards using that table; a user can edit and delete them.
-- [ ] **METRIC-V119-03**: Custom metrics appear in every visualization metric picker alongside real columns.
+- [x] **METRIC-V119-03**: Custom metrics appear in every visualization metric picker alongside real columns.
 - [x] **METRIC-V119-04**: When a custom metric is selected, its aggregate expression is emitted directly into the widget's SQL with no further aggregation wrapper applied.
 
 ### Smart / Logarithmic Y-Axis (YAXIS)
 
 - [ ] **YAXIS-V119-01**: On line, timeline, and bar charts, the designer can choose a Y-axis scale mode: Zero-based (default), Smart, or Logarithmic.
-- [ ] **YAXIS-V119-02**: Smart mode derives the Y-axis min/max from the data range and does not force a 0 baseline.
-- [ ] **YAXIS-V119-03**: Logarithmic mode renders the value axis on a log scale.
-- [ ] **YAXIS-V119-04**: Absent config defaults to Zero-based — current behavior is unchanged for existing widgets.
+- [x] **YAXIS-V119-02**: Smart mode derives the Y-axis min/max from the data range and does not force a 0 baseline.
+- [x] **YAXIS-V119-03**: Logarithmic mode renders the value axis on a log scale.
+- [x] **YAXIS-V119-04**: Absent config defaults to Zero-based — current behavior is unchanged for existing widgets.
 
 ### Multi-Column Group-By on Bar Chart (BARGRP)
 
@@ -82,14 +82,14 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | VIZSQL-V119-02 | Phase 98 | Complete |
 | VIZSQL-V119-03 | Phase 98 | Complete |
 | VIZSQL-V119-04 | Phase 98 | Complete |
-| METRIC-V119-01 | Phase 99 + Phase 100 | In Progress (server done; UI in Phase 100) |
+| METRIC-V119-01 | Phase 99 + Phase 100 | Complete |
 | METRIC-V119-02 | Phase 99 | Complete |
-| METRIC-V119-03 | Phase 100 | Pending |
+| METRIC-V119-03 | Phase 100 | Complete |
 | METRIC-V119-04 | Phase 100 | Complete |
 | YAXIS-V119-01 | Phase 101 | Pending |
-| YAXIS-V119-02 | Phase 101 | Pending |
-| YAXIS-V119-03 | Phase 101 | Pending |
-| YAXIS-V119-04 | Phase 101 | Pending |
+| YAXIS-V119-02 | Phase 101 | Complete |
+| YAXIS-V119-03 | Phase 101 | Complete |
+| YAXIS-V119-04 | Phase 101 | Complete |
 | BARGRP-V119-01 | Phase 102 | Pending |
 | BARGRP-V119-02 | Phase 102 | Pending |
 | BARGRP-V119-03 | Phase 102 | Pending |

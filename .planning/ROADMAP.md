@@ -122,7 +122,10 @@ Plans:
   2. Smart mode derives the Y-axis min/max from the data range and does not force a 0 baseline.
   3. Logarithmic mode renders the value axis on a log scale.
   4. A widget with no scale-mode config defaults to Zero-based — current behavior unchanged for existing widgets (backward-compat locked by test).
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 101-01-PLAN.md — Shared pure yAxisScaleProps helper + unit spec (foundation; absent→{}, zero, smart, log-clamp, no-positive-data)
+- [ ] 101-02-PLAN.md — yAxisScale select on 3 config surfaces + spread helper onto all value axes in 3 renderers + byte-identical/smart/log tests
 
 ### Phase 102: Multi-Column Group-By on Bar Chart
 **Goal**: On the bar chart, a designer can select arbitrary N group-by columns (env-var capped), rendered nested/hierarchically with a grouped (clustered) vs stacked toggle.
@@ -157,7 +160,7 @@ Plans:
 | 98. Per-Visualization Custom WHERE Clause | 0/? | Not started | - |
 | 99. Custom Metrics — Server + Store Foundation | 0/2 | Planned | - |
 | 100. Custom Metrics — Editor + Metric-Picker Integration | 0/3 | Planned | - |
-| 101. Smart / Logarithmic Y-Axis | 0/? | Not started | - |
+| 101. Smart / Logarithmic Y-Axis | 0/2 | Planned | - |
 | 102. Multi-Column Group-By on Bar Chart | 0/? | Not started | - |
 | 103. Verification + Live UAT | 0/? | Not started | - |
 

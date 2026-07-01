@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 100-03-PLAN.md
-last_updated: "2026-07-01T15:00:02.952Z"
+stopped_at: Completed 101-01-PLAN.md
+last_updated: "2026-07-01T16:16:15.198Z"
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 12
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 100 — custom-metrics-tables-area-editor-metric-picker-integration
+**Current focus:** Phase 101 — smart-logarithmic-y-axis
 
 ## Current Position
 
-Phase: 100 (custom-metrics-tables-area-editor-metric-picker-integration) — EXECUTING
-Plan: 2 of 3
+Phase: 101 (smart-logarithmic-y-axis) — EXECUTING
+Plan: 1 of 2
 
 ### v1.19 Phase Map
 
@@ -710,6 +710,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 100 P01 | 521 | 3 tasks | 4 files |
 | Phase 100 P02 | 38 | 3 tasks | 11 files |
 | Phase 100-custom-metrics-tables-area-editor-metric-picker-integration P03 | 45 | 4 tasks | 10 files |
+| Phase 101 P01 | 2 | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -1056,6 +1057,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 100]: METRIC-V119-04: orphan handling uses agg = resolved ?? realAgg fallback to existing empty/error state; isCustomSelection gates ChartConfigPanel incomplete-guard to handle empty metricColumn for custom selections
 - [Phase 100]: cm:<id> sentinel prefix encodes custom metric ids in picker value space; decodeMetricSelection discriminated union drives onChange
 - [Phase 100]: loadConfig().catch() on all 7 component effects — best-effort cache fill; silences 401 rejections in tests without production impact
+- [Phase 101]: undefined mode returns {} (not a default domain) — YAXIS-V119-04 byte-identical backward-compat guarantee
+- [Phase 101]: log mode with no finite positive values returns {} (graceful degrade), never crashes renderer — YAXIS-V119-03
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1462,6 +1465,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-01T15:00:02.942Z
-Stopped at: Completed 100-03-PLAN.md
+Last session: 2026-07-01T16:16:15.187Z
+Stopped at: Completed 101-01-PLAN.md
 Resume file: None
