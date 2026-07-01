@@ -12,6 +12,7 @@ import {
 import { useApiQuery } from "../hooks/useApiQuery";
 import ChartCard from "./ChartCard";
 import ColumnFormatEditorModal from "./ColumnFormatEditorModal";
+import CustomMetricsEditorModal from "./CustomMetricsEditorModal";
 
 type View =
   | { mode: "list" }
@@ -124,6 +125,7 @@ const DatasetsPage = () => {
 const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void }) => {
   const columns = Object.entries(table.columns);
   const [showFormatEditor, setShowFormatEditor] = useState(false);
+  const [showMetricsEditor, setShowMetricsEditor] = useState(false);
 
   return (
     <div className="dashboard-list">
@@ -134,6 +136,9 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
           <>
             <button className="ghost-sm" onClick={() => setShowFormatEditor(true)}>
               Format columns
+            </button>
+            <button className="ghost-sm" onClick={() => setShowMetricsEditor(true)}>
+              Custom metrics
             </button>
             <button className="ghost-sm" onClick={onBack}>
               Back
@@ -185,6 +190,12 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
         <ColumnFormatEditorModal
           table={table}
           onClose={() => setShowFormatEditor(false)}
+        />
+      )}
+      {showMetricsEditor && (
+        <CustomMetricsEditorModal
+          table={table}
+          onClose={() => setShowMetricsEditor(false)}
         />
       )}
     </div>
