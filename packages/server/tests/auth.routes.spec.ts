@@ -380,7 +380,7 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
     // Phase 94 fix: include roles + permissions (alice → analyst fallback) + dvFilterScopeDisabled (default false).
-    expect(meRes.body).toEqual({ user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] }, authMode: "password", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false });
+    expect(meRes.body).toEqual({ user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] }, authMode: "password", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false, maxBarGroupBySeriesCap: 12 });
   });
 
   it("returns authMode='oidc' in oidc mode for an authenticated session", async () => {
@@ -392,7 +392,7 @@ describe("GET /api/auth/me — authMode field (UX-08)", () => {
     const meRes = await agent.get("/api/auth/me").set("Cookie", cookie);
     expect(meRes.status).toBe(200);
     // Phase 94 fix: include roles + permissions (alice → analyst fallback) + dvFilterScopeDisabled (default false).
-    expect(meRes.body).toEqual({ user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] }, authMode: "oidc", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false });
+    expect(meRes.body).toEqual({ user: { username: "alice", roles: ["analyst"], permissions: ["dashboards:view"] }, authMode: "oidc", ttlKeepaliveLeadMinutes: 1, maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false, maxBarGroupBySeriesCap: 12 });
   });
 
   it("returns 401 + REAUTH_REQUIRED with no authMode field in password mode (no session)", async () => {

@@ -179,6 +179,11 @@ export const createApp = async (): Promise<express.Express> => {
   // Default 10 matches the web-side MAX_COMBINATION_VIEWS_PER_TABLE constant (filterCombinationStore.ts).
   const MAX_COMBINATION_VIEWS_PER_TABLE = readPositiveIntEnv("MAX_COMBINATION_VIEWS_PER_TABLE", 10);
 
+  // ---- Phase 102 (BARGRP-V119-03): deploy-time cap on rendered bar group-by SERIES ----
+  // Read ONCE at boot, fallback+warn on invalid (mirrors the TTL / combination-ceiling knobs).
+  // Default 12 matches the web MAX_SERIES timeline cap + auth-store default.
+  const MAX_BAR_GROUP_BY_SERIES = readPositiveIntEnv("MAX_BAR_GROUP_BY_SERIES", 12);
+
   // ---- Phase 94 (FSCOPE-V118-03): deploy-time disable switch for the dv filter-scope UI ----
   // Boolean — absent or anything but "true" → enabled (default, UI shown). "true" → UI hidden for dv-bound vizs.
   // Unlike the TTL/ceiling ints, this is boolean — simple string compare, NOT readPositiveIntEnv.
@@ -417,7 +422,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
