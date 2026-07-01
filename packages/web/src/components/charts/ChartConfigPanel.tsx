@@ -8,6 +8,7 @@ import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
 import { useAuthStore } from "../../store/auth";
 import { whereCustomWhere } from "../../lib/customWhere";
+import { resolveMetricExpr, isCustomSelection } from "../../lib/customMetricSql";
 
 type TableInfo = {
   id: number;
@@ -311,9 +312,21 @@ const ChartConfigPanel = ({
     const aggregation = draft.aggregation as string;
     const groupByColumn = draft.groupByColumn as string;
 
+    // Phase 100 (METRIC-V119-04): resolve the metric expression for both variants.
+    // metricId is set by Plan 03's picker; absent → real-column path (byte-identical).
+    const metricId = draft.metricId as number | undefined;
+    const tableId = selectedTable?.id;
+    const customMode = isCustomSelection(metricId);
+
     // Scalar variant (bignumber): SELECT AGG(metric) AS value FROM table — no GROUP BY.
-    // Requires metricColumn + aggregation only; groupByColumn is irrelevant.
+    // Requires metricColumn + aggregation only (real); or a resolved custom expression.
     if (!requiresGroupBy) {
+      if (customMode) {
+        // Custom selection: resolve from store; fall back to placeholder if orphaned.
+        const metricExpr = resolveMetricExpr(metricId, "", tableId);
+        if (!metricExpr) return `SELECT * FROM ${table} LIMIT 100`;
+        return `SELECT ${metricExpr} AS value FROM ${table}${cw}`;
+      }
       if (!metricColumn || !aggregation) {
         return `SELECT * FROM ${table} LIMIT 100`;
       }
@@ -325,6 +338,17 @@ const ChartConfigPanel = ({
 
     // Grouped variant (bar / line / pie / scatter / table):
     // SELECT groupBy, AGG(metric) AS value FROM table GROUP BY groupBy ORDER BY value DESC
+    if (customMode) {
+      // Custom selection: groupByColumn still required; metricExpr from store.
+      if (!groupByColumn) return `SELECT * FROM ${table} LIMIT 100`;
+      const metricExpr = resolveMetricExpr(metricId, "", tableId);
+      if (!metricExpr) return `SELECT * FROM ${table} LIMIT 100`;
+      const groupSortDirC = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
+      const ALLOWED_LIMITS_C = [5, 10, 25, 50, 100, 250, 500];
+      const rawLimitC = Number(draft.limit);
+      const groupLimitC = ALLOWED_LIMITS_C.includes(rawLimitC) ? rawLimitC : 100;
+      return `SELECT ${groupByColumn}, ${metricExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDirC} LIMIT ${groupLimitC}`;
+    }
     if (!metricColumn || !aggregation || !groupByColumn) {
       return `SELECT * FROM ${table} LIMIT 100`;
     }
@@ -337,7 +361,7 @@ const ChartConfigPanel = ({
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
     return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
-  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.sortDir, draft.limit, draft.customWhere]);
+  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, selectedTable]);
 
   if (!chartDef) {
     return (
