@@ -90,7 +90,9 @@ Plans:
   2. Custom metrics persist server-side and are returned per table for reuse across all dashboards using that table.
   3. Writes are gated by the existing `datasets:manage` permission; reads are ungated — no new permission is introduced (byte-parity check on the permission catalog).
   4. The client store loads a table's custom metrics and exposes them to consumers (mirrors the v1.15 column-config store pattern).
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 99-01-PLAN.md — Server foundation: custom_metrics table + CRUD/map db fns + CustomMetricRow type + GET-ungated/write-gated routes + dual-auth supertests + permission-parity
+- [ ] 99-02-PLAN.md — Client foundation: CustomMetricRow + API client fns + customMetricsStore (+ selectMetrics selector) + dashboard-lifecycle reset wiring
 
 ### Phase 100: Custom Metrics — Tables-Area Editor + Metric-Picker Integration
 **Goal**: Users define/edit/delete custom metrics from the Tables area (mirroring the Column Format editor), and those metrics appear in every visualization's metric picker, emitted directly into the widget SQL with no extra aggregation wrapper.
@@ -149,7 +151,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 97. Calendar Smart Domain Control | 0/2 | Planned | - |
 | 98. Per-Visualization Custom WHERE Clause | 0/? | Not started | - |
-| 99. Custom Metrics — Server + Store Foundation | 0/? | Not started | - |
+| 99. Custom Metrics — Server + Store Foundation | 0/2 | Planned | - |
 | 100. Custom Metrics — Editor + Metric-Picker Integration | 0/? | Not started | - |
 | 101. Smart / Logarithmic Y-Axis | 0/? | Not started | - |
 | 102. Multi-Column Group-By on Bar Chart | 0/? | Not started | - |

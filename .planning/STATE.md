@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 98-per-visualization-custom-where-clause/98-03-PLAN.md
-last_updated: "2026-06-30T21:06:25.798Z"
+stopped_at: Completed 99-01-PLAN.md
+last_updated: "2026-07-01T00:24:43.265Z"
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 98 — per-visualization-custom-where-clause
+**Current focus:** Phase 99 — custom-metrics-server-store-foundation
 
 ## Current Position
 
-Phase: 98 (per-visualization-custom-where-clause) — COMPLETE
-Plan: 3 of 3
+Phase: 99 (custom-metrics-server-store-foundation) — EXECUTING
+Plan: 1 of 2
 
 ### v1.19 Phase Map
 
@@ -705,6 +705,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 97 P02 | 2 | 1 tasks | 2 files |
 | Phase 98-per-visualization-custom-where-clause P01 | 5 | 2 tasks | 8 files |
 | Phase 98 P02 | 9 | 3 tasks | 11 files |
+| Phase 98 P03 | 9 | 3 tasks | 12 files |
+| Phase 99 P01 | 343 | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -1040,6 +1042,11 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 98]: andCustomWhere returns leading-space ' AND (...)' string for zero-friction splice before GROUP BY; whereCustomWhere exported now for 98-02 aggregated paths
 - [Phase 98]: whereCustomWhere computed once at top of generatedSql useMemo; spliced into all 3 real-SELECT shapes; SELECT * FROM placeholder guards unchanged
 - [Phase 98]: cw computed at RecordsTableRenderer component top (not inside effects) so it serves both page-fetch and CSV export SQL sites
+- [Phase 98]: customWhere?: string added to TimelineConfig/NumericLineConfig/CalendarConfig as type member only (DEFAULT_CALENDAR_CONFIG untouched per Phase 97 precedent)
+- [Phase 98]: CalendarRenderer passes customWhere as builder arg only — no andCustomWhere() in renderer (DATE_TRUNC contains FROM tokens; no-fromSwap-in-CalendarRenderer rule preserved)
+- [Phase 98]: Timeline/NumericLine inline top-N topSql also gets andCustomWhere(customWhere) for consistent series ranking
+- [Phase 99-01]: id-keyed autoincrement PK for custom_metrics (deliberate divergence from column_display_config composite-key pattern) so Phase 100 widget references survive label/expression edits
+- [Phase 99-01]: No new RBAC permission for custom-metrics writes; datasets:manage reused (permission catalog stays at 18 entries); existence-check semantics in updateCustomMetric prevents no-op-save 404
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1446,6 +1453,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-06-30T21:06:25.788Z
-Stopped at: Completed 98-per-visualization-custom-where-clause/98-02-PLAN.md
+Last session: 2026-07-01T00:24:31.078Z
+Stopped at: Completed 99-01-PLAN.md
 Resume file: None

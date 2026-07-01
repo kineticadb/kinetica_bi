@@ -15,15 +15,15 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 
 ### Per-Visualization Custom WHERE Clause (VIZSQL)
 
-- [ ] **VIZSQL-V119-01**: On each plain-SQL widget (calendar, line, timeline, pie, bar, records table, big number, and other SQL-running widgets — excluding map/WMS layers), the designer can enter a freeform raw-SQL WHERE expression in the widget config.
+- [x] **VIZSQL-V119-01**: On each plain-SQL widget (calendar, line, timeline, pie, bar, records table, big number, and other SQL-running widgets — excluding map/WMS layers), the designer can enter a freeform raw-SQL WHERE expression in the widget config.
 - [x] **VIZSQL-V119-02**: A non-empty custom WHERE is ANDed into that widget's read query on top of all active drill-down / per-viz-selection filters, against the materialized view the widget already reads.
 - [x] **VIZSQL-V119-03**: An empty/absent custom WHERE leaves the widget's query byte-identical to current behavior.
-- [ ] **VIZSQL-V119-04**: An invalid WHERE expression surfaces the query error on that widget without breaking the dashboard (other widgets unaffected).
+- [x] **VIZSQL-V119-04**: An invalid WHERE expression surfaces the query error on that widget without breaking the dashboard (other widgets unaffected).
 
 ### Custom Metrics per Table (METRIC)
 
-- [ ] **METRIC-V119-01**: From the Tables area, a user can define a custom metric on a table as a labeled SQL aggregate expression (e.g. `SUM(revenue)/SUM(cost)`).
-- [ ] **METRIC-V119-02**: Custom metrics are persisted server-side per table and reused across all dashboards using that table; a user can edit and delete them.
+- [x] **METRIC-V119-01**: From the Tables area, a user can define a custom metric on a table as a labeled SQL aggregate expression (e.g. `SUM(revenue)/SUM(cost)`).
+- [x] **METRIC-V119-02**: Custom metrics are persisted server-side per table and reused across all dashboards using that table; a user can edit and delete them.
 - [ ] **METRIC-V119-03**: Custom metrics appear in every visualization metric picker alongside real columns.
 - [ ] **METRIC-V119-04**: When a custom metric is selected, its aggregate expression is emitted directly into the widget's SQL with no further aggregation wrapper applied.
 
@@ -78,12 +78,12 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | CALSMART-V119-01 | Phase 97 | Complete |
 | CALSMART-V119-02 | Phase 97 | Complete |
 | CALSMART-V119-03 | Phase 97 | Complete |
-| VIZSQL-V119-01 | Phase 98 | Pending |
+| VIZSQL-V119-01 | Phase 98 | Complete |
 | VIZSQL-V119-02 | Phase 98 | Complete |
 | VIZSQL-V119-03 | Phase 98 | Complete |
-| VIZSQL-V119-04 | Phase 98 | Pending |
-| METRIC-V119-01 | Phase 99 + Phase 100 | Pending |
-| METRIC-V119-02 | Phase 99 | Pending |
+| VIZSQL-V119-04 | Phase 98 | Complete |
+| METRIC-V119-01 | Phase 99 + Phase 100 | Complete |
+| METRIC-V119-02 | Phase 99 | Complete |
 | METRIC-V119-03 | Phase 100 | Pending |
 | METRIC-V119-04 | Phase 100 | Pending |
 | YAXIS-V119-01 | Phase 101 | Pending |
