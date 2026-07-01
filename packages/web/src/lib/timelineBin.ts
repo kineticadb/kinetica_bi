@@ -26,6 +26,13 @@ export type TimelineMetric = {
   aggregation: TimelineAggregation;
   color: string; // 8-char AARRGGBB (e.g. "FF66C2A5")
   label?: string;
+  /**
+   * Phase 100 (METRIC-V119-04): opaque custom-metric id marker.
+   * Absent (undefined) = real column — byte-identical SQL emission.
+   * Present (number) = custom metric — raw expression emitted with NO AGG wrapper.
+   * NumericMetric inherits this field automatically (re-export as NumericMetric).
+   */
+  metricId?: number;
 };
 
 export type TimelineInterval = {
