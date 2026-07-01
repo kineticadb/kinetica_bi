@@ -59,6 +59,8 @@ import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
 import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
+// Phase 100 (METRIC-V119-01/03): custom metric store for configVersion re-fetch + loadConfig.
+import { useCustomMetricsStore } from "../../store/customMetricsStore";
 
 type Props = {
   widget: WidgetDto;
@@ -133,6 +135,16 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
   useEffect(() => {
     if (tableId !== undefined) loadConfig(tableId);
   }, [tableId, loadConfig]);
+
+  // Phase 100 (METRIC-V119-01/03): subscribe to custom metrics configVersion so an edited
+  // expression triggers re-fetch. Also load custom metrics on mount / table change.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  useEffect(() => {
+    if (tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId]);
   // metricColumn for tooltip: first metric's source column (single-metric / grouped case).
   const metricColumn = metrics[0]?.column ?? "";
 
@@ -312,6 +324,8 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
             groupByColumn,
             seriesIn: top.series,
             customWhere,
+            // Phase 100 (METRIC-V119-04): thread tableId so resolveMetricExpr resolves live.
+            tableId,
           });
           const groupedRows = decodeSqlResponse(await runSql(mainSql, undefined, ctrl.signal));
           // numericBuckets:true → buckets sort numerically (mirrors the ungrouped Number() sort).
@@ -349,6 +363,8 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
               metric: m,
               maxBuckets,
               customWhere,
+              // Phase 100 (METRIC-V119-04): thread tableId so resolveMetricExpr resolves live.
+              tableId,
             });
             return runSql(sql, undefined, ctrl.signal).then(decodeSqlResponse);
           }),
@@ -393,11 +409,13 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
     effectiveSchema, effectiveTable, xField, maxBuckets,
     // Phase 72: toggling the group-by (or switching the grouped column) must re-fetch.
     groupByColumn, grouped,
-    JSON.stringify(metrics.map((m) => `${m.column}:${m.aggregation}`)),
+    JSON.stringify(metrics.map((m) => `${m.column}:${m.aggregation}:${m.metricId ?? ""}`)),
     filterVersion,
     fvViewName, fvExpiresAt, fvMaterializing,
     // Phase 98: re-fetch when the custom predicate changes.
     customWhere,
+    // Phase 100: re-fetch when a custom metric expression is edited.
+    customMetricsConfigVersion,
   ]);
 
   // ----- Drag state machine -----

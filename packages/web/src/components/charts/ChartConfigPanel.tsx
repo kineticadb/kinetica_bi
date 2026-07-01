@@ -125,7 +125,7 @@ const ChartConfigPanel = ({
   useEffect(() => {
     const tableId = typeof draft.tableId === "number" ? draft.tableId : undefined;
     if (tableId !== undefined) {
-      useCustomMetricsStore.getState().loadConfig(tableId);
+      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.tableId]);

@@ -49,6 +49,7 @@ import { useToastStore } from "../../store/toast";
 import { buildChipText } from "../../lib/columnTypes";
 import { useDashboardContext } from "../DashboardContext";
 import type { CalendarConfig } from "./CalendarConfigPanel";
+import { useCustomMetricsStore } from "../../store/customMetricsStore";
 
 /* ------------------------------------------------------------------ */
 /*  Layout constants                                                   */
@@ -107,11 +108,23 @@ export default function CalendarRenderer({
   const dynamicViewId = cfg.dynamicViewId;
   const timeCol = cfg.timeCol ?? "";
   const metricColumn = cfg.metricColumn ?? "*";
+  const metricId = cfg.metricId as number | undefined;
   const aggregation: TimelineAggregation = cfg.aggregation ?? "COUNT";
   const domain: CalendarDomain = cfg.domain ?? "month";
   const subdomain: CalendarSubdomain = cfg.subdomain ?? "day";
   const colorTheme = cfg.colorTheme ?? "Greens";
   const customWhere = cfg.customWhere ?? "";
+
+  // Phase 100 (METRIC-V119-01/03): subscribe so re-renders on custom metric edits trigger re-fetch.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId]);
   // Phase 68-03: OFF (default) = always read unfiltered source; ON = Phase 67 filter-aware behavior.
   const respondToFilters = cfg.respondToFilters ?? false;
   // Phase 68.1-03: layout mode + viewer control bar gate.
@@ -305,6 +318,9 @@ export default function CalendarRenderer({
           domain: effDomain,
           subdomain: effSubdomain,
           customWhere,
+          // Phase 100 (METRIC-V119-04): thread tableId + metricId so resolveMetricExpr resolves live.
+          tableId,
+          metricId,
         });
         const resp = await runSql(sql, undefined, ctrl.signal);
         const rows = decodeSqlResponse(resp).map((r) => ({
@@ -359,6 +375,9 @@ export default function CalendarRenderer({
     dvStatus,
     // Phase 98: re-fetch when the custom predicate changes.
     customWhere,
+    // Phase 100: re-fetch when a custom metric expression is edited.
+    customMetricsConfigVersion,
+    metricId,
   ]);
 
   // ---- Gap-fill (useMemo) — per-group, date-range-aware (68.2-03) ----

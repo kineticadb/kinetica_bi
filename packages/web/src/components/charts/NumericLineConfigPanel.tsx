@@ -141,7 +141,7 @@ export default function NumericLineConfigPanel({
   // Load custom metrics for the current table on mount / table change.
   useEffect(() => {
     if (tableId !== undefined) {
-      useCustomMetricsStore.getState().loadConfig(tableId);
+      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId]);
