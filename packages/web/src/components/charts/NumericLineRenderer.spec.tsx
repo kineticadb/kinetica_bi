@@ -76,6 +76,28 @@ vi.mock("../../store/filterViewStore", async (importOriginal) => {
   return { ...actual, useFilterViewStore };
 });
 
+// Phase 103: customMetricsStore mock — controls what selectMetrics(tableId) returns so the
+// grouped top-N pre-query resolveMetricExpr call can be exercised with a known expression.
+let mockCustomMetricsConfigs: Record<number, { metrics: Record<number, { id: number; label: string; expression: string }> }> = {};
+
+vi.mock("../../store/customMetricsStore", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const useCustomMetricsStore = ((selector?: (s: unknown) => unknown) => {
+    const state = { configVersion: 0, configs: mockCustomMetricsConfigs };
+    return selector ? selector(state) : state;
+  }) as unknown as { getState: () => unknown };
+  useCustomMetricsStore.getState = () => ({
+    configVersion: 0,
+    configs: mockCustomMetricsConfigs,
+    loadConfig: vi.fn().mockResolvedValue(undefined),
+  });
+  // selectMetrics must read from the SAME mock state so resolveMetricExpr resolves correctly.
+  const selectMetrics = (tableId: number) =>
+    Object.values((mockCustomMetricsConfigs[tableId]?.metrics ?? {}) as Record<number, { id: number; label: string; expression: string }>)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  return { ...actual, useCustomMetricsStore, selectMetrics };
+});
+
 // Phase 91 (READ-V118-01): selector-aware filterCombinationStore mock.
 // Mirrors TimelineRenderer.spec.tsx mock exactly.
 vi.mock("../../store/filterCombinationStore", async (importOriginal) => {
@@ -155,6 +177,8 @@ beforeEach(() => {
   mockVizToHash = {};
   mockRegistry = {};
   mockCombinationVersion = 0;
+  // Phase 103: reset custom metrics store mock state.
+  mockCustomMetricsConfigs = {};
   (runSql as unknown as ReturnType<typeof vi.fn>).mockReset();
 });
 
@@ -352,6 +376,69 @@ describe("NumericLineRenderer", () => {
       const metricSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
       expect(metricSql).not.toMatch(/AS series/);
       expect(metricSql).not.toMatch(/GROUP BY bucket, series/);
+    });
+
+    // Phase 103 regression: custom metric in grouped top-N pre-query must use resolved expression.
+    it("Phase 103: grouped top-N pre-query with custom metric uses resolved expression, not empty AVG()", async () => {
+      // Seed the store so selectMetrics(tableId=1) finds metric id=1 → expression "AVG(ul_speed)".
+      mockCustomMetricsConfigs = {
+        1: { metrics: { 1: { id: 1, label: "Avg UL Speed", expression: "AVG(ul_speed)" } } },
+      };
+      mockGroupedResponse(
+        0, 100,
+        [{ series: "A", value: 100 }],
+        [{ bucket: 0, series: "A", value: 10 }],
+      );
+      // Widget: custom metric (metricId=1, column="" — as stored when user picks a custom metric).
+      render(
+        <NumericLineRenderer
+          widget={makeWidget({
+            groupByColumn: "driver_id",
+            metrics: [{ column: "", aggregation: "AVG", metricId: 1, color: "FF66C2A5" }],
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3);
+      });
+      const topSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+      // Must contain the resolved expression, NOT the empty-arg AVG().
+      expect(topSql).toContain("AVG(ul_speed)");
+      expect(topSql).not.toContain("AVG()");
+    });
+
+    it("Phase 103: grouped top-N pre-query with a real column metric is unchanged (resolveMetricExpr passthrough)", async () => {
+      // Real metric (no metricId) → resolveMetricExpr returns realAgg0 unchanged.
+      mockGroupedResponse(
+        0, 100,
+        [{ series: "A", value: 100 }],
+        [{ bucket: 0, series: "A", value: 10 }],
+      );
+      render(
+        <NumericLineRenderer
+          widget={makeWidget({
+            groupByColumn: "driver_id",
+            metrics: [{ column: "fare_amount", aggregation: "AVG", color: "FF66C2A5" }],
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3);
+      });
+      const topSql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+      // Real column → standard AVG(col) — not empty parens.
+      expect(topSql).toContain("AVG(fare_amount)");
+      expect(topSql).not.toContain("AVG()");
+    });
+
+    // Phase 103 static assertion: the renderer now imports and calls resolveMetricExpr in the pre-query.
+    it("Phase 103: NumericLineRenderer.tsx imports resolveMetricExpr and uses it in the grouped top-N pre-query (static assertion)", () => {
+      const src = readFileSync(resolve(__dirname, "NumericLineRenderer.tsx"), "utf-8");
+      expect(src).toContain("resolveMetricExpr");
+      // The pre-query aggSql must be assigned from resolveMetricExpr, not a bare template literal.
+      expect(src).toMatch(/resolveMetricExpr\(metric0\.metricId,\s*realAgg0,\s*tableId\)/);
     });
   });
 });

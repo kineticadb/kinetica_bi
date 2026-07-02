@@ -61,6 +61,8 @@ import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 // Phase 100 (METRIC-V119-01/03): custom metric store for configVersion re-fetch + loadConfig.
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
+// Phase 103: route grouped top-N pre-query through resolveMetricExpr (custom metric fix).
+import { resolveMetricExpr } from "../../lib/customMetricSql";
 // Phase 101 (YAXIS-V119-01/02/03/04): Y-axis scale mode — absent → {} → byte-identical.
 import { yAxisScaleProps } from "../../lib/yAxisScale";
 
@@ -300,9 +302,12 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
 
           // Step 3a: top-N pre-query — rank series by aggregate metric value DESC.
           // Reuse the same aggExpr shape as buildNumericLineSql (COUNT_DISTINCT → COUNT(DISTINCT)).
-          const aggSql = metric0.aggregation === "COUNT_DISTINCT"
+          // Phase 103: resolve custom metric expressions so a custom metric (empty column,
+          // metricId set) does not produce an empty AVG() → "Invalid number of arguments".
+          const realAgg0 = metric0.aggregation === "COUNT_DISTINCT"
             ? `COUNT(DISTINCT ${metric0.column})`
             : `${metric0.aggregation}(${metric0.column})`;
+          const aggSql = resolveMetricExpr(metric0.metricId, realAgg0, tableId) ?? realAgg0;
           const fromTarget = querySchema === "" ? queryTable : `${querySchema}.${queryTable}`;
           const topSql =
             `SELECT ${groupByColumn} AS series, ${aggSql} AS value ` +
