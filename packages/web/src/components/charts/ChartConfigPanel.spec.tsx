@@ -467,7 +467,8 @@ describe("ChartConfigPanel — Phase 35 dynamic-view picker (DV-V16-12)", () => 
       <ChartConfigPanel
         widgetType="bar"
         title="Bar"
-        config={{}}
+        // Phase 102: bar uses the N-column builder; seed one row so the select is rendered.
+        config={{ groupByColumns: [""] }}
         tables={TABLES}
         views={[]}
         dynamicViews={MOCK_DYNAMIC_VIEWS}
@@ -489,8 +490,9 @@ describe("ChartConfigPanel — Phase 35 dynamic-view picker (DV-V16-12)", () => 
     // appear if column source had NOT flipped to columns_json).
     expect(metricOptions.some((t) => t.startsWith("lat"))).toBe(false);
 
-    // Group By picker should list ALL columns from columns_json: vendor_id + avg_fare
-    const groupBySelect = screen.getByLabelText("Group By") as HTMLSelectElement;
+    // Phase 102: bar uses the N-column builder; "Primary group (x-axis)" labels the first row.
+    // Verify builder select lists ALL columns from columns_json: vendor_id + avg_fare.
+    const groupBySelect = screen.getByLabelText("Primary group (x-axis)") as HTMLSelectElement;
     const groupByOptions = Array.from(groupBySelect.querySelectorAll("option")).map(
       (o) => o.textContent || "",
     );
@@ -517,9 +519,11 @@ describe("ChartConfigPanel — Phase 35 dynamic-view picker (DV-V16-12)", () => 
     // Inline hint must appear
     expect(screen.getByText(/Run Preview in Dynamic Views to populate columns/i)).toBeInTheDocument();
 
-    // All column pickers disabled
+    // Metric picker is disabled.
     expect(screen.getByLabelText("Metric Column")).toBeDisabled();
-    expect(screen.getByLabelText("Group By")).toBeDisabled();
+    // Phase 102: bar uses the N-column builder instead of the single Group By select.
+    // The "+ Add column" button is disabled when dvColumnsMissing.
+    expect(screen.getByRole("button", { name: /\+ Add column/i })).toBeDisabled();
   });
 
   it("loading a widget with existing dynamicViewId shows dv:<id> as the selected source", () => {

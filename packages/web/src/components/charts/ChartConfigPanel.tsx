@@ -17,6 +17,7 @@ import {
   isOrphanedMetric,
 } from "../../lib/customMetricSql";
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
+import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
 
 type TableInfo = {
   id: number;
@@ -307,6 +308,14 @@ const ChartConfigPanel = ({
   // chartDef.requiresGroupBy === false. SQL becomes `SELECT AGG(metric) AS value FROM table`
   // and the renderer reads data[0].value (already does so by default).
   const requiresGroupBy = chartDef?.requiresGroupBy !== false;
+
+  // Phase 102 (BARGRP-V119-01): bar-only multi-column group-by builder.
+  // isBar gates the N-column builder UI; isMultiColumnBarGroupBy gates the SQL branch.
+  const isBar = widgetType === "bar";
+  // Soft cap on the number of group-by columns in the builder (distinct from maxBarGroupBySeriesCap
+  // which caps SERIES at render time). 6 columns is a reasonable UI ceiling before the
+  // GROUP BY becomes unreadable — not an env-driven value per CONTEXT.md.
+  const MAX_BAR_GROUP_BY_COLUMNS = 6;
 
   // Build the SQL preview from structured fields
   const generatedSql = useMemo(() => {
@@ -710,9 +719,68 @@ const ChartConfigPanel = ({
                 </label>
                 )}
 
-                {/* Group By is hidden for scalar aggregated charts (bignumber) — those
-                    return a single AGG(metric) value with no group dimension. */}
-                {requiresGroupBy && (
+                {/* Group By — bar gets the N-column ordered builder (Phase 102 BARGRP-V119-01);
+                    all other grouped chart types keep the single Group By select unchanged. */}
+                {requiresGroupBy && isBar && (() => {
+                  const groupByColumns = (draft.groupByColumns as string[] | undefined) ?? [];
+                  return (
+                    <div className="config-group">
+                      <span className="config-group-label">Group By Columns</span>
+                      {groupByColumns.map((col, idx) => (
+                        <div key={idx} className="ds-field" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <span className="ds-field-label">
+                            {idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`}
+                          </span>
+                          <select
+                            className="ds-select"
+                            value={col}
+                            disabled={dvColumnsMissing}
+                            aria-label={idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`}
+                            onChange={(e) => {
+                              const next = [...groupByColumns];
+                              next[idx] = e.target.value;
+                              set("groupByColumns", next);
+                              set("groupByColumn", next[0] ?? "");
+                            }}
+                          >
+                            <option value="">Select a column...</option>
+                            {allColumns.map((c) => (
+                              <option key={c.name} value={c.name}>
+                                {c.name} ({c.type})
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="ghost-sm"
+                            type="button"
+                            disabled={dvColumnsMissing}
+                            onClick={() => {
+                              const next = groupByColumns.filter((_, i) => i !== idx);
+                              set("groupByColumns", next);
+                              set("groupByColumn", next[0] ?? "");
+                            }}
+                          >×</button>
+                        </div>
+                      ))}
+                      <button
+                        className="ghost-sm"
+                        type="button"
+                        disabled={dvColumnsMissing || groupByColumns.length >= MAX_BAR_GROUP_BY_COLUMNS}
+                        onClick={() => {
+                          const next = [...groupByColumns, ""];
+                          set("groupByColumns", next);
+                          set("groupByColumn", next[0] ?? "");
+                        }}
+                      >+ Add column</button>
+                      <span className="config-hint">
+                        First column = x-axis categories; the rest become colored series ({MAX_BAR_GROUP_BY_COLUMNS} column max).
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Single Group By for non-bar grouped charts; hidden for bignumber (requiresGroupBy false). */}
+                {requiresGroupBy && !isBar && (
                   <label className="ds-field">
                     <span className="ds-field-label">Group By</span>
                     <select
