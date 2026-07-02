@@ -1407,7 +1407,7 @@ input[type="checkbox"],
   border-radius: var(--radius-md);
   color: var(--accent-text);
   font-family: "JetBrains Mono", "Fira Code", monospace;
-  font-size: var(--text-base);
+  font-size: var(--text-xs); /* two steps down from --text-base (base→sm→xs) — filter chips were too large */
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1418,7 +1418,7 @@ input[type="checkbox"],
   border: none;
   color: var(--accent-text);
   opacity: 0.6;
-  font-size: var(--text-lg);
+  font-size: var(--text-sm); /* two steps down from --text-lg (lg→base→sm), tracking the smaller chip label */
   line-height: 1;
   padding: 0 var(--space-1);
   cursor: pointer;
