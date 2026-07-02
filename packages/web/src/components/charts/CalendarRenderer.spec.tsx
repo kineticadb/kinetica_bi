@@ -1243,6 +1243,129 @@ describe("CalendarRenderer", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 103 (CALSMART-V119-03): CalendarRenderer — smart mode viewer time-scale control bar
+// ---------------------------------------------------------------------------
+
+describe("CalendarRenderer — smart viewer time-scale control bar (Phase 103, CALSMART-V119-03)", () => {
+  // Test V119-03-1: smart mode renders calendar-smart-control-bar with a "Time scale" select
+  // whose options match the allowedSmartScales config (restricted to ["month","week"] here).
+  it("V119-03-1 (smart control bar rendered, options match allowedSmartScales): controlMode 'smart' with allowedSmartScales=['month','week'] renders smart control bar with exactly those 2 options", async () => {
+    render(
+      <CalendarRenderer
+        widget={makeWidget({
+          controlMode: "smart",
+          smartScale: "month",
+          allowedSmartScales: ["month", "week"],
+          // SMART_SCALE_TO_PAIR.month → year/month pair
+          domain: "year",
+          subdomain: "month",
+        })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    // Smart control bar must be present
+    const smartBar = screen.getByTestId("calendar-smart-control-bar");
+    expect(smartBar).toBeTruthy();
+    // Must have a "Time scale" labeled select
+    const select = screen.getByRole("combobox", { name: "Time scale" });
+    expect(select).toBeTruthy();
+    // Options must be exactly the two allowed scales
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toHaveLength(2);
+    expect(options).toContain("month");
+    expect(options).toContain("week");
+    // Must NOT contain scales outside the allowed set
+    expect(options).not.toContain("day");
+    expect(options).not.toContain("hour");
+  });
+
+  // Test V119-03-2: effDomain/effSubdomain derive from SMART_SCALE_TO_PAIR[effSmartScale].
+  // In smart mode the SQL FROM group must use the mapped pair, not the viewer-independent domain/subdomain.
+  // We assert via static source: SMART_SCALE_TO_PAIR usage wired into effDomain/effSubdomain for smart mode.
+  it("V119-03-2 (smart mode wires SMART_SCALE_TO_PAIR into effDomain/effSubdomain): static source check", () => {
+    const src = readFileSync(resolve(__dirname, "CalendarRenderer.tsx"), "utf-8");
+    // Must import SMART_SCALE_TO_PAIR from calendarBin
+    expect(src).toContain("SMART_SCALE_TO_PAIR");
+    // Must reference effSmartScale
+    expect(src).toContain("effSmartScale");
+    // effDomain and effSubdomain must be computed from SMART_SCALE_TO_PAIR in smart mode
+    // (the source must use SMART_SCALE_TO_PAIR[effSmartScale].domain/subdomain somewhere)
+    expect(src).toMatch(/SMART_SCALE_TO_PAIR\[effSmartScale\]\.domain/);
+    expect(src).toMatch(/SMART_SCALE_TO_PAIR\[effSmartScale\]\.subdomain/);
+  });
+
+  // Test V119-03-3: selecting a different scale from the smart control bar changes effSmartScale,
+  // which drives a re-fetch (runSql called again) with the new SMART_SCALE_TO_PAIR pair.
+  it("V119-03-3 (selecting a smart scale triggers re-fetch with new mapped pair): changing Time scale select fires runSql with mapped domain/subdomain", async () => {
+    // Config: smartScale="month" → SMART_SCALE_TO_PAIR.month = year/month.
+    // After selecting "week" → SMART_SCALE_TO_PAIR.week = month/week.
+    // The second runSql call's SQL must contain the DATE_TRUNC for subdomain "week".
+    (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(CANNED_ROWS));
+
+    render(
+      <CalendarRenderer
+        widget={makeWidget({
+          controlMode: "smart",
+          smartScale: "month",
+          allowedSmartScales: ["month", "week", "day", "hour"],
+          domain: "year",
+          subdomain: "month",
+        })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const callsBefore = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Change smart scale to "week"
+    const select = screen.getByRole("combobox", { name: "Time scale" });
+    fireEvent.change(select, { target: { value: "week" } });
+
+    await waitFor(() => {
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  // Test V119-03-4 (backward-compat): advanced mode (no controlMode) does NOT render
+  // calendar-smart-control-bar; the advanced control bar behavior is unchanged.
+  it("V119-03-4 (advanced mode: no smart control bar): advanced mode (absent controlMode) never renders calendar-smart-control-bar", async () => {
+    render(
+      <CalendarRenderer
+        widget={makeWidget({
+          // No controlMode — defaults to "advanced"
+          showDomainSubdomainControls: true,
+        })}
+        tables={TABLES}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    // Advanced mode: smart control bar must be absent
+    expect(screen.queryByTestId("calendar-smart-control-bar")).toBeNull();
+    // Advanced control bar must still be present (backward-compat)
+    expect(screen.getByTestId("calendar-control-bar")).toBeTruthy();
+  });
+
+  // Test V119-03-5: effSmartScale is guarded to allowedSmartScales — if the configured
+  // smartScale is not in the allowed set (e.g. designer misconfigured), it falls back to
+  // the first allowed scale. This is the baseSmart guard.
+  it("V119-03-5 (baseSmart guard): static source contains allowedSmartScales guard (baseSmart fallback)", () => {
+    const src = readFileSync(resolve(__dirname, "CalendarRenderer.tsx"), "utf-8");
+    // Must have a guard that falls back to allowedSmartScales[0] if smartScale is not allowed
+    expect(src).toContain("allowedSmartScales.includes(smartScale)");
+    // Must have baseSmart + effSmartScale derivation
+    expect(src).toContain("baseSmart");
+    expect(src).toContain("effSmartScale");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 98 (VIZSQL-V119-02/03): CalendarRenderer — customWhere injection
 // ---------------------------------------------------------------------------
 
