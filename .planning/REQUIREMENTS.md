@@ -43,7 +43,7 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 
 ### Verification (VERIFY)
 
-- [ ] **VERIFY-V119-01**: All five features verified via green automated gates (web vitest 100% from `packages/web`, web + server `tsc` clean, theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION) plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
+- [x] **VERIFY-V119-01**: All five features verified via green automated gates (web vitest 100% from `packages/web`, web + server `tsc` clean, theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION) plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
 
 ## Future Requirements
 
@@ -94,7 +94,7 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | BARGRP-V119-02 | Phase 102 | Complete |
 | BARGRP-V119-03 | Phase 102 | Complete |
 | BARGRP-V119-04 | Phase 102 | Complete |
-| VERIFY-V119-01 | Phase 103 | Pending |
+| VERIFY-V119-01 | Phase 103 | Complete |
 
 > METRIC-V119-01 is the only requirement spanning two phases: its server-persistence half lands in Phase 99 (the `custom_metrics` table + CRUD) and its Tables-area authoring-UI half in Phase 100. Every other requirement maps to exactly one phase.
 
