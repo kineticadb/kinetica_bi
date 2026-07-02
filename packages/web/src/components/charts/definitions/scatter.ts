@@ -4,6 +4,7 @@ const scatter: ChartTypeDefinition = {
   type: "scatter",
   label: "Scatter Plot",
   icon: ".:.",
+  addable: false, // retired from the add-visualization picker (non-functional); existing widgets still resolve
   supportsDrillDown: true,
   fields: [
     // Data

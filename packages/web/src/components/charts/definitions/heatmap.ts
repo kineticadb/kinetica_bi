@@ -4,6 +4,7 @@ const heatmap: ChartTypeDefinition = {
   type: "heatmap",
   label: "Heatmap",
   icon: "[]",
+  addable: false, // retired from the add-visualization picker (no renderer); existing widgets still resolve
   fields: [
     // Data
 

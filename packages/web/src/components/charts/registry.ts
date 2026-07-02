@@ -142,6 +142,15 @@ export type ChartTypeDefinition = {
    * for bignumber; heatmap renderer doesn't exist; map drill-down is Phase 12).
    */
   supportsDrillDown?: boolean;
+  /**
+   * Whether this chart type can be ADDED from the "add visualization" picker.
+   * - true / undefined: appears in the picker (default).
+   * - false: hidden from the picker so no NEW widget of this type can be created.
+   *   The type stays REGISTERED (getChartType still resolves it) so any pre-existing
+   *   widget of this type continues to render. Used to retire non-functional types
+   *   (heatmap — no renderer; scatter — non-functional) without a data migration.
+   */
+  addable?: boolean;
 };
 
 /* ------------------------------------------------------------------ */

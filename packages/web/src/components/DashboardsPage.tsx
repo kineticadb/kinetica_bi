@@ -368,7 +368,11 @@ const DashboardCreate = ({
 };
 
 const getVisualizationTypes = () =>
-  getAllChartTypes().map((ct) => ({ value: ct.type, label: ct.label, icon: ct.icon }));
+  getAllChartTypes()
+    // Hide non-functional / retired types (addable:false) from the add-visualization picker.
+    // They stay registered so any pre-existing widget of that type still renders.
+    .filter((ct) => ct.addable !== false)
+    .map((ct) => ({ value: ct.type, label: ct.label, icon: ct.icon }));
 
 const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
   const saved = widget.config?.layout as Partial<LayoutItem> | undefined;
