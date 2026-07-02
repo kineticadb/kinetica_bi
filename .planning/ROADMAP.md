@@ -155,7 +155,10 @@ Plans:
   1. Automated gates green: web vitest 100% from `packages/web`, web + server `tsc` clean (separate gates), theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION.
   2. A blocking live operator walk-through exercises all five features (smart calendar, custom WHERE incl. invalid-error isolation, custom metrics end-to-end, smart/log Y-axis, multi-column bar group-by) and attests PASS.
   3. Any gaps found in the walk are fixed in-session (with regression tests) and re-walked to PASS.
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 103-01-PLAN.md — SC1 automated gates on both stacks (web tsc/vitest/theme-guard; server tsc + set-based vitest) + sole-materialize-trigger invariant re-grep across all 5 features -> 103-GATES.md
+- [ ] 103-02-PLAN.md — BLOCKING live operator walk-through of the full UAT matrix (SC1/F1-F5/X/R) + in-session repro-test-driven gap fixes + 103-UAT.md + 103-VERIFICATION.md (VERIFY-V119-01)
 
 ### Phase Progress
 
@@ -167,7 +170,7 @@ Plans:
 | 100. Custom Metrics — Editor + Metric-Picker Integration | 0/3 | Planned | - |
 | 101. Smart / Logarithmic Y-Axis | 0/2 | Planned | - |
 | 102. Multi-Column Group-By on Bar Chart | 0/3 | Planned | - |
-| 103. Verification + Live UAT | 0/? | Not started | - |
+| 103. Verification + Live UAT | 0/2 | Planned | - |
 
 ---
 
