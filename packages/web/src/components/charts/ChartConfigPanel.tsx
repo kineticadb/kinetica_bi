@@ -369,6 +369,32 @@ const ChartConfigPanel = ({
 
     // Grouped variant (bar / line / pie / scatter / table):
     // SELECT groupBy, AGG(metric) AS value FROM table GROUP BY groupBy ORDER BY value DESC
+
+    // Phase 102 (BARGRP-V119-01): multi-column GROUP BY for bar charts.
+    // Guard: isMultiColumnBarGroupBy checks Array.isArray(groupByColumns) && length >= 2.
+    // When false, execution falls through to the EXISTING single-column branches unchanged
+    // — that is the byte-identical backward-compat path (BARGRP-V119-04).
+    if (isMultiColumnBarGroupBy(draft)) {
+      const cols = (draft.groupByColumns as string[]).filter(Boolean);
+      const colsClause = cols.join(", ");
+      // Metric expr: reuse the SAME resolution as the single-column path (custom vs real).
+      const multiMetricExpr = customMode
+        ? resolveMetricExpr(metricId, "", tableId)
+        : (aggregation === "COUNT_DISTINCT" ? `COUNT(DISTINCT ${metricColumn})` : `${aggregation}(${metricColumn})`);
+      if (!colsClause || !multiMetricExpr || (!customMode && (!metricColumn || !aggregation))) {
+        return `SELECT * FROM ${table} LIMIT 100`;
+      }
+      const multiSortDir = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
+      const ALLOWED_LIMITS_M = [5, 10, 25, 50, 100, 250, 500];
+      const rawLimitM = Number(draft.limit);
+      const xCatLimit = ALLOWED_LIMITS_M.includes(rawLimitM) ? rawLimitM : 100;
+      // generous LIMIT: config.limit × maxBarGroupBySeriesCap × 2 (read from auth store at save time).
+      const seriesCap = useAuthStore.getState().maxBarGroupBySeriesCap;
+      const sqlLimit = xCatLimit * seriesCap * 2;
+      // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
+      return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
+    }
+
     if (customMode) {
       // Custom selection: groupByColumn still required; metricExpr from store.
       if (!groupByColumn) return `SELECT * FROM ${table} LIMIT 100`;
@@ -392,7 +418,7 @@ const ChartConfigPanel = ({
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
     return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
-  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, selectedTable]);
 
   if (!chartDef) {
     return (
