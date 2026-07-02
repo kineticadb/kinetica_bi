@@ -1028,13 +1028,15 @@ const BarRenderer = ({
     // child gives ResponsiveContainer a concrete pixel-sized parent, so the chart fills the
     // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
     // plain height:100% left dead space below the bars.
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-    {/* Phase 102 (BARGRP-V119-03): truncation note — shown when series count exceeds the cap. */}
+    <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+    {/* Phase 102 (BARGRP-V119-03): truncation note — takes its own row above the plot (flex column) so it never overlaps the chart (UAT gap). */}
     {multiSeries && top.truncated && (
-      <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px" }}>
+      <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>
         Showing top {maxCap} of {top.total} series
       </div>
     )}
+    {/* Chart region: flexes to fill the space below the note; the absolute-inset child keeps the bulletproof ResponsiveContainer fill. */}
+    <div style={{ position: "relative", flex: "1 1 auto", minHeight: 0 }}>
     <div style={{ position: "absolute", inset: 0 }}>
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
@@ -1125,6 +1127,7 @@ const BarRenderer = ({
         )}
       </BarChart>
     </ResponsiveContainer>
+    </div>
     </div>
     </div>
   );
