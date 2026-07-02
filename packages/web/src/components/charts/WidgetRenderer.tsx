@@ -76,6 +76,20 @@ import {
 import { whereCustomWhere } from "../../lib/customWhere";
 // Phase 101 (YAXIS-V119-01/02/03/04): Y-axis scale mode — absent → {} → byte-identical.
 import { yAxisScaleProps } from "../../lib/yAxisScale";
+// Phase 102 (BARGRP-V119-02/03/04): multi-column bar group-by pivot + series cap + guard.
+import { isMultiColumnBarGroupBy, toBarPivotInput, BAR_SERIES_SEPARATOR } from "../../lib/barGroupedSeries";
+import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
+import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
+import { useAuthStore } from "../../store/auth";
+
+// "FF66C2A5" → "#66c2a5" for Recharts fill prop (recharts SVG needs #hex; sanctioned exception —
+// same pattern as TimelineRenderer.tsx toCssColor).
+function toCssColor(aarrggbb: string): string {
+  if (aarrggbb.startsWith("#")) return aarrggbb;
+  const hex = aarrggbb.length === 8 ? aarrggbb.slice(2) : aarrggbb;
+  return "#" + hex.toLowerCase();
+}
 
 type Props = {
   widget: WidgetDto;
@@ -879,6 +893,26 @@ const BarRenderer = ({
   const metricColumn = (config.metricColumn as string) || "";
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_BAR_COLOR;
+
+  // Phase 102 (BARGRP-V119-02/03/04): multi-column group-by → N <Bar> series.
+  const groupByColumns = (config.groupByColumns as string[] | undefined) ?? [];
+  const multiSeries = isMultiColumnBarGroupBy(config);
+  const maxCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
+  const colorTheme = (config.colorTheme as string) ?? DEFAULT_COLOR_THEME;
+  // Compute pivot only when multiSeries; single-series path is untouched.
+  const pivotInput = multiSeries ? toBarPivotInput(data as Record<string, unknown>[], groupByColumns) : [];
+  const top = multiSeries
+    ? selectTopSeries(pivotInput, { max: maxCap })
+    : { series: [] as string[], truncated: false, total: 0 };
+  const chartData = multiSeries ? pivotSeriesRows(pivotInput, top.series) : data;
+  const seriesColors = multiSeries
+    ? themeColorsFor(getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME)!, Math.max(1, top.series.length))
+    : [];
+  const stacked = config.stacked === true;
+  // x key: "bucket" in multi mode (pivotSeriesRows output), else resolved single-series x.
+  const xKey = multiSeries ? "bucket" : x;
+  // scaleProps: in multi mode compute over flattened series values; single mode unchanged.
+  void BAR_SERIES_SEPARATOR; // referenced to prevent tree-shaking (compound series label via toBarPivotInput)
   const radius = (config.barRadius as number) ?? 4;
   const showGrid = config.showGrid !== false;
   const showLegend = config.showLegend !== false;
@@ -919,6 +953,25 @@ const BarRenderer = ({
     const payload = (nextState as { activePayload?: Array<{ payload?: Row }> } | null)
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
+    // Phase 102 (BARGRP-V119-02): multi-series drill — bucket is the col1 category,
+    // column is groupByColumns[0] (never the synthetic "bucket" key).
+    if (multiSeries) {
+      const value = (payload as Record<string, unknown>)["bucket"];
+      const column = groupByColumns[0] ?? "";
+      setClickedElement(value);
+      setTimeout(() => {
+        dispatchDrillDown({
+          tableId,
+          dynamicViewId,
+          dashboardId,
+          column,
+          value,
+          dataType: typeof value === "number" ? "number" : "string",
+          widgetId,
+        });
+      }, 300);
+      return;
+    }
     // Aggregated chart → drill on the group-by column (the clicked category), never a
     // diverged drillDownColumn that isn't in the aggregated row (would filter `= 'undefined'`).
     const { column, value, dataType } = resolveAggregatedDrillTarget(
@@ -944,7 +997,12 @@ const BarRenderer = ({
   // Phase 101 (YAXIS-V119-01/02/03/04): Y-axis scale. Bar defaultConfig is "" (not undefined),
   // so coalesce "" → undefined to hit the no-props path (byte-identical when unset).
   const yAxisScale = ((config.yAxisScale as ("zero" | "smart" | "log" | "")) || undefined);
-  const scaleProps = yAxisScaleProps(yAxisScale, data.map((r) => Number((r as Record<string, unknown>)[y])));
+  // Phase 102: multi-series scaleProps computed over ALL series values (flattened);
+  // single-series path byte-identical to pre-102 (unchanged formula).
+  const scaleValues = multiSeries
+    ? chartData.flatMap((row) => top.series.map((sk) => Number((row as Record<string, unknown>)[sk])))
+    : data.map((r) => Number((r as Record<string, unknown>)[y]));
+  const scaleProps = yAxisScaleProps(yAxisScale, scaleValues);
 
   // Phase 87 (UAT): value-axis number format — per-widget override → bound metric column
   // default → raw. Mirrors the timeline/line hybrid; unconfigured bars keep their raw tick
@@ -961,7 +1019,7 @@ const BarRenderer = ({
   // Size the vertical value axis to its formatted labels so short SI ticks ("1.2M") reclaim
   // left-edge space; recharts 2.x YAxis width is a fixed number (no "auto").
   const valueAxisWidth = estimateValueAxisWidth(
-    data.map((row) => Number((row as Record<string, unknown>)[y])),
+    scaleValues,
     valueAxisTickFormatter,
   );
 
@@ -971,10 +1029,16 @@ const BarRenderer = ({
     // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
     // plain height:100% left dead space below the bars.
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+    {/* Phase 102 (BARGRP-V119-03): truncation note — shown when series count exceeds the cap. */}
+    {multiSeries && top.truncated && (
+      <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px" }}>
+        Showing top {maxCap} of {top.total} series
+      </div>
+    )}
     <div style={{ position: "absolute", inset: 0 }}>
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
-        data={data}
+        data={chartData}
         layout={horizontal ? "vertical" : "horizontal"}
         margin={{
           top: 8,
@@ -989,60 +1053,76 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
-            <YAxis type="category" dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 104 : 90} label={leftLabelObj} />
+            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
-            <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
+            <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
             <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
           </>
         )}
         {showTooltip && (
           <Tooltip
             {...RECHARTS_TOOLTIP_PROPS}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} />}
           />
         )}
         {showLegend && <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} />}
-        <Bar
-          dataKey={y}
-          fill={color}
-          radius={horizontal ? [0, radius, radius, 0] : [radius, radius, 0, 0]}
-          name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
-        >
-          {showValueLabels && (
-            <LabelList
-              dataKey={y}
-              position={horizontal ? "right" : "top"}
-              fill={AXIS_COLOR}
-              fontSize={11}
-              // Phase 77 follow-up (COLAPPLY-V115-02): run on-bar value labels through the
-              // column formatter for consistency with the tooltip + pie slice labels. When no
-              // format spec is set, resolveFormatter is identity → fall back to the prior
-              // toLocaleString() default (thousands separator) so unconfigured bars look unchanged.
-              formatter={(v: unknown) => {
-                if (tableId !== undefined && metricColumn) {
-                  const out = resolveFormatter(tableId, metricColumn)(v);
-                  if (out !== v) return String(out); // a real format spec was applied
+        {/* Phase 102 (BARGRP-V119-02): multi-series path — N <Bar> elements, no <Cell>/<LabelList>. */}
+        {multiSeries ? (
+          top.series.map((sk, i) => (
+            <Bar
+              key={`series_${sk}`}
+              dataKey={sk}
+              name={sk}
+              fill={toCssColor(seriesColors[i] ?? seriesColors[0] ?? "FF66C2A5")}
+              radius={stacked ? 0 : (horizontal ? [0, radius, radius, 0] : [radius, radius, 0, 0])}
+              {...(stacked ? { stackId: "stacked" } : {})}
+              isAnimationActive={false}
+            />
+          ))
+        ) : (
+          /* Single-series path — BYTE-IDENTICAL to pre-102 (BARGRP-V119-04 backward-compat). */
+          <Bar
+            dataKey={y}
+            fill={color}
+            radius={horizontal ? [0, radius, radius, 0] : [radius, radius, 0, 0]}
+            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
+          >
+            {showValueLabels && (
+              <LabelList
+                dataKey={y}
+                position={horizontal ? "right" : "top"}
+                fill={AXIS_COLOR}
+                fontSize={11}
+                // Phase 77 follow-up (COLAPPLY-V115-02): run on-bar value labels through the
+                // column formatter for consistency with the tooltip + pie slice labels. When no
+                // format spec is set, resolveFormatter is identity → fall back to the prior
+                // toLocaleString() default (thousands separator) so unconfigured bars look unchanged.
+                formatter={(v: unknown) => {
+                  if (tableId !== undefined && metricColumn) {
+                    const out = resolveFormatter(tableId, metricColumn)(v);
+                    if (out !== v) return String(out); // a real format spec was applied
+                  }
+                  return typeof v === "number" ? v.toLocaleString() : String(v ?? "");
+                }}
+              />
+            )}
+            {data.map(row => (
+              <Cell
+                key={String(row[x])}
+                fill={color}
+                fillOpacity={
+                  clickedElement !== null
+                    ? String(row[x]) === String(clickedElement)
+                      ? 1.0
+                      : 0.3
+                    : 1.0
                 }
-                return typeof v === "number" ? v.toLocaleString() : String(v ?? "");
-              }}
-            />
-          )}
-          {data.map((row, index) => (
-            <Cell
-              key={index}
-              fill={color}
-              fillOpacity={
-                clickedElement !== null
-                  ? String(row[x]) === String(clickedElement)
-                    ? 1.0
-                    : 0.3
-                  : 1.0
-              }
-            />
-          ))}
-        </Bar>
+              />
+            ))}
+          </Bar>
+        )}
       </BarChart>
     </ResponsiveContainer>
     </div>

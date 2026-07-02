@@ -38,6 +38,9 @@ const ALLOWLIST: ReadonlyArray<string> = [
   // Data-viz: bright series-overlay band color painted on the chart (not chrome).
   "charts/TimelineRenderer.tsx",
   "charts/NumericLineRenderer.tsx",
+  // Phase 102 (BARGRP-V119-02): toCssColor helper converts AARRGGBB→#RRGGBB for recharts
+  // SVG fill props — data-viz series colors, not app chrome.
+  "charts/WidgetRenderer.tsx",
   // Color tooling: the <input type="color"> default value + new color-rule default
   // (a color picker — its whole purpose is to author literal colors).
   "charts/ChartConfigPanel.tsx",
