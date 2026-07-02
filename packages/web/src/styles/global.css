@@ -1364,6 +1364,7 @@ input[type="checkbox"],
 .filter-bar-table {
   font-weight: var(--font-weight-semibold);
   color: var(--text);
+  font-size: var(--text-sm); /* two steps down from the inherited --text-lg (lg→base→sm); table name read too large */
 }
 
 .filter-bar-clause {
@@ -1440,7 +1441,7 @@ input[type="checkbox"],
   background: none;
   border: none;
   color: var(--muted);
-  font-size: var(--text-base);
+  font-size: var(--text-xs); /* two steps down from --text-base (base→sm→xs), tracking the smaller chips */
   cursor: pointer;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
