@@ -129,11 +129,16 @@ export default function CalendarRenderer({
   const respondToFilters = cfg.respondToFilters ?? false;
   // Phase 68.1-03: layout mode + viewer control bar gate.
   const layoutMode = cfg.layoutMode ?? "wrap";
-  // Phase 97 (CALSMART): controlMode "smart" is fixed at config time — the v1.13 viewer-live
-  // grouping control bar is an ADVANCED-mode-only feature. Absent controlMode → "advanced".
-  const controlMode = cfg.controlMode ?? "advanced";
-  const showControls =
-    controlMode === "advanced" && (cfg.showDomainSubdomainControls ?? false);
+  // Phase 97/103 (CALSMART): effective-mode resolution with legacy back-compat.
+  // Absent controlMode → "advanced" (byte-identical legacy).
+  // Legacy controlMode:"advanced" + showDomainSubdomainControls:true → resolve to "advanced-adjustable"
+  // so existing calendars that had the checkbox ON continue to show the viewer bar.
+  const rawMode = (cfg.controlMode ?? "advanced") as "advanced" | "advanced-adjustable" | "smart";
+  const effectiveMode: "advanced" | "advanced-adjustable" | "smart" =
+    rawMode === "advanced" && cfg.showDomainSubdomainControls === true
+      ? "advanced-adjustable"
+      : rawMode;
+  const showControls = effectiveMode === "advanced-adjustable";
   // Phase 103 (CALSMART-V119-03): smart config coalesce — mirrors CalendarConfigPanel's coalesce.
   const smartScale = (cfg.smartScale ?? "day") as SmartScale;
   const allowedSmartScales: SmartScale[] =
@@ -251,13 +256,13 @@ export default function CalendarRenderer({
   const effSmartScale: SmartScale = viewerSmartScale ?? baseSmart;
   // Effective values: viewer override ?? operator config. Used EVERYWHERE (SQL, labels, bounds, drill).
   // In smart mode: derive domain+subdomain from SMART_SCALE_TO_PAIR[effSmartScale].
-  // In advanced mode: use the existing viewerDomain/viewerSubdomain override path.
+  // In advanced/advanced-adjustable mode: use the existing viewerDomain/viewerSubdomain override path.
   const effDomain: CalendarDomain =
-    controlMode === "smart"
+    effectiveMode === "smart"
       ? SMART_SCALE_TO_PAIR[effSmartScale].domain
       : (viewerDomain ?? domain);
   const effSubdomain: CalendarSubdomain =
-    controlMode === "smart"
+    effectiveMode === "smart"
       ? SMART_SCALE_TO_PAIR[effSmartScale].subdomain
       : (viewerSubdomain ?? subdomain);
 
@@ -626,7 +631,7 @@ export default function CalendarRenderer({
   return (
     <div className="widget-calendar" style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
       {/* ---- Smart viewer time-scale control bar (Phase 103, CALSMART-V119-03) ---- */}
-      {controlMode === "smart" && (
+      {effectiveMode === "smart" && (
         <div data-testid="calendar-smart-control-bar" style={{ display: "flex", gap: 8, padding: "4px 8px", flexShrink: 0 }}>
           <select
             className="ds-select"

@@ -1222,6 +1222,23 @@ describe("CalendarRenderer", () => {
       });
     });
 
+    it("Test P97-3b (advanced-adjustable: control bar present): controlMode 'advanced-adjustable' renders calendar-control-bar without needing the legacy showDomainSubdomainControls flag", async () => {
+      render(
+        <CalendarRenderer
+          widget={makeWidget({
+            controlMode: "advanced-adjustable",
+          })}
+          tables={TABLES}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+      });
+      expect(screen.getByTestId("calendar-control-bar")).toBeInTheDocument();
+      // Smart bar must NOT be present
+      expect(screen.queryByTestId("calendar-smart-control-bar")).toBeNull();
+    });
+
     it("Test P97-4 (smart config renders grid at mapped pair): a smart config with domain 'month'/subdomain 'week' (SMART_SCALE_TO_PAIR.week) renders the calendar grid without errors", async () => {
       render(
         <CalendarRenderer

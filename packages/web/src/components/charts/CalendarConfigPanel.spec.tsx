@@ -372,32 +372,33 @@ describe("CalendarConfigPanel", () => {
     );
   });
 
-  it("Test 20 (controls toggle present + default OFF): 'Show domain/subdomain controls' checkbox is present and unchecked", () => {
+  it("Test 20 (controls checkbox GONE): 'Show domain/subdomain controls' checkbox no longer renders (replaced by 3-way Time grouping control select)", () => {
     renderPanel({ tableId: 1, tableRef: "demo.events" });
-    const checkbox = screen.getByRole("checkbox", {
-      name: /show domain.subdomain controls/i,
-    });
-    expect(checkbox).toBeInTheDocument();
-    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    // The old checkbox is removed — querying for it must return null
+    expect(screen.queryByRole("checkbox", { name: /show domain.subdomain controls/i })).toBeNull();
+    expect(screen.queryByLabelText(/about show domain.subdomain controls/i)).toBeNull();
   });
 
-  it("Test 21 (controls toggle ON): clicking the checkbox calls onChange with showDomainSubdomainControls:true", () => {
-    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events" });
-    const checkbox = screen.getByRole("checkbox", {
-      name: /show domain.subdomain controls/i,
-    });
-    fireEvent.click(checkbox);
+  it("Test 21 (3-way select: advanced-adjustable patches controlMode + showDomainSubdomainControls:true): picking advanced-adjustable keeps domain block and syncs legacy flag", () => {
+    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events", timeCol: "ts" });
+    const modeSelect = screen.getByLabelText("Time grouping control");
+    fireEvent.change(modeSelect, { target: { value: "advanced-adjustable" } });
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ showDomainSubdomainControls: true }),
+      expect.objectContaining({
+        controlMode: "advanced-adjustable",
+        showDomainSubdomainControls: true,
+      }),
     );
   });
 
-  it("Test 22 (info icon): info glyph with aria-label 'About show domain/subdomain controls' is present", () => {
+  it("Test 22 (3-way select options): Time grouping control select has exactly the 3 options (advanced / advanced-adjustable / smart)", () => {
     renderPanel({ tableId: 1, tableRef: "demo.events" });
-    const infoEl = screen.getByLabelText(/about show domain.subdomain controls/i);
-    expect(infoEl).toBeInTheDocument();
-    // Native title= tooltip must be set
-    expect(infoEl.getAttribute("title")).toBeTruthy();
+    const modeSelect = screen.getByLabelText("Time grouping control") as HTMLSelectElement;
+    const options = Array.from(modeSelect.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toContain("advanced");
+    expect(options).toContain("advanced-adjustable");
+    expect(options).toContain("smart");
+    expect(options).toHaveLength(3);
   });
 
   it("Test 23 (defaults object): DEFAULT_CALENDAR_CONFIG has layoutMode:'wrap' and showDomainSubdomainControls:false", () => {
@@ -429,6 +430,18 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
       tableRef: "demo.events",
       timeCol: "ts",
       controlMode: "advanced",
+    } as Partial<CalendarConfig>);
+    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
+    expect(screen.getByLabelText("Subdomain")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Time scale")).not.toBeInTheDocument();
+  });
+
+  it("Test S2b: controlMode:'advanced-adjustable' also renders Domain + Subdomain selects (same config block as advanced)", () => {
+    renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "advanced-adjustable",
     } as Partial<CalendarConfig>);
     expect(screen.getByLabelText("Domain")).toBeInTheDocument();
     expect(screen.getByLabelText("Subdomain")).toBeInTheDocument();

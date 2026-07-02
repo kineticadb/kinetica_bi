@@ -64,7 +64,7 @@ export type CalendarConfig = {
   respondToFilters?: boolean;  // Phase 68-03: OFF = always read unfiltered source (default). ON = Phase 67 filter-aware behavior.
   layoutMode?: "wrap" | "strip";              // CALUX-V113-01: "wrap" = GitHub-style week blocks (default); "strip" = continuous horizontal strip
   showDomainSubdomainControls?: boolean;       // CALUX-V113-02: viewer dropdowns to change grouping live (default false / OFF)
-  controlMode?: "advanced" | "smart";         // Phase 97: absent → "advanced" (byte-identical legacy)
+  controlMode?: "advanced" | "advanced-adjustable" | "smart"; // Phase 97/103: absent → "advanced" (byte-identical legacy); "advanced-adjustable" = domain+subdomain viewer bar ON
   smartScale?: SmartScale;                     // selected Time scale when controlMode === "smart"
   allowedSmartScales?: SmartScale[];           // designer-restricted offered scales; default = all four
   customWhere?: string;                        // Phase 98 (VIZSQL-V119-01): raw SQL predicate ANDed into the query; absent → byte-identical
@@ -145,8 +145,7 @@ export default function CalendarConfigPanel({
   const colorTheme = cfg.colorTheme ?? DEFAULT_CALENDAR_CONFIG.colorTheme;
   const respondToFilters = cfg.respondToFilters ?? false;
   const layoutMode = (cfg.layoutMode ?? DEFAULT_CALENDAR_CONFIG.layoutMode) as "wrap" | "strip";
-  const showDomainSubdomainControls = cfg.showDomainSubdomainControls ?? false;
-  const controlMode = (cfg.controlMode ?? DEFAULT_CALENDAR_CONFIG.controlMode) as "advanced" | "smart";
+  const controlMode = (cfg.controlMode ?? DEFAULT_CALENDAR_CONFIG.controlMode) as "advanced" | "advanced-adjustable" | "smart";
   const smartScale = (cfg.smartScale ?? DEFAULT_CALENDAR_CONFIG.smartScale) as SmartScale;
   const allowedSmartScales: SmartScale[] =
     cfg.allowedSmartScales && cfg.allowedSmartScales.length > 0
@@ -543,21 +542,25 @@ export default function CalendarConfigPanel({
           </div>
           )}
 
-          {/* ---- Control mode (Phase 97) ---- */}
+          {/* ---- Control mode (Phase 97/103) ---- */}
           <div className="ds-field">
             <span className="ds-field-label">Time grouping control</span>
             <select
               className="ds-select"
               aria-label="Time grouping control"
               value={controlMode}
-              onChange={(e) => patch({ controlMode: e.target.value as "advanced" | "smart" })}
+              onChange={(e) => {
+                const value = e.target.value as "advanced" | "advanced-adjustable" | "smart";
+                patch({ controlMode: value, showDomainSubdomainControls: value === "advanced-adjustable" });
+              }}
             >
               <option value="advanced">Advanced (domain + subdomain)</option>
-              <option value="smart">Smart (single time scale)</option>
+              <option value="advanced-adjustable">Advanced (domain + subdomain, dashboard adjustable)</option>
+              <option value="smart">Smart (single time scale, dashboard adjustable)</option>
             </select>
           </div>
 
-          {controlMode === "advanced" && (
+          {(controlMode === "advanced" || controlMode === "advanced-adjustable") && (
             <>
               {/* ---- Domain ---- */}
               <div className="ds-field">
@@ -678,25 +681,6 @@ export default function CalendarConfigPanel({
               <option value="strip">Continuous strip</option>
             </select>
           </div>
-
-          {/* Show domain/subdomain controls */}
-          <label className="config-toggle">
-            <input
-              type="checkbox"
-              className="accent-checkbox"
-              checked={showDomainSubdomainControls}
-              onChange={(e) => patch({ showDomainSubdomainControls: e.target.checked })}
-              aria-label="Show domain/subdomain controls"
-            />
-            <span>
-              Show domain/subdomain controls
-              <span
-                title="When on, viewers get dropdowns on the widget to change the time grouping live, without editing the widget. The viewer's choice is not saved and resets on reload."
-                aria-label="About show domain/subdomain controls"
-                style={{ marginLeft: 4, cursor: "help" }}
-              >ⓘ</span>
-            </span>
-          </label>
 
           {/* ---- Custom filter (SQL) — Phase 98 (VIZSQL-V119-01) ---- */}
           <div className="config-group-label" style={{ marginTop: 16 }}>CUSTOM FILTER</div>
