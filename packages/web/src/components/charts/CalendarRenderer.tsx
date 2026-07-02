@@ -37,8 +37,8 @@ import {
 import { gapFillCalendar } from "../../lib/calendarGapFill";
 import { inferWeekAnchorDow } from "../../lib/calendarBuckets";
 import { useChartAxisColors } from "../../lib/chartColors";
-import type { CalendarDomain, CalendarSubdomain } from "../../lib/calendarBin";
-import { computeCellBounds, VALID_DOMAIN_SUBDOMAIN } from "../../lib/calendarBin";
+import type { CalendarDomain, CalendarSubdomain, SmartScale } from "../../lib/calendarBin";
+import { computeCellBounds, VALID_DOMAIN_SUBDOMAIN, SMART_SCALES, SMART_SCALE_TO_PAIR } from "../../lib/calendarBin";
 import { layoutCalendar, WEEK_START } from "../../lib/calendarLayout";
 import type { TimelineAggregation, TimelineIntervalKey } from "../../lib/timelineBin";
 import { formatTimelineTick } from "../../lib/timelineBin";
@@ -134,6 +134,12 @@ export default function CalendarRenderer({
   const controlMode = cfg.controlMode ?? "advanced";
   const showControls =
     controlMode === "advanced" && (cfg.showDomainSubdomainControls ?? false);
+  // Phase 103 (CALSMART-V119-03): smart config coalesce — mirrors CalendarConfigPanel's coalesce.
+  const smartScale = (cfg.smartScale ?? "day") as SmartScale;
+  const allowedSmartScales: SmartScale[] =
+    cfg.allowedSmartScales && cfg.allowedSmartScales.length > 0
+      ? (cfg.allowedSmartScales as SmartScale[])
+      : SMART_SCALES.slice();
 
   // ---- Empty-state gates (before hooks — mirroring TimelineRenderer eslint-disable pattern) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -237,9 +243,23 @@ export default function CalendarRenderer({
   const [viewerDomain, setViewerDomain] = useState<CalendarDomain | null>(null);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [viewerSubdomain, setViewerSubdomain] = useState<CalendarSubdomain | null>(null);
+  // Phase 103 (CALSMART-V119-03): viewer-local smart scale override (smart mode only).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [viewerSmartScale, setViewerSmartScale] = useState<SmartScale | null>(null);
+  // Effective smart scale: viewer override ?? config, guarded to the allowed set (baseSmart guard).
+  const baseSmart: SmartScale = allowedSmartScales.includes(smartScale) ? smartScale : allowedSmartScales[0];
+  const effSmartScale: SmartScale = viewerSmartScale ?? baseSmart;
   // Effective values: viewer override ?? operator config. Used EVERYWHERE (SQL, labels, bounds, drill).
-  const effDomain: CalendarDomain = viewerDomain ?? domain;
-  const effSubdomain: CalendarSubdomain = viewerSubdomain ?? subdomain;
+  // In smart mode: derive domain+subdomain from SMART_SCALE_TO_PAIR[effSmartScale].
+  // In advanced mode: use the existing viewerDomain/viewerSubdomain override path.
+  const effDomain: CalendarDomain =
+    controlMode === "smart"
+      ? SMART_SCALE_TO_PAIR[effSmartScale].domain
+      : (viewerDomain ?? domain);
+  const effSubdomain: CalendarSubdomain =
+    controlMode === "smart"
+      ? SMART_SCALE_TO_PAIR[effSmartScale].subdomain
+      : (viewerSubdomain ?? subdomain);
 
   // ---- Data fetch state ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -605,6 +625,24 @@ export default function CalendarRenderer({
 
   return (
     <div className="widget-calendar" style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
+      {/* ---- Smart viewer time-scale control bar (Phase 103, CALSMART-V119-03) ---- */}
+      {controlMode === "smart" && (
+        <div data-testid="calendar-smart-control-bar" style={{ display: "flex", gap: 8, padding: "4px 8px", flexShrink: 0 }}>
+          <select
+            className="ds-select"
+            aria-label="Time scale"
+            value={effSmartScale}
+            onChange={(e) => setViewerSmartScale(e.target.value as SmartScale)}
+          >
+            {allowedSmartScales.map((s) => (
+              <option key={s} value={s}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* ---- Config-gated viewer control bar (CALUX-V113-02) ---- */}
       {showControls && (
         <div data-testid="calendar-control-bar" style={{ display: "flex", gap: 8, padding: "4px 8px", flexShrink: 0 }}>
