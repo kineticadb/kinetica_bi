@@ -3995,3 +3995,105 @@ describe("Phase 101 — BarRenderer yAxisScaleProps wiring (static-source assert
     expect(src).toMatch(/\|\|\s*undefined/);
   });
 });
+
+// ── Phase 102 Plan 03 (BARGRP-V119-02/03/04): BarRenderer multi-series branch ──
+// Tests 1-6 all use static-source assertions (readFileSync) because recharts doesn't
+// expose component props in JSDOM — mirrors the Phase 101 pattern above.
+describe("Phase 102 Plan 03 — BarRenderer multi-series branch (BARGRP-V119-02/03/04)", () => {
+  const { resolve } = require("node:path");
+
+  // ── Test 1 (BARGRP-V119-04): single-series path is byte-identical ──
+  // The EXISTING single-<Bar dataKey={y}>, <Cell> loop, and <LabelList> MUST all remain
+  // in the source file, gated so they only render when NOT in multi-series mode.
+  it("Test 1 (BARGRP-V119-04): single-series path contains dataKey={y}, <Cell loop, <LabelList (byte-identical guard)", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // Single-series <Bar> uses the resolved y key (not a literal "value")
+    expect(src).toMatch(/dataKey=\{y\}/);
+    // Cell loop exists inside the bar renderer
+    expect(src).toMatch(/data\.map\([^)]*=>\s*\(\s*<Cell/);
+    // LabelList is present
+    expect(src).toMatch(/<LabelList/);
+  });
+
+  // ── Test 2 (BARGRP-V119-02): multi-series branch maps top.series to <Bar> with conditional stackId ──
+  it("Test 2 (BARGRP-V119-02): multi-series branch maps top.series to <Bar>, stackId conditionally applied (never empty string)", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // Multi-series: top.series.map( -> <Bar dataKey=
+    expect(src).toMatch(/top\.series\.map\(/);
+    // stackId: "stacked" literal exists (for stacked mode)
+    expect(src).toMatch(/stackId:\s*"stacked"/);
+    // Conditional spread: stacked ? { stackId: "stacked" } : {} (or equivalent)
+    expect(src).toMatch(/stacked\s*\?/);
+    // NEVER an empty-string stackId (grouped mode omits the prop entirely)
+    expect(src).not.toMatch(/stackId=""/);
+    expect(src).not.toMatch(/stackId:\s*""/);
+    // isMultiColumnBarGroupBy must be imported and used
+    expect(src).toMatch(/isMultiColumnBarGroupBy/);
+  });
+
+  // ── Test 3 (BARGRP-V119-03): truncation note uses config-hint + bar-truncated-note testid ──
+  it("Test 3 (BARGRP-V119-03): truncation note has data-testid='bar-truncated-note', uses className config-hint, NOT config-hint-warning", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // data-testid must be present
+    expect(src).toMatch(/data-testid="bar-truncated-note"/);
+    // Guarded by multiSeries && top.truncated
+    expect(src).toMatch(/multiSeries.*top\.truncated|top\.truncated.*multiSeries/);
+    // className must be config-hint, NEVER config-hint-warning
+    expect(src).toMatch(/className="config-hint"/);
+    expect(src).not.toMatch(/config-hint-warning/);
+    // Color via theme token, not hardcoded hex
+    expect(src).toMatch(/var\(--accent-text\)/);
+  });
+
+  // ── Test 4 (BARGRP-V119-02): colors from themeColorsFor, compound labels, NO Cell/LabelList in multi branch ──
+  it("Test 4 (BARGRP-V119-02): multi-series uses themeColorsFor + BAR_SERIES_SEPARATOR; <Cell and <LabelList remain only in single-series guard", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // themeColorsFor must be imported and called in BarRenderer
+    expect(src).toMatch(/themeColorsFor\(/);
+    // BAR_SERIES_SEPARATOR is imported (from barGroupedSeries)
+    expect(src).toMatch(/BAR_SERIES_SEPARATOR/);
+    // toBarPivotInput must be imported
+    expect(src).toMatch(/toBarPivotInput/);
+    // Cell and LabelList are still in the source (for single-series), not removed entirely
+    expect(src).toMatch(/<Cell/);
+    expect(src).toMatch(/<LabelList/);
+  });
+
+  // ── Test 5 (BARGRP-V119-02): drill-down on bucket reads payload["bucket"], dispatches groupByColumns[0] ──
+  it("Test 5 (BARGRP-V119-02): multi-series drill uses payload[\"bucket\"] and column: groupByColumns[0]", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // Drill reads ["bucket"] from payload in multi-series branch
+    expect(src).toMatch(/\["bucket"\]/);
+    // Dispatches with groupByColumns[0] as the column
+    expect(src).toMatch(/groupByColumns\[0\]/);
+  });
+
+  // ── Test 6 (BARGRP-V119-02): ColumnFormatTooltip gets groupByColumns[0] in multi mode, not "bucket" ──
+  it("Test 6 (BARGRP-V119-02): ColumnFormatTooltip receives groupByColumns[0] (not 'bucket') in multi-series mode", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // ColumnFormatTooltip groupByColumn prop is conditional in multi mode
+    expect(src).toMatch(/groupByColumn=\{multiSeries\s*\?/);
+    // It uses groupByColumns[0] not "bucket"
+    expect(src).toMatch(/groupByColumns\[0\]/);
+    // "bucket" must NOT be passed as a groupByColumn prop literal
+    expect(src).not.toMatch(/groupByColumn="bucket"/);
+  });
+
+  // ── Invariant: BarRenderer adds NO materialize/dropFilterView calls ──
+  it("Invariant: BarRenderer does not call materializeFilter or dropFilterView", () => {
+    const { readFileSync } = require("node:fs");
+    const src = readFileSync(resolve(__dirname, "WidgetRenderer.tsx"), "utf-8");
+    // Extract only the BarRenderer function body (between BarRenderer definition and LineRenderer)
+    const barStart = src.indexOf("const BarRenderer = (");
+    const lineStart = src.indexOf("const LineRenderer = (");
+    const barBody = barStart !== -1 && lineStart !== -1 ? src.slice(barStart, lineStart) : "";
+    expect(barBody).not.toMatch(/materializeFilter/);
+    expect(barBody).not.toMatch(/dropFilterView/);
+  });
+});
