@@ -1066,6 +1066,11 @@ const BarRenderer = ({
         {showTooltip && (
           <Tooltip
             {...RECHARTS_TOOLTIP_PROPS}
+            // recharts' default bar hover cursor is an opaque light-gray band (reads as a
+            // glaring white block in dark mode). Use a subtle theme-aware fill (--color-chart-axis
+            // via useChartAxisColors) at low opacity so the hovered-category highlight follows
+            // the active theme/brand instead.
+            cursor={{ fill: AXIS_COLOR, fillOpacity: 0.12 }}
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} />}
           />
         )}
