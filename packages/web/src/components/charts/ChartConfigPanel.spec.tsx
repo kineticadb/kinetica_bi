@@ -956,3 +956,177 @@ describe("Phase 98-02 — customWhere WHERE injection in generatedSql", () => {
     expect(sql).toBe("SELECT * FROM events");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 102 Plan 02 (BARGRP-V119-01/04) — multi-column generatedSql branch
+// ─────────────────────────────────────────────────────────────────────────────
+
+// BAR_DEF_GROUPED is a stable bar chart definition with usesAggregation+requiresGroupBy
+// for testing the generatedSql multi-column branch and backward-compat single-column path.
+const BAR_DEF_GROUPED: import("./registry").ChartTypeDefinition = {
+  type: "bar",
+  label: "Bar",
+  icon: "|",
+  fields: [],
+  defaultConfig: {},
+  usesAggregation: true,
+  requiresGroupBy: true,
+  supportsDrillDown: true,
+};
+
+describe("Phase 102-02 — multi-column generatedSql + backward-compat (BARGRP-V119-01/04)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockReturnValue(BAR_DEF_GROUPED);
+  });
+
+  // ── Test 1 (BARGRP-V119-04): 1-column → byte-identical to current single-column SQL ──
+  it("Test 1 (BARGRP-V119-04): 1-column groupByColumns → byte-identical single-column SQL", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          groupByColumns: ["region"],
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    // MUST be byte-identical to the legacy single-column SQL (BARGRP-V119-04).
+    expect(sql).toBe(
+      "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  // ── Test 2 (BARGRP-V119-01): 2-column → multi-column SELECT/GROUP BY + generous LIMIT ──
+  it("Test 2 (BARGRP-V119-01): 2-column groupByColumns → multi-column SQL with generous LIMIT", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          groupByColumns: ["region", "category"],
+          limit: 100,
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    // SELECT must list all group-by columns + the aggregate.
+    expect(sql).toContain("SELECT region, category, SUM(amount) AS value");
+    // GROUP BY must list both columns.
+    expect(sql).toContain("GROUP BY region, category");
+    // Default sort direction is DESC.
+    expect(sql).toContain("ORDER BY value DESC");
+    // Generous LIMIT = config.limit × maxBarGroupBySeriesCap × 2 = 100 × 12 × 2 = 2400.
+    expect(sql).toContain("LIMIT 2400");
+    // No spurious WHERE clause when customWhere is absent.
+    expect(sql).not.toContain("WHERE");
+  });
+
+  // ── Test 3: 3-column + customWhere → WHERE appears before GROUP BY ──
+  it("Test 3: 3-column + customWhere → WHERE (predicate) before GROUP BY", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          groupByColumns: ["region", "category", "quarter"],
+          customWhere: "status = 'active'",
+          limit: 100,
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    // GROUP BY must list all three columns.
+    expect(sql).toContain("GROUP BY region, category, quarter");
+    // WHERE clause injected.
+    expect(sql).toContain("WHERE (status = 'active')");
+    // WHERE must appear before GROUP BY (mirrors Phase 98 customWhere pattern).
+    expect(sql.indexOf("WHERE")).toBeLessThan(sql.indexOf("GROUP BY"));
+  });
+
+  // ── Test 4: sortDir honored in multi-column branch ──
+  it("Test 4: sortDir ASC honored in multi-column branch", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          groupByColumns: ["region", "category"],
+          sortDir: "ASC",
+          limit: 100,
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).toContain("ORDER BY value ASC");
+  });
+
+  // ── Test 5: 0-column (no groupByColumns) → falls through to legacy path ──
+  it("Test 5 (BARGRP-V119-04): no groupByColumns → falls through to single-column legacy path", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          // groupByColumns absent — should behave identically to single-column path
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    // No multi-column GROUP BY — falls through to single-column legacy SQL.
+    expect(sql).toBe(
+      "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
+    );
+  });
+});
