@@ -1060,7 +1060,9 @@ const BarRenderer = ({
           top: 8,
           right: 10,
           left: horizontal ? 8 : 0,
-          bottom: bottomTitle ? 8 : 0,
+          // Extra bottom room for the axis title so it clears the tick labels AND the
+          // legend below it (was 8 — the title crowded the legend).
+          bottom: bottomTitle ? 22 : 0,
         }}
         onClick={handleChartClick}
         style={wrapperStyle}
@@ -1088,7 +1090,7 @@ const BarRenderer = ({
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} />}
           />
         )}
-        {showLegend && <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} />}
+        {showLegend && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
         {/* Phase 102 (BARGRP-V119-02): multi-series path — N <Bar> elements, no <Cell>/<LabelList>. */}
         {multiSeries ? (
           top.series.map((sk, i) => (
