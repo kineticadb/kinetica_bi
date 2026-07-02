@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { MultiSelectChips } from "./MultiSelectChips";
 import type { ConfigPanelProps } from "./registry";
 import {
   inferDataTypeFromColumn,
@@ -396,19 +397,20 @@ export default function CalendarConfigPanel({
     patch({ smartScale: scale, domain: pair.domain, subdomain: pair.subdomain });
   };
 
-  const toggleAllowedScale = (scale: SmartScale, checked: boolean) => {
-    let next: SmartScale[];
-    if (checked) {
-      next = SMART_SCALES.filter((s) => allowedSmartScales.includes(s) || s === scale);
-    } else {
-      // enforce ≥1: refuse to remove the last remaining allowed scale
-      if (allowedSmartScales.length <= 1) return;
-      next = allowedSmartScales.filter((s) => s !== scale);
-    }
+  const handleAllowedScalesChange = (next: string[]) => {
+    // enforce ≥1: ignore a call that would leave the set empty
+    if (next.length === 0) return;
+    // re-establish SMART_SCALES canonical order
+    const ordered = SMART_SCALES.filter((s) => next.includes(s));
+    if (ordered.length === 0) return;
     // if the currently-selected smartScale is no longer allowed, snap it to the first allowed
-    const nextSmart = next.includes(smartScale) ? smartScale : next[0];
-    const pair = SMART_SCALE_TO_PAIR[nextSmart];
-    patch({ allowedSmartScales: next, smartScale: nextSmart, domain: pair.domain, subdomain: pair.subdomain });
+    if (ordered.includes(smartScale)) {
+      patch({ allowedSmartScales: ordered });
+    } else {
+      const nextSmart = ordered[0];
+      const pair = SMART_SCALE_TO_PAIR[nextSmart];
+      patch({ allowedSmartScales: ordered, smartScale: nextSmart, domain: pair.domain, subdomain: pair.subdomain });
+    }
   };
 
   /* ---------------------------------------------------------------- */
@@ -620,19 +622,16 @@ export default function CalendarConfigPanel({
                   ))}
                 </select>
               </div>
-              <div className="config-group-label" style={{ marginTop: 8 }}>ALLOWED TIME SCALES</div>
-              {SMART_SCALES.map((s) => (
-                <label key={s} className="config-toggle">
-                  <input
-                    type="checkbox"
-                    className="accent-checkbox"
-                    checked={allowedSmartScales.includes(s)}
-                    onChange={(e) => toggleAllowedScale(s, e.target.checked)}
-                    aria-label={`Allow ${s}`}
-                  />
-                  <span>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
-                </label>
-              ))}
+              <div className="ds-field">
+                <span className="ds-field-label">Allowed time scales</span>
+                <MultiSelectChips
+                  ariaLabel="Allowed time scales"
+                  options={SMART_SCALES.slice()}
+                  value={allowedSmartScales}
+                  formatOption={(s) => s.charAt(0).toUpperCase() + s.slice(1)}
+                  onChange={handleAllowedScalesChange}
+                />
+              </div>
             </>
           )}
 

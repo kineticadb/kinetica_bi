@@ -2,7 +2,8 @@
 // Mirrors TimelineConfigPanel.spec.tsx layout. Uses @testing-library/react + vitest.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Mock } from "vitest";
 import CalendarConfigPanel, {
   DEFAULT_CALENDAR_CONFIG,
@@ -503,7 +504,8 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
     );
   });
 
-  it("Test S7: unchecking a scale from allowed list removes it from Time scale options", () => {
+  it("Test S7: 'Allowed time scales' multi-select box is present in smart mode and removing a scale calls onChange without it", async () => {
+    const user = userEvent.setup();
     const { onChange } = renderPanel({
       tableId: 1,
       tableRef: "demo.events",
@@ -511,9 +513,18 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
       controlMode: "smart",
       allowedSmartScales: ["month", "week", "day", "hour"],
     } as Partial<CalendarConfig>);
-    // Uncheck 'month'
-    const monthCheckbox = screen.getByLabelText("Allow month");
-    fireEvent.click(monthCheckbox);
+
+    // The combobox trigger is present
+    const combobox = screen.getByRole("combobox", { name: /allowed time scales/i });
+    expect(combobox).toBeInTheDocument();
+
+    // Open the popover
+    await act(async () => { await user.click(combobox); });
+
+    // Uncheck 'month' via its checkbox in the popover
+    const monthCheckbox = screen.getByLabelText("Allowed time scales: month");
+    await act(async () => { await user.click(monthCheckbox); });
+
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
         allowedSmartScales: expect.not.arrayContaining(["month"]),
@@ -521,7 +532,8 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
     );
   });
 
-  it("Test S8: unchecking the last allowed scale does NOT call onChange (≥1 enforced)", () => {
+  it("Test S8: min-1 guard — trying to remove the only remaining allowed scale does NOT call onChange", async () => {
+    const user = userEvent.setup();
     const { onChange } = renderPanel({
       tableId: 1,
       tableRef: "demo.events",
@@ -529,9 +541,15 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
       controlMode: "smart",
       allowedSmartScales: ["day"],
     } as Partial<CalendarConfig>);
-    // 'day' is the only allowed scale — uncheck should be blocked
-    const dayCheckbox = screen.getByLabelText("Allow day");
-    fireEvent.click(dayCheckbox);
+
+    // Open the popover
+    const combobox = screen.getByRole("combobox", { name: /allowed time scales/i });
+    await act(async () => { await user.click(combobox); });
+
+    // 'day' is the only allowed scale — unchecking it fires onChange([]) which the handler rejects
+    const dayCheckbox = screen.getByLabelText("Allowed time scales: day");
+    await act(async () => { await user.click(dayCheckbox); });
+
     // onChange must NOT have been called with an empty allowedSmartScales
     const calls = onChange.mock.calls;
     const badCall = calls.find(
@@ -539,6 +557,46 @@ describe("CalendarConfigPanel — smart mode (Phase 97)", () => {
         Array.isArray(c[0]?.allowedSmartScales) && c[0].allowedSmartScales.length === 0,
     );
     expect(badCall).toBeUndefined();
+  });
+
+  it("Test S7b: 'ALLOWED TIME SCALES' header section no longer renders (replaced by multi-select field)", () => {
+    renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+    } as Partial<CalendarConfig>);
+    // The old config-group-label text must be gone
+    expect(screen.queryByText("ALLOWED TIME SCALES")).not.toBeInTheDocument();
+    // The old "Allow month" checkbox must be gone
+    expect(screen.queryByLabelText("Allow month")).not.toBeInTheDocument();
+  });
+
+  it("Test S7c: removing active smartScale re-derives smartScale to first remaining allowed", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      timeCol: "ts",
+      controlMode: "smart",
+      smartScale: "month",
+      allowedSmartScales: ["month", "week", "day", "hour"],
+    } as Partial<CalendarConfig>);
+
+    // Open the popover
+    const combobox = screen.getByRole("combobox", { name: /allowed time scales/i });
+    await act(async () => { await user.click(combobox); });
+
+    // Remove 'month' — the active scale — should snap smartScale to "week" (next in SMART_SCALES order)
+    const monthCheckbox = screen.getByLabelText("Allowed time scales: month");
+    await act(async () => { await user.click(monthCheckbox); });
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedSmartScales: expect.not.arrayContaining(["month"]),
+        smartScale: "week",
+      }),
+    );
   });
 
   it("Test S9: switching mode control to 'advanced' shows Domain select again and hides Time scale", () => {
