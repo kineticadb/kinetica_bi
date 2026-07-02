@@ -78,6 +78,8 @@ import { whereCustomWhere } from "../../lib/customWhere";
 import { yAxisScaleProps } from "../../lib/yAxisScale";
 // Phase 102 (BARGRP-V119-02/03/04): multi-column bar group-by pivot + series cap + guard.
 import { isMultiColumnBarGroupBy, toBarPivotInput, BAR_SERIES_SEPARATOR } from "../../lib/barGroupedSeries";
+import { isCustomSelection, resolveMetricLabel } from "../../lib/customMetricSql";
+import { useCustomMetricsStore } from "../../store/customMetricsStore";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
@@ -889,8 +891,20 @@ const BarRenderer = ({
   useEffect(() => {
     if (tableId !== undefined) loadConfig(tableId);
   }, [tableId, loadConfig]);
+  // Custom-metric label subscription: a custom metric has no metricColumn (keyed by
+  // metricId), so its axis title / series name must come from the metric's stored label.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  void customMetricsConfigVersion; // reactive via subscription
+  useEffect(() => {
+    if (tableId !== undefined) useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+  }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const metricId = config.metricId as number | undefined;
+  // Effective metric label: custom → the stored metric label; real column → its display label.
+  const metricLabel = isCustomSelection(metricId)
+    ? (resolveMetricLabel(metricId, tableId) ?? "")
+    : (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_BAR_COLOR;
 
@@ -923,7 +937,7 @@ const BarRenderer = ({
   // valueTitle = the metric. They follow the DATA so flipping orientation moves each title
   // to whichever axis now carries it (xAxisLabel = category, yAxisLabel = value by default).
   const categoryTitle = (config.xAxisLabel as string) || (tableId !== undefined && groupByColumn ? resolveLabel(tableId, groupByColumn) : "");
-  const valueTitle = (config.yAxisLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
+  const valueTitle = (config.yAxisLabel as string) || metricLabel;
   // Map to the physical axes: vertical → bottom=category, left=value;
   // horizontal → bottom=value, left=category.
   const bottomTitle = horizontal ? valueTitle : categoryTitle;
@@ -1094,7 +1108,7 @@ const BarRenderer = ({
             dataKey={y}
             fill={color}
             radius={horizontal ? [0, radius, radius, 0] : [radius, radius, 0, 0]}
-            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
+            name={(config.yFieldLabel as string) || metricLabel || y}
           >
             {showValueLabels && (
               <LabelList

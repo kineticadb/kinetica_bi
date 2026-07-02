@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useCustomMetricsStore } from "../store/customMetricsStore";
 import {
   resolveMetricExpr,
+  resolveMetricLabel,
   isCustomSelection,
   encodeCustomValue,
   decodeMetricSelection,
@@ -197,5 +198,28 @@ describe("resolveMetricExpr — orphaned custom id (null)", () => {
     seedMetric();
     const result = resolveMetricExpr(7, "SUM(x)", undefined);
     expect(result).toBeNull();
+  });
+});
+
+describe("resolveMetricLabel — axis title / series name label resolution", () => {
+  it("returns the custom metric's label for a live custom selection", () => {
+    seedMetric();
+    expect(resolveMetricLabel(7, TABLE_ID)).toBe("ROAS");
+  });
+
+  it("returns null for a real-column selection (undefined/null metricId)", () => {
+    seedMetric();
+    expect(resolveMetricLabel(undefined, TABLE_ID)).toBeNull();
+    expect(resolveMetricLabel(null, TABLE_ID)).toBeNull();
+  });
+
+  it("returns null for an orphaned custom id (metric deleted / table empty)", () => {
+    // store reset in beforeEach → no metrics
+    expect(resolveMetricLabel(99, TABLE_ID)).toBeNull();
+  });
+
+  it("returns null when tableId is undefined", () => {
+    seedMetric();
+    expect(resolveMetricLabel(7, undefined)).toBeNull();
   });
 });

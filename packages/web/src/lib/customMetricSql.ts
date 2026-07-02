@@ -86,3 +86,19 @@ export function resolveMetricExpr(
   const found = selectMetrics(tableId).find((m) => m.id === metricId);
   return found ? found.expression : null;
 }
+
+/**
+ * Resolve a custom metric's display LABEL from the store (for axis titles, series
+ * names, tooltips). Returns the label for a live custom metric, or null when the
+ * selection isn't custom, the table is unknown, or the metric was deleted (orphan).
+ * Callers fall back to the real-column label / raw key.
+ */
+export function resolveMetricLabel(
+  metricId: number | undefined | null,
+  tableId: number | undefined,
+): string | null {
+  if (!isCustomSelection(metricId)) return null;
+  if (tableId === undefined) return null;
+  const found = selectMetrics(tableId).find((m) => m.id === metricId);
+  return found ? found.label : null;
+}
