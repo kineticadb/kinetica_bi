@@ -141,3 +141,14 @@ export function getShowLoadingIndicator(
 ): boolean {
   return config.showLoadingIndicator ?? DEFAULT_SHOW_LOADING_INDICATOR;
 }
+
+/** Default for `syncViewport` — opt-in (false): legacy maps are byte-identical to today. */
+export const DEFAULT_SYNC_VIEWPORT = false;
+
+/**
+ * Read the per-widget viewport-sync opt-in toggle. Returns DEFAULT_SYNC_VIEWPORT (false)
+ * when the config carries no `syncViewport` field (existing maps). Phase 104 MAPSYNC-V119-01/06.
+ */
+export function getSyncViewportEnabled(config: Pick<MapWidgetConfig, "syncViewport">): boolean {
+  return config.syncViewport ?? DEFAULT_SYNC_VIEWPORT;
+}

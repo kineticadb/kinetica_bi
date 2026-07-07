@@ -147,6 +147,9 @@ export type MapWidgetConfig = {
   // with the field absent get the indicator ON). Not a WMS param — consumed only by
   // MapChartRenderer's badge render via getShowLoadingIndicator in lib/mapInfoConfig.ts.
   showLoadingIndicator?: boolean;
+  /** Phase 104 (MAPSYNC-V119-01): opt-in per-dashboard viewport sync. Default OFF.
+   *  Pure client-side view-state flag — NEVER emitted as a WMS request param. */
+  syncViewport?: boolean;
 };
 
 // ─── SPIKE-LOCKED CONSTANTS ──────────────────────────────────────────────────
