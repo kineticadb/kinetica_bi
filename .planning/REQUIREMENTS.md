@@ -44,10 +44,10 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 ### Synchronized Map Viewports (MAPSYNC) — added 2026-07-07 (Phase 104)
 
 - [x] **MAPSYNC-V119-01**: A per-map config toggle "Sync map viewport" (default OFF) controls whether a map participates in viewport sync; an enabled map both publishes and subscribes.
-- [ ] **MAPSYNC-V119-02**: When a sync-enabled map's viewport changes via user pan/zoom, its viewport (center + zoom) is published.
-- [ ] **MAPSYNC-V119-03**: A sync-enabled map subscribes to the published viewport and pans/zooms to match it.
-- [ ] **MAPSYNC-V119-04**: A map moved programmatically by an incoming sync does not re-publish (echo-loop guard).
-- [ ] **MAPSYNC-V119-05**: Sync is scoped per-dashboard, and the transient viewport state resets on dashboard switch + logout.
+- [x] **MAPSYNC-V119-02**: When a sync-enabled map's viewport changes via user pan/zoom, its viewport (center + zoom) is published.
+- [x] **MAPSYNC-V119-03**: A sync-enabled map subscribes to the published viewport and pans/zooms to match it.
+- [x] **MAPSYNC-V119-04**: A map moved programmatically by an incoming sync does not re-publish (echo-loop guard).
+- [x] **MAPSYNC-V119-05**: Sync is scoped per-dashboard, and the transient viewport state resets on dashboard switch + logout.
 - [x] **MAPSYNC-V119-06**: A map with no sync config (toggle off/absent) behaves byte-identically to current map behavior.
 
 ### Verification (VERIFY)
@@ -107,10 +107,10 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | BARGRP-V119-04 | Phase 102 | Complete |
 | VERIFY-V119-01 | Phase 103 | Complete |
 | MAPSYNC-V119-01 | Phase 104 | Complete |
-| MAPSYNC-V119-02 | Phase 104 | Pending |
-| MAPSYNC-V119-03 | Phase 104 | Pending |
-| MAPSYNC-V119-04 | Phase 104 | Pending |
-| MAPSYNC-V119-05 | Phase 104 | Pending |
+| MAPSYNC-V119-02 | Phase 104 | Complete |
+| MAPSYNC-V119-03 | Phase 104 | Complete |
+| MAPSYNC-V119-04 | Phase 104 | Complete |
+| MAPSYNC-V119-05 | Phase 104 | Complete |
 | MAPSYNC-V119-06 | Phase 104 | Complete |
 
 > METRIC-V119-01 is the only requirement spanning two phases: its server-persistence half lands in Phase 99 (the `custom_metrics` table + CRUD) and its Tables-area authoring-UI half in Phase 100. Every other requirement maps to exactly one phase.

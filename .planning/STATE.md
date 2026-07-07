@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 104-01-PLAN.md
-last_updated: "2026-07-07T22:40:40.198Z"
+stopped_at: Completed 104-02-PLAN.md
+last_updated: "2026-07-07T23:33:37.469Z"
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -717,6 +717,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 102 P02 | 18min | 3 tasks | 3 files |
 | Phase 102 P03 | 20 | 1 tasks | 3 files |
 | Phase 103 P01 | 11 | 3 tasks | 1 files |
+| Phase 104 P02 | 50m | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -1081,6 +1082,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 103]: auth.routes.spec.ts maxBarGroupBySeriesCap test failure in full run is TD-V16-TEST-ISOLATION cross-mode contamination, not a v1.19 regression; confirmed PASS in clean env
 - [Phase 104-01]: syncViewport field is NOT emitted as a WMS param — pure client-side view-state flag
 - [Phase 104-01]: mapViewportSyncStore ships dormant; Plan 104-02 wires publish/subscribe in MapChartRenderer
+- [Phase 104]: isSyncDrivenRef reset inside moveend handler (not animate callback) — safest site per RESEARCH.md Pitfall 3 to avoid OL event ordering uncertainty
+- [Phase 104]: dashboardId derived from existing dashboardCtx (not second hook call) — avoids double useDashboardContextOptional() invocation at same render scope
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1487,6 +1490,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-07T22:40:35.153Z
-Stopped at: Completed 104-01-PLAN.md
+Last session: 2026-07-07T23:33:37.458Z
+Stopped at: Completed 104-02-PLAN.md
 Resume file: None
