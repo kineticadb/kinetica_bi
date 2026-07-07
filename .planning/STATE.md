@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
 status: unknown
-stopped_at: Completed 103-01-PLAN.md (automated gates + invariant)
-last_updated: "2026-07-02T13:13:22.471Z"
+stopped_at: Completed 104-01-PLAN.md
+last_updated: "2026-07-07T22:40:40.198Z"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 6
-  total_plans: 17
-  completed_plans: 16
+  total_plans: 19
+  completed_plans: 17
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 103 — verification-live-uat
+**Current focus:** Phase 104 — synchronized-map-viewports
 
 ## Current Position
 
-Phase: 103 (verification-live-uat) — EXECUTING
-Plan: 1 of 2
+Phase: 104 (synchronized-map-viewports) — EXECUTING
+Plan: 2 of 2
 
 ### v1.19 Phase Map
 
@@ -730,6 +730,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ### Roadmap Evolution
 
+- Phase 104 added (2026-07-07, ADDED to v1.19 post-verification): **Synchronized Map Viewports.** When a sync-enabled map pans/zooms, its viewport (center+zoom / bbox) publishes and every OTHER sync-enabled map on the SAME dashboard pans/zooms to match. Per-map "Sync map viewport" config toggle (default OFF; enabled maps both publish AND subscribe). Per-dashboard scope. Must guard against feedback loops (sync-driven move must not re-publish). Frontend-only preferred — transient VIEW state via a store mirroring the filter/spatial stores (map is a separate OpenLayers/WMS read-path via MapChartRenderer; see memory map-wms-is-separate-read-path), NOT server-persisted. Back-compat: maps with no sync config unchanged. Candidate reqs MAPSYNC-V119-01..0N (define at plan time). NOTE: v1.19 already passed Phase 103 verification/UAT (2026-07-02) — adding 104 REOPENS the milestone; Phase 103 must be re-run to cover 104 before v1.19 closes. NOT yet planned (run /gsd:plan-phase 104).
+
 - Phase 68.2 inserted after Phase 68.1 (2026-06-17, INSERTED — bug found in live calendar UAT): **Calendar week-anchor spike + per-group date-range gap-fill.** ROOT CAUSE: `gapFillCalendar` (Phase 67, `calendarGapFill.ts:82-99`) builds ONE GLOBAL subdomain axis (all distinct subdomain buckets across the dataset) and fills EVERY domain group with EVERY subdomain key — so a week×day group gets day-cells from OTHER weeks (as nulls), which `layoutDayBlock` positions into phantom columns 1,2,3 → a month-shaped block with only the real week's column filled. Latent since Phase 67 (flat layout cross-filled too); 68.1's wrapping exposed it. ENTANGLED with the unverified Kinetica week anchor: live labels showed week buckets on FRIDAYS (Oct 9/16/23) but `layoutCalendar` assumes `WEEK_START=1` (Monday) — the Phase 65 spike that confirms the anchor was NOT-RUN. Fix does BOTH: (1) run the live Kinetica `DATE_TRUNC` week-anchor spike → set `WEEK_START` correctly (resolves the Phase 65 NOT-RUN item); (2) replace the global axis with per-domain-group date-range gap-fill — each group contains ONLY the subdomain buckets within its own range; in-range missing = GREY tile, out-of-range partial-week slots = BLANK no-tile (operator decisions 2026-06-17). Frontend + a live SQL spike. New req CALUX-V113-03. Runs before Phase 69. NOT yet planned (run /gsd:plan-phase 68.2).
 
 - Phase 68.1 inserted after Phase 68 (2026-06-17, INSERTED — operator feedback from live calendar): **Calendar UX — wrapped layout + on-widget controls.** Two changes from seeing the Phase 67 renderer live: (1) **GitHub week-block wrapping** — the current renderer lays out `columns = domain buckets × rows = subdomain buckets` (Phase 67 CONTEXT design), which produces one very tall column for fine subdomains over few domain groups (e.g. year×day, month×day short range). Replace with GitHub-style wrapped blocks: day subdomains wrap into 7-row week blocks (rows = day-of-week, cols = weeks within the domain group); sensible grids for other subdomains. (2) **Config-gated on-widget domain/subdomain dropdowns** — a config toggle (e.g. "Show domain/subdomain controls", default OFF) that, when ON, renders 2 VIEWER-FACING dropdowns on the widget so the dashboard viewer switches domain/subdomain live (re-fetches; enforces the 8 valid combos via VALID_DOMAIN_SUBDOMAIN/isValidCombo — same gating as the Phase 66 config panel). Distinct from the Phase 66 operator-only set-once config dropdowns. Combined into ONE phase per operator decision. Frontend-only. Sequencing: MUST land before Phase 69 verification so live UAT covers the final UX. NOT yet planned (run /gsd:plan-phase 68.1). New requirements to add (e.g. CALUX-V113-01 layout, CALUX-V113-02 interactive controls).
@@ -1077,6 +1079,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 103]: WidgetRenderer.tsx retained unused import of materializeFilter/dropFilterView is acceptable -- invariant criterion is no call-site open-paren on non-comment line; criterion met
 - [Phase 103]: Server vitest run with DEFAULT_VIEW_TTL_MINUTES='' to suppress dev .env leak (DEFAULT_VIEW_TTL_MINUTES=3 vs code default 5)
 - [Phase 103]: auth.routes.spec.ts maxBarGroupBySeriesCap test failure in full run is TD-V16-TEST-ISOLATION cross-mode contamination, not a v1.19 regression; confirmed PASS in clean env
+- [Phase 104-01]: syncViewport field is NOT emitted as a WMS param — pure client-side view-state flag
+- [Phase 104-01]: mapViewportSyncStore ships dormant; Plan 104-02 wires publish/subscribe in MapChartRenderer
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1483,6 +1487,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-02T13:13:22.460Z
-Stopped at: Completed 103-01-PLAN.md (automated gates + invariant)
+Last session: 2026-07-07T22:40:35.153Z
+Stopped at: Completed 104-01-PLAN.md
 Resume file: None

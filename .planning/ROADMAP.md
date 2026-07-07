@@ -23,7 +23,7 @@
 - ✅ **v1.16 White-Label Theming** — Phases 80-84 (shipped 2026-06-26) — see `milestones/v1.16-ROADMAP.md`
 - ✅ **v1.17 Chart Number Formatting** — Phases 85-87 (shipped 2026-06-27) — see `milestones/v1.17-ROADMAP.md`
 - ✅ **v1.18 Per-Visualization Filter Selection** — Phases 88-96 incl. 93.5 (shipped 2026-06-30) — see `milestones/v1.18-ROADMAP.md`
-- 🚧 **v1.19 Visualization Customization** — Phases 97-103 (IN PROGRESS, started 2026-06-30)
+- 🚧 **v1.19 Visualization Customization** — Phases 97-104 (IN PROGRESS, started 2026-06-30; Phase 104 added post-verification 2026-07-07)
 
 ---
 
@@ -31,7 +31,7 @@
 
 **Goal:** Give designers per-visualization control over data and presentation — a custom WHERE clause and custom table-level metrics for tailoring the data each viz queries, plus smarter axes/grouping/calendar controls — without touching the shared filter/materialize engine.
 
-**Granularity:** standard. **Phases:** 7 (97-103). **Coverage:** 20/20 requirements mapped.
+**Granularity:** standard. **Phases:** 8 (97-104; Phase 104 added 2026-07-07 post-verification). **Coverage:** 26/26 requirements mapped.
 
 **Invariant (every phase):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger. The custom WHERE (VIZSQL) is applied WITHIN each widget's existing read query (ANDed against the materialized view it already reads) — NEVER a new materialize path. Static grep: `grep -rE "materializeFilter|dropFilterView" packages/web/src/components/charts/` finds only authorized call sites.
 
@@ -44,6 +44,7 @@
 - [ ] **Phase 101: Smart / Logarithmic Y-Axis** — FRONTEND-ONLY — per-widget Y-axis scale mode (Zero-based / Smart / Logarithmic) on line, timeline, and bar charts.
 - [ ] **Phase 102: Multi-Column Group-By on Bar Chart** — FRONTEND-ONLY — arbitrary N group-by columns (env-var capped), nested/hierarchical, with a grouped (clustered) vs stacked toggle.
 - [ ] **Phase 103: Verification + Live UAT** — BOTH + operator — green automated gates on both stacks + a blocking live operator walk-through of all five features.
+- [ ] **Phase 104: Synchronized Map Viewports** — FRONTEND-ONLY — added 2026-07-07 (post-verification) — sync-enabled maps on a dashboard pan/zoom together via a transient viewport store; per-map toggle (default off), echo-loop guarded, per-dashboard scoped. Reopens the milestone → Phase 103 must be re-run.
 
 ## Phase Details
 
@@ -160,6 +161,28 @@ Plans:
 - [ ] 103-01-PLAN.md — SC1 automated gates on both stacks (web tsc/vitest/theme-guard; server tsc + set-based vitest) + sole-materialize-trigger invariant re-grep across all 5 features -> 103-GATES.md
 - [ ] 103-02-PLAN.md — BLOCKING live operator walk-through of the full UAT matrix (SC1/F1-F5/X/R) + in-session repro-test-driven gap fixes + 103-UAT.md + 103-VERIFICATION.md (VERIFY-V119-01)
 
+### Phase 104: Synchronized Map Viewports
+**Goal**: When a sync-enabled map widget pans/zooms, its viewport (center + zoom, or bbox) is published and every OTHER sync-enabled map on the SAME dashboard pans/zooms to match — so side-by-side maps move together.
+**Stack**: FRONTEND-ONLY (preferred) — transient VIEW state; map is a separate OpenLayers/WMS read-path via `MapChartRenderer` (see memory: map-wms-is-separate-read-path).
+**Depends on**: Phase 103 (added post-verification — see note below).
+**Requirements**: MAPSYNC-V119-01, MAPSYNC-V119-02, MAPSYNC-V119-03, MAPSYNC-V119-04, MAPSYNC-V119-05, MAPSYNC-V119-06
+**Locked constraints (from add-phase discussion 2026-07-07)**:
+  - Per-map config toggle "Sync map viewport" (default OFF). An enabled map both PUBLISHES and SUBSCRIBES; sync-disabled maps are wholly unaffected.
+  - Scope is per-dashboard — maps sync only with other maps on the same dashboard.
+  - No feedback loops: a map moved programmatically by an incoming sync must NOT re-publish and echo (guard the sync-driven move).
+  - Favor a transient store (mirroring the filter/spatial stores) over server persistence — this is view state, not persisted analytics.
+  - Backward-compat: existing maps with no sync config behave exactly as today.
+**Success Criteria** (what must be TRUE):
+  1. With two sync-enabled maps on a dashboard, panning/zooming one pans/zooms the other to the same viewport; a third sync-DISABLED map does not move.
+  2. No echo/oscillation: a sync-driven move does not re-publish (verified by a guard + test).
+  3. Maps with no sync config render and behave byte-identically to today (backward-compat).
+**Plans**: 2 plans
+Plans:
+- [ ] 104-01-PLAN.md — Foundation: transient mapViewportSyncStore (+ pure spec) + syncViewport config field + getSyncViewportEnabled getter + "Sync map viewport" toggle in MapConfigPanel (MAPSYNC-V119-01/06)
+- [ ] 104-02-PLAN.md — Renderer wiring: moveend publish effect + scoped subscribe/animate effect + isSyncDrivenRef echo guard + reset() in both cleanup chains + OL-mock tests (MAPSYNC-V119-02/03/04/05/06)
+
+> NOTE: v1.19 already passed Phase 103 verification/UAT (2026-07-02). Phase 104 REOPENS the milestone — Phase 103 must be re-run to cover 104 before v1.19 can be closed.
+
 ### Phase Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -171,6 +194,7 @@ Plans:
 | 101. Smart / Logarithmic Y-Axis | 0/2 | Planned | - |
 | 102. Multi-Column Group-By on Bar Chart | 0/3 | Planned | - |
 | 103. Verification + Live UAT | 0/2 | Planned | - |
+| 104. Synchronized Map Viewports | 0/2 | Planned | - |
 
 ---
 
@@ -278,8 +302,6 @@ Three FRONTEND-ONLY refinements + five in-session review fixes / one feature (le
 
 </details>
 
----
-
 ## v1.12 Drill-Down on Dynamic-View-Backed Widgets — SHIPPED 2026-06-16
 
 <details>
@@ -291,24 +313,5 @@ Restored click-through exploration for dynamic-view-backed widgets: drilling a d
 - [x] Phase 63: Client — DV Drill-Down (4/4 plans) — completed 2026-06-15
 - [x] Phase 63.1: Map-Layer DV-Filter FROM-Swap (gap closure, 1/1 plan) — completed 2026-06-15
 - [x] Phase 64: Verification + Live UAT (3/3 plans) — completed 2026-06-16
-
-</details>
-
----
-
-## v1.13 Calendar Heatmap Visualization — SHIPPED 2026-06-18
-
-<details>
-<summary>✅ v1.13 (Phases 65-69 incl. 68.1 / 68.2) — SHIPPED 2026-06-18 — full phase details archived</summary>
-
-A configurable Calendar Heatmap widget: GitHub-style time-bucketed grids across 8 domain×subdomain combinations, color-scaled, with drillable cells that filter the whole dashboard (incl. WMS map tiles) to a time slice, for both table- and dynamic-view-backed bindings. FRONTEND-ONLY (zero server diff). Full phase-by-phase detail, success criteria, and plan lists are archived in `milestones/v1.13-ROADMAP.md`; requirements in `milestones/v1.13-REQUIREMENTS.md`.
-
-- [x] Phase 65: Calendar SQL Builder + Kinetica Spike (2/2 plans) — completed 2026-06-16
-- [x] Phase 66: Chart-Type Definition + Config Panel (4/4 plans) — completed 2026-06-16
-- [x] Phase 67: SVG Calendar Renderer (read-only) (3/3 plans) — completed 2026-06-16
-- [x] Phase 68: Cell-Drill Integration (4/4 plans) — completed 2026-06-16
-- [x] Phase 68.1: Calendar UX — wrapped GitHub week-block layout + config-gated on-widget controls (INSERTED, 3/3 plans) — completed 2026-06-17
-- [x] Phase 68.2: Calendar week-anchor spike + per-group date-range gap-fill (INSERTED, 3/3 plans) — completed 2026-06-17
-- [x] Phase 69: Verification + Live UAT (3/3 plans) — completed 2026-06-18 — 69-VERIFICATION.md passed (4/4 SCs); 3 dv/filter gaps fixed in-session (d60f3b1) + re-walked PASS
 
 </details>

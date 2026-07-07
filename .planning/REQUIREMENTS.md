@@ -41,9 +41,20 @@ Requirements for the v1.19 milestone. Each maps to exactly one roadmap phase.
 - [x] **BARGRP-V119-03**: The number of group-by columns / resulting series is capped via a deploy-time env var (read once at boot, fallback+warn), with graceful handling when the cap is exceeded.
 - [x] **BARGRP-V119-04**: A single-column group-by (or none) renders byte-identical to current bar-chart behavior.
 
+### Synchronized Map Viewports (MAPSYNC) — added 2026-07-07 (Phase 104)
+
+- [x] **MAPSYNC-V119-01**: A per-map config toggle "Sync map viewport" (default OFF) controls whether a map participates in viewport sync; an enabled map both publishes and subscribes.
+- [ ] **MAPSYNC-V119-02**: When a sync-enabled map's viewport changes via user pan/zoom, its viewport (center + zoom) is published.
+- [ ] **MAPSYNC-V119-03**: A sync-enabled map subscribes to the published viewport and pans/zooms to match it.
+- [ ] **MAPSYNC-V119-04**: A map moved programmatically by an incoming sync does not re-publish (echo-loop guard).
+- [ ] **MAPSYNC-V119-05**: Sync is scoped per-dashboard, and the transient viewport state resets on dashboard switch + logout.
+- [x] **MAPSYNC-V119-06**: A map with no sync config (toggle off/absent) behaves byte-identically to current map behavior.
+
 ### Verification (VERIFY)
 
 - [x] **VERIFY-V119-01**: All five features verified via green automated gates (web vitest 100% from `packages/web`, web + server `tsc` clean, theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION) plus a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
+
+> NOTE: MAPSYNC (Phase 104) was added AFTER Phase 103's verification PASS (2026-07-02) — it is NOT covered by that attestation. Phase 103 must be re-run to cover Phase 104 before v1.19 closes.
 
 ## Future Requirements
 
@@ -95,15 +106,21 @@ Which phases cover which requirements. Populated during roadmap creation (2026-0
 | BARGRP-V119-03 | Phase 102 | Complete |
 | BARGRP-V119-04 | Phase 102 | Complete |
 | VERIFY-V119-01 | Phase 103 | Complete |
+| MAPSYNC-V119-01 | Phase 104 | Complete |
+| MAPSYNC-V119-02 | Phase 104 | Pending |
+| MAPSYNC-V119-03 | Phase 104 | Pending |
+| MAPSYNC-V119-04 | Phase 104 | Pending |
+| MAPSYNC-V119-05 | Phase 104 | Pending |
+| MAPSYNC-V119-06 | Phase 104 | Complete |
 
 > METRIC-V119-01 is the only requirement spanning two phases: its server-persistence half lands in Phase 99 (the `custom_metrics` table + CRUD) and its Tables-area authoring-UI half in Phase 100. Every other requirement maps to exactly one phase.
 
 **Coverage:**
-- v1.19 requirements: 20 total
-- Mapped to phases: 20/20 ✓
+- v1.19 requirements: 26 total (20 original + 6 MAPSYNC added post-verification)
+- Mapped to phases: 26/26 ✓
 - Unmapped: 0
-- Phases: 7 (97 Calendar Smart Domain · 98 Custom WHERE · 99 Custom Metrics Foundation · 100 Custom Metrics UI/Picker · 101 Smart/Log Y-Axis · 102 Multi-Column Bar Group-By · 103 Verification + Live UAT)
+- Phases: 8 (97 Calendar Smart Domain · 98 Custom WHERE · 99 Custom Metrics Foundation · 100 Custom Metrics UI/Picker · 101 Smart/Log Y-Axis · 102 Multi-Column Bar Group-By · 103 Verification + Live UAT · 104 Synchronized Map Viewports)
 
 ---
 *Requirements defined: 2026-06-30*
-*Last updated: 2026-06-30 — roadmap created, traceability mapped (Phases 97-103)*
+*Last updated: 2026-07-07 — Phase 104 (Synchronized Map Viewports) added post-v1.19-verification; +6 MAPSYNC-V119 requirements (Phases now 97-104)*

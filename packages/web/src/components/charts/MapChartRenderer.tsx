@@ -84,7 +84,9 @@ import {
   getShowScaleBar,
   getShowFullscreenButton,
   getShowLoadingIndicator,
+  getSyncViewportEnabled,
 } from "../../lib/mapInfoConfig";
+import { useMapViewportSyncStore } from "../../store/mapViewportSyncStore";
 import InfoPopup from "./InfoPopup";
 import {
   buildDrawInteraction,
@@ -447,6 +449,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     showFullscreenButton: (widgetConfig as Partial<MapWidgetConfig>).showFullscreenButton,
   });
 
+  // Phase 104 (MAPSYNC-V119-01/02/03/06): viewport sync opt-in flag.
+  // syncEnabled is false by default (opt-in); legacy maps are byte-identical to today (MAPSYNC-V119-06).
+  const syncEnabled = getSyncViewportEnabled(widgetConfig as Partial<MapWidgetConfig>);
+
   // Theme-aware basemap: pick the basemap configured for the active app theme so the
   // base layer suits light/dark, and swap it live when the theme toggles. Legacy widgets
   // only have `basemap` — fall back to it (preserving their original look).
@@ -512,6 +518,9 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   const dashboardCtx = useDashboardContextOptional();
   const dashboardDynamicViews = dashboardCtx?.dynamicViews ?? [];
   const applyDvOrphanCheck = dashboardCtx !== null;
+  // Phase 104 (MAPSYNC-V119-05): keying by dashboardId isolates viewports per dashboard.
+  // May be undefined in test fixtures without a DashboardContext provider (Pitfall 4).
+  const dashboardId = dashboardCtx?.dashboardId;
 
   // Resolve the set of layers to render based on includedLayerIds and effective
   // visibility (operator preference AND source validity).
@@ -813,6 +822,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   //      check alone does not cover post-unmount where the React tree is gone)
   // Mirrors v1.3 Phase 15's materializeAbortRef threading pattern (LIFE-V13-04 lock).
   const mountedRef = useRef<boolean>(true);
+
+  // Phase 104 (MAPSYNC-V119-04): true WHILE applying a sync-driven programmatic move, so the
+  // resulting moveend does NOT re-publish (echo-loop guard). Ref, not state — must be readable
+  // synchronously inside the moveend callback.
+  const isSyncDrivenRef = useRef<boolean>(false);
 
   // ── Phase 29 (DRAW-V15-02 + V15-P-01 mode-guard FIRST-CODE-CHANGE) ────────
   // Component-local mode state. NOT in useSpatialFilterStore (out-of-Phase-27 scope per 29-CONTEXT.md).
@@ -2171,6 +2185,60 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // Dep on shapesKey ensures the check runs on every shape mutation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapesKey]);
+
+  // ── Phase 104 (MAPSYNC-V119-02..04): Viewport sync publish + subscribe ────
+  // S-02 lock: selector scoped to THIS dashboard's slot only — never subscribe to
+  // the whole viewports object (would re-render on any dashboard's updates).
+  const incomingViewport = useMapViewportSyncStore((s) =>
+    dashboardId === undefined ? undefined : s.viewports[dashboardId]
+  );
+
+  // Effect 9a (PUBLISH): attach a moveend listener to publish center+zoom to the sync
+  // store. Gate on syncEnabled + defined dashboardId — with either false/undefined,
+  // NO listener is attached and publish is never called (MAPSYNC-V119-06 byte-identical).
+  // Echo-guard: isSyncDrivenRef.current is checked first; if set, we suppress the
+  // publish AND reset the flag INSIDE the moveend handler (Pitfall 3 — safest site;
+  // avoids animate-callback / moveend ordering uncertainty per Q2 in RESEARCH.md).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!syncEnabled || dashboardId === undefined) return;
+    const key: EventsKey = map.on("moveend", () => {
+      if (isSyncDrivenRef.current) {
+        isSyncDrivenRef.current = false; // clear the echo we just suppressed
+        return;
+      }
+      const view = map.getView();
+      const center = view.getCenter();
+      const zoom = view.getZoom();
+      if (!center || zoom === undefined) return; // Pitfall 5 & 8
+      useMapViewportSyncStore.getState().publish(dashboardId, {
+        center: center as [number, number],
+        zoom,
+        originWidgetId: widget.id,
+        bump: Date.now(),
+      });
+    });
+    return () => { unByKey(key); };
+  }, [syncEnabled, dashboardId, widget.id]);
+
+  // Effect 9b (SUBSCRIBE): apply an incoming viewport from another sync-enabled map.
+  // Skips own publishes via originWidgetId check (Q6 in RESEARCH.md).
+  // Sets isSyncDrivenRef BEFORE animate so the resulting moveend sees the guard (Q2).
+  // duration:0 = immediate/atomic — still fires moveend (Pattern 3; Q2 default).
+  useEffect(() => {
+    if (!syncEnabled || dashboardId === undefined) return;
+    if (!incomingViewport) return;
+    if (incomingViewport.originWidgetId === widget.id) return; // skip own publishes
+    const map = mapRef.current;
+    if (!map) return;
+    isSyncDrivenRef.current = true; // set BEFORE animate; cleared by resulting moveend
+    map.getView().animate({
+      center: incomingViewport.center,
+      zoom: incomingViewport.zoom,
+      duration: 0, // immediate/atomic (RESEARCH Q2 default)
+    });
+  }, [incomingViewport, syncEnabled, dashboardId, widget.id]);
 
   // ── JSX ───────────────────────────────────────────────────────────────────
   // containerRef div MUST always render (Effect 1 fires once on mount; M-01 lock).
