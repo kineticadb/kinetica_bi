@@ -28,6 +28,7 @@ import {
   getShowScaleBar,
   getShowFullscreenButton,
   getShowLoadingIndicator,
+  getSyncViewportEnabled,
 } from "../../lib/mapInfoConfig";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
 // v1.5 Phase 28 (TARGET-V15-01/03) — Spatial filter targets section dependencies
@@ -116,6 +117,8 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
   const showFullscreenButton = getShowFullscreenButton({ showFullscreenButton: widgetCfg.showFullscreenButton });
   // quick-260608-rbq: in-map loading indicator — default TRUE via getter (opt-out, not opt-in)
   const showLoadingIndicator = getShowLoadingIndicator({ showLoadingIndicator: widgetCfg.showLoadingIndicator });
+  // Phase 104 (MAPSYNC-V119-01): viewport sync toggle — default FALSE via getter (opt-in)
+  const syncViewport = getSyncViewportEnabled({ syncViewport: widgetCfg.syncViewport });
 
   // ─── Phase 28 (TARGET-V15-01) — SPATIAL FILTER TARGETS derivation ─────
   // Read via Phase 28 helper for legacy-default coercion ([] for v1.4 widgets without the field).
@@ -419,6 +422,24 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
           />
           Show loading indicator
         </label>
+      </div>
+
+      {/* ─── VIEWPORT SYNC (Phase 104 MAPSYNC-V119-01) ───────────────── */}
+      <div className="config-group">
+        <div className="config-group-label">VIEWPORT SYNC</div>
+        <label className="config-toggle">
+          <input
+            type="checkbox"
+            aria-label="Sync map viewport"
+            checked={syncViewport}
+            onChange={(e) => onChange({ ...config, syncViewport: e.target.checked })}
+          />
+          Sync map viewport with other maps on this dashboard
+        </label>
+        <div className="config-hint">
+          When enabled, panning or zooming this map moves all other sync-enabled maps on the same
+          dashboard. Disabled by default.
+        </div>
       </div>
 
       {/* ─── LAYERS PANEL (Phase 41 PANEL-V17-04/05) ─────────────────── */}
