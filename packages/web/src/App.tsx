@@ -22,6 +22,7 @@ import { BrandingSettingsPage } from "./components/settings/BrandingSettingsPage
 import { brandPageGuard } from "./components/settings/brandPageGuard";
 import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, dropCombinationView, listUsers } from "./api/client";
 import { useFilterCombinationStore } from "./store/filterCombinationStore";
+import { useMapViewportSyncStore } from "./store/mapViewportSyncStore";
 import { PERMISSIONS } from "./lib/permissions";
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
@@ -143,6 +144,8 @@ const App = () => {
         }
       }
       useFilterCombinationStore.getState().reset();
+      // Phase 104 (MAPSYNC-V119-05): 11th store — transient viewport sync, session-only, no server DROP.
+      useMapViewportSyncStore.getState().reset();
     }
   }, [status]);
 

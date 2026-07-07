@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark, faGear } from "@fortawesome/free-solid-svg-icons";
+import { faXmark, faGear, faClone } from "@fortawesome/free-solid-svg-icons";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
 import {
@@ -54,6 +54,7 @@ import {
   type DashboardLayerDto,
 } from "../api/client";
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
+import { useMapViewportSyncStore } from "../store/mapViewportSyncStore";
 import { useToastStore } from "../store/toast";
 import ChartCard from "./ChartCard";
 import ChartConfigPanel from "./charts/ChartConfigPanel";
@@ -553,6 +554,8 @@ const DashboardOpen = ({
         }
       }
       useFilterCombinationStore.getState().reset();
+      // Phase 104 (MAPSYNC-V119-05): 11th store — transient viewport sync, session-only, no server DROP.
+      useMapViewportSyncStore.getState().reset();
     };
   }, [dashboard.id]);
 
@@ -654,6 +657,30 @@ const DashboardOpen = ({
         setShowVizModal(false);
       })
       .catch((err) => setError(err.message));
+  };
+
+  // Duplicate a widget: create a NEW widget carrying a deep clone of the source's config
+  // (deep — nested color palettes / groupByColumns / drill settings must not share refs with
+  // the original in local state). Reuses the create endpoint (no server change) and drops the
+  // copy below all existing widgets so it never overlaps its source.
+  const handleDuplicateWidget = (source: WidgetDto) => {
+    const nextY = widgets.length > 0
+      ? Math.max(...widgets.map((w, i) => {
+          const l = getWidgetLayout(w, i);
+          return l.y + l.h;
+        }))
+      : 0;
+    const config = structuredClone(source.config) as Record<string, unknown>;
+    const srcLayout = (config.layout ?? {}) as Record<string, unknown>;
+    config.layout = { ...srcLayout, x: 0, y: nextY };
+    createWidget(dashboard.id, { title: `Copy of ${source.title}`, type: source.type, config })
+      .then((widget) => {
+        setWidgets((prev) => [...prev, widget]);
+        useToastStore.getState().showToast("Widget duplicated");
+      })
+      .catch(() => {
+        useToastStore.getState().showToast("Failed to duplicate widget — check your connection", "error");
+      });
   };
 
   const handleSaveConfig = (widget: WidgetDto, payload: { title: string; config: Record<string, unknown> }) => {
@@ -1149,6 +1176,16 @@ const DashboardOpen = ({
                         title="Configure"
                       >
                         <FontAwesomeIcon icon={faGear} />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        className="widget-configure widget-duplicate"
+                        onClick={() => handleDuplicateWidget(w)}
+                        title="Duplicate"
+                        aria-label="Duplicate widget"
+                      >
+                        <FontAwesomeIcon icon={faClone} />
                       </button>
                     )}
                     {canEdit && (
