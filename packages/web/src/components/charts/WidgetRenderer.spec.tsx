@@ -208,6 +208,9 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   // quick-260608-j5k: opt-in controls — default false so legacy tests are byte-identical
   getShowScaleBar: (_cfg: any) => false,
   getShowFullscreenButton: (_cfg: any) => false,
+  getShowLoadingIndicator: (_cfg: any) => true,
+  // Phase 104 (MAPSYNC-V119-06): opt-in sync — default false (legacy byte-identical)
+  getSyncViewportEnabled: (_cfg: any) => false,
   DEFAULT_INFO_ENABLED: true,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_INFO_POPUP_WIDTH_PX: 360,
@@ -215,8 +218,17 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: true,
   DEFAULT_SHOW_SCALE_BAR: false,
   DEFAULT_SHOW_FULLSCREEN_BUTTON: false,
+  DEFAULT_SHOW_LOADING_INDICATOR: true,
+  DEFAULT_SYNC_VIEWPORT: false,
 }));
 vi.mock("./InfoPopup", () => ({ default: vi.fn(() => null) }));
+// Phase 104 (MAPSYNC-V119): no-op mock — sync is disabled by default (getSyncViewportEnabled=false above).
+vi.mock("../../store/mapViewportSyncStore", () => {
+  const state = { viewports: {}, publish: vi.fn(), clear: vi.fn(), reset: vi.fn() };
+  const hook = (selector: (s: any) => any) => selector(state);
+  (hook as any).getState = () => state;
+  return { useMapViewportSyncStore: hook };
+});
 // Phase 12-02: bboxHelper deleted — mock removed (file no longer exists)
 import type { WidgetDto } from "../../api/client";
 
@@ -481,6 +493,40 @@ describe("AggregatedWidgetRenderer — drill-down click (DRILL-01, DRILL-04)", (
     expect(filters[0].column).toBe("region");
     expect(filters[0].value).toBe("EAST");
     expect(filters[0].dataType).toBe("string");
+  });
+
+  it("TableRenderer renders one column per group-by column for a multi-column Data Table", async () => {
+    const runSqlSpy = vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(
+        ["technology", "emirate", "value"],
+        [["4G", "5G"], ["Dubai", "Abu Dhabi"], [600, 500]],
+      ) as Record<string, unknown>,
+    );
+
+    const widget = makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT technology, emirate, COUNT(*) AS value FROM t GROUP BY technology, emirate ORDER BY value DESC LIMIT 100",
+        tableId: 42,
+        groupByColumns: ["technology", "emirate"],
+      },
+    });
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+
+    await waitFor(() => expect(runSqlSpy).toHaveBeenCalled());
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(2));
+
+    // Header: one <th> per group column, then the value column.
+    const headers = Array.from(container.querySelectorAll("thead th")).map((th) => th.textContent);
+    expect(headers).toEqual(["TECHNOLOGY", "EMIRATE", "value"]);
+
+    // First row: both group values as separate cells, then the value cell.
+    const firstRowCells = Array.from(
+      container.querySelectorAll("tbody tr")[0].querySelectorAll("td"),
+    );
+    expect(firstRowCells).toHaveLength(3);
+    expect(firstRowCells[0].textContent).toBe("4G");
+    expect(firstRowCells[1].textContent).toBe("Dubai");
   });
 
   // ── Phase 17-03: synchronous markMaterializing in dispatchDrillDown ─────────────
@@ -3556,14 +3602,16 @@ vi.mock("recharts", async (importOriginal) => {
         ? h("span", { "data-testid": "labellist-formatted" }, String(formatter(1234)))
         : null,
     PieChart: ({ children }: { children?: unknown }) => h("div", { "data-testid": "recharts-piechart" }, children),
-    // Render each slice's `label` function output as a visible span so we can assert
-    // the metric formatter is applied to pie slice labels (COLAPPLY-V115-02 follow-up).
+    // Render each slice's `label` function output so we can assert the metric formatter is
+    // applied to pie slice labels (COLAPPLY-V115-02 follow-up). The label renderer now returns
+    // an SVG <text> element (inside-slice placement) — render it as a child; its textContent is
+    // the formatted value. Pass the row through as label props (value lives on the row).
     Pie: ({ data, label, children }: { data?: Array<Record<string, unknown>>; label?: unknown; children?: unknown }) =>
       h("div", { "data-testid": "recharts-pie" },
         typeof label === "function"
           ? (Array.isArray(data) ? data : []).map((d, i) =>
               h("span", { key: i, "data-testid": "pie-slice-label" },
-                String((label as (e: { value?: unknown }) => unknown)(d))))
+                (label as (e: Record<string, unknown>) => unknown)(d)))
           : null,
         children,
       ),

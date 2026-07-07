@@ -253,13 +253,24 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   getShowScaleBar: () => false,
   getShowFullscreenButton: () => false,
   getShowLoadingIndicator: () => false,
+  // Phase 104 (MAPSYNC-V119-06): opt-in sync — default false (legacy byte-identical)
+  getSyncViewportEnabled: () => false,
   DEFAULT_INFO_ENABLED: false,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: false,
   DEFAULT_SHOW_SCALE_BAR: false,
   DEFAULT_SHOW_FULLSCREEN_BUTTON: false,
   DEFAULT_SHOW_LOADING_INDICATOR: false,
+  DEFAULT_SYNC_VIEWPORT: false,
 }));
+
+// Phase 104 (MAPSYNC-V119): no-op mock — sync effects gate on syncEnabled=false (default).
+vi.mock("../../store/mapViewportSyncStore", () => {
+  const state = { viewports: {}, publish: vi.fn(), clear: vi.fn(), reset: vi.fn() };
+  const hook = (selector: (s: any) => any) => selector(state);
+  (hook as any).getState = () => state;
+  return { useMapViewportSyncStore: hook };
+});
 
 vi.mock("./InfoPopup", () => ({ default: vi.fn(() => null) }));
 vi.mock("./MapDrawToolbar", () => ({
