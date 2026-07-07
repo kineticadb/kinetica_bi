@@ -131,6 +131,13 @@ let lastOverlayInstance: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let capturedSingleclickHandler: ((event: any) => any) | null = null;
 
+// Phase 104 (MAPSYNC-V119): moveend handler captured from map.on("moveend", ...) calls.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let capturedMoveendHandler: (() => void) | null = null;
+// Phase 104: mock OL view with getCenter, getZoom, animate — used by sync tests.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let lastMockView: any = null;
+
 /* ------------------------------------------------------------------ */
 /*  ResizeObserver mock                                                */
 /* ------------------------------------------------------------------ */
@@ -169,7 +176,7 @@ vi.mock("ol/Map", () => ({
     this.removeLayer = vi.fn();
     this.addInteraction = vi.fn();
     this.removeInteraction = vi.fn();
-    this.getView = vi.fn(() => ({
+    const mockView = {
       fit: vi.fn(),
       calculateExtent: vi.fn(() => [0, 0, 100, 100]),
       getResolution: vi.fn(() => 100),
@@ -180,7 +187,12 @@ vi.mock("ol/Map", () => ({
       // minZoom/maxZoom in config are always included since the helper falls
       // back to -Infinity / Infinity bounds).
       getZoom: vi.fn(() => 10),
-    }));
+      // Phase 104 (MAPSYNC-V119): getCenter + animate needed for sync effects.
+      getCenter: vi.fn(() => [100, 200] as [number, number]),
+      animate: vi.fn(),
+    };
+    lastMockView = mockView;
+    this.getView = vi.fn(() => mockView);
     this.updateSize = vi.fn();
     this.getSize = vi.fn(() => [800, 600]);
     // Edge-aware popup positioning needs click pixel coords from map.getPixelFromCoordinate.
@@ -199,6 +211,10 @@ vi.mock("ol/Map", () => ({
       if (event === "singleclick") {
         capturedSingleclickHandler = handler;
         singleclickHandlers.push(handler);
+      }
+      if (event === "moveend") {
+        // Phase 104 (MAPSYNC-V119): capture for sync publish tests
+        capturedMoveendHandler = handler;
       }
     });
     this.un = vi.fn((event: string, handler?: any) => {
@@ -473,13 +489,35 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   getShowFullscreenButton: (cfg: any) => cfg?.showFullscreenButton ?? false,
   // quick-260608-rbq: loading indicator — default TRUE (opt-out; legacy widgets get indicator ON)
   getShowLoadingIndicator: (cfg: any) => cfg?.showLoadingIndicator ?? true,
+  // Phase 104 (MAPSYNC-V119-01/06): opt-in sync — default false (legacy byte-identical)
+  getSyncViewportEnabled: (cfg: any) => cfg?.syncViewport ?? false,
   DEFAULT_INFO_ENABLED: true,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: true,
   DEFAULT_SHOW_SCALE_BAR: false,
   DEFAULT_SHOW_FULLSCREEN_BUTTON: false,
   DEFAULT_SHOW_LOADING_INDICATOR: true,
+  DEFAULT_SYNC_VIEWPORT: false,
 }));
+
+// Phase 104 (MAPSYNC-V119): mapViewportSyncStore mock — module-level mutable state pattern.
+// publish + reset are vi.fn()s so tests can assert call args.
+// getState().publish() is the imperative form used inside the moveend handler.
+// The hook form (selector) is used by the incomingViewport subscription.
+const _syncStoreState = {
+  viewports: {} as Record<number, { center: [number, number]; zoom: number; originWidgetId: number; bump: number } | undefined>,
+  publish: vi.fn((dashboardId: number, snap: any) => {
+    _syncStoreState.viewports[dashboardId] = snap;
+  }),
+  clear: vi.fn(),
+  reset: vi.fn(() => { _syncStoreState.viewports = {}; }),
+};
+
+vi.mock("../../store/mapViewportSyncStore", () => {
+  const hook = (selector: (s: any) => any) => selector(_syncStoreState);
+  (hook as any).getState = () => _syncStoreState;
+  return { useMapViewportSyncStore: hook };
+});
 
 // Phase 21: InfoPopup mock — renders minimal sentinel so we can confirm it mounts
 vi.mock("./InfoPopup", () => ({
@@ -679,6 +717,7 @@ import ScaleLine from "ol/control/ScaleLine";
 import FullScreen from "ol/control/FullScreen";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
 import { useThemeStore } from "../../store/theme";
+import { DashboardContextProvider } from "../DashboardContext";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -6150,5 +6189,134 @@ describe("MapChartRenderer — Phase 68 calendar cell drill → WMS propagation 
     expect(params._mv).toBe("3");
     // The raw dv name must NOT appear in LAYERS
     expect(params.LAYERS).not.toBe("_kbi_dv_u1_d1_7");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 104 (MAPSYNC-V119): Viewport sync — publish / disabled / echo-guard */
+/* ------------------------------------------------------------------ */
+
+describe("MapChartRenderer — Phase 104 viewport sync (MAPSYNC-V119)", () => {
+  const DASHBOARD_ID = 42;
+  const WIDGET_ID = 10; // matches makeWidget() id
+
+  // Helper: minimal DashboardContextProvider wrapper for sync tests
+  const renderWithDashboardCtx = (ui: JSX.Element) =>
+    render(
+      <DashboardContextProvider
+        dashboardId={DASHBOARD_ID}
+        widgets={[]}
+        dynamicViews={[]}
+        retryDynamicView={() => {}}
+      >
+        {ui}
+      </DashboardContextProvider>
+    );
+
+  beforeEach(() => {
+    // Reset all shared state
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
+    _dynamicViewState.views = {};
+    _dynamicViewState.dynamicViewVersion = 0;
+    lastMapInstance = null;
+    lastMockView = null;
+    capturedMoveendHandler = null;
+    _syncStoreState.viewports = {};
+    _syncStoreState.publish.mockClear();
+    _syncStoreState.clear.mockClear();
+    _syncStoreState.reset.mockClear();
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    tileLoadListeners = {};
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Test A: publish when syncViewport=true ─────────────────────────────────
+  // MAPSYNC-V119-02: when a sync-enabled map finishes a pan/zoom, publish is called.
+  it("Test A: with syncViewport=true, map.on('moveend') is registered and firing it calls publish with center+zoom", async () => {
+    await act(async () => {
+      renderWithDashboardCtx(
+        <MapChartRenderer widget={makeWidget({ syncViewport: true })} tables={[]} />
+      );
+    });
+
+    // Verify moveend listener was attached
+    expect(lastMapInstance).not.toBeNull();
+    const moveendCalls = lastMapInstance.on.mock.calls.filter((c: any[]) => c[0] === "moveend");
+    expect(moveendCalls.length).toBe(1);
+
+    // Fire the captured moveend handler (simulates user pan/zoom completing)
+    expect(capturedMoveendHandler).not.toBeNull();
+    act(() => { capturedMoveendHandler!(); });
+
+    // Verify publish was called with the correct dashboardId + center + zoom + originWidgetId
+    expect(_syncStoreState.publish).toHaveBeenCalledTimes(1);
+    const [calledDashId, calledSnap] = _syncStoreState.publish.mock.calls[0];
+    expect(calledDashId).toBe(DASHBOARD_ID);
+    expect(calledSnap.center).toEqual([100, 200]); // matches mock getCenter() → [100, 200]
+    expect(calledSnap.zoom).toBe(10);              // matches mock getZoom() → 10
+    expect(calledSnap.originWidgetId).toBe(WIDGET_ID);
+    expect(typeof calledSnap.bump).toBe("number");
+  });
+
+  // ── Test B: disabled = no-op (byte-identical) ─────────────────────────────
+  // MAPSYNC-V119-06: maps with syncViewport absent/false attach NO moveend listener.
+  it("Test B: with syncViewport absent (default), map.on is NOT called with 'moveend' and publish is never called", async () => {
+    await act(async () => {
+      renderWithDashboardCtx(
+        <MapChartRenderer widget={makeWidget()} tables={[]} />
+      );
+    });
+
+    expect(lastMapInstance).not.toBeNull();
+    const moveendCalls = lastMapInstance.on.mock.calls.filter((c: any[]) => c[0] === "moveend");
+    // No moveend listener attached when syncViewport is absent/false
+    expect(moveendCalls.length).toBe(0);
+    expect(_syncStoreState.publish).not.toHaveBeenCalled();
+  });
+
+  // ── Test C: echo-guard suppresses re-publish after sync-driven move ────────
+  // MAPSYNC-V119-04: isSyncDrivenRef guard prevents the moveend fired by view.animate()
+  // from re-publishing (no echo/oscillation).
+  it("Test C: echo guard — after subscribe effect fires animate(), the resulting moveend does NOT call publish", async () => {
+    // Start with sync enabled and a foreign viewport in the store (different originWidgetId)
+    const foreignViewport = {
+      center: [500, 600] as [number, number],
+      zoom: 5,
+      originWidgetId: 99, // different from WIDGET_ID=10 → should trigger subscribe
+      bump: Date.now(),
+    };
+    _syncStoreState.viewports[DASHBOARD_ID] = foreignViewport;
+
+    const { rerender } = await act(async () =>
+      renderWithDashboardCtx(
+        <MapChartRenderer widget={makeWidget({ syncViewport: true })} tables={[]} />
+      )
+    );
+
+    // The subscribe effect should have called view.animate() (foreign originWidgetId)
+    expect(lastMockView).not.toBeNull();
+    expect(lastMockView.animate).toHaveBeenCalledWith({
+      center: foreignViewport.center,
+      zoom: foreignViewport.zoom,
+      duration: 0,
+    });
+
+    // Now simulate the moveend that OL fires after the programmatic animate().
+    // With isSyncDrivenRef=true (set by subscribe effect), publish MUST NOT be called.
+    _syncStoreState.publish.mockClear();
+    act(() => { capturedMoveendHandler!(); });
+
+    expect(_syncStoreState.publish).not.toHaveBeenCalled();
   });
 });
