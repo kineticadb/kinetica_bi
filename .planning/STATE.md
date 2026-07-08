@@ -2,29 +2,28 @@
 gsd_state_version: 1.0
 milestone: v1.19
 milestone_name: Visualization Customization
-status: unknown
-stopped_at: Completed 104-02-PLAN.md
-last_updated: "2026-07-07T23:33:37.469Z"
+status: shipped
+stopped_at: v1.19 shipped (tagged) — awaiting next milestone
+last_updated: "2026-07-08T14:37:14.739Z"
 progress:
   total_phases: 8
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-30 — v1.19 STARTED)
+See: .planning/PROJECT.md (updated 2026-07-08 — v1.19 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 104 — synchronized-map-viewports
+**Current focus:** Planning next milestone (v1.19 shipped 2026-07-08; run `/gsd:new-milestone`)
 
 ## Current Position
 
-Phase: 104 (synchronized-map-viewports) — EXECUTING
-Plan: 2 of 2
+v1.19 Visualization Customization — SHIPPED 2026-07-08 (tag `v1.19`). All 8 phases (97–104) complete; 27/27 requirements. No active phase — awaiting `/gsd:new-milestone`.
 
 ### v1.19 Phase Map
 
