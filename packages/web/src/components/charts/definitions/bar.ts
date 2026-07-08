@@ -15,6 +15,7 @@ const bar: ChartTypeDefinition = {
     { key: "horizontal", label: "Horizontal Bars", type: "boolean", defaultValue: false, group: "Appearance" },
     { key: "color", label: "Bar Color", type: "color", defaultValue: "#22c55e", group: "Appearance" },
     { key: "barRadius", label: "Corner Radius", type: "range", defaultValue: 4, min: 0, max: 20, step: 1, group: "Appearance" },
+    { key: "minBarSize", label: "Min Bar Size (px)", type: "number", defaultValue: 0, min: 0, max: 200, step: 1, group: "Appearance", hint: "Minimum thickness per bar (width for vertical, height for horizontal bars). When the bars can't all fit at this size, the chart scrolls. 0 = fit to widget." },
     { key: "stacked", label: "Stacked", type: "boolean", defaultValue: false, group: "Appearance", hint: "With 2+ group-by columns: stack the series instead of clustering them." },
 
     // Display
@@ -43,6 +44,7 @@ const bar: ChartTypeDefinition = {
     horizontal: false,
     color: "#22c55e",
     barRadius: 4,
+    minBarSize: 0,
     stacked: false,
     showLegend: true,
     showGrid: true,

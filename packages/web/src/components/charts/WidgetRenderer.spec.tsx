@@ -4145,3 +4145,72 @@ describe("Phase 102 Plan 03 — BarRenderer multi-series branch (BARGRP-V119-02/
     expect(barBody).not.toMatch(/dropFilterView/);
   });
 });
+
+// Min bar size → scroll region (so bars aren't squeezed too thin to read).
+describe("BarRenderer — minBarSize scroll region", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const CATS = ["a", "b", "c", "d", "e", "f"];
+  const VALS = [10, 20, 30, 40, 50, 60];
+  const barWidget = (config: Record<string, unknown>) =>
+    makeWidget({
+      type: "bar",
+      config: {
+        sql: "SELECT category, COUNT(*) AS value FROM sales GROUP BY category ORDER BY value DESC LIMIT 100",
+        tableId: 42,
+        groupByColumn: "category",
+        metricColumn: "value",
+        ...config,
+      },
+    });
+
+  it("minBarSize=0 (default) → no scroll region (byte-identical fit-to-container path)", async () => {
+    const runSqlSpy = vi
+      .spyOn(clientModule, "runSql")
+      .mockResolvedValue(buildResponse(["category", "value"], [CATS, VALS]) as Record<string, unknown>);
+    const { container } = render(wrap(<WidgetRenderer widget={barWidget({ minBarSize: 0 })} />));
+    await waitFor(() => expect(runSqlSpy).toHaveBeenCalled());
+    // Wait for the bar chart to render (data settled), then assert the fit-to-container path.
+    await waitFor(() => expect(container.querySelector('[data-testid="bar-chart"]')).not.toBeNull());
+    expect(container.querySelector('[data-testid="bar-scroll-region"]')).toBeNull();
+  });
+
+  it("vertical bars + minBarSize>0 → horizontal scroll region with min-width sized to the categories", async () => {
+    const runSqlSpy = vi
+      .spyOn(clientModule, "runSql")
+      .mockResolvedValue(buildResponse(["category", "value"], [CATS, VALS]) as Record<string, unknown>);
+    const { container } = render(wrap(<WidgetRenderer widget={barWidget({ minBarSize: 24, horizontal: false })} />));
+    await waitFor(() => expect(runSqlSpy).toHaveBeenCalled());
+    const region = await waitFor(() => {
+      const el = container.querySelector('[data-testid="bar-scroll-region"]') as HTMLElement | null;
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // Vertical bars scroll horizontally, never vertically.
+    expect(region.style.overflowX).toBe("auto");
+    expect(region.style.overflowY).toBe("hidden");
+    // Inner box carries the computed min-width: 6 cats * (1*24 + max(12,8)) = 216px.
+    const inner = region.firstElementChild as HTMLElement;
+    expect(inner.style.minWidth).toBe("216px");
+    expect(inner.style.minHeight).toBe("");
+  });
+
+  it("horizontal bars + minBarSize>0 → vertical scroll region with min-height sized to the categories", async () => {
+    const runSqlSpy = vi
+      .spyOn(clientModule, "runSql")
+      .mockResolvedValue(buildResponse(["category", "value"], [CATS, VALS]) as Record<string, unknown>);
+    const { container } = render(wrap(<WidgetRenderer widget={barWidget({ minBarSize: 24, horizontal: true })} />));
+    await waitFor(() => expect(runSqlSpy).toHaveBeenCalled());
+    const region = await waitFor(() => {
+      const el = container.querySelector('[data-testid="bar-scroll-region"]') as HTMLElement | null;
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // Horizontal bars scroll vertically, never horizontally.
+    expect(region.style.overflowY).toBe("auto");
+    expect(region.style.overflowX).toBe("hidden");
+    const inner = region.firstElementChild as HTMLElement;
+    expect(inner.style.minHeight).toBe("216px");
+    expect(inner.style.minWidth).toBe("");
+  });
+});

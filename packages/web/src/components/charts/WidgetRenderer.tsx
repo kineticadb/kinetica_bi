@@ -933,6 +933,19 @@ const BarRenderer = ({
   const showTooltip = config.showTooltip !== false;
   const showValueLabels = config.showValueLabels === true;
   const horizontal = config.horizontal === true; // horizontal bars (Recharts layout="vertical")
+  // Minimum bar thickness (px). When many categories would otherwise squeeze bars too thin to
+  // read, size the category axis so each bar clears this minimum and let the chart scroll along
+  // that axis (width for vertical bars, height for horizontal). 0 = disabled → fit-to-container
+  // (the byte-identical pre-existing path). Stacked series share one column, so they don't
+  // multiply the per-category thickness; clustered (multi-series) bars do.
+  const minBarSize = Math.max(0, Number(config.minBarSize) || 0);
+  const barsPerCategory = multiSeries && !stacked ? Math.max(1, top.series.length) : 1;
+  // Each category needs room for its bars at minBarSize plus a gap (half a bar, min 8px).
+  const neededCategoryPx =
+    minBarSize > 0
+      ? Math.ceil(chartData.length * (barsPerCategory * minBarSize + Math.max(minBarSize * 0.5, 8)))
+      : 0;
+  const scrollActive = neededCategoryPx > 0;
   // Axis titles are SEMANTIC, not physical: categoryTitle = the grouping dimension,
   // valueTitle = the metric. They follow the DATA so flipping orientation moves each title
   // to whichever axis now carries it (xAxisLabel = category, yAxisLabel = value by default).
@@ -1037,21 +1050,7 @@ const BarRenderer = ({
     valueAxisTickFormatter,
   );
 
-  return (
-    // Bulletproof fill: a relative full-height box with an absolutely-positioned inset:0
-    // child gives ResponsiveContainer a concrete pixel-sized parent, so the chart fills the
-    // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
-    // plain height:100% left dead space below the bars.
-    <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
-    {/* Phase 102 (BARGRP-V119-03): truncation note — takes its own row above the plot (flex column) so it never overlaps the chart (UAT gap). */}
-    {multiSeries && top.truncated && (
-      <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>
-        Showing top {maxCap} of {top.total} series
-      </div>
-    )}
-    {/* Chart region: flexes to fill the space below the note; the absolute-inset child keeps the bulletproof ResponsiveContainer fill. */}
-    <div style={{ position: "relative", flex: "1 1 auto", minHeight: 0 }}>
-    <div style={{ position: "absolute", inset: 0 }}>
+  const chartEl = (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={chartData}
@@ -1148,8 +1147,51 @@ const BarRenderer = ({
         )}
       </BarChart>
     </ResponsiveContainer>
-    </div>
-    </div>
+  );
+
+  return (
+    // Bulletproof fill: a relative full-height box with an absolutely-positioned inset:0
+    // child gives ResponsiveContainer a concrete pixel-sized parent, so the chart fills the
+    // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
+    // plain height:100% left dead space below the bars.
+    <div data-testid="bar-chart" style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+    {/* Phase 102 (BARGRP-V119-03): truncation note — takes its own row above the plot (flex column) so it never overlaps the chart (UAT gap). */}
+    {multiSeries && top.truncated && (
+      <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>
+        Showing top {maxCap} of {top.total} series
+      </div>
+    )}
+    {scrollActive ? (
+      // Min-bar-size path: the chart region scrolls along the category axis so each bar clears
+      // minBarSize. The inner box uses min-width/min-height so it fills the widget when the bars
+      // DO fit (no scrollbar) and grows past it (scrollbar appears) only when they don't.
+      <div
+        data-testid="bar-scroll-region"
+        style={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflowX: horizontal ? "hidden" : "auto",
+          overflowY: horizontal ? "auto" : "hidden",
+        }}
+      >
+        <div
+          style={
+            horizontal
+              ? { width: "100%", height: "100%", minHeight: neededCategoryPx }
+              : { width: "100%", height: "100%", minWidth: neededCategoryPx }
+          }
+        >
+          {chartEl}
+        </div>
+      </div>
+    ) : (
+      /* Chart region: flexes to fill the space below the note; the absolute-inset child keeps the bulletproof ResponsiveContainer fill. */
+      <div style={{ position: "relative", flex: "1 1 auto", minHeight: 0 }}>
+        <div style={{ position: "absolute", inset: 0 }}>
+          {chartEl}
+        </div>
+      </div>
+    )}
     </div>
   );
 };
