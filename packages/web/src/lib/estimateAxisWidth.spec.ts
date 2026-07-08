@@ -41,4 +41,26 @@ describe("estimateValueAxisWidth", () => {
     const withNegative = estimateValueAxisWidth([1000, -2_000_000], (v) => String(v));
     expect(withNegative).toBeGreaterThan(positiveOnly);
   });
+
+  it("sizes to rounded ticks, not raw float extremes (recharts draws nice ticks)", () => {
+    // AVG-style float data (e.g. "DL Speed"): recharts renders short rounded ticks ("385"),
+    // so the axis must not be sized to the raw 8-char "384.7156" — that over-reserves to the
+    // 80px cap and wastes plot width on narrow widgets.
+    const floaty = estimateValueAxisWidth(
+      [164.83217, 384.71563, 275.109876, 330.44, 180.6667],
+      (v) => String(v),
+    );
+    const integers = estimateValueAxisWidth([165, 385, 275, 330, 180], (v) => String(v));
+    expect(floaty).toBe(integers);
+    expect(floaty).toBeLessThan(50); // ~3-digit ticks, nowhere near the 80px cap
+  });
+
+  it("preserves width for genuinely long integer labels", () => {
+    const wide = estimateValueAxisWidth([0, 1_234_567], (v) => v.toLocaleString("en-US"));
+    const narrow = estimateValueAxisWidth([0, 385], (v) => String(v));
+    // "1,200,000"-class labels still reserve a wide axis — rounding drops fractional noise,
+    // not integer digits — and stay far wider than a 3-digit axis.
+    expect(wide).toBeGreaterThan(70);
+    expect(wide).toBeGreaterThan(narrow + 30);
+  });
 });

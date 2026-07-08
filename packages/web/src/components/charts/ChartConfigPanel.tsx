@@ -309,9 +309,12 @@ const ChartConfigPanel = ({
   // and the renderer reads data[0].value (already does so by default).
   const requiresGroupBy = chartDef?.requiresGroupBy !== false;
 
-  // Phase 102 (BARGRP-V119-01): bar-only multi-column group-by builder.
-  // isBar gates the N-column builder UI; isMultiColumnBarGroupBy gates the SQL branch.
+  // Phase 102 (BARGRP-V119-01): multi-column group-by builder.
+  // isBar/isTable gate the N-column builder UI; isMultiColumnBarGroupBy gates the SQL branch.
+  // Bar turns extra columns into colored series; the Data Table renders them as extra columns.
   const isBar = widgetType === "bar";
+  const isTable = widgetType === "table";
+  const usesMultiColumnGroupBy = isBar || isTable;
   // Soft cap on the number of group-by columns in the builder (distinct from maxBarGroupBySeriesCap
   // which caps SERIES at render time). 6 columns is a reasonable UI ceiling before the
   // GROUP BY becomes unreadable — not an env-driven value per CONTEXT.md.
@@ -387,10 +390,13 @@ const ChartConfigPanel = ({
       const multiSortDir = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
       const ALLOWED_LIMITS_M = [5, 10, 25, 50, 100, 250, 500];
       const rawLimitM = Number(draft.limit);
-      const xCatLimit = ALLOWED_LIMITS_M.includes(rawLimitM) ? rawLimitM : 100;
-      // generous LIMIT: config.limit × maxBarGroupBySeriesCap × 2 (read from auth store at save time).
-      const seriesCap = useAuthStore.getState().maxBarGroupBySeriesCap;
-      const sqlLimit = xCatLimit * seriesCap * 2;
+      const baseLimit = ALLOWED_LIMITS_M.includes(rawLimitM) ? rawLimitM : 100;
+      // Bar expands categories × series so it needs a generous LIMIT (config.limit ×
+      // maxBarGroupBySeriesCap × 2, read from auth store at save time). The Data Table renders
+      // one row per group tuple, so it just uses the plain "Result limit".
+      const sqlLimit = isBar
+        ? baseLimit * useAuthStore.getState().maxBarGroupBySeriesCap * 2
+        : baseLimit;
       // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
       return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
     }
@@ -745,23 +751,37 @@ const ChartConfigPanel = ({
                 </label>
                 )}
 
-                {/* Group By — bar gets the N-column ordered builder (Phase 102 BARGRP-V119-01);
-                    all other grouped chart types keep the single Group By select unchanged. */}
-                {requiresGroupBy && isBar && (() => {
-                  const groupByColumns = (draft.groupByColumns as string[] | undefined) ?? [];
+                {/* Group By — bar and the Data Table get the N-column ordered builder (Phase 102
+                    BARGRP-V119-01; table added later); other grouped chart types keep the single
+                    Group By select unchanged. Bar turns extra columns into colored series; the
+                    table renders them as extra columns. */}
+                {requiresGroupBy && usesMultiColumnGroupBy && (() => {
+                  // Backward-compat: legacy single-column widgets carry `groupByColumn` but no
+                  // `groupByColumns` array — seed the builder from it so their column still shows
+                  // (and is captured into `groupByColumns` on the first edit).
+                  const stored = draft.groupByColumns as string[] | undefined;
+                  const groupByColumns = stored && stored.length > 0
+                    ? stored
+                    : (draft.groupByColumn ? [draft.groupByColumn as string] : []);
+                  // Bar keeps its primary/series wording; the table's columns are all equal.
+                  const labelFor = (idx: number) =>
+                    isBar
+                      ? (idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`)
+                      : `Group column ${idx + 1}`;
                   return (
                     <div className="config-group">
                       <span className="config-group-label">Group By Columns</span>
                       {groupByColumns.map((col, idx) => (
-                        <div key={idx} className="ds-field" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                          <span className="ds-field-label">
-                            {idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`}
+                        <div key={idx} className="ds-field" style={{ flexDirection: "row", alignItems: "center", gap: "4px" }}>
+                          <span className="ds-field-label" style={{ whiteSpace: "nowrap" }}>
+                            {labelFor(idx)}
                           </span>
                           <select
                             className="ds-select"
+                            style={{ flex: 1, minWidth: 0 }}
                             value={col}
                             disabled={dvColumnsMissing}
-                            aria-label={idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`}
+                            aria-label={labelFor(idx)}
                             onChange={(e) => {
                               const next = [...groupByColumns];
                               next[idx] = e.target.value;
@@ -799,14 +819,17 @@ const ChartConfigPanel = ({
                         }}
                       >+ Add column</button>
                       <span className="config-hint">
-                        First column = x-axis categories; the rest become colored series ({MAX_BAR_GROUP_BY_COLUMNS} column max).
+                        {isBar
+                          ? `First column = x-axis categories; the rest become colored series (${MAX_BAR_GROUP_BY_COLUMNS} column max).`
+                          : `Rows are grouped by every selected column; each becomes a column in the table (${MAX_BAR_GROUP_BY_COLUMNS} column max).`}
                       </span>
                     </div>
                   );
                 })()}
 
-                {/* Single Group By for non-bar grouped charts; hidden for bignumber (requiresGroupBy false). */}
-                {requiresGroupBy && !isBar && (
+                {/* Single Group By for grouped charts without the multi-column builder; hidden
+                    for bignumber (requiresGroupBy false), bar, and the Data Table. */}
+                {requiresGroupBy && !usesMultiColumnGroupBy && (
                   <label className="ds-field">
                     <span className="ds-field-label">Group By</span>
                     <select
@@ -901,16 +924,9 @@ const ChartConfigPanel = ({
           </div>
         )}
         {/* Aggregated category charts: drill-down always follows the Group By column (the
-            clicked category) — no separate picker, so group-by and drill-down can't diverge. */}
-        {supportsDrillDown && selectedSource && drillFollowsGroupBy && (
-          <div className="config-group">
-            <div className="config-group-label">Drill-Down</div>
-            <span className="config-hint">
-              Clicking filters by the Group By column
-              {(draft.groupByColumn as string) ? ` (${draft.groupByColumn as string})` : ""}.
-            </span>
-          </div>
-        )}
+            clicked category) — there's nothing to configure, so no Drill-Down section is shown
+            (the previous informational-only block configured nothing). The non-aggregated
+            picker above (records) is the only case where drill-down is user-configurable. */}
 
         {/* Phase 93 (FSCOPE-V118-01): Filter Scope section — visible whenever the widget
             has a data source (same gate as Drill-Down). FilterSelectionPanel renders its

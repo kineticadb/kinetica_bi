@@ -322,6 +322,18 @@ const BAR_DEF: import("./registry").ChartTypeDefinition = {
   // usesAggregation: undefined → defaults to true (standard branch)
 };
 
+// Stable Data Table def (aggregated + group-by) for the multi-column builder UI test. MUST be a
+// module-level constant — a per-render object would loop ChartConfigPanel's useEffect([config, chartDef]).
+const TABLE_DEF: import("./registry").ChartTypeDefinition = {
+  type: "table",
+  label: "Data Table",
+  icon: "#",
+  fields: [],
+  defaultConfig: {},
+  supportsDrillDown: true,
+  // usesAggregation / requiresGroupBy undefined → default true (aggregated group-by branch)
+};
+
 // Hoisted MAP_DEF override for Test 9. MUST be a stable reference — if recreated
 // per render, ChartConfigPanel's useEffect([config, chartDef]) loops forever.
 const MAP_DEF_NO_DS_PHASE35 = {
@@ -498,6 +510,32 @@ describe("ChartConfigPanel — Phase 35 dynamic-view picker (DV-V16-12)", () => 
     );
     expect(groupByOptions.some((t) => t.startsWith("vendor_id"))).toBe(true);
     expect(groupByOptions.some((t) => t.startsWith("avg_fare"))).toBe(true);
+  });
+
+  it("Data Table uses the multi-column group-by builder (not the single Group By select)", () => {
+    // Phase 35's beforeEach only maps bar/map — teach the mock about the table def (stable ref).
+    vi.mocked(registry.getChartType).mockImplementation((type: string) =>
+      type === "table" ? TABLE_DEF : undefined,
+    );
+    render(
+      <ChartConfigPanel
+        widgetType="table"
+        title="Table"
+        // Legacy single-column config: seeded from groupByColumn so the first builder row shows.
+        config={{ table: "public.taxi_trips", tableId: 42, groupByColumn: "vendor_id" }}
+        tables={TABLES}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    // The N-column builder is present (table-specific "Group column 1" label), seeded from the
+    // legacy groupByColumn.
+    const firstRow = screen.getByLabelText("Group column 1") as HTMLSelectElement;
+    expect(firstRow.value).toBe("vendor_id");
+    // The single "Group By" select is NOT rendered for the table.
+    expect(screen.queryByLabelText("Group By")).toBeNull();
+    // "+ Add column" affordance lets the operator add more group columns.
+    expect(screen.getByRole("button", { name: /add column/i })).toBeInTheDocument();
   });
 
   it("when columns_json is null, column pickers are disabled AND hint surfaces", () => {
@@ -1125,6 +1163,66 @@ describe("Phase 102-02 — multi-column generatedSql + backward-compat (BARGRP-V
     expect(onSave).toHaveBeenCalledTimes(1);
     const sql: string = onSave.mock.calls[0][0].config.sql;
     // No multi-column GROUP BY — falls through to single-column legacy SQL.
+    expect(sql).toBe(
+      "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  // ── Test 6: Data Table 2-column → multi-column SQL with the PLAIN Result limit ──
+  // Unlike bar (which expands categories × series), the table renders one row per group
+  // tuple, so its multi-column LIMIT is the plain Result limit, not the generous bar limit.
+  it("Test 6: table 2-column groupByColumns → multi-column SQL with plain Result limit", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="table"
+        title="Table"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          groupByColumns: ["region", "category"],
+          limit: 100,
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
+    expect(sql).toBe(
+      "SELECT region, category, SUM(amount) AS value FROM sales GROUP BY region, category ORDER BY value DESC LIMIT 100",
+    );
+    // Table must NOT use the bar's series-expanded LIMIT (100 × 12 × 2 = 2400).
+    expect(sql).not.toContain("LIMIT 2400");
+  });
+
+  // ── Test 7: Data Table 1-column → byte-identical legacy single-column SQL ──
+  it("Test 7: table 1-column groupByColumns → single-column legacy SQL", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="table"
+        title="Table"
+        config={{
+          table: "sales",
+          metricColumn: "amount",
+          aggregation: "SUM",
+          groupByColumn: "region",
+          groupByColumns: ["region"],
+          limit: 100,
+        }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const sql: string = onSave.mock.calls[0][0].config.sql;
     expect(sql).toBe(
       "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
     );

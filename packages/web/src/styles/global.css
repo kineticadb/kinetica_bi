@@ -1639,11 +1639,16 @@ input[type="checkbox"],
 .widget-table-compact th,
 .widget-table-compact td {
   padding: var(--space-1) var(--space-2);
-  font-size: var(--text-base);
+  /* Smallest token (10px) for a dense aggregated Data Table. Records overrides this to
+     --text-sm (11px) via a more-specific rule, so it keeps its own density. */
+  font-size: var(--text-xs);
 }
 
 .widget-table-stripe {
-  background: rgba(255, 255, 255, 0.02);
+  /* Theme-aware zebra: a touch of --text (dark in light theme, light in dark theme) so the
+     stripe is visible on both — the old flat rgba(255,255,255,0.02) was invisible on light
+     backgrounds and barely there on dark. */
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
 .widget-table-rownum {
@@ -1683,12 +1688,12 @@ input[type="checkbox"],
   min-height: 0;
 }
 
-/* Records table reads denser than the aggregated table — one token smaller (11px).
-   Target th/td DIRECTLY: .widget-table-compact th/td set font-size on the cells, and a
-   direct cell rule beats the inherited table-level value regardless of specificity. */
+/* Records table reads dense — smallest token (10px). Target th/td DIRECTLY: .widget-table-compact
+   th/td set font-size on the cells, and a direct cell rule beats the inherited table-level value
+   regardless of specificity. */
 .widget-records .widget-table th,
 .widget-records .widget-table td {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 .widget-table-th-sortable {
@@ -1704,6 +1709,9 @@ input[type="checkbox"],
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Minimum spacing between Download / count / pager — space-between alone lets the count text
+     butt right against the Prev button once it grows long ("… of 600,139"). */
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--border);
   font-size: var(--text-base);
@@ -2810,8 +2818,8 @@ input[type="checkbox"],
 
 /* Phase 95 (COMM-V118-01): on-widget "N of M filters" badge. Header sibling of .widget-title,
    mirrors .widget-filtering-badge layout. Shown ONLY when a chart widget ignores >=1 active
-   filter (WidgetFilterBadge returns null otherwise). Accent-on-accent-text pill; theme tokens
-   only. Hover breakdown via native title= attr (no popover component exists). */
+   filter (WidgetFilterBadge returns null otherwise). --on-accent text on an --accent fill;
+   theme tokens only. Hover breakdown via native title= attr (no popover component exists). */
 .widget-filter-badge {
   display: inline-flex;
   align-items: center;
@@ -2820,7 +2828,10 @@ input[type="checkbox"],
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: var(--accent-text);
+  /* Text sits ON the accent fill, so use --on-accent (white) — NOT --accent-text, which is
+     accent-COLORED text for normal backgrounds and renders dark-on-purple (unreadable) in
+     light mode. */
+  color: var(--on-accent);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;

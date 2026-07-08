@@ -1373,6 +1373,47 @@ const PieRenderer = ({
     !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   const wrapperStyle = { cursor: drillEnabled ? "pointer" : "default" };
 
+  // Slice value → display string: prefer the metric column formatter (matches the tooltip),
+  // else a plain number capped at 2 decimals so raw floats ("15.53458581142423") don't leak.
+  const formatSliceValue = (v: unknown): string => {
+    if (tableId !== undefined && metricColumn) {
+      const out = resolveFormatter(tableId, metricColumn)(v);
+      if (out !== v && out != null) return String(out);
+    }
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(v ?? "");
+  };
+
+  // Render labels INSIDE each slice (at 60% of the radius) rather than recharts' default
+  // outside-with-leader-lines placement — those lines clipped at the top edge and collided
+  // with the bottom legend (the reported bug). The dark stroke + paint-order gives the text a
+  // legible outline on any slice fill.
+  const RADIAN = Math.PI / 180;
+  const renderSliceLabel = (props: {
+    cx: number; cy: number; midAngle: number; innerRadius: number; outerRadius: number; value?: unknown;
+  }) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, value } = props;
+    const r = innerRadius + (outerRadius - innerRadius) * 0.6;
+    const x = cx + r * Math.cos(-midAngle * RADIAN);
+    const y = cy + r * Math.sin(-midAngle * RADIAN);
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="var(--on-accent)"
+        stroke="rgba(0, 0, 0, 0.55)"
+        strokeWidth={2.5}
+        paintOrder="stroke"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={12}
+        style={{ pointerEvents: "none" }}
+      >
+        {formatSliceValue(value)}
+      </text>
+    );
+  };
+
   // RESEARCH.md Pitfall 1: Pie click signature differs — slice.payload is the
   // source row, NOT slice directly.
   const handleSliceClick = (slice: unknown) => {
@@ -1408,19 +1449,12 @@ const PieRenderer = ({
           innerRadius={innerRadius}
           outerRadius="80%"
           paddingAngle={padAngle}
+          labelLine={false}
           // Phase 77 follow-up (COLAPPLY-V115-02): slice labels run the metric value through
           // the column formatter (e.g. raw 252191.8498… → $252,191.85) for consistency with the
-          // tooltip. Falls back to the raw value when no tableId/metricColumn (legacy/dv-bound).
-          label={
-            config.showLabels === false
-              ? false
-              : (entry: { value?: unknown }) =>
-                  String(
-                    (tableId !== undefined && metricColumn
-                      ? resolveFormatter(tableId, metricColumn)(entry.value)
-                      : entry.value) ?? "",
-                  )
-          }
+          // tooltip. Rendered inside the slice (renderSliceLabel) so labels never overflow the
+          // widget or overlap the legend.
+          label={config.showLabels === false ? false : renderSliceLabel}
           onClick={handleSliceClick}
         >
           {data.map((row, index) => (
@@ -1573,28 +1607,34 @@ const TableRenderer = ({
   drillDownColumnType,
   tableFilters,
 }: { data: Row[]; config: Record<string, unknown>; tableFilters: ActiveFilter[] } & DrillProps) => {
-  const pageSize = (config.pageSize as number) || 25;
   const compact = config.compact !== false; // default compact to match the compact theme
-  const striped = config.striped !== false;
   const showValueBars = config.showValueBars !== false; // default ON
   const barColor = (config.barColor as string) || DEFAULT_TABLE_BAR_COLOR;
 
-  // Aggregated-only contract: ChartConfigPanel emits SQL of the form
-  //   SELECT <groupByColumn>, AGG(<metricColumn>) AS value FROM ... GROUP BY ...
-  // so the result rows always have exactly two columns — the group-by column and `value`.
+  // Aggregated contract: ChartConfigPanel emits SQL of the form
+  //   SELECT <col1>[, <col2>…], AGG(<metricColumn>) AS value FROM ... GROUP BY <col1>[, <col2>…]
+  // so result rows carry one column per group-by column plus `value`.
   // Detect aggregation from the data shape (presence of a `value` column + ≥1 other column)
   // rather than config keys: older widgets carry only `sql` in config, and the un-configured
   // fallback path (SELECT * LIMIT 100) returns rows that lack `value`, naturally landing on
   // the empty-state branch.
   const dataKeys = Object.keys(data[0] ?? {});
   const hasValueCol = dataKeys.includes("value");
-  // Use config.groupByColumn when set, otherwise fall back to the first non-`value` data
-  // column so legacy widgets (sql-only config) still render correctly.
-  const groupByColumn =
-    (config.groupByColumn as string) || dataKeys.find((k) => k !== "value") || "";
+  // Group columns to render, in order: prefer the multi-column `groupByColumns` array, then the
+  // legacy single `groupByColumn`, else infer every non-`value` column from the data shape
+  // (legacy sql-only widgets). Keep only columns actually present in the returned rows.
+  const configGroupCols = Array.isArray(config.groupByColumns)
+    ? (config.groupByColumns as unknown[]).map(String).filter(Boolean)
+    : [];
+  const singleGroupBy = (config.groupByColumn as string) || "";
+  const requestedGroupCols =
+    configGroupCols.length > 0 ? configGroupCols
+    : singleGroupBy ? [singleGroupBy]
+    : dataKeys.filter((k) => k !== "value");
+  const groupCols = requestedGroupCols.filter((c) => dataKeys.includes(c));
   const metricColumn = (config.metricColumn as string) || "";
   const aggregation = (config.aggregation as string) || "";
-  const isAggregated = hasValueCol && Boolean(groupByColumn);
+  const isAggregated = hasValueCol && groupCols.length >= 1;
 
   // No `value` column → SQL fell back to SELECT *. Don't render raw rows with bars.
   if (!isAggregated) {
@@ -1605,8 +1645,9 @@ const TableRenderer = ({
     );
   }
 
-  // Cap rendered rows to pageSize (SQL already applied LIMIT; this is a defensive trim).
-  const displayData = data.slice(0, pageSize);
+  // Rows are already capped by the aggregation SQL's "Result limit" (LIMIT) — the Data Table
+  // has no pagination, so render every returned row rather than clipping to a second limit.
+  const displayData = data;
 
   // Per-column max scan on the value column. Bar width = (row.value / colMax) * 100%.
   // Scaled across rendered rows so the largest aggregated value always fills the cell.
@@ -1630,9 +1671,11 @@ const TableRenderer = ({
   const drillEnabled =
     !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
   // This "Data Table" is an AGGREGATED chart (group-by + value), so — like bar/pie — the
-  // drill filters on the group-by column (the clicked row's category), never a diverged
-  // drillDownColumn that isn't in the aggregated row (which produced `= 'undefined'`).
-  const drillCol = groupByColumn || drillDownColumn;
+  // drill filters on the PRIMARY group-by column (the clicked row's first category), never a
+  // diverged drillDownColumn that isn't in the aggregated row (which produced `= 'undefined'`).
+  // Multi-column tables drill on the first column only (a single filter dispatch).
+  const primaryGroupCol = groupCols[0] || "";
+  const drillCol = primaryGroupCol || drillDownColumn;
   // Phase 10 DRILL-04: row-tint — find the active filter value for the drill column so
   // matching rows get the highlight class.
   const activeFilterValue = tableFilters.find((f) => f.column === drillCol)?.value;
@@ -1640,7 +1683,7 @@ const TableRenderer = ({
   const handleRowClick = (row: Row) => {
     if (!drillEnabled) return;
     const { column, value, dataType } = resolveAggregatedDrillTarget(
-      row, groupByColumn, drillDownColumn, drillDownColumnType,
+      row, primaryGroupCol, drillDownColumn, drillDownColumnType,
     );
     // No dim-peers transient on table — direct dispatch, but still 300ms-delayed
     // for consistency with bar/pie/scatter timing AND to keep the data-clear visible
@@ -1663,13 +1706,14 @@ const TableRenderer = ({
       <table className={`widget-table ${compact ? "widget-table-compact" : ""}`}>
         <thead>
           <tr>
-            <th>{groupByColumn.toUpperCase()}</th>
+            {groupCols.map((c) => (
+              <th key={c}>{c.toUpperCase()}</th>
+            ))}
             <th>{valueHeader}</th>
           </tr>
         </thead>
         <tbody>
           {displayData.map((row, i) => {
-            const groupVal = row[groupByColumn];
             const rawValue = row["value"];
             const n = typeof rawValue === "number" ? rawValue : Number(rawValue);
             const safeN = Number.isFinite(n) ? n : 0;
@@ -1680,12 +1724,7 @@ const TableRenderer = ({
               drillEnabled &&
               activeFilterValue !== undefined &&
               String(row[drillCol]) === String(activeFilterValue);
-            const classes = [
-              striped && i % 2 === 1 ? "widget-table-stripe" : "",
-              isFiltered ? "widget-table-row-active" : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
+            const classes = isFiltered ? "widget-table-row-active" : "";
             return (
               <tr
                 key={i}
@@ -1693,7 +1732,9 @@ const TableRenderer = ({
                 onClick={() => handleRowClick(row)}
                 style={{ cursor: drillEnabled ? "pointer" : undefined }}
               >
-                <td>{String(groupVal ?? "")}</td>
+                {groupCols.map((c) => (
+                  <td key={c}>{String(row[c] ?? "")}</td>
+                ))}
                 {showValueBars ? (
                   <td className="widget-table-cell-bar">
                     <div

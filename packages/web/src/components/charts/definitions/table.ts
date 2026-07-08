@@ -6,19 +6,11 @@ const table: ChartTypeDefinition = {
   icon: "#",
   supportsDrillDown: true,
   fields: [
-    // Data
-    { key: "columns", label: "Columns (comma-separated)", type: "text", defaultValue: "", group: "Data", hint: "Leave empty to show all columns" },
-
-    // Display
-    { key: "pageSize", label: "Rows Per Page", type: "number", defaultValue: 25, group: "Display" },
-    { key: "striped", label: "Striped Rows", type: "boolean", defaultValue: true, group: "Display" },
+    // Display — the Data Table is an aggregated (group-by + value) view, so record-oriented
+    // options (columns list, row numbers, default sort field/direction) don't apply here;
+    // rows are ordered by value from the aggregation SQL and capped by the shared "Result
+    // limit" (LIMIT) — there's no pagination, so no separate "Rows Per Page". See RecordsTable.
     { key: "compact", label: "Compact Mode", type: "boolean", defaultValue: true, group: "Display" },
-    { key: "showRowNumbers", label: "Show Row Numbers", type: "boolean", defaultValue: false, group: "Display" },
-    { key: "sortField", label: "Default Sort Field", type: "text", defaultValue: "", group: "Display" },
-    { key: "sortDirection", label: "Sort Direction", type: "select", defaultValue: "asc", group: "Display", options: [
-      { value: "asc", label: "Ascending" },
-      { value: "desc", label: "Descending" },
-    ]},
 
     // Value-bar overlay — each numeric metric cell gets a translucent gradient
     // bar whose width is normalized to the column's max (per-column scaling).
@@ -30,16 +22,13 @@ const table: ChartTypeDefinition = {
     { key: "customWhere", label: "Custom filter (SQL)", type: "textarea", defaultValue: "", group: "Advanced", hint: "Raw SQL predicate ANDed with active filters, e.g. region = 'West'. Leave empty for none." },
   ],
   defaultConfig: {
-    columns: "",
-    pageSize: 25,
-    striped: true,
     compact: true,
-    showRowNumbers: false,
-    sortField: "",
-    sortDirection: "asc",
     showValueBars: true,
     barColor: "#8b5cf6",
     customWhere: "",
+    // Multi-column GROUP BY (mirrors bar): ordered list of columns; each becomes a table
+    // column. length<=1 falls through to the legacy single-`groupByColumn` path.
+    groupByColumns: [] as string[],
   },
 };
 

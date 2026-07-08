@@ -72,6 +72,9 @@ vi.mock("../api/client", async (importOriginal) => {
     listDashboards: vi.fn(() => Promise.resolve([])),
     listAssociatedTables: vi.fn(() => Promise.resolve([])),
     listWidgets: vi.fn(() => Promise.resolve([])),
+    // createWidget echoes its input so duplicate/add flows can assert the payload + append.
+    createWidget: vi.fn((_dashboardId: number, input: Record<string, unknown>) =>
+      Promise.resolve({ id: 999, dashboard_id: 1, position: 0, created_at: "x", updated_at: "x", ...input })),
     listViews: vi.fn(() => Promise.resolve([])),
     listDashboardLayers: vi.fn(() => Promise.resolve([])),
     listDashboardTables: vi.fn(() => Promise.resolve([])),
@@ -148,6 +151,7 @@ import {
   dropDynamicView,
   listDashboards,
   listWidgets,
+  createWidget,
   listViews,
   listDashboardTables,
   listDynamicViews,
@@ -897,6 +901,11 @@ describe("Phase 48 — permission gating (GATE-V18-02/03/04)", () => {
       expect(container.querySelector(".widget-configure")).toBeNull();
       expect(container.querySelector(".widget-remove")).toBeNull();
     });
+
+    it("open dashboard with widget: no copy (widget-duplicate) for analyst", async () => {
+      const { container } = await openDashboard([barWidget]);
+      expect(container.querySelector(".widget-duplicate")).toBeNull();
+    });
   });
 
   // ── Designer-visible assertions ───────────────────────────────────────────
@@ -925,6 +934,38 @@ describe("Phase 48 — permission gating (GATE-V18-02/03/04)", () => {
         expect(container.querySelector(".widget-configure")).not.toBeNull();
         expect(container.querySelector(".widget-remove")).not.toBeNull();
       });
+    });
+
+    it("open dashboard with widget: copy (widget-duplicate) visible for designer", async () => {
+      const { container } = await openDashboard([barWidget]);
+      await waitFor(() => {
+        expect(container.querySelector(".widget-duplicate")).not.toBeNull();
+      });
+    });
+
+    it("clicking the copy icon duplicates the widget via createWidget with a deep-cloned config", async () => {
+      (createWidget as ReturnType<typeof vi.fn>).mockClear();
+      const { container } = await openDashboard([barWidget]);
+      const dupBtn = await waitFor(() => {
+        const btn = container.querySelector(".widget-duplicate");
+        expect(btn).not.toBeNull();
+        return btn as HTMLElement;
+      });
+      await userEvent.click(dupBtn);
+      await waitFor(() => expect(createWidget).toHaveBeenCalledTimes(1));
+      const [dashId, input] = (createWidget as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        number,
+        { title: string; type: string; config: Record<string, unknown> },
+      ];
+      expect(dashId).toBe(dashboardId);
+      expect(input.type).toBe("bar");
+      expect(input.title).toBe("Copy of Bar Chart");
+      // Config is a CLONE (distinct reference) that still carries the source's fields.
+      expect(input.config).not.toBe(barWidget.config);
+      expect(input.config.sql).toBe(barWidget.config.sql);
+      // Copy is repositioned below the source (x reset, y past the original's bottom).
+      expect((input.config.layout as { x: number; y: number }).x).toBe(0);
+      expect((input.config.layout as { x: number; y: number }).y).toBeGreaterThan(0);
     });
   });
 
