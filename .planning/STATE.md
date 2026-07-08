@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: unknown
-stopped_at: Completed 105-01-PLAN.md
-last_updated: "2026-07-08T18:10:41.420Z"
+status: phase_complete
+stopped_at: Phase 105 complete + verified (6/6); next Phase 106
+last_updated: "2026-07-08T18:20:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 105 — reverse-mapping-pure-lib-tests
+**Current focus:** Phase 106 — display-mode-persistence (next); Phase 105 complete + verified
 
 ## Current Position
 
-Phase: 105 (reverse-mapping-pure-lib-tests) — COMPLETE
+Phase: 105 (reverse-mapping-pure-lib-tests) — COMPLETE + VERIFIED (6/6 must-haves)
 Plan: 1 of 1 (complete — see 105-01-SUMMARY.md)
+Next: Phase 106 (display-mode-persistence) — the only server touch (dashboards.filter_display_mode)
 
 ### v1.20 Phase Map
 
