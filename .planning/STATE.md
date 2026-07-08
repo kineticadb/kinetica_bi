@@ -1,29 +1,31 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.19
-milestone_name: Visualization Customization
-status: shipped
-stopped_at: v1.19 shipped (tagged) — awaiting next milestone
-last_updated: "2026-07-08T14:37:14.739Z"
+milestone: v1.20
+milestone_name: Filter Panel
+status: defining_requirements
+stopped_at: v1.20 started — defining requirements (research → requirements → roadmap)
+last_updated: "2026-07-08T15:00:00.000Z"
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 19
-  completed_plans: 19
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-08 — v1.19 SHIPPED)
+See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Planning next milestone (v1.19 shipped 2026-07-08; run `/gsd:new-milestone`)
+**Current focus:** v1.20 Filter Panel — defining requirements
 
 ## Current Position
 
-v1.19 Visualization Customization — SHIPPED 2026-07-08 (tag `v1.19`). All 8 phases (97–104) complete; 27/27 requirements. No active phase — awaiting `/gsd:new-milestone`.
+v1.20 Filter Panel — STARTED 2026-07-08. Defining requirements (research → requirements → roadmap). No phases yet; numbering continues from 104. Goal: an alternative right-side filter panel (vs. top bar), designer-set per-dashboard, with chip parity + global clear-all + filter→widget mapping (list + on-canvas highlight), as a presentation layer over the v1.18 combination model (materialize engine unchanged).
+
+<details><summary>Archived — v1.19 Visualization Customization (SHIPPED 2026-07-08, tag v1.19)</summary>
 
 ### v1.19 Phase Map
 
@@ -97,6 +99,8 @@ BOTH stacks (web-heavy; custom-metrics is the only server touch). Key locked dec
 ### v1.19 Open Tech Debt (carried from v1.18)
 
 TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
+
+</details>
 
 ### v1.18 Phase Map
 
