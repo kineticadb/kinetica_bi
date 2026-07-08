@@ -44,8 +44,13 @@ export default function InfoCardRenderer({ widget, tables }: Props) {
       .sort((a, b) => a.position - b.position);
   }, [allLayers]);
 
-  // Display-name resolver — matches popup's pattern at MapChartRenderer.tsx:218-224.
+  // Display-name resolver — MUST match the map popup / Map Layers panel / legend naming
+  // (MapChartRenderer.layerNameFor, LayersModal): an operator-set config.name wins, otherwise
+  // fall back to `{schema.name} — {renderMode}`. Without the config.name check the card showed
+  // the raw table name while the map showed the friendly name for the same layer.
   const layerNameFor = (layer: DashboardLayerDto): string => {
+    const custom = (layer.config as { name?: string }).name;
+    if (typeof custom === "string" && custom.trim().length > 0) return custom.trim();
     const t = tables.find((tbl) => tbl.id === layer.table_id);
     const tableName = t ? `${t.schema}.${t.name}` : "(unset table)";
     const renderMode = (layer.config as { renderMode?: string }).renderMode ?? "raster";

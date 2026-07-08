@@ -283,6 +283,28 @@ describe("InfoCardRenderer eligibility (CARD-V14-02)", () => {
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
   });
+
+  // C7b (label parity with map popup): an operator-set config.name is used for the dropdown
+  // label, matching MapChartRenderer.layerNameFor. Without the config.name check the card
+  // showed the raw "schema.table — renderMode" while the map showed the friendly name.
+  it("C7b: dropdown label uses operator-set config.name (parity with map popup)", () => {
+    const named = makeLayer(1, {
+      table_id: 100,
+      config: { spatialMode: "latlon", lonColumn: "lon", latColumn: "lat", renderMode: "classbreak", name: "Data Coverage" },
+    });
+    const unnamed = makeLayer(2, { table_id: 101 }); // falls back to schema.table — renderMode
+    act(() => {
+      useDashboardLayersStore.getState().setLayers([named, unnamed]);
+      useInfoSelectionStore.getState().setSelection(1, { rows: [{ a: 1 }], columns: ["a"], page: 0, hasMore: false });
+      useInfoSelectionStore.getState().setActiveLayer(1);
+    });
+    render(<InfoCardRenderer widget={makeWidget()} tables={defaultTables} />);
+    // Friendly name wins for the named layer; NOT the raw table name.
+    expect(screen.getByRole("option", { name: "Data Coverage" })).toBeInTheDocument();
+    expect(screen.queryByText(/data_coverage|public\.trips/)).not.toBeInTheDocument();
+    // Unnamed layer still falls back to the schema.table — renderMode form.
+    expect(screen.getByRole("option", { name: "public.stations — raster" })).toBeInTheDocument();
+  });
 });
 
 describe("InfoCardRenderer render parity with popup (CARD-V14-03)", () => {
