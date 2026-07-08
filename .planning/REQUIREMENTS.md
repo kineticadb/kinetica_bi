@@ -63,33 +63,35 @@ Explicitly excluded to prevent scope creep (confirmed with operator 2026-07-08):
 
 ## Traceability
 
-Populated during roadmap creation (phase numbering continues from 104).
+Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2026-07-08.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FSET-V120-01 | TBD | Pending |
-| FSET-V120-02 | TBD | Pending |
-| FSET-V120-03 | TBD | Pending |
-| FPANEL-V120-01 | TBD | Pending |
-| FPANEL-V120-02 | TBD | Pending |
-| FPANEL-V120-03 | TBD | Pending |
-| FPANEL-V120-04 | TBD | Pending |
-| FPANEL-V120-05 | TBD | Pending |
-| FPANEL-V120-06 | TBD | Pending |
-| FPANEL-V120-07 | TBD | Pending |
-| FPANEL-V120-08 | TBD | Pending |
-| FPANEL-V120-09 | TBD | Pending |
-| FSCOPE-V120-01 | TBD | Pending |
-| FSCOPE-V120-02 | TBD | Pending |
-| FSCOPE-V120-03 | TBD | Pending |
-| FCLEAR-V120-01 | TBD | Pending |
-| VERIFY-V120-01 | TBD | Pending |
+| FSET-V120-01 | Phase 110 | Pending |
+| FSET-V120-02 | Phase 106 | Pending |
+| FSET-V120-03 | Phase 106 | Pending |
+| FPANEL-V120-01 | Phase 107 | Pending |
+| FPANEL-V120-02 | Phase 107 | Pending |
+| FPANEL-V120-03 | Phase 107 | Pending |
+| FPANEL-V120-04 | Phase 107 | Pending |
+| FPANEL-V120-05 | Phase 107 | Pending |
+| FPANEL-V120-06 | Phase 107 | Pending |
+| FPANEL-V120-07 | Phase 107 | Pending |
+| FPANEL-V120-08 | Phase 107 | Pending |
+| FPANEL-V120-09 | Phase 107 | Pending |
+| FSCOPE-V120-01 | Phase 105 + Phase 108 | Pending |
+| FSCOPE-V120-02 | Phase 108 | Pending |
+| FSCOPE-V120-03 | Phase 108 | Pending |
+| FCLEAR-V120-01 | Phase 109 | Pending |
+| VERIFY-V120-01 | Phase 110 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17 (100%) ✓
+- Unmapped: 0
+
+**Note:** FSCOPE-V120-01 spans Phase 105 (the pure reverse-mapping computation — both read paths × all filter kinds × `dvFilterScopeDisabled`) and Phase 108 (the in-panel applies-to list/count that renders it), mirroring how v1.19's METRIC-V119-01 spanned its server-foundation and authoring-UI phases. Every other requirement maps to exactly one phase.
 
 ---
 *Requirements defined: 2026-07-08*
-*Last updated: 2026-07-08 after initial definition*
+*Last updated: 2026-07-08 after roadmap creation (traceability populated; phases 105–110)*

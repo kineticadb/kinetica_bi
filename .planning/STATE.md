@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: defining_requirements
-stopped_at: v1.20 started — defining requirements (research → requirements → roadmap)
-last_updated: "2026-07-08T15:00:00.000Z"
+status: roadmap_complete
+stopped_at: v1.20 roadmap created — Phases 105-110 mapped (17/17 requirements); ready for /gsd:plan-phase 105
+last_updated: "2026-07-08T16:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,11 +19,73 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.20 Filter Panel — defining requirements
+**Current focus:** v1.20 Filter Panel — roadmap complete (Phases 105-110); ready to plan Phase 105
 
 ## Current Position
 
-v1.20 Filter Panel — STARTED 2026-07-08. Defining requirements (research → requirements → roadmap). No phases yet; numbering continues from 104. Goal: an alternative right-side filter panel (vs. top bar), designer-set per-dashboard, with chip parity + global clear-all + filter→widget mapping (list + on-canvas highlight), as a presentation layer over the v1.18 combination model (materialize engine unchanged).
+v1.20 Filter Panel — ROADMAP COMPLETE 2026-07-08. Six phases (105-110) derived from the 17 requirements; numbering continues from 104. Next: `/gsd:plan-phase 105`. Goal: an alternative collapsible right-side filter panel (vs. the top bar), designer-set per-dashboard, with chip parity + global clear-all + filter→widget mapping (in-panel list + on-canvas highlight) — a PRESENTATION LAYER over the existing filter system (source of truth = `useFilterStore` + `useSpatialFilterStore`; the DERIVED `filterCombinationStore` is NOT the chip source; `AggregatedWidgetRenderer` stays the sole materialize trigger; no new npm packages).
+
+### v1.20 Phase Map
+
+| Phase | Name | Stack | Key Requirements | Research Flag |
+|-------|------|-------|------------------|---------------|
+| 105 | Reverse-Mapping Pure Lib + Tests | FRONTEND-ONLY | FSCOPE-V120-01 (computation) | REQUIRED — HIGHEST RISK (both read paths × all filter kinds × dv-disabled) |
+| 106 | Display-Mode Persistence | BOTH (the only server touch) | FSET-V120-02, FSET-V120-03 | None (mirrors the v1.18 filter_scope migration) |
+| 107 | Panel Shell + Reflow + XOR Switch + Chips | FRONTEND-ONLY | FPANEL-V120-01..09 | None |
+| 108 | Applies-To List + On-Canvas Highlight | FRONTEND-ONLY | FSCOPE-V120-01 (display), FSCOPE-V120-02, FSCOPE-V120-03 | REQUIRED — HIGH RISK (re-render-storm avoidance + deterministic cleanup) |
+| 109 | Global Clear-All | FRONTEND-ONLY | FCLEAR-V120-01 | None |
+| 110 | Designer Settings UI + Verification + Live UAT | BOTH + operator | FSET-V120-01, VERIFY-V120-01 | None |
+
+**Dependency spine:** {105, 106} parallel-safe → 107 (needs 106's persisted mode) → {108 (needs 105's lib + 107's panel/cards), 109 (needs 107's panel + live combos to tear down)} → 110 (needs all). The reverse-map lib (105) precedes the panel/highlight that consume it; persistence (106) gates the mode switch (107); clear-all (109) is sequenced last among features so live combinations exist to prove the ref-count DROP; VERIFY (110) is final and depends on every feature phase.
+
+**Only BOTH-stack phase:** 106 — a single PRAGMA-guarded `ALTER TABLE dashboards ADD COLUMN filter_display_mode` (default `'topbar'`) + `mapDashboard`/`updateDashboard`/`DashboardDto` plumbing, mirroring the v1.18 `filter_scope` migration. Every other feature phase is FRONTEND-ONLY (`packages/web`); 110 exercises both stacks for verification. FSCOPE-V120-01 SPANS 105 (pure computation) + 108 (in-panel display) — mirroring how v1.19's METRIC-V119-01 spanned server-foundation + authoring UI.
+
+### v1.20 Scope (locked 2026-07-08)
+
+Presentation layer over the existing filter system (frontend-heavy; one small server column). Key locked decisions:
+
+1. **Source of truth = input stores, NEVER the derived combination store.** ACTIVE FILTERS = `useFilterStore` (`.filters` per tableId + `.dvFilters` per dvId) + `useSpatialFilterStore` (`.shapes`), plus `views[].filter_clause` as read-only static WHERE text. `filterCombinationStore` is written ONLY by the orchestrator and must NOT be read as the chip/source-of-truth list (the `FilteringBadge` staleness bug; memory: filtering-badges-read-combination-store). The panel reads/mutates the SAME input stores the top bar uses; the combination store is fair game only for the primitive "Filtering…" spinner selector.
+2. **No new materialize path / no filter-semantics change.** `AggregatedWidgetRenderer` remains the SOLE materialize trigger; the v1.18 combination model is unchanged. Global clear-all mutates INPUT stores only (`clearFilters`/`clearDvFilters`/`clearAll`); the untouched `useCombinationOrchestrator` ref-count DROPs views. Never call `materialize*`/`drop*View` from the panel; never `filterStore.reset()` live.
+3. **Reverse-map = INVERSE of the existing resolvers, shared lib.** `resolveWidgetsForFilter.ts` mirrors `resolveFilterSet`/`resolveSpatialShapes`/`useFilterScopeSummary` across BOTH read paths (`w:<id>` chart widgets + `l:<id>` map layers → owning map widget; memory: map-wms-is-separate-read-path) and ALL filter kinds (eq/in/between+datetime/spatial), honoring `dvFilterScopeDisabled`. One pure lib so the per-widget badge and per-filter map can't drift.
+4. **Highlight = CSS-class toggle + scoped boolean selector + a NEW session-only `filterHighlightStore`.** No whole-object subscription (re-render storm). The new store MUST join the ~11-store `reset()` cleanup chain in BOTH places (DashboardOpen unmount + App UNAUTHORIZED handler); deterministic cleanup on leave/collapse/switch/logout.
+5. **Persistence = one BOTH-stack column.** `dashboards.filter_display_mode` (default `'topbar'`; absent → byte-identical top bar). The ONLY server touch. Scalar vs a JSON `config` blob is an open plan-time decision (both mirror the v1.18 migration; both default to top bar).
+6. **Reflow is free IFF the panel is an in-flow flex sibling** that shrinks the grid container (`react-grid-layout` `useContainerWidth` ResizeObserver) — NOT a `position:fixed` overlay. Reuse the `.sidebar` collapse + `filter-bar-*` classes; NO invented classes (they pass all gates but render unstyled). Top-bar XOR panel — never both surfaces rendered.
+7. **NO new RBAC permission.** The designer mode toggle is gated by the existing `dashboards:edit` (avoids the permission-ripple across rbacDb/rbacMigration/web-permissions/RolesPage specs; memory: adding-permission-ripples-across-specs). **ZERO new npm packages** — every capability already exists in the installed stack.
+
+### v1.20 Test Gates (every phase)
+
+- **Frontend phases (105, 107, 108, 109):** web vitest 100% from `packages/web`; web `tsc` clean; theme-guard green (theme tokens only, no raw hex, no `rgba()`/wrong tokens, no invented CSS classes).
+- **BOTH / server-touching phases (106; 110 for verification):** ALL of the above + supertests in BOTH auth modes (password + oidc); server `tsc` clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
+- **Phase 110 (verification):** ALL of the above on both stacks + a BLOCKING live operator walk-through of the panel + chips (remove/group-clear), global clear-all, applies-to + hover/click highlight, and the designer mode toggle — INCLUDING light/dark theme and narrow-viewport VISUAL checks (undefined CSS classes + `rgba()`/wrong tokens pass every automated gate but render broken; memory: css-bugs-evade-tests-and-theme-guard, theme-guard-misses-rgba-and-wrong-tokens) — with any gaps fixed in-session (regression-tested) and re-walked to PASS.
+- **Invariant (all phases):** sole-materialize-trigger — static grep `grep -rE "materializeFilter|dropCombinationView" packages/web/src/components/` finds only authorized call sites (the panel / clear-all handler is NOT among them). Presentation layer only; no filter-semantics change.
+
+### v1.20 Requirement Coverage
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FSET-V120-01 | Phase 110 | Pending |
+| FSET-V120-02 | Phase 106 | Pending |
+| FSET-V120-03 | Phase 106 | Pending |
+| FPANEL-V120-01 | Phase 107 | Pending |
+| FPANEL-V120-02 | Phase 107 | Pending |
+| FPANEL-V120-03 | Phase 107 | Pending |
+| FPANEL-V120-04 | Phase 107 | Pending |
+| FPANEL-V120-05 | Phase 107 | Pending |
+| FPANEL-V120-06 | Phase 107 | Pending |
+| FPANEL-V120-07 | Phase 107 | Pending |
+| FPANEL-V120-08 | Phase 107 | Pending |
+| FPANEL-V120-09 | Phase 107 | Pending |
+| FSCOPE-V120-01 | Phase 105 + Phase 108 | Pending |
+| FSCOPE-V120-02 | Phase 108 | Pending |
+| FSCOPE-V120-03 | Phase 108 | Pending |
+| FCLEAR-V120-01 | Phase 109 | Pending |
+| VERIFY-V120-01 | Phase 110 | Pending |
+
+**Coverage: 17/17 (100%)** — FSCOPE-V120-01 spans 105 (computation) + 108 (panel display); every other requirement maps to exactly one phase.
+
+### v1.20 Open Tech Debt (carried from v1.19)
+
+TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
 
 <details><summary>Archived — v1.19 Visualization Customization (SHIPPED 2026-07-08, tag v1.19)</summary>
 
