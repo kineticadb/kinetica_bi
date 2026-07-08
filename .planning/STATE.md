@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: unknown
-stopped_at: Phase 105 context gathered
-last_updated: "2026-07-08T17:24:37.470Z"
+stopped_at: Completed 105-01-PLAN.md
+last_updated: "2026-07-08T18:10:41.420Z"
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,11 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.20 Filter Panel — roadmap complete (Phases 105-110); ready to plan Phase 105
+**Current focus:** Phase 105 — reverse-mapping-pure-lib-tests
 
 ## Current Position
 
-v1.20 Filter Panel — ROADMAP COMPLETE 2026-07-08. Six phases (105-110) derived from the 17 requirements; numbering continues from 104. Next: `/gsd:plan-phase 105`. Goal: an alternative collapsible right-side filter panel (vs. the top bar), designer-set per-dashboard, with chip parity + global clear-all + filter→widget mapping (in-panel list + on-canvas highlight) — a PRESENTATION LAYER over the existing filter system (source of truth = `useFilterStore` + `useSpatialFilterStore`; the DERIVED `filterCombinationStore` is NOT the chip source; `AggregatedWidgetRenderer` stays the sole materialize trigger; no new npm packages).
+Phase: 105 (reverse-mapping-pure-lib-tests) — COMPLETE
+Plan: 1 of 1 (complete — see 105-01-SUMMARY.md)
 
 ### v1.20 Phase Map
 
@@ -783,6 +784,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 102 P03 | 20 | 1 tasks | 3 files |
 | Phase 103 P01 | 11 | 3 tasks | 1 files |
 | Phase 104 P02 | 50m | 3 tasks | 6 files |
+| Phase 105 P01 | 20min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -1149,6 +1151,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 104-01]: mapViewportSyncStore ships dormant; Plan 104-02 wires publish/subscribe in MapChartRenderer
 - [Phase 104]: isSyncDrivenRef reset inside moveend handler (not animate callback) — safest site per RESEARCH.md Pitfall 3 to avoid OL event ordering uncertainty
 - [Phase 104]: dashboardId derived from existing dashboardCtx (not second hook call) — avoids double useDashboardContextOptional() invocation at same render scope
+- [Phase 105]: Reverse-map return type is FilterApplyEntry[]/ShapeApplyEntry[] arrays (not a Map); isDv derived internally (no explicit field); widget dedup keyed on plain numeric widgetId
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1555,6 +1558,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-08T17:24:37.457Z
-Stopped at: Phase 105 context gathered
-Resume file: .planning/phases/105-reverse-mapping-pure-lib-tests/105-CONTEXT.md
+Last session: 2026-07-08T18:10:41.409Z
+Stopped at: Completed 105-01-PLAN.md
+Resume file: None

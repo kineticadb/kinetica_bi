@@ -40,7 +40,7 @@
 
 ### Phases
 
-- [ ] **Phase 105: Reverse-Mapping Pure Lib + Tests** — FRONTEND-ONLY — `resolveWidgetsForFilter.ts`, the INVERSE of `resolveFilterSet`/`resolveSpatialShapes`/`useFilterScopeSummary`, enumerating BOTH read paths (`w:<id>` chart widgets + `l:<id>` map layers → owning map widget) × all filter kinds (eq/in/between+datetime/spatial) × `dvFilterScopeDisabled`. Pure + fully unit-tested. **(research flag — HIGHEST RISK)**
+- [x] **Phase 105: Reverse-Mapping Pure Lib + Tests** (completed 2026-07-08) — FRONTEND-ONLY — `resolveWidgetsForFilter.ts`, the INVERSE of `resolveFilterSet`/`resolveSpatialShapes`/`useFilterScopeSummary`, enumerating BOTH read paths (`w:<id>` chart widgets + `l:<id>` map layers → owning map widget) × all filter kinds (eq/in/between+datetime/spatial) × `dvFilterScopeDisabled`. Pure + fully unit-tested. **(research flag — HIGHEST RISK)**
 - [ ] **Phase 106: Display-Mode Persistence** — BOTH-stack — add a `dashboards.filter_display_mode` column (PRAGMA-guarded ALTER, mirroring the v1.18 `filter_scope` migration) + `DashboardDto`/update plumbing; default `'topbar'` → absent = byte-identical top bar. The milestone's ONLY server touch.
 - [ ] **Phase 107: Panel Shell + Reflow + XOR Switch + Chips** — FRONTEND-ONLY — collapsible right drawer (reuse `.sidebar` collapse + `filter-bar-*` classes), top-bar XOR panel switch, active-filter chips (shared `FilterChip` + `buildChipText`) for eq/in + datetime-between + spatial, per-chip remove + per-group clear, collapsed count badge, empty state, group-by-source, provenance. Panel is an in-flow flex sibling shrinking the grid container (NOT a fixed overlay) so RGL `useContainerWidth` auto-reflows.
 - [ ] **Phase 108: Applies-To List + On-Canvas Highlight** — FRONTEND-ONLY — per-filter "applies to N widgets" list/count (consuming the Phase 105 lib) + hover-highlight + click-to-scroll/flash; new session-only `filterHighlightStore` + `WidgetCard` extraction; `reset()` joins BOTH cleanup chains. **(research flag — HIGH RISK: re-render-storm avoidance + deterministic cleanup)**
@@ -62,7 +62,8 @@
   3. Map layers (`l:<id>`) are translated back to their owning map widget; a widget appears exactly once even when several of its layers match the same filter.
   4. When `dvFilterScopeDisabled` is set, dv-backed widgets fall through to accept-all — matching `useFilterScopeSummary`.
   5. Correctness is proven by unit tests spanning 3 filter kinds × both read paths × the dv-disabled override, with zero store/React coupling.
-**Plans**: TBD (derived by `/gsd:plan-phase 105`)
+**Plans:** 1/1 plans complete
+- [x] 105-01-PLAN.md — Pure computeReverseFilterMap lib (inverse of resolveFilterSet/resolveSpatialShapes; both read paths × all filter kinds × dv-disabled) + exhaustive vitest matrix (completed 2026-07-08, see 105-01-SUMMARY.md)
 
 ### Phase 106: Display-Mode Persistence
 **Goal**: Each dashboard persists a filter display mode (top bar vs right panel) server-side, returned to every viewer on load, defaulting to top bar so unconfigured dashboards stay byte-identical to today.
@@ -135,7 +136,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 105. Reverse-Mapping Pure Lib + Tests | 0/? | Not started | - |
+| 105. Reverse-Mapping Pure Lib + Tests | 1/1 | Complete | 2026-07-08 |
 | 106. Display-Mode Persistence | 0/? | Not started | - |
 | 107. Panel Shell + Reflow + XOR Switch + Chips | 0/? | Not started | - |
 | 108. Applies-To List + On-Canvas Highlight | 0/? | Not started | - |
