@@ -68,6 +68,16 @@ export type InfoSelectionEntry = {
 export type InfoSelectionState = {
   state: Record<number, InfoSelectionEntry>; // keyed by layerId (number, matches DashboardLayerDto.id)
   activeLayerId: number | null;
+  /**
+   * The widget that OWNS the current active selection — set by the map click fan-out
+   * (MapChartRenderer Effect 6) and the popup's dropdown-switch. Lets a map's InfoPopup
+   * render ONLY when it owns the selection, so on a multi-map dashboard clicking one map
+   * does not open/close/reset the popup on another map (each map has different layers, so
+   * the shared activeLayerId alone can't disambiguate the owner). null = no map owner
+   * (initial state, reset, or a card-driven dropdown switch — the dashboard-scoped Info
+   * Card still mirrors the selection regardless of owner).
+   */
+  activeWidgetId: number | null;
 
   setSelection: (
     layerId: number,
@@ -78,7 +88,9 @@ export type InfoSelectionState = {
     payload: { rows: Record<string, unknown>[]; page: number; hasMore: boolean }
   ) => void;
   clearSelection: (layerId: number) => void;
-  setActiveLayer: (layerId: number) => void;
+  /** widgetId records which map owns the selection (see activeWidgetId). Omit / pass null
+   *  for a non-map switch (card dropdown) — clears ownership so no map popup renders. */
+  setActiveLayer: (layerId: number, widgetId?: number | null) => void;
   setLoading: (layerId: number, loading: boolean) => void;
   setError: (layerId: number, error: string | null) => void;
   /** Single-record nav (Back/Next). No clamping — caller is responsible for bounds. */
@@ -99,6 +111,7 @@ const PLACEHOLDER: InfoSelectionEntry = {
 export const useInfoSelectionStore = create<InfoSelectionState>((set) => ({
   state: {},
   activeLayerId: null,
+  activeWidgetId: null,
 
   // REPLACE semantics — fresh-click path. Caller passes page explicitly; store does NOT auto-increment.
   // Does NOT auto-clear loading per CONTEXT.md § Action contract — preserves prev?.loading so the
@@ -147,14 +160,19 @@ export const useInfoSelectionStore = create<InfoSelectionState>((set) => ({
   // filterStore.ts:53-58). Different-layer fully deletes the prior layer's entry (rows, columns,
   // page, hasMore, loading, error all gone) AND sets activeLayerId — single set() call, atomic.
   // The new layer's entry is NOT touched (caller is responsible for setSelection if needed).
-  setActiveLayer: (layerId) =>
+  setActiveLayer: (layerId, widgetId = null) =>
     set((s) => {
-      if (s.activeLayerId === layerId) return s; // no-op — same layer
+      // no-op only when BOTH layer AND owning widget are unchanged (a re-click that
+      // resolves to the same layer on the same map). Same layer, new owner still updates
+      // activeWidgetId so the popup follows the map that actually owns the selection.
+      if (s.activeLayerId === layerId && s.activeWidgetId === widgetId) return s;
       const nextStateMap = { ...s.state };
-      if (s.activeLayerId !== null && s.activeLayerId in nextStateMap) {
+      // Only wipe the prior layer's entry on a genuine layer switch (mirrors the Phase 20
+      // lock). A pure owner change on the same layer must NOT delete that layer's entry.
+      if (s.activeLayerId !== null && s.activeLayerId !== layerId && s.activeLayerId in nextStateMap) {
         delete nextStateMap[s.activeLayerId];
       }
-      return { state: nextStateMap, activeLayerId: layerId };
+      return { state: nextStateMap, activeLayerId: layerId, activeWidgetId: widgetId };
     }),
 
   // Per-layer flag flip. Caller toggles before/after fetch (both fresh-click and Load-more paths).
@@ -195,5 +213,5 @@ export const useInfoSelectionStore = create<InfoSelectionState>((set) => ({
 
   // Internal-only — Plan 20-02 wires reset() into App.tsx UNAUTHORIZED handler and DashboardsPage
   // DashboardOpen cleanup alongside the existing useFilterStore/useFilterViewStore reset() calls.
-  reset: () => set({ state: {}, activeLayerId: null }),
+  reset: () => set({ state: {}, activeLayerId: null, activeWidgetId: null }),
 }));

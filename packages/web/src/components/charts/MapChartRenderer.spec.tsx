@@ -2456,7 +2456,7 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
     expect(_infoQueryMock.mock.calls[1][0].layerId).toBe(2);  // layerB second
     // Store actions called for the hit (layer B)
     expect(_infoSelectionState.setSelection).toHaveBeenCalledWith(2, expect.objectContaining({ rows: [{ id: 42 }] }));
-    expect(_infoSelectionState.setActiveLayer).toHaveBeenCalledWith(2);
+    expect(_infoSelectionState.setActiveLayer).toHaveBeenCalledWith(2, 10);  // owned by widget.id=10
     // Overlay positioned (setPosition called with click coordinate)
     expect(lastOverlayInstance?.setPosition).toHaveBeenCalledWith([0, 0]);
   });
@@ -2494,7 +2494,7 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
     // Only layer A queried; layer B skipped
     expect(_infoQueryMock).toHaveBeenCalledTimes(1);
     expect(_infoQueryMock.mock.calls[0][0].layerId).toBe(1);
-    expect(_infoSelectionState.setActiveLayer).toHaveBeenCalledWith(1);
+    expect(_infoSelectionState.setActiveLayer).toHaveBeenCalledWith(1, 10);  // owned by widget.id=10
   });
 
   // ── Test P9: All empty → "No records" toast ──────────────────────────────
@@ -2572,7 +2572,7 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
 
     // Both queried; B opened popup
     expect(_infoQueryMock).toHaveBeenCalledTimes(2);
-    expect(_infoSelectionState.setActiveLayer).toHaveBeenCalledWith(2);
+    expect(_infoSelectionState.setActiveLayer).toHaveBeenCalledWith(2, 10);  // owned by widget.id=10
     // No error toast (resilient to flaky single-layer errors)
     expect(_toastMock).not.toHaveBeenCalled();
   });

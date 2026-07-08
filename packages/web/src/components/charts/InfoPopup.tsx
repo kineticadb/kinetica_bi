@@ -43,25 +43,33 @@ type Props = {
    *  getInfoPopupHeightPx so legacy widgets without these fields use the pre-config baseline. */
   widthPx: number;
   heightPx: number;
+  /** The owning map widget.id. This popup renders ONLY when it owns the active selection
+   *  (store.activeWidgetId === widgetId) so that on a multi-map dashboard a click on another
+   *  map neither opens nor resets this map's popup. */
+  widgetId: number;
 };
 
-export default function InfoPopup({ eligibleLayers, layerNameFor, resolveTable, onClose, widthPx, heightPx }: Props) {
-  // PITFALL S-02 lock: scoped selector — NEVER s.state whole.
+export default function InfoPopup({ eligibleLayers, layerNameFor, resolveTable, onClose, widthPx, heightPx, widgetId }: Props) {
+  // PITFALL S-02 lock: scoped selectors — NEVER s.state whole.
   // Used here only for chrome-render suppression + ESC dep array.
   const activeLayerId = useInfoSelectionStore((s) => s.activeLayerId);
+  const activeWidgetId = useInfoSelectionStore((s) => s.activeWidgetId);
+  // This popup is "mine" only when a layer is active AND this map owns it. Foreign-owned
+  // selections must not render/ESC-dismiss here — that was the multi-map popup bug.
+  const isMine = activeLayerId !== null && activeWidgetId === widgetId;
 
   // ESC key dismiss — mirrors LayersModal.tsx:71-77.
   useEffect(() => {
-    if (activeLayerId === null) return;
+    if (!isMine) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeLayerId, onClose]);
+  }, [isMine, onClose]);
 
-  // Suppress popup chrome entirely when nothing is selected.
-  if (activeLayerId === null) return null;
+  // Suppress popup chrome entirely when nothing is selected OR another map owns the selection.
+  if (!isMine) return null;
 
   // Click-outside dismiss: backdrop div onClick → onClose; popup body stops propagation.
   // Mirrors LayersModal.tsx:168 pattern.
@@ -79,6 +87,7 @@ export default function InfoPopup({ eligibleLayers, layerNameFor, resolveTable, 
           emptyStateCopy="No records"
           onActiveLayerIneligible={onClose}
           onClose={onClose}
+          ownerWidgetId={widgetId}
         />
       </div>
     </div>

@@ -112,6 +112,10 @@ type Props = {
    *  as a flex child so it vertically centers with the layer select. The card surface
    *  omits it (no onClose). */
   onClose?: () => void;
+  /** The widget that owns this surface's selection. Popup passes its map widget.id so a
+   *  dropdown switch keeps ownership on that map (see infoSelectionStore.activeWidgetId).
+   *  Card omits it → dropdown switches clear ownership (no map popup follows). */
+  ownerWidgetId?: number | null;
 };
 
 export default function InfoSelectionView({
@@ -121,6 +125,7 @@ export default function InfoSelectionView({
   emptyStateCopy,
   onActiveLayerIneligible,
   onClose,
+  ownerWidgetId = null,
 }: Props) {
   // PITFALL S-02 lock: scoped selectors. NEVER subscribe to s.state whole.
   const activeLayerId = useInfoSelectionStore((s) => s.activeLayerId);
@@ -191,13 +196,13 @@ export default function InfoSelectionView({
 
     // Pitfall 2: no prior click context — only update focus, do NOT fetch.
     if (lastClickContext === null) {
-      store.setActiveLayer(newLayerId);
+      store.setActiveLayer(newLayerId, ownerWidgetId);
       return;
     }
 
     // Already-fetched layer: just switch focus, do NOT re-fetch.
     if (store.state[newLayerId] !== undefined) {
-      store.setActiveLayer(newLayerId);
+      store.setActiveLayer(newLayerId, ownerWidgetId);
       return;
     }
 
@@ -226,7 +231,7 @@ export default function InfoSelectionView({
     const controller = new AbortController();
     infoQueryAbortRef.current = controller;
 
-    store.setActiveLayer(newLayerId);  // wipes prior layer's entry per Phase 20 lock
+    store.setActiveLayer(newLayerId, ownerWidgetId);  // wipes prior layer's entry per Phase 20 lock
     store.setLoading(newLayerId, true);
 
     // Phase 52: translate track→latlon at the wire boundary (InfoSpatialMode is a 3-mode union).

@@ -1834,7 +1834,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           if (res.rows.length > 0) {
             const s = useInfoSelectionStore.getState();
             s.setSelection(layer.id, res);
-            s.setActiveLayer(layer.id);
+            s.setActiveLayer(layer.id, widget.id);  // scope popup ownership to THIS map
             // Edge-aware positioning: prefer top-right of cursor; flip to whichever
             // corner has enough room for the popup. Fallback = original top-right.
             const popupW = getInfoPopupWidthPx(widgetConfig as MapWidgetConfig);
@@ -2280,6 +2280,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           onClose={handleDismiss}
           widthPx={getInfoPopupWidthPx(widgetConfig as MapWidgetConfig)}
           heightPx={getInfoPopupHeightPx(widgetConfig as MapWidgetConfig)}
+          widgetId={widget.id}
         />
       </div>
 

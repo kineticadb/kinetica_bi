@@ -47,6 +47,8 @@ const defaultProps = {
   // Popup-only sizing — caller (MapChartRenderer) supplies these from widget config.
   widthPx: 360,
   heightPx: 400,
+  // Owning map widget.id — popup renders only when it owns the active selection.
+  widgetId: 10,
 };
 
 beforeEach(() => {
@@ -69,7 +71,7 @@ describe("InfoPopup", () => {
         page: 0,
         hasMore: false,
       });
-      useInfoSelectionStore.getState().setActiveLayer(5);
+      useInfoSelectionStore.getState().setActiveLayer(5, 10);  // owned by widgetId=10
     });
     render(<InfoPopup {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
@@ -85,11 +87,30 @@ describe("InfoPopup", () => {
         page: 0,
         hasMore: false,
       });
-      useInfoSelectionStore.getState().setActiveLayer(5);
+      useInfoSelectionStore.getState().setActiveLayer(5, 10);  // owned by widgetId=10
     });
     render(<InfoPopup {...defaultProps} />);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // H7 (multi-map bug): a selection owned by ANOTHER map (activeWidgetId !== widgetId)
+  // must render nothing here — clicking one map must not open/steal this map's popup.
+  it("H7: renders nothing when the active selection is owned by another widget", () => {
+    act(() => {
+      useInfoSelectionStore.getState().setSelection(5, {
+        rows: [{ a: 1 }],
+        columns: ["a"],
+        page: 0,
+        hasMore: false,
+      });
+      useInfoSelectionStore.getState().setActiveLayer(5, 99);  // owned by a DIFFERENT map
+    });
+    const { container } = render(<InfoPopup {...defaultProps} />);  // this popup is widgetId=10
+    expect(container.firstChild).toBeNull();
+    // ESC while a foreign map owns the selection must not dismiss via this popup.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
   });
 
   // H6: backdrop click → onClose; popup body click → no-op
@@ -101,7 +122,7 @@ describe("InfoPopup", () => {
         page: 0,
         hasMore: false,
       });
-      useInfoSelectionStore.getState().setActiveLayer(5);
+      useInfoSelectionStore.getState().setActiveLayer(5, 10);  // owned by widgetId=10
     });
     const { container } = render(<InfoPopup {...defaultProps} />);
     const backdrop = container.querySelector(".info-popup-backdrop")!;
