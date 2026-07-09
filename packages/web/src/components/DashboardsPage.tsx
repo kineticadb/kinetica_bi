@@ -63,6 +63,7 @@ import { DashboardContextProvider } from "./DashboardContext";
 import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
 import { WidgetFilterBadge } from "./WidgetFilterBadge";
+import { FilterChip } from "./FilterChip";  // Phase 107 Plan 01 (FPANEL-V120-09)
 import type { FilterSelectionConfig } from "../types/filterSelection";
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
@@ -991,31 +992,23 @@ const DashboardOpen = ({
                     <div className="filter-bar-chips">
                       {/* Column chips (existing v1.2/v1.3 behavior — unchanged) */}
                       {storeFilters.map((f) => (
-                        <span key={`col-${f.column}`} className="filter-bar-chip">
-                          {buildChipText(f.column, f.value, f.dataType, f.operator)}
-                          <button
-                            type="button"
-                            className="filter-bar-chip-dismiss"
-                            aria-label={`Remove filter ${f.column}`}
-                            onClick={() => useFilterStore.getState().removeFilter(tableId, f.column)}
-                          >
-                            <FontAwesomeIcon icon={faXmark} />
-                          </button>
-                        </span>
+                        <FilterChip
+                          key={`col-${f.column}`}
+                          variant="topbar"
+                          text={buildChipText(f.column, f.value, f.dataType, f.operator)}
+                          removeAriaLabel={`Remove filter ${f.column}`}
+                          onRemove={() => useFilterStore.getState().removeFilter(tableId, f.column)}
+                        />
                       ))}
                       {/* Phase 30 (CHIP-V15-01): spatial chips — one per shape, same row, same chip class. */}
                       {hasSpatialForThisTable && shapes.map((shape) => (
-                        <span key={`spatial-${shape.id}`} className="filter-bar-chip">
-                          {`${shape.label} (${shape.measurement})`}
-                          <button
-                            type="button"
-                            className="filter-bar-chip-dismiss"
-                            aria-label={`Remove spatial filter ${shape.label}`}
-                            onClick={() => useSpatialFilterStore.getState().removeShape(shape.id)}
-                          >
-                            <FontAwesomeIcon icon={faXmark} />
-                          </button>
-                        </span>
+                        <FilterChip
+                          key={`spatial-${shape.id}`}
+                          variant="topbar"
+                          text={`${shape.label} (${shape.measurement})`}
+                          removeAriaLabel={`Remove spatial filter ${shape.label}`}
+                          onRemove={() => useSpatialFilterStore.getState().removeShape(shape.id)}
+                        />
                       ))}
                     </div>
                   )}
@@ -1074,17 +1067,13 @@ const DashboardOpen = ({
                   <span className="filter-bar-table">{dvName}</span>
                   <div className="filter-bar-chips">
                     {dvFilters.map((f) => (
-                      <span key={`dv-${dvId}-${f.column}`} className="filter-bar-chip">
-                        {buildChipText(f.column, f.value, f.dataType, f.operator)}
-                        <button
-                          type="button"
-                          className="filter-bar-chip-dismiss"
-                          aria-label={`Remove filter ${f.column}`}
-                          onClick={() => useFilterStore.getState().removeDvFilter(dvId, f.column)}
-                        >
-                          <FontAwesomeIcon icon={faXmark} />
-                        </button>
-                      </span>
+                      <FilterChip
+                        key={`dv-${dvId}-${f.column}`}
+                        variant="topbar"
+                        text={buildChipText(f.column, f.value, f.dataType, f.operator)}
+                        removeAriaLabel={`Remove filter ${f.column}`}
+                        onRemove={() => useFilterStore.getState().removeDvFilter(dvId, f.column)}
+                      />
                     ))}
                   </div>
                   <button
