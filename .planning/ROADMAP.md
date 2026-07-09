@@ -91,7 +91,9 @@
   3. A user can remove an individual filter chip AND clear a whole group; both go through the existing filter-store actions and update every affected widget.
   4. The panel collapses/expands, showing an active-filter count badge (e.g. "Filters 3") when collapsed and an empty state when no filters are active.
   5. Filters are grouped by source (table / dynamic view / spatial draws) with per-filter provenance (the originating source widget when available), and BOTH the top bar and the panel render chips via one shared `FilterChip` component.
-**Plans**: TBD (derived by `/gsd:plan-phase 107`)
+**Plans**: 2 plans (wave 1 then wave 2)
+- [x] 107-01-PLAN.md — Shared FilterChip extraction + top-bar parity refactor + resolveProvenance helper (completed 2026-07-09, see 107-01-SUMMARY.md)
+- [ ] 107-02-PLAN.md — Panel shell + rail + reflow + XOR switch + source groups + empty state + count badge
 
 ### Phase 108: Applies-To List + On-Canvas Highlight
 **Goal**: Each filter in the panel shows which widgets it applies to (names/count), and hovering a filter highlights those widgets on the canvas while clicking scrolls to and briefly flashes them.

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: unknown
-stopped_at: Phase 107 UI-SPEC approved
-last_updated: "2026-07-09T17:09:14.387Z"
+stopped_at: Completed 107-01-PLAN.md
+last_updated: "2026-07-09T18:04:55.858Z"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,13 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 107 — panel-shell-reflow-xor-switch-chips (next); Phase 106 complete
+**Current focus:** Phase 107 — panel-shell-reflow-xor-switch-chips
 
 ## Current Position
 
-Phase: 106 (display-mode-persistence) — COMPLETE (see 106-01-SUMMARY.md)
-Plan: 1 of 1 (complete)
-Next: Phase 107 (panel-shell-reflow-xor-switch-chips)
+Phase: 107 (panel-shell-reflow-xor-switch-chips) — EXECUTING
+Plan: 2 of 2
 
 ### v1.20 Phase Map
 
@@ -70,13 +69,13 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 | FSET-V120-03 | Phase 106 | Complete |
 | FPANEL-V120-01 | Phase 107 | Pending |
 | FPANEL-V120-02 | Phase 107 | Pending |
-| FPANEL-V120-03 | Phase 107 | Pending |
+| FPANEL-V120-03 | Phase 107-01 (partial — per-chip remove via onRemove) | Pending (panel usage in 107-02) |
 | FPANEL-V120-04 | Phase 107 | Pending |
 | FPANEL-V120-05 | Phase 107 | Pending |
 | FPANEL-V120-06 | Phase 107 | Pending |
 | FPANEL-V120-07 | Phase 107 | Pending |
-| FPANEL-V120-08 | Phase 107 | Pending |
-| FPANEL-V120-09 | Phase 107 | Pending |
+| FPANEL-V120-08 | Phase 107-01 (partial — resolveProvenance + prop exist) | Pending (rendered in panel in 107-02) |
+| FPANEL-V120-09 | Phase 107-01 (partial — shared component lands, top-bar parity proven) | Pending (panel usage in 107-02 completes it) |
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Pending |
 | FSCOPE-V120-02 | Phase 108 | Pending |
 | FSCOPE-V120-03 | Phase 108 | Pending |
@@ -1155,6 +1154,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 104]: dashboardId derived from existing dashboardCtx (not second hook call) — avoids double useDashboardContextOptional() invocation at same render scope
 - [Phase 105]: Reverse-map return type is FilterApplyEntry[]/ShapeApplyEntry[] arrays (not a Map); isDv derived internally (no explicit field); widget dedup keyed on plain numeric widgetId
 - [Phase 106]: [Phase 106-01] Dedicated dashboards.filter_display_mode TEXT column (PRAGMA-guarded idempotent ALTER, mirrors filter_scope) coalesced NULL->'topbar' in mapDashboard; validated PATCH allow-list rejects invalid modes with 400; no new RBAC permission; web DashboardDto mirrors the field for Phases 107/110
+- [Phase 107-01]: Shared FilterChip's topbar branch is a literal copy-paste of the pre-existing inline chip JSX (no wrapper element) — verified via running DashboardsPage.spec.tsx completely UNMODIFIED (188/188 green) as the parity proof, not new assertions against the refactor; panel-variant .filter-panel-chip* CSS classes pre-added to global.css in this plan though unreferenced until 107-02; resolveProvenance is a plain 1-hop lookup, deliberately not importing Phase 108's resolveWidgetsForFilter
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1561,6 +1561,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-09T17:09:14.373Z
-Stopped at: Phase 107 UI-SPEC approved
-Resume file: .planning/phases/107-panel-shell-reflow-xor-switch-chips/107-UI-SPEC.md
+Last session: 2026-07-09T18:04:11.000Z
+Stopped at: Completed 107-01-PLAN.md
+Resume file: .planning/phases/107-panel-shell-reflow-xor-switch-chips/107-02-PLAN.md
