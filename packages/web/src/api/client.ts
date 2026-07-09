@@ -324,6 +324,9 @@ export type DashboardDto = {
   id: number;
   name: string;
   description?: string;
+  // v1.20 Phase 106 (FSET-V120-02/03): per-dashboard filter display mode, mirrored from
+  // the server Dashboard DTO. Always concrete on the wire (server coalesces NULL -> 'topbar').
+  filter_display_mode: "topbar" | "panel";
   created_at: string;
   updated_at: string;
 };
@@ -340,7 +343,7 @@ export const createDashboard = async (input: Pick<DashboardDto, "name"> & Partia
   return response.json() as Promise<DashboardDto>;
 };
 
-export const updateDashboard = async (id: number, attrs: Partial<Pick<DashboardDto, "name" | "description">>): Promise<DashboardDto> => {
+export const updateDashboard = async (id: number, attrs: Partial<Pick<DashboardDto, "name" | "description" | "filter_display_mode">>): Promise<DashboardDto> => {
   const response = await apiFetch(`${API_BASE}/api/dashboards/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
