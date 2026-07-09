@@ -793,6 +793,10 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.patch("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
+    const body = req.body as { filter_display_mode?: unknown };
+    if ("filter_display_mode" in body && body.filter_display_mode !== "topbar" && body.filter_display_mode !== "panel") {
+      return res.status(400).json({ error: "filter_display_mode must be 'topbar' or 'panel'." });
+    }
     const updated = updateDashboard(id, req.body);
     if (!updated) return res.status(404).json({ error: "Dashboard not found." });
     return res.json(updated);

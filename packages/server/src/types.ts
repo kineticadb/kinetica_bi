@@ -2,6 +2,10 @@ export type Dashboard = {
   id: number;
   name: string;
   description?: string;
+  // v1.20 Phase 106 (FSET-V120-02/03): per-dashboard filter display mode. Stored as a
+  // nullable TEXT column (db.ts); NULL = unconfigured, coalesced to 'topbar' by mapDashboard
+  // so the wire value is always concrete (never null) — mirrors the filter_scope precedent.
+  filter_display_mode: "topbar" | "panel";
   created_at: string;
   updated_at: string;
 };

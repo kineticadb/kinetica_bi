@@ -371,6 +371,17 @@ export const createDb = (dbPath: string): Database.Database => {
     instance.exec("ALTER TABLE dashboard_layers ADD COLUMN filter_scope TEXT");
   }
 
+  // v1.20 Phase 106 (FSET-V120-02/03): add filter_display_mode TEXT to existing dashboards.
+  // NULL = unconfigured = default 'topbar' (mirrors filter_scope NULL = accept-all).
+  // Idempotent: PRAGMA guard makes a second boot a no-op (no double-ALTER crash).
+  const dashboardCols = instance
+    .prepare("PRAGMA table_info(dashboards)")
+    .all() as Array<{ name: string }>;
+  const dashboardColNames = new Set(dashboardCols.map((c) => c.name));
+  if (!dashboardColNames.has("filter_display_mode")) {
+    instance.exec("ALTER TABLE dashboards ADD COLUMN filter_display_mode TEXT");
+  }
+
   // v1.8 RBAC (SCHEMA-V18-01): idempotent built-in role + default-mapping seed.
   // Runs every boot; INSERT OR IGNORE makes it a no-op on subsequent restarts.
   seedRbac(instance);
@@ -417,6 +428,9 @@ const mapDashboard = (row: any): Dashboard => ({
   id: row.id,
   name: row.name,
   description: row.description ?? "",
+  // v1.20 Phase 106 (FSET-V120-02/03): coalesce NULL / anything-not-'panel' to 'topbar'
+  // so the wire value is always concrete — never null (backward-compat default).
+  filter_display_mode: row.filter_display_mode === "panel" ? "panel" : "topbar",
   created_at: row.created_at,
   updated_at: row.updated_at
 });
@@ -477,12 +491,13 @@ export const createDashboard = (name: string, description?: string): Dashboard =
   return getDashboard(Number(result.lastInsertRowid)) as Dashboard;
 };
 
-export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name" | "description">>): Dashboard | undefined => {
+export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name" | "description" | "filter_display_mode">>): Dashboard | undefined => {
   const existing = getDashboard(id);
   if (!existing) return undefined;
-  db.prepare("UPDATE dashboards SET name = ?, description = ?, updated_at = datetime('now') WHERE id = ?").run(
+  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, updated_at = datetime('now') WHERE id = ?").run(
     attrs.name ?? existing.name,
     attrs.description ?? existing.description,
+    "filter_display_mode" in attrs ? attrs.filter_display_mode : existing.filter_display_mode,
     id
   );
   return getDashboard(id);
