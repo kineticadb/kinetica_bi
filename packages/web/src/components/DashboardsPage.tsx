@@ -64,6 +64,9 @@ import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
 import { WidgetFilterBadge } from "./WidgetFilterBadge";
 import { FilterChip } from "./FilterChip";  // Phase 107 Plan 01 (FPANEL-V120-09)
+import { FilterPanel, type FilterPanelGroupData } from "./FilterPanel";  // Phase 107 Plan 02 (FPANEL-V120-01..08)
+import { FilterPanelRail } from "./FilterPanelRail";  // Phase 107 Plan 02 (FPANEL-V120-05)
+import { resolveProvenance } from "../lib/resolveProvenance";  // Phase 107 Plan 01 (FPANEL-V120-08)
 import type { FilterSelectionConfig } from "../types/filterSelection";
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
@@ -609,6 +612,119 @@ const DashboardOpen = ({
     return new Set<number>(Array.from(targetsByTable.keys()));
   }, [shapes, targetsByTable]);
 
+  // Phase 107 Plan 02 (FPANEL-V120-01): XOR switch — panel mode renders the
+  // right-side drawer INSTEAD of the top bar; topbar/unset renders the existing
+  // top bar, byte-identical (the `isPanelMode` ternary below is the ONLY new
+  // top-level conditional — Pitfall #8 lock).
+  const isPanelMode = dashboard.filter_display_mode === "panel";
+
+  // Phase 107 Plan 02: narrow-viewport auto-collapse default (matchMedia — CSS alone
+  // cannot drive JS state). Guarded so absence/throw in any environment is a no-op.
+  const isNarrowViewport = () => {
+    try {
+      return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches;
+    } catch {
+      return false;
+    }
+  };
+
+  // Phase 107 Plan 02 (FPANEL-V120-05): collapse state persists per-dashboard via
+  // localStorage (client-only, mirrors App.tsx's SIDEBAR_COLLAPSED_KEY pattern).
+  // A STORED preference always WINS over the narrow-viewport default (Open Question
+  // #2 in 107-RESEARCH.md); the matchMedia check only supplies the INITIAL default
+  // when no stored value exists yet for this dashboard.id.
+  const collapsedKey = `kbi_filterPanelCollapsed_${dashboard.id}`;
+  const [panelCollapsed, setPanelCollapsed] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(collapsedKey);
+      if (stored !== null) return stored === "true";
+    } catch {
+      /* ignore quota / private-mode errors */
+    }
+    return isNarrowViewport();
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(collapsedKey, String(panelCollapsed));
+    } catch {
+      /* ignore quota / private-mode errors */
+    }
+  }, [collapsedKey, panelCollapsed]);
+
+  // Phase 107 Plan 02 (FPANEL-V120-05): active-filter count — reused by both the
+  // rail badge and the expanded panel's empty-state check. Sums the SAME three
+  // input-store subscriptions the top bar already holds (Pitfall #1 lock — never
+  // a new derived list).
+  const activeFilterCount =
+    Object.values(allStoreFilters).reduce((n, arr) => n + arr.length, 0) +
+    Object.values(allDvFilters).reduce((n, arr) => n + arr.length, 0) +
+    shapes.length;
+
+  // Phase 107 Plan 02 (FPANEL-V120-07): three explicit collections in the LOCKED
+  // stable order tables -> dynamic views -> spatial (NOT a straight reuse of the
+  // top bar's per-table interleaved loop — see 107-RESEARCH.md "grouping-shape
+  // mismatch" pitfall). Only built/used when isPanelMode; harmless to compute
+  // unconditionally (same cost class as the top-bar IIFE that already runs every render).
+  const panelTableGroups: FilterPanelGroupData[] = Object.entries(allStoreFilters)
+    .filter(([, filters]) => filters.length > 0)
+    .map(([tableIdStr, filters]) => {
+      const tableId = Number(tableIdStr);
+      const view = views.find((v) => v.table_id === tableId);
+      const srcTable = associatedTables.find((t) => t.id === tableId);
+      const srcName = srcTable
+        ? srcTable.schema ? `${srcTable.schema}.${srcTable.name}` : srcTable.name
+        : view?.view_name ?? `table ${tableId}`;
+      return {
+        title: srcName,
+        chips: filters.map((f) => ({
+          text: buildChipText(f.column, f.value, f.dataType, f.operator),
+          removeAriaLabel: `Remove filter ${f.column}`,
+          onRemove: () => useFilterStore.getState().removeFilter(tableId, f.column),
+          provenance: resolveProvenance(f.sourceWidgetId, widgets),
+        })),
+        onClearAll: () => useFilterStore.getState().clearFilters(tableId),
+      };
+    });
+
+  const panelDvGroups: FilterPanelGroupData[] = Object.entries(allDvFilters)
+    .filter(([, filters]) => filters.length > 0)
+    .map(([dvIdStr, filters]) => {
+      const dvId = Number(dvIdStr);
+      const dvName = dynamicViews.find((dv) => dv.id === dvId)?.name ?? `dynamic view ${dvId}`;
+      return {
+        title: dvName,
+        chips: filters.map((f) => ({
+          text: buildChipText(f.column, f.value, f.dataType, f.operator),
+          removeAriaLabel: `Remove filter ${f.column}`,
+          onRemove: () => useFilterStore.getState().removeDvFilter(dvId, f.column),
+          provenance: resolveProvenance(f.sourceWidgetId, widgets),
+        })),
+        onClearAll: () => useFilterStore.getState().clearDvFilters(dvId),
+      };
+    });
+
+  // Phase 107 Plan 02 (Open Question #3): ONE trailing spatial group, hidden
+  // dashboard-wide when no eligible target exists anywhere (mirrors the top bar's
+  // existing orphan-hiding semantics at the coarser dashboard grain — spatial
+  // chips are never provenance-bearing, by data model, not by omission logic).
+  const panelSpatialGroup: FilterPanelGroupData | undefined =
+    shapes.length > 0 && targetsByTable.size > 0
+      ? {
+          title: "Spatial draws",
+          chips: shapes.map((shape) => ({
+            text: `${shape.label} (${shape.measurement})`,
+            removeAriaLabel: `Remove spatial filter ${shape.label}`,
+            onRemove: () => useSpatialFilterStore.getState().removeShape(shape.id),
+          })),
+          onClearAll: () => {
+            const idsToRemove = shapes.map((s) => s.id);
+            for (const id of idsToRemove) {
+              useSpatialFilterStore.getState().removeShape(id);
+            }
+          },
+        }
+      : undefined;
+
   const refreshViews = () => viewsQuery.refetch();
 
   const handleAddTable = (tableId: number) => {
@@ -921,6 +1037,123 @@ const DashboardOpen = ({
     </>
   );
 
+  // Phase 107 Plan 02 (FPANEL-V120-01/02): the grid block, extracted UNCHANGED from its
+  // pre-Phase-107 form. In topbar/unset mode `className` is `undefined` — the containerRef
+  // div stays byte-identical to pre-Phase-107 DOM (no wrapper, no className); ONLY in panel
+  // mode does it gain `.filter-panel-grid-wrap` (flex:1 1 auto — the in-flow flex sibling
+  // that shrinks so ResponsiveGridLayout's useContainerWidth ResizeObserver auto-reflows).
+  const gridBlock = (
+    <DashboardContextProvider
+      dashboardId={dashboard.id}
+      widgets={widgets}
+      dynamicViews={dynamicViews}
+      retryDynamicView={retryDynamicView}
+      applyWidgetAction={applyAction}
+      applyWidgetActions={applyActions}
+    >
+      <div
+        ref={containerRef as React.RefObject<HTMLDivElement>}
+        className={isPanelMode ? "filter-panel-grid-wrap" : undefined}
+      >
+      {widgets.length > 0 && mounted && (
+        <ResponsiveGridLayout
+          className="dashboard-grid"
+          width={width}
+          breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+          cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
+          rowHeight={5}
+          margin={[8, 8]}
+          containerPadding={[8, 8]}
+          layouts={{ lg: layouts }}
+          onLayoutChange={(layout) => handleLayoutChange(layout)}
+          dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
+          resizeConfig={{ enabled: canEdit }}
+        >
+          {widgets.map((w) => {
+            // Phase 16: for map widgets, derive the included layer tableIds so MapFilteringBadge
+            // subscribes to ANY-of-N materializing semantics matching the MapChartRenderer's
+            // includedLayers set. Mirrors the includedLayers useMemo at MapChartRenderer.tsx:159-171.
+            const mapTableIds: number[] = (() => {
+              if (w.type !== "map") return [];
+              const cfg = (w.config ?? {}) as Record<string, unknown>;
+              const ids = cfg.includedLayerIds as number[] | undefined;
+              const filtered =
+                ids === undefined || ids.length === 0
+                  ? layers
+                  : layers.filter((l) => ids.includes(l.id));
+              const visible = filtered.filter(
+                (l) => (l.config as { visible?: boolean }).visible !== false,
+              );
+              return visible.map((l) => l.table_id);
+            })();
+            return (
+            <div key={String(w.id)} className="widget-card">
+              <div className="widget-header">
+                <span className="widget-drag-handle widget-title">{w.title}</span>
+                {w.type === "map" ? (
+                  <MapFilteringBadge tableIds={mapTableIds} />
+                ) : (
+                  <>
+                    <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
+                    <WidgetFilterBadge
+                      widgetId={w.id}
+                      cfg={(w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined}
+                      tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined}
+                      dynamicViewId={(w.config as Record<string, unknown> | undefined)?.dynamicViewId as number | undefined}
+                      spatialCapable={(() => {
+                        const tid = (w.config as Record<string, unknown> | undefined)?.tableId as number | undefined;
+                        return tid !== undefined && targetsByTable.has(tid);
+                      })()}
+                    />
+                  </>
+                )}
+                <div className="widget-actions">
+                  {canConfigure && (
+                    <button
+                      className="widget-configure"
+                      onClick={() => setConfiguringWidget(w)}
+                      title="Configure"
+                    >
+                      <FontAwesomeIcon icon={faGear} />
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      className="widget-configure widget-duplicate"
+                      onClick={() => handleDuplicateWidget(w)}
+                      title="Duplicate"
+                      aria-label="Duplicate widget"
+                    >
+                      <FontAwesomeIcon icon={faClone} />
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      className="widget-remove"
+                      onClick={() => handleRemoveWidget(w.id)}
+                      title="Remove"
+                    >
+                      <FontAwesomeIcon icon={faXmark} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="widget-body">
+                <WidgetRenderer
+                  widget={w}
+                  tables={associatedTables}
+                  onConfigureWidget={canConfigure ? (target) => setConfiguringWidget(target) : undefined}
+                />
+              </div>
+            </div>
+            );
+          })}
+        </ResponsiveGridLayout>
+      )}
+      </div>
+    </DashboardContextProvider>
+  );
+
   return (
     <div className="dashboard-open">
       {topbarSlotEl
@@ -942,8 +1175,11 @@ const DashboardOpen = ({
           on tables that may not have a persisted view row in v1.3's FROM-swap world). Pre-17-04,
           chips for tableIds without a `views` row were silently dropped — the filter applied
           correctly but the user had no chip to dismiss. Display name resolved from
-          associatedTables for tableIds without a view row. */}
-      {(() => {
+          associatedTables for tableIds without a view row.
+          Phase 107 Plan 02 (FPANEL-V120-01): gated behind !isPanelMode — panel mode renders
+          the right-side drawer INSTEAD (never both surfaces; topbar/unset stays byte-identical
+          since this whole block is untouched when isPanelMode is false). */}
+      {!isPanelMode && (() => {
         const hasAnyStaticClause = views.some((v) => !!v.filter_clause?.trim());
         const hasAnyStoreFilters = Object.values(allStoreFilters).some((arr) => arr.length > 0);
         const hasAnySpatialChips = tableIdsWithSpatialChips.size > 0;
@@ -1096,112 +1332,24 @@ const DashboardOpen = ({
         </div>
       )}
 
-      <DashboardContextProvider
-        dashboardId={dashboard.id}
-        widgets={widgets}
-        dynamicViews={dynamicViews}
-        retryDynamicView={retryDynamicView}
-        applyWidgetAction={applyAction}
-        applyWidgetActions={applyActions}
-      >
-        <div ref={containerRef as React.RefObject<HTMLDivElement>}>
-        {widgets.length > 0 && mounted && (
-          <ResponsiveGridLayout
-            className="dashboard-grid"
-            width={width}
-            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-            cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
-            rowHeight={5}
-            margin={[8, 8]}
-            containerPadding={[8, 8]}
-            layouts={{ lg: layouts }}
-            onLayoutChange={(layout) => handleLayoutChange(layout)}
-            dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
-            resizeConfig={{ enabled: canEdit }}
-          >
-            {widgets.map((w) => {
-              // Phase 16: for map widgets, derive the included layer tableIds so MapFilteringBadge
-              // subscribes to ANY-of-N materializing semantics matching the MapChartRenderer's
-              // includedLayers set. Mirrors the includedLayers useMemo at MapChartRenderer.tsx:159-171.
-              const mapTableIds: number[] = (() => {
-                if (w.type !== "map") return [];
-                const cfg = (w.config ?? {}) as Record<string, unknown>;
-                const ids = cfg.includedLayerIds as number[] | undefined;
-                const filtered =
-                  ids === undefined || ids.length === 0
-                    ? layers
-                    : layers.filter((l) => ids.includes(l.id));
-                const visible = filtered.filter(
-                  (l) => (l.config as { visible?: boolean }).visible !== false,
-                );
-                return visible.map((l) => l.table_id);
-              })();
-              return (
-              <div key={String(w.id)} className="widget-card">
-                <div className="widget-header">
-                  <span className="widget-drag-handle widget-title">{w.title}</span>
-                  {w.type === "map" ? (
-                    <MapFilteringBadge tableIds={mapTableIds} />
-                  ) : (
-                    <>
-                      <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
-                      <WidgetFilterBadge
-                        widgetId={w.id}
-                        cfg={(w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined}
-                        tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined}
-                        dynamicViewId={(w.config as Record<string, unknown> | undefined)?.dynamicViewId as number | undefined}
-                        spatialCapable={(() => {
-                          const tid = (w.config as Record<string, unknown> | undefined)?.tableId as number | undefined;
-                          return tid !== undefined && targetsByTable.has(tid);
-                        })()}
-                      />
-                    </>
-                  )}
-                  <div className="widget-actions">
-                    {canConfigure && (
-                      <button
-                        className="widget-configure"
-                        onClick={() => setConfiguringWidget(w)}
-                        title="Configure"
-                      >
-                        <FontAwesomeIcon icon={faGear} />
-                      </button>
-                    )}
-                    {canEdit && (
-                      <button
-                        className="widget-configure widget-duplicate"
-                        onClick={() => handleDuplicateWidget(w)}
-                        title="Duplicate"
-                        aria-label="Duplicate widget"
-                      >
-                        <FontAwesomeIcon icon={faClone} />
-                      </button>
-                    )}
-                    {canEdit && (
-                      <button
-                        className="widget-remove"
-                        onClick={() => handleRemoveWidget(w.id)}
-                        title="Remove"
-                      >
-                        <FontAwesomeIcon icon={faXmark} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="widget-body">
-                  <WidgetRenderer
-                    widget={w}
-                    tables={associatedTables}
-                    onConfigureWidget={canConfigure ? (target) => setConfiguringWidget(target) : undefined}
-                  />
-                </div>
-              </div>
-              );
-            })}
-          </ResponsiveGridLayout>
-        )}
+      {isPanelMode ? (
+        <div className="filter-panel-layout">
+          {gridBlock}
+          {panelCollapsed ? (
+            <FilterPanelRail count={activeFilterCount} onExpand={() => setPanelCollapsed(false)} />
+          ) : (
+            <FilterPanel
+              tableGroups={panelTableGroups}
+              dvGroups={panelDvGroups}
+              spatialGroup={panelSpatialGroup}
+              count={activeFilterCount}
+              onCollapse={() => setPanelCollapsed(true)}
+            />
+          )}
         </div>
-      </DashboardContextProvider>
+      ) : (
+        gridBlock
+      )}
 
       {showTableModal && (
         <TablePickerModal
