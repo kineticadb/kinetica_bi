@@ -1454,6 +1454,51 @@ input[type="checkbox"],
   color: var(--text);
 }
 
+/* --- Phase 107 Plan 01 (FPANEL-V120-09): panel-variant chip CSS ---
+   Pre-added here so Plan 107-02 (the filter panel) can consume them; unreferenced
+   until then, harmless per PITFALLS.md #6. Copied VERBATIM from 107-UI-SPEC.md's
+   Class Manifest "ADD to global.css" table — tokens/color-mix only, no raw hex/rgba. */
+.filter-panel-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  color: var(--accent-text);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: var(--text-xs);
+}
+
+.filter-panel-chip-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.filter-panel-chip-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-panel-chip-provenance {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-style: normal;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Active filter row tint — applied to <tr> elements in TableRenderer and
    RecordsTableRenderer when row[drillDownColumn] matches active filter value.
    Plan 10-04 wires the conditional class application; this CSS is shipped
