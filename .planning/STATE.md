@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: unknown
-stopped_at: Phase 106 context gathered
-last_updated: "2026-07-09T15:11:43.340Z"
+stopped_at: Completed 106-01-PLAN.md
+last_updated: "2026-07-09T15:49:42.145Z"
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
 ---
 
 # Project State
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 106 — display-mode-persistence (next); Phase 105 complete + verified
+**Current focus:** Phase 107 — panel-shell-reflow-xor-switch-chips (next); Phase 106 complete
 
 ## Current Position
 
-Phase: 105 (reverse-mapping-pure-lib-tests) — COMPLETE + VERIFIED (6/6 must-haves)
-Plan: 1 of 1 (complete — see 105-01-SUMMARY.md)
-Next: Phase 106 (display-mode-persistence) — the only server touch (dashboards.filter_display_mode)
+Phase: 106 (display-mode-persistence) — COMPLETE (see 106-01-SUMMARY.md)
+Plan: 1 of 1 (complete)
+Next: Phase 107 (panel-shell-reflow-xor-switch-chips)
 
 ### v1.20 Phase Map
 
@@ -66,8 +66,8 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FSET-V120-01 | Phase 110 | Pending |
-| FSET-V120-02 | Phase 106 | Pending |
-| FSET-V120-03 | Phase 106 | Pending |
+| FSET-V120-02 | Phase 106 | Complete |
+| FSET-V120-03 | Phase 106 | Complete |
 | FPANEL-V120-01 | Phase 107 | Pending |
 | FPANEL-V120-02 | Phase 107 | Pending |
 | FPANEL-V120-03 | Phase 107 | Pending |
@@ -786,6 +786,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 103 P01 | 11 | 3 tasks | 1 files |
 | Phase 104 P02 | 50m | 3 tasks | 6 files |
 | Phase 105 P01 | 20min | 2 tasks | 2 files |
+| Phase 106 P01 | 10min | 3 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -1153,6 +1154,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 104]: isSyncDrivenRef reset inside moveend handler (not animate callback) — safest site per RESEARCH.md Pitfall 3 to avoid OL event ordering uncertainty
 - [Phase 104]: dashboardId derived from existing dashboardCtx (not second hook call) — avoids double useDashboardContextOptional() invocation at same render scope
 - [Phase 105]: Reverse-map return type is FilterApplyEntry[]/ShapeApplyEntry[] arrays (not a Map); isDv derived internally (no explicit field); widget dedup keyed on plain numeric widgetId
+- [Phase 106]: [Phase 106-01] Dedicated dashboards.filter_display_mode TEXT column (PRAGMA-guarded idempotent ALTER, mirrors filter_scope) coalesced NULL->'topbar' in mapDashboard; validated PATCH allow-list rejects invalid modes with 400; no new RBAC permission; web DashboardDto mirrors the field for Phases 107/110
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1559,6 +1561,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-09T15:11:43.328Z
-Stopped at: Phase 106 context gathered
-Resume file: .planning/phases/106-display-mode-persistence/106-CONTEXT.md
+Last session: 2026-07-09T15:49:42.134Z
+Stopped at: Completed 106-01-PLAN.md
+Resume file: None

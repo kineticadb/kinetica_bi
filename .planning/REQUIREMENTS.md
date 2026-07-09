@@ -10,8 +10,8 @@
 ### Display Setting (FSET)
 
 - [ ] **FSET-V120-01**: A designer (with dashboard-edit permission) can choose a dashboard's filter display mode — top bar or right side panel — from a dashboard setting.
-- [ ] **FSET-V120-02**: The display-mode choice persists per-dashboard (server-side) and every viewer of that dashboard sees the designer's choice.
-- [ ] **FSET-V120-03**: A dashboard with no display mode configured defaults to the existing top-bar behavior, byte-identical to today (backward-compat).
+- [x] **FSET-V120-02**: The display-mode choice persists per-dashboard (server-side) and every viewer of that dashboard sees the designer's choice.
+- [x] **FSET-V120-03**: A dashboard with no display mode configured defaults to the existing top-bar behavior, byte-identical to today (backward-compat).
 
 ### Filter Panel (FPANEL)
 
@@ -68,8 +68,8 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FSET-V120-01 | Phase 110 | Pending |
-| FSET-V120-02 | Phase 106 | Pending |
-| FSET-V120-03 | Phase 106 | Pending |
+| FSET-V120-02 | Phase 106 | Complete |
+| FSET-V120-03 | Phase 106 | Complete |
 | FPANEL-V120-01 | Phase 107 | Pending |
 | FPANEL-V120-02 | Phase 107 | Pending |
 | FPANEL-V120-03 | Phase 107 | Pending |

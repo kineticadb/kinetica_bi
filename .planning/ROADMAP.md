@@ -41,7 +41,7 @@
 ### Phases
 
 - [x] **Phase 105: Reverse-Mapping Pure Lib + Tests** (completed 2026-07-08) — FRONTEND-ONLY — `resolveWidgetsForFilter.ts`, the INVERSE of `resolveFilterSet`/`resolveSpatialShapes`/`useFilterScopeSummary`, enumerating BOTH read paths (`w:<id>` chart widgets + `l:<id>` map layers → owning map widget) × all filter kinds (eq/in/between+datetime/spatial) × `dvFilterScopeDisabled`. Pure + fully unit-tested. **(research flag — HIGHEST RISK)**
-- [ ] **Phase 106: Display-Mode Persistence** — BOTH-stack — add a `dashboards.filter_display_mode` column (PRAGMA-guarded ALTER, mirroring the v1.18 `filter_scope` migration) + `DashboardDto`/update plumbing; default `'topbar'` → absent = byte-identical top bar. The milestone's ONLY server touch.
+- [x] **Phase 106: Display-Mode Persistence** (completed 2026-07-09) — BOTH-stack — add a `dashboards.filter_display_mode` column (PRAGMA-guarded ALTER, mirroring the v1.18 `filter_scope` migration) + `DashboardDto`/update plumbing; default `'topbar'` → absent = byte-identical top bar. The milestone's ONLY server touch.
 - [ ] **Phase 107: Panel Shell + Reflow + XOR Switch + Chips** — FRONTEND-ONLY — collapsible right drawer (reuse `.sidebar` collapse + `filter-bar-*` classes), top-bar XOR panel switch, active-filter chips (shared `FilterChip` + `buildChipText`) for eq/in + datetime-between + spatial, per-chip remove + per-group clear, collapsed count badge, empty state, group-by-source, provenance. Panel is an in-flow flex sibling shrinking the grid container (NOT a fixed overlay) so RGL `useContainerWidth` auto-reflows.
 - [ ] **Phase 108: Applies-To List + On-Canvas Highlight** — FRONTEND-ONLY — per-filter "applies to N widgets" list/count (consuming the Phase 105 lib) + hover-highlight + click-to-scroll/flash; new session-only `filterHighlightStore` + `WidgetCard` extraction; `reset()` joins BOTH cleanup chains. **(research flag — HIGH RISK: re-render-storm avoidance + deterministic cleanup)**
 - [ ] **Phase 109: Global Clear-All** — FRONTEND-ONLY — one action clears every active filter across all tables + dynamic views + spatial draws by looping `clearFilters`/`clearDvFilters`/`clearAll` (INPUT stores only); the orchestrator DROPs by ref-count; grep-gated that the handler imports no `materializeFilter`/`dropCombinationView` and never `filterStore.reset()` live.
@@ -76,7 +76,8 @@
   2. A dashboard with no configured mode reads as top bar (`'topbar'`) — byte-identical to current behavior (backward-compat locked by test).
   3. Setting the mode via the dashboard-update path round-trips through save → reload.
   4. Supertests pass in BOTH auth modes; the migration is idempotent (PRAGMA-guarded ALTER; no crash on an already-migrated DB).
-**Plans**: TBD (derived by `/gsd:plan-phase 106`)
+**Plans:** 1/1 plans complete
+- [x] 106-01-PLAN.md — Server persistence (PRAGMA-guarded `dashboards.filter_display_mode` migration + DTO coalesce + validated PATCH allow-list) + BOTH-auth-mode supertests + web `DashboardDto` field (completed 2026-07-09, see 106-01-SUMMARY.md)
 
 ### Phase 107: Panel Shell + Reflow + XOR Switch + Chips
 **Goal**: When a dashboard's mode is "panel", its active filters render in a collapsible right-side drawer (never alongside the top bar) as chips — with per-chip remove, per-group clear, grouping by source, provenance, an empty state, a collapsed count badge — all via a single shared `FilterChip`, with the grid auto-reflowing to make room.
@@ -137,7 +138,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 105. Reverse-Mapping Pure Lib + Tests | 1/1 | Complete | 2026-07-08 |
-| 106. Display-Mode Persistence | 0/? | Not started | - |
+| 106. Display-Mode Persistence | 1/1 | Complete | 2026-07-09 |
 | 107. Panel Shell + Reflow + XOR Switch + Chips | 0/? | Not started | - |
 | 108. Applies-To List + On-Canvas Highlight | 0/? | Not started | - |
 | 109. Global Clear-All | 0/? | Not started | - |
