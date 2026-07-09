@@ -94,6 +94,10 @@
   /* ── Layout ── */
   /* Structural sidebar width reference (App.tsx writes the live --sidebar-width). */
   --sidebar-width-fixed: 212px; /* theme-guard-ignore: structural layout constant, not spacing token */
+  /* Phase 107 Plan 02 (FPANEL-V120-05): filter panel/rail structural widths — same
+     theme-guard-ignore exception class as --sidebar-width-fixed above. */
+  --filter-panel-width: 300px; /* theme-guard-ignore: structural layout constant, not a spacing token */
+  --filter-panel-rail-width: 44px; /* theme-guard-ignore: structural layout constant, not a spacing token */
 
   /* ambient aurora glow on/off — brandable (Phase 83) */
   --glow-opacity: 1;
@@ -1497,6 +1501,184 @@ input[type="checkbox"],
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- Phase 107 Plan 02 (FPANEL-V120-01..07): panel shell + rail + groups ---
+   Copied VERBATIM from 107-UI-SPEC.md's Class Manifest "ADD to global.css" table —
+   tokens/color-mix only, no raw hex/rgba. Only rendered when
+   dashboard.filter_display_mode === "panel" (isPanelMode branch in DashboardsPage.tsx);
+   topbar mode never references any of these classes (backward-compat). */
+
+.filter-panel-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.filter-panel-grid-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filter-panel {
+  flex: 0 0 var(--filter-panel-width);
+  width: var(--filter-panel-width);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: sticky;
+  top: var(--space-4);
+  max-height: calc(100vh - 2 * var(--space-8));
+  overflow-y: auto;
+}
+
+.filter-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-panel-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+/* Reserved slot — empty in Phase 107 except the collapse .sidebar-toggle button;
+   Phase 109's global clear-all button lands here. */
+.filter-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.filter-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.filter-panel-rail {
+  flex: 0 0 var(--filter-panel-rail-width);
+  width: var(--filter-panel-rail-width);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1);
+  position: sticky;
+  top: var(--space-4);
+}
+
+.filter-panel-rail-badge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--space-1);
+  border-radius: 999px; /* theme-guard-ignore: pill-shape constant (no --radius-full token exists), not a spacing/radius scale value */
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filter-panel-rail-badge--empty {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.filter-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.filter-panel-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-panel-group-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-base);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent-text);
+}
+
+.filter-panel-group-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.filter-panel-group-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  padding: var(--space-1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.filter-panel-group-toggle:hover {
+  color: var(--text);
+}
+
+.filter-panel-group-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.filter-panel-chips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Narrow-viewport: expanding the panel must OVERLAY, never reflow (Pitfall 9 /
+   107-CONTEXT.md lock). Reuses the SAME 900px breakpoint already gating #root's
+   sidebar collapse (global.css ~210), so "narrow" has one consistent definition
+   app-wide. No width-transition here (discrete conditional render — Pitfall 3 lock). */
+@media (max-width: 900px) {
+  .filter-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    border-radius: 0;
+    box-shadow: var(--shadow-lg);
+    background: var(--panel-solid); /* solid, not translucent — must read over dashboard content */
+  }
 }
 
 /* Active filter row tint — applied to <tr> elements in TableRenderer and

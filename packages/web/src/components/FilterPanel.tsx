@@ -1,0 +1,120 @@
+// Phase 107 Plan 02 (FPANEL-V120-01/02/03/04/06/07/08): the expanded filter-panel
+// drawer. Renders INSTEAD of the top bar when dashboard.filter_display_mode ===
+// "panel" (the isPanelMode branch lives in DashboardsPage.tsx). Owns NO store
+// subscription of its own — DashboardsPage (DashboardOpen) already holds every
+// source-of-truth subscription (allStoreFilters/allDvFilters/shapes) and passes
+// the already-assembled group props down (Pitfall #1 lock — never reads the
+// derived combination registry or any other derived list).
+//
+// Group order is a hard-locked prop-order contract, NOT computed here: caller
+// passes tableGroups, then dvGroups, then spatialGroup — this component renders
+// them in exactly that order (tables -> dynamic views -> spatial, 107-CONTEXT.md).
+//
+// SCOPE GUARDRAIL (Phase 108/109 boundary): no applies-to list, no highlight
+// handler, no reverse-widget-lookup import, no global clear-all button —
+// .filter-panel-header-actions renders ONLY the collapse button in this phase.
+
+import React, { useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faAnglesRight, faChevronDown, faChevronRight } from "@fortawesome/free-solid-svg-icons";
+import { FilterChip } from "./FilterChip";
+
+export type FilterPanelChip = {
+  text: string;
+  removeAriaLabel: string;
+  onRemove: () => void;
+  provenance?: string;
+};
+
+export type FilterPanelGroupData = {
+  title: string;
+  chips: FilterPanelChip[];
+  onClearAll: () => void;
+};
+
+export type FilterPanelProps = {
+  tableGroups: FilterPanelGroupData[];
+  dvGroups: FilterPanelGroupData[];
+  spatialGroup?: FilterPanelGroupData;
+  count: number;
+  onCollapse: () => void;
+};
+
+function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const { title, chips, onClearAll } = group;
+
+  return (
+    <div className="config-group">
+      <div className="filter-panel-group-header">
+        <span className="filter-panel-group-title">{title}</span>
+        <div className="filter-panel-group-header-actions">
+          <button type="button" className="filter-bar-clear" onClick={onClearAll}>
+            Clear all
+          </button>
+          <button
+            type="button"
+            className="filter-panel-group-toggle"
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${title} filters`}
+            onClick={() => setCollapsed((c) => !c)}
+          >
+            <FontAwesomeIcon icon={collapsed ? faChevronRight : faChevronDown} />
+          </button>
+        </div>
+      </div>
+      {!collapsed && (
+        <div className="filter-panel-chips">
+          {chips.map((chip, idx) => (
+            <FilterChip
+              key={`${title}-${idx}`}
+              variant="panel"
+              text={chip.text}
+              removeAriaLabel={chip.removeAriaLabel}
+              onRemove={chip.onRemove}
+              provenance={chip.provenance}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FilterPanel({ tableGroups, dvGroups, spatialGroup, count, onCollapse }: FilterPanelProps) {
+  return (
+    <div className="filter-panel">
+      <div className="filter-panel-header">
+        <span className="filter-panel-title">Filters</span>
+        <div className="filter-panel-header-actions">
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label="Collapse filter panel"
+            title="Collapse filter panel"
+            onClick={onCollapse}
+          >
+            <FontAwesomeIcon icon={faAnglesRight} />
+          </button>
+        </div>
+      </div>
+      <div className="filter-panel-body">
+        {count === 0 ? (
+          <div className="filter-panel-empty">
+            <span>No active filters</span>
+            <span>Filters you apply from charts, tables, or the map will appear here.</span>
+          </div>
+        ) : (
+          <>
+            {tableGroups.map((g) => (
+              <FilterPanelGroup key={`table-${g.title}`} group={g} />
+            ))}
+            {dvGroups.map((g) => (
+              <FilterPanelGroup key={`dv-${g.title}`} group={g} />
+            ))}
+            {spatialGroup && <FilterPanelGroup key="spatial" group={spatialGroup} />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
