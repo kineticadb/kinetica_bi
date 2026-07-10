@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: unknown
-stopped_at: Completed 107-01-PLAN.md
-last_updated: "2026-07-09T18:04:55.858Z"
+stopped_at: Completed 107-02-PLAN.md
+last_updated: "2026-07-10T01:29:06.364Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 ## Current Position
 
-Phase: 107 (panel-shell-reflow-xor-switch-chips) — EXECUTING
-Plan: 2 of 2
+Phase: 107 (panel-shell-reflow-xor-switch-chips) — PLANS COMPLETE (2/2), pending phase verification
+Plan: 2 of 2 (both plans complete)
 
 ### v1.20 Phase Map
 
@@ -67,15 +67,15 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 | FSET-V120-01 | Phase 110 | Pending |
 | FSET-V120-02 | Phase 106 | Complete |
 | FSET-V120-03 | Phase 106 | Complete |
-| FPANEL-V120-01 | Phase 107 | Pending |
-| FPANEL-V120-02 | Phase 107 | Pending |
-| FPANEL-V120-03 | Phase 107-01 (partial — per-chip remove via onRemove) | Pending (panel usage in 107-02) |
-| FPANEL-V120-04 | Phase 107 | Pending |
-| FPANEL-V120-05 | Phase 107 | Pending |
-| FPANEL-V120-06 | Phase 107 | Pending |
-| FPANEL-V120-07 | Phase 107 | Pending |
-| FPANEL-V120-08 | Phase 107-01 (partial — resolveProvenance + prop exist) | Pending (rendered in panel in 107-02) |
-| FPANEL-V120-09 | Phase 107-01 (partial — shared component lands, top-bar parity proven) | Pending (panel usage in 107-02 completes it) |
+| FPANEL-V120-01 | Phase 107-02 | Complete |
+| FPANEL-V120-02 | Phase 107-02 | Complete |
+| FPANEL-V120-03 | Phase 107-01 + 107-02 | Complete |
+| FPANEL-V120-04 | Phase 107-02 | Complete |
+| FPANEL-V120-05 | Phase 107-02 | Complete |
+| FPANEL-V120-06 | Phase 107-02 | Complete |
+| FPANEL-V120-07 | Phase 107-02 | Complete |
+| FPANEL-V120-08 | Phase 107-01 + 107-02 | Complete |
+| FPANEL-V120-09 | Phase 107-01 | Complete |
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Pending |
 | FSCOPE-V120-02 | Phase 108 | Pending |
 | FSCOPE-V120-03 | Phase 108 | Pending |
@@ -786,6 +786,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 104 P02 | 50m | 3 tasks | 6 files |
 | Phase 105 P01 | 20min | 2 tasks | 2 files |
 | Phase 106 P01 | 10min | 3 tasks | 5 files |
+| Phase 107 P02 | ~7h (incl. checkpoint pause + fix) | 4 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -1155,6 +1156,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 105]: Reverse-map return type is FilterApplyEntry[]/ShapeApplyEntry[] arrays (not a Map); isDv derived internally (no explicit field); widget dedup keyed on plain numeric widgetId
 - [Phase 106]: [Phase 106-01] Dedicated dashboards.filter_display_mode TEXT column (PRAGMA-guarded idempotent ALTER, mirrors filter_scope) coalesced NULL->'topbar' in mapDashboard; validated PATCH allow-list rejects invalid modes with 400; no new RBAC permission; web DashboardDto mirrors the field for Phases 107/110
 - [Phase 107-01]: Shared FilterChip's topbar branch is a literal copy-paste of the pre-existing inline chip JSX (no wrapper element) — verified via running DashboardsPage.spec.tsx completely UNMODIFIED (188/188 green) as the parity proof, not new assertions against the refactor; panel-variant .filter-panel-chip* CSS classes pre-added to global.css in this plan though unreferenced until 107-02; resolveProvenance is a plain 1-hop lookup, deliberately not importing Phase 108's resolveWidgetsForFilter
+- [Phase 107-02]: Panel-mode grid pinned to breakpoint=lg (topbar unaffected) to stop react-grid-layout's auto-fallback cascade once the flex-narrowed grid dropped below RGL's sm/lg breakpoints; caught at the Task 4 visual checkpoint and fixed in-session (commit 6c6eb3e) before operator approval.
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1561,6 +1563,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-09T18:04:11.000Z
-Stopped at: Completed 107-01-PLAN.md
-Resume file: .planning/phases/107-panel-shell-reflow-xor-switch-chips/107-02-PLAN.md
+Last session: 2026-07-10T01:29:06.353Z
+Stopped at: Completed 107-02-PLAN.md
+Resume file: None

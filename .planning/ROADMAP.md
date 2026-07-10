@@ -93,7 +93,7 @@
   5. Filters are grouped by source (table / dynamic view / spatial draws) with per-filter provenance (the originating source widget when available), and BOTH the top bar and the panel render chips via one shared `FilterChip` component.
 **Plans**: 2 plans (wave 1 then wave 2)
 - [x] 107-01-PLAN.md — Shared FilterChip extraction + top-bar parity refactor + resolveProvenance helper (completed 2026-07-09, see 107-01-SUMMARY.md)
-- [ ] 107-02-PLAN.md — Panel shell + rail + reflow + XOR switch + source groups + empty state + count badge
+- [x] 107-02-PLAN.md — Panel shell + rail + reflow + XOR switch + source groups + empty state + count badge, plus an operator-caught grid-cascade fix (breakpoint="lg" pin) (completed 2026-07-09, see 107-02-SUMMARY.md)
 
 ### Phase 108: Applies-To List + On-Canvas Highlight
 **Goal**: Each filter in the panel shows which widgets it applies to (names/count), and hovering a filter highlights those widgets on the canvas while clicking scrolls to and briefly flashes them.
@@ -141,7 +141,7 @@
 |-------|----------------|--------|-----------|
 | 105. Reverse-Mapping Pure Lib + Tests | 1/1 | Complete | 2026-07-08 |
 | 106. Display-Mode Persistence | 1/1 | Complete | 2026-07-09 |
-| 107. Panel Shell + Reflow + XOR Switch + Chips | 0/? | Not started | - |
+| 107. Panel Shell + Reflow + XOR Switch + Chips | 2/2 | Plans complete (pending phase verification) | 2026-07-09 |
 | 108. Applies-To List + On-Canvas Highlight | 0/? | Not started | - |
 | 109. Global Clear-All | 0/? | Not started | - |
 | 110. Designer Settings UI + Verification + Live UAT | 0/? | Not started | - |

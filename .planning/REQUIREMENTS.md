@@ -15,14 +15,14 @@
 
 ### Filter Panel (FPANEL)
 
-- [ ] **FPANEL-V120-01**: When a dashboard's mode is "panel", its active filters render in a collapsible right-side panel instead of the top bar; the two surfaces are mutually exclusive (never both rendered).
-- [ ] **FPANEL-V120-02**: The panel lists all of the dashboard's active filters as chips, covering equality/in, datetime-between, and spatial-draw filters (the same set the top bar shows).
-- [ ] **FPANEL-V120-03**: A user can remove an individual filter from the panel (parity with the top bar).
-- [ ] **FPANEL-V120-04**: A user can clear a group of filters from the panel (parity with the top bar's per-group clear-all).
-- [ ] **FPANEL-V120-05**: The panel can be collapsed and expanded; when collapsed it shows an active-filter count badge (e.g. "Filters 3").
-- [ ] **FPANEL-V120-06**: The panel shows an empty state when no filters are active.
-- [ ] **FPANEL-V120-07**: The panel groups filters by source (table / dynamic view / spatial draws) for scannability.
-- [ ] **FPANEL-V120-08**: Each filter shows its provenance — the source widget it originated from — when that information is available.
+- [x] **FPANEL-V120-01**: When a dashboard's mode is "panel", its active filters render in a collapsible right-side panel instead of the top bar; the two surfaces are mutually exclusive (never both rendered).
+- [x] **FPANEL-V120-02**: The panel lists all of the dashboard's active filters as chips, covering equality/in, datetime-between, and spatial-draw filters (the same set the top bar shows).
+- [x] **FPANEL-V120-03**: A user can remove an individual filter from the panel (parity with the top bar).
+- [x] **FPANEL-V120-04**: A user can clear a group of filters from the panel (parity with the top bar's per-group clear-all).
+- [x] **FPANEL-V120-05**: The panel can be collapsed and expanded; when collapsed it shows an active-filter count badge (e.g. "Filters 3").
+- [x] **FPANEL-V120-06**: The panel shows an empty state when no filters are active.
+- [x] **FPANEL-V120-07**: The panel groups filters by source (table / dynamic view / spatial draws) for scannability.
+- [x] **FPANEL-V120-08**: Each filter shows its provenance — the source widget it originated from — when that information is available.
 - [ ] **FPANEL-V120-09**: The top bar and the panel render filter chips via a single shared chip component (consistent appearance and behavior across both surfaces).
 
 ### Filter → Widget Mapping (FSCOPE)
@@ -70,14 +70,14 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FSET-V120-01 | Phase 110 | Pending |
 | FSET-V120-02 | Phase 106 | Complete |
 | FSET-V120-03 | Phase 106 | Complete |
-| FPANEL-V120-01 | Phase 107 | Pending |
-| FPANEL-V120-02 | Phase 107 | Pending |
-| FPANEL-V120-03 | Phase 107 | Pending |
-| FPANEL-V120-04 | Phase 107 | Pending |
-| FPANEL-V120-05 | Phase 107 | Pending |
-| FPANEL-V120-06 | Phase 107 | Pending |
-| FPANEL-V120-07 | Phase 107 | Pending |
-| FPANEL-V120-08 | Phase 107 | Pending |
+| FPANEL-V120-01 | Phase 107 | Complete |
+| FPANEL-V120-02 | Phase 107 | Complete |
+| FPANEL-V120-03 | Phase 107 | Complete |
+| FPANEL-V120-04 | Phase 107 | Complete |
+| FPANEL-V120-05 | Phase 107 | Complete |
+| FPANEL-V120-06 | Phase 107 | Complete |
+| FPANEL-V120-07 | Phase 107 | Complete |
+| FPANEL-V120-08 | Phase 107 | Complete |
 | FPANEL-V120-09 | Phase 107 | Pending |
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Partial (105 computation complete; 108 display pending) |
 | FSCOPE-V120-02 | Phase 108 | Pending |
