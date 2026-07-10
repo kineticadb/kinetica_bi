@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: planning
-stopped_at: Completed 109.1-01-PLAN.md
-last_updated: "2026-07-10T19:25:05.117Z"
+status: unknown
+stopped_at: Completed 109.2-01-PLAN.md
+last_updated: "2026-07-10T20:39:48.355Z"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 6
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 10
+  completed_plans: 9
 ---
 
 # Project State
@@ -19,13 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 109.2 (INSERTED) — wire calendar/timeline/numeric-line into the filter-scope engine + reverse-map, retire respondToFilters; before Phase 110
+**Current focus:** Phase 109.2 — wire-custom-panel-charts-into-filter-scope-engine-and-reverse-map
 
 ## Current Position
 
-Phase: 109.1 (filter-scope-for-custom-panel-charts) — COMPLETE
-Plan: 1 of 1 (109.1-01 complete)
-Next: Phase 110 (designer-settings-ui-verification)
+Phase: 109.2 (wire-custom-panel-charts-into-filter-scope-engine-and-reverse-map) — EXECUTING
+Plan: 2 of 2
 
 ### v1.20 Phase Map
 
@@ -792,6 +791,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 108 P02 | 45min | 2 tasks | 6 files |
 | Phase 109 P01 | 20min | 2 tasks | 5 files |
 | Phase 109.1 P01 | 25min | 2 tasks | 8 files |
+| Phase 109.2 P01 | 14min | 2 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -804,6 +804,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+
 - Phase 109.2 inserted after 109 (after 109.1): calendar/timeline/numericline are in NON_TRIGGER_TYPES so filterSelection was inert on their read path + they were missing from applies-to/highlight; wire them into the orchestrator + reverse-map, retire respondToFilters (OFF→empty allow-list). FSCOPE-V120-05; before Phase 110. (URGENT, 2026-07-10)
 
 - Phase 109.1 inserted after Phase 109: Filter Scope for Custom-Panel Charts (calendar/timeline/numeric-line lacked the v1.18 FilterSelectionPanel — CustomConfigPanel bypasses the generic body); FSCOPE-V120-04; must precede Phase 110 verification. (URGENT, 2026-07-10)
@@ -1168,6 +1169,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 108]: 108-01 laid the highlight foundation (store+WidgetCard+hook+CSS); FSCOPE-V120-01 stays Pending in REQUIREMENTS.md until 108-02 actually renders the applies-to line in the panel (avoiding the early-complete trap for a requirement split across two plans).
 - [Phase 109]: Global clear-all reuses .filter-bar-clear class; onClearAllFilters made a required FilterPanel prop (single call site)
 - [Phase 109.1]: Filter Scope block placed as the LAST section in each of Calendar/Timeline/NumericLine panels for consistency; widgetId threaded generically through ConfigPanelProps rather than a per-chart-type prop
+- [Phase 109.2]: Coalesce discriminates calendar filterSelection migration by key PRESENCE (hasOwnProperty), not value: legacy respondToFilters:false -> empty allow-list (respond to none); key absent (brand-new post-migration widget) -> undefined (accept-all).
+- [Phase 109.2]: Kept NON_TRIGGER_TYPES as two independently-edited literal Sets (orchestrator + reverse-map) rather than extracting a shared module; both edits landed atomically in one commit.
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1574,6 +1577,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-10T19:19:39.418Z
-Stopped at: Completed 109.1-01-PLAN.md
+Last session: 2026-07-10T20:39:48.344Z
+Stopped at: Completed 109.2-01-PLAN.md
 Resume file: None

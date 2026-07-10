@@ -31,7 +31,7 @@
 - [x] **FSCOPE-V120-02**: Hovering a filter in the panel highlights the widgets it applies to on the dashboard canvas.
 - [x] **FSCOPE-V120-03**: Clicking a filter scrolls to and briefly flashes the affected widget(s) on the dashboard.
 - [x] **FSCOPE-V120-04**: Calendar Heatmap, Timeline Chart, and Numeric Line Chart expose the per-visualization filter-scope control (like bar/pie/table); their CustomConfigPanel currently suppresses ChartConfigPanel’s generic body so they never showed FilterSelectionPanel. (Added mid-milestone — Phase 109.1.)
-- [ ] **FSCOPE-V120-05**: Calendar Heatmap, Timeline, and Numeric Line ACTUALLY apply their configured filter scope on the read path (not just show the config) and appear in the panel’s applies-to count + on-canvas highlight; the legacy calendar `respondToFilters` toggle is retired in favor of filterSelection (empty allow-list = respond to none). (Added mid-milestone — Phase 109.2.)
+- [ ] **FSCOPE-V120-05**: Calendar Heatmap, Timeline, and Numeric Line ACTUALLY apply their configured filter scope on the read path (not just show the config) and appear in the panel’s applies-to count + on-canvas highlight; the legacy calendar `respondToFilters` toggle is retired in favor of filterSelection (empty allow-list = respond to none). (Added mid-milestone — Phase 109.2.) — Plan 109.2-01 (engine-side: NON_TRIGGER_TYPES + coalesce) COMPLETE; Plan 109.2-02 (calendar renderer read-path swap + respondToFilters retirement) still pending — requirement fully satisfied only once both plans land.
 
 ### Clear All (FCLEAR)
 
@@ -85,7 +85,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FSCOPE-V120-02 | Phase 108 | Complete |
 | FSCOPE-V120-03 | Phase 108 | Complete |
 | FSCOPE-V120-04 | Phase 109.1 | Complete |
-| FSCOPE-V120-05 | Phase 109.2 | Pending |
+| FSCOPE-V120-05 | Phase 109.2 (01 complete, 02 pending) | Pending |
 | FCLEAR-V120-01 | Phase 109 | Complete |
 | VERIFY-V120-01 | Phase 110 | Pending |
 

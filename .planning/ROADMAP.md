@@ -144,8 +144,11 @@ Plans:
 3. `respondToFilters` is gone from config type, panel, and renderer; existing calendars with it OFF still ignore filters (migrated to empty allow-list); new/unset behave per default scope.
 4. Backward-compat: bar/pie/table + existing combination/badge behavior unchanged; web gates green (default parallel).
 
+**Plans:** 2 plans (wave 1 then wave 2)
+
 Plans:
-- [ ] TBD (run /gsd:plan-phase 109.2 to break down)
+- [ ] 109.2-01-PLAN.md — Engine enumeration fix: remove calendar/timeline/numericline from NON_TRIGGER_TYPES in BOTH useCombinationOrchestrator.ts + useReverseFilterMap.ts (atomic) + new coalesceCalendarFilterSelection helper threaded through 3 engine call sites + engine specs [wave 1]
+- [ ] 109.2-02-PLAN.md — Calendar read-path swap to filterCombinationStore.vizToHash + retire respondToFilters (type/default/checkbox/renderer) + WidgetCard badge coalesce + calendar/config-panel/WidgetCard specs [wave 2, depends 109.2-01]
 
 ### Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED) — ✅ COMPLETE 2026-07-10
 
