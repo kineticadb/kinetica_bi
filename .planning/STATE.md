@@ -2,7 +2,7 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: phase_complete
+status: planning
 stopped_at: Completed 109.1-01-PLAN.md
 last_updated: "2026-07-10T19:25:05.117Z"
 progress:
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 110 — designer settings UI + verification + live UAT (FINAL; 109.1 complete)
+**Current focus:** Phase 109.2 (INSERTED) — wire calendar/timeline/numeric-line into the filter-scope engine + reverse-map, retire respondToFilters; before Phase 110
 
 ## Current Position
 
@@ -804,6 +804,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+- Phase 109.2 inserted after 109 (after 109.1): calendar/timeline/numericline are in NON_TRIGGER_TYPES so filterSelection was inert on their read path + they were missing from applies-to/highlight; wire them into the orchestrator + reverse-map, retire respondToFilters (OFF→empty allow-list). FSCOPE-V120-05; before Phase 110. (URGENT, 2026-07-10)
 
 - Phase 109.1 inserted after Phase 109: Filter Scope for Custom-Panel Charts (calendar/timeline/numeric-line lacked the v1.18 FilterSelectionPanel — CustomConfigPanel bypasses the generic body); FSCOPE-V120-04; must precede Phase 110 verification. (URGENT, 2026-07-10)
 

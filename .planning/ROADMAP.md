@@ -126,6 +126,27 @@
 Plans:
 - [ ] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
 
+### Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
+
+**Goal:** Make Calendar Heatmap, Timeline, and Numeric Line ACTUALLY honor per-visualization filter scope (not just show the config UI from 109.1), and appear correctly in the panel's applies-to count + on-canvas highlight. Root cause: `NON_TRIGGER_TYPES` (in `useCombinationOrchestrator.ts`, mirrored in `useReverseFilterMap.ts`) lists `calendar`/`timeline`/`numericline`, so the orchestrator never builds a scoped combination binding for them (their `filterSelection` is inert — they read unscoped/all filters) and the reverse-map never enumerates them (wrong applies-to count, no highlight). Also retire the redundant legacy `respondToFilters` (calendar) in favor of the unified `filterSelection`.
+**Stack**: FRONTEND-ONLY (`packages/web`) — CORE FILTER-ENGINE change; plan-phase MUST research it (trigger-type semantics, orchestrator enumeration, how Timeline/NumericLine consume `vizToHash`, Calendar's `filterViewStore`+`respondToFilters` read path, and full backward-compat/migration + blast radius on existing combination/badge specs).
+**Requirements**: FSCOPE-V120-05
+**Depends on:** Phase 109 (+ builds on 109.1's config UI). **Blocks:** Phase 110 (must land before milestone verification/UAT so scope is genuinely functional feature-wide).
+
+**Scope / locked decisions:**
+- Enumerate calendar/timeline/numericline as filter-scope participants so the orchestrator mints their scoped `vizToHash` binding from `filterSelection` (they already read `vizToHash` for timeline/numericline; Calendar must switch to the combination-bound view). Add them to the reverse-map enumeration so applies-to count + hover/click highlight are correct. Reconcile `NON_TRIGGER_TYPES` semantics carefully — "trigger" (drives materialize/is a filter source) vs "scope-bound consumer" may need separating so these charts get a binding WITHOUT wrongly becoming filter SOURCES.
+- **Retire `respondToFilters`** (calendar config + CalendarConfigPanel toggle + CalendarRenderer gating). MIGRATION (locked): existing `respondToFilters: false` → `filterSelection` allow-list = EMPTY (respond to none) so behavior is UNCHANGED for existing dashboards; `respondToFilters: true` or unset-new → normal scope (default = respond to all). An empty allow-list is the canonical "respond to none".
+- Preserve the sole-materialize-trigger invariant + do NOT make these charts new filter SOURCES (they don't emit drill-down filters differently than today). No server/store/npm changes expected.
+
+**Success criteria:**
+1. Disabling a source (e.g. Technology) in a Calendar/Timeline/Numeric-Line's Filter Scope makes that chart apply the REMAINING filters only (verified on the live read path, not just config persistence).
+2. The panel's "applies to N widgets" count includes these three chart types, and hovering/clicking a filter highlights/scrolls to them.
+3. `respondToFilters` is gone from config type, panel, and renderer; existing calendars with it OFF still ignore filters (migrated to empty allow-list); new/unset behave per default scope.
+4. Backward-compat: bar/pie/table + existing combination/badge behavior unchanged; web gates green (default parallel).
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 109.2 to break down)
+
 ### Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED) — ✅ COMPLETE 2026-07-10
 
 **Goal:** Calendar Heatmap, Timeline Chart, and Numeric Line Chart expose the v1.18 per-visualization filter-scope control — closing a gap where their `CustomConfigPanel` (`usesDataSource:false`) suppresses `ChartConfigPanel`'s generic body, so they never showed the `FilterSelectionPanel` (unlike bar/pie/table). After this, those three charts are full filter-scope-capable targets, so v1.20's filter panel + applies-to mapping represent them correctly and Phase 110 verification covers the complete feature.
