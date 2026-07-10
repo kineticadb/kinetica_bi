@@ -126,7 +126,7 @@
 Plans:
 - [ ] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
 
-### Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED)
+### Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED) — ✅ COMPLETE 2026-07-10
 
 **Goal:** Calendar Heatmap, Timeline Chart, and Numeric Line Chart expose the v1.18 per-visualization filter-scope control — closing a gap where their `CustomConfigPanel` (`usesDataSource:false`) suppresses `ChartConfigPanel`'s generic body, so they never showed the `FilterSelectionPanel` (unlike bar/pie/table). After this, those three charts are full filter-scope-capable targets, so v1.20's filter panel + applies-to mapping represent them correctly and Phase 110 verification covers the complete feature.
 **Stack**: FRONTEND-ONLY (`packages/web`) — add `FilterSelectionPanel` (wired to `config.filterSelection`, source-widget list + `selfWidgetId` + `allowSpatial`, honoring `dvFilterScopeDisabled` for dv-bound) into `CalendarConfigPanel`, `TimelineConfigPanel`, `NumericLineConfigPanel`, mirroring `ChartConfigPanel`'s generic usage. No new store/server; `filterSelection` already persists in widget config + is already consumed by the read-path resolvers (`resolveFilterSet`/`useFilterScopeSummary`/`computeReverseFilterMap`).
