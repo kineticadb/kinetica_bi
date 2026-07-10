@@ -19,9 +19,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 // ResizeObserver is used by ol/Map at construction time — stub it before any OL import
-// (mirrors DashboardsPage.spec.tsx:15).
-vi.stubGlobal("ResizeObserver", vi.fn().mockImplementation(function (this: any, _cb: ResizeObserverCallback) {
-  this.observe = vi.fn();
+// (mirrors DashboardsPage.spec.tsx:15). Extended for Phase 107-02 bugfix: it now reports a
+// configurable `contentRect.width` so react-grid-layout's useContainerWidth measures a real
+// value (the panel-mode grid lives in a narrowed flex sibling). Default is a wide `lg` width
+// so pre-existing tests are unaffected; the panel-mode layout test overrides it to a narrow
+// value to exercise the breakpoint-pinning fix.
+let roReportedWidth = 1400;
+vi.stubGlobal("ResizeObserver", vi.fn().mockImplementation(function (this: any, cb: ResizeObserverCallback) {
+  this.observe = vi.fn((el: Element) => {
+    cb([{ contentRect: { width: roReportedWidth, height: 600 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+  });
   this.disconnect = vi.fn();
   this.unobserve = vi.fn();
   return this;
@@ -163,6 +170,7 @@ const openDashboard = async (dashboard: typeof panelDashboard | typeof topbarDas
 
 describe("DashboardsPage panel mode (Phase 107 Plan 02)", () => {
   beforeEach(() => {
+    roReportedWidth = 1400;
     seedDesignerStore();
     useFilterStore.getState().reset();
     useSpatialFilterStore.getState().reset();
@@ -313,6 +321,52 @@ describe("DashboardsPage panel mode (Phase 107 Plan 02)", () => {
 
     expect(document.querySelector(".filter-panel")).not.toBeNull();
     expect(screen.queryByLabelText("Expand filter panel")).toBeNull();
+  });
+
+  // Phase 107-02 bugfix regression: in panel mode the grid lives in the narrowed
+  // `.filter-panel-grid-wrap` flex sibling, so the measured width falls below the `lg`
+  // (1200) / `sm` (768) breakpoints. Because the layout is only provided for `lg` and `cols`
+  // narrows below `sm`, react-grid-layout used to auto-generate a correctBounds-clamped,
+  // vertically compacted fallback — the "diagonal staircase" cascade (e.g. at xs/12-cols a
+  // widget stored at x=12,w=6 clamps to x=6, colliding with the x=6 widget). Pinning
+  // breakpoint="lg" in panel mode keeps the 36-col source-of-truth layout at ANY width, so
+  // three widgets stored at x=0/6/12 stay in three DISTINCT columns even when the grid is
+  // narrow. Without the fix, the x=6 and x=12 widgets would share a column.
+  it("panel mode preserves the multi-column (lg) layout at a narrow grid width", async () => {
+    roReportedWidth = 686; // below sm(768): pre-fix this triggered the xs/12-col cascade
+    const rowWidgets = [
+      { id: 201, x: 0 },
+      { id: 202, x: 6 },
+      { id: 203, x: 12 },
+    ].map(({ id, x }) => ({
+      id,
+      dashboard_id: dashboardId,
+      title: `W${id}`,
+      type: "bar",
+      position: 0,
+      config: { tableId, layout: { x, y: 0, w: 6, h: 12 } },
+      created_at: "2026-07-09T00:00:00Z",
+      updated_at: "2026-07-09T00:00:00Z",
+    }));
+
+    await openDashboard(panelDashboard, rowWidgets);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".react-grid-item").length).toBe(3);
+    });
+
+    const lefts = Array.from(document.querySelectorAll(".react-grid-item")).map((el) => {
+      const t = (el as HTMLElement).style.transform;
+      const m = /translate\(([-\d.]+)px,/.exec(t);
+      return m ? Number(m[1]) : NaN;
+    });
+    // Three stored columns (x=0/6/12) must map to three DISTINCT left offsets.
+    const distinct = new Set(lefts);
+    expect(distinct.size).toBe(3);
+    // And they must be strictly increasing left-to-right (multi-column, not stacked/cascaded).
+    const sorted = [...lefts].sort((a, b) => a - b);
+    expect(sorted[0]).toBeLessThan(sorted[1]);
+    expect(sorted[1]).toBeLessThan(sorted[2]);
   });
 
   it("group order: table -> dv -> spatial group titles appear in that DOM order", async () => {

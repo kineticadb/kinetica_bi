@@ -1059,6 +1059,24 @@ const DashboardOpen = ({
         <ResponsiveGridLayout
           className="dashboard-grid"
           width={width}
+          // Phase 107 Plan 02 (107-02 bugfix): in panel mode the grid lives in the
+          // narrowed `.filter-panel-grid-wrap` flex sibling, so the measured `width`
+          // drops below the `lg` (1200) / `sm` (768) breakpoints. The layout is only
+          // provided for `lg`, and `cols` narrows below `sm` (sm:18, xs:12, xxs:6), so
+          // ResponsiveGridLayout auto-generates a correctBounds-clamped, vertically
+          // compacted fallback — the "diagonal staircase" cascade. Worse, a post-mount
+          // width change (collapse/expand the panel, window resize) fires onLayoutChange
+          // with that fallback, which handleLayoutChange would PERSIST into each widget's
+          // config.layout — permanently corrupting the stored coords.
+          //
+          // Pinning the active breakpoint to `lg` in panel mode makes RGL always use the
+          // 36-col `lg` layout (the single source of truth) regardless of width: the
+          // stored multi-column arrangement is preserved, just scaled to the narrower
+          // container. It also stops width-driven breakpoint changes from firing
+          // onLayoutChange (lastBreakpoint === newBreakpoint === 'lg'), so resizing the
+          // panel can never persist a fallback. Topbar/unset mode passes `undefined`
+          // (identical to omitting the prop) — byte-identical to pre-fix behavior.
+          breakpoint={(isPanelMode ? "lg" : undefined) as "lg" | "md" | "sm" | "xs" | "xxs" | undefined}
           breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
           cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
           rowHeight={5}
