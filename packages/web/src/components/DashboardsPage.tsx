@@ -55,6 +55,7 @@ import {
 } from "../api/client";
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useMapViewportSyncStore } from "../store/mapViewportSyncStore";
+import { useFilterHighlightStore } from "../store/filterHighlightStore";
 import { useToastStore } from "../store/toast";
 import ChartCard from "./ChartCard";
 import ChartConfigPanel from "./charts/ChartConfigPanel";
@@ -560,6 +561,8 @@ const DashboardOpen = ({
       useFilterCombinationStore.getState().reset();
       // Phase 104 (MAPSYNC-V119-05): 11th store — transient viewport sync, session-only, no server DROP.
       useMapViewportSyncStore.getState().reset();
+      // Phase 108 (FSCOPE-V120-02/03): 12th store — transient highlight/flash, session-only, no server DROP.
+      useFilterHighlightStore.getState().reset();
     };
   }, [dashboard.id]);
 

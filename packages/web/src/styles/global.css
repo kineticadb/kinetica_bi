@@ -673,6 +673,83 @@ a {
   overflow: hidden;
 }
 
+/* Phase 108 (FSCOPE-V120-02): steady hover ring on an affected widget card. Ring-only (no dimming). */
+.widget-card--highlighted {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+}
+
+/* Phase 108 (FSCOPE-V120-03): transient ~1s accent pulse on click. Distinct from the steady ring. */
+.widget-card--flashing {
+  animation: widget-flash 1s ease-out 1;
+}
+@keyframes widget-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .widget-card--flashing {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+}
+
+/* Phase 108 (FSCOPE-V120-01): applies-to line + expander inside the panel chip. */
+.filter-panel-chip-applies {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.filter-panel-chip-applies-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  display: flex;
+  align-items: center;
+}
+.filter-panel-chip-applies-toggle:hover {
+  color: var(--text);
+}
+.filter-panel-chip-applies-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+.filter-panel-chip-applies-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  padding-left: var(--space-2);
+}
+.applies-to-row {
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--accent-text);
+  padding: var(--space-0) 0;
+}
+.applies-to-row:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.applies-to-row:focus-visible {
+  outline: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
 .widget-header {
   display: flex;
   align-items: center;
