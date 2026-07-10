@@ -132,7 +132,7 @@ Plans:
 **Stack**: FRONTEND-ONLY (`packages/web`) — add `FilterSelectionPanel` (wired to `config.filterSelection`, source-widget list + `selfWidgetId` + `allowSpatial`, honoring `dvFilterScopeDisabled` for dv-bound) into `CalendarConfigPanel`, `TimelineConfigPanel`, `NumericLineConfigPanel`, mirroring `ChartConfigPanel`'s generic usage. No new store/server; `filterSelection` already persists in widget config + is already consumed by the read-path resolvers (`resolveFilterSet`/`useFilterScopeSummary`/`computeReverseFilterMap`).
 **Requirements**: FSCOPE-V120-04
 **Depends on:** Phase 109. **Blocks:** Phase 110 (must land before milestone verification/UAT so validation covers a complete feature).
-**Plans:** 0 plans (run /gsd:plan-phase 109.1 to break down)
+**Plans:** 1 plan
 
 **Success criteria:**
 1. Opening the config for a Calendar Heatmap / Timeline / Numeric Line widget with a data source shows the Filter Scope control (source-widget allow-list + self-filter + spatial), identical in behavior to bar/pie/table.
@@ -141,7 +141,7 @@ Plans:
 4. Absent config = accept-all, byte-identical to today (backward-compat).
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 109.1 to break down)
+- [ ] 109.1-01-PLAN.md — Thread widgetId through ConfigPanelProps + <Custom> slot; render FilterSelectionPanel (wired to config.filterSelection, dv/dvFilterScopeDisabled gate) in Calendar/Timeline/NumericLine panels + specs
 
 ### Phase 110: Designer Settings UI + Verification + Live UAT
 **Goal**: A designer with dashboard-edit permission can choose a dashboard's filter display mode from a dashboard setting; then every feature is verified green on both stacks plus a blocking live operator walk-through — including the light/dark and narrow-viewport visual checks that automated gates cannot catch.

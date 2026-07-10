@@ -30,7 +30,7 @@
 - [x] **FSCOPE-V120-01**: For each active filter, the panel shows which widgets it applies to (names and/or count), computed across both chart widgets and map layers and all filter kinds (equality/in/date/spatial), honoring per-visualization filter scope. (Phase 105 computation portion complete; Phase 108 panel-display portion complete.)
 - [x] **FSCOPE-V120-02**: Hovering a filter in the panel highlights the widgets it applies to on the dashboard canvas.
 - [x] **FSCOPE-V120-03**: Clicking a filter scrolls to and briefly flashes the affected widget(s) on the dashboard.
-- [ ] **FSCOPE-V120-04**: Calendar Heatmap, Timeline Chart, and Numeric Line Chart expose the per-visualization filter-scope control (like bar/pie/table); their CustomConfigPanel currently suppresses ChartConfigPanel’s generic body so they never showed FilterSelectionPanel. (Added mid-milestone — Phase 109.1.)
+- [x] **FSCOPE-V120-04**: Calendar Heatmap, Timeline Chart, and Numeric Line Chart expose the per-visualization filter-scope control (like bar/pie/table); their CustomConfigPanel currently suppresses ChartConfigPanel’s generic body so they never showed FilterSelectionPanel. (Added mid-milestone — Phase 109.1.)
 
 ### Clear All (FCLEAR)
 
@@ -83,7 +83,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Complete |
 | FSCOPE-V120-02 | Phase 108 | Complete |
 | FSCOPE-V120-03 | Phase 108 | Complete |
-| FSCOPE-V120-04 | Phase 109.1 | Pending |
+| FSCOPE-V120-04 | Phase 109.1 | Complete |
 | FCLEAR-V120-01 | Phase 109 | Complete |
 | VERIFY-V120-01 | Phase 110 | Pending |
 
