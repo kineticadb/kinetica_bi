@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import NumericLineConfigPanel, { type NumericLineConfig } from "./NumericLineConfigPanel";
+import type { WidgetDto } from "../../api/client";
 
 const TABLES: NonNullable<Parameters<typeof NumericLineConfigPanel>[0]["tables"]> = [
   {
@@ -18,15 +19,21 @@ const TABLES: NonNullable<Parameters<typeof NumericLineConfigPanel>[0]["tables"]
   },
 ];
 
-function renderPanel(initial: Partial<NumericLineConfig> = {}, opts?: { isValid?: (b: boolean) => void }) {
+function renderPanel(
+  initial: Partial<NumericLineConfig> = {},
+  opts?: { isValid?: (b: boolean) => void; widgets?: WidgetDto[]; widgetId?: number },
+) {
   const onChange = vi.fn();
   const isValid = opts?.isValid ?? vi.fn();
+  const widgets = opts?.widgets ?? [];
   const utils = render(
     <NumericLineConfigPanel
       config={{ metrics: [], ...initial } as Record<string, unknown>}
       onChange={onChange}
       tables={TABLES}
       isValid={isValid}
+      widgets={widgets}
+      widgetId={opts?.widgetId}
     />,
   );
   return { onChange, isValid, ...utils };
@@ -332,6 +339,32 @@ describe("NumericLineConfigPanel", () => {
       });
       const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i) as HTMLTextAreaElement;
       expect(textarea.value).toBe("");
+    });
+  });
+
+  // ---- Phase 109.1 (FSCOPE-V120-04): Filter Scope control ----
+
+  describe("Filter Scope (Phase 109.1)", () => {
+    it("Test A: control appears with a data source", () => {
+      renderPanel({ tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance" }, { widgets: [] });
+      expect(screen.getByText(/Filter Scope/i)).toBeInTheDocument();
+      expect(screen.getByLabelText("Customize")).toBeInTheDocument();
+    });
+
+    it("Test B: toggling Customize persists filterSelection with sourceMode:'allowlist'", () => {
+      const { onChange } = renderPanel(
+        { tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance" },
+        { widgets: [] },
+      );
+      fireEvent.click(screen.getByLabelText("Customize"));
+      const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as NumericLineConfig;
+      expect(call.filterSelection?.sourceMode).toBe("allowlist");
+    });
+
+    it("Test C: absent filterSelection defaults to accept-all ('Accept all filters' shown, Customize unchecked)", () => {
+      renderPanel({ tableId: 1, tableRef: "demo.nyctaxi", xField: "trip_distance" }, { widgets: [] });
+      expect((screen.getByLabelText("Customize") as HTMLInputElement).checked).toBe(false);
+      expect(screen.getByText(/Accept all filters/i)).toBeInTheDocument();
     });
   });
 });

@@ -35,6 +35,9 @@ import {
   isOrphanedMetric,
 } from "../../lib/customMetricSql";
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
+import { FilterSelectionPanel } from "./FilterSelectionPanel";
+import type { FilterSelectionConfig } from "../../types/filterSelection";
+import { useAuthStore } from "../../store/auth";
 
 export const MAX_METRICS = 4;
 export const DEFAULT_COLOR_THEME = "Set2"; // 8-color ColorBrewer qualitative (locked)
@@ -55,6 +58,7 @@ export type TimelineConfig = {
   colorTheme: string;         // ColorBrewer scheme id; default "Set2"
   dateFormatOverride: string; // "" → "auto" smart format
   customWhere?: string;       // Phase 98 (VIZSQL-V119-01): raw SQL predicate ANDed into the query; absent → byte-identical
+  filterSelection?: FilterSelectionConfig; // Phase 109.1 (FSCOPE-V120-04): per-viz filter scope; absent → accept-all.
 };
 
 const AGGREGATIONS: { value: TimelineAggregation; label: string }[] = [
@@ -89,9 +93,13 @@ export default function TimelineConfigPanel({
   onChange,
   tables,
   isValid,
+  widgets,
+  widgetId,
 }: ConfigPanelProps): JSX.Element {
   const cfg = config as Partial<TimelineConfig>;
   const tableId = cfg.tableId;
+  const dynamicViewId = cfg.dynamicViewId;
+  const dvFilterScopeDisabled = useAuthStore((s) => s.dvFilterScopeDisabled);
   const allTables = tables ?? [];
   const timeCol = cfg.timeCol ?? "";
   const groupByColumn = cfg.groupByColumn ?? "";
@@ -614,6 +622,26 @@ export default function TimelineConfigPanel({
               rows={3}
             />
           </div>
+
+          {/* Phase 109.1 (FSCOPE-V120-04): per-visualization Filter Scope — mirrors
+              ChartConfigPanel's generic usage. FilterSelectionPanel renders its own
+              config-group wrapper; do NOT wrap it again. Hidden for dv-bound widgets
+              when dvFilterScopeDisabled (matches the generic panel). */}
+          {(() => {
+            const filterSourceWidgets =
+              dynamicViewId !== undefined
+                ? (widgets ?? []).filter((w) => (w.config.dynamicViewId as number | undefined) === dynamicViewId)
+                : (widgets ?? []);
+            return !(dynamicViewId !== undefined && dvFilterScopeDisabled) && (
+              <FilterSelectionPanel
+                value={cfg.filterSelection as FilterSelectionConfig | undefined}
+                onChange={(next) => patch({ filterSelection: next })}
+                widgets={filterSourceWidgets}
+                selfWidgetId={widgetId}
+                allowSpatial={dynamicViewId === undefined}
+              />
+            );
+          })()}
         </>
       )}
     </div>

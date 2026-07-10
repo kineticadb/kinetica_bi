@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import TimelineConfigPanel, { MAX_METRICS, DEFAULT_COLOR_THEME, type TimelineConfig } from "./TimelineConfigPanel";
+import type { WidgetDto } from "../../api/client";
 
 const TABLES: NonNullable<Parameters<typeof TimelineConfigPanel>[0]["tables"]> = [
   {
@@ -27,15 +28,21 @@ const TABLES: NonNullable<Parameters<typeof TimelineConfigPanel>[0]["tables"]> =
   },
 ];
 
-function renderPanel(initial: Partial<TimelineConfig> = {}, opts?: { isValid?: (b: boolean) => void }) {
+function renderPanel(
+  initial: Partial<TimelineConfig> = {},
+  opts?: { isValid?: (b: boolean) => void; widgets?: WidgetDto[]; widgetId?: number },
+) {
   const onChange = vi.fn();
   const isValid = opts?.isValid ?? vi.fn();
+  const widgets = opts?.widgets ?? [];
   const utils = render(
     <TimelineConfigPanel
       config={{ metrics: [], ...initial } as Record<string, unknown>}
       onChange={onChange}
       tables={TABLES}
       isValid={isValid}
+      widgets={widgets}
+      widgetId={opts?.widgetId}
     />,
   );
   return { onChange, isValid, ...utils };
@@ -391,5 +398,30 @@ describe("TimelineConfigPanel", () => {
       const textarea = screen.getByPlaceholderText(/Raw SQL predicate/i) as HTMLTextAreaElement;
       expect(textarea.value).toBe("");
     });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 109.1 (FSCOPE-V120-04): Filter Scope control                 */
+/* ------------------------------------------------------------------ */
+
+describe("TimelineConfigPanel — Filter Scope (Phase 109.1)", () => {
+  it("Test A: control appears with a data source", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.nyctaxi" }, { widgets: [] });
+    expect(screen.getByText(/Filter Scope/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Customize")).toBeInTheDocument();
+  });
+
+  it("Test B: toggling Customize persists filterSelection with sourceMode:'allowlist'", () => {
+    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.nyctaxi" }, { widgets: [] });
+    fireEvent.click(screen.getByLabelText("Customize"));
+    const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as TimelineConfig;
+    expect(call.filterSelection?.sourceMode).toBe("allowlist");
+  });
+
+  it("Test C: absent filterSelection defaults to accept-all ('Accept all filters' shown, Customize unchecked)", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.nyctaxi" }, { widgets: [] });
+    expect((screen.getByLabelText("Customize") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText(/Accept all filters/i)).toBeInTheDocument();
   });
 });

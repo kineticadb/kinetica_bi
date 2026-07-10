@@ -1,7 +1,7 @@
 // Phase 66 Plan 03 (CAL-V113-02): CalendarConfigPanel specs.
 // Mirrors TimelineConfigPanel.spec.tsx layout. Uses @testing-library/react + vitest.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Mock } from "vitest";
@@ -10,6 +10,8 @@ import CalendarConfigPanel, {
   type CalendarConfig,
 } from "./CalendarConfigPanel";
 import { CELL_LIMIT, VALID_DOMAIN_SUBDOMAIN } from "../../lib/calendarBin";
+import { useAuthStore } from "../../store/auth";
+import type { WidgetDto } from "../../api/client";
 
 // Mock runSql so the cap probe is deterministic in tests.
 vi.mock("../../api/client", () => ({
@@ -79,11 +81,14 @@ function renderPanel(
   opts?: {
     isValid?: (b: boolean) => void;
     dynamicViews?: typeof DYNAMIC_VIEWS;
+    widgets?: WidgetDto[];
+    widgetId?: number;
   },
 ) {
   const onChange = vi.fn();
   const isValid = opts?.isValid ?? vi.fn();
   const dynamicViews = opts?.dynamicViews ?? DYNAMIC_VIEWS;
+  const widgets = opts?.widgets ?? [];
   const utils = render(
     <CalendarConfigPanel
       config={{ ...DEFAULT_CALENDAR_CONFIG, ...initial } as Record<string, unknown>}
@@ -91,6 +96,8 @@ function renderPanel(
       tables={TABLES}
       dynamicViews={dynamicViews}
       isValid={isValid}
+      widgets={widgets}
+      widgetId={opts?.widgetId}
     />,
   );
   return { onChange, isValid, ...utils };
@@ -662,5 +669,47 @@ describe("CalendarConfigPanel — Custom filter (SQL) (Phase 98)", () => {
 
   it("CW4: DEFAULT_CALENDAR_CONFIG does NOT include a customWhere property (byte-identical for existing widgets)", () => {
     expect(Object.prototype.hasOwnProperty.call(DEFAULT_CALENDAR_CONFIG, "customWhere")).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 109.1 (FSCOPE-V120-04): Filter Scope control                 */
+/* ------------------------------------------------------------------ */
+
+describe("CalendarConfigPanel — Filter Scope (Phase 109.1)", () => {
+  beforeEach(() => {
+    mockRunSql.mockResolvedValue(makeSqlResponse(0, 172_800));
+  });
+
+  afterEach(() => {
+    useAuthStore.setState({ dvFilterScopeDisabled: false });
+  });
+
+  it("Test A: control appears with a data source", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" }, { widgets: [] });
+    expect(screen.getByText(/Filter Scope/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Customize")).toBeInTheDocument();
+  });
+
+  it("Test B: toggling Customize persists filterSelection with sourceMode:'allowlist'", () => {
+    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events" }, { widgets: [] });
+    fireEvent.click(screen.getByLabelText("Customize"));
+    const call = onChange.mock.calls[onChange.mock.calls.length - 1][0] as CalendarConfig;
+    expect(call.filterSelection?.sourceMode).toBe("allowlist");
+  });
+
+  it("Test C: absent filterSelection defaults to accept-all ('Accept all filters' shown, Customize unchecked)", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" }, { widgets: [] });
+    expect((screen.getByLabelText("Customize") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText(/Accept all filters/i)).toBeInTheDocument();
+  });
+
+  it("Test D: dv-bound + dvFilterScopeDisabled hides the Filter Scope control", () => {
+    useAuthStore.setState({ dvFilterScopeDisabled: true });
+    renderPanel(
+      { dynamicViewId: 7, tableId: 1, tableRef: "demo.events" },
+      { widgets: [] },
+    );
+    expect(screen.queryByText(/Filter Scope/i)).not.toBeInTheDocument();
   });
 });

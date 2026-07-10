@@ -46,6 +46,9 @@ import {
   buildCalendarRangeQuery,
 } from "../../lib/estimateCalendarCells";
 import { runSql } from "../../api/client";
+import { FilterSelectionPanel } from "./FilterSelectionPanel";
+import type { FilterSelectionConfig } from "../../types/filterSelection";
+import { useAuthStore } from "../../store/auth";
 
 /* ------------------------------------------------------------------ */
 /*  Exported types + defaults                                          */
@@ -69,6 +72,7 @@ export type CalendarConfig = {
   smartScale?: SmartScale;                     // selected Time scale when controlMode === "smart"
   allowedSmartScales?: SmartScale[];           // designer-restricted offered scales; default = all four
   customWhere?: string;                        // Phase 98 (VIZSQL-V119-01): raw SQL predicate ANDed into the query; absent → byte-identical
+  filterSelection?: FilterSelectionConfig;     // Phase 109.1 (FSCOPE-V120-04): per-viz filter scope; absent → accept-all.
 };
 
 export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
@@ -132,11 +136,14 @@ export default function CalendarConfigPanel({
   tables,
   dynamicViews,
   isValid,
+  widgets,
+  widgetId,
 }: ConfigPanelProps): JSX.Element {
   const cfg = config as Partial<CalendarConfig>;
   const tableId = cfg.tableId;
   const tableRef = cfg.tableRef ?? "";
   const dynamicViewId = cfg.dynamicViewId;
+  const dvFilterScopeDisabled = useAuthStore((s) => s.dvFilterScopeDisabled);
   const timeCol = cfg.timeCol ?? "";
   const metricColumn = cfg.metricColumn ?? DEFAULT_CALENDAR_CONFIG.metricColumn;
   const metricId = cfg.metricId as number | undefined;
@@ -705,6 +712,26 @@ export default function CalendarConfigPanel({
               domain.
             </div>
           )}
+
+          {/* Phase 109.1 (FSCOPE-V120-04): per-visualization Filter Scope — mirrors
+              ChartConfigPanel's generic usage. FilterSelectionPanel renders its own
+              config-group wrapper; do NOT wrap it again. Hidden for dv-bound widgets
+              when dvFilterScopeDisabled (matches the generic panel). */}
+          {(() => {
+            const filterSourceWidgets =
+              dynamicViewId !== undefined
+                ? (widgets ?? []).filter((w) => (w.config.dynamicViewId as number | undefined) === dynamicViewId)
+                : (widgets ?? []);
+            return !(dynamicViewId !== undefined && dvFilterScopeDisabled) && (
+              <FilterSelectionPanel
+                value={cfg.filterSelection as FilterSelectionConfig | undefined}
+                onChange={(next) => patch({ filterSelection: next })}
+                widgets={filterSourceWidgets}
+                selfWidgetId={widgetId}
+                allowSpatial={dynamicViewId === undefined}
+              />
+            );
+          })()}
         </>
       )}
     </div>
