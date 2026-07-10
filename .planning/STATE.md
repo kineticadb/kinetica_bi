@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: phase_complete
-stopped_at: Completed 109-01-PLAN.md
-last_updated: "2026-07-10T18:30:46.055Z"
+status: planning
+stopped_at: Phase 110 context gathered
+last_updated: "2026-07-10T18:45:06.599Z"
 progress:
   total_phases: 6
   completed_phases: 5
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 110 — designer settings UI + verification + live UAT (final phase)
+**Current focus:** Phase 109.1 (INSERTED) — filter-scope config for calendar/timeline/numeric-line; must land before Phase 110 verification
 
 ## Current Position
 
@@ -803,6 +803,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 ## Accumulated Context
 
 ### Roadmap Evolution
+- Phase 109.1 inserted after Phase 109: Filter Scope for Custom-Panel Charts (calendar/timeline/numeric-line lacked the v1.18 FilterSelectionPanel — CustomConfigPanel bypasses the generic body); FSCOPE-V120-04; must precede Phase 110 verification. (URGENT, 2026-07-10)
 
 - Phase 104 added (2026-07-07, ADDED to v1.19 post-verification): **Synchronized Map Viewports.** When a sync-enabled map pans/zooms, its viewport (center+zoom / bbox) publishes and every OTHER sync-enabled map on the SAME dashboard pans/zooms to match. Per-map "Sync map viewport" config toggle (default OFF; enabled maps both publish AND subscribe). Per-dashboard scope. Must guard against feedback loops (sync-driven move must not re-publish). Frontend-only preferred — transient VIEW state via a store mirroring the filter/spatial stores (map is a separate OpenLayers/WMS read-path via MapChartRenderer; see memory map-wms-is-separate-read-path), NOT server-persisted. Back-compat: maps with no sync config unchanged. Candidate reqs MAPSYNC-V119-01..0N (define at plan time). NOTE: v1.19 already passed Phase 103 verification/UAT (2026-07-02) — adding 104 REOPENS the milestone; Phase 103 must be re-run to cover 104 before v1.19 closes. NOT yet planned (run /gsd:plan-phase 104).
 
@@ -1569,6 +1570,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-10T18:26:22.006Z
-Stopped at: Completed 109-01-PLAN.md
-Resume file: None
+Last session: 2026-07-10T18:45:06.588Z
+Stopped at: Phase 110 context gathered
+Resume file: .planning/phases/110-designer-settings-ui-verification-live-uat/110-CONTEXT.md

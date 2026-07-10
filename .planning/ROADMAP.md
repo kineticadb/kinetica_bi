@@ -126,6 +126,23 @@
 Plans:
 - [ ] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
 
+### Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED)
+
+**Goal:** Calendar Heatmap, Timeline Chart, and Numeric Line Chart expose the v1.18 per-visualization filter-scope control — closing a gap where their `CustomConfigPanel` (`usesDataSource:false`) suppresses `ChartConfigPanel`'s generic body, so they never showed the `FilterSelectionPanel` (unlike bar/pie/table). After this, those three charts are full filter-scope-capable targets, so v1.20's filter panel + applies-to mapping represent them correctly and Phase 110 verification covers the complete feature.
+**Stack**: FRONTEND-ONLY (`packages/web`) — add `FilterSelectionPanel` (wired to `config.filterSelection`, source-widget list + `selfWidgetId` + `allowSpatial`, honoring `dvFilterScopeDisabled` for dv-bound) into `CalendarConfigPanel`, `TimelineConfigPanel`, `NumericLineConfigPanel`, mirroring `ChartConfigPanel`'s generic usage. No new store/server; `filterSelection` already persists in widget config + is already consumed by the read-path resolvers (`resolveFilterSet`/`useFilterScopeSummary`/`computeReverseFilterMap`).
+**Requirements**: FSCOPE-V120-04
+**Depends on:** Phase 109. **Blocks:** Phase 110 (must land before milestone verification/UAT so validation covers a complete feature).
+**Plans:** 0 plans (run /gsd:plan-phase 109.1 to break down)
+
+**Success criteria:**
+1. Opening the config for a Calendar Heatmap / Timeline / Numeric Line widget with a data source shows the Filter Scope control (source-widget allow-list + self-filter + spatial), identical in behavior to bar/pie/table.
+2. Choosing a restricted scope persists to `config.filterSelection` and the widget then applies only the selected sources' filters (verified via the existing resolvers + the v1.20 panel applies-to reflecting the restriction).
+3. dv-bound instances honor `dvFilterScopeDisabled` (control hidden when disabled), matching the generic panel.
+4. Absent config = accept-all, byte-identical to today (backward-compat).
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 109.1 to break down)
+
 ### Phase 110: Designer Settings UI + Verification + Live UAT
 **Goal**: A designer with dashboard-edit permission can choose a dashboard's filter display mode from a dashboard setting; then every feature is verified green on both stacks plus a blocking live operator walk-through — including the light/dark and narrow-viewport visual checks that automated gates cannot catch.
 **Stack**: BOTH + operator (settings toggle is web, gated by the existing `dashboards:edit`; verification exercises both stacks; live UAT).
