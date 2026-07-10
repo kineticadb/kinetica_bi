@@ -46,4 +46,11 @@ afterEach(() => {
   cleanup();                    // unmount React trees between tests
   sessionStorage.clear();       // Phase 7 uses kbi_returnTo — must be clean per test
   localStorage.clear();         // defensive — no Phase 7 usage but standard hygiene
+  // Cross-FILE test-isolation guard: vitest workers run spec files sequentially sharing
+  // global timer state, so a spec that leaves fake timers active leaks into the NEXT file
+  // (symptom: "Test timed out in 5000ms" / "Cannot read properties of undefined (reading
+  // 'then')" in an unrelated later file, only under parallel scheduling). Restoring real
+  // timers after every test guarantees no fake-timer state survives a file boundary. Safe:
+  // every fake-timer spec sets vi.useFakeTimers() in a beforeEach, so this never strands them.
+  vi.useRealTimers();
 });
