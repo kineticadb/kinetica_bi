@@ -10,20 +10,31 @@
 // passes tableGroups, then dvGroups, then spatialGroup — this component renders
 // them in exactly that order (tables -> dynamic views -> spatial, 107-CONTEXT.md).
 //
-// SCOPE GUARDRAIL (Phase 108/109 boundary): no applies-to list, no highlight
-// handler, no reverse-widget-lookup import, no global clear-all button —
+// SCOPE GUARDRAIL (Phase 109 boundary): no global clear-all button —
 // .filter-panel-header-actions renders ONLY the collapse button in this phase.
+// Phase 108 Plan 02 (FSCOPE-V120-01/02/03) added applies-to + highlight/activate
+// prop-threading (FilterPanelChip fields below), forwarded verbatim to FilterChip's
+// panel branch — DashboardsPage still computes the appliesTo lookups and closures;
+// this component remains a pure prop-forwarder with no store subscription of its own.
 
 import React, { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAnglesRight, faChevronDown, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { FilterChip } from "./FilterChip";
+import type { WidgetApplyEntry } from "../lib/computeReverseFilterMap";
 
 export type FilterPanelChip = {
   text: string;
   removeAriaLabel: string;
   onRemove: () => void;
   provenance?: string;
+  // Phase 108 Plan 02 (FSCOPE-V120-01/02/03) — panel-only applies-to + highlight/activate
+  // wiring, forwarded verbatim to FilterChip's panel branch.
+  appliesTo?: WidgetApplyEntry[];
+  onHighlight?: () => void;
+  onClearHighlight?: () => void;
+  onActivate?: () => void;
+  onActivateWidget?: (widgetId: number) => void;
 };
 
 export type FilterPanelGroupData = {
@@ -72,6 +83,11 @@ function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
               removeAriaLabel={chip.removeAriaLabel}
               onRemove={chip.onRemove}
               provenance={chip.provenance}
+              appliesTo={chip.appliesTo}
+              onHighlight={chip.onHighlight}
+              onClearHighlight={chip.onClearHighlight}
+              onActivate={chip.onActivate}
+              onActivateWidget={chip.onActivateWidget}
             />
           ))}
         </div>
