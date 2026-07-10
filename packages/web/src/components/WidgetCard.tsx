@@ -8,6 +8,7 @@ import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
 import { WidgetFilterBadge } from "./WidgetFilterBadge";
 import type { FilterSelectionConfig } from "../types/filterSelection";
+import { coalesceCalendarFilterSelection } from "../lib/coalesceCalendarFilterSelection";
 
 /**
  * Phase 108 (FSCOPE-V120-02/03): extracted from the inline `.widget-card` JSX previously in
@@ -140,7 +141,11 @@ function WidgetCardImpl(
             <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
             <WidgetFilterBadge
               widgetId={w.id}
-              cfg={(w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined}
+              cfg={
+                w.type === "calendar"
+                  ? coalesceCalendarFilterSelection((w.config as Record<string, unknown> | undefined) ?? {})
+                  : ((w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined)
+              }
               tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined}
               dynamicViewId={(w.config as Record<string, unknown> | undefined)?.dynamicViewId as number | undefined}
               spatialCapable={(() => {

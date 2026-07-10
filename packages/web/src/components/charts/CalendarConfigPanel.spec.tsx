@@ -305,48 +305,47 @@ describe("CalendarConfigPanel", () => {
   });
 
   /* ------------------------------------------------------------------ */
-  /*  Phase 68-03: respondToFilters checkbox tests                       */
+  /*  Phase 109.2 (FSCOPE-V120-05): respondToFilters retired;             */
+  /*  FilterSelectionPanel display is coalesced for legacy configs.      */
   /* ------------------------------------------------------------------ */
 
-  it("Test 12 (respondToFilters renders): 'Respond to dashboard filters' checkbox is present when source is configured", () => {
+  it("Test 12 (respondToFilters fully retired): no 'Respond to dashboard filters' checkbox/text renders, and the type/default no longer carry the field", () => {
     renderPanel({ tableId: 1, tableRef: "demo.events" });
-    expect(screen.getByText("Respond to dashboard filters")).toBeInTheDocument();
+    expect(screen.queryByText("Respond to dashboard filters")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /respond to dashboard filters/i })).not.toBeInTheDocument();
+    expect(DEFAULT_CALENDAR_CONFIG).not.toHaveProperty("respondToFilters");
   });
 
-  it("Test 13 (respondToFilters default OFF): checkbox is unchecked when respondToFilters is absent/false", () => {
-    renderPanel({ tableId: 1, tableRef: "demo.events" });
-    const checkbox = screen.getByRole("checkbox", { name: /respond to dashboard filters/i });
-    expect(checkbox).toBeInTheDocument();
-    expect((checkbox as HTMLInputElement).checked).toBe(false);
-  });
-
-  it("Test 14 (respondToFilters toggle ON): toggling the checkbox calls onChange with respondToFilters:true", () => {
-    const { onChange } = renderPanel({ tableId: 1, tableRef: "demo.events" });
-    const checkbox = screen.getByRole("checkbox", { name: /respond to dashboard filters/i });
-    fireEvent.click(checkbox);
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ respondToFilters: true }),
-    );
-  });
-
-  it("Test 15 (respondToFilters toggle OFF): checking then unchecking calls onChange with respondToFilters:false", () => {
-    const { onChange } = renderPanel({
+  it("Test 13 (legacy coalesce — config-panel display): a legacy { respondToFilters: false } calendar (no filterSelection) shows the Filter Scope panel's Customize toggle CHECKED (coalesced to an empty allow-list), not the misleading accept-all default", () => {
+    renderPanel({
       tableId: 1,
       tableRef: "demo.events",
-      respondToFilters: true,
+      respondToFilters: false,
     } as Partial<CalendarConfig>);
-    const checkbox = screen.getByRole("checkbox", { name: /respond to dashboard filters/i });
-    // starts ON (true)
-    expect((checkbox as HTMLInputElement).checked).toBe(true);
-    // toggle OFF
-    fireEvent.click(checkbox);
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ respondToFilters: false }),
-    );
+    // FilterSelectionPanel's "Customize" checkbox reflects isAllowlist — coalesced legacy
+    // respondToFilters:false resolves to { sourceMode: "allowlist", allowedSourceWidgetIds: [] },
+    // so Customize must render CHECKED (not the accept-all/unchecked default).
+    const customizeCheckbox = screen.getByRole("checkbox", { name: "Customize" });
+    expect((customizeCheckbox as HTMLInputElement).checked).toBe(true);
   });
 
-  it("Test 16 (DEFAULT_CALENDAR_CONFIG has respondToFilters:false): default includes respondToFilters:false", () => {
-    expect(DEFAULT_CALENDAR_CONFIG).toHaveProperty("respondToFilters", false);
+  it("Test 14 (brand-new calendar — no legacy key): with no respondToFilters key at all, the Filter Scope panel's Customize toggle is UNCHECKED (accept-all default, matching every other chart type)", () => {
+    renderPanel({ tableId: 1, tableRef: "demo.events" });
+    const customizeCheckbox = screen.getByRole("checkbox", { name: "Customize" });
+    expect((customizeCheckbox as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("Test 15 (explicit filterSelection always wins): a config with BOTH a legacy respondToFilters:false key AND a persisted allow-list filterSelection uses the filterSelection as-is (an explicitly-selected source shows checked)", () => {
+    renderPanel({
+      tableId: 1,
+      tableRef: "demo.events",
+      respondToFilters: false,
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [5] },
+    } as Partial<CalendarConfig>);
+    // Explicit filterSelection wins over the legacy respondToFilters coalesce branch —
+    // Customize is checked (allowlist mode) with the persisted allow-list, not a fresh empty one.
+    const customizeCheckbox = screen.getByRole("checkbox", { name: "Customize" });
+    expect((customizeCheckbox as HTMLInputElement).checked).toBe(true);
   });
 
   /* ------------------------------------------------------------------ */

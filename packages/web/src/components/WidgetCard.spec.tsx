@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { WidgetCard } from "./WidgetCard";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
+import { useFilterStore, type ActiveFilter } from "../store/filterStore";
 import type { WidgetDto } from "../api/client";
 
 // Records every render of WidgetCard's body (mocked WidgetRenderer is invoked once per
@@ -52,6 +53,7 @@ const baseProps = {
 
 beforeEach(() => {
   useFilterHighlightStore.getState().reset();
+  useFilterStore.getState().reset();
   widgetRenderCalls.length = 0;
 });
 
@@ -179,5 +181,59 @@ describe("WidgetCard — deterministic flash-timer cleanup (HIGH risk regression
       vi.advanceTimersByTime(1000);
     });
     expect(card.className).not.toContain("widget-card--flashing");
+  });
+});
+
+describe("WidgetCard — calendar badge coalesce (Phase 109.2, FSCOPE-V120-05)", () => {
+  it("a legacy respondToFilters:false calendar with an active filter from an EXCLUDED source renders the '0 of N' WidgetFilterBadge (coalesced cfg), not nothing", () => {
+    const excludedFilter: ActiveFilter = {
+      column: "order_date",
+      operator: "eq",
+      value: "2026-01-01",
+      dataType: "datetime",
+      sourceWidgetId: 999, // not this widget; not in the (empty) coalesced allow-list
+      addedAt: Date.now(),
+    };
+    useFilterStore.getState().setBulkFilters(5, [excludedFilter]);
+
+    render(
+      <WidgetCard
+        widget={makeWidget(20, {
+          type: "calendar",
+          config: { tableId: 5, respondToFilters: false },
+        })}
+        {...baseProps}
+      />,
+    );
+
+    // Coalesced empty allow-list -> 0 of 1 applied -> badge renders (not null).
+    const badge = screen.getByRole("status", { name: /0 of 1 filters applied/i });
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toBe("0 of 1 filters");
+  });
+
+  it("non-calendar widget badge behavior is unchanged — raw filterSelection read, no coalesce applied", () => {
+    const excludedFilter: ActiveFilter = {
+      column: "order_date",
+      operator: "eq",
+      value: "2026-01-01",
+      dataType: "datetime",
+      sourceWidgetId: 999,
+      addedAt: Date.now(),
+    };
+    useFilterStore.getState().setBulkFilters(6, [excludedFilter]);
+
+    render(
+      <WidgetCard
+        widget={makeWidget(21, {
+          type: "bar",
+          config: { tableId: 6 },
+        })}
+        {...baseProps}
+      />,
+    );
+
+    // No filterSelection persisted -> accept-all default (unchanged, no coalesce) -> no badge.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

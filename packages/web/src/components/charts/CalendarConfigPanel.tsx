@@ -49,6 +49,7 @@ import { runSql } from "../../api/client";
 import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
 import { useAuthStore } from "../../store/auth";
+import { coalesceCalendarFilterSelection } from "../../lib/coalesceCalendarFilterSelection";
 
 /* ------------------------------------------------------------------ */
 /*  Exported types + defaults                                          */
@@ -65,7 +66,6 @@ export type CalendarConfig = {
   domain: CalendarDomain;
   subdomain: CalendarSubdomain;
   colorTheme: string;          // ColorBrewer Sequential scheme id
-  respondToFilters?: boolean;  // Phase 68-03: OFF = always read unfiltered source (default). ON = Phase 67 filter-aware behavior.
   layoutMode?: "wrap" | "strip";              // CALUX-V113-01: "wrap" = GitHub-style week blocks (default); "strip" = continuous horizontal strip
   showDomainSubdomainControls?: boolean;       // CALUX-V113-02: viewer dropdowns to change grouping live (default false / OFF)
   controlMode?: "advanced" | "advanced-adjustable" | "smart"; // Phase 97/103: absent → "advanced" (byte-identical legacy); "advanced-adjustable" = domain+subdomain viewer bar ON
@@ -82,7 +82,6 @@ export const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
   domain: "month",
   subdomain: "day",
   colorTheme: "Greens",
-  respondToFilters: false,
   layoutMode: "wrap",
   showDomainSubdomainControls: false,
   controlMode: "advanced",
@@ -151,7 +150,6 @@ export default function CalendarConfigPanel({
   const domain = (cfg.domain ?? DEFAULT_CALENDAR_CONFIG.domain) as CalendarDomain;
   const subdomain = (cfg.subdomain ?? DEFAULT_CALENDAR_CONFIG.subdomain) as CalendarSubdomain;
   const colorTheme = cfg.colorTheme ?? DEFAULT_CALENDAR_CONFIG.colorTheme;
-  const respondToFilters = cfg.respondToFilters ?? false;
   const layoutMode = (cfg.layoutMode ?? DEFAULT_CALENDAR_CONFIG.layoutMode) as "wrap" | "strip";
   const controlMode = (cfg.controlMode ?? DEFAULT_CALENDAR_CONFIG.controlMode) as "advanced" | "advanced-adjustable" | "smart";
   const smartScale = (cfg.smartScale ?? DEFAULT_CALENDAR_CONFIG.smartScale) as SmartScale;
@@ -659,18 +657,6 @@ export default function CalendarConfigPanel({
             </select>
           </div>
 
-          {/* ---- Respond to dashboard filters toggle (Phase 68-03) ---- */}
-          <label className="config-toggle">
-            <input
-              type="checkbox"
-              className="accent-checkbox"
-              checked={respondToFilters}
-              onChange={(e) => patch({ respondToFilters: e.target.checked })}
-              aria-label="Respond to dashboard filters"
-            />
-            <span>Respond to dashboard filters</span>
-          </label>
-
           {/* ---- Display section ---- */}
           <div className="config-group-label" style={{ marginTop: 16 }}>DISPLAY</div>
 
@@ -724,7 +710,7 @@ export default function CalendarConfigPanel({
                 : (widgets ?? []);
             return !(dynamicViewId !== undefined && dvFilterScopeDisabled) && (
               <FilterSelectionPanel
-                value={cfg.filterSelection as FilterSelectionConfig | undefined}
+                value={coalesceCalendarFilterSelection(cfg as Record<string, unknown>)}
                 onChange={(next) => patch({ filterSelection: next })}
                 widgets={filterSourceWidgets}
                 selfWidgetId={widgetId}
