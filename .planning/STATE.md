@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: unknown
-stopped_at: Phase 108 context gathered
-last_updated: "2026-07-10T01:46:44.299Z"
+stopped_at: Completed 108-01-PLAN.md
+last_updated: "2026-07-10T14:51:30.544Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 108 — applies-to-list-+-on-canvas-highlight (next); Phase 107 complete + verified
+**Current focus:** Phase 108 — applies-to-list-on-canvas-highlight
 
 ## Current Position
 
-Phase: 107 (panel-shell-reflow-xor-switch-chips) — PLANS COMPLETE (2/2), pending phase verification
-Plan: 2 of 2 (both plans complete)
+Phase: 108 (applies-to-list-on-canvas-highlight) — EXECUTING
+Plan: 2 of 2 (108-01 complete; 108-02 next)
 
 ### v1.20 Phase Map
 
@@ -787,6 +787,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 105 P01 | 20min | 2 tasks | 2 files |
 | Phase 106 P01 | 10min | 3 tasks | 5 files |
 | Phase 107 P02 | ~7h (incl. checkpoint pause + fix) | 4 tasks | 6 files |
+| Phase 108 P01 | 55min | 3 tasks | 9 files |
 
 ### Quick Tasks Completed
 
@@ -1157,6 +1158,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 106]: [Phase 106-01] Dedicated dashboards.filter_display_mode TEXT column (PRAGMA-guarded idempotent ALTER, mirrors filter_scope) coalesced NULL->'topbar' in mapDashboard; validated PATCH allow-list rejects invalid modes with 400; no new RBAC permission; web DashboardDto mirrors the field for Phases 107/110
 - [Phase 107-01]: Shared FilterChip's topbar branch is a literal copy-paste of the pre-existing inline chip JSX (no wrapper element) — verified via running DashboardsPage.spec.tsx completely UNMODIFIED (188/188 green) as the parity proof, not new assertions against the refactor; panel-variant .filter-panel-chip* CSS classes pre-added to global.css in this plan though unreferenced until 107-02; resolveProvenance is a plain 1-hop lookup, deliberately not importing Phase 108's resolveWidgetsForFilter
 - [Phase 107-02]: Panel-mode grid pinned to breakpoint=lg (topbar unaffected) to stop react-grid-layout's auto-fallback cascade once the flex-narrowed grid dropped below RGL's sm/lg breakpoints; caught at the Task 4 visual checkpoint and fixed in-session (commit 6c6eb3e) before operator approval.
+- [Phase 108]: 108-01 laid the highlight foundation (store+WidgetCard+hook+CSS); FSCOPE-V120-01 stays Pending in REQUIREMENTS.md until 108-02 actually renders the applies-to line in the panel (avoiding the early-complete trap for a requirement split across two plans).
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1563,6 +1565,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-10T01:46:44.287Z
-Stopped at: Phase 108 context gathered
-Resume file: .planning/phases/108-applies-to-list-on-canvas-highlight/108-CONTEXT.md
+Last session: 2026-07-10T14:50:52.780Z
+Stopped at: Completed 108-01-PLAN.md
+Resume file: None

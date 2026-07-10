@@ -107,7 +107,9 @@
   2. Hovering a filter highlights exactly the affected widgets on the canvas (accent outline), and un-hovering clears it — with no visible re-render/flicker of unaffected widgets or maps.
   3. Clicking a filter scrolls to and briefly flashes the affected widget(s) on the dashboard.
   4. Highlight state is deterministically cleared on leave, panel collapse, dashboard switch, and logout (reset registered in both cleanup chains) — no stuck highlight (leak spec).
-**Plans**: TBD (derived by `/gsd:plan-phase 108`)
+**Plans**: 2 plans (strictly sequential — both edit DashboardsPage.tsx)
+- [x] 108-01-PLAN.md — Foundation: filterHighlightStore (12th reset-chain store) + WidgetCard extraction (scoped selectors + deterministic flash cleanup) + useReverseFilterMap hook + ring/flash/applies-to CSS [wave 1] (completed 2026-07-10, see 108-01-SUMMARY.md)
+- [ ] 108-02-PLAN.md — Panel wiring: applies-to line/expander + hover→ring / click→scroll+flash in FilterChip panel variant + DashboardsPage group builders [wave 2, depends 108-01]
 
 ### Phase 109: Global Clear-All
 **Goal**: A single action clears every active filter across the whole dashboard — all tables, all dynamic views, and all spatial draws — by mutating only the input stores and letting the orchestrator ref-count DROP the views.
