@@ -42,7 +42,7 @@
 
 - [x] **Phase 105: Reverse-Mapping Pure Lib + Tests** (completed 2026-07-08) — FRONTEND-ONLY — `resolveWidgetsForFilter.ts`, the INVERSE of `resolveFilterSet`/`resolveSpatialShapes`/`useFilterScopeSummary`, enumerating BOTH read paths (`w:<id>` chart widgets + `l:<id>` map layers → owning map widget) × all filter kinds (eq/in/between+datetime/spatial) × `dvFilterScopeDisabled`. Pure + fully unit-tested. **(research flag — HIGHEST RISK)**
 - [x] **Phase 106: Display-Mode Persistence** (completed 2026-07-09) — BOTH-stack — add a `dashboards.filter_display_mode` column (PRAGMA-guarded ALTER, mirroring the v1.18 `filter_scope` migration) + `DashboardDto`/update plumbing; default `'topbar'` → absent = byte-identical top bar. The milestone's ONLY server touch.
-- [ ] **Phase 107: Panel Shell + Reflow + XOR Switch + Chips** — FRONTEND-ONLY — collapsible right drawer (reuse `.sidebar` collapse + `filter-bar-*` classes), top-bar XOR panel switch, active-filter chips (shared `FilterChip` + `buildChipText`) for eq/in + datetime-between + spatial, per-chip remove + per-group clear, collapsed count badge, empty state, group-by-source, provenance. Panel is an in-flow flex sibling shrinking the grid container (NOT a fixed overlay) so RGL `useContainerWidth` auto-reflows.
+- [x] **Phase 107: Panel Shell + Reflow + XOR Switch + Chips** (completed 2026-07-09) — FRONTEND-ONLY — collapsible right drawer (reuse `.sidebar` collapse + `filter-bar-*` classes), top-bar XOR panel switch, active-filter chips (shared `FilterChip` + `buildChipText`) for eq/in + datetime-between + spatial, per-chip remove + per-group clear, collapsed count badge, empty state, group-by-source, provenance. Panel is an in-flow flex sibling shrinking the grid container (NOT a fixed overlay) so RGL `useContainerWidth` auto-reflows.
 - [ ] **Phase 108: Applies-To List + On-Canvas Highlight** — FRONTEND-ONLY — per-filter "applies to N widgets" list/count (consuming the Phase 105 lib) + hover-highlight + click-to-scroll/flash; new session-only `filterHighlightStore` + `WidgetCard` extraction; `reset()` joins BOTH cleanup chains. **(research flag — HIGH RISK: re-render-storm avoidance + deterministic cleanup)**
 - [ ] **Phase 109: Global Clear-All** — FRONTEND-ONLY — one action clears every active filter across all tables + dynamic views + spatial draws by looping `clearFilters`/`clearDvFilters`/`clearAll` (INPUT stores only); the orchestrator DROPs by ref-count; grep-gated that the handler imports no `materializeFilter`/`dropCombinationView` and never `filterStore.reset()` live.
 - [ ] **Phase 110: Designer Settings UI + Verification + Live UAT** — BOTH + operator — designer mode-toggle in the dashboard settings (gated by the existing `dashboards:edit`, NO new RBAC permission) + green automated gates on both stacks + a blocking live operator walk-through incl. light/dark + narrow-viewport visual checks.
@@ -141,7 +141,7 @@
 |-------|----------------|--------|-----------|
 | 105. Reverse-Mapping Pure Lib + Tests | 1/1 | Complete | 2026-07-08 |
 | 106. Display-Mode Persistence | 1/1 | Complete | 2026-07-09 |
-| 107. Panel Shell + Reflow + XOR Switch + Chips | 2/2 | Plans complete (pending phase verification) | 2026-07-09 |
+| 107. Panel Shell + Reflow + XOR Switch + Chips | 2/2 | Complete | 2026-07-09 |
 | 108. Applies-To List + On-Canvas Highlight | 0/? | Not started | - |
 | 109. Global Clear-All | 0/? | Not started | - |
 | 110. Designer Settings UI + Verification + Live UAT | 0/? | Not started | - |

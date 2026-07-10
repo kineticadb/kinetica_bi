@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: phase_complete
-stopped_at: Completed 107-02-PLAN.md
+stopped_at: Phase 107 complete + verified (8/8); next Phase 108
 last_updated: "2026-07-10T01:39:57.789Z"
 progress:
   total_phases: 6
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 107 — panel-shell-reflow-xor-switch-chips
+**Current focus:** Phase 108 — applies-to-list-+-on-canvas-highlight (next); Phase 107 complete + verified
 
 ## Current Position
 
