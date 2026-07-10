@@ -27,9 +27,9 @@
 
 ### Filter → Widget Mapping (FSCOPE)
 
-- [ ] **FSCOPE-V120-01**: For each active filter, the panel shows which widgets it applies to (names and/or count), computed across both chart widgets and map layers and all filter kinds (equality/in/date/spatial), honoring per-visualization filter scope. (Phase 105 computation portion complete; Phase 108 panel-display portion pending.)
-- [ ] **FSCOPE-V120-02**: Hovering a filter in the panel highlights the widgets it applies to on the dashboard canvas.
-- [ ] **FSCOPE-V120-03**: Clicking a filter scrolls to and briefly flashes the affected widget(s) on the dashboard.
+- [x] **FSCOPE-V120-01**: For each active filter, the panel shows which widgets it applies to (names and/or count), computed across both chart widgets and map layers and all filter kinds (equality/in/date/spatial), honoring per-visualization filter scope. (Phase 105 computation portion complete; Phase 108 panel-display portion complete.)
+- [x] **FSCOPE-V120-02**: Hovering a filter in the panel highlights the widgets it applies to on the dashboard canvas.
+- [x] **FSCOPE-V120-03**: Clicking a filter scrolls to and briefly flashes the affected widget(s) on the dashboard.
 
 ### Clear All (FCLEAR)
 
@@ -79,9 +79,9 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FPANEL-V120-07 | Phase 107 | Complete |
 | FPANEL-V120-08 | Phase 107 | Complete |
 | FPANEL-V120-09 | Phase 107 | Complete |
-| FSCOPE-V120-01 | Phase 105 + Phase 108 | Partial (105 computation complete; 108 display pending) |
-| FSCOPE-V120-02 | Phase 108 | Pending |
-| FSCOPE-V120-03 | Phase 108 | Pending |
+| FSCOPE-V120-01 | Phase 105 + Phase 108 | Complete |
+| FSCOPE-V120-02 | Phase 108 | Complete |
+| FSCOPE-V120-03 | Phase 108 | Complete |
 | FCLEAR-V120-01 | Phase 109 | Pending |
 | VERIFY-V120-01 | Phase 110 | Pending |
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
 status: unknown
-stopped_at: Completed 108-01-PLAN.md
-last_updated: "2026-07-10T14:51:30.544Z"
+stopped_at: Completed 108-02-PLAN.md
+last_updated: "2026-07-10T16:43:04.663Z"
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 108 — applies-to-list-on-canvas-highlight
+**Current focus:** Phase 109 — global-clear-all
 
 ## Current Position
 
-Phase: 108 (applies-to-list-on-canvas-highlight) — EXECUTING
-Plan: 2 of 2 (108-01 complete; 108-02 next)
+Phase: 108 (applies-to-list-on-canvas-highlight) — COMPLETE
+Plan: 2 of 2 (108-01 complete; 108-02 complete)
+Next: Phase 109 (global-clear-all)
 
 ### v1.20 Phase Map
 
@@ -76,9 +77,9 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 | FPANEL-V120-07 | Phase 107-02 | Complete |
 | FPANEL-V120-08 | Phase 107-01 + 107-02 | Complete |
 | FPANEL-V120-09 | Phase 107-01 | Complete |
-| FSCOPE-V120-01 | Phase 105 + Phase 108 | Pending |
-| FSCOPE-V120-02 | Phase 108 | Pending |
-| FSCOPE-V120-03 | Phase 108 | Pending |
+| FSCOPE-V120-01 | Phase 105 + Phase 108 | Complete |
+| FSCOPE-V120-02 | Phase 108 | Complete |
+| FSCOPE-V120-03 | Phase 108 | Complete |
 | FCLEAR-V120-01 | Phase 109 | Pending |
 | VERIFY-V120-01 | Phase 110 | Pending |
 
@@ -788,6 +789,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 106 P01 | 10min | 3 tasks | 5 files |
 | Phase 107 P02 | ~7h (incl. checkpoint pause + fix) | 4 tasks | 6 files |
 | Phase 108 P01 | 55min | 3 tasks | 9 files |
+| Phase 108 P02 | 45min | 2 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -1565,6 +1567,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-10T14:50:52.780Z
-Stopped at: Completed 108-01-PLAN.md
+Last session: 2026-07-10T16:43:04.649Z
+Stopped at: Completed 108-02-PLAN.md
 Resume file: None
