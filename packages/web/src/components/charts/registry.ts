@@ -87,6 +87,14 @@ export type ConfigPanelProps = {
    * that bind base-table-only (Timeline) ignore it.
    */
   dynamicViews?: DynamicViewRow[];
+  /**
+   * Phase 109.1 (FSCOPE-V120-04): the id of the widget being configured, threaded
+   * from ChartConfigPanel's own `widgetId` prop into the CustomConfigPanel slot.
+   * Calendar/Timeline/NumericLine forward it to FilterSelectionPanel as `selfWidgetId`
+   * so the widget cannot list itself as a filter source. Optional — panels that don't
+   * render a filter-scope control ignore it.
+   */
+  widgetId?: number;
 };
 
 export type ChartTypeDefinition = {

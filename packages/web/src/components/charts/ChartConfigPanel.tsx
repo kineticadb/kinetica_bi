@@ -544,6 +544,7 @@ const ChartConfigPanel = ({
             columns={allColumns}
             tables={tables}
             widgets={widgets}       // Phase 42 Plan 42-01: thread for LegendConfigPanel
+            widgetId={widgetId}     // Phase 109.1 (FSCOPE-V120-04): thread for FilterSelectionPanel selfWidgetId
             dynamicViews={dynamicViews}  // Phase 66 (CAL-V113-01): forwarded for CalendarConfigPanel dv-aware picker
             isValid={(valid) => setCustomPanelValid(valid)}
             onChange={(c) => {
