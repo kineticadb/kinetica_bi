@@ -75,8 +75,9 @@ vi.mock("../../store/filterStore", async (importOriginal) => {
 });
 
 // ---- Filter view store mock ----
-// mockViews = table-path views keyed by tableId
-// mockDvViews = dv-filter-path views keyed by dynamicViewId
+// Phase 109.2: the READ selectors (fvViewName/fvExpiresAt/fvMaterializing/dv-filter) have
+// moved to filterCombinationStore — mockViews/mockDvViews are retained ONLY because the module
+// is still mocked (markMaterializing/markDvMaterializing writes in handleCellClick, Timeline-parity).
 let mockViews: Record<number, { viewName?: string; materializing: boolean; expiresAt: number }> = {};
 let mockDvViews: Record<number, { viewName?: string; materializing: boolean }> = {};
 const mockClearView = vi.fn();
@@ -97,6 +98,33 @@ vi.mock("../../store/filterViewStore", async (importOriginal) => {
     markDvMaterializing: mockMarkDvMaterializing,
   });
   return { ...actual, useFilterViewStore };
+});
+
+// ---- Filter combination store mock (Phase 109.2 — mirrors TimelineRenderer.spec.tsx) ----
+// mockVizToHash: maps vizKey ("w:<widgetId>") → hash string | undefined.
+// mockRegistry: maps hash → CombinationEntry-like object.
+let mockVizToHash: Record<string, string | undefined> = {};
+let mockRegistry: Record<string, { viewName: string; expiresAt: number; materializing: boolean }> = {};
+let mockCombinationVersion = 0;
+const mockClearEntry = vi.fn();
+
+vi.mock("../../store/filterCombinationStore", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const useFilterCombinationStore = ((selector?: (s: unknown) => unknown) => {
+    const state = {
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+    };
+    return selector ? selector(state) : state;
+  }) as unknown as { getState: () => unknown };
+  useFilterCombinationStore.getState = () => ({
+    vizToHash: mockVizToHash,
+    registry: mockRegistry,
+    combinationVersion: mockCombinationVersion,
+    clearEntry: mockClearEntry,
+  });
+  return { ...actual, useFilterCombinationStore };
 });
 
 // ---- Dynamic view store mock ----
@@ -198,7 +226,11 @@ beforeEach(() => {
   mockViews = {};
   mockDvViews = {};
   mockDvViews2 = {};
+  mockVizToHash = {};
+  mockRegistry = {};
+  mockCombinationVersion = 0;
   mockClearView.mockClear();
+  mockClearEntry.mockClear();
   mockMarkMaterializing.mockClear();
   mockMarkDvMaterializing.mockClear();
   mockSetBulkFilters.mockClear();
@@ -246,44 +278,49 @@ describe("CalendarRenderer", () => {
     expect(sql).toContain("FROM demo.sales");
   });
 
-  it("Test 3 (table FROM resolution — respondToFilters OFF default): with filter-view present but respondToFilters absent/false, SQL FROM = BASE TABLE (not filter view)", async () => {
-    // Phase 68-03: default is OFF → calendar always reads unfiltered source
-    mockViews = {
-      1: { viewName: "_kbi_filt_abc", materializing: false, expiresAt: Date.now() + 60_000 },
-    };
+  it("Test 3 (table FROM resolution — no combo binding): with no vizToHash entry, SQL FROM = BASE TABLE", async () => {
+    // Phase 109.2: no orchestrator binding (vizToHash empty) → base table (unchanged legacy behavior).
     render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     await waitFor(() => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    // respondToFilters OFF: ignore fvViewName, use base table
     expect(sql).toContain("FROM demo.sales");
-    expect(sql).not.toContain("FROM _kbi_filt_abc");
   });
 
-  it("Test 3a (table FROM resolution — respondToFilters ON): with filter-view present and respondToFilters:true, SQL FROM = filter view name", async () => {
-    mockViews = {
-      1: { viewName: "_kbi_filt_abc", materializing: false, expiresAt: Date.now() + 60_000 },
-    };
+  it("Test 3a (table FROM resolution — combo binding present): vizToHash bound to a hash whose registry viewName is set, SQL FROM = that combo view name", async () => {
+    const hash = "table:1:order_date|between|[\"2026-01-01\",\"2026-02-01\"]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "kv_c123", materializing: false, expiresAt: Date.now() + 60_000 };
+    render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+    });
+    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("FROM kv_c123");
+    expect(sql).not.toContain("FROM demo.sales");
+  });
+
+  it("Test 4a (table FROM resolution — legacy respondToFilters:false, no vizToHash binding): SQL FROM = BASE TABLE (ignore-all preserved)", async () => {
+    // Phase 109.2: a legacy calendar's respondToFilters:false coalesces to an empty allow-list,
+    // so the orchestrator never mints a vizToHash binding for it — the renderer falls through
+    // to the base table exactly as it did pre-migration. The (now-inert) respondToFilters key
+    // is left in the config object to simulate a real legacy-persisted widget.
     render(
-      <CalendarRenderer
-        widget={makeWidget({ respondToFilters: true })}
-        tables={TABLES}
-      />,
+      <CalendarRenderer widget={makeWidget({ respondToFilters: false })} tables={TABLES} />,
     );
     await waitFor(() => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    // respondToFilters ON: use filter view name (Phase 67 behavior)
-    expect(sql).toContain("FROM _kbi_filt_abc");
-    expect(sql).not.toContain("FROM demo.sales");
+    expect(sql).toContain("FROM demo.sales");
   });
 
-  it("Test 4a (DV FROM resolution — respondToFilters OFF): with dvFilterViewName set but respondToFilters=false, FROM = raw dvViewName", async () => {
-    // Phase 68-03: OFF → ignore dvFilterViewName, use raw dvViewName
+  it("Test 4a-on (dv FROM resolution — dv-combo view preferred over raw dvViewName): vizToHash bound for the dv-bound widget, SQL FROM = combo view name", async () => {
     mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
-    mockDvViews = { 99: { viewName: "_kbi_dv_filt_v99", materializing: false } };
+    const hash = "dv:99:order_date|between|[\"2026-01-01\",\"2026-02-01\"]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "kv_dvcombo", materializing: false, expiresAt: Date.now() + 60_000 };
     render(
       <CalendarRenderer
         widget={makeWidget({ dynamicViewId: 99, tableRef: "demo.sales" })}
@@ -294,34 +331,14 @@ describe("CalendarRenderer", () => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    // OFF: uses raw dv view, NOT filtered-dv view
-    expect(sql).toContain("FROM _kbi_dv_raw_v99");
-    expect(sql).not.toContain("FROM _kbi_dv_filt_v99");
-    expect(sql).not.toContain("FROM demo.sales");
-  });
-
-  it("Test 4a-on (DV FROM resolution — respondToFilters ON): with dvFilterViewName set and respondToFilters:true, FROM = filtered-dv view", async () => {
-    mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
-    mockDvViews = { 99: { viewName: "_kbi_dv_filt_v99", materializing: false } };
-    render(
-      <CalendarRenderer
-        widget={makeWidget({ dynamicViewId: 99, tableRef: "demo.sales", respondToFilters: true })}
-        tables={TABLES}
-      />,
-    );
-    await waitFor(() => {
-      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
-    });
-    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    // ON: uses filtered-dv view (Phase 67 behavior)
-    expect(sql).toContain("FROM _kbi_dv_filt_v99");
-    expect(sql).not.toContain("FROM demo.sales");
+    expect(sql).toContain("FROM kv_dvcombo");
     expect(sql).not.toContain("FROM _kbi_dv_raw_v99");
+    expect(sql).not.toContain("FROM demo.sales");
   });
 
-  it("Test 4b (DV FROM resolution — raw dv): with dvViewName only (no filter), FROM = raw dv view (same for ON/OFF)", async () => {
+  it("Test 4b (dv FROM resolution — raw dv fallback): with no dv-combo binding, FROM = raw dv view", async () => {
     mockDvViews2 = { 99: { viewName: "_kbi_dv_raw_v99", status: "materialized" } };
-    mockDvViews = {}; // no dv filter view active
+    // No vizToHash entry — orchestrator has not (or never will) bind this widget.
     render(
       <CalendarRenderer
         widget={makeWidget({ dynamicViewId: 99, tableRef: "demo.sales" })}
@@ -336,20 +353,22 @@ describe("CalendarRenderer", () => {
     expect(sql).not.toContain("FROM demo.sales");
   });
 
-  it("Test 5 (filterVersion re-fetch — respondToFilters ON): bumping filterVersion causes runSql to be called again", async () => {
-    // respondToFilters:true — re-fetching on a filter change is the CORRECT behavior only when ON.
-    // (The OFF case is asserted by Test 37: a filterVersion bump must NOT re-fetch.)
-    const { rerender } = render(<CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />);
+  it("Test 5 (combo view materializes — re-fetch): once the combo entry resolves from materializing to a viewName, runSql is called again with the new FROM target", async () => {
+    const hash = "table:1:order_date|between|[\"2026-01-01\",\"2026-02-01\"]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "", materializing: true, expiresAt: 0 };
+    const { rerender } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+    // Suspended while materializing — no fetch yet.
+    await new Promise((r) => setTimeout(r, 25));
+    expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    // Combo entry resolves.
+    mockRegistry[hash] = { viewName: "kv_c123", materializing: false, expiresAt: Date.now() + 60_000 };
+    rerender(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     await waitFor(() => {
-      expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
+      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
     });
-    const callsBefore = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
-    // Bump filterVersion — simulate a filter being applied
-    mockFilterVersion = 1;
-    rerender(<CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />);
-    await waitFor(() => {
-      expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsBefore);
-    });
+    const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(sql).toContain("FROM kv_c123");
   });
 
   it("Test 6 (gap-fill greys): sparse response renders data-empty cell with fill=emptyCell; populated cells get <title>", async () => {
@@ -401,13 +420,12 @@ describe("CalendarRenderer", () => {
     expect(screen.queryByTestId("calendar-loading")).toBeNull();
   });
 
-  it("Test 9 (suspend during materializing — respondToFilters ON): while fvMaterializing and respondToFilters:true, runSql is not called", async () => {
-    // Phase 68-03: suspend gate only applies when respondToFilters=ON (filter-aware mode).
-    // With OFF (default), the base table fetch ignores fvMaterializing.
-    mockViews = { 1: { viewName: undefined, materializing: true, expiresAt: 0 } };
-    render(
-      <CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />,
-    );
+  it("Test 9 (suspend during materializing — combo entry): while the bound combo entry is materializing, runSql is not called", async () => {
+    // Phase 109.2: suspend gate now keys off the combo-store entry's materializing flag.
+    const hash = "table:1:order_date|between|[\"2026-01-01\",\"2026-02-01\"]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "", materializing: true, expiresAt: 0 };
+    render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     await new Promise((r) => setTimeout(r, 50));
     expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
@@ -635,8 +653,9 @@ describe("CalendarRenderer", () => {
     expect(outlined).toBeUndefined();
   });
 
-  it("Test 19b (respondToFilters OFF — cell click still dispatches): with respondToFilters false, clicking a cell still calls setBulkFilters", async () => {
-    // Cell clicks ALWAYS drive filters regardless of the toggle
+  it("Test 19b (legacy respondToFilters key, unread — cell click still dispatches): a legacy-persisted config still calls setBulkFilters on click", async () => {
+    // Cell clicks ALWAYS drive filters — a stray legacy respondToFilters key in the persisted
+    // config (now fully inert) must not affect drill dispatch.
     const { container } = render(
       <CalendarRenderer widget={makeWidget({ respondToFilters: false })} tables={TABLES} />,
     );
@@ -650,10 +669,10 @@ describe("CalendarRenderer", () => {
     expect(mockSetBulkFilters).toHaveBeenCalledOnce();
   });
 
-  it("Test 19c (respondToFilters in dep array): CalendarRenderer.tsx includes respondToFilters in the useEffect dependency array", () => {
+  it("Test 19c (respondToFilters fully retired): CalendarRenderer.tsx contains ZERO references to respondToFilters", () => {
     const path = resolve(__dirname, "CalendarRenderer.tsx");
     const src = readFileSync(path, "utf-8");
-    expect(src).toContain("respondToFilters");
+    expect(src).not.toContain("respondToFilters");
   });
 
   it("Test 20 (source contains appliedCell useMemo): CalendarRenderer.tsx has a useMemo deriving active between bounds", () => {
@@ -1116,16 +1135,17 @@ describe("CalendarRenderer", () => {
     expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });
 
-  // Test 37 (issue 3 — respondToFilters OFF ignores filter changes): with OFF (default), bumping
-  // filterVersion must NOT re-fetch — the calendar reads the unfiltered source, so filter-store
-  // churn is irrelevant. (Old behavior re-fetched on every filter change; see fixed Test 5.)
-  it("Test 37 (respondToFilters OFF): filterVersion bump does NOT re-fetch", async () => {
+  // Test 37 (Phase 109.2 — combo store, not filterVersion, drives fetch timing): a bare
+  // filterVersion bump with NO accompanying vizToHash/registry change must NOT re-fetch —
+  // filterVersion was removed from the dep array entirely; only the combo-store selectors drive
+  // re-fetch timing now (mirrors TimelineRenderer's architecture).
+  it("Test 37 (filterVersion bump alone does NOT re-fetch — combo store drives timing)", async () => {
     const { rerender } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     await waitFor(() => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
     expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
-    // Apply a dashboard filter (bump version) — an OFF calendar must ignore it.
+    // Bump filterVersion with no vizToHash/registry change — must be a no-op for the fetch effect.
     mockFilterVersion = 5;
     rerender(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     // Give any (erroneous) re-fetch a chance to fire.
@@ -1134,8 +1154,9 @@ describe("CalendarRenderer", () => {
   });
 
   // Test 38 (issue 2 — no flicker on re-fetch): while a re-fetch is IN FLIGHT, the calendar keeps
-  // the previously-rendered grid (stale data) instead of blanking to "Loading…". respondToFilters
-  // ON so a filterVersion bump drives the re-fetch; the second runSql is held open.
+  // the previously-rendered grid (stale data) instead of blanking to "Loading…". A combo binding
+  // appearing between renders (Phase 109.2: vizToHash/registry change, not a filterVersion bump)
+  // drives the re-fetch; the second runSql is held open.
   it("Test 38 (re-fetch keeps stale grid — no Loading flash)", async () => {
     const fn = runSql as unknown as ReturnType<typeof vi.fn>;
     let resolveSecond: (v: unknown) => void = () => {};
@@ -1144,15 +1165,15 @@ describe("CalendarRenderer", () => {
     fn.mockImplementationOnce(() => new Promise((res) => { resolveSecond = res; })); // re-fetch hangs
     fn.mockResolvedValue(makeCalendarResponse(CANNED_ROWS)); // any further calls
 
-    const { rerender } = render(
-      <CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />,
-    );
+    const { rerender } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     await waitFor(() => {
       expect(screen.getByTestId("calendar-renderer")).toBeTruthy();
     });
-    // Trigger a re-fetch (filter applied) — the second runSql is in flight.
-    mockFilterVersion = 1;
-    rerender(<CalendarRenderer widget={makeWidget({ respondToFilters: true })} tables={TABLES} />);
+    // Trigger a re-fetch: a combo binding now resolves for this widget — the second runSql is in flight.
+    const hash = "table:1:order_date|between|[\"2026-01-01\",\"2026-02-01\"]";
+    mockVizToHash["w:100"] = hash;
+    mockRegistry[hash] = { viewName: "kv_c123", materializing: false, expiresAt: Date.now() + 60_000 };
+    rerender(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
     await new Promise((r) => setTimeout(r, 25));
     // While the re-fetch is in flight the OLD grid stays — NO loading flash.
     expect(screen.getByTestId("calendar-renderer")).toBeTruthy();

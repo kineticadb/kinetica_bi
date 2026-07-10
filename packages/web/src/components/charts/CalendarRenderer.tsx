@@ -5,9 +5,16 @@
  * Phase 68 Plan 02 (CALDR-V113-01 + CALDR-V113-02):
  * Added cell-click BETWEEN drill dispatch + reactive selected-cell highlight.
  *
+ * Phase 109.2 (FSCOPE-V120-05): read path swapped from the dead per-tableId
+ * filterViewStore to filterCombinationStore.vizToHash (mirrors TimelineRenderer's
+ * table path + WidgetRenderer's AggregatedWidgetRenderer dv-branch). The legacy
+ * "respond to dashboard filters" toggle is retired entirely — the calendar now
+ * honors its configured filterSelection scope.
+ *
  * Owns its full data lifecycle (mirrors TimelineRenderer):
- *   - Resolves the FROM target via precedence (fvViewName || dvFilterViewName ||
- *     dvViewName || schema.table) BEFORE building the SQL string — no fromSwap.
+ *   - Resolves the FROM target via the combo view (vizToHash[vizKey] -> registry
+ *     viewName) when present, else the base schema.table (table path) / raw dv view
+ *     (dv path) BEFORE building the SQL string — no fromSwap.
  *   - Issues a SINGLE runSql(buildCalendarSql(...)) call.
  *   - Re-fetches on the filter-aware dep set (CAL-V113-05).
  *   - 2D gap-fill via gapFillCalendar (useMemo).
@@ -44,6 +51,8 @@ import type { TimelineAggregation, TimelineIntervalKey } from "../../lib/timelin
 import { formatTimelineTick } from "../../lib/timelineBin";
 import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
+import { useFilterCombinationStore } from "../../store/filterCombinationStore";
+import { NOFILTER_SENTINEL } from "../../lib/stableComboHash";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useToastStore } from "../../store/toast";
 import { buildChipText } from "../../lib/columnTypes";
@@ -125,8 +134,6 @@ export default function CalendarRenderer({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId]);
-  // Phase 68-03: OFF (default) = always read unfiltered source; ON = Phase 67 filter-aware behavior.
-  const respondToFilters = cfg.respondToFilters ?? false;
   // Phase 68.1-03: layout mode + viewer control bar gate.
   const layoutMode = cfg.layoutMode ?? "wrap";
   // Phase 97/103 (CALSMART): effective-mode resolution with legacy back-compat.
@@ -173,10 +180,6 @@ export default function CalendarRenderer({
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { dashboardId, retryDynamicView } = useDashboardContext();
 
-  // ---- Scoped store selectors (PITFALL C-02 — never the whole map) ----
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const filterVersion = useFilterStore((s) => s.filterVersion);
-
   // Active filters for the applied-cell memo (table path vs dv path)
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const activeFilters = useFilterStore((s) =>
@@ -185,13 +188,25 @@ export default function CalendarRenderer({
       : (s.filters[tableId] ?? []),
   );
 
-  // Table path selectors
+  // ---- Table path selectors: combo-store vizToHash (Phase 109.2 — mirrors TimelineRenderer) ----
+  // PITFALL S-02 lock: primitive selectors scoped to this widget's vizKey — never the registry object.
+  // undefined hash (orchestrator not yet run) or NOFILTER hash → "" viewName → base table.
+  const vizKey = `w:${widget.id}`;
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const fvViewName = useFilterViewStore((s) => s.views[tableId]?.viewName);
+  const fvViewName = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    return h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? (s.registry[h]?.viewName ?? "") : "";
+  });
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const fvExpiresAt = useFilterViewStore((s) => s.views[tableId]?.expiresAt ?? 0);
+  const fvExpiresAt = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    return h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? (s.registry[h]?.expiresAt ?? 0) : 0;
+  });
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const fvMaterializing = useFilterViewStore((s) => s.views[tableId]?.materializing ?? false);
+  const fvMaterializing = useFilterCombinationStore((s) => {
+    const h = s.vizToHash[vizKey];
+    return h && !h.endsWith(`:${NOFILTER_SENTINEL}`) ? (s.registry[h]?.materializing ?? false) : false;
+  });
 
   // DV path selectors (WidgetRenderer §425-446)
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -204,26 +219,6 @@ export default function CalendarRenderer({
   // over_threshold / error render-body placeholders other charts show (WidgetRenderer §820-867).
   const dvReason = dvEntry?.reason;
   const dvError = dvEntry?.error;
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const dvFilterEntry = useFilterViewStore((s) =>
-    dynamicViewId !== undefined ? s.dvViews[dynamicViewId] : undefined,
-  );
-  const dvFilterViewName = dvFilterEntry?.viewName;
-  const dvFilterMaterializing = dvFilterEntry?.materializing ?? false;
-
-  // ---- Filter-aware fetch deps, neutralized when respondToFilters is OFF (issue 3) ----
-  // OFF (default) → the calendar always reads the UNFILTERED source, so filter-store churn must
-  // NOT trigger a re-fetch. Collapse the filter-aware deps to constants when OFF; the fetch effect
-  // then only re-runs on config/combo/dv-lifecycle changes. The dv MATERIALIZATION lifecycle
-  // (dvStatus/dvViewName) stays live regardless — a dv becoming materialized must still kick off
-  // the first fetch even with respondToFilters OFF.
-  const dataFilterVersion = respondToFilters ? filterVersion : 0;
-  const dataFvViewName = respondToFilters ? fvViewName : undefined;
-  const dataFvExpiresAt = respondToFilters ? fvExpiresAt : 0;
-  const dataFvMaterializing = respondToFilters ? fvMaterializing : false;
-  const dataDvFilterViewName = respondToFilters ? dvFilterViewName : undefined;
-  const dataDvFilterMaterializing = respondToFilters ? dvFilterMaterializing : false;
 
   // ---- Reactive appliedCell memo (mirrors TimelineRenderer appliedBand, §173-180) ----
   // Finds the active BETWEEN filter on timeCol; captures [lo, hi] as the active bounds.
@@ -277,55 +272,37 @@ export default function CalendarRenderer({
   // ---- useEffect fetch: resolve FROM target BEFORE building SQL (NO fromSwap) ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
-    // Phase 68-03: gate FROM resolution on respondToFilters.
-    //   OFF (default): ignore filter views → always read unfiltered source.
-    //   ON: Phase 67 full filter-aware precedence.
+    // Phase 109.2 (FSCOPE-V120-05): unconditional combo-store FROM resolution —
+    // mirrors TimelineRenderer's table path + WidgetRenderer's AggregatedWidgetRenderer
+    // dv-branch. No legacy toggle gate: the calendar always honors its configured
+    // filterSelection scope via the orchestrator-minted vizToHash binding.
     let fromTarget: string;
 
-    if (respondToFilters) {
-      // ON: Phase 67 filter-aware precedence —
-      //   table path: fvViewName || schema.table
-      //   dv path: dvFilterViewName ?? dvViewName
-      const fromView =
-        dynamicViewId === undefined ? dataFvViewName : (dataDvFilterViewName ?? dvViewName);
-
-      // Table path suspend/expiry gates
-      if (dynamicViewId === undefined) {
-        if (dataFvMaterializing) return;
-        if (dataFvViewName && dataFvExpiresAt > 0 && Date.now() >= dataFvExpiresAt) {
-          useFilterViewStore.getState().clearView(tableId);
-          return;
-        }
+    if (dynamicViewId === undefined) {
+      // Table path: suspend while materializing; proactively drop a stale/expired entry.
+      if (fvMaterializing) return;
+      if (fvViewName && fvExpiresAt > 0 && Date.now() >= fvExpiresAt) {
+        const h = useFilterCombinationStore.getState().vizToHash[vizKey];
+        if (h) useFilterCombinationStore.getState().clearEntry(h);
+        return;
       }
-
-      // DV path gates
-      if (dynamicViewId !== undefined) {
-        if (dataDvFilterMaterializing) return;
-        if (dvStatus !== "materialized") return;
-      }
-
-      // Resolve fromTarget with filter-aware view precedence
-      fromTarget = fromView
-        ? fromView
+      fromTarget = fvViewName
+        ? fvViewName
         : effectiveSchema
         ? `${effectiveSchema}.${effectiveTable}`
         : effectiveTable;
     } else {
-      // OFF (default): skip filter views entirely; read the unfiltered source.
-      //   table-bound: schema.table (base table)
-      //   dv-bound: raw dvViewName (not dvFilterViewName)
-
-      // DV path gate: raw dv view must still be materialized and present
-      if (dynamicViewId !== undefined) {
-        if (dvStatus !== "materialized") return;
-        if (!dvViewName) return;
-        fromTarget = dvViewName;
-      } else {
-        // Table path: base table always available, no materializing wait needed
-        fromTarget = effectiveSchema
-          ? `${effectiveSchema}.${effectiveTable}`
-          : effectiveTable;
-      }
+      // Dv path: dv must be materialized (existing dvStatus gates unchanged); prefer the
+      // dv-combo view, fall back to the raw dv view (mirrors WidgetRenderer.tsx:585-602).
+      if (dvStatus !== "materialized") return;
+      const dvComboHash = useFilterCombinationStore.getState().vizToHash[vizKey];
+      const dvComboEntry =
+        dvComboHash && !dvComboHash.endsWith(`:${NOFILTER_SENTINEL}`)
+          ? useFilterCombinationStore.getState().registry[dvComboHash]
+          : undefined;
+      const dvSource = dvComboEntry?.viewName || dvViewName;
+      if (!dvSource) return;
+      fromTarget = dvSource;
     }
 
     const ctrl = new AbortController();
@@ -375,8 +352,7 @@ export default function CalendarRenderer({
       cancelled = true;
       ctrl.abort();
     };
-    // Re-fetch when config or filter-aware deps change (CAL-V113-05).
-    // respondToFilters in dep array: toggling re-resolves the FROM target.
+    // Re-fetch when config or combo-scoped filter-aware deps change (CAL-V113-05).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effectiveSchema,
@@ -386,16 +362,12 @@ export default function CalendarRenderer({
     aggregation,
     effDomain,
     effSubdomain,
-    respondToFilters,
-    // Filter-aware deps are neutralized to constants when respondToFilters is OFF (issue 3),
-    // so a filter change no longer re-fires this effect for an unfiltered calendar.
-    dataFilterVersion,
-    dataFvViewName,
-    dataFvExpiresAt,
-    dataFvMaterializing,
-    dataDvFilterViewName,
-    dataDvFilterMaterializing,
-    // dv materialization lifecycle stays live regardless of respondToFilters.
+    // Combo-store table-path deps (Phase 109.2): a filter/combo change re-resolves the FROM target.
+    vizKey,
+    fvViewName,
+    fvExpiresAt,
+    fvMaterializing,
+    // dv materialization lifecycle stays live regardless.
     dvViewName,
     dvStatus,
     // Phase 98: re-fetch when the custom predicate changes.
