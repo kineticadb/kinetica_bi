@@ -25,6 +25,7 @@ import {
   type ShapeApplyEntry,
 } from "./computeReverseFilterMap";
 import type { FilterSelectionConfig } from "../types/filterSelection";
+import { coalesceCalendarFilterSelection } from "./coalesceCalendarFilterSelection";
 
 // Mirrors useCombinationOrchestrator.ts's NON_TRIGGER_TYPES — widget types that never
 // produce a materialized combo view (and so are never a chart/table "applies-to" target).
@@ -34,10 +35,11 @@ const NON_TRIGGER_TYPES = new Set([
   "info-card",
   "legend",
   "datafilter",
-  "timeline",
-  "numericline",
   "radiogroup",
-  "calendar",
+  // "timeline" / "numericline" / "calendar" REMOVED (Phase 109.2 — FSCOPE-V120-05): these three
+  // widgets are combo-store CONSUMERS and need a scoped vizToHash binding, same as bar/pie/table.
+  // Must mirror useCombinationOrchestrator.ts's NON_TRIGGER_TYPES exactly (a mismatch is the
+  // exact reported bug). Orthogonal to FILTER_PRODUCING_TYPES (filterSourceTypes.ts).
 ]);
 const isTriggerType = (t: string) => !NON_TRIGGER_TYPES.has(t);
 
@@ -77,7 +79,7 @@ export function enumerateVizDescriptors(args: {
       vizKind: "widget",
       widgetId: w.id,
       widgetTitle: w.title,
-      cfg: cfg.filterSelection as FilterSelectionConfig | undefined,
+      cfg: w.type === "calendar" ? coalesceCalendarFilterSelection(cfg) : (cfg.filterSelection as FilterSelectionConfig | undefined),
       tableId,
       dynamicViewId,
       spatialCapable: tableId !== undefined && targetsByTable.has(tableId),

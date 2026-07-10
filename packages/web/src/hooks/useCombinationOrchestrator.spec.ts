@@ -78,6 +78,7 @@ function makeWidget(overrides: {
   type?: string;
   tableId?: number;
   filterSelection?: { sourceMode: "all" | "allowlist"; allowedSourceWidgetIds: (number | string)[] };
+  respondToFilters?: boolean;
 }): WidgetDto {
   return {
     id: overrides.id,
@@ -88,6 +89,7 @@ function makeWidget(overrides: {
     config: {
       ...(overrides.tableId !== undefined ? { tableId: overrides.tableId } : {}),
       ...(overrides.filterSelection ? { filterSelection: overrides.filterSelection } : {}),
+      ...(overrides.respondToFilters !== undefined ? { respondToFilters: overrides.respondToFilters } : {}),
     },
     created_at: "2026-06-01T00:00:00Z",
     updated_at: "2026-06-01T00:00:00Z",
@@ -1203,6 +1205,63 @@ describe("Phase 93.5 — spatial in combination model (SPATIAL-V118-01)", () => 
       expect(state.vizToHash["w:30"]).toBe(state.vizToHash["w:31"]);
       expect(state.vizToHash["w:30"]).toBe(expectedHash);
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // SC7: Phase 109.2 (FSCOPE-V120-05) — calendar/timeline/numericline are no longer in
+  // NON_TRIGGER_TYPES; each mints its own scoped vizToHash binding.
+  // -------------------------------------------------------------------------
+  it("SC7: calendar widget with active filter -> ONE POST; vizToHash set (Phase 109.2: calendar no longer in NON_TRIGGER_TYPES)", async () => {
+    const calendarWidget = makeWidget({ id: 40, type: "calendar", tableId: TABLE_A });
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [calendarWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    expect(useFilterCombinationStore.getState().vizToHash["w:40"]).toBe(expectedHash);
+  });
+
+  it("SC7: timeline widget with active filter -> ONE POST; vizToHash set (Phase 109.2: timeline no longer in NON_TRIGGER_TYPES)", async () => {
+    const timelineWidget = makeWidget({ id: 42, type: "timeline", tableId: TABLE_A });
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [timelineWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    expect(useFilterCombinationStore.getState().vizToHash["w:42"]).toBe(expectedHash);
+  });
+
+  it("SC7: numericline widget with active filter -> ONE POST; vizToHash set (Phase 109.2: numericline no longer in NON_TRIGGER_TYPES)", async () => {
+    const numericlineWidget = makeWidget({ id: 43, type: "numericline", tableId: TABLE_A });
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [numericlineWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => {
+      expect(materializeFilter).toHaveBeenCalledTimes(1);
+    });
+    const expectedHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+    expect(useFilterCombinationStore.getState().vizToHash["w:43"]).toBe(expectedHash);
+  });
+
+  // SC7b: legacy respondToFilters:false calendar -> NOFILTER (undefined vizToHash) despite
+  // active filters (coalesceCalendarFilterSelection -> empty allow-list = respond to none).
+  it("SC7b: legacy respondToFilters:false calendar -> resolves to NOFILTER (respond to none), vizToHash undefined", async () => {
+    const calendarWidget = makeWidget({ id: 41, type: "calendar", tableId: TABLE_A, respondToFilters: false });
+    useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [calendarWidget], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => {
+      expect(useFilterCombinationStore.getState().vizToHash["w:41"]).toBeUndefined();
+    });
+    expect(materializeFilter).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------

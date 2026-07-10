@@ -78,7 +78,7 @@ describe("enumerateVizDescriptors", () => {
     expect(vizs.map((v) => v.widgetId).sort()).toEqual([1, 2]);
   });
 
-  it("excludes NON_TRIGGER_TYPES widgets (e.g. map, info-card, legend, calendar) from vizKind:'widget'", () => {
+  it("excludes NON_TRIGGER_TYPES widgets (e.g. map, info-card, legend) from vizKind:'widget'; calendar IS now enumerated (Phase 109.2)", () => {
     const widgets = [
       makeWidget(1, { type: "map", config: { includedLayerIds: [] } }),
       makeWidget(2, { type: "info-card" }),
@@ -92,7 +92,48 @@ describe("enumerateVizDescriptors", () => {
       targetsByTable: new Map(),
     });
     // No layers exist, so the map widget also contributes no "layer" descriptors.
-    expect(vizs).toHaveLength(0);
+    // map/info-card/legend remain excluded; calendar (Phase 109.2 — FSCOPE-V120-05) is now
+    // enumerated as a vizKind:'widget' descriptor.
+    expect(vizs).toHaveLength(1);
+    expect(vizs[0].vizKind).toBe("widget");
+    expect(vizs[0].widgetId).toBe(4);
+  });
+
+  it("emits vizKind:'widget' descriptors for timeline and numericline widgets (Phase 109.2 — no longer NON_TRIGGER_TYPES)", () => {
+    const widgets = [
+      makeWidget(5, { type: "timeline", config: { tableId: 5 } }),
+      makeWidget(6, { type: "numericline", config: { tableId: 5 } }),
+    ];
+    const vizs = enumerateVizDescriptors({
+      widgets,
+      layers: [],
+      associatedTables: [table],
+      targetsByTable: new Map(),
+    });
+    expect(vizs).toHaveLength(2);
+    expect(vizs.every((v) => v.vizKind === "widget")).toBe(true);
+    expect(vizs.map((v) => v.widgetId).sort()).toEqual([5, 6]);
+  });
+
+  it("calendar cfg is coalesced via coalesceCalendarFilterSelection (Phase 109.2): legacy respondToFilters:false -> empty allow-list; default -> undefined", () => {
+    const legacyCalendar = makeWidget(7, {
+      type: "calendar",
+      config: { tableId: 5, respondToFilters: false },
+    });
+    const defaultCalendar = makeWidget(8, {
+      type: "calendar",
+      config: { tableId: 5 },
+    });
+    const vizs = enumerateVizDescriptors({
+      widgets: [legacyCalendar, defaultCalendar],
+      layers: [],
+      associatedTables: [table],
+      targetsByTable: new Map(),
+    });
+    const legacyDescriptor = vizs.find((v) => v.widgetId === 7);
+    const defaultDescriptor = vizs.find((v) => v.widgetId === 8);
+    expect(legacyDescriptor?.cfg).toEqual({ sourceMode: "allowlist", allowedSourceWidgetIds: [] });
+    expect(defaultDescriptor?.cfg).toBeUndefined();
   });
 
   it("a map layer maps to the OWNING map widget id (not the layer id) + derives a layer name", () => {

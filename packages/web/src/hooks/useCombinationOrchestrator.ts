@@ -52,13 +52,15 @@ import type { WidgetDto, DashboardLayerDto } from "../api/client";
 import type { FilterSelectionConfig } from "../types/filterSelection";
 import type { Shape } from "../store/spatialFilterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
+import { coalesceCalendarFilterSelection } from "../lib/coalesceCalendarFilterSelection";
 
 // ---------------------------------------------------------------------------
 // Non-trigger widget types — AUTHORITATIVE source (Phase 93.5-02 removed the prior
 // map-only hook; this set is the sole canonical definition).
-// Do NOT import to avoid circular-dep risk. Extend with "radiogroup", "calendar",
+// Do NOT import to avoid circular-dep risk. Extend with "radiogroup"
 // and "records" which are never routed through AggregatedWidgetRenderer:
-//   - "radiogroup", "calendar" — WidgetRenderer dispatch never routes to AWR.
+//   - "radiogroup" — WidgetRenderer dispatch never routes to AWR.
+//     ("calendar" was removed from this set in Phase 109.2 — see below.)
 //   - "records" — RecordsTableRenderer is its OWN renderer; reads filterViewStore
 //     (not combo store) and runs its own legacy spatial materialize trigger. Adding
 //     records here stops the orchestrator from minting an orphan combo view that
@@ -72,10 +74,14 @@ const NON_TRIGGER_TYPES = new Set([
   "info-card",
   "legend",
   "datafilter",
-  "timeline",
-  "numericline",
   "radiogroup",
-  "calendar",
+  // "timeline" / "numericline" / "calendar" REMOVED (Phase 109.2 — FSCOPE-V120-05): these three
+  // widgets are combo-store CONSUMERS (they read vizToHash — see TimelineRenderer.tsx,
+  // NumericLineRenderer.tsx, CalendarRenderer.tsx post-109.2 read path) and need a scoped
+  // vizToHash binding from their own filterSelection, same as bar/pie/table. This is UNRELATED
+  // to FILTER_PRODUCING_TYPES (filterSourceTypes.ts), which already lists these 3 as filter
+  // SOURCES — the two sets are orthogonal; bar/pie/table have been both simultaneously since
+  // Phase 93 with zero conflict.
   // Phase 96-01 GAP 2: "records" removed — RecordsTableRenderer is now a pure combo-store
   // consumer; useCombinationOrchestrator is the sole materialize trigger for records widgets too.
 ]);
@@ -210,7 +216,7 @@ export function useCombinationOrchestrator(
         const tableId = w.config.tableId as number | undefined;
         if (tableId === undefined) continue; // dv-bound = Phase 94 scope
 
-        const cfg = w.config.filterSelection as FilterSelectionConfig | undefined;
+        const cfg = w.type === "calendar" ? coalesceCalendarFilterSelection(w.config) : (w.config.filterSelection as FilterSelectionConfig | undefined);
         const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, allFilters);
         const acceptedShapes = resolveSpatialShapes(cfg, shapes);
@@ -290,7 +296,7 @@ export function useCombinationOrchestrator(
         if (useDynamicViewStore.getState().views[dvId]?.status !== "materialized") continue;
 
         // Phase 96-01 GAP 3: when dvScopeDisabled, treat as accept-all (cfg=undefined → resolveFilterSet returns all dvFilters).
-        const cfg = dvScopeDisabled ? undefined : (w.config.filterSelection as FilterSelectionConfig | undefined);
+        const cfg = dvScopeDisabled ? undefined : (w.type === "calendar" ? coalesceCalendarFilterSelection(w.config) : (w.config.filterSelection as FilterSelectionConfig | undefined));
         // dvFilters keyed by dvId — imperative read (Pitfall 4 — never subscribe to dvFilters array)
         const dvFilters = (filterState.dvFilters[dvId] ?? []) as ReturnType<typeof resolveFilterSet>;
         const resolved = resolveFilterSet(cfg, dvFilters);
