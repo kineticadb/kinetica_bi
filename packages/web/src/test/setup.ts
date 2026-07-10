@@ -38,6 +38,13 @@ vi.stubGlobal(
   },
 );
 
+// Phase 108 Plan 02 (FSCOPE-V120-03): jsdom does not implement scrollIntoView — stub it
+// globally so any spec that clicks a panel chip / applies-to row (scroll-to-widget) doesn't
+// throw. Individual specs can still assert on the spy via `Element.prototype.scrollIntoView`.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}
+
 // Activate the Zustand store-reset mock at __mocks__/zustand.ts.
 // Without this, store mutations bleed across tests.
 vi.mock("zustand");

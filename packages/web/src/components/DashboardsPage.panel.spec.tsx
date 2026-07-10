@@ -10,11 +10,12 @@
 // absent-field default).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { seedDesignerStore } from "../test/seedAuthStore";
 import { useFilterStore } from "../store/filterStore";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
+import { useFilterHighlightStore } from "../store/filterHighlightStore";  // Phase 108 Plan 02
 import fs from "node:fs";
 import path from "node:path";
 
@@ -390,6 +391,129 @@ describe("DashboardsPage panel mode (Phase 107 Plan 02)", () => {
   });
 });
 
+describe("DashboardsPage panel applies-to + on-canvas highlight (Phase 108 Plan 02)", () => {
+  // Two bar (trigger-type) widgets bound to the SAME tableId, no per-widget filterSelection
+  // (undefined cfg -> accept-all per computeReverseFilterMap), so a filter on that table
+  // applies to BOTH. Distinct layout.y values so "topmost" selection is exercised:
+  // chartB (y=0) is topmost; chartA (y=24) is not.
+  const chartA = {
+    id: 301,
+    dashboard_id: dashboardId,
+    title: "Chart A",
+    type: "bar",
+    position: 0,
+    config: { tableId, layout: { x: 0, y: 24, w: 18, h: 24 } },
+    created_at: "2026-07-09T00:00:00Z",
+    updated_at: "2026-07-09T00:00:00Z",
+  };
+  const chartB = {
+    id: 302,
+    dashboard_id: dashboardId,
+    title: "Chart B",
+    type: "bar",
+    position: 0,
+    config: { tableId, layout: { x: 0, y: 0, w: 18, h: 24 } },
+    created_at: "2026-07-09T00:00:00Z",
+    updated_at: "2026-07-09T00:00:00Z",
+  };
+
+  const setupScrollSpy = () => {
+    const calls: HTMLElement[] = [];
+    const spy = Element.prototype.scrollIntoView as unknown as ReturnType<typeof vi.fn>;
+    spy.mockReset();
+    spy.mockImplementation(function (this: HTMLElement) {
+      calls.push(this);
+    });
+    return { spy, calls };
+  };
+
+  it("chip shows 'applies to 2 widgets' when a filter's reverse-map resolves to both widgets", async () => {
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, { column: "zone", value: "East", dataType: "string", addedAt: Date.now() });
+    });
+    await openDashboard(panelDashboard, [chartA, chartB]);
+
+    expect(await screen.findByText("applies to 2 widgets")).toBeInTheDocument();
+  });
+
+  it("mouseEnter the chip highlights both widget ids; mouseLeave clears", async () => {
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, { column: "zone", value: "East", dataType: "string", addedAt: Date.now() });
+    });
+    await openDashboard(panelDashboard, [chartA, chartB]);
+
+    const appliesText = await screen.findByText("applies to 2 widgets");
+    const chip = appliesText.closest(".filter-panel-chip")!;
+
+    fireEvent.mouseEnter(chip);
+    expect(Array.from(useFilterHighlightStore.getState().highlightedIds).sort()).toEqual([301, 302]);
+
+    fireEvent.mouseLeave(chip);
+    expect(useFilterHighlightStore.getState().highlightedIds.size).toBe(0);
+  });
+
+  it("clicking the chip's applies-to button flashes both ids and scrollIntoViews the TOPMOST widget", async () => {
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, { column: "zone", value: "East", dataType: "string", addedAt: Date.now() });
+    });
+    await openDashboard(panelDashboard, [chartA, chartB]);
+    const { calls } = setupScrollSpy();
+
+    const appliesText = await screen.findByText("applies to 2 widgets");
+    await userEvent.click(appliesText);
+
+    expect(Array.from(useFilterHighlightStore.getState().flashingIds).sort()).toEqual([301, 302]);
+    expect(calls.length).toBeGreaterThan(0);
+    const scrolledCard = calls[0].closest(".widget-card");
+    const chartBCard = screen.getByText("Chart B").closest(".widget-card");
+    expect(scrolledCard).toBe(chartBCard); // chartB (y=0) is topmost, not chartA (y=24)
+  });
+
+  it("expand + click a single row flashes ONLY that widget and scrollIntoViews only that node", async () => {
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, { column: "zone", value: "East", dataType: "string", addedAt: Date.now() });
+    });
+    await openDashboard(panelDashboard, [chartA, chartB]);
+    const { calls } = setupScrollSpy();
+
+    await userEvent.click(await screen.findByLabelText("Expand applies-to list"));
+    const rowA = await screen.findByText("Chart A", { selector: ".applies-to-row" });
+    await userEvent.click(rowA);
+
+    expect(Array.from(useFilterHighlightStore.getState().flashingIds)).toEqual([301]);
+    expect(calls.length).toBeGreaterThan(0);
+    const scrolledCard = calls[0].closest(".widget-card");
+    const chartACard = screen.getByText("Chart A", { selector: ".widget-title" }).closest(".widget-card");
+    expect(scrolledCard).toBe(chartACard);
+  });
+
+  it("scrollIntoView uses behavior:auto when prefers-reduced-motion matches, else smooth+nearest", async () => {
+    act(() => {
+      useFilterStore.getState().addFilter(tableId, { column: "zone", value: "East", dataType: "string", addedAt: Date.now() });
+    });
+    await openDashboard(panelDashboard, [chartA, chartB]);
+    const spy = Element.prototype.scrollIntoView as unknown as ReturnType<typeof vi.fn>;
+    spy.mockReset();
+    spy.mockImplementation(() => {});
+
+    const appliesText = await screen.findByText("applies to 2 widgets");
+    await userEvent.click(appliesText);
+    expect(spy).toHaveBeenCalledWith({ behavior: "smooth", block: "nearest" });
+
+    spy.mockClear();
+    matchMediaMock.mockImplementation((query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }));
+    await userEvent.click(appliesText);
+    expect(spy).toHaveBeenCalledWith({ behavior: "auto", block: "nearest" });
+  });
+});
+
 describe("Pitfall #6 mitigation — class-presence assertion", () => {
   it("every new .filter-panel-* class referenced in the panel components exists in global.css", () => {
     const cssPath = path.resolve(__dirname, "../styles/global.css");
@@ -414,6 +538,11 @@ describe("Pitfall #6 mitigation — class-presence assertion", () => {
       "filter-panel-chip-row",
       "filter-panel-chip-value",
       "filter-panel-chip-provenance",
+      // Phase 108 Plan 02 (FSCOPE-V120-01/02/03) additions.
+      "widget-card--highlighted",
+      "widget-card--flashing",
+      "filter-panel-chip-applies",
+      "applies-to-row",
     ];
     for (const cls of requiredClasses) {
       expect(css.includes(`.${cls}`)).toBe(true);

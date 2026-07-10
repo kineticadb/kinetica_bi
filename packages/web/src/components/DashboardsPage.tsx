@@ -54,6 +54,8 @@ import {
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useMapViewportSyncStore } from "../store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
+import { useReverseFilterMap } from "../lib/useReverseFilterMap";  // Phase 108 Plan 02 (FSCOPE-V120-01/02/03)
+import type { WidgetApplyEntry } from "../lib/computeReverseFilterMap";
 import { useToastStore } from "../store/toast";
 import ChartCard from "./ChartCard";
 import ChartConfigPanel from "./charts/ChartConfigPanel";
@@ -657,6 +659,71 @@ const DashboardOpen = ({
     Object.values(allDvFilters).reduce((n, arr) => n + arr.length, 0) +
     shapes.length;
 
+  // Phase 108 Plan 02 (FSCOPE-V120-01/02/03): live reverse-map hook + per-chip
+  // applies-to lookups (keyed by REFERENCE IDENTITY to the SAME filter/shape objects
+  // the group builders below iterate — Phase 105 seeds entries keyed by those exact
+  // refs) + on-canvas highlight/scroll/flash wiring. Computed unconditionally (same
+  // cost class as the panel group builders below); inert in topbar mode since no
+  // topbar chip ever calls onHighlight/onActivate.
+  const { filterEntries, shapeEntries } = useReverseFilterMap({
+    widgets,
+    layers,
+    dynamicViews,
+    associatedTables,
+    targetsByTable,
+  });
+  const appliesByFilter = useMemo(
+    () => new Map(filterEntries.map((e) => [e.filter, e.widgets])),
+    [filterEntries],
+  );
+  const appliesByShape = useMemo(
+    () => new Map(shapeEntries.map((e) => [e.shape, e.widgets])),
+    [shapeEntries],
+  );
+  // Ref-map populated by each WidgetCard's registerRef prop; used to scrollIntoView
+  // the topmost affected widget on chip/row activation.
+  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const registerRef = useCallback((id: number, el: HTMLDivElement | null) => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  }, []);
+  const highlight = (ws: WidgetApplyEntry[]) =>
+    useFilterHighlightStore.getState().setHighlighted(ws.map((w) => w.widgetId));
+  const clearHl = () => useFilterHighlightStore.getState().clearHighlighted();
+  const prefersReduced = () => {
+    try {
+      return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+    } catch {
+      return false;
+    }
+  };
+  const scrollToWidget = (id: number) => {
+    const el = cardRefs.current.get(id);
+    el?.scrollIntoView({ behavior: prefersReduced() ? "auto" : "smooth", block: "nearest" });
+  };
+  // "Topmost" = smallest layout y, tie-break smallest x (react-grid-layout absolute-positions,
+  // so DOM order must NOT be used — see 108-RESEARCH.md Q4).
+  const topmostId = (ws: WidgetApplyEntry[]): number | undefined => {
+    let best: { id: number; y: number; x: number } | undefined;
+    ws.forEach((entry) => {
+      const idx = widgets.findIndex((w) => w.id === entry.widgetId);
+      if (idx < 0) return;
+      const { x, y } = getWidgetLayout(widgets[idx], idx);
+      if (!best || y < best.y || (y === best.y && x < best.x)) best = { id: entry.widgetId, y, x };
+    });
+    return best?.id;
+  };
+  const activateAll = (ws: WidgetApplyEntry[]) => {
+    const ids = ws.map((w) => w.widgetId);
+    useFilterHighlightStore.getState().flash(ids);
+    const top = topmostId(ws);
+    if (top !== undefined) scrollToWidget(top);
+  };
+  const activateOne = (id: number) => {
+    useFilterHighlightStore.getState().flash([id]);
+    scrollToWidget(id);
+  };
+
   // Phase 107 Plan 02 (FPANEL-V120-07): three explicit collections in the LOCKED
   // stable order tables -> dynamic views -> spatial (NOT a straight reuse of the
   // top bar's per-table interleaved loop — see 107-RESEARCH.md "grouping-shape
@@ -678,6 +745,11 @@ const DashboardOpen = ({
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeFilter(tableId, f.column),
           provenance: resolveProvenance(f.sourceWidgetId, widgets),
+          appliesTo: appliesByFilter.get(f) ?? [],
+          onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
+          onClearHighlight: clearHl,
+          onActivate: () => activateAll(appliesByFilter.get(f) ?? []),
+          onActivateWidget: activateOne,
         })),
         onClearAll: () => useFilterStore.getState().clearFilters(tableId),
       };
@@ -695,6 +767,11 @@ const DashboardOpen = ({
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeDvFilter(dvId, f.column),
           provenance: resolveProvenance(f.sourceWidgetId, widgets),
+          appliesTo: appliesByFilter.get(f) ?? [],
+          onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
+          onClearHighlight: clearHl,
+          onActivate: () => activateAll(appliesByFilter.get(f) ?? []),
+          onActivateWidget: activateOne,
         })),
         onClearAll: () => useFilterStore.getState().clearDvFilters(dvId),
       };
@@ -712,6 +789,11 @@ const DashboardOpen = ({
             text: `${shape.label} (${shape.measurement})`,
             removeAriaLabel: `Remove spatial filter ${shape.label}`,
             onRemove: () => useSpatialFilterStore.getState().removeShape(shape.id),
+            appliesTo: appliesByShape.get(shape) ?? [],
+            onHighlight: () => highlight(appliesByShape.get(shape) ?? []),
+            onClearHighlight: clearHl,
+            onActivate: () => activateAll(appliesByShape.get(shape) ?? []),
+            onActivateWidget: activateOne,
           })),
           onClearAll: () => {
             const idsToRemove = shapes.map((s) => s.id);
@@ -1103,6 +1185,7 @@ const DashboardOpen = ({
               onConfigure={handleConfigureWidget}
               onDuplicate={handleDuplicateWidget}
               onRemove={handleRemoveWidget}
+              registerRef={registerRef}
             />
           ))}
         </ResponsiveGridLayout>
