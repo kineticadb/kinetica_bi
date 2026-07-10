@@ -23,7 +23,7 @@
 - [x] **FPANEL-V120-06**: The panel shows an empty state when no filters are active.
 - [x] **FPANEL-V120-07**: The panel groups filters by source (table / dynamic view / spatial draws) for scannability.
 - [x] **FPANEL-V120-08**: Each filter shows its provenance — the source widget it originated from — when that information is available.
-- [ ] **FPANEL-V120-09**: The top bar and the panel render filter chips via a single shared chip component (consistent appearance and behavior across both surfaces).
+- [x] **FPANEL-V120-09**: The top bar and the panel render filter chips via a single shared chip component (consistent appearance and behavior across both surfaces).
 
 ### Filter → Widget Mapping (FSCOPE)
 
@@ -78,7 +78,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FPANEL-V120-06 | Phase 107 | Complete |
 | FPANEL-V120-07 | Phase 107 | Complete |
 | FPANEL-V120-08 | Phase 107 | Complete |
-| FPANEL-V120-09 | Phase 107 | Pending |
+| FPANEL-V120-09 | Phase 107 | Complete |
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Partial (105 computation complete; 108 display pending) |
 | FSCOPE-V120-02 | Phase 108 | Pending |
 | FSCOPE-V120-03 | Phase 108 | Pending |
