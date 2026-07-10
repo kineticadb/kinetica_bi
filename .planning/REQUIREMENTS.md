@@ -33,7 +33,7 @@
 
 ### Clear All (FCLEAR)
 
-- [ ] **FCLEAR-V120-01**: A user can clear ALL active dashboard filters — across every table, dynamic view, and spatial draw — with a single action, from the panel (and, ideally, the top bar).
+- [x] **FCLEAR-V120-01**: A user can clear ALL active dashboard filters — across every table, dynamic view, and spatial draw — with a single action, from the panel (and, ideally, the top bar).
 
 ### Verification (VERIFY)
 
@@ -82,7 +82,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Complete |
 | FSCOPE-V120-02 | Phase 108 | Complete |
 | FSCOPE-V120-03 | Phase 108 | Complete |
-| FCLEAR-V120-01 | Phase 109 | Pending |
+| FCLEAR-V120-01 | Phase 109 | Complete |
 | VERIFY-V120-01 | Phase 110 | Pending |
 
 **Coverage:**

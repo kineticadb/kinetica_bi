@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: unknown
-stopped_at: Phase 109 context gathered
-last_updated: "2026-07-10T18:07:40.650Z"
+status: phase_complete
+stopped_at: Completed 109-01-PLAN.md
+last_updated: "2026-07-10T18:30:46.055Z"
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 5
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 109 — global-clear-all
+**Current focus:** Phase 110 — designer settings UI + verification + live UAT (final phase)
 
 ## Current Position
 
-Phase: 108 (applies-to-list-on-canvas-highlight) — COMPLETE
-Plan: 2 of 2 (108-01 complete; 108-02 complete)
-Next: Phase 109 (global-clear-all)
+Phase: 109 (global-clear-all) — COMPLETE
+Plan: 1 of 1 (109-01 complete)
+Next: Phase 110 (designer-settings-ui-verification)
 
 ### v1.20 Phase Map
 
@@ -80,7 +80,7 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 | FSCOPE-V120-01 | Phase 105 + Phase 108 | Complete |
 | FSCOPE-V120-02 | Phase 108 | Complete |
 | FSCOPE-V120-03 | Phase 108 | Complete |
-| FCLEAR-V120-01 | Phase 109 | Pending |
+| FCLEAR-V120-01 | Phase 109 | Complete |
 | VERIFY-V120-01 | Phase 110 | Pending |
 
 **Coverage: 17/17 (100%)** — FSCOPE-V120-01 spans 105 (computation) + 108 (panel display); every other requirement maps to exactly one phase.
@@ -790,6 +790,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 107 P02 | ~7h (incl. checkpoint pause + fix) | 4 tasks | 6 files |
 | Phase 108 P01 | 55min | 3 tasks | 9 files |
 | Phase 108 P02 | 45min | 2 tasks | 6 files |
+| Phase 109 P01 | 20min | 2 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -1161,6 +1162,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 107-01]: Shared FilterChip's topbar branch is a literal copy-paste of the pre-existing inline chip JSX (no wrapper element) — verified via running DashboardsPage.spec.tsx completely UNMODIFIED (188/188 green) as the parity proof, not new assertions against the refactor; panel-variant .filter-panel-chip* CSS classes pre-added to global.css in this plan though unreferenced until 107-02; resolveProvenance is a plain 1-hop lookup, deliberately not importing Phase 108's resolveWidgetsForFilter
 - [Phase 107-02]: Panel-mode grid pinned to breakpoint=lg (topbar unaffected) to stop react-grid-layout's auto-fallback cascade once the flex-narrowed grid dropped below RGL's sm/lg breakpoints; caught at the Task 4 visual checkpoint and fixed in-session (commit 6c6eb3e) before operator approval.
 - [Phase 108]: 108-01 laid the highlight foundation (store+WidgetCard+hook+CSS); FSCOPE-V120-01 stays Pending in REQUIREMENTS.md until 108-02 actually renders the applies-to line in the panel (avoiding the early-complete trap for a requirement split across two plans).
+- [Phase 109]: Global clear-all reuses .filter-bar-clear class; onClearAllFilters made a required FilterPanel prop (single call site)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1567,6 +1569,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-10T18:07:40.638Z
-Stopped at: Phase 109 context gathered
-Resume file: .planning/phases/109-global-clear-all/109-CONTEXT.md
+Last session: 2026-07-10T18:26:22.006Z
+Stopped at: Completed 109-01-PLAN.md
+Resume file: None

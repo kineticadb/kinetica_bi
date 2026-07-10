@@ -44,7 +44,7 @@
 - [x] **Phase 106: Display-Mode Persistence** (completed 2026-07-09) — BOTH-stack — add a `dashboards.filter_display_mode` column (PRAGMA-guarded ALTER, mirroring the v1.18 `filter_scope` migration) + `DashboardDto`/update plumbing; default `'topbar'` → absent = byte-identical top bar. The milestone's ONLY server touch.
 - [x] **Phase 107: Panel Shell + Reflow + XOR Switch + Chips** (completed 2026-07-09) — FRONTEND-ONLY — collapsible right drawer (reuse `.sidebar` collapse + `filter-bar-*` classes), top-bar XOR panel switch, active-filter chips (shared `FilterChip` + `buildChipText`) for eq/in + datetime-between + spatial, per-chip remove + per-group clear, collapsed count badge, empty state, group-by-source, provenance. Panel is an in-flow flex sibling shrinking the grid container (NOT a fixed overlay) so RGL `useContainerWidth` auto-reflows.
 - [x] **Phase 108: Applies-To List + On-Canvas Highlight** (completed 2026-07-10) — FRONTEND-ONLY — per-filter "applies to N widgets" list/count (consuming the Phase 105 lib) + hover-highlight + click-to-scroll/flash; new session-only `filterHighlightStore` + `WidgetCard` extraction; `reset()` joins BOTH cleanup chains. **(research flag — HIGH RISK: re-render-storm avoidance + deterministic cleanup)**
-- [ ] **Phase 109: Global Clear-All** — FRONTEND-ONLY — one action clears every active filter across all tables + dynamic views + spatial draws by looping `clearFilters`/`clearDvFilters`/`clearAll` (INPUT stores only); the orchestrator DROPs by ref-count; grep-gated that the handler imports no `materializeFilter`/`dropCombinationView` and never `filterStore.reset()` live.
+- [x] **Phase 109: Global Clear-All** (completed 2026-07-10) — FRONTEND-ONLY — one action clears every active filter across all tables + dynamic views + spatial draws by looping `clearFilters`/`clearDvFilters`/`clearAll` (INPUT stores only); the orchestrator DROPs by ref-count; grep-gated that the handler imports no `materializeFilter`/`dropCombinationView` and never `filterStore.reset()` live.
 - [ ] **Phase 110: Designer Settings UI + Verification + Live UAT** — BOTH + operator — designer mode-toggle in the dashboard settings (gated by the existing `dashboards:edit`, NO new RBAC permission) + green automated gates on both stacks + a blocking live operator walk-through incl. light/dark + narrow-viewport visual checks.
 
 ## Phase Details
@@ -122,7 +122,9 @@
   2. All widgets return to their unfiltered state and every per-combination Kinetica view (`_c{hash}`) is DROPped by the orchestrator's ref-count (verified in the network tab) — no views orphaned.
   3. The clear-all handler imports no `materializeFilter` / `dropCombinationView` and never calls `filterStore.reset()` live (grep-gated); read-only static WHERE clauses are untouched.
   4. Clear-all is offered from the panel (and ideally the top bar) with consistent behavior across both surfaces.
-**Plans**: TBD (derived by `/gsd:plan-phase 109`)
+**Plans**: 1 plan
+Plans:
+- [ ] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
 
 ### Phase 110: Designer Settings UI + Verification + Live UAT
 **Goal**: A designer with dashboard-edit permission can choose a dashboard's filter display mode from a dashboard setting; then every feature is verified green on both stacks plus a blocking live operator walk-through — including the light/dark and narrow-viewport visual checks that automated gates cannot catch.
