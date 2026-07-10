@@ -10,8 +10,9 @@
 // passes tableGroups, then dvGroups, then spatialGroup — this component renders
 // them in exactly that order (tables -> dynamic views -> spatial, 107-CONTEXT.md).
 //
-// SCOPE GUARDRAIL (Phase 109 boundary): no global clear-all button —
-// .filter-panel-header-actions renders ONLY the collapse button in this phase.
+// Phase 109 Plan 01 (FCLEAR-V120-01): .filter-panel-header-actions now also renders a
+// count-gated "Clear all filters" button (before the collapse button), wired via
+// onClearAllFilters to DashboardsPage's clearAllFilters helper (input-store-only clear).
 // Phase 108 Plan 02 (FSCOPE-V120-01/02/03) added applies-to + highlight/activate
 // prop-threading (FilterPanelChip fields below), forwarded verbatim to FilterChip's
 // panel branch — DashboardsPage still computes the appliesTo lookups and closures;
@@ -49,6 +50,9 @@ export type FilterPanelProps = {
   spatialGroup?: FilterPanelGroupData;
   count: number;
   onCollapse: () => void;
+  // Phase 109 (FCLEAR-V120-01): global clear-all — mutates the input stores only
+  // (DashboardsPage wires this to clearAllFilters). Rendered only when count > 0.
+  onClearAllFilters: () => void;
 };
 
 function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
@@ -96,12 +100,24 @@ function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
   );
 }
 
-export function FilterPanel({ tableGroups, dvGroups, spatialGroup, count, onCollapse }: FilterPanelProps) {
+export function FilterPanel({
+  tableGroups,
+  dvGroups,
+  spatialGroup,
+  count,
+  onCollapse,
+  onClearAllFilters,
+}: FilterPanelProps) {
   return (
     <div className="filter-panel">
       <div className="filter-panel-header">
         <span className="filter-panel-title">Filters</span>
         <div className="filter-panel-header-actions">
+          {count > 0 && (
+            <button type="button" className="filter-bar-clear" onClick={onClearAllFilters}>
+              Clear all filters
+            </button>
+          )}
           <button
             type="button"
             className="sidebar-toggle"

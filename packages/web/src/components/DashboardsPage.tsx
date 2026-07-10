@@ -65,6 +65,7 @@ import { FilterChip } from "./FilterChip";  // Phase 107 Plan 01 (FPANEL-V120-09
 import { FilterPanel, type FilterPanelGroupData } from "./FilterPanel";  // Phase 107 Plan 02 (FPANEL-V120-01..08)
 import { FilterPanelRail } from "./FilterPanelRail";  // Phase 107 Plan 02 (FPANEL-V120-05)
 import { resolveProvenance } from "../lib/resolveProvenance";  // Phase 107 Plan 01 (FPANEL-V120-08)
+import { clearAllFilters } from "../lib/clearAllFilters";  // Phase 109 Plan 01 (FCLEAR-V120-01)
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
@@ -1384,6 +1385,7 @@ const DashboardOpen = ({
               spatialGroup={panelSpatialGroup}
               count={activeFilterCount}
               onCollapse={() => setPanelCollapsed(true)}
+              onClearAllFilters={clearAllFilters}
             />
           )}
         </div>

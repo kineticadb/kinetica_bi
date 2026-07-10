@@ -47,6 +47,7 @@ describe("FilterPanel", () => {
         spatialGroup={spatialGroup}
         count={3}
         onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()}
       />
     );
 
@@ -72,7 +73,8 @@ describe("FilterPanel", () => {
     };
 
     render(
-      <FilterPanel tableGroups={tableGroups} dvGroups={[]} spatialGroup={spatialGroup} count={3} onCollapse={vi.fn()} />
+      <FilterPanel tableGroups={tableGroups} dvGroups={[]} spatialGroup={spatialGroup} count={3} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />
     );
 
     expect(screen.getByText("zone = East").closest(".filter-panel-chip")).not.toBeNull();
@@ -86,7 +88,8 @@ describe("FilterPanel", () => {
       { title: "trips", chips: [{ text: "zone = East", removeAriaLabel: "Remove filter zone", onRemove }], onClearAll: vi.fn() },
     ];
 
-    render(<FilterPanel tableGroups={tableGroups} dvGroups={[]} count={1} onCollapse={vi.fn()} />);
+    render(<FilterPanel tableGroups={tableGroups} dvGroups={[]} count={1} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />);
 
     await userEvent.click(screen.getByLabelText("Remove filter zone"));
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -108,7 +111,8 @@ describe("FilterPanel", () => {
     };
 
     render(
-      <FilterPanel tableGroups={tableGroups} dvGroups={[]} spatialGroup={spatialGroup} count={3} onCollapse={vi.fn()} />
+      <FilterPanel tableGroups={tableGroups} dvGroups={[]} spatialGroup={spatialGroup} count={3} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />
     );
 
     const clearButtons = screen.getAllByRole("button", { name: "Clear all" });
@@ -137,7 +141,8 @@ describe("FilterPanel", () => {
     };
 
     render(
-      <FilterPanel tableGroups={tableGroups} dvGroups={[]} spatialGroup={spatialGroup} count={3} onCollapse={vi.fn()} />
+      <FilterPanel tableGroups={tableGroups} dvGroups={[]} spatialGroup={spatialGroup} count={3} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />
     );
 
     expect(screen.getByText("from Sales chart")).toBeInTheDocument();
@@ -145,7 +150,8 @@ describe("FilterPanel", () => {
   });
 
   it("shows the empty state with zero filters and renders no groups", () => {
-    render(<FilterPanel tableGroups={[]} dvGroups={[]} count={0} onCollapse={vi.fn()} />);
+    render(<FilterPanel tableGroups={[]} dvGroups={[]} count={0} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />);
 
     expect(screen.getByText("No active filters")).toBeInTheDocument();
     expect(document.querySelector(".filter-panel-empty")).not.toBeNull();
@@ -157,7 +163,8 @@ describe("FilterPanel", () => {
       { title: "trips", chips: [{ text: "zone = East", removeAriaLabel: "Remove filter zone", onRemove: vi.fn() }], onClearAll: vi.fn() },
     ];
 
-    render(<FilterPanel tableGroups={tableGroups} dvGroups={[]} count={1} onCollapse={vi.fn()} />);
+    render(<FilterPanel tableGroups={tableGroups} dvGroups={[]} count={1} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />);
 
     expect(document.querySelector(".filter-panel-chips")).not.toBeNull();
     await userEvent.click(screen.getByLabelText("Collapse trips filters"));
@@ -169,10 +176,46 @@ describe("FilterPanel", () => {
       { title: "trips", chips: [{ text: "zone = East", removeAriaLabel: "Remove filter zone", onRemove: vi.fn() }], onClearAll: vi.fn() },
     ];
 
-    render(<FilterPanel tableGroups={tableGroups} dvGroups={[]} count={1} onCollapse={vi.fn()} />);
+    render(<FilterPanel tableGroups={tableGroups} dvGroups={[]} count={1} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />);
 
     expect(document.querySelectorAll(".filter-panel-group-title")).toHaveLength(1);
     expect(screen.queryByText("Spatial draws")).toBeNull();
+  });
+
+  it("renders the global 'Clear all filters' button when count > 0", () => {
+    const tableGroups: FilterPanelGroupData[] = [
+      { title: "trips", chips: [{ text: "zone = East", removeAriaLabel: "Remove filter zone", onRemove: vi.fn() }], onClearAll: vi.fn() },
+    ];
+
+    render(
+      <FilterPanel tableGroups={tableGroups} dvGroups={[]} count={3} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />
+    );
+
+    expect(screen.getByRole("button", { name: "Clear all filters" })).toBeInTheDocument();
+  });
+
+  it("hides the global 'Clear all filters' button when count === 0", () => {
+    render(<FilterPanel tableGroups={[]} dvGroups={[]} count={0} onCollapse={vi.fn()}
+        onClearAllFilters={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Clear all filters" })).toBeNull();
+  });
+
+  it("clicking the global 'Clear all filters' button calls onClearAllFilters", async () => {
+    const onClearAllFilters = vi.fn();
+    const tableGroups: FilterPanelGroupData[] = [
+      { title: "trips", chips: [{ text: "zone = East", removeAriaLabel: "Remove filter zone", onRemove: vi.fn() }], onClearAll: vi.fn() },
+    ];
+
+    render(
+      <FilterPanel tableGroups={tableGroups} dvGroups={[]} count={3} onCollapse={vi.fn()}
+        onClearAllFilters={onClearAllFilters} />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(onClearAllFilters).toHaveBeenCalledTimes(1);
   });
 });
 
