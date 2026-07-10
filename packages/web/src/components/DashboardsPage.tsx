@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark, faGear, faClone } from "@fortawesome/free-solid-svg-icons";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
 import {
@@ -59,16 +57,12 @@ import { useFilterHighlightStore } from "../store/filterHighlightStore";
 import { useToastStore } from "../store/toast";
 import ChartCard from "./ChartCard";
 import ChartConfigPanel from "./charts/ChartConfigPanel";
-import WidgetRenderer from "./charts/WidgetRenderer";
 import { DashboardContextProvider } from "./DashboardContext";
-import { FilteringBadge } from "./FilteringBadge";
-import { MapFilteringBadge } from "./MapFilteringBadge";
-import { WidgetFilterBadge } from "./WidgetFilterBadge";
+import { WidgetCard } from "./WidgetCard";  // Phase 108 Plan 01 (FSCOPE-V120-02/03)
 import { FilterChip } from "./FilterChip";  // Phase 107 Plan 01 (FPANEL-V120-09)
 import { FilterPanel, type FilterPanelGroupData } from "./FilterPanel";  // Phase 107 Plan 02 (FPANEL-V120-01..08)
 import { FilterPanelRail } from "./FilterPanelRail";  // Phase 107 Plan 02 (FPANEL-V120-05)
 import { resolveProvenance } from "../lib/resolveProvenance";  // Phase 107 Plan 01 (FPANEL-V120-08)
-import type { FilterSelectionConfig } from "../types/filterSelection";
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
@@ -783,7 +777,7 @@ const DashboardOpen = ({
   // (deep — nested color palettes / groupByColumns / drill settings must not share refs with
   // the original in local state). Reuses the create endpoint (no server change) and drops the
   // copy below all existing widgets so it never overlaps its source.
-  const handleDuplicateWidget = (source: WidgetDto) => {
+  const handleDuplicateWidget = useCallback((source: WidgetDto) => {
     const nextY = widgets.length > 0
       ? Math.max(...widgets.map((w, i) => {
           const l = getWidgetLayout(w, i);
@@ -801,7 +795,9 @@ const DashboardOpen = ({
       .catch(() => {
         useToastStore.getState().showToast("Failed to duplicate widget — check your connection", "error");
       });
-  };
+  // Phase 108 (FSCOPE-V120-02): wrapped in useCallback (was a plain function) so WidgetCard's
+  // React.memo prop-stability holds — identity now only changes when widgets/dashboard.id do.
+  }, [widgets, dashboard.id]);
 
   const handleSaveConfig = (widget: WidgetDto, payload: { title: string; config: Record<string, unknown> }) => {
     const layout = widget.config?.layout;
@@ -827,11 +823,16 @@ const DashboardOpen = ({
       .catch((err) => setError(err.message));
   };
 
-  const handleRemoveWidget = (widgetId: number) => {
+  const handleRemoveWidget = useCallback((widgetId: number) => {
     deleteWidget(widgetId)
       .then(() => setWidgets((prev) => prev.filter((w) => w.id !== widgetId)))
       .catch((err) => setError(err.message));
-  };
+  // Phase 108 (FSCOPE-V120-02): useCallback for WidgetCard React.memo prop-stability.
+  }, []);
+
+  // Phase 108 (FSCOPE-V120-02): stable wrapper around the setConfiguringWidget setter for
+  // WidgetCard's onConfigure prop — React.memo prop-stability.
+  const handleConfigureWidget = useCallback((widget: WidgetDto) => setConfiguringWidget(widget), []);
 
   const handleLayoutChange = (layout: Layout) => {
     layout.forEach((item) => {
@@ -1090,85 +1091,20 @@ const DashboardOpen = ({
           dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
           resizeConfig={{ enabled: canEdit }}
         >
-          {widgets.map((w) => {
-            // Phase 16: for map widgets, derive the included layer tableIds so MapFilteringBadge
-            // subscribes to ANY-of-N materializing semantics matching the MapChartRenderer's
-            // includedLayers set. Mirrors the includedLayers useMemo at MapChartRenderer.tsx:159-171.
-            const mapTableIds: number[] = (() => {
-              if (w.type !== "map") return [];
-              const cfg = (w.config ?? {}) as Record<string, unknown>;
-              const ids = cfg.includedLayerIds as number[] | undefined;
-              const filtered =
-                ids === undefined || ids.length === 0
-                  ? layers
-                  : layers.filter((l) => ids.includes(l.id));
-              const visible = filtered.filter(
-                (l) => (l.config as { visible?: boolean }).visible !== false,
-              );
-              return visible.map((l) => l.table_id);
-            })();
-            return (
-            <div key={String(w.id)} className="widget-card">
-              <div className="widget-header">
-                <span className="widget-drag-handle widget-title">{w.title}</span>
-                {w.type === "map" ? (
-                  <MapFilteringBadge tableIds={mapTableIds} />
-                ) : (
-                  <>
-                    <FilteringBadge tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined} />
-                    <WidgetFilterBadge
-                      widgetId={w.id}
-                      cfg={(w.config as Record<string, unknown> | undefined)?.filterSelection as FilterSelectionConfig | undefined}
-                      tableId={(w.config as Record<string, unknown> | undefined)?.tableId as number | undefined}
-                      dynamicViewId={(w.config as Record<string, unknown> | undefined)?.dynamicViewId as number | undefined}
-                      spatialCapable={(() => {
-                        const tid = (w.config as Record<string, unknown> | undefined)?.tableId as number | undefined;
-                        return tid !== undefined && targetsByTable.has(tid);
-                      })()}
-                    />
-                  </>
-                )}
-                <div className="widget-actions">
-                  {canConfigure && (
-                    <button
-                      className="widget-configure"
-                      onClick={() => setConfiguringWidget(w)}
-                      title="Configure"
-                    >
-                      <FontAwesomeIcon icon={faGear} />
-                    </button>
-                  )}
-                  {canEdit && (
-                    <button
-                      className="widget-configure widget-duplicate"
-                      onClick={() => handleDuplicateWidget(w)}
-                      title="Duplicate"
-                      aria-label="Duplicate widget"
-                    >
-                      <FontAwesomeIcon icon={faClone} />
-                    </button>
-                  )}
-                  {canEdit && (
-                    <button
-                      className="widget-remove"
-                      onClick={() => handleRemoveWidget(w.id)}
-                      title="Remove"
-                    >
-                      <FontAwesomeIcon icon={faXmark} />
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="widget-body">
-                <WidgetRenderer
-                  widget={w}
-                  tables={associatedTables}
-                  onConfigureWidget={canConfigure ? (target) => setConfiguringWidget(target) : undefined}
-                />
-              </div>
-            </div>
-            );
-          })}
+          {widgets.map((w) => (
+            <WidgetCard
+              key={String(w.id)}
+              widget={w}
+              layers={layers}
+              associatedTables={associatedTables}
+              targetsByTable={targetsByTable}
+              canEdit={canEdit}
+              canConfigure={canConfigure}
+              onConfigure={handleConfigureWidget}
+              onDuplicate={handleDuplicateWidget}
+              onRemove={handleRemoveWidget}
+            />
+          ))}
         </ResponsiveGridLayout>
       )}
       </div>
