@@ -126,7 +126,7 @@
 Plans:
 - [ ] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
 
-### Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
+### Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED) — ✅ COMPLETE 2026-07-11
 
 **Goal:** Make Calendar Heatmap, Timeline, and Numeric Line ACTUALLY honor per-visualization filter scope (not just show the config UI from 109.1), and appear correctly in the panel's applies-to count + on-canvas highlight. Root cause: `NON_TRIGGER_TYPES` (in `useCombinationOrchestrator.ts`, mirrored in `useReverseFilterMap.ts`) lists `calendar`/`timeline`/`numericline`, so the orchestrator never builds a scoped combination binding for them (their `filterSelection` is inert — they read unscoped/all filters) and the reverse-map never enumerates them (wrong applies-to count, no highlight). Also retire the redundant legacy `respondToFilters` (calendar) in favor of the unified `filterSelection`.
 **Stack**: FRONTEND-ONLY (`packages/web`) — CORE FILTER-ENGINE change; plan-phase MUST research it (trigger-type semantics, orchestrator enumeration, how Timeline/NumericLine consume `vizToHash`, Calendar's `filterViewStore`+`respondToFilters` read path, and full backward-compat/migration + blast radius on existing combination/badge specs).
@@ -144,7 +144,7 @@ Plans:
 3. `respondToFilters` is gone from config type, panel, and renderer; existing calendars with it OFF still ignore filters (migrated to empty allow-list); new/unset behave per default scope.
 4. Backward-compat: bar/pie/table + existing combination/badge behavior unchanged; web gates green (default parallel).
 
-**Plans:** 2 plans (wave 1 then wave 2)
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 109.2-01-PLAN.md — Engine enumeration fix: remove calendar/timeline/numericline from NON_TRIGGER_TYPES in BOTH useCombinationOrchestrator.ts + useReverseFilterMap.ts (atomic) + new coalesceCalendarFilterSelection helper threaded through 3 engine call sites + engine specs [wave 1]

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: unknown
-stopped_at: Completed 109.2-01-PLAN.md
-last_updated: "2026-07-10T20:39:48.355Z"
+status: phase_complete
+stopped_at: Completed 109.2-02-PLAN.md
+last_updated: "2026-07-11T14:35:02.926Z"
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 109.2 — wire-custom-panel-charts-into-filter-scope-engine-and-reverse-map
+**Current focus:** Phase 110 — designer settings UI + verification + live UAT (FINAL; 109.2 complete)
 
 ## Current Position
 
-Phase: 109.2 (wire-custom-panel-charts-into-filter-scope-engine-and-reverse-map) — EXECUTING
-Plan: 2 of 2
+Phase: 109.2 (wire-custom-panel-charts-into-filter-scope-engine-and-reverse-map) — COMPLETE
+Plan: 2 of 2 (109.2-02 complete)
+Next: Phase 110 (designer-settings-ui-verification)
 
 ### v1.20 Phase Map
 
@@ -792,6 +793,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 109 P01 | 20min | 2 tasks | 5 files |
 | Phase 109.1 P01 | 25min | 2 tasks | 8 files |
 | Phase 109.2 P01 | 14min | 2 tasks | 6 files |
+| Phase 109.2 P02 | 25min | 2 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -1171,6 +1173,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 109.1]: Filter Scope block placed as the LAST section in each of Calendar/Timeline/NumericLine panels for consistency; widgetId threaded generically through ConfigPanelProps rather than a per-chart-type prop
 - [Phase 109.2]: Coalesce discriminates calendar filterSelection migration by key PRESENCE (hasOwnProperty), not value: legacy respondToFilters:false -> empty allow-list (respond to none); key absent (brand-new post-migration widget) -> undefined (accept-all).
 - [Phase 109.2]: Kept NON_TRIGGER_TYPES as two independently-edited literal Sets (orchestrator + reverse-map) rather than extracting a shared module; both edits landed atomically in one commit.
+- [Phase 109.2]: Calendar's respondToFilters migration coalesce discriminated by key presence (not value), keeping the coalesce entirely calendar-only at each read site (renderer FROM path, config-panel display, WidgetCard badge) rather than inside shared resolvers.
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1577,6 +1580,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-10T20:39:48.344Z
-Stopped at: Completed 109.2-01-PLAN.md
+Last session: 2026-07-11T14:35:02.914Z
+Stopped at: Completed 109.2-02-PLAN.md
 Resume file: None
