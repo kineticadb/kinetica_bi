@@ -86,6 +86,10 @@ vi.mock("../api/client", async (importOriginal) => {
     listDashboardGrants: vi.fn(() => Promise.resolve([])),
     addDashboardGrant: vi.fn(() => Promise.resolve([])),
     removeDashboardGrant: vi.fn(() => Promise.resolve([])),
+    // Phase 110 Plan 01 (FSET-V120-01): filter-display-mode PATCH — default echoes the
+    // requested mode back onto the dashboard so the live state-lift is assertable.
+    updateDashboard: vi.fn((id: number, attrs: Record<string, unknown>) =>
+      Promise.resolve({ id, name: "Test Dashboard", filter_display_mode: "topbar", created_at: "x", updated_at: "x", ...attrs })),
   };
 });
 
@@ -155,6 +159,7 @@ import {
   listViews,
   listDashboardTables,
   listDynamicViews,
+  updateDashboard,
   type DynamicViewRow,
 } from "../api/client";
 
@@ -1377,5 +1382,97 @@ describe("Phase 95 — WidgetFilterBadge integration (COMM-V118-01)", () => {
     await waitFor(() => {
       expect(screen.queryByText(/of \d+ filters/)).toBeNull();
     });
+  });
+});
+
+// ===========================================================================
+// Phase 110 Plan 01 (FSET-V120-01): designer-facing Settings toolbar button +
+// DashboardSettingsModal wiring + LIVE state-lift of filter_display_mode.
+// ===========================================================================
+describe("Phase 110 — dashboard Settings toolbar button + live display-mode toggle (FSET-V120-01)", () => {
+  const dashboardId = 1;
+  const dashboard = {
+    id: dashboardId,
+    name: "Test Dashboard",
+    filter_display_mode: "topbar" as const,
+    created_at: "2026-07-10T00:00:00Z",
+    updated_at: "2026-07-10T00:00:00Z",
+  };
+
+  const openDashboard = async () => {
+    const utils = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    const openBtn = await screen.findByRole("button", { name: /^open$/i });
+    await userEvent.click(openBtn);
+    await waitFor(() => expect(listWidgets).toHaveBeenCalled());
+    return utils;
+  };
+
+  beforeEach(() => {
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (updateDashboard as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it("designer: 'Settings' toolbar button is visible, placed after Visualizations and before Back", async () => {
+    seedDesignerStore();
+    await openDashboard();
+    const buttons = screen.getAllByRole("button");
+    const vizIdx = buttons.findIndex((b) => b.textContent === "Visualizations");
+    const settingsIdx = buttons.findIndex((b) => b.textContent === "Settings");
+    const backIdx = buttons.findIndex((b) => b.textContent === "Back");
+    expect(vizIdx).toBeGreaterThanOrEqual(0);
+    expect(settingsIdx).toBeGreaterThan(vizIdx);
+    expect(backIdx).toBeGreaterThan(settingsIdx);
+  });
+
+  it("analyst (no DASHBOARDS_EDIT): 'Settings' toolbar button is NOT rendered", async () => {
+    seedAnalystStore();
+    await openDashboard();
+    expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
+  });
+
+  it("clicking Settings opens DashboardSettingsModal reflecting the current mode; Close closes it", async () => {
+    seedDesignerStore();
+    await openDashboard();
+    expect(screen.queryByText("Dashboard Settings")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByText("Dashboard Settings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Top bar" })).toHaveClass("radiogroup-button--selected");
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByText("Dashboard Settings")).toBeNull();
+  });
+
+  it("toggling to 'Right panel' PATCHes filter_display_mode and flips the surface LIVE (no reload)", async () => {
+    seedDesignerStore();
+    const { container } = await openDashboard();
+    expect(container.querySelector(".filter-panel-layout")).toBeNull();
+    const listWidgetsCallsBeforeToggle = (listWidgets as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Right panel" }));
+
+    await waitFor(() => expect(updateDashboard).toHaveBeenCalledTimes(1));
+    expect(updateDashboard).toHaveBeenCalledWith(dashboardId, { filter_display_mode: "panel" });
+
+    // Live surface swap — no refetch/reload: listWidgets call count is unchanged
+    // (dashboard.id is stable across the update; only the dashboard OBJECT is replaced,
+    // so the useApiQuery([dashboard.id]) dep array does not re-fire).
+    await waitFor(() => {
+      expect(container.querySelector(".filter-panel-layout")).not.toBeNull();
+    });
+    expect((listWidgets as ReturnType<typeof vi.fn>).mock.calls.length).toBe(listWidgetsCallsBeforeToggle);
+  });
+
+  it("a topbar dashboard's other toolbar buttons remain present alongside the new Settings button", async () => {
+    seedDesignerStore();
+    await openDashboard();
+    expect(await screen.findByRole("button", { name: "Tables" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Dynamic Views" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Visualizations" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Back" })).toBeInTheDocument();
   });
 });
