@@ -39,6 +39,7 @@ import { applyWidgetAction, applyWidgetActions } from "../lib/applyWidgetAction"
 import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
 import DashboardAccessModal from "./DashboardAccessModal";  // Phase 56 (GRANTUI-V110-03)
+import DashboardSettingsModal from "./DashboardSettingsModal";  // Phase 110 (FSET-V120-01)
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import {
   listDashboardLayers,
@@ -119,6 +120,10 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
       <DashboardOpen
         dashboard={view.dashboard}
         onBack={() => setView({ mode: "list" })}
+        onDashboardUpdated={(updated) => {
+          setView({ mode: "open", dashboard: updated });
+          setDashboards((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        }}
       />
     );
   }
@@ -392,10 +397,12 @@ const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
 
 const DashboardOpen = ({
   dashboard,
-  onBack
+  onBack,
+  onDashboardUpdated
 }: {
   dashboard: DashboardDto;
   onBack: () => void;
+  onDashboardUpdated?: (dashboard: DashboardDto) => void;
 }) => {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
@@ -414,7 +421,16 @@ const DashboardOpen = ({
   const [showVizModal, setShowVizModal] = useState(false);
   const [showLayersModal, setShowLayersModal] = useState(false);
   const [showDynamicViewsModal, setShowDynamicViewsModal] = useState(false);  // Phase 34 (DV-V16-08)
+  const [showSettingsModal, setShowSettingsModal] = useState(false);  // Phase 110 (FSET-V120-01)
   const [configuringWidget, setConfiguringWidget] = useState<WidgetDto | null>(null);
+
+  // Phase 110 (FSET-V120-01): save-on-change PATCH of filter_display_mode, then lift the
+  // returned dashboard back up so the Phase-107 isPanelMode XOR switch re-renders LIVE
+  // (no reload). Errors propagate so DashboardSettingsModal's catch can toast.
+  const handleChangeDisplayMode = async (mode: "topbar" | "panel") => {
+    const updated = await updateDashboard(dashboard.id, { filter_display_mode: mode });
+    onDashboardUpdated?.(updated);
+  };
 
   // v1.16 Aurora single-bar layout: hoist this dashboard's title + toolbar into the
   // topbar strip via a portal, instead of a separate header row below the topbar.
@@ -1119,6 +1135,11 @@ const DashboardOpen = ({
             Visualizations
           </button>
         )}
+        {canEdit && (
+          <button className="btn-primary btn-sm" onClick={() => setShowSettingsModal(true)}>
+            Settings
+          </button>
+        )}
         <button className="ghost-sm" onClick={onBack}>Back</button>
       </div>
     </>
@@ -1444,6 +1465,14 @@ const DashboardOpen = ({
           dashboardId={dashboard.id}
           associatedTables={associatedTables}
           onClose={() => setShowDynamicViewsModal(false)}
+        />
+      )}
+
+      {showSettingsModal && (
+        <DashboardSettingsModal
+          mode={dashboard.filter_display_mode}
+          onModeChange={handleChangeDisplayMode}
+          onClose={() => setShowSettingsModal(false)}
         />
       )}
     </div>
