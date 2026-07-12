@@ -85,7 +85,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FSCOPE-V120-02 | Phase 108 | Complete |
 | FSCOPE-V120-03 | Phase 108 | Complete |
 | FSCOPE-V120-04 | Phase 109.1 | Complete |
-| FSCOPE-V120-05 | Phase 109.2 (01 complete, 02 pending) | Complete |
+| FSCOPE-V120-05 | Phase 109.2 | Complete |
 | FCLEAR-V120-01 | Phase 109 | Complete |
 | VERIFY-V120-01 | Phase 110 | Pending |
 
