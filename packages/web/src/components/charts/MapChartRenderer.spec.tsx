@@ -2170,6 +2170,12 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
     _filterState.filterVersion = 0;
     _layersState.layers = [];
     _filterViewState.views = {};
+    // The info click resolves its FROM target from the combination store (same
+    // store the WMS path reads — lib/resolveLayerViewName), so a combo bound by
+    // an earlier describe would leak into these tests.
+    _comboVizToHash = {};
+    _comboRegistry = {};
+    _dynamicViewState.views = {};
     lastMapInstance = null;
     lastBasemapLayerInstance = null;
     lastResizeObserverCallback = null;
@@ -2722,11 +2728,11 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
 
   // ── Test P13-dv: dv-bound + materialized layer → infoQuery uses dv viewName ──
   it("P13-dv: dv-bound + materialized layer → infoQuery payload viewName is dv name, NOT filter-view name (post-VERIFY)", async () => {
-    // Operator reported: clicking a dv-bound map layer fired info-query with
-    // the filter-view name in the payload instead of the dynamic-view name.
-    // The fix routes dv-bound layers through useDynamicViewStore.views[id].viewName
-    // when status === "materialized"; filter-view fallback is unchanged for
-    // table-bound layers.
+    // Operator reported: clicking a dv-bound map layer fired info-query with the
+    // filter-view name in the payload instead of the dynamic-view name. Now owned
+    // by lib/resolveLayerViewName: a dv-bound layer resolves dv-combination →
+    // raw dv view, and never the source table's view. The stale filter view
+    // seeded below must be ignored.
     const dvBoundLayer = makeLayer({
       id: 1,
       position: 0,

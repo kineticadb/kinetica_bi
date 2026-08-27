@@ -41,9 +41,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useInfoSelectionStore } from "../../store/infoSelectionStore";
 import { useLastInfoClickContextStore } from "../../store/lastInfoClickContextStore";
-import { useFilterViewStore } from "../../store/filterViewStore";
-import { useDynamicViewStore } from "../../store/dynamicViewStore";
-import { isViewExpired } from "../../lib/viewExpiry";
+import { resolveLayerViewName } from "../../lib/resolveLayerViewName";
 
 /**
  * Resolve the FROM target for an info-query SQL request against a given layer.
@@ -52,34 +50,30 @@ import { isViewExpired } from "../../lib/viewExpiry";
  *   1. DV-bound + materialized → DYNAMIC VIEW name (the operator clicked tiles
  *      rendered from this view; querying anywhere else would surface records
  *      that don't correspond to what's visible).
- *   2. Filter view present for the layer's source table → filter view name
- *      (v1.3 behavior — keeps record set aligned with the filtered WMS tiles).
- *   3. undefined → server falls through to `FROM <schema>.<table>` (Phase 18
- *      default for unfiltered table-bound layers).
+ *   2. Combination view for the layer's source table → that view's name, so the
+ *      record set matches the filtered WMS tiles the operator clicked.
+ *   3. undefined → server falls through to `FROM <schema>.<table>` (correct only
+ *      for a layer with nothing filtering it).
+ *
+ * Delegates to lib/resolveLayerViewName so this path and the WMS tile path can
+ * never disagree about which view a layer reads (they did before: this resolver
+ * read the pre-v1.18 filterViewStore, which Phase 91 stopped populating, so every
+ * info click silently queried the BASE TABLE).
  *
  * Shared between MapChartRenderer's click fan-out, InfoSelectionView's
  * dropdown-switch fetch, and InfoSelectionView's Load-more fetch so all three
- * paths agree on which view the records come from. Returning undefined means
- * "skip this layer entirely" only when dv-bound but not materialized — caller
- * must check that case before invoking infoQuery (otherwise the server would
- * unintentionally query the source table for a dv-bound layer).
+ * paths agree on which view the records come from. Returning
+ * "skip-dv-not-materialized" means "skip this layer entirely" — caller must check
+ * that case before invoking infoQuery (otherwise the server would unintentionally
+ * query the source table for a dv-bound layer).
  */
 function resolveInfoQueryViewName(
   layer: DashboardLayerDto,
 ): { kind: "view"; viewName: string | undefined } | { kind: "skip-dv-not-materialized" } {
-  if (layer.dynamic_view_id != null) {
-    const dvEntry =
-      useDynamicViewStore.getState().views[layer.dynamic_view_id];
-    if (dvEntry?.status === "materialized" && dvEntry.viewName) {
-      return { kind: "view", viewName: dvEntry.viewName };
-    }
-    return { kind: "skip-dv-not-materialized" };
-  }
-  const fvEntry = useFilterViewStore.getState().views[layer.table_id];
-  if (fvEntry && !isViewExpired(fvEntry) && fvEntry.viewName) {
-    return { kind: "view", viewName: fvEntry.viewName };
-  }
-  return { kind: "view", viewName: undefined };
+  const resolved = resolveLayerViewName(layer);
+  return resolved.kind === "view"
+    ? { kind: "view", viewName: resolved.viewName }
+    : resolved;
 }
 import { renderInfoTemplate } from "../../lib/renderInfoTemplate";
 import { buildSpatialColumns } from "../../lib/spatialColumns";

@@ -71,12 +71,12 @@ import {
   DEFAULT_BASEMAP_DARK,
 } from "../../lib/basemaps";
 import { useFilterStore } from "../../store/filterStore";
-import { useFilterViewStore } from "../../store/filterViewStore";
 import { useFilterCombinationStore } from "../../store/filterCombinationStore";
 import { NOFILTER_SENTINEL } from "../../lib/stableComboHash";
 import { useDashboardContextOptional } from "../DashboardContext";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { isViewExpired } from "../../lib/viewExpiry";
+import { resolveLayerViewName } from "../../lib/resolveLayerViewName";
 import { useToastStore } from "../../store/toast";
 import { buildWmsParams, type MapWidgetConfig, coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
 import { isLayerEffectivelyVisible } from "../../lib/layerVisibility";
@@ -604,7 +604,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // dynamic-view-bound layers need their own primitive key so Effects 2 + 3 re-fire when
   // a dv re-materializes. The filter-view path's viewsKey doesn't move when only the dv
   // store changes (dv viewName/status are tracked in useDynamicViewStore.views, NOT in
-  // useFilterViewStore), so without this selector a pending→materialized transition would
+  // the combination registry), so without this selector a pending→materialized transition would
   // leave dv-bound layers stuck without their LAYERS-swap.
   //
   // Sorted ascending by dv id for stability across drag-reorder of includedLayers.
@@ -1286,7 +1286,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
 
       // Phase 35 (DV-V16-13) — per-layer dv lookup BEFORE buildWmsParams call.
       // Imperative .getState() snapshot at effect-fire time (PITFALL C-02 pattern: same as
-      // useFilterViewStore.getState() below). dynamicViewsKey selector at top of component
+      // resolveLayerViewName below). dynamicViewsKey selector at top of component
       // is the dep-array trigger; the imperative read here gets the same-tick snapshot.
       const dvEntry =
         layer.dynamic_view_id !== null && layer.dynamic_view_id !== undefined
@@ -1791,43 +1791,25 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         if (!spatialColumns) { errorCount++; continue; }
 
         // Pick the FROM target for the info-query SQL. The server's info-query
-        // endpoint uses `viewName` (when set) verbatim as the FROM clause —
-        // mirrors what the WMS tile layer renders. Precedence:
+        // endpoint uses `viewName` (when set) verbatim as the FROM clause, so it
+        // MUST resolve to the same view the WMS tile layer rendered — otherwise
+        // the operator clicks a filtered tile and gets a different row set.
+        // resolveLayerViewName owns that precedence (dv-combination → raw dv →
+        // table combination → source table) and is shared with
+        // InfoSelectionView's dropdown-switch + Load-more fetches.
         //
-        //   1. DV-bound + materialized → query the DYNAMIC VIEW. The tiles the
-        //      operator clicked were rendered from this view; querying the
-        //      filter view (or source table) would return records that don't
-        //      match what's visible — confusing UX. Post-VERIFY operator
-        //      report: the prior code path used filter-view name even for
-        //      dv-bound layers, surfacing record sets that didn't correspond
-        //      to the rendered tiles.
-        //
-        //   2. Filter view (v1.3 path) → for table-bound layers with an
-        //      active filter, query the filter view so records align with the
-        //      filtered tile set.
-        //
-        //   3. undefined → server falls through to FROM <schema>.<table>
-        //      (Phase 18 default for unfiltered table-bound layers).
-        let queryViewName: string | undefined;
-        if (layer.dynamic_view_id != null) {
-          const dvEntry =
-            useDynamicViewStore.getState().views[layer.dynamic_view_id];
-          if (dvEntry?.status === "materialized" && dvEntry.viewName) {
-            queryViewName = dvEntry.viewName;
-          } else {
-            // DV-bound but non-materialized (pending / over_threshold / error
-            // / undefined). The WMS tile fan-out gate above (zoom check) +
-            // earlier in this loop already returned `continue` for layers
-            // whose dv isn't materialized — defense-in-depth: skip if we
-            // somehow got here without a materialized dv.
-            continue;
-          }
-        } else {
-          const fvEntry = useFilterViewStore.getState().views[layer.table_id];
-          if (fvEntry && !isViewExpired(fvEntry) && fvEntry.viewName) {
-            queryViewName = fvEntry.viewName;
-          }
+        // This site previously read the pre-v1.18 filterViewStore, which Phase 91
+        // stopped populating — so every table-bound info click fell through to
+        // FROM <schema>.<table> (the BASE TABLE) while the tiles showed filtered
+        // rows. See lib/resolveLayerViewName.
+        const resolvedLayerView = resolveLayerViewName(layer);
+        if (resolvedLayerView.kind === "skip-dv-not-materialized") {
+          // DV-bound but nothing materialized (pending / over_threshold / error).
+          // The WMS tile fan-out gate above (zoom check) + earlier in this loop
+          // already returned `continue` for those layers — defense-in-depth.
+          continue;
         }
+        const queryViewName: string | undefined = resolvedLayerView.viewName;
 
         useInfoSelectionStore.getState().setLoading(layer.id, true);
         try {
