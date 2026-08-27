@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: phase_complete
-stopped_at: Completed 109.2-02-PLAN.md
-last_updated: "2026-07-12T20:07:36.739Z"
+status: complete
+stopped_at: Completed 110-02-PLAN.md — v1.20 VERIFIED (operator PASS 8/8)
+last_updated: "2026-08-27T18:40:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 7
-  total_plans: 10
-  completed_plans: 10
+  completed_phases: 8
+  total_plans: 12
+  completed_plans: 12
 ---
 
 # Project State
@@ -19,13 +19,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 110 — designer settings UI + verification + live UAT (FINAL; 109.1 + 109.2 complete)
+**Current focus:** v1.20 COMPLETE — verified 2026-08-27; ready for milestone archive
 
 ## Current Position
 
-Phase: 109.2 (wire-custom-panel-charts-into-filter-scope-engine-and-reverse-map) — COMPLETE
-Plan: 2 of 2 (109.2-02 complete)
-Next: Phase 110 (designer-settings-ui-verification)
+Phase: 110 (designer-settings-ui-verification-live-uat) — COMPLETE (2026-08-27)
+Plan: 2 of 2 complete
+
+**v1.20 VERIFIED.** `110-GATES.md` (gates re-run 2026-08-27: web tsc clean, web vitest 154 files / 3439 tests 0 failed, theme-guard 148/148, server tsc clean, server vitest SET-BASED PASS ⊆ TD-V16-TEST-ISOLATION, sole-materialize-trigger PASS) + `110-UAT.md` (operator attested PASS on all 8 groups, no gaps) + `110-VERIFICATION.md` (SC1-SC4 attested, 19/19 requirements Complete). Next: `/gsd:complete-milestone` to archive v1.20.
 
 ### v1.20 Phase Map
 
@@ -65,7 +66,7 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FSET-V120-01 | Phase 110 | Pending |
+| FSET-V120-01 | Phase 110 | Complete |
 | FSET-V120-02 | Phase 106 | Complete |
 | FSET-V120-03 | Phase 106 | Complete |
 | FPANEL-V120-01 | Phase 107-02 | Complete |
@@ -81,9 +82,9 @@ Presentation layer over the existing filter system (frontend-heavy; one small se
 | FSCOPE-V120-02 | Phase 108 | Complete |
 | FSCOPE-V120-03 | Phase 108 | Complete |
 | FCLEAR-V120-01 | Phase 109 | Complete |
-| VERIFY-V120-01 | Phase 110 | Pending |
+| VERIFY-V120-01 | Phase 110 | Complete |
 
-**Coverage: 17/17 (100%)** — FSCOPE-V120-01 spans 105 (computation) + 108 (panel display); every other requirement maps to exactly one phase.
+**Coverage: 19/19 (100%)** — FSCOPE-V120-01 spans 105 (computation) + 108 (panel display); FSCOPE-V120-04 / FSCOPE-V120-05 are the inserted-phase requirements (109.1 / 109.2); every other requirement maps to exactly one phase. All Complete as of 2026-08-27.
 
 ### v1.20 Open Tech Debt (carried from v1.19)
 
@@ -794,6 +795,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 109.1 P01 | 25min | 2 tasks | 8 files |
 | Phase 109.2 P01 | 14min | 2 tasks | 6 files |
 | Phase 109.2 P02 | 25min | 2 tasks | 6 files |
+| Phase 110 P01 | 15min | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -1174,6 +1176,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 109.2]: Coalesce discriminates calendar filterSelection migration by key PRESENCE (hasOwnProperty), not value: legacy respondToFilters:false -> empty allow-list (respond to none); key absent (brand-new post-migration widget) -> undefined (accept-all).
 - [Phase 109.2]: Kept NON_TRIGGER_TYPES as two independently-edited literal Sets (orchestrator + reverse-map) rather than extracting a shared module; both edits landed atomically in one commit.
 - [Phase 109.2]: Calendar's respondToFilters migration coalesce discriminated by key presence (not value), keeping the coalesce entirely calendar-only at each read site (renderer FROM path, config-panel display, WidgetCard badge) rather than inside shared resolvers.
+- [Phase 110]: DashboardSettingsModal is a pure controlled toggle (no API calls); parent owns updateDashboard PATCH + state-lift for trivial testability
+- [Phase 110]: Reused existing .radiogroup--buttons/.radiogroup-button classes verbatim for the segmented toggle -- zero new CSS classes
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1580,6 +1584,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-11T14:35:02.914Z
-Stopped at: Completed 109.2-02-PLAN.md
+Last session: 2026-07-12T20:56:34.639Z
+Stopped at: Completed 110-01-PLAN.md
 Resume file: None

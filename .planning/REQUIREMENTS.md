@@ -9,7 +9,7 @@
 
 ### Display Setting (FSET)
 
-- [ ] **FSET-V120-01**: A designer (with dashboard-edit permission) can choose a dashboard's filter display mode — top bar or right side panel — from a dashboard setting.
+- [x] **FSET-V120-01**: A designer (with dashboard-edit permission) can choose a dashboard's filter display mode — top bar or right side panel — from a dashboard setting.
 - [x] **FSET-V120-02**: The display-mode choice persists per-dashboard (server-side) and every viewer of that dashboard sees the designer's choice.
 - [x] **FSET-V120-03**: A dashboard with no display mode configured defaults to the existing top-bar behavior, byte-identical to today (backward-compat).
 
@@ -39,7 +39,7 @@
 
 ### Verification (VERIFY)
 
-- [ ] **VERIFY-V120-01**: All features verified via green automated gates (web vitest 100% from `packages/web`, web + server `tsc` clean, theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION) PLUS a blocking live operator walk-through — including light/dark theme and narrow-viewport visual checks of the panel + highlight (which automated gates cannot catch) — with any gaps fixed in-session and re-walked to PASS.
+- [x] **VERIFY-V120-01**: All features verified via green automated gates (web vitest 100% from `packages/web`, web + server `tsc` clean, theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION) PLUS a blocking live operator walk-through — including light/dark theme and narrow-viewport visual checks of the panel + highlight (which automated gates cannot catch) — with any gaps fixed in-session and re-walked to PASS.
 
 ## v2 Requirements (deferred)
 
@@ -69,7 +69,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FSET-V120-01 | Phase 110 | Pending |
+| FSET-V120-01 | Phase 110 | Complete |
 | FSET-V120-02 | Phase 106 | Complete |
 | FSET-V120-03 | Phase 106 | Complete |
 | FPANEL-V120-01 | Phase 107 | Complete |
@@ -87,7 +87,7 @@ Phase numbering continues from 104 (v1.19 ended at Phase 104). Roadmap created 2
 | FSCOPE-V120-04 | Phase 109.1 | Complete |
 | FSCOPE-V120-05 | Phase 109.2 | Complete |
 | FCLEAR-V120-01 | Phase 109 | Complete |
-| VERIFY-V120-01 | Phase 110 | Pending |
+| VERIFY-V120-01 | Phase 110 | Complete |
 
 **Coverage:**
 - v1 requirements: 19 total

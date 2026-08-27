@@ -45,7 +45,7 @@
 - [x] **Phase 107: Panel Shell + Reflow + XOR Switch + Chips** (completed 2026-07-09) — FRONTEND-ONLY — collapsible right drawer (reuse `.sidebar` collapse + `filter-bar-*` classes), top-bar XOR panel switch, active-filter chips (shared `FilterChip` + `buildChipText`) for eq/in + datetime-between + spatial, per-chip remove + per-group clear, collapsed count badge, empty state, group-by-source, provenance. Panel is an in-flow flex sibling shrinking the grid container (NOT a fixed overlay) so RGL `useContainerWidth` auto-reflows.
 - [x] **Phase 108: Applies-To List + On-Canvas Highlight** (completed 2026-07-10) — FRONTEND-ONLY — per-filter "applies to N widgets" list/count (consuming the Phase 105 lib) + hover-highlight + click-to-scroll/flash; new session-only `filterHighlightStore` + `WidgetCard` extraction; `reset()` joins BOTH cleanup chains. **(research flag — HIGH RISK: re-render-storm avoidance + deterministic cleanup)**
 - [x] **Phase 109: Global Clear-All** (completed 2026-07-10) — FRONTEND-ONLY — one action clears every active filter across all tables + dynamic views + spatial draws by looping `clearFilters`/`clearDvFilters`/`clearAll` (INPUT stores only); the orchestrator DROPs by ref-count; grep-gated that the handler imports no `materializeFilter`/`dropCombinationView` and never `filterStore.reset()` live.
-- [ ] **Phase 110: Designer Settings UI + Verification + Live UAT** — BOTH + operator — designer mode-toggle in the dashboard settings (gated by the existing `dashboards:edit`, NO new RBAC permission) + green automated gates on both stacks + a blocking live operator walk-through incl. light/dark + narrow-viewport visual checks.
+- [x] **Phase 110: Designer Settings UI + Verification + Live UAT** (completed 2026-08-27) — BOTH + operator — designer mode-toggle in the dashboard settings (gated by the existing `dashboards:edit`, NO new RBAC permission) + green automated gates on both stacks + a blocking live operator walk-through incl. light/dark + narrow-viewport visual checks.
 
 ## Phase Details
 
@@ -124,7 +124,7 @@
   4. Clear-all is offered from the panel (and ideally the top bar) with consistent behavior across both surfaces.
 **Plans**: 1 plan
 Plans:
-- [ ] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
+- [x] 109-01-PLAN.md — global "Clear all filters" panel-header action (input-store-only clear helper + FilterPanel button + DashboardsPage wiring)
 
 ### Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED) — ✅ COMPLETE 2026-07-12
 
@@ -147,8 +147,8 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 109.2-01-PLAN.md — Engine enumeration fix: remove calendar/timeline/numericline from NON_TRIGGER_TYPES in BOTH useCombinationOrchestrator.ts + useReverseFilterMap.ts (atomic) + new coalesceCalendarFilterSelection helper threaded through 3 engine call sites + engine specs [wave 1]
-- [ ] 109.2-02-PLAN.md — Calendar read-path swap to filterCombinationStore.vizToHash + retire respondToFilters (type/default/checkbox/renderer) + WidgetCard badge coalesce + calendar/config-panel/WidgetCard specs [wave 2, depends 109.2-01]
+- [x] 109.2-01-PLAN.md — Engine enumeration fix: remove calendar/timeline/numericline from NON_TRIGGER_TYPES in BOTH useCombinationOrchestrator.ts + useReverseFilterMap.ts (atomic) + new coalesceCalendarFilterSelection helper threaded through 3 engine call sites + engine specs [wave 1]
+- [x] 109.2-02-PLAN.md — Calendar read-path swap to filterCombinationStore.vizToHash + retire respondToFilters (type/default/checkbox/renderer) + WidgetCard badge coalesce + calendar/config-panel/WidgetCard specs [wave 2, depends 109.2-01]
 
 ### Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED) — ✅ COMPLETE 2026-07-10
 
@@ -165,7 +165,7 @@ Plans:
 4. Absent config = accept-all, byte-identical to today (backward-compat).
 
 Plans:
-- [ ] 109.1-01-PLAN.md — Thread widgetId through ConfigPanelProps + <Custom> slot; render FilterSelectionPanel (wired to config.filterSelection, dv/dvFilterScopeDisabled gate) in Calendar/Timeline/NumericLine panels + specs
+- [x] 109.1-01-PLAN.md — Thread widgetId through ConfigPanelProps + <Custom> slot; render FilterSelectionPanel (wired to config.filterSelection, dv/dvFilterScopeDisabled gate) in Calendar/Timeline/NumericLine panels + specs
 
 ### Phase 110: Designer Settings UI + Verification + Live UAT
 **Goal**: A designer with dashboard-edit permission can choose a dashboard's filter display mode from a dashboard setting; then every feature is verified green on both stacks plus a blocking live operator walk-through — including the light/dark and narrow-viewport visual checks that automated gates cannot catch.
@@ -178,7 +178,10 @@ Plans:
   2. Automated gates green: web vitest 100% from `packages/web`, web + server `tsc` clean (separate gates), theme-guard green, server vitest set-based ⊆ TD-V16-TEST-ISOLATION.
   3. A blocking live operator walk-through exercises the panel + chips (remove / group-clear), global clear-all, the applies-to list + hover/click highlight, and the designer mode toggle — INCLUDING light/dark theme and narrow-viewport visual checks — and attests PASS.
   4. Any gaps found in the walk are fixed in-session (with regression tests) and re-walked to PASS.
-**Plans**: TBD (derived by `/gsd:plan-phase 110`)
+**Plans**: 2 plans (wave 1 then wave 2)
+Plans:
+- [x] 110-01-PLAN.md — Designer Settings modal + filter-display-mode segmented toggle (save-on-change) + canEdit-gated toolbar button + live state-lift (FSET-V120-01) [wave 1]
+- [x] 110-02-PLAN.md — Milestone verification: both-stack automated gates + sole-materialize grep (110-GATES.md) + BLOCKING operator UAT walk-through incl. 109.1/109.2 filter scope + in-session gap-fix loop (110-UAT.md) + SC1-SC4 attestation (110-VERIFICATION.md) (VERIFY-V120-01) [wave 2, depends 110-01]
 
 ### Phase Progress
 
@@ -188,8 +191,10 @@ Plans:
 | 106. Display-Mode Persistence | 1/1 | Complete | 2026-07-09 |
 | 107. Panel Shell + Reflow + XOR Switch + Chips | 2/2 | Complete | 2026-07-09 |
 | 108. Applies-To List + On-Canvas Highlight | 2/2 | Complete | 2026-07-10 |
-| 109. Global Clear-All | 0/? | Not started | - |
-| 110. Designer Settings UI + Verification + Live UAT | 0/? | Not started | - |
+| 109. Global Clear-All | 1/1 | Complete | 2026-07-10 |
+| 109.1 Filter Scope for Custom-Panel Charts (INSERTED) | 1/1 | Complete | 2026-07-10 |
+| 109.2 Wire Custom-Panel Charts into Filter-Scope Engine (INSERTED) | 2/2 | Complete | 2026-07-12 |
+| 110. Designer Settings UI + Verification + Live UAT | 2/2 | Complete | 2026-08-27 |
 
 **Dependency spine:** {105, 106} parallel-safe → 107 (needs 106's persisted mode) → {108 (needs 105's lib + 107's panel/cards), 109 (needs 107's panel + live combos to tear down)} → 110 (needs all). The reverse-map lib (105) precedes the panel/highlight that consume it; persistence (106) gates the mode switch (107); clear-all (109) is sequenced last among features so live combos exist to prove the ref-count DROP; VERIFY (110) is final and depends on every feature phase.
 
