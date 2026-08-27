@@ -20,6 +20,7 @@
  *   Caller (MapConfigPanel UI) is responsible for labelling them correctly.
  */
 
+import type { BasemapId } from "./basemaps";
 import type { SpatialMode } from "./columnTypes";
 import type { SpatialTarget } from "./spatialTargets";
 import { normalizeAARRGGBB } from "./colorHex";
@@ -69,7 +70,7 @@ export type MapWidgetConfig = {
   /** Legacy back-compat field — use tableRef for new code. Kept so existing widget.config records continue to work. */
   layerName?: string;
   /** OL basemap selection — consumed by MapChartRenderer's basemapSourceFor; not emitted as a WMS param. */
-  basemap?: "osm" | "voyager" | "dark";
+  basemap?: BasemapId;
   /** Post-VERIFY per-layer zoom-range visibility. INCLUSIVE on the wire:
    *  `[minZoom, maxZoom] = [3, 10]` reads as "visible at zoom 3-10 inclusive".
    *  MapChartRenderer.applyZoomRangeToLayer translates to OL's exclusive-min /

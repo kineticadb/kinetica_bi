@@ -1,5 +1,6 @@
 import { registerChartType, type ChartTypeDefinition } from "../registry";
 import MapConfigPanel from "../MapConfigPanel";
+import { DEFAULT_BASEMAP_LIGHT, DEFAULT_BASEMAP_DARK } from "../../../lib/basemaps";
 
 // Phase 12: Map chart type — Phase 12 hard cutover.
 // CONTEXT.md "Decisions § Lift boundary":
@@ -17,10 +18,12 @@ const map: ChartTypeDefinition = {
   fields: [], // Empty — CustomConfigPanel (MapConfigPanel) owns the entire config schema.
   defaultConfig: {
     title: "Map",
-    // Per-theme basemaps: the renderer auto-selects by the active app theme. A light
-    // basemap (Voyager) in light mode, dark (Dark Matter) in dark mode.
-    basemapLight: "voyager",
-    basemapDark: "dark",
+    // Per-theme basemaps: the renderer auto-selects by the active app theme.
+    // Both defaults are OSM (free, no API key) — the two entries differ only in
+    // their default CSS: plain in light mode, dark-filtered in dark mode.
+    // CARTO basemaps remain selectable but need VITE_CARTO_API_KEY (see lib/basemaps.ts).
+    basemapLight: DEFAULT_BASEMAP_LIGHT,
+    basemapDark: DEFAULT_BASEMAP_DARK,
     // includedLayerIds intentionally absent — undefined = lazy/inclusive (all dashboard layers ON).
   },
   usesAggregation: false,

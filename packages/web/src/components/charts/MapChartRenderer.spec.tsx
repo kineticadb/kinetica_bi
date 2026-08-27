@@ -1337,6 +1337,76 @@ describe("MapChartRenderer — N-layer stack + reconfigure + empty overlays", ()
     }
   });
 
+  // ── Basemap CSS isolation: OL container class + per-basemap wrapper class ──
+  it("gives the basemap layer its own OL container class (CSS-filter isolation)", async () => {
+    _layersState.layers = [makeLayer()];
+    await act(async () =>
+      render(<MapChartRenderer widget={makeWidget({ basemap: "osm" })} tables={defaultTables} />)
+    );
+    // className isolates the basemap in its own canvas so a filter can't touch WMS layers.
+    expect(lastBasemapLayerInstance?._opts?.className).toBe("map-basemap-layer");
+  });
+
+  it("sets the theme's default basemap CSS as custom properties on the canvas wrapper", async () => {
+    _layersState.layers = [makeLayer()];
+    useThemeStore.getState().setTheme("light");
+    const { container } = await act(async () =>
+      render(<MapChartRenderer widget={makeWidget({ basemap: "osm" })} tables={defaultTables} />)
+    );
+    const canvas = () => container.querySelector(".widget-map-canvas") as HTMLElement;
+    // OSM in light mode → no custom property, so global.css's var() fallback (unstyled) applies.
+    expect(canvas().style.getPropertyValue("--basemap-filter")).toBe("");
+
+    // SAME basemap in dark mode → the dark default filter, no Map rebuild.
+    await act(async () => {
+      useThemeStore.getState().setTheme("dark");
+    });
+    expect(canvas().style.getPropertyValue("--basemap-filter")).toContain("grayscale");
+    expect(OlMap as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefers the widget's per-theme CSS override over the basemap default", async () => {
+    _layersState.layers = [makeLayer()];
+    useThemeStore.getState().setTheme("dark");
+    const { container, rerender } = await act(async () =>
+      render(
+        <MapChartRenderer
+          widget={makeWidget({
+            basemapLight: "osm",
+            basemapDark: "osm",
+            basemapCssLight: "filter: sepia(1);",
+            basemapCssDark: "filter: invert(1); opacity: 0.4;",
+          })}
+          tables={defaultTables}
+        />,
+      )
+    );
+    const canvas = () => container.querySelector(".widget-map-canvas") as HTMLElement;
+    // Dark theme → the dark override, not the dark-theme default.
+    expect(canvas().style.getPropertyValue("--basemap-filter")).toBe("invert(1)");
+    expect(canvas().style.getPropertyValue("--basemap-opacity")).toBe("0.4");
+
+    // Toggling the theme swaps to the light override — no Map rebuild.
+    await act(async () => {
+      useThemeStore.getState().setTheme("light");
+    });
+    expect(canvas().style.getPropertyValue("--basemap-filter")).toBe("sepia(1)");
+    expect(canvas().style.getPropertyValue("--basemap-opacity")).toBe("");
+    expect(OlMap as unknown as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+
+    // An override that parses to nothing falls back to the basemap default.
+    await act(async () => {
+      rerender(
+        <MapChartRenderer
+          widget={makeWidget({ basemapLight: "osm", basemapCssLight: "background: red;" })}
+          tables={defaultTables}
+        />,
+      );
+    });
+    expect(canvas().style.getPropertyValue("--basemap-filter")).toBe("");
+    useThemeStore.getState().setTheme("dark"); // reset shared store for other tests
+  });
+
   // ── Theme-aware basemap: toggling app theme swaps the source (no Map rebuild) ──
   it("toggling the app theme swaps the basemap source to the per-theme basemap", async () => {
     _layersState.layers = [makeLayer()];

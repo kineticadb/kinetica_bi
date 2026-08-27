@@ -15,6 +15,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MapConfigPanel from "./MapConfigPanel";
+import {
+  DARK_BASEMAP_CSS,
+  LIGHT_GRAY_BASEMAP_CSS,
+  NO_FILTER_BASEMAP_CSS,
+} from "../../lib/basemaps";
 import type { DashboardLayerDto } from "../../api/client";
 import { isSpatialTargetEligible } from "../../lib/spatialTargets";
 
@@ -84,16 +89,172 @@ describe("MapConfigPanel — Phase 12 shrunk surface", () => {
     expect(labels).toHaveLength(0);
   });
 
-  // 3. Renders separate light + dark basemap pickers, each with 3 options
-  it("renders light + dark basemap pickers, each with the 3 basemap options", () => {
+  // 3. Renders separate light + dark basemap pickers from the lib/basemaps registry.
+  //    Two OSM entries (plain + dark-filtered, both key-less) then the two CARTO
+  //    entries, which are flagged "(API key required)" while VITE_CARTO_API_KEY is unset.
+  it("renders light + dark basemap pickers with every registry basemap", () => {
     render(
       <MapConfigPanel config={makeConfig()} onChange={vi.fn()} />,
     );
     const lightSel = screen.getByLabelText("Light mode basemap") as HTMLSelectElement;
     const darkSel = screen.getByLabelText("Dark mode basemap") as HTMLSelectElement;
     const labels = (sel: HTMLSelectElement) => Array.from(sel.options).map((o) => o.textContent);
-    expect(labels(lightSel)).toEqual(["OpenStreetMap", "CartoDB Voyager", "CartoDB Dark Matter"]);
-    expect(labels(darkSel)).toEqual(["OpenStreetMap", "CartoDB Voyager", "CartoDB Dark Matter"]);
+    const values = (sel: HTMLSelectElement) => Array.from(sel.options).map((o) => o.value);
+    const expected = [
+      "OpenStreetMap",
+      "CartoDB Voyager (API key required)",
+      "CartoDB Dark Matter (API key required)",
+    ];
+    expect(labels(lightSel)).toEqual(expected);
+    expect(labels(darkSel)).toEqual(expected);
+    expect(values(lightSel)).toEqual(["osm", "voyager", "dark"]);
+  });
+
+  // 3b. A configured CARTO key drops the "(API key required)" suffix.
+  it("labels CARTO basemaps without the key warning once VITE_CARTO_API_KEY is set", () => {
+    vi.stubEnv("VITE_CARTO_API_KEY", "test-key");
+    render(
+      <MapConfigPanel config={makeConfig()} onChange={vi.fn()} />,
+    );
+    const lightSel = screen.getByLabelText("Light mode basemap") as HTMLSelectElement;
+    expect(Array.from(lightSel.options).map((o) => o.textContent)).toEqual([
+      "OpenStreetMap",
+      "CartoDB Voyager",
+      "CartoDB Dark Matter",
+    ]);
+    vi.unstubAllEnvs();
+  });
+
+  // 3c. Per-theme CSS fields — pre-filled with the basemap's default CSS for that theme.
+  it("pre-fills each basemap CSS field with that theme's default CSS", () => {
+    render(
+      <MapConfigPanel
+        config={makeConfig({ basemapLight: "osm", basemapDark: "osm" })}
+        onChange={vi.fn()}
+      />,
+    );
+    const light = screen.getByLabelText("Light mode basemap CSS") as HTMLTextAreaElement;
+    const dark = screen.getByLabelText("Dark mode basemap CSS") as HTMLTextAreaElement;
+    // Same basemap, per-THEME default CSS: unstyled in light, dark-filtered in dark.
+    expect(light.value).toBe("");
+    expect(dark.value).toBe(DARK_BASEMAP_CSS);
+  });
+
+  it("shows a stored override instead of the default, and follows the picker when absent", () => {
+    const { rerender } = render(
+      <MapConfigPanel
+        config={makeConfig({ basemapDark: "osm", basemapCssDark: "filter: sepia(1);" })}
+        onChange={vi.fn()}
+      />,
+    );
+    expect((screen.getByLabelText("Dark mode basemap CSS") as HTMLTextAreaElement).value).toBe(
+      "filter: sepia(1);",
+    );
+    // No override → the field tracks the picked basemap's dark default (CARTO
+    // Dark Matter is already dark, so its default CSS is empty).
+    rerender(
+      <MapConfigPanel config={makeConfig({ basemapDark: "dark" })} onChange={vi.fn()} />,
+    );
+    expect((screen.getByLabelText("Dark mode basemap CSS") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("editing a CSS field stores the per-theme override", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel config={makeConfig({ basemapLight: "osm" })} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByLabelText("Light mode basemap CSS"), {
+      target: { value: "filter: grayscale(1);" },
+    });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ basemapCssLight: "filter: grayscale(1);" }),
+    );
+  });
+
+  it("clearing a CSS field drops the override so it re-tracks the basemap default", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel
+        config={makeConfig({ basemapDark: "osm", basemapCssDark: "filter: sepia(1);" })}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Dark mode basemap CSS"), { target: { value: "   " } });
+    const next = onChange.mock.calls[0][0] as Record<string, unknown>;
+    expect("basemapCssDark" in next).toBe(false);
+  });
+
+  // 3d. One-click style presets under each CSS field (no CSS knowledge needed).
+  it("renders Dark map / Light Gray Map / None preset buttons under each CSS field", () => {
+    render(<MapConfigPanel config={makeConfig()} onChange={vi.fn()} />);
+    for (const theme of ["Light", "Dark"]) {
+      for (const label of ["Dark map", "Light Gray Map", "None"]) {
+        expect(
+          screen.getByLabelText(`${theme} mode basemap style: ${label}`),
+        ).toBeInTheDocument();
+      }
+    }
+  });
+
+  it("clicking a preset writes its CSS into that theme's override", () => {
+    const onChange = vi.fn();
+    render(<MapConfigPanel config={makeConfig({ basemapLight: "osm" })} onChange={onChange} />);
+
+    fireEvent.click(screen.getByLabelText("Light mode basemap style: Light Gray Map"));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ basemapCssLight: LIGHT_GRAY_BASEMAP_CSS }),
+    );
+
+    fireEvent.click(screen.getByLabelText("Light mode basemap style: Dark map"));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ basemapCssLight: DARK_BASEMAP_CSS }),
+    );
+
+    // "None" writes an explicit `filter: none` — NOT a blank field, which would
+    // fall back to the basemap default.
+    fireEvent.click(screen.getByLabelText("Light mode basemap style: None"));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ basemapCssLight: NO_FILTER_BASEMAP_CSS }),
+    );
+  });
+
+  it("marks the preset matching the field's current CSS as selected", () => {
+    const selected = (label: string) =>
+      screen
+        .getByLabelText(label)
+        .className.includes("radiogroup-button--selected");
+
+    const { rerender } = render(
+      <MapConfigPanel
+        config={makeConfig({ basemapLight: "osm", basemapDark: "osm" })}
+        onChange={vi.fn()}
+      />,
+    );
+    // Light theme default is unstyled → None; the dark-theme default → Dark map.
+    expect(selected("Light mode basemap style: None")).toBe(true);
+    expect(selected("Light mode basemap style: Dark map")).toBe(false);
+    expect(selected("Dark mode basemap style: Dark map")).toBe(true);
+
+    // A stored light-gray override moves the selection.
+    rerender(
+      <MapConfigPanel
+        config={makeConfig({ basemapDark: "osm", basemapCssDark: LIGHT_GRAY_BASEMAP_CSS })}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(selected("Dark mode basemap style: Light Gray Map")).toBe(true);
+    expect(selected("Dark mode basemap style: Dark map")).toBe(false);
+
+    // Hand-written CSS selects none of them.
+    rerender(
+      <MapConfigPanel
+        config={makeConfig({ basemapDark: "osm", basemapCssDark: "filter: sepia(1);" })}
+        onChange={vi.fn()}
+      />,
+    );
+    for (const label of ["Dark map", "Light Gray Map", "None"]) {
+      expect(selected(`Dark mode basemap style: ${label}`)).toBe(false);
+    }
   });
 
   // 4. Selecting a basemap fires onChange with the per-theme key
@@ -115,6 +276,14 @@ describe("MapConfigPanel — Phase 12 shrunk surface", () => {
     );
     expect((screen.getByLabelText("Light mode basemap") as HTMLSelectElement).value).toBe("voyager");
     expect((screen.getByLabelText("Dark mode basemap") as HTMLSelectElement).value).toBe("voyager");
+  });
+
+  // 4c. A config with NO basemap field at all seeds the key-less OSM entry.
+  it("seeds OSM for both themes when the config carries no basemap fields", () => {
+    const { basemap: _drop, ...noBasemap } = makeConfig();
+    render(<MapConfigPanel config={noBasemap} onChange={vi.fn()} />);
+    expect((screen.getByLabelText("Light mode basemap") as HTMLSelectElement).value).toBe("osm");
+    expect((screen.getByLabelText("Dark mode basemap") as HTMLSelectElement).value).toBe("osm");
   });
 
   // 5. Empty store layers → empty-state copy

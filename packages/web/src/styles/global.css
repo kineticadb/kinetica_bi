@@ -2310,6 +2310,22 @@ input[type="checkbox"],
   background: var(--input-bg); /* matches .config-color-text deep-panel tone */
 }
 
+/* ── Basemap CSS (lib/basemaps `defaultCss` + per-widget overrides) ────────────
+   MapChartRenderer gives the base TileLayer `className: "map-basemap-layer"`, so
+   OL renders it into its OWN canvas container, and sets --basemap-filter /
+   --basemap-opacity on the .widget-map-canvas wrapper from the selected
+   basemap's default CSS or the widget's per-theme override. Styling therefore
+   hits the BASEMAP ONLY — WMS data layers, drawn shapes, popups and controls
+   live in sibling containers and are untouched.
+
+   The var() fallbacks are the unstyled basemap, so a widget with no CSS (or an
+   unparseable value) renders raw provider tiles rather than breaking. Values are
+   image transforms, not themeable colours, so no token applies. */
+.widget-map-canvas .map-basemap-layer {
+  filter: var(--basemap-filter, none);
+  opacity: var(--basemap-opacity, 1);
+}
+
 /* OpenLayers attribution — shrink for widget context (default OL is too large here). */
 .widget-map-canvas .ol-attribution {
   font-size: var(--text-2xs);

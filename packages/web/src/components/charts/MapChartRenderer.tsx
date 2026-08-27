@@ -27,6 +27,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import type { CSSProperties } from "react";
 import OlMap from "ol/Map";
 import OlView from "ol/View";
 import TileLayer from "ol/layer/Tile";
@@ -58,6 +59,17 @@ import type { WidgetDto, TableDto } from "../../api/client";
 import { UNAUTHORIZED_EVENT, API_BASE } from "../../api/client";
 import { infoQuery, type InfoSpatialMode } from "../../api/client";
 import { wrapLongitude } from "../../lib/geoWrap";
+import {
+  basemapDefFor,
+  basemapTileUrl,
+  resolveBasemapCss,
+  basemapCssVars,
+  cartoApiKey,
+  cartoApiKeyParam,
+  BASEMAP_LAYER_CLASS,
+  DEFAULT_BASEMAP_LIGHT,
+  DEFAULT_BASEMAP_DARK,
+} from "../../lib/basemaps";
 import { useFilterStore } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
 import { useFilterCombinationStore } from "../../store/filterCombinationStore";
@@ -212,28 +224,25 @@ export function isOldPhase11Config(config: Record<string, unknown>): boolean {
   return config.spatialMode !== undefined && config.includedLayerIds === undefined;
 }
 
-type BasemapType = "osm" | "voyager" | "dark";
-
 /**
- * Create an OL tile source for the given basemap type.
- * All three use EPSG:3857 (Web Mercator), no API key required.
+ * Create an OL tile source for the given basemap id, per the lib/basemaps
+ * registry. All entries use EPSG:3857 (Web Mercator).
+ *
+ * OSM needs no key — its look is a per-theme CSS concern (see
+ * basemapDefaultCssFor). CARTO entries get VITE_CARTO_API_KEY appended when it is
+ * configured; without it CARTO serves an "API KEY REQUIRED" watermark, which is
+ * why the per-theme defaults are OSM.
  */
-export function basemapSourceFor(basemap: BasemapType | string | undefined): OSM | XYZ {
-  switch (basemap) {
-    case "voyager":
-      return new XYZ({
-        url: "https://{a-c}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        attributions: "© <a href='https://carto.com/attributions'>CARTO</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a>",
-      });
-    case "dark":
-      return new XYZ({
-        url: "https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        attributions: "© <a href='https://carto.com/attributions'>CARTO</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a>",
-      });
-    case "osm":
-    default:
-      return new OSM();
+export function basemapSourceFor(basemap: string | undefined): OSM | XYZ {
+  const def = basemapDefFor(basemap);
+  if (def.provider === "osm") {
+    // OL owns the OSM tile URL + attribution.
+    return new OSM();
   }
+  return new XYZ({
+    url: basemapTileUrl(def, cartoApiKey(), cartoApiKeyParam()),
+    attributions: def.attributions,
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -461,10 +470,26 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     appTheme === "light"
       ? ((widgetConfig.basemapLight as string | undefined) ??
          (widgetConfig.basemap as string | undefined) ??
-         "voyager")
+         DEFAULT_BASEMAP_LIGHT)
       : ((widgetConfig.basemapDark as string | undefined) ??
          (widgetConfig.basemap as string | undefined) ??
-         "dark");
+         DEFAULT_BASEMAP_DARK);
+
+  // Basemap CSS for the ACTIVE theme: the operator's per-theme override when it
+  // has content, else the selected basemap's default (lib/basemaps `defaultCss`).
+  // Applied as custom properties on the canvas wrapper below, which global.css
+  // reads on the isolated basemap container — so it styles the basemap ONLY.
+  const basemapCssOverride =
+    appTheme === "light"
+      ? (widgetConfig.basemapCssLight as string | undefined)
+      : (widgetConfig.basemapCssDark as string | undefined);
+  const basemapCssVarStyle = useMemo(
+    () =>
+      basemapCssVars(
+        resolveBasemapCss(effectiveBasemap, appTheme, basemapCssOverride),
+      ) as CSSProperties,
+    [effectiveBasemap, appTheme, basemapCssOverride],
+  );
 
   // ── Dashboard layers store subscription ─────────────────────────────────
   // PITFALL S-01 lock: layer list lives ONLY in useDashboardLayersStore.
@@ -985,7 +1010,12 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     if (!containerRef.current) return;
 
     const basemapSource = basemapSourceFor(effectiveBasemap);
-    const basemapLayer = new TileLayer({ source: basemapSource });
+    // className isolates the basemap in its OWN OL canvas container so a CSS
+    // filter on the wrapper hits the basemap alone, not the WMS layers above it.
+    // Fixed for the layer's lifetime (OL has no setter, and reuse compares
+    // container.className === layer.getClassName()) — the per-basemap variant
+    // class lives on our .widget-map-canvas wrapper instead.
+    const basemapLayer = new TileLayer({ source: basemapSource, className: BASEMAP_LAYER_CLASS });
     basemapLayerRef.current = basemapLayer as TileLayer<OSM | XYZ>;
 
     // quick-260608-j5k: the opt-in ScaleLine + FullScreen controls are NOT constructed here.
@@ -2299,7 +2329,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         style={{ display: "none" }}
       />
       {/* OL renders into this div — PITFALL M-01 lock: ref points here */}
-      <div ref={containerRef} className="widget-map-canvas" />
+      <div ref={containerRef} className="widget-map-canvas" style={basemapCssVarStyle} />
 
       {/* quick-260608-rbq: top-center "Loading…" badge. React overlay (V15-P-17 lock —
           NOT an ol/control). Shown iff isMapLoading AND showLoadingIndicator is enabled

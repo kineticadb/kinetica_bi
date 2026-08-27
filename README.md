@@ -92,11 +92,20 @@ Widgets render through a **chart-type registry** (see [Chart Configuration Syste
 | Frontend | `5173`       | `packages/web/vite.config.ts`            |
 | Backend  | `4000`       | `PORT` env var in `packages/server/.env` |
 
+## Basemaps
+
+Map widgets default to **OpenStreetMap**, which needs no API key. Its look is a per-theme CSS concern rather than a second basemap (`packages/web/src/lib/basemaps.ts`): unstyled in the light theme, dark-filtered in the dark theme.
+
+Each map widget has **Light / Dark mode basemap CSS** fields, pre-filled with that theme's default CSS, so a customer can tune the look per widget and per theme (`filter` and `opacity`; blank re-tracks the default). Under each field, **Dark map / Light Gray Map / None** buttons set a style in one click without touching CSS, and highlight whichever matches the current value. The CSS applies to the basemap alone — OL renders it in its own canvas container, so data layers are never filtered.
+
+The **CartoDB Voyager / Dark Matter** options remain selectable, but `basemaps.cartocdn.com` now watermarks unauthenticated tiles. A key is free within CARTO's fair-use limit ([request one](https://carto.com/basemaps/apikey)); set `VITE_CARTO_API_KEY` in `packages/web/.env` and it is appended to CARTO tile requests. Without it the config panel labels those options "(API key required)". CARTO's raster basemaps are being retired in favour of vector, so treat them as a stopgap.
+
 ## Getting Started
 
 ```bash
 npm install                      # installs frontend + server (npm workspaces)
 cp packages/server/.env.example packages/server/.env   # fill in Kinetica credentials
+cp packages/web/.env.example packages/web/.env         # optional — all vars have defaults
 
 npm run dev                      # frontend → http://localhost:5173
 npm run dev:server               # backend  → http://localhost:4000  (separate terminal)

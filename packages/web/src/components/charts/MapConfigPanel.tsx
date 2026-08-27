@@ -49,16 +49,20 @@ import {
   getLegendPanelCorner,
   LEGEND_PANEL_CORNERS,
 } from "../../lib/legendPanelConfig";
+import {
+  BASEMAPS,
+  BASEMAP_CSS_PRESETS,
+  basemapPickerLabel,
+  basemapDefaultCssFor,
+  matchBasemapCssPreset,
+  isCartoKeyConfigured,
+  DEFAULT_BASEMAP_LIGHT,
+  DEFAULT_BASEMAP_DARK,
+  type BasemapId,
+} from "../../lib/basemaps";
 
-type Basemap = "osm" | "voyager" | "dark";
-
-const BASEMAP_LABELS: Record<Basemap, string> = {
-  osm: "OpenStreetMap",
-  voyager: "CartoDB Voyager",
-  dark: "CartoDB Dark Matter",
-};
-
-const ALL_BASEMAPS: Basemap[] = ["osm", "voyager", "dark"];
+// Basemap options come from the lib/basemaps registry (single source of truth
+// shared with MapChartRenderer) — no duplicated id/label table here.
 
 // Spatial-mode labels — match KineticaWmsLayerForm.tsx SPATIAL_MODE_LABELS verbatim
 // so the operator sees identical wording across the two configuration surfaces.
@@ -77,9 +81,31 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
   // Theme-aware basemaps: the renderer picks light vs dark based on the active app
   // theme. Legacy widgets only have `basemap` — fall back to it for both so they keep
   // their existing look until the operator picks per-theme basemaps.
-  const legacyBasemap = (config.basemap as Basemap) ?? "voyager";
-  const basemapLight = (config.basemapLight as Basemap) ?? legacyBasemap;
-  const basemapDark = (config.basemapDark as Basemap) ?? (config.basemap as Basemap) ?? "dark";
+  const legacyBasemap = (config.basemap as BasemapId) ?? DEFAULT_BASEMAP_LIGHT;
+  const basemapLight = (config.basemapLight as BasemapId) ?? legacyBasemap;
+  const basemapDark =
+    (config.basemapDark as BasemapId) ?? (config.basemap as BasemapId) ?? DEFAULT_BASEMAP_DARK;
+  // CARTO watermarks tiles without VITE_CARTO_API_KEY — flag those options so
+  // the operator can see why before picking one.
+  const cartoKeyConfigured = isCartoKeyConfigured();
+
+  // Per-theme basemap CSS. The field SHOWS the selected basemap's default CSS
+  // until the operator overrides it, so customising means editing what is already
+  // there. Clearing the field drops the override, which re-tracks the default
+  // (write `filter: none;` for a genuinely unstyled basemap).
+  const basemapCssLight =
+    (config.basemapCssLight as string | undefined) ??
+    basemapDefaultCssFor(basemapLight, "light");
+  const basemapCssDark =
+    (config.basemapCssDark as string | undefined) ?? basemapDefaultCssFor(basemapDark, "dark");
+  const changeBasemapCss = (key: "basemapCssLight" | "basemapCssDark", raw: string) => {
+    const next = { ...config };
+    if (raw.trim() === "") delete next[key];
+    else next[key] = raw;
+    onChange(next);
+  };
+  const CSS_HINT =
+    "Pick a style or edit the CSS. Applied to the basemap only; supports filter and opacity.";
   const includedLayerIds = (config.includedLayerIds as number[] | undefined) ?? [];
 
   // Lazy/inclusive default: empty includedLayerIds means all layers are ON.
@@ -233,8 +259,9 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
           removed so there is one title field that actually persists to widget.title. */}
 
       {/* ─── BASEMAP ────────────────────────────────────────────────────── */}
-      {/* Two basemaps — one per app theme. The map auto-selects the matching one
-          (and swaps live when the theme toggles) so the base layer suits light/dark. */}
+      {/* One basemap + one CSS field per app theme. The map auto-selects the pair
+          matching the active theme (and swaps live when it toggles), so a single
+          OSM basemap can read light in light mode and dark in dark mode. */}
       <div className="config-group">
         <div className="config-group-label">BASEMAP</div>
         <div className="ds-field">
@@ -245,11 +272,38 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
             value={basemapLight}
             onChange={(e) => onChange({ ...config, basemapLight: e.target.value })}
           >
-            {ALL_BASEMAPS.map((b) => (
-              <option key={b} value={b}>{BASEMAP_LABELS[b]}</option>
+            {BASEMAPS.map((b) => (
+              <option key={b.id} value={b.id}>{basemapPickerLabel(b, cartoKeyConfigured)}</option>
             ))}
           </select>
         </div>
+        <label className="ds-field">
+          <span className="ds-field-label">Light mode basemap CSS</span>
+          <textarea
+            className="config-textarea"
+            aria-label="Light mode basemap CSS"
+            value={basemapCssLight}
+            onChange={(e) => changeBasemapCss("basemapCssLight", e.target.value)}
+            placeholder={basemapDefaultCssFor(basemapLight, "light") || "filter: none;"}
+            rows={2}
+          />
+          <div className="radiogroup--buttons">
+            {BASEMAP_CSS_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-label={`Light mode basemap style: ${preset.label}`}
+                className={`radiogroup-button${
+                  matchBasemapCssPreset(basemapCssLight)?.id === preset.id ? " radiogroup-button--selected" : ""
+                }`}
+                onClick={() => changeBasemapCss("basemapCssLight", preset.css)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <span className="config-hint">{CSS_HINT}</span>
+        </label>
         <div className="ds-field">
           <span className="ds-field-label">Dark mode basemap</span>
           <select
@@ -258,11 +312,38 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
             value={basemapDark}
             onChange={(e) => onChange({ ...config, basemapDark: e.target.value })}
           >
-            {ALL_BASEMAPS.map((b) => (
-              <option key={b} value={b}>{BASEMAP_LABELS[b]}</option>
+            {BASEMAPS.map((b) => (
+              <option key={b.id} value={b.id}>{basemapPickerLabel(b, cartoKeyConfigured)}</option>
             ))}
           </select>
         </div>
+        <label className="ds-field">
+          <span className="ds-field-label">Dark mode basemap CSS</span>
+          <textarea
+            className="config-textarea"
+            aria-label="Dark mode basemap CSS"
+            value={basemapCssDark}
+            onChange={(e) => changeBasemapCss("basemapCssDark", e.target.value)}
+            placeholder={basemapDefaultCssFor(basemapDark, "dark") || "filter: none;"}
+            rows={2}
+          />
+          <div className="radiogroup--buttons">
+            {BASEMAP_CSS_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-label={`Dark mode basemap style: ${preset.label}`}
+                className={`radiogroup-button${
+                  matchBasemapCssPreset(basemapCssDark)?.id === preset.id ? " radiogroup-button--selected" : ""
+                }`}
+                onClick={() => changeBasemapCss("basemapCssDark", preset.css)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <span className="config-hint">{CSS_HINT}</span>
+        </label>
       </div>
 
       {/* ─── LAYERS (inclusion picker) ──────────────────────────────────── */}
