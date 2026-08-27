@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.20
 milestone_name: Filter Panel
-status: complete
-stopped_at: Completed 110-02-PLAN.md — v1.20 VERIFIED (operator PASS 8/8)
-last_updated: "2026-08-27T18:40:00.000Z"
+status: shipped
+stopped_at: v1.20 Filter Panel SHIPPED + archived (tag v1.20)
+last_updated: "2026-08-27T16:39:55.551Z"
 progress:
   total_phases: 8
   completed_phases: 8
@@ -16,17 +16,22 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-08 — v1.20 STARTED)
+See: .planning/PROJECT.md (updated 2026-08-27 — v1.20 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.20 COMPLETE — verified 2026-08-27; ready for milestone archive
+**Current focus:** Planning next milestone — run `/gsd:new-milestone`
 
 ## Current Position
 
-Phase: 110 (designer-settings-ui-verification-live-uat) — COMPLETE (2026-08-27)
-Plan: 2 of 2 complete
+**v1.20 Filter Panel SHIPPED 2026-08-27** — archived + tagged `v1.20`. No milestone in progress.
 
-**v1.20 VERIFIED.** `110-GATES.md` (gates re-run 2026-08-27: web tsc clean, web vitest 154 files / 3439 tests 0 failed, theme-guard 148/148, server tsc clean, server vitest SET-BASED PASS ⊆ TD-V16-TEST-ISOLATION, sole-materialize-trigger PASS) + `110-UAT.md` (operator attested PASS on all 8 groups, no gaps) + `110-VERIFICATION.md` (SC1-SC4 attested, 19/19 requirements Complete). Next: `/gsd:complete-milestone` to archive v1.20.
+All 8 phases (105–110 incl. inserted 109.1/109.2), 12 plans, 19/19 requirements. Verified: gates re-run at close (web tsc clean, web vitest 154 files / 3439 tests 0 failed, theme-guard 148/148, server tsc clean, server vitest SET-BASED PASS ⊆ TD-V16-TEST-ISOLATION, sole-materialize-trigger PASS) + operator UAT PASS on all 8 groups with zero gaps. Records: `milestones/v1.20-ROADMAP.md`, `milestones/v1.20-REQUIREMENTS.md`, `MILESTONES.md`, `RETROSPECTIVE.md`, `phases/110-*/110-{GATES,UAT,VERIFICATION}.md`.
+
+**Next:** `/gsd:new-milestone` (defines fresh requirements — `REQUIREMENTS.md` was archived and deleted).
+
+### Open tech debt carried forward
+
+TD-V16-TEST-ISOLATION (server set-based gate), TD-V11-04 (OIDC issuer-mock), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog), plus three logged this milestone: TD-V120-VIEWNAME-DUP (the two WMS build sites still duplicate layer-view resolution — adopt `lib/resolveLayerViewName`), TD-V120-DEAD-IMPORT (`WidgetRenderer.tsx:31`), TD-V120-CARTO-RASTER (CARTO raster retirement; `VITE_CARTO_API_KEY` param name unconfirmed).
 
 ### v1.20 Phase Map
 
