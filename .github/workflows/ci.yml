@@ -1,0 +1,59 @@
+name: ci
+
+# Runs the same gates CLAUDE.md requires locally, so master and every PR are
+# held to the standard the project already documents.
+#
+# Also callable from build-images.yml (workflow_call) so a release tag cannot
+# publish images from a tree that does not pass its own gates.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web (tsc + vitest + theme-guard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # matches the Dockerfile's node:20-alpine build stage
+          cache: npm
+      - run: npm ci
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+        working-directory: packages/web
+      - name: vitest (must be 100% — 0 failures)
+        run: npx vitest run
+        working-directory: packages/web
+      - name: theme-guard
+        run: npx vitest run src/styles/theme-guard.spec.ts
+        working-directory: packages/web
+
+  server:
+    name: server (tsc + set-based vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+        working-directory: packages/server
+      # SET-BASED, never a fixed pass-count: the suite carries a documented
+      # permanently-failing set (TD-V11-04 OIDC mocks, db.smoke snapshot drift,
+      # routes.wms) plus files that fail only under cross-mode contamination and
+      # pass alone (TD-V16-TEST-ISOLATION). scripts/test-gate.mjs re-runs any
+      # undocumented failure in isolation and fails only if it still fails there.
+      - name: vitest set-based gate
+        run: node scripts/test-gate.mjs
+        working-directory: packages/server

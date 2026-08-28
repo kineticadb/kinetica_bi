@@ -1,5 +1,11 @@
 name: build-images
 
+# Publishes web + server images to GHCR on a release tag.
+#
+# TAG FORMAT IS LOAD-BEARING: this pattern requires THREE dot-separated parts,
+# and docker/metadata-action's type=semver cannot parse anything less. Tags
+# v1.10 through v1.20 were two-part and therefore never triggered this workflow
+# — no images were published for eleven milestones. Tag `vX.Y.0`, not `vX.Y`.
 on:
   push:
     tags: ["v*.*.*"]
@@ -9,7 +15,12 @@ permissions:
   packages: write
 
 jobs:
+  # A release tag must not publish images from a tree that fails its own gates.
+  gates:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: gates
     runs-on: ubuntu-latest
     strategy:
       matrix:
