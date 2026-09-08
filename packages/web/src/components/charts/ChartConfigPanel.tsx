@@ -19,6 +19,7 @@ import {
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
+import { buildBucketExpr } from "../../lib/heatmapBucket";
 
 /**
  * Heatmap "Result limit" ladder.
@@ -254,6 +255,16 @@ const ChartConfigPanel = ({
     return Object.entries(selectedTable.columns).map(([name, type]) => ({ name, type }));
   }, [selectedSource, selectedTable]);
 
+  /**
+   * name -> Kinetica type, for the selected source. Built from allColumns rather
+   * than selectedTable so a dynamic-view-backed widget resolves types too.
+   * Used to decide whether an axis bucket may be applied.
+   */
+  const columnTypeMap = useMemo(
+    () => Object.fromEntries(allColumns.map((c) => [c.name, c.type])),
+    [allColumns],
+  );
+
   // Phase 35 (DV-V16-12): disabled+hint state when operator picks a dv whose
   // Preview never ran (columns_json is null). The renderer + spec key on this.
   const dvColumnsMissing =
@@ -427,6 +438,29 @@ const ChartConfigPanel = ({
         : isHeatmap
           ? heatmapLimit
           : baseLimit;
+      // Heatmap axis bucketing: a raw timestamp axis makes every instant its own
+      // one-cell row. Each axis column may carry a bucket, applied ONLY when the
+      // column is actually temporal — a bucket left set after switching to a text
+      // column must not emit DATE_TRUNC over a string. The expression is aliased
+      // back to the raw column name so the row key still matches
+      // config.groupByColumns; GROUP BY repeats the EXPRESSION, never the alias.
+      if (isHeatmap) {
+        const bucketKeys = [draft.xBucket, draft.yBucket];
+        const selectParts: string[] = [];
+        const groupParts: string[] = [];
+        cols.forEach((col, idx) => {
+          const isTemporal =
+            inferDataTypeFromColumn(col, columnTypeMap) === "datetime";
+          const expr = isTemporal ? buildBucketExpr(col, bucketKeys[idx]) : null;
+          selectParts.push(expr ? `${expr} AS ${col}` : col);
+          groupParts.push(expr ?? col);
+        });
+        return (
+          `SELECT ${selectParts.join(", ")}, ${multiMetricExpr} AS value ` +
+          `FROM ${table}${cw} GROUP BY ${groupParts.join(", ")} ` +
+          `ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`
+        );
+      }
       // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
       return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
     }
@@ -454,7 +488,7 @@ const ChartConfigPanel = ({
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
     return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
-  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, isHeatmap, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
     return (

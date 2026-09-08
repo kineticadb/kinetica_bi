@@ -930,6 +930,78 @@ describe("HeatmapRenderer", () => {
     });
   });
 
+  describe("cyclical buckets are cycle positions, not timestamps", () => {
+    const TABLE_ID = 42;
+    const DATE_SPEC: FormatSpec = { kind: "date", preset: "us" };
+    const hourRows = [
+      { day_name: "Monday", hour_of_day: 14, value: 10 },
+      { day_name: "Monday", hour_of_day: 2, value: 20 },
+    ];
+    const cfg = { ...baseConfig, tableId: TABLE_ID };
+
+    afterEach(() => {
+      useColumnDisplayConfigStore.getState().reset();
+    });
+
+    it("labels an hour-of-day axis as a clock hour", () => {
+      render(<HeatmapRenderer data={hourRows} config={{ ...cfg, yBucket: "hour_of_day" }} />);
+      const ticks = Array.from(document.querySelectorAll("text")).map((t) => t.textContent);
+      expect(ticks).toContain("14:00");
+      expect(ticks).toContain("02:00");
+    });
+
+    it("does NOT apply the column's date format to a cycle position", () => {
+      // The killer case: with a Date format on the column, hour 14 would be
+      // date-formatted as 14 epoch-seconds => 1970. The bucket must suppress it.
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "hour_of_day", null, DATE_SPEC);
+      render(<HeatmapRenderer data={hourRows} config={{ ...cfg, yBucket: "hour_of_day" }} />);
+      const ticks = Array.from(document.querySelectorAll("text")).map((t) => t.textContent);
+      expect(ticks).toContain("14:00");
+      expect(ticks.some((t) => t?.includes("1970"))).toBe(false);
+    });
+
+    it("still applies the date format for a TRUNCATING bucket, which keeps timestamps", () => {
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "hour_of_day", null, DATE_SPEC);
+      const truncRows = [
+        { day_name: "Monday", hour_of_day: "2023-11-14T00:00:00Z", value: 10 },
+      ];
+      render(<HeatmapRenderer data={truncRows} config={{ ...cfg, yBucket: "day" }} />);
+      const ticks = Array.from(document.querySelectorAll("text")).map((t) => t.textContent);
+      expect(ticks).toContain("11/14/2023");
+    });
+
+    it("sorts a cycle axis numerically, so 2:00 sits below 14:00", () => {
+      render(<HeatmapRenderer data={hourRows} config={{ ...cfg, yBucket: "hour_of_day" }} />);
+      // First y value renders at the BOTTOM, so the smaller hour is lower.
+      const ordered = Array.from(document.querySelectorAll("text"))
+        .filter((t) => /^\d{2}:00$/.test(t.textContent ?? ""))
+        .map((t) => ({ label: t.textContent!, y: Number(t.getAttribute("y")) }))
+        .sort((a, b) => b.y - a.y);
+      expect(ordered.map((o) => o.label)).toEqual(["02:00", "14:00"]);
+    });
+
+    it("labels a day-of-week axis with weekday names", () => {
+      const dowRows = [
+        { day_name: "Cash", hour_of_day: 0, value: 5 },
+        { day_name: "Cash", hour_of_day: 6, value: 8 },
+      ];
+      render(<HeatmapRenderer data={dowRows} config={{ ...cfg, yBucket: "day_of_week" }} />);
+      const ticks = Array.from(document.querySelectorAll("text")).map((t) => t.textContent);
+      expect(ticks).toContain("Sun");
+      expect(ticks).toContain("Sat");
+    });
+
+    it("shows the cycle label in the tooltip too", () => {
+      render(<HeatmapRenderer data={hourRows} config={{ ...cfg, yBucket: "hour_of_day" }} />);
+      fireEvent.mouseEnter(document.querySelector("rect")!);
+      expect(screen.getByTestId("heatmap-tooltip").textContent).toMatch(/\d{2}:00/);
+    });
+  });
+
   it("applies the valueFormat spec to tooltip + legend values", () => {
     render(
       <HeatmapRenderer

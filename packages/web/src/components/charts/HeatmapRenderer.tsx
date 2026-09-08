@@ -35,6 +35,7 @@ import {
   normalizeValue,
   sampleRamp,
 } from "../../lib/heatmapColorScale";
+import { formatBucketTick, isCyclicalBucket } from "../../lib/heatmapBucket";
 import {
   buildHeatmapGrid,
   cellKey,
@@ -114,7 +115,20 @@ const HeatmapRenderer = ({
    */
   const axisFmt = useMemo(() => {
     const identity = (v: unknown): string => String(v);
-    if (!cols || !hasTable) return { x: identity, y: identity };
+    if (!cols) return { x: identity, y: identity };
+    // A CYCLICAL bucket yields a cycle position (hour 0-23, month 1-12), not a
+    // timestamp, so the column's stored date format must NOT be applied — it
+    // would render hour 14 as 1970. Label it as the cycle position it is.
+    const cyc = {
+      x: isCyclicalBucket(config.xBucket),
+      y: isCyclicalBucket(config.yBucket),
+    };
+    if (!hasTable) {
+      return {
+        x: cyc.x ? (v: unknown) => formatBucketTick(v, config.xBucket) : identity,
+        y: cyc.y ? (v: unknown) => formatBucketTick(v, config.yBucket) : identity,
+      };
+    }
     const wrap = (col: string) => {
       const fmt = resolveFormatter(tableId, col);
       return (v: unknown): string => {
@@ -128,20 +142,30 @@ const HeatmapRenderer = ({
         return typeof out === "string" ? out : String(out);
       };
     };
-    return { x: wrap(cols.xCol), y: wrap(cols.yCol) };
-  }, [cols, hasTable, tableId, configVersion]);
+    return {
+      x: cyc.x ? (v: unknown) => formatBucketTick(v, config.xBucket) : wrap(cols.xCol),
+      y: cyc.y ? (v: unknown) => formatBucketTick(v, config.yBucket) : wrap(cols.yCol),
+    };
+  }, [cols, hasTable, tableId, configVersion, config.xBucket, config.yBucket]);
 
   /** A date-formatted column must read chronologically, not in metric order. */
   const axisOrder = useMemo(() => {
-    const kindOf = (col: string): AxisOrder =>
-      hasTable &&
-      useColumnDisplayConfigStore.getState().configs[tableId]?.columns[col]?.format_spec?.kind ===
-        "date"
+    const kindOf = (col: string, bucket: unknown): AxisOrder => {
+      // A cyclical bucket is a small integer, which "auto" already sorts
+      // numerically — asking for "date" here would parse hour 14 as 1970.
+      if (isCyclicalBucket(bucket)) return "auto";
+      return hasTable &&
+        useColumnDisplayConfigStore.getState().configs[tableId]?.columns[col]?.format_spec
+          ?.kind === "date"
         ? "date"
         : "auto";
+    };
     if (!cols) return {};
-    return { x: kindOf(cols.xCol), y: kindOf(cols.yCol) };
-  }, [cols, hasTable, tableId, configVersion]);
+    return {
+      x: kindOf(cols.xCol, config.xBucket),
+      y: kindOf(cols.yCol, config.yBucket),
+    };
+  }, [cols, hasTable, tableId, configVersion, config.xBucket, config.yBucket]);
 
   const grid = useMemo(
     () => (cols ? buildHeatmapGrid(data, cols.xCol, cols.yCol, axisOrder) : null),

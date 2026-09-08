@@ -26,12 +26,15 @@ import {
   HEATMAP_COLOR_THEMES,
 } from "../../../lib/heatmapColorScale";
 import { HEATMAP_CELL_LIMIT } from "../../../lib/heatmapGrid";
+import { HEATMAP_BUCKETS } from "../../../lib/heatmapBucket";
 
 /** Label every Nth tick — a 24-value axis crowds its labels otherwise. */
 const INTERVAL_OPTIONS = [1, 2, 3, 4, 6, 12].map((n) => ({
   value: String(n),
   label: String(n),
 }));
+
+const BUCKET_OPTIONS = HEATMAP_BUCKETS.map((b) => ({ value: b.key, label: b.label }));
 
 const heatmap: ChartTypeDefinition = {
   type: "heatmap",
@@ -44,6 +47,24 @@ const heatmap: ChartTypeDefinition = {
     // Data
     { key: "xAxisLabel", label: "X Axis Label", type: "text", defaultValue: "", group: "Data" },
     { key: "yAxisLabel", label: "Y Axis Label", type: "text", defaultValue: "", group: "Data" },
+    {
+      key: "xBucket",
+      label: "X Axis Bucket",
+      type: "select",
+      options: BUCKET_OPTIONS,
+      defaultValue: "none",
+      group: "Data",
+      hint: "Group a date/time X axis into bands. Ignored for non-temporal columns. Truncate keeps real dates; Hour/Day-of-week fold every date together for the classic cycle heatmap.",
+    },
+    {
+      key: "yBucket",
+      label: "Y Axis Bucket",
+      type: "select",
+      options: BUCKET_OPTIONS,
+      defaultValue: "none",
+      group: "Data",
+      hint: "Same for the Y axis. Without this, every distinct instant is its own one-cell row.",
+    },
 
     // Appearance
     {
@@ -143,6 +164,8 @@ const heatmap: ChartTypeDefinition = {
   defaultConfig: {
     xAxisLabel: "",
     yAxisLabel: "",
+    xBucket: "none",
+    yBucket: "none",
     colorTheme: DEFAULT_HEATMAP_COLOR_THEME,
     reverseColors: true,
     rendering: "pixelated",

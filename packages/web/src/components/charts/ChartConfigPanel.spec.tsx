@@ -1417,4 +1417,113 @@ describe("ChartConfigPanel — heatmap axes + SQL contract", () => {
     expect(screen.getByText("Maximum number of groups to return")).toBeTruthy();
   });
 
+
+  // ── Axis bucketing ─────────────────────────────────────────────────────────
+  // A raw timestamp axis makes every distinct instant its own one-cell row, so
+  // 250 pickup times became 250 rows all formatting to a handful of repeated
+  // dates. Buckets group the axis into bands.
+
+  const TS_CONFIG = {
+    table: "public.nyctaxi",
+    tableId: 42,
+    metricColumn: "amount",
+    aggregation: "SUM",
+    groupByColumn: "payment_type",
+    groupByColumns: ["payment_type", "pickup_datetime"],
+    limit: HEATMAP_CELL_LIMIT,
+  };
+
+  /** TABLES has no temporal column, so bucket tests need one that does. */
+  const TS_TABLES = [
+    {
+      id: 42,
+      name: "nyctaxi",
+      schema: "public",
+      columns: { payment_type: "character(256)", pickup_datetime: "timestamp", amount: "real" },
+    },
+  ];
+
+  const savedSqlWith = (config: Record<string, unknown>): string => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="heatmap"
+        title="Heatmap"
+        config={config}
+        tables={TS_TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    return onSave.mock.calls[0][0].config.sql as string;
+  };
+
+  it("emits raw columns when no bucket is set", () => {
+    const sql = savedSqlWith(TS_CONFIG);
+    expect(sql).toContain("SELECT payment_type, pickup_datetime, SUM(amount) AS value");
+    expect(sql).toContain("GROUP BY payment_type, pickup_datetime");
+    expect(sql).not.toContain("DATE_TRUNC");
+  });
+
+  it("truncates a temporal axis and aliases it back to the column name", () => {
+    // The alias keeps the row key matching config.groupByColumns, so
+    // resolveHeatmapColumns in the renderer needs no knowledge of bucketing.
+    const sql = savedSqlWith({ ...TS_CONFIG, yBucket: "day" });
+    expect(sql).toContain(
+      "SELECT payment_type, DATE_TRUNC('day', pickup_datetime) AS pickup_datetime",
+    );
+    // GROUP BY repeats the EXPRESSION, never the alias.
+    expect(sql).toContain("GROUP BY payment_type, DATE_TRUNC('day', pickup_datetime)");
+  });
+
+  it("extracts a cycle position for a cyclical bucket", () => {
+    const sql = savedSqlWith({ ...TS_CONFIG, yBucket: "hour_of_day" });
+    expect(sql).toContain("EXTRACT(HOUR FROM pickup_datetime) AS pickup_datetime");
+    expect(sql).toContain("GROUP BY payment_type, EXTRACT(HOUR FROM pickup_datetime)");
+  });
+
+  it("buckets each axis independently", () => {
+    const sql = savedSqlWith({
+      ...TS_CONFIG,
+      groupByColumns: ["pickup_datetime", "pickup_datetime"],
+      xBucket: "day_of_week",
+      yBucket: "hour_of_day",
+    });
+    // The classic day-of-week x hour-of-day cycle heatmap.
+    expect(sql).toContain("EXTRACT(DOW FROM pickup_datetime) AS pickup_datetime");
+    expect(sql).toContain("EXTRACT(HOUR FROM pickup_datetime) AS pickup_datetime");
+  });
+
+  it("IGNORES a bucket set on a non-temporal column", () => {
+    // A bucket left over from a previous column choice must not emit
+    // DATE_TRUNC over a text column and break the whole query.
+    const sql = savedSqlWith({ ...TS_CONFIG, xBucket: "day" });
+    expect(sql).toContain("SELECT payment_type,");
+    expect(sql).not.toContain("DATE_TRUNC('day', payment_type)");
+  });
+
+  it("keeps the limit and hottest-first ordering when bucketing", () => {
+    const sql = savedSqlWith({ ...TS_CONFIG, yBucket: "month" });
+    expect(sql).toContain("ORDER BY value DESC");
+    expect(sql).toContain(`LIMIT ${HEATMAP_CELL_LIMIT}`);
+  });
+
+  it("does not bucket bar or table — the fields are heatmap-only", () => {
+    const onSave = vi.fn();
+    vi.spyOn(registry, "getChartType").mockReturnValue(BAR_DEF_GROUPED);
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{ ...TS_CONFIG, yBucket: "day" }}
+        tables={TS_TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).not.toContain("DATE_TRUNC");
+  });
+
 });
