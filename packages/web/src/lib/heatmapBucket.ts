@@ -24,8 +24,9 @@
  * SQL provenance: the DATE_TRUNC units below are exactly those proven against
  * Kinetica by lib/timelineBin.ts's INTERVAL_LADDER (locked in CONTEXT.md
  * §Post-research decisions 2026-05-29). The EXTRACT form is the same construct
- * timelineBin uses for EPOCH; only these unit keywords are unverified against a
- * live instance.
+ * timelineBin uses for EPOCH, and the HOUR / DOW / MONTH unit keywords were
+ * confirmed against a live Kinetica instance in operator UAT on 2026-09-08 —
+ * including DOW numbering from 0=Sunday, which the labels assume.
  */
 
 import { MONTH_ABBR } from "./timelineBin";
@@ -108,8 +109,10 @@ const DOW_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * inventing a label, so a backend numbering us we did not expect stays visible
  * instead of being silently mislabelled.
  *
- * DOW is read as 0=Sunday (Postgres semantics). A backend returning 1-7 would
- * shift the names, so a 7 is passed through rather than wrapped to "Sun".
+ * DOW is read as 0=Sunday, confirmed against a live instance in UAT. The
+ * pass-through for out-of-range values is kept anyway: a backend numbering DOW
+ * 1-7 would shift every name, so a 7 stays visible as "7" rather than wrapping
+ * to "Sun".
  */
 export function formatBucketTick(value: unknown, key: unknown): string {
   const bucket = getHeatmapBucket(key);
