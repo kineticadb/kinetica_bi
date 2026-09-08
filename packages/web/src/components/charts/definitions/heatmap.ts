@@ -25,6 +25,7 @@ import {
   DEFAULT_HEATMAP_COLOR_THEME,
   HEATMAP_COLOR_THEMES,
 } from "../../../lib/heatmapColorScale";
+import { HEATMAP_CELL_LIMIT } from "../../../lib/heatmapGrid";
 
 /** Label every Nth tick — a 24-value axis crowds its labels otherwise. */
 const INTERVAL_OPTIONS = [1, 2, 3, 4, 6, 12].map((n) => ({
@@ -153,6 +154,10 @@ const heatmap: ChartTypeDefinition = {
     showValues: false,
     valueFormat: null,
     customWhere: "",
+    // Cells, not groups: one row per (x,y) intersection. Starts at the cap so a
+    // new heatmap never opens with a silently holed grid; the operator can lower
+    // it from the Result limit ladder.
+    limit: HEATMAP_CELL_LIMIT,
     // Ordered [xColumn, yColumn] — same field the multi-column bar/table path uses.
     groupByColumns: [] as string[],
   },

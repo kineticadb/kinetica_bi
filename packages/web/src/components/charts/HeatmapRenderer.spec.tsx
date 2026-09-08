@@ -568,6 +568,108 @@ describe("HeatmapRenderer", () => {
     });
   });
 
+  // ── Live-UAT regressions ────────────────────────────────────────────────────
+  describe("tooltip stays inside the widget (live UAT regression)", () => {
+    // The operator's screenshot showed a top-row hover painting the tooltip
+    // above the card, which clipped both axis-value lines. `top` was clamped to
+    // >= 0, but the -100% Y translate then moved the painted box up by its own
+    // height, so the clamp never applied to what was actually drawn.
+    const rectByExtreme = (pick: "top" | "bottom"): SVGRectElement =>
+      allRects().reduce((a, b) =>
+        pick === "top"
+          ? num(a, "y") <= num(b, "y") ? a : b
+          : num(a, "y") >= num(b, "y") ? a : b,
+      );
+
+    it("flips BELOW the cell when hovering the top row, instead of painting above the widget", () => {
+      render(<HeatmapRenderer data={rows} config={baseConfig} />);
+      const top = rectByExtreme("top");
+      fireEvent.mouseEnter(top);
+      const tip = screen.getByTestId("heatmap-tooltip");
+      // No upward translate — the box grows downward from `top`.
+      expect(tip.style.transform).toBe("translate(-50%, 0)");
+      // ...and it starts at or below the hovered cell's bottom edge, so the
+      // whole box is inside the container rather than above it.
+      expect(parseFloat(tip.style.top)).toBeGreaterThanOrEqual(
+        num(top, "y") + num(top, "height"),
+      );
+    });
+
+    it("still places the tooltip ABOVE the cell when there is room", () => {
+      render(<HeatmapRenderer data={rows} config={baseConfig} />);
+      const bottom = rectByExtreme("bottom");
+      fireEvent.mouseEnter(bottom);
+      const tip = screen.getByTestId("heatmap-tooltip");
+      expect(tip.style.transform).toBe("translate(-50%, -100%)");
+      expect(parseFloat(tip.style.top)).toBe(num(bottom, "y") - 8);
+    });
+
+    it("keeps all four lines regardless of which row is hovered", () => {
+      render(<HeatmapRenderer data={rows} config={baseConfig} />);
+      for (const pick of ["top", "bottom"] as const) {
+        cleanup();
+        render(<HeatmapRenderer data={rows} config={baseConfig} />);
+        fireEvent.mouseEnter(rectByExtreme(pick));
+        const tip = screen.getByTestId("heatmap-tooltip");
+        expect(tip.textContent).toContain("day_name");
+        expect(tip.textContent).toContain("hour_of_day");
+        expect(tip.textContent).toContain("AVG(download_throughput)");
+        expect(tip.textContent).toMatch(/%/);
+      }
+    });
+  });
+
+  describe("truncation notice tracks the EFFECTIVE limit (live UAT regression)", () => {
+    // The operator can lower "Result limit" below HEATMAP_CELL_LIMIT, so
+    // comparing row count against the constant left every lowered limit
+    // silently truncated — the exact failure the notice exists to prevent.
+    const gridOf = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        day_name: `d${i}`,
+        hour_of_day: 0,
+        value: i + 1,
+      }));
+
+    it("warns when the row count reaches a LOWERED limit, not just the cap", () => {
+      render(<HeatmapRenderer data={gridOf(250)} config={{ ...baseConfig, limit: 250 }} />);
+      const notice = screen.getByTestId("heatmap-truncated");
+      expect(notice.textContent).toContain("250");
+      // Must not quote the cap the operator did not ask for.
+      expect(notice.textContent).not.toContain("5,000");
+    });
+
+    it("does not warn just below a lowered limit", () => {
+      render(<HeatmapRenderer data={gridOf(249)} config={{ ...baseConfig, limit: 250 }} />);
+      expect(screen.queryByTestId("heatmap-truncated")).toBeNull();
+    });
+
+    it("falls back to the cap when no limit is configured", () => {
+      render(<HeatmapRenderer data={gridOf(250)} config={baseConfig} />);
+      expect(screen.queryByTestId("heatmap-truncated")).toBeNull();
+    });
+
+    it("clamps a limit above the cap — the panel never emits a larger LIMIT", () => {
+      render(
+        <HeatmapRenderer
+          data={gridOf(HEATMAP_CELL_LIMIT)}
+          config={{ ...baseConfig, limit: 999999 }}
+        />,
+      );
+      const notice = screen.getByTestId("heatmap-truncated");
+      expect(notice.textContent).toContain(HEATMAP_CELL_LIMIT.toLocaleString());
+    });
+
+    it("ignores a garbage limit rather than hiding the notice", () => {
+      render(
+        <HeatmapRenderer
+          data={gridOf(HEATMAP_CELL_LIMIT)}
+          config={{ ...baseConfig, limit: "not-a-number" }}
+        />,
+      );
+      expect(screen.getByTestId("heatmap-truncated")).toBeTruthy();
+    });
+  });
+
   it("applies the valueFormat spec to tooltip + legend values", () => {
     render(
       <HeatmapRenderer

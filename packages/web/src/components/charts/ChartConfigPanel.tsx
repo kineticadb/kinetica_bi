@@ -20,6 +20,20 @@ import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsS
 import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 
+/**
+ * Heatmap "Result limit" ladder.
+ *
+ * The shared ladder tops out at 500 and defaults to 100, which counts GROUPS.
+ * A heatmap row is one (x,y) INTERSECTION, so 7 days x 24 hours is already 168
+ * and the shared default silently drops cells, leaving holes that read as
+ * missing data. Heatmap therefore gets its own ladder, defaulting to the cap.
+ *
+ * Live UAT finding: this used to be a hardcoded override of the operator's
+ * choice while the "Result limit" control was still rendered, so the field
+ * showed 100 while the SQL said 5000 and changing it did nothing.
+ */
+const HEATMAP_LIMITS = [250, 500, 1000, 2500, HEATMAP_CELL_LIMIT];
+
 type TableInfo = {
   id: number;
   name: string;
@@ -399,15 +413,19 @@ const ChartConfigPanel = ({
       // Bar expands categories × series so it needs a generous LIMIT (config.limit ×
       // maxBarGroupBySeriesCap × 2, read from auth store at save time). The Data Table renders
       // one row per group tuple, so it just uses the plain "Result limit".
-      // A heatmap needs one row per (x,y) INTERSECTION — 7 days x 24 hours is already
-      // 168 rows, so the shared 100-row default would drop cells and leave holes that
-      // look like missing data. Cap at the renderer's HEATMAP_CELL_LIMIT instead, and
-      // keep ORDER BY value DESC so an over-cap grid keeps its hottest cells (the
-      // renderer surfaces a truncation notice when row count reaches the cap).
+      // A heatmap needs one row per (x,y) INTERSECTION, so it validates the
+      // operator's choice against its OWN ladder (which defaults to the cap)
+      // rather than the shared group ladder. ORDER BY value DESC is retained so
+      // an over-cap grid keeps its hottest cells; HeatmapRenderer reads the same
+      // config.limit to decide when to show its truncation notice, so the two
+      // must stay in agreement.
+      const heatmapLimit = HEATMAP_LIMITS.includes(rawLimitM)
+        ? rawLimitM
+        : HEATMAP_CELL_LIMIT;
       const sqlLimit = isBar
         ? baseLimit * useAuthStore.getState().maxBarGroupBySeriesCap * 2
         : isHeatmap
-          ? HEATMAP_CELL_LIMIT
+          ? heatmapLimit
           : baseLimit;
       // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
       return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
@@ -890,16 +908,22 @@ const ChartConfigPanel = ({
                     <span className="ds-field-label">Result limit</span>
                     <select
                       className="ds-select"
-                      value={String((draft.limit as number) ?? 100)}
+                      value={String(
+                        (draft.limit as number) ?? (isHeatmap ? HEATMAP_CELL_LIMIT : 100),
+                      )}
                       onChange={(e) => set("limit", Number(e.target.value))}
                       disabled={dvColumnsMissing}
                       aria-label="Result limit"
                     >
-                      {[5, 10, 25, 50, 100, 250, 500].map((n) => (
+                      {(isHeatmap ? HEATMAP_LIMITS : [5, 10, 25, 50, 100, 250, 500]).map((n) => (
                         <option key={n} value={n}>{n}</option>
                       ))}
                     </select>
-                    <span className="config-hint">Maximum number of groups to return</span>
+                    <span className="config-hint">
+                      {isHeatmap
+                        ? "Maximum number of cells (x × y intersections) to return. The grid warns when a result reaches this limit."
+                        : "Maximum number of groups to return"}
+                    </span>
                   </label>
                 )}
               </>

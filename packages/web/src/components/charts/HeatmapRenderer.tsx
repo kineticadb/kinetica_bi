@@ -171,7 +171,23 @@ const HeatmapRenderer = ({
   const svgW = yGutter + plotW + PAD;
   const svgH = PAD + plotH + xGutter;
 
-  const truncated = data.length >= HEATMAP_CELL_LIMIT;
+  // Threshold is the limit the QUERY actually used, not the cap. The operator can
+  // lower "Result limit" below HEATMAP_CELL_LIMIT, and a grid truncated at 1000
+  // must warn just as loudly as one truncated at 5000 — comparing against the
+  // constant would leave every lowered limit silently holed, which is precisely
+  // what this notice exists to prevent. Clamped to the cap because the panel
+  // never emits a larger LIMIT.
+  const rawLimit = Number(config.limit);
+  const cellLimit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, HEATMAP_CELL_LIMIT)
+      : HEATMAP_CELL_LIMIT;
+  const truncated = data.length >= cellLimit;
+
+  /** Estimated tooltip height: 4 lines @ 11px + padding + border, rounded up. */
+  const TIP_EST_H = 80;
+  /** Room above the hovered cell? Otherwise the tooltip flips below it. */
+  const tipAbove = (hover?.py ?? 0) >= TIP_EST_H;
 
   return (
     <div
@@ -181,8 +197,9 @@ const HeatmapRenderer = ({
     >
       {truncated && (
         <div className="config-hint" data-testid="heatmap-truncated">
-          Showing the {HEATMAP_CELL_LIMIT.toLocaleString()} highest-value cells — the grid is
-          truncated. Narrow the query or pick lower-cardinality axes.
+          Showing the {cellLimit.toLocaleString()} highest-value cells — the grid is
+          truncated. Raise "Result limit", narrow the query, or pick
+          lower-cardinality axes.
         </div>
       )}
 
@@ -369,8 +386,20 @@ const HeatmapRenderer = ({
             // px already includes yGutter (it is measured from the cell's svg x),
             // so it needs no further offset and cannot be negative.
             left: hover.px,
-            top: Math.max(0, hover.py - 8),
-            transform: "translate(-50%, -100%)",
+            // Collision flip. The box is painted UPWARD from `top` by the -100%
+            // Y translate, so clamping `top` cannot keep it on screen: the clamp
+            // constrains the pre-transform origin, not the painted box. A
+            // top-row hover (py === PAD) put the whole tooltip above the widget,
+            // where the card clipped it and both axis-value lines were lost —
+            // found in live UAT, invisible to the old tests because they hover a
+            // cell whose overflow does not show.
+            //
+            // Height is ESTIMATED, not measured: jsdom reports offsetHeight 0,
+            // so a measured flip would silently degrade to the broken branch in
+            // every test. Over-estimating only flips below when it need not,
+            // which is harmless; under-estimating clips, so err high.
+            top: tipAbove ? hover.py - 8 : hover.py + cellH + 8,
+            transform: tipAbove ? "translate(-50%, -100%)" : "translate(-50%, 0)",
             pointerEvents: "none",
             background: "var(--panel)",
             color: "var(--text)",

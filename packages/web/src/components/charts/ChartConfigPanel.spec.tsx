@@ -1363,4 +1363,58 @@ describe("ChartConfigPanel — heatmap axes + SQL contract", () => {
     renderWithTableSelected("bar");
     expect(screen.getByRole("button", { name: /\+ Add column/i })).not.toBeDisabled();
   });
+
+  // ── Live-UAT regression: the Result limit control was inert ────────────────
+  // Operator: "I dont know what the limit is for if by default it limits to
+  // 5000". The field read 100 while the SQL said LIMIT 5000, because the branch
+  // replaced baseLimit with the constant while still rendering the control that
+  // sets baseLimit.
+
+  it("honours a limit the operator picked from the heatmap ladder", () => {
+    const sql = savedSql(renderHeatmap(vi.fn(), { ...heatmapConfig, limit: 1000 }));
+    expect(sql).toContain("LIMIT 1000");
+    expect(sql).not.toContain(`LIMIT ${HEATMAP_CELL_LIMIT}`);
+  });
+
+  it("defaults to the cap when no limit is stored", () => {
+    const { limit: _drop, ...noLimit } = heatmapConfig;
+    expect(savedSql(renderHeatmap(vi.fn(), noLimit))).toContain(
+      `LIMIT ${HEATMAP_CELL_LIMIT}`,
+    );
+  });
+
+  it("rejects an off-ladder limit (e.g. the shared 100) rather than holing the grid", () => {
+    // 100 groups is fine for bar; 100 INTERSECTIONS silently drops cells, since
+    // 7 days x 24 hours is already 168.
+    expect(savedSql(renderHeatmap(vi.fn(), { ...heatmapConfig, limit: 100 }))).toContain(
+      `LIMIT ${HEATMAP_CELL_LIMIT}`,
+    );
+  });
+
+  it("offers the heatmap ladder in the Result limit control, defaulting to the cap", () => {
+    renderWithTableSelected("heatmap");
+    const select = screen.getByLabelText("Result limit") as HTMLSelectElement;
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toEqual(["250", "500", "1000", "2500", String(HEATMAP_CELL_LIMIT)]);
+    // The shared group ladder's small values must not be offered.
+    expect(options).not.toContain("5");
+    expect(options).not.toContain("100");
+    expect(select.value).toBe(String(HEATMAP_CELL_LIMIT));
+  });
+
+  it("describes the limit in cells, not groups", () => {
+    renderWithTableSelected("heatmap");
+    expect(screen.getByText(/intersections/i)).toBeTruthy();
+    expect(screen.queryByText("Maximum number of groups to return")).toBeNull();
+  });
+
+  it("leaves the shared group ladder untouched for bar", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(BAR_DEF_GROUPED);
+    renderWithTableSelected("bar");
+    const select = screen.getByLabelText("Result limit") as HTMLSelectElement;
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toEqual(["5", "10", "25", "50", "100", "250", "500"]);
+    expect(screen.getByText("Maximum number of groups to return")).toBeTruthy();
+  });
+
 });
