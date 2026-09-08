@@ -831,6 +831,61 @@ describe("HeatmapRenderer", () => {
     });
   });
 
+  describe("legend stays inside the widget on a scrolling grid (live UAT regression)", () => {
+    // Sizing the ramp to plotH was right only while the grid FITS. Once it
+    // scrolls, plotH is the full scrollable CONTENT height (250 rows at MIN_CELL
+    // = 1500px), so the ramp ran far past the widget and carried its low-end
+    // label out of view — the operator had to expand the widget to see anything.
+    const tallRows = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        day_name: "Monday",
+        hour_of_day: i,
+        value: i + 1,
+      }));
+
+    it("caps the ramp at the visible height rather than the scrollable content height", () => {
+      withMeasuredBox(600, 300, () => {
+        render(<HeatmapRenderer data={tallRows(250)} config={baseConfig} />);
+        const svgH = num(document.querySelector("svg")!, "height");
+        const rampH = parseFloat(screen.getByTestId("heatmap-legend-ramp").style.height);
+        // The grid really is scrolling — content taller than the widget.
+        expect(svgH).toBeGreaterThan(300);
+        // ...but the ramp is bounded by the widget, not by the content.
+        expect(rampH).toBeLessThanOrEqual(300);
+        expect(rampH).toBeLessThan(svgH);
+      });
+    });
+
+    it("keeps both legend end-labels within the widget height", () => {
+      withMeasuredBox(600, 300, () => {
+        render(<HeatmapRenderer data={tallRows(250)} config={baseConfig} />);
+        const legend = screen.getByTestId("heatmap-legend");
+        const rampH = parseFloat(
+          screen.getByTestId("heatmap-legend-ramp").style.height,
+        );
+        // ramp + the two end labels must fit the box; a 1500px ramp put the
+        // low-end label ~1200px below the widget's bottom edge.
+        expect(rampH).toBeLessThanOrEqual(300);
+        // Both end-labels present. Read the label ELEMENTS, not concatenated
+        // textContent — "250" and "1" run together as "2501".
+        const labels = Array.from(legend.querySelectorAll("span")).map((el) => el.textContent);
+        expect(labels).toEqual(["250", "1"]);
+      });
+    });
+
+    it("still matches the plot exactly when the grid fits (no regression)", () => {
+      withMeasuredBox(600, 300, () => {
+        render(<HeatmapRenderer data={rows} config={baseConfig} />);
+        const all = allRects();
+        const extent =
+          Math.max(...all.map((r) => num(r, "y") + num(r, "height"))) -
+          Math.min(...all.map((r) => num(r, "y")));
+        const rampH = parseFloat(screen.getByTestId("heatmap-legend-ramp").style.height);
+        expect(rampH).toBeCloseTo(extent, 1);
+      });
+    });
+  });
+
   describe("tick labels auto-thin so a dense axis stays readable", () => {
     const denseRows = (n: number) =>
       Array.from({ length: n }, (_, i) => ({

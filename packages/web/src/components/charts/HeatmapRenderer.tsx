@@ -246,6 +246,14 @@ const HeatmapRenderer = ({
 
   const availH = (box.h || FALLBACK_H) - PAD - xGutter;
   const plotH = Math.max(yValues.length * MIN_CELL, availH);
+  /**
+   * Height of the plot the operator can actually SEE.
+   *
+   * plotH is the full scrollable CONTENT height — 250 rows at MIN_CELL is
+   * 1500px — so anything sized to it overflows the widget once the grid
+   * scrolls. Equal to plotH whenever the grid fits, which is the common case.
+   */
+  const visiblePlotH = availH > 0 ? Math.min(plotH, availH) : plotH;
   const cellH = plotH / yValues.length;
   const svgW = yGutter + plotW + PAD;
   const svgH = PAD + plotH + xGutter;
@@ -475,11 +483,17 @@ const HeatmapRenderer = ({
               data-testid="heatmap-legend-ramp"
               style={{
                 width: 12,
-                // Height is the PLOT height, not a flex stretch: the ramp explains
-                // the grid, so it must align with the grid's vertical extent rather
-                // than growing to whatever the widget's flex row happens to be
-                // (which pushed the low-end label off-screen).
-                height: plotH,
+                // The VISIBLE plot height, not a flex stretch and not plotH.
+                //
+                // A flex stretch grew the ramp to the whole row and pushed the
+                // low-end label off-screen. Sizing to plotH fixed that only while
+                // the grid fits: once it scrolls, plotH is the full content height
+                // (250 rows x MIN_CELL = 1500px), so the ramp ran far past the
+                // widget and took its low-end label with it — the operator hit
+                // exactly this and had to expand the widget to see anything.
+                // The ramp explains the whole domain, so tracking the visible
+                // extent is both correct and bounded.
+                height: visiblePlotH,
                 background: `linear-gradient(to top, ${swatches.join(", ")})`,
               }}
             />
