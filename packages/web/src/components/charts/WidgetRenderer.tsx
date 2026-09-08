@@ -7,6 +7,7 @@ import DataFilterRenderer from "./DataFilterRenderer";
 import RadioGroupRenderer from "./RadioGroupRenderer";
 import TimelineRenderer from "./TimelineRenderer";
 import CalendarRenderer from "./CalendarRenderer";
+import HeatmapRenderer from "./HeatmapRenderer";
 import NumericLineRenderer from "./NumericLineRenderer";
 import {
   Area,
@@ -796,6 +797,12 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       return <TableRenderer data={data} config={cfg} tableFilters={tableFilters} {...drillProps} />;
     case "bignumber":
       return <BigNumberRenderer data={data} config={cfg} />;
+    case "heatmap":
+      // Rides the shared aggregated contract (2-entry groupByColumns + AGG(metric)
+      // AS value), so `data` already carries one row per (x,y) intersection and no
+      // drill props are threaded — supportsDrillDown is false because a single-column
+      // drill cannot express a 2-dimension cell.
+      return <HeatmapRenderer data={data} config={cfg} />;
     case "map":
       // Phase 12: MapChartRenderer reads layers from useDashboardLayersStore. Each layer carries
       // its own table_id; the renderer resolves table_id → schema.name for the WMS LAYERS param.
