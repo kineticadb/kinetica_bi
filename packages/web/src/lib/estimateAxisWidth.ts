@@ -10,6 +10,19 @@ const TICK_GUTTER_PX = 16; // tick line + label padding
 const MIN_WIDTH_PX = 34;
 const MAX_WIDTH_PX = 80;
 
+/**
+ * Approximate rendered width (px) of a single label at the ~11px tick font, with
+ * NO gutter and NO clamping.
+ *
+ * Exported for callers that need the raw text extent rather than an axis width:
+ * HeatmapRenderer compares it against the cell width to decide whether x tick
+ * labels fit horizontally or must be rotated, and uses it to size the bottom
+ * gutter to the labels actually drawn.
+ */
+export function estimateLabelWidth(label: string): number {
+  return (label ?? "").length * FONT_PX_PER_CHAR;
+}
+
 /** Width (px) for a value axis given the formatted labels it must display. */
 export function estimateAxisWidth(formattedLabels: string[]): number {
   const longest = formattedLabels.reduce(
