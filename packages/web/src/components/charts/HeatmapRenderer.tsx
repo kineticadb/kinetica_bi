@@ -366,7 +366,9 @@ const HeatmapRenderer = ({
           data-testid="heatmap-tooltip"
           style={{
             position: "absolute",
-            left: hover.px + yGutter > 0 ? hover.px : 0,
+            // px already includes yGutter (it is measured from the cell's svg x),
+            // so it needs no further offset and cannot be negative.
+            left: hover.px,
             top: Math.max(0, hover.py - 8),
             transform: "translate(-50%, -100%)",
             pointerEvents: "none",
