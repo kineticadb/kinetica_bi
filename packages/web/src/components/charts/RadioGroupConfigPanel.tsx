@@ -61,6 +61,7 @@ import { listDynamicViews } from "../../api/client";
 import type { DynamicViewRow, DashboardLayerDto } from "../../api/client";
 import type { Column } from "../../lib/columnTypes";
 import RadioLayerConfigEditor from "./RadioLayerConfigEditor";
+import { randomId } from "../../lib/randomId";
 
 // ---------------------------------------------------------------------------
 // Helper: cast config prop to RadioGroupConfig with safe defaults
@@ -80,13 +81,9 @@ function parseConfig(raw: Record<string, unknown>): RadioGroupConfig {
 // Helper: generate a stable option id
 // ---------------------------------------------------------------------------
 
-let _idCounter = 0;
-function generateOptionId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `opt-${Date.now()}-${_idCounter++}`;
-}
+// Was a local crypto.randomUUID guard with a counter fallback; now shares
+// lib/randomId so the insecure-origin path is one implementation, tested once.
+const generateOptionId = (): string => randomId();
 
 // ---------------------------------------------------------------------------
 // Helper: layer display name for the target picker
