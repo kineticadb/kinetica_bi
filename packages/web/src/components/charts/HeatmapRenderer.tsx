@@ -74,6 +74,12 @@ const HeatmapRenderer = ({
   const { axis, emptyCell } = useChartAxisColors();
   const [hover, setHover] = useState<{ x: string; y: string; value: number; px: number; py: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // The plot scrolls independently of the widget (overflow:auto) once cells hit
+  // MIN_CELL. The tooltip is a SIBLING overlay positioned in svg coordinates, so
+  // without subtracting the scroll offset it paints where the cell used to be —
+  // off the visible area, clipped and invisible. Kept as an overlay rather than
+  // moved inside the scroller so it is never clipped by the scroll box itself.
+  const [scroll, setScroll] = useState({ x: 0, y: 0 });
   const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   // Measure the widget so the grid fills it and reflows on dashboard resize.
@@ -269,8 +275,11 @@ const HeatmapRenderer = ({
 
   /** Estimated tooltip height: 4 lines @ 11px + padding + border, rounded up. */
   const TIP_EST_H = 80;
-  /** Room above the hovered cell? Otherwise the tooltip flips below it. */
-  const tipAbove = (hover?.py ?? 0) >= TIP_EST_H;
+  /** Hovered cell's position within the VISIBLE plot, after scrolling. */
+  const tipX = (hover?.px ?? 0) - scroll.x;
+  const tipY = (hover?.py ?? 0) - scroll.y;
+  /** Room above the cell ON SCREEN? Otherwise the tooltip flips below it. */
+  const tipAbove = tipY >= TIP_EST_H;
 
   return (
     <div
@@ -279,15 +288,34 @@ const HeatmapRenderer = ({
       style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", position: "relative" }}
     >
       {truncated && (
-        <div className="config-hint" data-testid="heatmap-truncated">
-          Showing the {cellLimit.toLocaleString()} highest-value cells — the grid is
-          truncated. Raise "Result limit", narrow the query, or pick
-          lower-cardinality axes.
+        <div
+          className="config-hint"
+          data-testid="heatmap-truncated"
+          // Compact by design: this sits above the plot, so a wrapped
+          // three-line paragraph stole grid height in exactly the dense case
+          // that triggers it. Guidance moves to the native title tooltip.
+          title={`The result reached the ${cellLimit.toLocaleString()}-cell Result limit, so lower-value cells are not shown. Raise "Result limit", narrow the query, or pick lower-cardinality axes.`}
+          style={{
+            fontSize: 10,
+            padding: "1px 2px",
+            margin: 0,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            flexShrink: 0,
+          }}
+        >
+          Truncated to the top {cellLimit.toLocaleString()} cells
         </div>
       )}
 
       <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0, width: "100%" }}>
-        <div style={{ overflow: "auto", flex: 1, minWidth: 0 }}>
+        <div
+          style={{ overflow: "auto", flex: 1, minWidth: 0 }}
+          onScroll={(e) =>
+            setScroll({ x: e.currentTarget.scrollLeft, y: e.currentTarget.scrollTop })
+          }
+        >
           <svg
             width={svgW}
             height={svgH}
@@ -468,7 +496,7 @@ const HeatmapRenderer = ({
             position: "absolute",
             // px already includes yGutter (it is measured from the cell's svg x),
             // so it needs no further offset and cannot be negative.
-            left: hover.px,
+            left: tipX,
             // Collision flip. The box is painted UPWARD from `top` by the -100%
             // Y translate, so clamping `top` cannot keep it on screen: the clamp
             // constrains the pre-transform origin, not the painted box. A
@@ -481,7 +509,7 @@ const HeatmapRenderer = ({
             // so a measured flip would silently degrade to the broken branch in
             // every test. Over-estimating only flips below when it need not,
             // which is harmless; under-estimating clips, so err high.
-            top: tipAbove ? hover.py - 8 : hover.py + cellH + 8,
+            top: tipAbove ? tipY - 8 : tipY + cellH + 8,
             transform: tipAbove ? "translate(-50%, -100%)" : "translate(-50%, 0)",
             pointerEvents: "none",
             background: "var(--panel)",

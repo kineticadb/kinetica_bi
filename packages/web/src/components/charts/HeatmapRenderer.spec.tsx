@@ -606,6 +606,47 @@ describe("HeatmapRenderer", () => {
       expect(parseFloat(tip.style.top)).toBe(num(bottom, "y") - 8);
     });
 
+    it("follows the cell when the plot is scrolled (live UAT regression)", () => {
+      // Once cells hit MIN_CELL the plot scrolls inside its own overflow:auto
+      // box. The tooltip is a sibling overlay positioned in svg coordinates, so
+      // without the scroll offset it painted where the cell USED to be —
+      // outside the visible area, so it simply never appeared after scrolling.
+      const tall = Array.from({ length: 200 }, (_, i) => ({
+        day_name: "Monday",
+        hour_of_day: i,
+        value: i + 1,
+      }));
+      render(<HeatmapRenderer data={tall} config={baseConfig} />);
+      const scroller = document.querySelector("svg")!.parentElement!;
+      fireEvent.mouseEnter(document.querySelector("rect")!);
+      const before = parseFloat(screen.getByTestId("heatmap-tooltip").style.top);
+
+      Object.defineProperty(scroller, "scrollTop", { value: 300, configurable: true });
+      fireEvent.scroll(scroller);
+
+      const tip = screen.getByTestId("heatmap-tooltip");
+      expect(parseFloat(tip.style.top)).toBeCloseTo(before - 300, 1);
+    });
+
+    it("follows the cell horizontally too", () => {
+      const wide = Array.from({ length: 200 }, (_, i) => ({
+        day_name: `d${i}`,
+        hour_of_day: 0,
+        value: i + 1,
+      }));
+      render(<HeatmapRenderer data={wide} config={baseConfig} />);
+      const scroller = document.querySelector("svg")!.parentElement!;
+      fireEvent.mouseEnter(document.querySelector("rect")!);
+      const before = parseFloat(screen.getByTestId("heatmap-tooltip").style.left);
+
+      Object.defineProperty(scroller, "scrollLeft", { value: 120, configurable: true });
+      fireEvent.scroll(scroller);
+
+      expect(
+        parseFloat(screen.getByTestId("heatmap-tooltip").style.left),
+      ).toBeCloseTo(before - 120, 1);
+    });
+
     it("keeps all four lines regardless of which row is hovered", () => {
       render(<HeatmapRenderer data={rows} config={baseConfig} />);
       for (const pick of ["top", "bottom"] as const) {
@@ -659,6 +700,18 @@ describe("HeatmapRenderer", () => {
       );
       const notice = screen.getByTestId("heatmap-truncated");
       expect(notice.textContent).toContain(HEATMAP_CELL_LIMIT.toLocaleString());
+    });
+
+    it("keeps the notice to one compact line, with the guidance in its title", () => {
+      // It sits ABOVE the plot, so a wrapped three-line paragraph stole grid
+      // height in exactly the dense case that triggers it.
+      render(<HeatmapRenderer data={gridOf(250)} config={{ ...baseConfig, limit: 250 }} />);
+      const notice = screen.getByTestId("heatmap-truncated");
+      expect(notice.style.whiteSpace).toBe("nowrap");
+      expect(notice.textContent!.trim().length).toBeLessThan(45);
+      // The detail is still reachable rather than dropped.
+      expect(notice.getAttribute("title")).toMatch(/Result limit/);
+      expect(notice.getAttribute("title")).toContain("250");
     });
 
     it("ignores a garbage limit rather than hiding the notice", () => {
