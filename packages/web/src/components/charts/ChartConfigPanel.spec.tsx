@@ -13,6 +13,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import ChartConfigPanel from "./ChartConfigPanel";
 import type { ConfigPanelProps } from "./registry";
 import * as registry from "./registry";
+import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 
 // ─── Stub CustomConfigPanel for "map" type ───────────────────────────────────
 
@@ -1226,5 +1227,140 @@ describe("Phase 102-02 — multi-column generatedSql + backward-compat (BARGRP-V
     expect(sql).toBe(
       "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 100",
     );
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Heatmap — the third variant of the multi-column group-by branch (after bar and
+// the Data Table). Its two columns are POSITIONAL axes and its LIMIT is a SHARED
+// CONTRACT with HeatmapRenderer: the renderer shows a truncation notice once the
+// row count reaches HEATMAP_CELL_LIMIT, so if the panel stops emitting that cap
+// the notice silently lies (or never fires). Nothing else pins that link.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HEATMAP_DEF_GROUPED: import("./registry").ChartTypeDefinition = {
+  type: "heatmap",
+  label: "Heatmap",
+  icon: "HM",
+  fields: [],
+  defaultConfig: {},
+  usesAggregation: true,
+  requiresGroupBy: true,
+  supportsDrillDown: false,
+};
+
+describe("ChartConfigPanel — heatmap axes + SQL contract", () => {
+  const heatmapConfig = {
+    table: "sales",
+    metricColumn: "amount",
+    aggregation: "SUM",
+    groupByColumn: "region",
+    groupByColumns: ["region", "category"],
+    limit: 100,
+  };
+
+  const renderHeatmap = (onSave = vi.fn(), config: Record<string, unknown> = heatmapConfig) => {
+    render(
+      <ChartConfigPanel
+        widgetType="heatmap"
+        title="Heatmap"
+        config={config}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    return onSave;
+  };
+
+  const savedSql = (onSave: ReturnType<typeof vi.fn>): string => {
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    return onSave.mock.calls[0][0].config.sql as string;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockReturnValue(HEATMAP_DEF_GROUPED);
+  });
+
+  it("emits one row per (x,y) intersection, ordered hottest-first, capped at the shared cell limit", () => {
+    const sql = savedSql(renderHeatmap());
+    expect(sql).toBe(
+      "SELECT region, category, SUM(amount) AS value FROM sales " +
+        `GROUP BY region, category ORDER BY value DESC LIMIT ${HEATMAP_CELL_LIMIT}`,
+    );
+  });
+
+  it("does NOT use the plain Result limit — that would silently drop cells", () => {
+    // 7 days x 24 hours is already 168 intersections, so the shared 100-row
+    // default would leave holes in the grid that read as missing data.
+    const sql = savedSql(renderHeatmap());
+    expect(sql).not.toMatch(/LIMIT 100$/);
+    // Nor the bar's series-expanded limit (100 x 12 x 2).
+    expect(sql).not.toContain("LIMIT 2400");
+  });
+
+  it("keeps ORDER BY value DESC, so an over-cap grid keeps its hottest cells", () => {
+    // The renderer's truncation notice claims the "highest-value cells"; that is
+    // only true while the order is DESC. Heatmap exposes no sortDir field, so this
+    // pins the direction the notice depends on.
+    expect(savedSql(renderHeatmap())).toContain("ORDER BY value DESC");
+  });
+
+  it("ANDs a customWhere predicate into the same intersection query", () => {
+    const sql = savedSql(
+      renderHeatmap(vi.fn(), { ...heatmapConfig, customWhere: "region = 'West'" }),
+    );
+    // The shared branch parenthesises the predicate — see bar Test 3.
+    expect(sql).toContain("FROM sales WHERE (region = 'West')");
+    expect(sql.indexOf("WHERE")).toBeLessThan(sql.indexOf("GROUP BY"));
+    expect(sql).toContain(`LIMIT ${HEATMAP_CELL_LIMIT}`);
+  });
+
+  /**
+   * The group-by builder renders only once a data source resolves columns, so —
+   * unlike the SQL cases above (which pass a bare `table` string) — these drive
+   * the Data Source select to a real fixture table first, as the dv tests do.
+   */
+  const renderWithTableSelected = (widgetType: string) => {
+    render(
+      <ChartConfigPanel
+        widgetType={widgetType}
+        title="Heatmap"
+        config={{ groupByColumns: ["", ""] }}
+        tables={TABLES}
+        views={[]}
+        dynamicViews={MOCK_DYNAMIC_VIEWS}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const dataSource = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+    fireEvent.change(dataSource, { target: { value: "public.taxi_trips" } });
+  };
+
+  it("labels the two group-by slots as the matrix axes", () => {
+    renderWithTableSelected("heatmap");
+    expect(screen.getByText("Axes")).toBeTruthy();
+    expect(screen.getByText("X Axis")).toBeTruthy();
+    expect(screen.getByText("Y Axis")).toBeTruthy();
+    // Bar's and the table's wording must not leak through.
+    expect(screen.queryByText(/Primary group/i)).toBeNull();
+    expect(screen.queryByText("Group By Columns")).toBeNull();
+  });
+
+  it("caps the builder at 2 columns — a third has no meaning on a 2-D matrix", () => {
+    renderWithTableSelected("heatmap");
+    expect(screen.getByRole("button", { name: /\+ Add column/i })).toBeDisabled();
+  });
+
+  it("does not cap bar at 2 columns (the cap is heatmap-specific)", () => {
+    // Contrast case: guards against the cap being applied to the shared branch,
+    // which would silently break bar's series dimensions.
+    vi.spyOn(registry, "getChartType").mockReturnValue(BAR_DEF_GROUPED);
+    renderWithTableSelected("bar");
+    expect(screen.getByRole("button", { name: /\+ Add column/i })).not.toBeDisabled();
   });
 });
