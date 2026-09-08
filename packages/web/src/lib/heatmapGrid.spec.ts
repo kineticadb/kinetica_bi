@@ -160,3 +160,51 @@ describe("resolveHeatmapColumns", () => {
     expect(resolveHeatmapColumns({}, [])).toBeNull();
   });
 });
+
+// ── Live-UAT regression: a date axis must read chronologically ───────────────
+// Rows arrive ORDER BY value DESC, and a non-numeric axis keeps first-seen
+// order, so a timestamp-string axis came out in METRIC order — the kind of
+// silently-wrong axis a reader takes for a data bug.
+describe("orderAxis — date mode", () => {
+  it("sorts ISO timestamp strings chronologically, not in arrival order", () => {
+    const arrival = ["2026-03-05T00:00:00Z", "2026-01-02T00:00:00Z", "2026-02-01T00:00:00Z"];
+    expect(orderAxis(arrival, "date")).toEqual([
+      "2026-01-02T00:00:00Z",
+      "2026-02-01T00:00:00Z",
+      "2026-03-05T00:00:00Z",
+    ]);
+  });
+
+  it("sorts epoch values chronologically, seconds and millis alike", () => {
+    // 1e9 seconds (2001) vs 1.7e12 ms (2023) — the shared normalizeToMs heuristic.
+    expect(orderAxis(["1700000000000", "1000000000"], "date")).toEqual([
+      "1000000000",
+      "1700000000000",
+    ]);
+  });
+
+  it("keeps unparseable values last, in their original relative order", () => {
+    const mixed = ["nope", "2026-01-02T00:00:00Z", "also-bad"];
+    expect(orderAxis(mixed, "date")).toEqual(["2026-01-02T00:00:00Z", "nope", "also-bad"]);
+  });
+
+  it("leaves auto mode untouched — text axes still keep first-seen order", () => {
+    const days = ["Monday", "Tuesday", "Wednesday"];
+    expect(orderAxis(days)).toEqual(days);
+    expect(orderAxis(days, "auto")).toEqual(days);
+  });
+
+  it("buildHeatmapGrid threads the per-axis order through", () => {
+    const rows = [
+      { d: "2026-03-05", p: "a", value: 9 },
+      { d: "2026-01-02", p: "a", value: 1 },
+    ];
+    // Default (auto): non-numeric, so first-seen (metric) order survives.
+    expect(buildHeatmapGrid(rows, "p", "d").yValues).toEqual(["2026-03-05", "2026-01-02"]);
+    // date: chronological regardless of arrival order.
+    expect(buildHeatmapGrid(rows, "p", "d", { y: "date" }).yValues).toEqual([
+      "2026-01-02",
+      "2026-03-05",
+    ]);
+  });
+});

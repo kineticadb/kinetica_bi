@@ -10,6 +10,20 @@
  * so each row is `{ [xCol]: unknown, [yCol]: unknown, value: number }`.
  */
 
+import { normalizeToMs } from "./columnFormatter";
+
+/**
+ * How an axis is ordered.
+ *   "auto" — all-numeric sorts numerically, anything else keeps first-seen order
+ *   "date" — sorts chronologically, for a column the operator formats as a date
+ *
+ * "date" is caller-supplied rather than sniffed: guessing would misfire on
+ * strings that happen to parse (Date.parse("Monday") is NaN, but plenty of
+ * short codes parse to junk), and the renderer already knows the column's
+ * configured format kind.
+ */
+export type AxisOrder = "auto" | "date";
+
 /** Value used to key a cell; String()-coerced so numeric and text axes behave alike. */
 export type AxisKey = string;
 
@@ -60,7 +74,38 @@ export const cellKey = (x: AxisKey, y: AxisKey): string => `${x}\u0000${y}`;
  * keep first-seen order, so a SQL-side ORDER BY or a naturally meaningful
  * sequence (Monday...Sunday) survives instead of being alphabetized.
  */
-export function orderAxis(values: AxisKey[]): AxisKey[] {
+/**
+ * Epoch-ms for an axis key, for date ordering.
+ *
+ * Axis keys are String()-coerced (they key cells), so a timestamp column that
+ * arrives from SQL as a NUMBER reaches us as "1700000000000" — which
+ * normalizeToMs cannot read, because its seconds-vs-ms heuristic only applies to
+ * actual numbers and `new Date("1700000000000")` is Invalid Date. Coerce a
+ * wholly-numeric key back to a number first.
+ *
+ * Deliberately NOT fixed inside normalizeToMs: loosening it there would make a
+ * year-like string ("2026") parse as epoch seconds (1970) rather than as the
+ * date `new Date("2026")` correctly gives.
+ */
+const axisKeyToMs = (v: AxisKey): number =>
+  /^-?\d+(\.\d+)?$/.test(v.trim()) ? normalizeToMs(Number(v)) : normalizeToMs(v);
+
+export function orderAxis(values: AxisKey[], mode: AxisOrder = "auto"): AxisKey[] {
+  if (mode === "date") {
+    // A date axis read in metric order (the rows arrive ORDER BY value DESC) is
+    // the kind of silently-wrong axis a reader takes for a data bug. Values that
+    // do not parse sort last, keeping their relative order.
+    const withMs = values.map((v, i) => ({ v, i, ms: axisKeyToMs(v) }));
+    withMs.sort((a, b) => {
+      const aBad = Number.isNaN(a.ms);
+      const bBad = Number.isNaN(b.ms);
+      if (aBad && bBad) return a.i - b.i;
+      if (aBad) return 1;
+      if (bBad) return -1;
+      return a.ms - b.ms;
+    });
+    return withMs.map((e) => e.v);
+  }
   const allNumeric =
     values.length > 0 && values.every((v) => v !== "" && Number.isFinite(Number(v)));
   if (!allNumeric) return values;
@@ -80,6 +125,7 @@ export function buildHeatmapGrid(
   rows: Record<string, unknown>[],
   xCol: string,
   yCol: string,
+  order: { x?: AxisOrder; y?: AxisOrder } = {},
 ): HeatmapGrid {
   const cells = new Map<string, HeatmapCell>();
   const xSeen: AxisKey[] = [];
@@ -112,8 +158,8 @@ export function buildHeatmapGrid(
   }
 
   return {
-    xValues: orderAxis(xSeen),
-    yValues: orderAxis(ySeen),
+    xValues: orderAxis(xSeen, order.x ?? "auto"),
+    yValues: orderAxis(ySeen, order.y ?? "auto"),
     cells,
     domain: cells.size === 0 ? null : [min, max],
   };

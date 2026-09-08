@@ -24,6 +24,11 @@ import { useChartAxisColors } from "../../lib/chartColors";
 import { estimateAxisWidth, estimateLabelWidth } from "../../lib/estimateAxisWidth";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import {
+  useColumnDisplayConfigStore,
+  resolveFormatter,
+  resolveLabel,
+} from "../../store/columnDisplayConfigStore";
+import {
   DEFAULT_HEATMAP_COLOR_THEME,
   heatmapStops,
   legendSwatches,
@@ -36,6 +41,7 @@ import {
   HEATMAP_CELL_LIMIT,
   resolveHeatmapColumns,
   sliceDomain,
+  type AxisOrder,
   type NormalizeMode,
 } from "../../lib/heatmapGrid";
 
@@ -84,10 +90,56 @@ const HeatmapRenderer = ({
     return () => ro.disconnect();
   }, []);
 
+  // Phase 77 convention (COLAPPLY-V115-02): subscribing to configVersion re-renders
+  // when the operator edits a column's label or format in "Format columns", so the
+  // axes pick the change up without a reload.
+  const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
+  void configVersion; // referenced to prevent tree-shaking; reactive via subscription
+
+  const tableId = Number(config.tableId);
+  const hasTable = Number.isFinite(tableId);
+
   const cols = useMemo(() => resolveHeatmapColumns(config, data), [config, data]);
+
+  /**
+   * Per-axis tick formatters, from the column's stored display config — the same
+   * source the Data Table and the other renderers use. Without this a timestamp
+   * axis renders raw epoch/ISO values, ignoring the Date format the operator set.
+   */
+  const axisFmt = useMemo(() => {
+    const identity = (v: unknown): string => String(v);
+    if (!cols || !hasTable) return { x: identity, y: identity };
+    const wrap = (col: string) => {
+      const fmt = resolveFormatter(tableId, col);
+      return (v: unknown): string => {
+        // Axis keys are String()-coerced by buildHeatmapGrid, so a numeric
+        // timestamp arrives as "1700000000000" — which the date formatter reads
+        // as an Invalid Date and passes through raw, leaving the operator's Date
+        // format visibly unapplied. Hand a wholly-numeric key back as a number.
+        const raw =
+          typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : v;
+        const out = fmt(raw);
+        return typeof out === "string" ? out : String(out);
+      };
+    };
+    return { x: wrap(cols.xCol), y: wrap(cols.yCol) };
+  }, [cols, hasTable, tableId, configVersion]);
+
+  /** A date-formatted column must read chronologically, not in metric order. */
+  const axisOrder = useMemo(() => {
+    const kindOf = (col: string): AxisOrder =>
+      hasTable &&
+      useColumnDisplayConfigStore.getState().configs[tableId]?.columns[col]?.format_spec?.kind ===
+        "date"
+        ? "date"
+        : "auto";
+    if (!cols) return {};
+    return { x: kindOf(cols.xCol), y: kindOf(cols.yCol) };
+  }, [cols, hasTable, tableId, configVersion]);
+
   const grid = useMemo(
-    () => (cols ? buildHeatmapGrid(data, cols.xCol, cols.yCol) : null),
-    [data, cols],
+    () => (cols ? buildHeatmapGrid(data, cols.xCol, cols.yCol, axisOrder) : null),
+    [data, cols, axisOrder],
   );
 
   const themeId = (config.colorTheme as string) || DEFAULT_HEATMAP_COLOR_THEME;
@@ -106,12 +158,29 @@ const HeatmapRenderer = ({
   const yAxisLabel = (config.yAxisLabel as string) || "";
 
   const formatValue = useMemo(() => {
-    const fmt = buildFormatter(config.valueFormat as FormatSpec | null | undefined);
+    // The widget's own valueFormat wins; absent one, fall back to the METRIC
+    // COLUMN's stored format, which is what the field's hint promises
+    // ("Defaults to the metric column's format") and previously did not do.
+    const spec = config.valueFormat as FormatSpec | null | undefined;
+    const metricCol = (config.metricColumn as string) || "";
+    const fmt =
+      spec
+        ? buildFormatter(spec)
+        : hasTable && metricCol
+          ? resolveFormatter(tableId, metricCol)
+          : buildFormatter(spec);
     return (n: number): string => {
       const out = fmt(n);
       return typeof out === "string" ? out : n.toLocaleString();
     };
-  }, [config.valueFormat]);
+  }, [config.valueFormat, config.metricColumn, hasTable, tableId, configVersion]);
+
+  /** Operator-facing column names, honouring any Display label. */
+  const axisTitles = useMemo(() => {
+    if (!cols) return { x: "", y: "" };
+    if (!hasTable) return { x: cols.xCol, y: cols.yCol };
+    return { x: resolveLabel(tableId, cols.xCol), y: resolveLabel(tableId, cols.yCol) };
+  }, [cols, hasTable, tableId, configVersion]);
 
   const metricLabel = useMemo(() => {
     const agg = (config.aggregation as string) || "";
@@ -150,7 +219,11 @@ const HeatmapRenderer = ({
   // Gutter sizing order matters and is deliberately NOT circular: the left gutter
   // and the legend consume WIDTH, which fixes cellW; cellW decides whether x labels
   // rotate; rotation decides the bottom gutter, which consumes HEIGHT only.
-  const yGutter = estimateAxisWidth(yValues) + (yAxisLabel ? TITLE_H : 0);
+  // Gutters measure the FORMATTED labels — a raw epoch (13 chars) and its
+  // formatted form ("06/19/2026", 10) reserve different widths.
+  const xLabels = xValues.map((v) => axisFmt.x(v));
+  const yLabels = yValues.map((v) => axisFmt.y(v));
+  const yGutter = estimateAxisWidth(yLabels) + (yAxisLabel ? TITLE_H : 0);
   const availW = (box.w || FALLBACK_W) - yGutter - PAD - (showLegend ? LEGEND_W : 0);
   const plotW = Math.max(xValues.length * MIN_CELL, availW);
   const cellW = plotW / xValues.length;
@@ -158,10 +231,10 @@ const HeatmapRenderer = ({
   // Rotate x labels ONLY when they cannot fit across a cell. Rotating a 3-char
   // category needlessly reserved a tall bottom gutter; horizontal labels need
   // barely more than the font height.
-  const widestX = xValues.reduce((m, v) => Math.max(m, estimateLabelWidth(v)), 0);
+  const widestX = xLabels.reduce((m, v) => Math.max(m, estimateLabelWidth(v)), 0);
   const rotateX = widestX > cellW - 4;
   const xGutter =
-    (rotateX ? estimateAxisWidth(xValues) : TICK_FONT + TICK_PAD) +
+    (rotateX ? estimateAxisWidth(xLabels) : TICK_FONT + TICK_PAD) +
     TICK_PAD +
     (xAxisLabel ? TITLE_H : 0);
 
@@ -182,6 +255,16 @@ const HeatmapRenderer = ({
     Number.isFinite(rawLimit) && rawLimit > 0
       ? Math.min(rawLimit, HEATMAP_CELL_LIMIT)
       : HEATMAP_CELL_LIMIT;
+  // Auto-thin the tick labels. Drawing one label per value overlaps them into an
+  // unreadable smear as soon as the cell is thinner than the text — a 250-value
+  // timestamp axis in a short widget is the case that exposed this. The operator's
+  // explicit X/YScale Interval is a FLOOR, never overridden downward, so a chosen
+  // "every 6th" is still honoured on a roomy axis.
+  const autoStep = (extent: number, count: number, need: number): number =>
+    extent > 0 && count > 0 ? Math.max(1, Math.ceil(need / (extent / count))) : 1;
+  const xStep = Math.max(xInterval, autoStep(plotW, xValues.length, TICK_FONT + 3));
+  const yStep = Math.max(yInterval, autoStep(plotH, yValues.length, TICK_FONT + 3));
+
   const truncated = data.length >= cellLimit;
 
   /** Estimated tooltip height: 4 lines @ 11px + padding + border, rounded up. */
@@ -210,11 +293,11 @@ const HeatmapRenderer = ({
             height={svgH}
             style={{ display: "block", maxWidth: "100%" }}
             role="img"
-            aria-label={`Heatmap of ${metricLabel} by ${cols.xCol} and ${cols.yCol}`}
+            aria-label={`Heatmap of ${metricLabel} by ${axisTitles.x} and ${axisTitles.y}`}
           >
             {/* Y tick labels — first value at the BOTTOM so a numeric axis reads upward */}
             {yValues.map((yv, i) => {
-              if (i % yInterval !== 0) return null;
+              if (i % yStep !== 0) return null;
               const cy = PAD + (yValues.length - 1 - i) * cellH + cellH / 2;
               return (
                 <text
@@ -225,14 +308,14 @@ const HeatmapRenderer = ({
                   fontSize={TICK_FONT}
                   fill={axis}
                 >
-                  {yv}
+                  {yLabels[i]}
                 </text>
               );
             })}
 
             {/* X tick labels — rotated -90deg, as category names are usually wider than a cell */}
             {xValues.map((xv, i) => {
-              if (i % xInterval !== 0) return null;
+              if (i % xStep !== 0) return null;
               const cx = yGutter + i * cellW + cellW / 2;
               const ty = PAD + plotH + TICK_PAD + (rotateX ? 0 : TICK_FONT);
               return (
@@ -245,7 +328,7 @@ const HeatmapRenderer = ({
                   fill={axis}
                   transform={rotateX ? `rotate(-90 ${cx} ${ty})` : undefined}
                 >
-                  {xv}
+                  {xLabels[i]}
                 </text>
               );
             })}
@@ -411,8 +494,8 @@ const HeatmapRenderer = ({
             zIndex: 2,
           }}
         >
-          <div><strong>{cols.xCol}:</strong> {hover.x}</div>
-          <div><strong>{cols.yCol}:</strong> {hover.y}</div>
+          <div><strong>{axisTitles.x}:</strong> {axisFmt.x(hover.x)}</div>
+          <div><strong>{axisTitles.y}:</strong> {axisFmt.y(hover.y)}</div>
           <div><strong>{metricLabel}:</strong> {formatValue(hover.value)}</div>
           <div>
             <strong>%:</strong>{" "}

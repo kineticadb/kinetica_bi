@@ -2,6 +2,8 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import HeatmapRenderer from "./HeatmapRenderer";
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
+import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
+import type { FormatSpec } from "../../lib/columnFormatter";
 
 /** Aggregated contract rows: one per (x,y) intersection plus `value`. */
 const rows = [
@@ -667,6 +669,156 @@ describe("HeatmapRenderer", () => {
         />,
       );
       expect(screen.getByTestId("heatmap-truncated")).toBeTruthy();
+    });
+  });
+
+  // ── Live-UAT regression: column display config was ignored ─────────────────
+  // Operator formatted pickup_datetime as a Date in "Format columns", then used
+  // it as the y axis and got raw values plus an unreadably crowded axis. The
+  // renderer subscribed to columnDisplayConfigStore not at all, unlike every
+  // other renderer.
+  describe("column display config drives the axes", () => {
+    const TABLE_ID = 42;
+    const DATE_SPEC: FormatSpec = { kind: "date", preset: "us" };
+    const tableConfig = { ...baseConfig, tableId: TABLE_ID };
+
+    afterEach(() => {
+      useColumnDisplayConfigStore.getState().reset();
+    });
+
+    /** One row per (hour, day) with a real epoch on the y axis. */
+    const epochRows = [
+      { day_name: "Monday", hour_of_day: 1_700_000_000_000, value: 10 },
+      { day_name: "Monday", hour_of_day: 1_600_000_000_000, value: 20 },
+    ];
+
+    it("formats axis ticks with the column's stored Date format", () => {
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "hour_of_day", null, DATE_SPEC);
+      render(<HeatmapRenderer data={epochRows} config={tableConfig} />);
+      const ticks = Array.from(document.querySelectorAll("text")).map((t) => t.textContent);
+      // Formatted, not the raw epoch.
+      expect(ticks).toContain("11/14/2023");
+      expect(ticks.some((t) => t?.includes("1700000000000"))).toBe(false);
+    });
+
+    it("leaves ticks raw when the column has no stored format", () => {
+      render(<HeatmapRenderer data={epochRows} config={tableConfig} />);
+      const ticks = Array.from(document.querySelectorAll("text")).map((t) => t.textContent);
+      expect(ticks).toContain("1700000000000");
+    });
+
+    it("orders a date-formatted axis chronologically, not in metric order", () => {
+      // ISO STRINGS, deliberately: a numeric epoch axis is already sorted by
+      // "auto" mode (all-numeric => numeric sort), so it cannot tell the two
+      // modes apart. Strings are the case where "auto" keeps first-seen order —
+      // i.e. the ORDER BY value DESC the rows arrive in.
+      const isoRows = [
+        { day_name: "Monday", hour_of_day: "2023-11-14T00:00:00Z", value: 20 },
+        { day_name: "Monday", hour_of_day: "2020-09-13T00:00:00Z", value: 10 },
+      ];
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "hour_of_day", null, DATE_SPEC);
+      render(<HeatmapRenderer data={isoRows} config={tableConfig} />);
+      // First y value renders at the BOTTOM, so the earliest date is lowest.
+      const dated = Array.from(document.querySelectorAll("text"))
+        .filter((t) => /^\d{2}\/\d{2}\/\d{4}$/.test(t.textContent ?? ""))
+        .map((t) => ({ label: t.textContent!, y: Number(t.getAttribute("y")) }))
+        .sort((a, b) => b.y - a.y);
+      expect(dated.map((d) => d.label)).toEqual(["09/13/2020", "11/14/2023"]);
+    });
+
+    it("uses the column's Display label in the tooltip, not the raw name", () => {
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "day_name", "Day of Week", null);
+      render(<HeatmapRenderer data={rows} config={tableConfig} />);
+      fireEvent.mouseEnter(document.querySelector("rect")!);
+      const tip = screen.getByTestId("heatmap-tooltip");
+      expect(tip.textContent).toContain("Day of Week");
+      expect(tip.textContent).not.toContain("day_name");
+    });
+
+    it("falls back to the METRIC column's format for values, as the field hint promises", () => {
+      const SI: FormatSpec = { kind: "si", decimals: 1 };
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "download_throughput", null, SI);
+      render(
+        <HeatmapRenderer
+          data={[{ day_name: "Mon", hour_of_day: 0, value: 1_500_000 }]}
+          config={tableConfig}
+        />,
+      );
+      // Legend shows the domain, formatted by the metric column's spec.
+      expect(screen.getByTestId("heatmap-legend").textContent).toMatch(/1\.5M/);
+    });
+
+    it("the widget's own valueFormat still wins over the metric column's", () => {
+      const SI: FormatSpec = { kind: "si", decimals: 1 };
+      useColumnDisplayConfigStore
+        .getState()
+        .upsertColumn(TABLE_ID, "download_throughput", null, SI);
+      const OWN: FormatSpec = {
+        kind: "number",
+        thousandsSep: true,
+        decimals: 0,
+        currency: false,
+        percent: false,
+      };
+      render(
+        <HeatmapRenderer
+          data={[{ day_name: "Mon", hour_of_day: 0, value: 1_500_000 }]}
+          config={{ ...tableConfig, valueFormat: OWN }}
+        />,
+      );
+      expect(screen.getByTestId("heatmap-legend").textContent).toMatch(/1,500,000/);
+    });
+  });
+
+  describe("tick labels auto-thin so a dense axis stays readable", () => {
+    const denseRows = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        day_name: "Monday",
+        hour_of_day: i,
+        value: i + 1,
+      }));
+
+    it("spaces the drawn labels at least a line apart, so they cannot overlap", () => {
+      // The real invariant, rather than a magic count: with 120 values the grid
+      // scrolls at MIN_CELL (6px per row), so one label each would stack three
+      // deep. Assert the gap between consecutive DRAWN labels instead — that is
+      // what "readable" actually means, and it holds at any cell size.
+      render(<HeatmapRenderer data={denseRows(120)} config={baseConfig} />);
+      const ys = Array.from(document.querySelectorAll("text"))
+        .filter((t) => /^\d+$/.test(t.textContent ?? ""))
+        .map((t) => Number(t.getAttribute("y")))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
+      expect(ys.length).toBeGreaterThan(1);
+      // Thinned: far fewer labels than the 120 values.
+      expect(ys.length).toBeLessThan(120);
+      const gaps = ys.slice(1).map((y, i) => y - ys[i]);
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(10);
+    });
+
+    it("draws every label when there is room for them", () => {
+      render(<HeatmapRenderer data={denseRows(4)} config={baseConfig} />);
+      const drawn = Array.from(document.querySelectorAll("text"))
+        .map((t) => t.textContent)
+        .filter((t) => /^\d+$/.test(t ?? ""));
+      expect(new Set(drawn).size).toBe(4);
+    });
+
+    it("treats an explicit YScale Interval as a floor, never overriding it downward", () => {
+      render(<HeatmapRenderer data={denseRows(8)} config={{ ...baseConfig, yScaleInterval: "4" }} />);
+      const drawn = Array.from(document.querySelectorAll("text"))
+        .map((t) => t.textContent)
+        .filter((t) => /^\d+$/.test(t ?? ""));
+      // 8 roomy rows would auto-draw all 8; the operator asked for every 4th.
+      expect(new Set(drawn)).toEqual(new Set(["0", "4"]));
     });
   });
 
