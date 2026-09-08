@@ -18,6 +18,7 @@ import {
 } from "../../lib/customMetricSql";
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
+import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 
 type TableInfo = {
   id: number;
@@ -314,11 +315,15 @@ const ChartConfigPanel = ({
   // Bar turns extra columns into colored series; the Data Table renders them as extra columns.
   const isBar = widgetType === "bar";
   const isTable = widgetType === "table";
-  const usesMultiColumnGroupBy = isBar || isTable;
+  // Heatmap reuses the same builder + the same multi-column SQL branch, but its two
+  // columns are POSITIONAL (col1 = X axis, col2 = Y axis) and a third would have no
+  // meaning on a 2-D matrix — hence the type-specific cap below.
+  const isHeatmap = widgetType === "heatmap";
+  const usesMultiColumnGroupBy = isBar || isTable || isHeatmap;
   // Soft cap on the number of group-by columns in the builder (distinct from maxBarGroupBySeriesCap
   // which caps SERIES at render time). 6 columns is a reasonable UI ceiling before the
   // GROUP BY becomes unreadable — not an env-driven value per CONTEXT.md.
-  const MAX_BAR_GROUP_BY_COLUMNS = 6;
+  const MAX_BAR_GROUP_BY_COLUMNS = isHeatmap ? 2 : 6;
 
   // Build the SQL preview from structured fields
   const generatedSql = useMemo(() => {
@@ -394,9 +399,16 @@ const ChartConfigPanel = ({
       // Bar expands categories × series so it needs a generous LIMIT (config.limit ×
       // maxBarGroupBySeriesCap × 2, read from auth store at save time). The Data Table renders
       // one row per group tuple, so it just uses the plain "Result limit".
+      // A heatmap needs one row per (x,y) INTERSECTION — 7 days x 24 hours is already
+      // 168 rows, so the shared 100-row default would drop cells and leave holes that
+      // look like missing data. Cap at the renderer's HEATMAP_CELL_LIMIT instead, and
+      // keep ORDER BY value DESC so an over-cap grid keeps its hottest cells (the
+      // renderer surfaces a truncation notice when row count reaches the cap).
       const sqlLimit = isBar
         ? baseLimit * useAuthStore.getState().maxBarGroupBySeriesCap * 2
-        : baseLimit;
+        : isHeatmap
+          ? HEATMAP_CELL_LIMIT
+          : baseLimit;
       // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
       return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
     }
@@ -764,14 +776,17 @@ const ChartConfigPanel = ({
                   const groupByColumns = stored && stored.length > 0
                     ? stored
                     : (draft.groupByColumn ? [draft.groupByColumn as string] : []);
-                  // Bar keeps its primary/series wording; the table's columns are all equal.
+                  // Bar keeps its primary/series wording; the table's columns are all equal;
+                  // heatmap's two are the matrix axes, so they get the axis names directly.
                   const labelFor = (idx: number) =>
-                    isBar
+                    isHeatmap
+                      ? (idx === 0 ? "X Axis" : "Y Axis")
+                      : isBar
                       ? (idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`)
                       : `Group column ${idx + 1}`;
                   return (
                     <div className="config-group">
-                      <span className="config-group-label">Group By Columns</span>
+                      <span className="config-group-label">{isHeatmap ? "Axes" : "Group By Columns"}</span>
                       {groupByColumns.map((col, idx) => (
                         <div key={idx} className="ds-field" style={{ flexDirection: "row", alignItems: "center", gap: "4px" }}>
                           <span className="ds-field-label" style={{ whiteSpace: "nowrap" }}>
@@ -820,7 +835,9 @@ const ChartConfigPanel = ({
                         }}
                       >+ Add column</button>
                       <span className="config-hint">
-                        {isBar
+                        {isHeatmap
+                          ? "First column = X axis; second column = Y axis. The metric below colors each cell."
+                          : isBar
                           ? `First column = x-axis categories; the rest become colored series (${MAX_BAR_GROUP_BY_COLUMNS} column max).`
                           : `Rows are grouped by every selected column; each becomes a column in the table (${MAX_BAR_GROUP_BY_COLUMNS} column max).`}
                       </span>
