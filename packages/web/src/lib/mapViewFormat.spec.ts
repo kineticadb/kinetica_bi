@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { transform } from "ol/proj";
 import { formatLatLon, formatZoom } from "./mapViewFormat";
 
-// Real ol/proj is used (no vi.mock) — transform is pure Web Mercator math with no
+// Real ol/proj is used here (unmocked) — transform is pure Web Mercator math with no
 // DOM/canvas dependency, unlike ol/Map / ol/View.
 const to3857 = (lon: number, lat: number) =>
   transform([lon, lat], "EPSG:4326", "EPSG:3857") as [number, number];
