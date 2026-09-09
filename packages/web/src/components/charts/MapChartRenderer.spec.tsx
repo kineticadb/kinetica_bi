@@ -494,6 +494,9 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   getShowLoadingIndicator: (cfg: any) => cfg?.showLoadingIndicator ?? true,
   // Phase 104 (MAPSYNC-V119-01/06): opt-in sync — default false (legacy byte-identical)
   getSyncViewportEnabled: (cfg: any) => cfg?.syncViewport ?? false,
+  // Phase 112 (MAPVIEW-V121-02/-03): mirrors the real getDefaultView — a plain passthrough,
+  // undefined is the correct "no default" result (substituted by resolveInitialView).
+  getDefaultView: (cfg: any) => cfg?.defaultView,
   DEFAULT_INFO_ENABLED: true,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: true,

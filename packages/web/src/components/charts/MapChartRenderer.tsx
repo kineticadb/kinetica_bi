@@ -81,6 +81,7 @@ import { useToastStore } from "../../store/toast";
 import { buildWmsParams, type MapWidgetConfig, coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
 import { isLayerEffectivelyVisible } from "../../lib/layerVisibility";
 import { getSpatialTargets, isSpatialTargetEligible } from "../../lib/spatialTargets";
+import { resolveInitialView } from "../../lib/mapInitialView";
 import { buildSpatialColumns } from "../../lib/spatialColumns";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { useThemeStore } from "../../store/theme";
@@ -462,6 +463,26 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // Phase 104 (MAPSYNC-V119-01/02/03/06): viewport sync opt-in flag.
   // syncEnabled is false by default (opt-in); legacy maps are byte-identical to today (MAPSYNC-V119-06).
   const syncEnabled = getSyncViewportEnabled(widgetConfig as Partial<MapWidgetConfig>);
+
+  // Phase 112 (MAPVIEW-V121-02/-03): the view this map OPENS at — the designer's saved
+  // config.defaultView when it is present and usable, else the world view [0,0]/zoom 2
+  // (byte-identical to the pre-Phase-112 hardcoded values, MAPVIEW-V121-03).
+  //
+  // Resolved HERE, at RENDER time, deliberately — strictly before Effect 1 below
+  // constructs the OL View — so the saved view is a CONSTRUCTOR ARGUMENT and the first
+  // painted frame is already the saved view. Do NOT move this into an effect and do NOT
+  // apply it via any imperative view mutation (center/zoom setters, animate, fit): any
+  // post-construction correction paints the world view first, which IS the "visible world-view flash"
+  // MAPVIEW-V121-02's success criterion forbids (an animation is just a slower flash).
+  // Constructing rather than mutating also means NO moveend fires at mount, so Effect 9a
+  // cannot broadcast this map's default into the dashboard-wide viewport-sync store.
+  //
+  // Effect 1 has [] deps (M-01: the map is built exactly once) and therefore closes over
+  // the FIRST render's value. A later config edit recomputes this const but does NOT move
+  // the live map — correct: this is a default applied ON LOAD. Do NOT add an effect to
+  // "keep the map in step" (it would resurrect the flash, yank the designer's framing
+  // mid-configuration, and violate M-01/M-02). A cleared default takes effect next load.
+  const initialView = resolveInitialView(widgetConfig as Partial<MapWidgetConfig>);
 
   // Theme-aware basemap: pick the basemap configured for the active app theme so the
   // base layer suits light/dark, and swap it live when the theme toggles. Legacy widgets
@@ -1036,8 +1057,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       view: new OlView({
         // PITFALL M-03 lock: EPSG:3857 locked for all OL views.
         projection: "EPSG:3857",
-        center: [0, 0],
-        zoom: 2,
+        // Phase 112 (MAPVIEW-V121-02/-03): saved default, else world view. Applied at
+        // CONSTRUCTION — see the initialView derivation at component scope above.
+        center: initialView.center,
+        zoom: initialView.zoom,
       }),
     });
 
