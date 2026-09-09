@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 111-01-PLAN.md
-last_updated: "2026-09-09T18:49:39.797Z"
+stopped_at: Completed 111-03-PLAN.md
+last_updated: "2026-09-09T19:03:17.130Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 ## Current Position
 
 Phase: 111 (map-default-view-capture-save) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3 (111-03 complete; 111-02 in progress, parallel wave)
 
 ### Open tech debt carried forward
 
@@ -441,6 +441,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 109.2 P02 | 25min | 2 tasks | 6 files |
 | Phase 110 P01 | 15min | 2 tasks | 4 files |
 | Phase 111 P01 | 12min | 3 tasks | 7 files |
+| Phase 111 P03 | 8min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -826,6 +827,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 111]: mapCurrentViewStore is a separate always-on widgetId-keyed store from mapViewportSyncStore (Phase 104), which is sync-toggle-gated and dashboardId-keyed
 - [Phase 111]: defaultView stored in EPSG:3857 with exact fractional zoom; formatLatLon/formatZoom are display-only and never touch the stored value
 - [Phase 111]: getDefaultView returns undefined as the correct default state (no substituted fallback) — Phase 112 owns the world-view fallback
+- [Phase 111]: MapConfigPanel DEFAULT VIEW: scoped selector s.views[widgetId] to avoid whole-store subscription; Clear deletes the key (never sets undefined), matching existing changeBasemapCss precedent
+- [Phase 111]: Requirements MAPVIEW-V121-01/-04 left unchecked after 111-03: functional completion needs 111-02 (live-view publisher) for -01 and Phase 112 (world-view fallback) for -04's full user-visible behavior
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1232,6 +1235,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-09T18:49:39.788Z
-Stopped at: Completed 111-01-PLAN.md
-Resume file: .planning/phases/111-map-default-view-capture-save/111-02-PLAN.md
+Last session: 2026-09-09T19:02:04.452Z
+Stopped at: Completed 111-03-PLAN.md
+Resume file: None
