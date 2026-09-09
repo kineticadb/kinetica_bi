@@ -2,14 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
-status: roadmap_created
-stopped_at: v1.21 roadmap created — 5 phases (111-115), 13/13 requirements mapped, ready to plan Phase 111
-last_updated: "2026-09-09T00:00:00.000Z"
+status: planning
+stopped_at: Phase 111 context gathered
+last_updated: "2026-09-09T18:03:04.873Z"
+last_activity: "2026-09-09 — Roadmap created: 5 phases (111-115), 13/13 requirements mapped, no orphans"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -32,6 +34,7 @@ Last activity: 2026-09-09 — Roadmap created: 5 phases (111-115), 13/13 require
 Progress: [░░░░░░░░░░] 0%
 
 Two features, scope deliberately held small, frontend-only (`packages/web`), no server work:
+
 1. **Map default view** (Phases 111 → 112) — designer zooms/pans, then saves that exact view (zoom + center) as the map widget's default. `MapChartRenderer.tsx:1038` currently hardcodes `center: [0,0], zoom: 2`. Phase 111 owns the highest-risk unknown: the config panel's own path to the live view of the map being configured (`mapViewportSyncStore` is NOT reusable — wrong key, gated off by default).
 2. **Dashboard URLs** (Phases 113 → 114 → 115) — a dashboard reachable by link instead of only via the dashboard-list page. The app has NO router today; v1.21 syncs a URL param to the existing `App.tsx` page state via the native History API, no new dependency. Phase 115 extends the existing Phase 7 sessionStorage return-to-page mechanism rather than inventing a second one.
 
@@ -1245,6 +1248,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-12T20:56:34.639Z
-Stopped at: Completed 110-01-PLAN.md
-Resume file: None
+Last session: 2026-09-09T18:03:04.864Z
+Stopped at: Phase 111 context gathered
+Resume file: .planning/phases/111-map-default-view-capture-save/111-CONTEXT.md
