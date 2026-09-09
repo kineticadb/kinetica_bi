@@ -1,6 +1,6 @@
 {
   "name": "kinetica-bi",
-  "version": "0.1.0",
+  "version": "1.20.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -13,6 +13,7 @@
     "preview": "npm run preview --workspace @kinetica-bi/web",
     "test": "npm run test --workspace @kinetica-bi/web",
     "test:server": "npm run test --workspace @kinetica-bi/server -- --run",
-    "test:all": "npm run test && npm run test:server"
+    "test:all": "npm run test && npm run test:server",
+    "test:server:gate": "npm run test:gate --workspace @kinetica-bi/server"
   }
 }

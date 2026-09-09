@@ -1,6 +1,6 @@
 {
   "name": "@kinetica-bi/server",
-  "version": "0.1.0",
+  "version": "1.20.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,8 @@
     "wms-spike": "tsx src/spikes/wmsSpike.ts",
     "wkb-spike": "tsx src/spikes/wkbSpike.ts",
     "spatial-predicate-spike": "tsx src/spikes/spatialPredicateSpike.ts",
-    "cb-track-spike": "tsx src/spikes/cbTrackSpike.ts"
+    "cb-track-spike": "tsx src/spikes/cbTrackSpike.ts",
+    "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
     "@types/cookie-parser": "^1.4.10",
