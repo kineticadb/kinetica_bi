@@ -137,7 +137,14 @@ vi.mock("ol/Map", () => ({
     this.dispose = vi.fn();
     this.addLayer = vi.fn();
     this.removeLayer = vi.fn();
-    this.getView = vi.fn(() => ({ fit: vi.fn(), calculateExtent: vi.fn(() => [0, 0, 100, 100]) }));
+    // Phase 111 (MAPVIEW-V121-01): getCenter/getZoom needed — Effect 9c's always-on
+    // publish calls both unconditionally at mount, for every map widget.
+    this.getView = vi.fn(() => ({
+      fit: vi.fn(),
+      calculateExtent: vi.fn(() => [0, 0, 100, 100]),
+      getCenter: vi.fn(() => [0, 0] as [number, number]),
+      getZoom: vi.fn(() => 2),
+    }));
     this.updateSize = vi.fn();
     // Phase 21: addOverlay / removeOverlay / on / un / getSize needed for InfoPopup integration
     this.addOverlay = vi.fn();

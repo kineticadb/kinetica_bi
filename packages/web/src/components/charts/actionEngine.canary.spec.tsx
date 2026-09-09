@@ -64,11 +64,14 @@ vi.mock("ol/Map", () => ({
     this.removeLayer = vi.fn();
     this.addInteraction = vi.fn();
     this.removeInteraction = vi.fn();
+    // Phase 111 (MAPVIEW-V121-01): getCenter needed — Effect 9c's always-on publish
+    // calls it unconditionally at mount, for every map widget.
     this.getView = vi.fn(() => ({
       fit: vi.fn(),
       calculateExtent: vi.fn(() => [0, 0, 100, 100]),
       getResolution: vi.fn(() => 100),
       getZoom: vi.fn(() => 10),
+      getCenter: vi.fn(() => [0, 0] as [number, number]),
     }));
     this.updateSize = vi.fn();
     this.getSize = vi.fn(() => [800, 600]);
