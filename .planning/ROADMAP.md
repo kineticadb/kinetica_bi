@@ -58,7 +58,10 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   1. From a map widget's config panel, the designer can save the map's exact current zoom and center as that widget's default view, with visible confirmation that the save happened.
   2. The designer can clear a previously saved default view from the same config panel; the control then clearly shows no default is set.
   3. Saving or clearing one map widget's default view does not alter any other map widget's saved default or its current on-screen view.
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
+- [ ] 111-01-PLAN.md — Foundation: widgetId-keyed live-view store, EPSG:3857 -> degrees formatter, `config.defaultView` field + `getDefaultView` (wave 1)
+- [ ] 111-02-PLAN.md — Publisher: MapChartRenderer always-on live-view publish (mount + moveend) + both reset chains (wave 2)
+- [ ] 111-03-PLAN.md — Consumer: MapConfigPanel DEFAULT VIEW section — live readout, Set as default, Clear (wave 2)
 
 ### Phase 112: Map Default View — Apply on Load
 **Goal**: A map widget opens at its designer-chosen default view instead of always at the world view — without resurrecting auto-fit-to-data (deliberately removed in Phase 12-02).
