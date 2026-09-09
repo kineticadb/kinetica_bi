@@ -99,6 +99,7 @@ import {
   getSyncViewportEnabled,
 } from "../../lib/mapInfoConfig";
 import { useMapViewportSyncStore } from "../../store/mapViewportSyncStore";
+import { useMapCurrentViewStore } from "../../store/mapCurrentViewStore";
 import InfoPopup from "./InfoPopup";
 import {
   buildDrawInteraction,
@@ -2251,6 +2252,47 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       duration: 0, // immediate/atomic (RESEARCH Q2 default)
     });
   }, [incomingViewport, syncEnabled, dashboardId, widget.id]);
+
+  // Effect 9c (Phase 111 MAPVIEW-V121-01): ALWAYS-ON publish of THIS widget's live view
+  // into the widgetId-keyed mapCurrentViewStore, so MapConfigPanel can show a live readout
+  // of the view it would capture as the widget's default. The config modal's opaque
+  // .modal-overlay hides the map, so a blind save was explicitly rejected (111-CONTEXT.md).
+  //
+  // DELIBERATELY UNGATED — the ONLY guard is `if (!map) return;`. Do NOT copy Effect 9a's
+  // `if (!syncEnabled || dashboardId === undefined) return;` gate: syncViewport defaults to
+  // FALSE, so gating here would leave the store empty for most maps — the exact bug this
+  // feature exists to avoid (RESEARCH Pitfall 2). This store is not dashboard-scoped at all.
+  //
+  // Do NOT reference isSyncDrivenRef here (RESEARCH Pitfall 5): that echo-guard exists only
+  // to stop sync-driven animate() from re-publishing into the SYNC store. This publish is
+  // strictly one-directional (map -> store -> readout); nothing ever animates a map from it,
+  // and a sync-driven pan's resulting view SHOULD still be reflected in the config readout.
+  //
+  // The initial publish is REQUIRED (RESEARCH Pitfall 1): without it, a map that has not
+  // been panned since the dashboard loaded would have no store entry the first time its
+  // config panel opens, and the readout would be empty.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const publishCurrent = () => {
+      const view = map.getView();
+      const center = view.getCenter();
+      const zoom = view.getZoom();
+      if (!center || zoom === undefined) return; // same guard as Effect 9a
+      useMapCurrentViewStore.getState().publish(widget.id, {
+        center: center as [number, number],
+        zoom, // EXACT fractional zoom — never rounded here (111-CONTEXT.md lock)
+      });
+    };
+    publishCurrent(); // initial value, before any moveend fires
+    const key: EventsKey = map.on("moveend", publishCurrent);
+    return () => {
+      unByKey(key);
+      // Per-widget cleanup (M-01 discipline): drop this widget's slot on unmount so entries
+      // do not accumulate for widgets deleted mid-session, ahead of the next reset().
+      useMapCurrentViewStore.getState().clear(widget.id);
+    };
+  }, [widget.id]);
 
   // ── JSX ───────────────────────────────────────────────────────────────────
   // containerRef div MUST always render (Effect 1 fires once on mount; M-01 lock).
