@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 111-03-PLAN.md
-last_updated: "2026-09-09T19:03:17.130Z"
+stopped_at: Completed 111-02-PLAN.md
+last_updated: "2026-09-09T19:09:52.255Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 111 — map-default-view-capture-save
+**Current focus:** Phase 112 — map-default-view-apply-on-load
 
 ## Current Position
 
-Phase: 111 (map-default-view-capture-save) — EXECUTING
-Plan: 3 of 3 (111-03 complete; 111-02 in progress, parallel wave)
+Phase: 111 (map-default-view-capture-save) — COMPLETE (all 3 plans done; ready for Phase 112)
+Plan: 3 of 3
 
 ### Open tech debt carried forward
 
@@ -442,6 +442,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 110 P01 | 15min | 2 tasks | 4 files |
 | Phase 111 P01 | 12min | 3 tasks | 7 files |
 | Phase 111 P03 | 8min | 2 tasks | 2 files |
+| Phase 111 P02 | 12min | 3 tasks | 7 files |
 
 ### Quick Tasks Completed
 
@@ -829,6 +830,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 111]: getDefaultView returns undefined as the correct default state (no substituted fallback) — Phase 112 owns the world-view fallback
 - [Phase 111]: MapConfigPanel DEFAULT VIEW: scoped selector s.views[widgetId] to avoid whole-store subscription; Clear deletes the key (never sets undefined), matching existing changeBasemapCss precedent
 - [Phase 111]: Requirements MAPVIEW-V121-01/-04 left unchecked after 111-03: functional completion needs 111-02 (live-view publisher) for -01 and Phase 112 (world-view fallback) for -04's full user-visible behavior
+- [Phase 111-02]: Effect 9c (MapChartRenderer) is deliberately ungated (no syncViewport/dashboardId/isSyncDrivenRef) — the ONLY guard is `if (!map) return;`; publishes once at mount (before any moveend) plus on every moveend, clears its widget's store slot on unmount; mapCurrentViewStore joined both cleanup chains (App.tsx logout, DashboardsPage.tsx dashboard-switch) as the 13th store, right after useFilterHighlightStore (12th)
+- [Phase 111-02]: With 111-02 (publisher) + 111-03 (consumer) both now complete, MAPVIEW-V121-01 (save) is functionally complete and marked done in REQUIREMENTS.md; MAPVIEW-V121-04 (clear) stays In Progress — clearing already works in the config panel, but the "returns to world view" half of its behavior is a Phase 112 (apply-on-load) concern
+- [Phase 111-02]: Making the publish unconditional exposed 3 pre-existing hand-rolled OL Map test mocks (WidgetRenderer.spec.tsx, actionEngine.canary.spec.tsx, DashboardsPage.spec.tsx) whose getView() stub lacked getCenter/getZoom — Effect 9c calls both at mount for every map widget now, not just when syncViewport was on; fixed by adding the missing methods to each mock (Rule 3, flagged as an expected risk by the plan itself)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1235,6 +1239,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-09T19:02:04.452Z
-Stopped at: Completed 111-03-PLAN.md
+Last session: 2026-09-09T19:09:52.247Z
+Stopped at: Completed 111-02-PLAN.md
 Resume file: None

@@ -41,7 +41,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 
 ## Phases
 
-- [ ] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
+- [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
 - [ ] **Phase 112: Map Default View — Apply on Load** - Maps open at their saved default view (or world view if none saved)
 - [ ] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API
 - [ ] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
@@ -60,8 +60,8 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   3. Saving or clearing one map widget's default view does not alter any other map widget's saved default or its current on-screen view.
 **Plans**: 3 plans in 2 waves
 - [x] 111-01-PLAN.md — Foundation: widgetId-keyed live-view store, EPSG:3857 -> degrees formatter, `config.defaultView` field + `getDefaultView` (wave 1) (completed 2026-09-09)
-- [ ] 111-02-PLAN.md — Publisher: MapChartRenderer always-on live-view publish (mount + moveend) + both reset chains (wave 2)
-- [ ] 111-03-PLAN.md — Consumer: MapConfigPanel DEFAULT VIEW section — live readout, Set as default, Clear (wave 2)
+- [x] 111-02-PLAN.md — Publisher: MapChartRenderer always-on live-view publish (mount + moveend) + both reset chains (wave 2) (completed 2026-09-09)
+- [x] 111-03-PLAN.md — Consumer: MapConfigPanel DEFAULT VIEW section — live readout, Set as default, Clear (wave 2) (completed 2026-09-09)
 
 ### Phase 112: Map Default View — Apply on Load
 **Goal**: A map widget opens at its designer-chosen default view instead of always at the world view — without resurrecting auto-fit-to-data (deliberately removed in Phase 12-02).
@@ -110,7 +110,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 111. Map Default View — Capture & Save | 1/3 | In Progress | - |
+| 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
 | 112. Map Default View — Apply on Load | 0/TBD | Not started | - |
 | 113. Dashboard URL Sync | 0/TBD | Not started | - |
 | 114. Deep Link Load & Error States | 0/TBD | Not started | - |
