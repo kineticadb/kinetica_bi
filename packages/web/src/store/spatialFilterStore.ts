@@ -35,9 +35,10 @@
  */
 
 import { create } from "zustand";
+import { randomId } from "../lib/randomId";
 
 export type Shape = {
-  /** UUID v4 from crypto.randomUUID(), generated inside addShape. */
+  /** UUID v4 from randomId(), generated inside addShape. */
   id: string;
   /** Shape geometry kind. Drives label capitalization (bbox→Bbox, lasso→Lasso, circle→Circle). */
   type: "bbox" | "lasso" | "circle";
@@ -81,7 +82,7 @@ export const useSpatialFilterStore = create<State>((set) => ({
     set((s) => {
       const nextCounter = s.shapeCounter + 1;
       const shape: Shape = {
-        id: crypto.randomUUID(),
+        id: randomId(),
         type,
         wkt,
         measurement,
