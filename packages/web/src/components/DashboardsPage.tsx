@@ -55,6 +55,7 @@ import {
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { useMapViewportSyncStore } from "../store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
+import { useMapCurrentViewStore } from "../store/mapCurrentViewStore";
 import { useReverseFilterMap } from "../lib/useReverseFilterMap";  // Phase 108 Plan 02 (FSCOPE-V120-01/02/03)
 import type { WidgetApplyEntry } from "../lib/computeReverseFilterMap";
 import { useToastStore } from "../store/toast";
@@ -576,6 +577,9 @@ const DashboardOpen = ({
       useMapViewportSyncStore.getState().reset();
       // Phase 108 (FSCOPE-V120-02/03): 12th store — transient highlight/flash, session-only, no server DROP.
       useFilterHighlightStore.getState().reset();
+      // Phase 111 (MAPVIEW-V121-01): 13th store — transient per-widget live map view.
+      // Dashboard-A widget views MUST NOT leak into dashboard-B's config-panel readouts.
+      useMapCurrentViewStore.getState().reset();
     };
   }, [dashboard.id]);
 

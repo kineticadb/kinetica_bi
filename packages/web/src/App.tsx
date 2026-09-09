@@ -24,6 +24,7 @@ import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, d
 import { useFilterCombinationStore } from "./store/filterCombinationStore";
 import { useMapViewportSyncStore } from "./store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "./store/filterHighlightStore";
+import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
 import { PERMISSIONS } from "./lib/permissions";
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
@@ -149,6 +150,10 @@ const App = () => {
       useMapViewportSyncStore.getState().reset();
       // Phase 108 (FSCOPE-V120-02/03): 12th store — transient highlight/flash, session-only, no server DROP.
       useFilterHighlightStore.getState().reset();
+      // Phase 111 (MAPVIEW-V121-01): 13th store — transient per-widget live map view,
+      // session-only, no server DROP. Prevents one user's map views leaking into the next
+      // session's config-panel readouts.
+      useMapCurrentViewStore.getState().reset();
     }
   }, [status]);
 
