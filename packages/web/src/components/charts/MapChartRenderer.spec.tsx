@@ -131,9 +131,12 @@ let lastOverlayInstance: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let capturedSingleclickHandler: ((event: any) => any) | null = null;
 
-// Phase 104 (MAPSYNC-V119): moveend handler captured from map.on("moveend", ...) calls.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let capturedMoveendHandler: (() => void) | null = null;
+// Phase 104 (MAPSYNC-V119) + Phase 111 (MAPVIEW-V121-01): every moveend handler registered
+// on the map, in registration order. Two effects now register one each: Effect 9a (sync
+// publish, ONLY when syncViewport is on) and Effect 9c (always-on current-view publish).
+// Tests fire ALL of them, exactly as OL would.
+let capturedMoveendHandlers: Array<() => void> = [];
+const fireAllMoveend = () => { capturedMoveendHandlers.forEach((h) => h()); };
 // Phase 104: mock OL view with getCenter, getZoom, animate — used by sync tests.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let lastMockView: any = null;
@@ -213,8 +216,8 @@ vi.mock("ol/Map", () => ({
         singleclickHandlers.push(handler);
       }
       if (event === "moveend") {
-        // Phase 104 (MAPSYNC-V119): capture for sync publish tests
-        capturedMoveendHandler = handler;
+        // Phase 104 + Phase 111: collect every registered handler
+        capturedMoveendHandlers.push(handler);
       }
     });
     this.un = vi.fn((event: string, handler?: any) => {
@@ -517,6 +520,25 @@ vi.mock("../../store/mapViewportSyncStore", () => {
   const hook = (selector: (s: any) => any) => selector(_syncStoreState);
   (hook as any).getState = () => _syncStoreState;
   return { useMapViewportSyncStore: hook };
+});
+
+// Phase 111 (MAPVIEW-V121-01): mapCurrentViewStore mock — mirrors the Phase 104 sync-store
+// mock shape. publish/clear are vi.fn()s so tests can assert the always-on publish + cleanup.
+const _currentViewState = {
+  views: {} as Record<number, { center: [number, number]; zoom: number } | undefined>,
+  publish: vi.fn((widgetId: number, view: { center: [number, number]; zoom: number }) => {
+    _currentViewState.views[widgetId] = view;
+  }),
+  clear: vi.fn((widgetId: number) => { delete _currentViewState.views[widgetId]; }),
+  reset: vi.fn(() => { _currentViewState.views = {}; }),
+};
+
+vi.mock("../../store/mapCurrentViewStore", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hook = (selector: (s: any) => any) => selector(_currentViewState);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (hook as any).getState = () => _currentViewState;
+  return { useMapCurrentViewStore: hook };
 });
 
 // Phase 21: InfoPopup mock — renders minimal sentinel so we can confirm it mounts
@@ -6301,7 +6323,10 @@ describe("MapChartRenderer — Phase 104 viewport sync (MAPSYNC-V119)", () => {
     _dynamicViewState.dynamicViewVersion = 0;
     lastMapInstance = null;
     lastMockView = null;
-    capturedMoveendHandler = null;
+    capturedMoveendHandlers = [];
+    _currentViewState.views = {};
+    _currentViewState.publish.mockClear();
+    _currentViewState.clear.mockClear();
     _syncStoreState.viewports = {};
     _syncStoreState.publish.mockClear();
     _syncStoreState.clear.mockClear();
@@ -6329,11 +6354,12 @@ describe("MapChartRenderer — Phase 104 viewport sync (MAPSYNC-V119)", () => {
     // Verify moveend listener was attached
     expect(lastMapInstance).not.toBeNull();
     const moveendCalls = lastMapInstance.on.mock.calls.filter((c: any[]) => c[0] === "moveend");
-    expect(moveendCalls.length).toBe(1);
+    // Phase 111: TWO moveend listeners now — Effect 9a (sync, enabled here) + Effect 9c (always-on).
+    expect(moveendCalls.length).toBe(2);
 
     // Fire the captured moveend handler (simulates user pan/zoom completing)
-    expect(capturedMoveendHandler).not.toBeNull();
-    act(() => { capturedMoveendHandler!(); });
+    expect(capturedMoveendHandlers.length).toBe(2);
+    act(() => { fireAllMoveend(); });
 
     // Verify publish was called with the correct dashboardId + center + zoom + originWidgetId
     expect(_syncStoreState.publish).toHaveBeenCalledTimes(1);
@@ -6347,7 +6373,7 @@ describe("MapChartRenderer — Phase 104 viewport sync (MAPSYNC-V119)", () => {
 
   // ── Test B: disabled = no-op (byte-identical) ─────────────────────────────
   // MAPSYNC-V119-06: maps with syncViewport absent/false attach NO moveend listener.
-  it("Test B: with syncViewport absent (default), map.on is NOT called with 'moveend' and publish is never called", async () => {
+  it("Test B: with syncViewport absent (default), the ONLY moveend listener is Phase 111's always-on publish and the sync publish is never called", async () => {
     await act(async () => {
       renderWithDashboardCtx(
         <MapChartRenderer widget={makeWidget()} tables={[]} />
@@ -6356,8 +6382,10 @@ describe("MapChartRenderer — Phase 104 viewport sync (MAPSYNC-V119)", () => {
 
     expect(lastMapInstance).not.toBeNull();
     const moveendCalls = lastMapInstance.on.mock.calls.filter((c: any[]) => c[0] === "moveend");
-    // No moveend listener attached when syncViewport is absent/false
-    expect(moveendCalls.length).toBe(0);
+    // Phase 111: Effect 9c always attaches one moveend listener; Effect 9a attaches none
+    // when syncViewport is absent/false — MAPSYNC-V119-06 byte-identical sync behaviour.
+    expect(moveendCalls.length).toBe(1);
+    act(() => { fireAllMoveend(); });
     expect(_syncStoreState.publish).not.toHaveBeenCalled();
   });
 
@@ -6391,8 +6419,126 @@ describe("MapChartRenderer — Phase 104 viewport sync (MAPSYNC-V119)", () => {
     // Now simulate the moveend that OL fires after the programmatic animate().
     // With isSyncDrivenRef=true (set by subscribe effect), publish MUST NOT be called.
     _syncStoreState.publish.mockClear();
-    act(() => { capturedMoveendHandler!(); });
+    act(() => { fireAllMoveend(); });
 
     expect(_syncStoreState.publish).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 111 (MAPVIEW-V121-01): Always-on current-view publish        */
+/* ------------------------------------------------------------------ */
+
+describe("MapChartRenderer — Phase 111 (MAPVIEW-V121-01) always-on current-view publish", () => {
+  const DASHBOARD_ID = 42;
+  const WIDGET_ID = 10; // matches makeWidget() id
+
+  // Helper: minimal DashboardContextProvider wrapper (mirrors the Phase 104 block above).
+  const renderWithDashboardCtx = (ui: JSX.Element) =>
+    render(
+      <DashboardContextProvider
+        dashboardId={DASHBOARD_ID}
+        widgets={[]}
+        dynamicViews={[]}
+        retryDynamicView={() => {}}
+      >
+        {ui}
+      </DashboardContextProvider>
+    );
+
+  beforeEach(() => {
+    // Reset all shared state (mirrors the Phase 104 block's beforeEach).
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    _layersState.layers = [];
+    _filterViewState.views = {};
+    _comboVizToHash = {};
+    _comboRegistry = {};
+    _dynamicViewState.views = {};
+    _dynamicViewState.dynamicViewVersion = 0;
+    lastMapInstance = null;
+    lastMockView = null;
+    capturedMoveendHandlers = [];
+    _currentViewState.views = {};
+    _currentViewState.publish.mockClear();
+    _currentViewState.clear.mockClear();
+    _syncStoreState.viewports = {};
+    _syncStoreState.publish.mockClear();
+    _syncStoreState.clear.mockClear();
+    _syncStoreState.reset.mockClear();
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    tileLoadListeners = {};
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Test D: initial publish (RESEARCH Pitfall 1) ───────────────────────────
+  it("Test D: publishes the current view at mount, before any moveend fires", async () => {
+    await act(async () => {
+      renderWithDashboardCtx(
+        <MapChartRenderer widget={makeWidget()} tables={[]} />
+      );
+    });
+
+    // WITHOUT firing any moveend, the initial publish must already have happened.
+    expect(_currentViewState.publish).toHaveBeenCalled();
+    const [calledWidgetId, calledView] = _currentViewState.publish.mock.calls[0];
+    expect(calledWidgetId).toBe(WIDGET_ID);
+    expect(calledView).toEqual({ center: [100, 200], zoom: 10 });
+    expect(_currentViewState.views[WIDGET_ID]).toEqual({ center: [100, 200], zoom: 10 });
+  });
+
+  // ── Test E: always-on, no sync gate (RESEARCH Pitfall 2) ───────────────────
+  it("Test E: attaches a moveend listener and publishes on every moveend, even with syncViewport absent", async () => {
+    await act(async () => {
+      renderWithDashboardCtx(
+        <MapChartRenderer widget={makeWidget()} tables={[]} />
+      );
+    });
+
+    expect(lastMapInstance).not.toBeNull();
+    const moveendCalls = lastMapInstance.on.mock.calls.filter((c: any[]) => c[0] === "moveend");
+    // The listener is attached even though sync is off (syncViewport absent).
+    expect(moveendCalls.length).toBe(1);
+
+    const callsBefore = _currentViewState.publish.mock.calls.length;
+    act(() => { fireAllMoveend(); });
+    expect(_currentViewState.publish.mock.calls.length).toBe(callsBefore + 1);
+  });
+
+  // ── Test F: unmount cleanup ─────────────────────────────────────────────────
+  it("Test F: clears this widget's store slot on unmount", async () => {
+    let unmount!: () => void;
+    await act(async () => {
+      ({ unmount } = renderWithDashboardCtx(
+        <MapChartRenderer widget={makeWidget()} tables={[]} />
+      ));
+    });
+
+    unmount();
+
+    expect(_currentViewState.clear).toHaveBeenCalledWith(WIDGET_ID);
+  });
+
+  // ── Test G: scope fence — Phase 112 guard ──────────────────────────────────
+  // Phase 112 applies defaultView; Phase 111 must ignore it entirely.
+  it("Test G: a widget with a saved defaultView is not moved — Phase 111 never reads or applies it", async () => {
+    await act(async () => {
+      renderWithDashboardCtx(
+        <MapChartRenderer
+          widget={makeWidget({ defaultView: { center: [999999, 888888], zoom: 15 } })}
+          tables={[]}
+        />
+      );
+    });
+
+    expect(lastMapInstance).not.toBeNull();
+    expect(lastMockView).not.toBeNull();
+    expect(lastMockView.animate).not.toHaveBeenCalled();
   });
 });
