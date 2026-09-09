@@ -2,16 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
-status: planning
-stopped_at: Phase 111 context gathered
-last_updated: "2026-09-09T18:03:04.873Z"
-last_activity: "2026-09-09 — Roadmap created: 5 phases (111-115), 13/13 requirements mapped, no orphans"
+status: unknown
+stopped_at: Completed 111-01-PLAN.md
+last_updated: "2026-09-09T18:49:39.797Z"
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 3
+  completed_plans: 1
 ---
 
 # Project State
@@ -21,30 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.21 Dashboard Links & Map Default View — Phase 111 (Map Default View — Capture & Save) ready to plan
+**Current focus:** Phase 111 — map-default-view-capture-save
 
 ## Current Position
 
-**v1.21 Dashboard Links & Map Default View — ROADMAP CREATED 2026-09-09.**
-
-Phase: 111 of 115 (Map Default View — Capture & Save) — ready to plan
-Plan: —
-Status: Ready to plan
-Last activity: 2026-09-09 — Roadmap created: 5 phases (111-115), 13/13 requirements mapped, no orphans
-Progress: [░░░░░░░░░░] 0%
-
-Two features, scope deliberately held small, frontend-only (`packages/web`), no server work:
-
-1. **Map default view** (Phases 111 → 112) — designer zooms/pans, then saves that exact view (zoom + center) as the map widget's default. `MapChartRenderer.tsx:1038` currently hardcodes `center: [0,0], zoom: 2`. Phase 111 owns the highest-risk unknown: the config panel's own path to the live view of the map being configured (`mapViewportSyncStore` is NOT reusable — wrong key, gated off by default).
-2. **Dashboard URLs** (Phases 113 → 114 → 115) — a dashboard reachable by link instead of only via the dashboard-list page. The app has NO router today; v1.21 syncs a URL param to the existing `App.tsx` page state via the native History API, no new dependency. Phase 115 extends the existing Phase 7 sessionStorage return-to-page mechanism rather than inventing a second one.
-
-The two tracks (111-112, 113-115) are independent — parallel-safe, no shared files or state.
-
-Research SKIPPED for this milestone (internal wiring in a known stack; no new domain to discover). Does not change the project default.
-
-**Not recorded here, by operator decision:** the heatmap widget + axis bucketing, CI/release process, the `crypto.randomUUID` insecure-origin fix, and the untracked `local-deploy/` docker kit all shipped between v1.20 and v1.21 outside GSD. Their commits on `master` (PRs #2/#3/#4) are the record; the planning docs describe only GSD-planned work.
-
-Phases continue from **111** (v1.20 ended at 110, incl. inserted 109.1/109.2).
+Phase: 111 (map-default-view-capture-save) — EXECUTING
+Plan: 2 of 3
 
 ### Open tech debt carried forward
 
@@ -460,6 +440,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 109.2 P01 | 14min | 2 tasks | 6 files |
 | Phase 109.2 P02 | 25min | 2 tasks | 6 files |
 | Phase 110 P01 | 15min | 2 tasks | 4 files |
+| Phase 111 P01 | 12min | 3 tasks | 7 files |
 
 ### Quick Tasks Completed
 
@@ -842,6 +823,9 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 109.2]: Calendar's respondToFilters migration coalesce discriminated by key presence (not value), keeping the coalesce entirely calendar-only at each read site (renderer FROM path, config-panel display, WidgetCard badge) rather than inside shared resolvers.
 - [Phase 110]: DashboardSettingsModal is a pure controlled toggle (no API calls); parent owns updateDashboard PATCH + state-lift for trivial testability
 - [Phase 110]: Reused existing .radiogroup--buttons/.radiogroup-button classes verbatim for the segmented toggle -- zero new CSS classes
+- [Phase 111]: mapCurrentViewStore is a separate always-on widgetId-keyed store from mapViewportSyncStore (Phase 104), which is sync-toggle-gated and dashboardId-keyed
+- [Phase 111]: defaultView stored in EPSG:3857 with exact fractional zoom; formatLatLon/formatZoom are display-only and never touch the stored value
+- [Phase 111]: getDefaultView returns undefined as the correct default state (no substituted fallback) — Phase 112 owns the world-view fallback
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1248,6 +1232,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-09T18:03:04.864Z
-Stopped at: Phase 111 context gathered
-Resume file: .planning/phases/111-map-default-view-capture-save/111-CONTEXT.md
+Last session: 2026-09-09T18:49:39.788Z
+Stopped at: Completed 111-01-PLAN.md
+Resume file: .planning/phases/111-map-default-view-capture-save/111-02-PLAN.md

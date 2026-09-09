@@ -59,7 +59,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   2. The designer can clear a previously saved default view from the same config panel; the control then clearly shows no default is set.
   3. Saving or clearing one map widget's default view does not alter any other map widget's saved default or its current on-screen view.
 **Plans**: 3 plans in 2 waves
-- [ ] 111-01-PLAN.md — Foundation: widgetId-keyed live-view store, EPSG:3857 -> degrees formatter, `config.defaultView` field + `getDefaultView` (wave 1)
+- [x] 111-01-PLAN.md — Foundation: widgetId-keyed live-view store, EPSG:3857 -> degrees formatter, `config.defaultView` field + `getDefaultView` (wave 1) (completed 2026-09-09)
 - [ ] 111-02-PLAN.md — Publisher: MapChartRenderer always-on live-view publish (mount + moveend) + both reset chains (wave 2)
 - [ ] 111-03-PLAN.md — Consumer: MapConfigPanel DEFAULT VIEW section — live readout, Set as default, Clear (wave 2)
 
@@ -110,7 +110,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 111. Map Default View — Capture & Save | 0/TBD | Not started | - |
+| 111. Map Default View — Capture & Save | 1/3 | In Progress | - |
 | 112. Map Default View — Apply on Load | 0/TBD | Not started | - |
 | 113. Dashboard URL Sync | 0/TBD | Not started | - |
 | 114. Deep Link Load & Error States | 0/TBD | Not started | - |
