@@ -258,6 +258,8 @@ vi.mock("../../lib/mapInfoConfig", () => ({
   getShowLoadingIndicator: () => false,
   // Phase 104 (MAPSYNC-V119-06): opt-in sync — default false (legacy byte-identical)
   getSyncViewportEnabled: () => false,
+  // Phase 112 (MAPVIEW-V121-02/-03): mirrors the real getDefaultView passthrough.
+  getDefaultView: () => undefined,
   DEFAULT_INFO_ENABLED: false,
   DEFAULT_INFO_RADIUS_PX: 3,
   DEFAULT_SHOW_SHAPE_MEASUREMENTS: false,

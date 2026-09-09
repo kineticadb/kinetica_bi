@@ -193,6 +193,10 @@ vi.mock("ol/Map", () => ({
       // Phase 104 (MAPSYNC-V119): getCenter + animate needed for sync effects.
       getCenter: vi.fn(() => [100, 200] as [number, number]),
       animate: vi.fn(),
+      // Phase 112: spies so a test can prove the initial view is NOT applied imperatively
+      // (an imperative apply would paint the world view first — the forbidden flash).
+      setCenter: vi.fn(),
+      setZoom: vi.fn(),
     };
     lastMockView = mockView;
     this.getView = vi.fn(() => mockView);
@@ -300,7 +304,10 @@ vi.mock("ol/proj", () => ({
 }));
 
 vi.mock("ol/View", () => ({
-  default: vi.fn().mockImplementation(function MockView(this: any) {
+  default: vi.fn().mockImplementation(function MockView(this: any, opts: any) {
+    // Phase 112 (MAPVIEW-V121-02/-03): the initial center/zoom are CONSTRUCTOR arguments,
+    // so the payload is the only place the applied initial view is observable.
+    this._opts = opts;
     return this;
   }),
 }));
@@ -740,6 +747,7 @@ import MapChartRenderer, { pickPopupAnchor } from "./MapChartRenderer";
 import OlMap from "ol/Map";
 import ScaleLine from "ol/control/ScaleLine";
 import FullScreen from "ol/control/FullScreen";
+import OlView from "ol/View";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
 import { useThemeStore } from "../../store/theme";
 import { DashboardContextProvider } from "../DashboardContext";
@@ -6528,9 +6536,12 @@ describe("MapChartRenderer — Phase 111 (MAPVIEW-V121-01) always-on current-vie
     expect(_currentViewState.clear).toHaveBeenCalledWith(WIDGET_ID);
   });
 
-  // ── Test G: scope fence — Phase 112 guard ──────────────────────────────────
-  // Phase 112 applies defaultView; Phase 111 must ignore it entirely.
-  it("Test G: a widget with a saved defaultView is not moved — Phase 111 never reads or applies it", async () => {
+  // ── Test G: anti-flash regression guard (Phase 112) ─────────────────────────
+  // Phase 112 applies the saved defaultView at OL View CONSTRUCTION (see
+  // MapChartRenderer.tsx's initialView derivation + mapInitialView.ts), never via
+  // an imperative move. This assertion is what proves that: a widget with a saved
+  // defaultView never has `animate()` called on it by this renderer.
+  it("Test G: a widget with a saved defaultView is never MOVED to it — Phase 112 applies it at View construction, never via animate", async () => {
     await act(async () => {
       renderWithDashboardCtx(
         <MapChartRenderer
@@ -6543,5 +6554,127 @@ describe("MapChartRenderer — Phase 111 (MAPVIEW-V121-01) always-on current-vie
     expect(lastMapInstance).not.toBeNull();
     expect(lastMockView).not.toBeNull();
     expect(lastMockView.animate).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 112 (MAPVIEW-V121-02/-03/-05/-06): initial view from config  */
+/* ------------------------------------------------------------------ */
+
+describe("MapChartRenderer — Phase 112 initial view from config.defaultView", () => {
+  // NYC-ish, EPSG:3857, with the exact unrounded fractional zoom Phase 111 persists.
+  const NYC = { center: [-8237642.318, 4970241.327] as [number, number], zoom: 12.437 };
+  const LONDON = { center: [-14226.463, 6711533.377] as [number, number], zoom: 9.25 };
+
+  beforeEach(() => {
+    _layersState.layers = [];
+    _filterState.filters = {};
+    _filterState.filterVersion = 0;
+    lastMapInstance = null;
+    lastMockView = null;
+    capturedMoveendHandlers = [];
+    _currentViewState.views = {};
+    _syncStoreState.viewports = {};
+    vi.clearAllMocks();
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  // ── H1: MAPVIEW-V121-02, the saved default reaches the constructor exactly ──
+  it("H1: MAPVIEW-V121-02 — a saved defaultView reaches the OlView constructor exactly (no rounding)", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget({ defaultView: NYC })} tables={[]} />);
+    });
+
+    expect(vi.mocked(OlView)).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(OlView).mock.calls[0][0] as any;
+    expect(opts.center).toEqual(NYC.center);
+    expect(opts.zoom).toBe(12.437);
+    // PITFALL M-03 lock preserved: EPSG:3857 stays the constructor's projection.
+    expect(opts.projection).toBe("EPSG:3857");
+  });
+
+  // ── H2: MAPVIEW-V121-03, absent default is byte-identical to today ──────────
+  it("H2: MAPVIEW-V121-03 — absent defaultView opens byte-identical to the pre-Phase-112 hardcoded values", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={[]} />);
+    });
+
+    const opts = vi.mocked(OlView).mock.calls[0][0] as any;
+    // [0, 0] / zoom 2 / EPSG:3857 are the pre-Phase-112 hardcoded values — a future edit
+    // must not quietly change them for the no-default path.
+    expect(opts).toMatchObject({ projection: "EPSG:3857", center: [0, 0], zoom: 2 });
+  });
+
+  // ── H3: the no-flash structural guard ────────────────────────────────────────
+  it("H3: the saved view arrives as a constructor argument — no imperative mutation, no mount-time sync broadcast", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget({ defaultView: NYC })} tables={[]} />);
+    });
+
+    expect(lastMockView).not.toBeNull();
+    expect(lastMockView.animate).not.toHaveBeenCalled();
+    expect(lastMockView.setCenter).not.toHaveBeenCalled();
+    expect(lastMockView.setZoom).not.toHaveBeenCalled();
+    expect(lastMockView.fit).not.toHaveBeenCalled();
+    // Constructing a View fires no moveend, so Effect 9a cannot broadcast this map's
+    // default into the dashboard-wide viewport-sync store (syncViewport is off here too).
+    expect(_syncStoreState.publish).not.toHaveBeenCalled();
+  });
+
+  // ── H4: MAPVIEW-V121-06, two widgets are independent ────────────────────────
+  it("H4: MAPVIEW-V121-06 — two map widgets on one dashboard open at their OWN saved default", async () => {
+    await act(async () => {
+      render(
+        <>
+          <MapChartRenderer widget={{ ...makeWidget({ defaultView: NYC }), id: 10 }} tables={[]} />
+          <MapChartRenderer
+            widget={{ ...makeWidget({ defaultView: LONDON }), id: 11 }}
+            tables={[]}
+          />
+        </>,
+      );
+    });
+
+    // Each map reads its OWN widget config — a dashboardId-keyed source (the
+    // mapViewportSyncStore shape Phase 111 rejected) would give both maps the same view.
+    expect(vi.mocked(OlView)).toHaveBeenCalledTimes(2);
+    const firstOpts = vi.mocked(OlView).mock.calls[0][0] as any;
+    const secondOpts = vi.mocked(OlView).mock.calls[1][0] as any;
+    expect(firstOpts.center).toEqual(NYC.center);
+    expect(firstOpts.zoom).toBe(12.437);
+    expect(secondOpts.center).toEqual(LONDON.center);
+    expect(secondOpts.zoom).toBe(9.25);
+  });
+
+  // ── H5: an unusable stored value falls back instead of breaking the map ─────
+  it("H5: an out-of-range stored zoom falls back to the world view without throwing", async () => {
+    await act(async () => {
+      render(
+        <MapChartRenderer
+          widget={makeWidget({ defaultView: { center: [0, 0], zoom: 40 } })}
+          tables={[]}
+        />,
+      );
+    });
+
+    const opts = vi.mocked(OlView).mock.calls[0][0] as any;
+    expect(opts.center).toEqual([0, 0]);
+    expect(opts.zoom).toBe(2);
+  });
+
+  // ── H6: MAPVIEW-V121-05, the reload path ─────────────────────────────────────
+  it("H6: MAPVIEW-V121-05 — the exact centre and fractional zoom survive a JSON persist/reload round-trip", async () => {
+    const persisted: WidgetDto = JSON.parse(JSON.stringify(makeWidget({ defaultView: NYC })));
+
+    await act(async () => {
+      render(<MapChartRenderer widget={persisted} tables={[]} />);
+    });
+
+    // The widget config is stored and returned as a JSON blob; this proves the exact
+    // EPSG:3857 metre centre and the exact fractional zoom survive that trip, so a
+    // browser refresh reopens the map where the designer left it.
+    const opts = vi.mocked(OlView).mock.calls[0][0] as any;
+    expect(opts.center).toEqual(NYC.center);
+    expect(opts.zoom).toBe(12.437);
   });
 });
