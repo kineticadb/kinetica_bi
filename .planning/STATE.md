@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 111-02-PLAN.md
-last_updated: "2026-09-09T19:16:40.557Z"
+stopped_at: Completed 112-01-PLAN.md
+last_updated: "2026-09-09T20:37:48.233Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 ## Current Position
 
-Phase: 111 (map-default-view-capture-save) — COMPLETE (all 3 plans done; ready for Phase 112)
-Plan: 3 of 3
+Phase: 112 (map-default-view-apply-on-load) — EXECUTING
+Plan: 2 of 2
 
 ### Open tech debt carried forward
 
@@ -443,6 +443,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 111 P01 | 12min | 3 tasks | 7 files |
 | Phase 111 P03 | 8min | 2 tasks | 2 files |
 | Phase 111 P02 | 12min | 3 tasks | 7 files |
+| Phase 112 P01 | 35min | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -833,6 +834,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 111-02]: Effect 9c (MapChartRenderer) is deliberately ungated (no syncViewport/dashboardId/isSyncDrivenRef) — the ONLY guard is `if (!map) return;`; publishes once at mount (before any moveend) plus on every moveend, clears its widget's store slot on unmount; mapCurrentViewStore joined both cleanup chains (App.tsx logout, DashboardsPage.tsx dashboard-switch) as the 13th store, right after useFilterHighlightStore (12th)
 - [Phase 111-02]: With 111-02 (publisher) + 111-03 (consumer) both now complete, MAPVIEW-V121-01 (save) is functionally complete and marked done in REQUIREMENTS.md; MAPVIEW-V121-04 (clear) stays In Progress — clearing already works in the config panel, but the "returns to world view" half of its behavior is a Phase 112 (apply-on-load) concern
 - [Phase 111-02]: Making the publish unconditional exposed 3 pre-existing hand-rolled OL Map test mocks (WidgetRenderer.spec.tsx, actionEngine.canary.spec.tsx, DashboardsPage.spec.tsx) whose getView() stub lacked getCenter/getZoom — Effect 9c calls both at mount for every map widget now, not just when syncViewport was on; fixed by adding the missing methods to each mock (Rule 3, flagged as an expected risk by the plan itself)
+- [Phase 112]: resolveInitialView resolved at render time as a constructor arg to new OlView(...) — no post-construction setCenter/setZoom/animate/fit, structurally preventing the world-view flash
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1239,6 +1241,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-09T19:09:52.247Z
-Stopped at: Completed 111-02-PLAN.md
+Last session: 2026-09-09T20:37:48.225Z
+Stopped at: Completed 112-01-PLAN.md
 Resume file: None

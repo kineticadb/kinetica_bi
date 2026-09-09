@@ -72,7 +72,9 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   2. A map widget with no saved default view opens exactly as it does today: world view, `center [0,0]`, `zoom 2`.
   3. Reloading the dashboard (browser refresh) reopens each map at its saved default view — the save survives a reload.
   4. Two map widgets on the same dashboard with different saved defaults each open at their own view, independent of one another.
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
+- [x] 112-01-PLAN.md — resolveInitialView helper + MapChartRenderer OlView construction + all four REQ tests (wave 1) (completed 2026-09-09)
+- [ ] 112-02-PLAN.md — full gate run + operator walk-through (no-flash, real refresh, two-map independence) (wave 2)
 
 ### Phase 113: Dashboard URL Sync
 **Goal**: The browser address bar always reflects which dashboard, if any, is open — kept in sync via the native History API, no new dependency.
@@ -111,7 +113,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
-| 112. Map Default View — Apply on Load | 0/TBD | Not started | - |
+| 112. Map Default View — Apply on Load | 1/2 | In Progress | - |
 | 113. Dashboard URL Sync | 0/TBD | Not started | - |
 | 114. Deep Link Load & Error States | 0/TBD | Not started | - |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
