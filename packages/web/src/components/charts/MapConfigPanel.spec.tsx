@@ -37,6 +37,27 @@ vi.mock("../../store/dashboardLayersStore", () => ({
 }));
 
 /* ------------------------------------------------------------------ */
+/*  Phase 111 (MAPVIEW-V121-01/04) mocks                               */
+/* ------------------------------------------------------------------ */
+
+// Live per-widget map view, mirroring the dashboardLayersStore mutable-state mock pattern.
+const _currentViewState = {
+  views: {} as Record<number, { center: [number, number]; zoom: number } | undefined>,
+};
+vi.mock("../../store/mapCurrentViewStore", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useMapCurrentViewStore: (selector: (s: any) => any) => selector(_currentViewState),
+}));
+
+// Mock the FORMATTER MODULE (not ol/proj) so this spec — which has never needed any
+// OpenLayers knowledge — stays OL-free and the readout assertions are hand-computable.
+// The real formatters are covered by src/lib/mapViewFormat.spec.ts against real ol/proj.
+vi.mock("../../lib/mapViewFormat", () => ({
+  formatLatLon: (c: [number, number]) => `LL[${c[0]},${c[1]}]`,
+  formatZoom: (z: number) => `Z[${z}]`,
+}));
+
+/* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -71,6 +92,7 @@ const makeConfig = (overrides: Record<string, unknown> = {}) => ({
 describe("MapConfigPanel — Phase 12 shrunk surface", () => {
   beforeEach(() => {
     _storeState.layers = [];
+    _currentViewState.views = {};
     vi.clearAllMocks();
   });
 
@@ -1398,5 +1420,139 @@ describe("LAYERS PANEL section (Phase 41)", () => {
     const call = onChange.mock.calls[0][0];
     expect(call.legendPanelCorner).toBe("bottom-left");
     expect(call.legendPanelEnabled).toBe(false);
+  });
+});
+
+describe("MapConfigPanel — Phase 111 DEFAULT VIEW (MAPVIEW-V121-01/04)", () => {
+  const WIDGET_ID = 77;
+
+  beforeEach(() => {
+    _storeState.layers = [];
+    _currentViewState.views = {};
+  });
+
+  // D1 — section exists
+  it("renders the DEFAULT VIEW section with the no-default copy when nothing is saved or live", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel config={makeConfig()} onChange={onChange} widgetId={WIDGET_ID} />,
+    );
+    expect(screen.getByText("DEFAULT VIEW")).toBeInTheDocument();
+    expect(screen.getByText("No default — opens at world view")).toBeInTheDocument();
+  });
+
+  // D2 — disabled without a live view
+  it("disables Set as default and hides Clear when there is no live view", () => {
+    const onChange = vi.fn();
+    _currentViewState.views = {};
+    render(
+      <MapConfigPanel config={makeConfig()} onChange={onChange} widgetId={WIDGET_ID} />,
+    );
+    const btn = screen.getByLabelText("Set as default view") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toBe("Set as default");
+    expect(screen.queryByLabelText("Clear default view")).toBeNull();
+  });
+
+  // D3 — live readout (MAPVIEW-V121-01)
+  it("shows the live unrounded readout inside the button label", () => {
+    const onChange = vi.fn();
+    _currentViewState.views[WIDGET_ID] = { center: [1000, 2000], zoom: 12.437 };
+    render(
+      <MapConfigPanel config={makeConfig()} onChange={onChange} widgetId={WIDGET_ID} />,
+    );
+    const btn = screen.getByLabelText("Set as default view") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.textContent).toBe("Set as default — zoom Z[12.437] · LL[1000,2000]");
+  });
+
+  // D4 — save writes the exact value (MAPVIEW-V121-01)
+  it("clicking Set as default writes the exact unrounded zoom and center, preserving the rest of config", () => {
+    const onChange = vi.fn();
+    _currentViewState.views[WIDGET_ID] = { center: [1000, 2000], zoom: 12.437 };
+    render(
+      <MapConfigPanel config={makeConfig()} onChange={onChange} widgetId={WIDGET_ID} />,
+    );
+    fireEvent.click(screen.getByLabelText("Set as default view"));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const next = onChange.mock.calls[0][0];
+    expect(next.defaultView).toEqual({ center: [1000, 2000], zoom: 12.437 });
+    expect(next.defaultView.zoom).toBe(12.437);
+    expect(next.basemap).toBe("osm");
+  });
+
+  // D5 — both values shown before overwrite (111-CONTEXT.md lock)
+  it("shows both the saved default and the pending live replacement before overwrite", () => {
+    const onChange = vi.fn();
+    _currentViewState.views[WIDGET_ID] = { center: [1000, 2000], zoom: 12.437 };
+    render(
+      <MapConfigPanel
+        config={makeConfig({ defaultView: { center: [50, 60], zoom: 8 } })}
+        onChange={onChange}
+        widgetId={WIDGET_ID}
+      />,
+    );
+    expect(screen.getByText("Current default: zoom Z[8] · LL[50,60]")).toBeInTheDocument();
+    const btn = screen.getByLabelText("Set as default view") as HTMLButtonElement;
+    expect(btn.textContent).toBe("Set as default — zoom Z[12.437] · LL[1000,2000]");
+  });
+
+  // D6 — Clear appears only when a default is saved (MAPVIEW-V121-04)
+  it("shows Clear only when a default is saved", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapConfigPanel
+        config={makeConfig({ defaultView: { center: [50, 60], zoom: 8 } })}
+        onChange={onChange}
+        widgetId={WIDGET_ID}
+      />,
+    );
+    expect(screen.getByLabelText("Clear default view")).toBeInTheDocument();
+    rerender(
+      <MapConfigPanel config={makeConfig()} onChange={onChange} widgetId={WIDGET_ID} />,
+    );
+    expect(screen.queryByLabelText("Clear default view")).toBeNull();
+  });
+
+  // D7 — Clear deletes the key (MAPVIEW-V121-04, RESEARCH Pitfall 6)
+  it("clicking Clear deletes the defaultView key rather than setting it to undefined", () => {
+    const onChange = vi.fn();
+    render(
+      <MapConfigPanel
+        config={makeConfig({ defaultView: { center: [50, 60], zoom: 8 } })}
+        onChange={onChange}
+        widgetId={WIDGET_ID}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Clear default view"));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(
+      Object.prototype.hasOwnProperty.call(onChange.mock.calls[0][0], "defaultView"),
+    ).toBe(false);
+    expect(onChange.mock.calls[0][0].basemap).toBe("osm");
+  });
+
+  // D8 — undefined widgetId is safe
+  it("is safe with an undefined widgetId — disabled, no throw, no cross-widget leak", () => {
+    const onChange = vi.fn();
+    _currentViewState.views[WIDGET_ID] = { center: [1000, 2000], zoom: 12.437 };
+    expect(() =>
+      render(<MapConfigPanel config={makeConfig()} onChange={onChange} />),
+    ).not.toThrow();
+    const btn = screen.getByLabelText("Set as default view") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toBe("Set as default");
+  });
+
+  // D9 — per-widget isolation (MAPVIEW-V121-06 at the panel layer)
+  it("does not pick up another widget's live view", () => {
+    const onChange = vi.fn();
+    _currentViewState.views[999] = { center: [7, 8], zoom: 3 };
+    render(
+      <MapConfigPanel config={makeConfig()} onChange={onChange} widgetId={WIDGET_ID} />,
+    );
+    const btn = screen.getByLabelText("Set as default view") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).not.toContain("LL[7,8]");
   });
 });
