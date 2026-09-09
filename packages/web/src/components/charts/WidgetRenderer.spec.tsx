@@ -4214,3 +4214,104 @@ describe("BarRenderer — minBarSize scroll region", () => {
     expect(inner.style.minWidth).toBe("");
   });
 });
+
+// ─── Heatmap: routed from INSIDE AggregatedWidgetRenderer's switch ────────────
+//
+// Unlike calendar/timeline (which short-circuit before the aggregated path and
+// own their own fetch), heatmap deliberately rides the shared aggregated
+// contract. That is what gives it filters, dv binding, FROM-swap and materialize
+// for free — so the thing worth pinning here is that it stays ON that path and
+// receives the fetched rows, not how it draws them (HeatmapRenderer.spec.tsx
+// owns the SVG).
+
+// Mocked so this spec asserts ROUTING + the props handed over.
+vi.mock("./HeatmapRenderer", () => ({
+  default: (props: Record<string, unknown>) => (
+    <div
+      data-testid="heatmap-renderer"
+      data-row-count={String(((props.data as unknown[]) ?? []).length)}
+      data-group-by={String(
+        (((props.config as Record<string, unknown>)?.groupByColumns as string[]) ?? []).join(","),
+      )}
+      // Every prop other than data/config — drillProps would show up here as
+      // widgetId/tableId/drillDownColumn/... so an exact-set assertion catches
+      // a drill thread AND any future prop leak.
+      data-extra-props={Object.keys(props)
+        .filter((k) => k !== "data" && k !== "config")
+        .sort()
+        .join(",")}
+    />
+  ),
+}));
+
+const HEATMAP_SQL =
+  "SELECT day_name, hour_of_day, AVG(dl_speed) AS value FROM demo.cells " +
+  "GROUP BY day_name, hour_of_day ORDER BY value DESC LIMIT 5000";
+
+const makeHeatmapWidget = (overrides: Partial<WidgetDto> = {}): WidgetDto =>
+  makeWidget({
+    id: 77,
+    type: "heatmap",
+    config: {
+      sql: HEATMAP_SQL,
+      tableId: 42,
+      metricColumn: "dl_speed",
+      aggregation: "AVG",
+      groupByColumns: ["day_name", "hour_of_day"],
+    },
+    ...overrides,
+  });
+
+const heatmapResponse = {
+  column_headers: ["day_name", "hour_of_day", "value"],
+  column_1: ["Monday", "Monday", "Tuesday"],
+  column_2: [0, 1, 0],
+  column_3: [10, 20, 30],
+};
+
+describe("WidgetRenderer — heatmap rides the shared aggregated path", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("routes widget.type === 'heatmap' to <HeatmapRenderer /> with the fetched intersection rows", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(heatmapResponse);
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    const el = screen.getByTestId("heatmap-renderer");
+    // All three (x,y) rows arrive as `data` — the renderer owns no fetch of its own.
+    expect(el.getAttribute("data-row-count")).toBe("3");
+    // groupByColumns must reach the renderer; it resolves x/y columns from them.
+    expect(el.getAttribute("data-group-by")).toBe("day_name,hour_of_day");
+    // It must NOT fall through to the unconfigured placeholder.
+    expect(screen.queryByText(/Select a table/)).toBeNull();
+  });
+
+  it("issues the widget's own GROUP BY query, once", async () => {
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockResolvedValue(heatmapResponse);
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toContain("GROUP BY day_name, hour_of_day");
+    // No client-side WHERE injection on the aggregated path.
+    expect(spy.mock.calls[0][0]).not.toContain("WHERE");
+  });
+
+  it("threads NO drill props — a cell is a 2-dimension intersection, not one column", async () => {
+    // supportsDrillDown is false for heatmap: the generic drill dispatches ONE
+    // column, so a cell click would silently filter on X only and misrepresent
+    // what the operator clicked. Pinned at the wiring level, not just the registry.
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(heatmapResponse);
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    // Exactly `data` + `config`: no widgetId/tableId/drillDownColumn/dashboardId.
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-extra-props")).toBe("");
+  });
+});

@@ -64,8 +64,12 @@ const MONTH_NAMES_SHORT = [
  * Normalize a date input to epoch milliseconds.
  * Accepts: epoch ms (number), epoch seconds (number < 1e12), ISO string.
  * Returns NaN on invalid input.
+ *
+ * Exported so callers that must ORDER by date reuse the same seconds-vs-ms
+ * heuristic the formatter displays with — heatmapGrid.orderAxis sorts a date
+ * axis chronologically, and a second copy of this heuristic would drift.
  */
-function normalizeToMs(v: unknown): number {
+export function normalizeToMs(v: unknown): number {
   if (v === null || v === undefined) return NaN;
   if (typeof v === "number") {
     if (isNaN(v)) return NaN;

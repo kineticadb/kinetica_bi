@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { estimateAxisWidth, estimateValueAxisWidth } from "./estimateAxisWidth";
+import {
+  estimateAxisWidth,
+  estimateLabelWidth,
+  estimateValueAxisWidth,
+} from "./estimateAxisWidth";
 
 describe("estimateAxisWidth", () => {
   it("short SI labels produce a narrower axis than long raw labels", () => {
@@ -18,6 +22,39 @@ describe("estimateAxisWidth", () => {
     const oneLong = estimateAxisWidth(["1.2M", "888.8M"]);
     const allShort = estimateAxisWidth(["1M", "2M", "3M", "4M", "5M"]);
     expect(oneLong).toBeGreaterThan(allShort);
+  });
+});
+
+describe("estimateLabelWidth", () => {
+  // HeatmapRenderer compares this against a cell's width to decide whether an x
+  // tick label fits horizontally or must be rotated, so — unlike estimateAxisWidth
+  // — it must NOT clamp and must NOT add a gutter. Clamping would report a 1-char
+  // label as 34px wide and rotate labels that fit fine.
+  it("grows monotonically with label length", () => {
+    expect(estimateLabelWidth("1")).toBeLessThan(estimateLabelWidth("12"));
+    expect(estimateLabelWidth("12")).toBeLessThan(estimateLabelWidth("Wednesday"));
+  });
+
+  it("does NOT clamp to the axis floor — a short label stays small", () => {
+    // estimateAxisWidth(["1"]) floors at 34; the raw extent must stay well under it
+    // or every narrow cell would rotate its labels needlessly.
+    expect(estimateLabelWidth("1")).toBeLessThan(estimateAxisWidth(["1"]));
+    expect(estimateLabelWidth("1")).toBeLessThan(10);
+  });
+
+  it("does NOT clamp to the axis ceiling — a very long label exceeds 80px", () => {
+    const long = "a very long label that exceeds the cap";
+    expect(estimateAxisWidth([long])).toBe(80); // clamped
+    expect(estimateLabelWidth(long)).toBeGreaterThan(80); // unclamped
+  });
+
+  it("adds no gutter — it is narrower than the axis width for the same label", () => {
+    expect(estimateLabelWidth("888.8M")).toBeLessThan(estimateAxisWidth(["888.8M"]));
+  });
+
+  it("treats an empty or missing label as zero width", () => {
+    expect(estimateLabelWidth("")).toBe(0);
+    expect(estimateLabelWidth(undefined as unknown as string)).toBe(0);
   });
 });
 

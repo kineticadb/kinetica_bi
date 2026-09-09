@@ -18,6 +18,22 @@ import {
 } from "../../lib/customMetricSql";
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
+import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
+import { buildBucketExpr } from "../../lib/heatmapBucket";
+
+/**
+ * Heatmap "Result limit" ladder.
+ *
+ * The shared ladder tops out at 500 and defaults to 100, which counts GROUPS.
+ * A heatmap row is one (x,y) INTERSECTION, so 7 days x 24 hours is already 168
+ * and the shared default silently drops cells, leaving holes that read as
+ * missing data. Heatmap therefore gets its own ladder, defaulting to the cap.
+ *
+ * Live UAT finding: this used to be a hardcoded override of the operator's
+ * choice while the "Result limit" control was still rendered, so the field
+ * showed 100 while the SQL said 5000 and changing it did nothing.
+ */
+const HEATMAP_LIMITS = [250, 500, 1000, 2500, HEATMAP_CELL_LIMIT];
 
 type TableInfo = {
   id: number;
@@ -239,6 +255,16 @@ const ChartConfigPanel = ({
     return Object.entries(selectedTable.columns).map(([name, type]) => ({ name, type }));
   }, [selectedSource, selectedTable]);
 
+  /**
+   * name -> Kinetica type, for the selected source. Built from allColumns rather
+   * than selectedTable so a dynamic-view-backed widget resolves types too.
+   * Used to decide whether an axis bucket may be applied.
+   */
+  const columnTypeMap = useMemo(
+    () => Object.fromEntries(allColumns.map((c) => [c.name, c.type])),
+    [allColumns],
+  );
+
   // Phase 35 (DV-V16-12): disabled+hint state when operator picks a dv whose
   // Preview never ran (columns_json is null). The renderer + spec key on this.
   const dvColumnsMissing =
@@ -314,11 +340,15 @@ const ChartConfigPanel = ({
   // Bar turns extra columns into colored series; the Data Table renders them as extra columns.
   const isBar = widgetType === "bar";
   const isTable = widgetType === "table";
-  const usesMultiColumnGroupBy = isBar || isTable;
+  // Heatmap reuses the same builder + the same multi-column SQL branch, but its two
+  // columns are POSITIONAL (col1 = X axis, col2 = Y axis) and a third would have no
+  // meaning on a 2-D matrix — hence the type-specific cap below.
+  const isHeatmap = widgetType === "heatmap";
+  const usesMultiColumnGroupBy = isBar || isTable || isHeatmap;
   // Soft cap on the number of group-by columns in the builder (distinct from maxBarGroupBySeriesCap
   // which caps SERIES at render time). 6 columns is a reasonable UI ceiling before the
   // GROUP BY becomes unreadable — not an env-driven value per CONTEXT.md.
-  const MAX_BAR_GROUP_BY_COLUMNS = 6;
+  const MAX_BAR_GROUP_BY_COLUMNS = isHeatmap ? 2 : 6;
 
   // Build the SQL preview from structured fields
   const generatedSql = useMemo(() => {
@@ -394,9 +424,43 @@ const ChartConfigPanel = ({
       // Bar expands categories × series so it needs a generous LIMIT (config.limit ×
       // maxBarGroupBySeriesCap × 2, read from auth store at save time). The Data Table renders
       // one row per group tuple, so it just uses the plain "Result limit".
+      // A heatmap needs one row per (x,y) INTERSECTION, so it validates the
+      // operator's choice against its OWN ladder (which defaults to the cap)
+      // rather than the shared group ladder. ORDER BY value DESC is retained so
+      // an over-cap grid keeps its hottest cells; HeatmapRenderer reads the same
+      // config.limit to decide when to show its truncation notice, so the two
+      // must stay in agreement.
+      const heatmapLimit = HEATMAP_LIMITS.includes(rawLimitM)
+        ? rawLimitM
+        : HEATMAP_CELL_LIMIT;
       const sqlLimit = isBar
         ? baseLimit * useAuthStore.getState().maxBarGroupBySeriesCap * 2
-        : baseLimit;
+        : isHeatmap
+          ? heatmapLimit
+          : baseLimit;
+      // Heatmap axis bucketing: a raw timestamp axis makes every instant its own
+      // one-cell row. Each axis column may carry a bucket, applied ONLY when the
+      // column is actually temporal — a bucket left set after switching to a text
+      // column must not emit DATE_TRUNC over a string. The expression is aliased
+      // back to the raw column name so the row key still matches
+      // config.groupByColumns; GROUP BY repeats the EXPRESSION, never the alias.
+      if (isHeatmap) {
+        const bucketKeys = [draft.xBucket, draft.yBucket];
+        const selectParts: string[] = [];
+        const groupParts: string[] = [];
+        cols.forEach((col, idx) => {
+          const isTemporal =
+            inferDataTypeFromColumn(col, columnTypeMap) === "datetime";
+          const expr = isTemporal ? buildBucketExpr(col, bucketKeys[idx]) : null;
+          selectParts.push(expr ? `${expr} AS ${col}` : col);
+          groupParts.push(expr ?? col);
+        });
+        return (
+          `SELECT ${selectParts.join(", ")}, ${multiMetricExpr} AS value ` +
+          `FROM ${table}${cw} GROUP BY ${groupParts.join(", ")} ` +
+          `ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`
+        );
+      }
       // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
       return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
     }
@@ -424,7 +488,7 @@ const ChartConfigPanel = ({
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
     return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
-  }, [usesAggregation, requiresGroupBy, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, isHeatmap, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
     return (
@@ -764,14 +828,17 @@ const ChartConfigPanel = ({
                   const groupByColumns = stored && stored.length > 0
                     ? stored
                     : (draft.groupByColumn ? [draft.groupByColumn as string] : []);
-                  // Bar keeps its primary/series wording; the table's columns are all equal.
+                  // Bar keeps its primary/series wording; the table's columns are all equal;
+                  // heatmap's two are the matrix axes, so they get the axis names directly.
                   const labelFor = (idx: number) =>
-                    isBar
+                    isHeatmap
+                      ? (idx === 0 ? "X Axis" : "Y Axis")
+                      : isBar
                       ? (idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`)
                       : `Group column ${idx + 1}`;
                   return (
                     <div className="config-group">
-                      <span className="config-group-label">Group By Columns</span>
+                      <span className="config-group-label">{isHeatmap ? "Axes" : "Group By Columns"}</span>
                       {groupByColumns.map((col, idx) => (
                         <div key={idx} className="ds-field" style={{ flexDirection: "row", alignItems: "center", gap: "4px" }}>
                           <span className="ds-field-label" style={{ whiteSpace: "nowrap" }}>
@@ -820,7 +887,9 @@ const ChartConfigPanel = ({
                         }}
                       >+ Add column</button>
                       <span className="config-hint">
-                        {isBar
+                        {isHeatmap
+                          ? "First column = X axis; second column = Y axis. The metric below colors each cell."
+                          : isBar
                           ? `First column = x-axis categories; the rest become colored series (${MAX_BAR_GROUP_BY_COLUMNS} column max).`
                           : `Rows are grouped by every selected column; each becomes a column in the table (${MAX_BAR_GROUP_BY_COLUMNS} column max).`}
                       </span>
@@ -873,16 +942,22 @@ const ChartConfigPanel = ({
                     <span className="ds-field-label">Result limit</span>
                     <select
                       className="ds-select"
-                      value={String((draft.limit as number) ?? 100)}
+                      value={String(
+                        (draft.limit as number) ?? (isHeatmap ? HEATMAP_CELL_LIMIT : 100),
+                      )}
                       onChange={(e) => set("limit", Number(e.target.value))}
                       disabled={dvColumnsMissing}
                       aria-label="Result limit"
                     >
-                      {[5, 10, 25, 50, 100, 250, 500].map((n) => (
+                      {(isHeatmap ? HEATMAP_LIMITS : [5, 10, 25, 50, 100, 250, 500]).map((n) => (
                         <option key={n} value={n}>{n}</option>
                       ))}
                     </select>
-                    <span className="config-hint">Maximum number of groups to return</span>
+                    <span className="config-hint">
+                      {isHeatmap
+                        ? "Maximum number of cells (x × y intersections) to return. The grid warns when a result reaches this limit."
+                        : "Maximum number of groups to return"}
+                    </span>
                   </label>
                 )}
               </>

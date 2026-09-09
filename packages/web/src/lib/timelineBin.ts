@@ -170,7 +170,7 @@ export function buildTimelineRangeQuery(args: {
 
 export type TimelineIntervalKey = TimelineInterval["key"];
 
-const MONTH_ABBR = [
+export const MONTH_ABBR = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ] as const;
