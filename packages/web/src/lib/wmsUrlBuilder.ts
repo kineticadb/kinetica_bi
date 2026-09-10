@@ -151,6 +151,12 @@ export type MapWidgetConfig = {
   /** Phase 104 (MAPSYNC-V119-01): opt-in per-dashboard viewport sync. Default OFF.
    *  Pure client-side view-state flag — NEVER emitted as a WMS request param. */
   syncViewport?: boolean;
+  /** Phase 111 (MAPVIEW-V121-01/04): designer-saved default view, stored in EPSG:3857
+   *  (OL's native projection — a zero-conversion passthrough for Phase 112's View
+   *  construction; a 3857->4326->3857 round trip would drift against the exact-fractional-zoom
+   *  lock). `zoom` is the EXACT unrounded OL zoom; only the config-panel readout rounds it.
+   *  Absent = no default. Pure client-side view state — NEVER emitted as a WMS request param. */
+  defaultView?: { center: [number, number]; zoom: number };
 };
 
 // ─── SPIKE-LOCKED CONSTANTS ──────────────────────────────────────────────────

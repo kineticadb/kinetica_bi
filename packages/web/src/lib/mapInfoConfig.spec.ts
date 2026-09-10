@@ -12,6 +12,7 @@ import {
   getShowScaleBar,
   getShowFullscreenButton,
   getShowLoadingIndicator,
+  getDefaultView,
 } from "./mapInfoConfig";
 import type { MapWidgetConfig } from "./wmsUrlBuilder";
 
@@ -191,6 +192,28 @@ describe("mapInfoConfig — backward-compatible defaults (CONFIG-V14-02)", () =>
 
     it("returns false when config.showLoadingIndicator === false (indicator explicitly disabled)", () => {
       expect(getShowLoadingIndicator({ showLoadingIndicator: false })).toBe(false);
+    });
+  });
+
+  describe("getDefaultView — Phase 111 (MAPVIEW-V121-01/04)", () => {
+    it("returns undefined when config has no defaultView field (legacy widget, field absent)", () => {
+      expect(getDefaultView({})).toBeUndefined();
+    });
+
+    it("returns undefined when config.defaultView === undefined (explicitly cleared)", () => {
+      expect(getDefaultView({ defaultView: undefined })).toBeUndefined();
+    });
+
+    it("returns the stored value unrounded — no clamping, no rounding on the fractional zoom", () => {
+      const stored = { center: [-8238310, 4970071] as [number, number], zoom: 12.437 };
+      const result = getDefaultView({ defaultView: stored });
+      expect(result).toEqual(stored);
+      expect(result?.zoom).toBe(12.437);
+    });
+
+    it("returns the object when zoom is 0 (falsy-looking value must not be coerced to undefined)", () => {
+      const stored = { center: [0, 0] as [number, number], zoom: 0 };
+      expect(getDefaultView({ defaultView: stored })).toEqual(stored);
     });
   });
 });

@@ -260,6 +260,14 @@ describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=password", () 
 describe("PATCH /api/dashboards/:id/layers/:layerId — AUTH_MODE=oidc", () => {
   beforeEach(() => {
     vi.stubEnv("AUTH_MODE", "oidc");
+    // Hermeticity: AUTH_MODE=oidc makes env.ts REQUIRE these three, so without
+    // them the suite only passed on machines with a dev packages/server/.env
+    // supplying real OIDC config — and failed in CI, which has none. Matches the
+    // established 4-var stub used by 16 other server specs (e.g. layers.spec.ts:619).
+    vi.stubEnv("AUTH_OIDC_ISSUER_URL", "https://idp.example.com");
+    vi.stubEnv("AUTH_OIDC_CLIENT_ID", "kinetica-bi");
+    vi.stubEnv("AUTH_OIDC_CLIENT_SECRET", "secret");
+    vi.stubEnv("AUTH_OIDC_REDIRECT_URI", "https://bi.example.com/api/auth/oidc/callback");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(

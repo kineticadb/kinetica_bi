@@ -9,8 +9,9 @@
  *   - No spec-side beforeEach reset boilerplate needed — shim handles it.
  *   - listColumnDisplayConfig is mocked — this store is pure client-side; no fetch in tests.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useColumnDisplayConfigStore, resolveLabel, resolveFormatter } from "./columnDisplayConfigStore";
+import { listColumnDisplayConfig } from "../api/client";
 
 // Mock the api/client module so listColumnDisplayConfig never hits the network.
 vi.mock("../api/client", () => ({
@@ -225,5 +226,48 @@ describe("resolveFormatter", () => {
     useColumnDisplayConfigStore.getState().upsertColumn(tableId, colB, "Date", null);
     const fn = resolveFormatter(tableId, colA); // colA not set
     expect(fn(42)).toBe(42);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// loadConfig is a BEST-EFFORT cache warm and must never reject.
+//
+// Callers fire it from effects as `loadConfig(tableId)` / `void loadConfig(...)`
+// with no rejection handler, so a throwing implementation surfaced as an
+// unhandled rejection — which is what filled every vitest run's "Unhandled
+// Errors" section with mocked 401s and made the error count nondeterministic.
+//
+// loadConfig had no test coverage at all before this.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("columnDisplayConfigStore.loadConfig — never rejects", () => {
+  afterEach(() => {
+    vi.mocked(listColumnDisplayConfig).mockReset();
+  });
+
+  it("resolves rather than rejecting when the API call fails", async () => {
+    vi.mocked(listColumnDisplayConfig).mockRejectedValue(new Error("401 Unauthorized"));
+    // The assertion IS the absence of a rejection — an unhandled one here would
+    // reproduce exactly the noise this guarantee exists to prevent.
+    await expect(
+      useColumnDisplayConfigStore.getState().loadConfig(7),
+    ).resolves.toBeUndefined();
+  });
+
+  it("leaves the store unset after a failed load, so lookups fall back", async () => {
+    vi.mocked(listColumnDisplayConfig).mockRejectedValue(new Error("boom"));
+    await useColumnDisplayConfigStore.getState().loadConfig(7);
+    expect(useColumnDisplayConfigStore.getState().configs[7]).toBeUndefined();
+    // Degrades to "unformatted", not "broken": the raw column name survives and
+    // the formatter is an identity passthrough.
+    expect(resolveLabel(7, "amount")).toBe("amount");
+    expect(resolveFormatter(7, "amount")(1234)).toBe(1234);
+  });
+
+  it("still populates the store on success", async () => {
+    vi.mocked(listColumnDisplayConfig).mockResolvedValue([
+      { column_name: "amount", label: "Amount", format_spec: null },
+    ] as never);
+    await useColumnDisplayConfigStore.getState().loadConfig(7);
+    expect(resolveLabel(7, "amount")).toBe("Amount");
   });
 });

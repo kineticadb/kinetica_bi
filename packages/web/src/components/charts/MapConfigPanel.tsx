@@ -19,6 +19,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 import type { ConfigPanelProps } from "./registry";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { useMapCurrentViewStore } from "../../store/mapCurrentViewStore";
+import { formatLatLon, formatZoom } from "../../lib/mapViewFormat";
 import {
   getInfoEnabled,
   getInfoRadiusPx,
@@ -29,6 +31,7 @@ import {
   getShowFullscreenButton,
   getShowLoadingIndicator,
   getSyncViewportEnabled,
+  getDefaultView,
 } from "../../lib/mapInfoConfig";
 import type { MapWidgetConfig } from "../../lib/wmsUrlBuilder";
 // v1.5 Phase 28 (TARGET-V15-01/03) — Spatial filter targets section dependencies
@@ -76,7 +79,7 @@ const SPATIAL_MODE_LABELS: Record<SpatialMode, string> = {
 // The actual config lives in LayersModal / KineticaWmsLayerForm (Plan 12-02/04).
 const LAYER_STYLE_CONFIG_KEY = ["render", "Mode"].join(""); // avoids literal in grep criteria
 
-export default function MapConfigPanel({ config, onChange, tables }: ConfigPanelProps): JSX.Element {
+export default function MapConfigPanel({ config, onChange, tables, widgetId }: ConfigPanelProps): JSX.Element {
   const layers = useDashboardLayersStore((s) => s.layers);
   // Theme-aware basemaps: the renderer picks light vs dark based on the active app
   // theme. Legacy widgets only have `basemap` — fall back to it for both so they keep
@@ -145,6 +148,42 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
   const showLoadingIndicator = getShowLoadingIndicator({ showLoadingIndicator: widgetCfg.showLoadingIndicator });
   // Phase 104 (MAPSYNC-V119-01): viewport sync toggle — default FALSE via getter (opt-in)
   const syncViewport = getSyncViewportEnabled({ syncViewport: widgetCfg.syncViewport });
+
+  // ─── Phase 111 (MAPVIEW-V121-01/04) — DEFAULT VIEW ──────────────────────
+  // The config modal's .modal-overlay (position: fixed; inset: 0) completely hides the map,
+  // so the designer cannot see what they are about to save. The readout below IS the
+  // verification (111-CONTEXT.md lock) — never turn this into a bare button.
+  //
+  // SCOPED SELECTOR LOCK (RESEARCH Pitfall 4): read ONLY this widget's slot. Every mounted
+  // map now publishes on every moveend, so subscribing to `s.views` (or to the whole store)
+  // would re-render this panel on every pan of every map on the dashboard.
+  const currentView = useMapCurrentViewStore((s) =>
+    widgetId === undefined ? undefined : s.views[widgetId]
+  );
+  // The persisted value (may be absent). Live vs saved is the same "config vs runtime"
+  // distinction this panel already makes for basemaps.
+  const savedDefaultView = getDefaultView({ defaultView: widgetCfg.defaultView });
+
+  const saveDefaultView = () => {
+    if (!currentView) return;
+    // Store EPSG:3857 verbatim with the EXACT unrounded fractional zoom (111-CONTEXT.md lock):
+    // a 3857 -> 4326 -> 3857 round trip would drift the view Phase 112 reproduces.
+    onChange({
+      ...config,
+      defaultView: {
+        center: [currentView.center[0], currentView.center[1]] as [number, number],
+        zoom: currentView.zoom,
+      },
+    });
+  };
+
+  const clearDefaultView = () => {
+    // DELETE the key rather than setting it to undefined — matches changeBasemapCss and
+    // the spatial-target clear path in this same file (RESEARCH Pitfall 6).
+    const next = { ...config };
+    delete next.defaultView;
+    onChange(next);
+  };
 
   // ─── Phase 28 (TARGET-V15-01) — SPATIAL FILTER TARGETS derivation ─────
   // Read via Phase 28 helper for legacy-default coercion ([] for v1.4 widgets without the field).
@@ -520,6 +559,44 @@ export default function MapConfigPanel({ config, onChange, tables }: ConfigPanel
         <div className="config-hint">
           When enabled, panning or zooming this map moves all other sync-enabled maps on the same
           dashboard. Disabled by default.
+        </div>
+      </div>
+
+      {/* ─── DEFAULT VIEW (Phase 111 MAPVIEW-V121-01/04) ─────────────── */}
+      <div className="config-group">
+        <div className="config-group-label">DEFAULT VIEW</div>
+        <div className="config-hint">
+          {savedDefaultView
+            ? `Current default: zoom ${formatZoom(savedDefaultView.zoom)} · ${formatLatLon(savedDefaultView.center)}`
+            : "No default — opens at world view"}
+        </div>
+        <div className="ds-actions">
+          <button
+            type="button"
+            className="btn-primary btn-sm"
+            aria-label="Set as default view"
+            disabled={!currentView}
+            onClick={saveDefaultView}
+          >
+            {currentView
+              ? `Set as default — zoom ${formatZoom(currentView.zoom)} · ${formatLatLon(currentView.center)}`
+              : "Set as default"}
+          </button>
+          {savedDefaultView && (
+            <button
+              type="button"
+              className="ghost-sm ghost-danger"
+              aria-label="Clear default view"
+              onClick={clearDefaultView}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="config-hint">
+          Saves this map's current zoom and centre as the view it opens at. Frame the map
+          before opening this panel — the panel covers the map while it is open. Saving
+          replaces any existing default; there is no undo.
         </div>
       </div>
 

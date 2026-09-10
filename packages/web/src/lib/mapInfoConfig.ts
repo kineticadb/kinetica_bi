@@ -152,3 +152,20 @@ export const DEFAULT_SYNC_VIEWPORT = false;
 export function getSyncViewportEnabled(config: Pick<MapWidgetConfig, "syncViewport">): boolean {
   return config.syncViewport ?? DEFAULT_SYNC_VIEWPORT;
 }
+
+/**
+ * Phase 111 (MAPVIEW-V121-01/04): read the per-widget saved default view.
+ *
+ * Unlike every other getter in this file there is no default VALUE to substitute —
+ * `undefined` IS the correct default state. Legacy widgets (field absent) and widgets whose
+ * designer cleared the default both read `undefined`, and Phase 112 falls back to the world
+ * view (center [0,0], zoom 2) per MAPVIEW-V121-03.
+ *
+ * NO CLAMPING / VALIDATION HERE (file convention): this field is never hand-typed — it is
+ * only ever written from OL's own getCenter()/getZoom(), which are well-formed by construction.
+ */
+export function getDefaultView(
+  config: Pick<MapWidgetConfig, "defaultView">,
+): { center: [number, number]; zoom: number } | undefined {
+  return config.defaultView;
+}

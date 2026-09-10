@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-dir="editorial">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kinetica — Direction B: Editorial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   DIRECTION B — "EDITORIAL"  (Swiss · high-contrast · typographic)
+   A data instrument, not a glossy app. Confident typography, strong
+   rule lines as structure, near-flat surfaces, tight geometry, a
+   single decisive accent, monospace for numbers. Light-first but
+   serious. Feel: Bloomberg × Swiss design — precise and distinctive.
+   ============================================================ */
+:root {
+  --bg: #f4f2ec;            /* warm paper */
+  --panel: #ffffff;
+  --ink: #16171a;           /* near-black text */
+  --accent: #ff4d2e;        /* decisive vermillion */
+  --accent-ink: #ffffff;
+  --text: #16171a;
+  --muted: #6c6a63;
+  --line: #16171a;          /* hairlines are INK — structural */
+  --border: #d9d6cd;
+  --grid: #e7e4db;
+  --font: "Inter", system-ui, sans-serif;
+  --font-display: "Archivo", var(--font);
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --text-sm: 13px; --text-base: 14px; --text-2xl: 34px;
+  --radius: 4px;            /* deliberately tight */
+  --dur: 140ms; --ease: cubic-bezier(.2,.6,.2,1);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; }
+.app { display: grid; grid-template-columns: 226px 1fr; min-height: 100vh; }
+
+.side { padding: 0; border-right: 2px solid var(--line); background: var(--panel); }
+.brand { display:flex; align-items:center; gap:10px; padding: 20px 18px; border-bottom: 2px solid var(--line); }
+.brand .mark { width: 28px; height: 28px; background: var(--accent); color: var(--accent-ink); font-family: var(--font-display); font-weight: 800; display: grid; place-items: center; }
+.brand .name { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.3px; font-size: 17px; text-transform: uppercase; }
+.nav { display:flex; align-items:center; gap: 11px; padding: 13px 18px; font-weight: 600; font-size: var(--text-sm); color: var(--ink); cursor: pointer; border-bottom: 1px solid var(--border); transition: background var(--dur) var(--ease); }
+.nav .ico { font-size: 12px; width: 16px; color: var(--muted); }
+.nav:hover { background: var(--grid); }
+.nav.active { background: var(--ink); color: #fff; } .nav.active .ico { color:#fff; }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.top { display:flex; align-items: flex-end; justify-content: space-between; padding: 22px 30px 16px; border-bottom: 2px solid var(--line); }
+.top .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.top h1 { font-family: var(--font-display); font-size: 30px; margin: 4px 0 0; font-weight: 800; letter-spacing: -0.6px; }
+.top .right { display:flex; align-items:center; gap: 14px; }
+.chip { font-family: var(--font-mono); font-size: 12px; padding: 6px 10px; border: 1px solid var(--line); color: var(--ink); }
+.avatar { width: 32px; height: 32px; background: var(--ink); }
+
+.grid { padding: 26px 30px; display: grid; gap: 20px; grid-template-columns: repeat(12, 1fr); }
+.card { grid-column: span 4; background: var(--panel); border: 1.5px solid var(--line); padding: 18px; position: relative; }
+.card h3 { font-family: var(--font-mono); margin: 0 0 12px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.kpi .val { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 800; letter-spacing: -1px; }
+.kpi .unit { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.kpi .sub { margin-top: 8px; font-size: var(--text-sm); color: var(--muted); }
+.kpi .delta { color: var(--accent); font-weight: 700; font-family: var(--font-mono); }
+
+.wide { grid-column: span 8; }
+.bars { display: flex; align-items: flex-end; gap: 0; height: 150px; border-left: 1.5px solid var(--line); border-bottom: 1.5px solid var(--line); }
+.bar { flex: 1; background: var(--ink); margin: 0 6px; position: relative; }
+.bar.hl { background: var(--accent); }
+.bar span { position: absolute; top: -18px; left: 0; right: 0; text-align: center; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.legend { display:flex; gap:18px; margin-top: 12px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+.field { display:flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.input, .select { font: inherit; font-size: var(--text-sm); padding: 10px 12px; border: 1.5px solid var(--line); background: var(--panel); color: var(--ink); border-radius: var(--radius); }
+.input:focus, .select:focus { outline: 3px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.row { display:flex; gap: 10px; margin-top: 4px; }
+.btn { font: inherit; font-weight: 700; font-size: var(--text-sm); padding: 11px 20px; cursor: pointer; border-radius: var(--radius); transition: transform var(--dur) var(--ease); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--line); box-shadow: 3px 3px 0 var(--line); }
+.btn-primary:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--line); }
+.btn-ghost { background: var(--panel); color: var(--ink); border: 1.5px solid var(--line); }
+.btn-ghost:hover { background: var(--grid); }
+.check { display:flex; align-items:center; gap: 9px; margin-top: 12px; font-size: var(--text-sm); }
+.check .box { width: 18px; height: 18px; border: 1.5px solid var(--line); background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 12px; }
+.foot { padding: 6px 30px 28px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="mark">K</div><div class="name">Kinetica</div></div>
+    <div class="nav active"><span class="ico">■</span> Dashboards</div>
+    <div class="nav"><span class="ico">▦</span> Datasets</div>
+    <div class="nav"><span class="ico">○</span> Users</div>
+    <div class="nav"><span class="ico">△</span> Roles</div>
+    <div class="nav"><span class="ico">✳</span> Branding</div>
+    <div class="nav"><span class="ico">≡</span> Settings</div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div><div class="eyebrow">Dashboard / Telecom</div><h1>Telcom Demo</h1></div>
+      <div class="right"><span class="chip">telecom.demodata</span><div class="avatar"></div></div>
+    </header>
+    <section class="grid">
+      <div class="card kpi"><h3>DL Throughput</h3><div class="val">142.8<span class="unit"> Mbps</span></div><div class="sub"><span class="delta">+6.2%</span> vs last hour</div></div>
+      <div class="card kpi"><h3>UL Throughput</h3><div class="val">38.4<span class="unit"> Mbps</span></div><div class="sub"><span class="delta">+2.1%</span> vs last hour</div></div>
+      <div class="card kpi"><h3>Active Cells</h3><div class="val">1,204</div><div class="sub">across 14 regions</div></div>
+      <div class="card wide"><h3>Sessions by Connection Type</h3>
+        <div class="bars">
+          <div class="bar" style="height:60%"><span>LTE</span></div>
+          <div class="bar hl" style="height:88%"><span>5G</span></div>
+          <div class="bar" style="height:44%"><span>EDGE</span></div>
+          <div class="bar" style="height:72%"><span>HSPA</span></div>
+          <div class="bar" style="height:33%"><span>EVDO</span></div>
+          <div class="bar" style="height:55%"><span>UMTS</span></div>
+        </div>
+        <div class="legend"><span>— 5G highlighted</span><span>n = 48,210 sessions</span></div>
+      </div>
+      <div class="card" style="grid-column: span 4;"><h3>Data Filter</h3>
+        <div class="field"><label>Connection_Category</label><select class="select"><option>— any —</option></select></div>
+        <div class="field"><label>Location_City</label><input class="input" placeholder="Search city…" /></div>
+        <div class="check"><span class="box">✓</span> Respond to dashboard filters</div>
+        <div class="row"><button class="btn btn-primary">Apply</button><button class="btn btn-ghost">Clear</button></div>
+      </div>
+    </section>
+    <div class="foot">Direction B — “Editorial”: warm paper, ink hairlines as structure, vermillion accent, Archivo display + Inter + Plex Mono numerals, tight 4px geometry, hard offset shadows. A precise data instrument.</div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,407 +1,46 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.20
-milestone_name: Filter Panel
-status: shipped
-stopped_at: v1.20 Filter Panel SHIPPED + archived (tag v1.20)
-last_updated: "2026-08-27T16:39:55.551Z"
+milestone: v1.21
+milestone_name: Dashboard Links & Map Default View
+status: unknown
+stopped_at: Completed 112-01-PLAN.md
+last_updated: "2026-09-10T13:31:08.071Z"
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 12
-  completed_plans: 12
+  total_phases: 5
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-27 — v1.20 SHIPPED)
+See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Planning next milestone — run `/gsd:new-milestone`
+**Current focus:** Phase 112 — map-default-view-apply-on-load
 
 ## Current Position
 
-**v1.20 Filter Panel SHIPPED 2026-08-27** — archived + tagged `v1.20`. No milestone in progress.
-
-All 8 phases (105–110 incl. inserted 109.1/109.2), 12 plans, 19/19 requirements. Verified: gates re-run at close (web tsc clean, web vitest 154 files / 3439 tests 0 failed, theme-guard 148/148, server tsc clean, server vitest SET-BASED PASS ⊆ TD-V16-TEST-ISOLATION, sole-materialize-trigger PASS) + operator UAT PASS on all 8 groups with zero gaps. Records: `milestones/v1.20-ROADMAP.md`, `milestones/v1.20-REQUIREMENTS.md`, `MILESTONES.md`, `RETROSPECTIVE.md`, `phases/110-*/110-{GATES,UAT,VERIFICATION}.md`.
-
-**Next:** `/gsd:new-milestone` (defines fresh requirements — `REQUIREMENTS.md` was archived and deleted).
+Phase: 112 (map-default-view-apply-on-load) — EXECUTING
+Plan: 2 of 2
 
 ### Open tech debt carried forward
 
 TD-V16-TEST-ISOLATION (server set-based gate), TD-V11-04 (OIDC issuer-mock), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog), plus three logged this milestone: TD-V120-VIEWNAME-DUP (the two WMS build sites still duplicate layer-view resolution — adopt `lib/resolveLayerViewName`), TD-V120-DEAD-IMPORT (`WidgetRenderer.tsx:31`), TD-V120-CARTO-RASTER (CARTO raster retirement; `VITE_CARTO_API_KEY` param name unconfirmed).
 
-### v1.20 Phase Map
-
-| Phase | Name | Stack | Key Requirements | Research Flag |
-|-------|------|-------|------------------|---------------|
-| 105 | Reverse-Mapping Pure Lib + Tests | FRONTEND-ONLY | FSCOPE-V120-01 (computation) | REQUIRED — HIGHEST RISK (both read paths × all filter kinds × dv-disabled) |
-| 106 | Display-Mode Persistence | BOTH (the only server touch) | FSET-V120-02, FSET-V120-03 | None (mirrors the v1.18 filter_scope migration) |
-| 107 | Panel Shell + Reflow + XOR Switch + Chips | FRONTEND-ONLY | FPANEL-V120-01..09 | None |
-| 108 | Applies-To List + On-Canvas Highlight | FRONTEND-ONLY | FSCOPE-V120-01 (display), FSCOPE-V120-02, FSCOPE-V120-03 | REQUIRED — HIGH RISK (re-render-storm avoidance + deterministic cleanup) |
-| 109 | Global Clear-All | FRONTEND-ONLY | FCLEAR-V120-01 | None |
-| 110 | Designer Settings UI + Verification + Live UAT | BOTH + operator | FSET-V120-01, VERIFY-V120-01 | None |
-
-**Dependency spine:** {105, 106} parallel-safe → 107 (needs 106's persisted mode) → {108 (needs 105's lib + 107's panel/cards), 109 (needs 107's panel + live combos to tear down)} → 110 (needs all). The reverse-map lib (105) precedes the panel/highlight that consume it; persistence (106) gates the mode switch (107); clear-all (109) is sequenced last among features so live combinations exist to prove the ref-count DROP; VERIFY (110) is final and depends on every feature phase.
-
-**Only BOTH-stack phase:** 106 — a single PRAGMA-guarded `ALTER TABLE dashboards ADD COLUMN filter_display_mode` (default `'topbar'`) + `mapDashboard`/`updateDashboard`/`DashboardDto` plumbing, mirroring the v1.18 `filter_scope` migration. Every other feature phase is FRONTEND-ONLY (`packages/web`); 110 exercises both stacks for verification. FSCOPE-V120-01 SPANS 105 (pure computation) + 108 (in-panel display) — mirroring how v1.19's METRIC-V119-01 spanned server-foundation + authoring UI.
-
-### v1.20 Scope (locked 2026-07-08)
-
-Presentation layer over the existing filter system (frontend-heavy; one small server column). Key locked decisions:
-
-1. **Source of truth = input stores, NEVER the derived combination store.** ACTIVE FILTERS = `useFilterStore` (`.filters` per tableId + `.dvFilters` per dvId) + `useSpatialFilterStore` (`.shapes`), plus `views[].filter_clause` as read-only static WHERE text. `filterCombinationStore` is written ONLY by the orchestrator and must NOT be read as the chip/source-of-truth list (the `FilteringBadge` staleness bug; memory: filtering-badges-read-combination-store). The panel reads/mutates the SAME input stores the top bar uses; the combination store is fair game only for the primitive "Filtering…" spinner selector.
-2. **No new materialize path / no filter-semantics change.** `AggregatedWidgetRenderer` remains the SOLE materialize trigger; the v1.18 combination model is unchanged. Global clear-all mutates INPUT stores only (`clearFilters`/`clearDvFilters`/`clearAll`); the untouched `useCombinationOrchestrator` ref-count DROPs views. Never call `materialize*`/`drop*View` from the panel; never `filterStore.reset()` live.
-3. **Reverse-map = INVERSE of the existing resolvers, shared lib.** `resolveWidgetsForFilter.ts` mirrors `resolveFilterSet`/`resolveSpatialShapes`/`useFilterScopeSummary` across BOTH read paths (`w:<id>` chart widgets + `l:<id>` map layers → owning map widget; memory: map-wms-is-separate-read-path) and ALL filter kinds (eq/in/between+datetime/spatial), honoring `dvFilterScopeDisabled`. One pure lib so the per-widget badge and per-filter map can't drift.
-4. **Highlight = CSS-class toggle + scoped boolean selector + a NEW session-only `filterHighlightStore`.** No whole-object subscription (re-render storm). The new store MUST join the ~11-store `reset()` cleanup chain in BOTH places (DashboardOpen unmount + App UNAUTHORIZED handler); deterministic cleanup on leave/collapse/switch/logout.
-5. **Persistence = one BOTH-stack column.** `dashboards.filter_display_mode` (default `'topbar'`; absent → byte-identical top bar). The ONLY server touch. Scalar vs a JSON `config` blob is an open plan-time decision (both mirror the v1.18 migration; both default to top bar).
-6. **Reflow is free IFF the panel is an in-flow flex sibling** that shrinks the grid container (`react-grid-layout` `useContainerWidth` ResizeObserver) — NOT a `position:fixed` overlay. Reuse the `.sidebar` collapse + `filter-bar-*` classes; NO invented classes (they pass all gates but render unstyled). Top-bar XOR panel — never both surfaces rendered.
-7. **NO new RBAC permission.** The designer mode toggle is gated by the existing `dashboards:edit` (avoids the permission-ripple across rbacDb/rbacMigration/web-permissions/RolesPage specs; memory: adding-permission-ripples-across-specs). **ZERO new npm packages** — every capability already exists in the installed stack.
-
-### v1.20 Test Gates (every phase)
-
-- **Frontend phases (105, 107, 108, 109):** web vitest 100% from `packages/web`; web `tsc` clean; theme-guard green (theme tokens only, no raw hex, no `rgba()`/wrong tokens, no invented CSS classes).
-- **BOTH / server-touching phases (106; 110 for verification):** ALL of the above + supertests in BOTH auth modes (password + oidc); server `tsc` clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
-- **Phase 110 (verification):** ALL of the above on both stacks + a BLOCKING live operator walk-through of the panel + chips (remove/group-clear), global clear-all, applies-to + hover/click highlight, and the designer mode toggle — INCLUDING light/dark theme and narrow-viewport VISUAL checks (undefined CSS classes + `rgba()`/wrong tokens pass every automated gate but render broken; memory: css-bugs-evade-tests-and-theme-guard, theme-guard-misses-rgba-and-wrong-tokens) — with any gaps fixed in-session (regression-tested) and re-walked to PASS.
-- **Invariant (all phases):** sole-materialize-trigger — static grep `grep -rE "materializeFilter|dropCombinationView" packages/web/src/components/` finds only authorized call sites (the panel / clear-all handler is NOT among them). Presentation layer only; no filter-semantics change.
-
-### v1.20 Requirement Coverage
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| FSET-V120-01 | Phase 110 | Complete |
-| FSET-V120-02 | Phase 106 | Complete |
-| FSET-V120-03 | Phase 106 | Complete |
-| FPANEL-V120-01 | Phase 107-02 | Complete |
-| FPANEL-V120-02 | Phase 107-02 | Complete |
-| FPANEL-V120-03 | Phase 107-01 + 107-02 | Complete |
-| FPANEL-V120-04 | Phase 107-02 | Complete |
-| FPANEL-V120-05 | Phase 107-02 | Complete |
-| FPANEL-V120-06 | Phase 107-02 | Complete |
-| FPANEL-V120-07 | Phase 107-02 | Complete |
-| FPANEL-V120-08 | Phase 107-01 + 107-02 | Complete |
-| FPANEL-V120-09 | Phase 107-01 | Complete |
-| FSCOPE-V120-01 | Phase 105 + Phase 108 | Complete |
-| FSCOPE-V120-02 | Phase 108 | Complete |
-| FSCOPE-V120-03 | Phase 108 | Complete |
-| FCLEAR-V120-01 | Phase 109 | Complete |
-| VERIFY-V120-01 | Phase 110 | Complete |
-
-**Coverage: 19/19 (100%)** — FSCOPE-V120-01 spans 105 (computation) + 108 (panel display); FSCOPE-V120-04 / FSCOPE-V120-05 are the inserted-phase requirements (109.1 / 109.2); every other requirement maps to exactly one phase. All Complete as of 2026-08-27.
-
-### v1.20 Open Tech Debt (carried from v1.19)
-
-TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
-
-<details><summary>Archived — v1.19 Visualization Customization (SHIPPED 2026-07-08, tag v1.19)</summary>
-
-### v1.19 Phase Map
-
-| Phase | Name | Stack | Key Requirements | Research Flag |
-|-------|------|-------|------------------|---------------|
-| 97 | Calendar Smart Domain Control | FRONTEND-ONLY | CALSMART-V119-01/02/03 | None |
-| 98 | Per-Visualization Custom WHERE Clause | FRONTEND-ONLY | VIZSQL-V119-01/02/03/04 | None |
-| 99 | Custom Metrics — Server + Store Foundation | BOTH | METRIC-V119-01 (server), METRIC-V119-02 | None |
-| 100 | Custom Metrics — Tables-Area Editor + Metric-Picker Integration | FRONTEND-ONLY | METRIC-V119-01 (UI), METRIC-V119-03/04 | None |
-| 101 | Smart / Logarithmic Y-Axis | FRONTEND-ONLY | YAXIS-V119-01/02/03/04 | None |
-| 102 | Multi-Column Group-By on Bar Chart | FRONTEND-ONLY (env-var → possible tiny server touch) | BARGRP-V119-01/02/03/04 | None |
-| 103 | Verification + Live UAT | BOTH + operator | VERIFY-V119-01 | None |
-
-**The five feature areas are INDEPENDENT** (no cross-feature dependency). The only intra-milestone dependency is **99 → 100** (custom-metrics UI needs the server table + store). So the execution graph is:
-
-**Dependency spine:** {97, 98, 101, 102, 99} all parallel-safe → 100 (needs 99) → 103 (verifies after all six feature phases land). Concretely: 99 → 100; 97 / 98 / 101 / 102 have no predecessors; 103 depends on 97+98+99+100+101+102.
-
-**Stack rationale (locked scope):**
-
-- **Custom metrics (99 + 100) is the ONLY BOTH-stack feature.** Phase 99 adds a per-table `custom_metrics` SQLite config table + CRUD — composite-keyed, **read ungated / write `datasets:manage`, NO new RBAC permission** — mirroring v1.15's `column_display_config`; plus the client store/helpers (mirror `columnDisplayConfigStore`). Phase 100 is the FRONTEND-ONLY Tables-area editor + metric-picker integration.
-- **Calendar smart domain (97), per-viz WHERE (98), smart/log Y-axis (101), and multi-column bar group-by (102) are all FRONTEND-ONLY** (`packages/web`). Phase 102 introduces a deploy-time env var for the group-by column/series cap; **if exposing it to the client requires an `/api/auth/me` payload diff, treat 102 as BOTH at plan time** — the feature logic itself is web-only.
-
-**Why the metrics split (99 + 100) and not one BOTH phase:** keeps the server table+CRUD+store foundation as a clean, separately-verifiable unit (server gates in both auth modes) that unblocks the purely-frontend authoring UI + picker integration — the same 75→{76,77} foundation-then-UI shape used in v1.15, and the 89→{91,92} shape in v1.18.
-
-### v1.19 Scope (locked 2026-06-30)
-
-BOTH stacks (web-heavy; custom-metrics is the only server touch). Key locked decisions:
-
-1. **Custom WHERE is a read-query AND, never a materialize.** A non-empty per-viz WHERE is appended WITHIN each plain-SQL widget's existing read query — ANDed on TOP of the existing drill-down / per-viz-selection filter pipeline, against the already-filtered materialized view the widget already reads (NOT a base-table query, NOT a new materialize path). **Map / WMS layers are excluded** (separate WMS render path → deferred VIZSQL-V2-01). Invalid WHERE surfaces the query error on that widget only; other widgets unaffected (VIZSQL-V119-04).
-2. **Empty/absent custom WHERE → byte-identical to current behavior** (VIZSQL-V119-03, backward-compat gate).
-3. **Custom metrics = pre-aggregated SQL expression, global per-table.** Label + SQL aggregate (e.g. `SUM(revenue)/SUM(cost)`), persisted server-side per table (`custom_metrics` table), reused across all dashboards using that table. When selected, the expression is emitted DIRECTLY into the widget SELECT with **no further aggregation wrapper** (METRIC-V119-04). **NO new RBAC permission** — writes reuse `datasets:manage`, reads ungated (mirrors `column_display_config`). Row-level computed columns + per-dashboard overrides are out of scope (deferred METRIC-V2-01/02).
-4. **Smart/log Y-axis scoped to line / timeline / bar only.** Per-widget mode: Zero-based (default) / Smart (data-derived min/max, no forced 0) / Logarithmic. Absent config → Zero-based (YAXIS-V119-04, backward-compat). Pie / calendar excluded (deferred YAXIS-V2-01).
-5. **Multi-column bar group-by capped via a deploy-time ENV VAR** (read once at boot, fallback+warn, mirroring v1.15 TTL env vars / v1.18 `MAX_COMBINATION_VIEWS_PER_TABLE`); over-cap handled gracefully (truncate + warn, never fail-fast). Nested/hierarchical render with a grouped (clustered) vs stacked toggle. Single-column / no group-by → byte-identical (BARGRP-V119-04).
-6. **Calendar smart domain is an ADD-ON UI mode**, not a replacement: a single-dropdown smart mode (month/week/day/hour) auto-mapping to domain+subdomain pairs, alongside the existing two-dropdown UI; designer picks which UI + which smart options are selectable; existing calendars with no smart config are unchanged (CALSMART-V119-01).
-7. **No new RBAC permission this milestone; no SQL sandbox** — custom WHERE + metric expressions are raw SQL bounded by the user's own Kinetica creds (same trust model as existing SQL paths).
-
-### v1.19 Test Gates (every phase)
-
-- **Frontend phases (97, 98, 100, 101, and 102 unless its env-var exposure forces a server diff):** web vitest 100% from `packages/web`; web `tsc` clean; theme-guard green (theme tokens only, no raw hex).
-- **BOTH / server-touching phases (99, and 102 if it touches `/api/auth/me`):** ALL of the above + supertests in BOTH auth modes (password + oidc); server `tsc` clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
-- **Phase 103 (verification):** ALL of the above on both stacks + a blocking live operator walk-through of all five features, with any gaps fixed in-session (regression-tested) and re-walked to PASS.
-- **Invariant (all phases):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger — static grep `grep -rE "materializeFilter|dropFilterView" packages/web/src/components/charts/` finds only authorized call sites. The custom WHERE is applied WITHIN the widget's existing read query (ANDed against the materialized view it already reads), never as a new materialize path. Theme-tokens-only / no raw hex throughout.
-
-### v1.19 Requirement Coverage
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| CALSMART-V119-01 | Phase 97 | Pending |
-| CALSMART-V119-02 | Phase 97 | Pending |
-| CALSMART-V119-03 | Phase 97 | Pending |
-| VIZSQL-V119-01 | Phase 98 | Pending |
-| VIZSQL-V119-02 | Phase 98 | Pending |
-| VIZSQL-V119-03 | Phase 98 | Pending |
-| VIZSQL-V119-04 | Phase 98 | Pending |
-| METRIC-V119-01 | Phase 99 + Phase 100 | Pending |
-| METRIC-V119-02 | Phase 99 | Pending |
-| METRIC-V119-03 | Phase 100 | Pending |
-| METRIC-V119-04 | Phase 100 | Pending |
-| YAXIS-V119-01 | Phase 101 | Pending |
-| YAXIS-V119-02 | Phase 101 | Pending |
-| YAXIS-V119-03 | Phase 101 | Pending |
-| YAXIS-V119-04 | Phase 101 | Pending |
-| BARGRP-V119-01 | Phase 102 | Pending |
-| BARGRP-V119-02 | Phase 102 | Pending |
-| BARGRP-V119-03 | Phase 102 | Pending |
-| BARGRP-V119-04 | Phase 102 | Pending |
-| VERIFY-V119-01 | Phase 103 | Pending |
-
-**Coverage: 20/20 (100%)** — METRIC-V119-01 spans 99 (server persistence) + 100 (Tables-area authoring UI); every other requirement maps to exactly one phase.
-
-### v1.19 Open Tech Debt (carried from v1.18)
-
-TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
-
-</details>
-
-### v1.18 Phase Map
-
-| Phase | Name | Stack | Key Requirements | Research Flag |
-|-------|------|-------|------------------|---------------|
-| 88 | Foundation — Pure Logic + Types | FRONTEND-ONLY | FSCOPE-V118-01 (partial), COMBO-V118-01 (partial) | None |
-| 89 | Store + Server Foundation | BOTH (frontend-heavy) | COMBO-V118-02, COMBO-V118-03, COMBO-V118-04 (partial) | None |
-| 90 | Combination-Orchestrator | FRONTEND-ONLY | COMBO-V118-01, COMBO-V118-03 | REQUIRED — ownership semantics + diff/dispatch algorithm |
-| 91 | WidgetRenderer Wiring | FRONTEND-ONLY | READ-V118-01, COMBO-V118-04 | None |
-| 92 | MapChartRenderer Wiring | FRONTEND-ONLY | READ-V118-02, COMBO-V118-04 (cross-cutting) | None |
-| 93 | Filter Scope Config UI | BOTH (frontend-heavy) | FSCOPE-V118-01, FSCOPE-V118-02 | None |
-| 94 | Dynamic View Filter Scope Wiring | BOTH | FSCOPE-V118-03 | REQUIRED — three source-type cases + server branching |
-| 95 | On-Widget Badge Indicator | FRONTEND-ONLY | COMM-V118-01 | None |
-| 96 | Verification + Live UAT | BOTH + operator | VERIFY-V118-01 | None |
-
-**Dependency spine:** 88 → 89 → 90 → 91 → 92 → 93 → 94 → 95 → 96 (strictly sequential for the core engine path). Phase 93 (config UI) may overlap with 92; Phase 95 (badge) may overlap with 94 — both safe because absent filterScope falls through to accept-all.
-
-**SERVER-touching phases:** 89 (filterCombinationStore keep-alive + viewNaming.ts hashKey8 + POST /api/filter/materialize optional combinationKey param + DELETE extension), 93 (SQLite migration: filter_selection column on dashboard_dynamic_views + PATCH /api/dynamic-view/:id extension), 94 (env flag for dv filter-scope disable, exposed on /api/me mirroring ttlKeepaliveLeadMinutes).
-
-### v1.18 Scope (locked 2026-06-27)
-
-BOTH stacks (web-heavy; small server touch). Key locked decisions:
-
-1. **Selection model = source-widget allow-list ONLY** — lists only filter-PRODUCING widgets (chart drill-downs, DataFilter, map spatial draws); NOT records table, map info popup, legend. Per-column exclusion dropped → deferred FSCOPE-V2-02.
-2. **Default = accept-all (opt-out)** — absent filterScope means all filters apply; byte-identical to v1.17 for unconfigured dashboards (COMBO-V118-04 correctness gate).
-3. **View dedup:** one Kinetica materialized view per UNIQUE resolved filter combination; reuse existing `fingerprint()` pattern for dedup key (no new deps); ref-counted `combinationViews` slice; FNV-1a hash8 only for the Kinetica view NAME suffix (`_c{hash8}`).
-4. **Per-table combination ceiling:** deploy-time ENV VAR (default ~10, read once at boot w/ fallback+warn, mirroring v1.15 TTL env vars); over-ceiling combinations fall back to the full all-filters view + warning.
-5. **Dynamic-view filter scope IS in v1.18** but behind a deploy-time DISABLE env flag (Phase 94).
-6. **WMS layers:** `filterScope` is a TOP-LEVEL layer field (like track_config). READ-V118-02 = WMS request only swaps the per-combination VIEW NAME — filters never travel in the WMS request. Both buildWmsParams sites + dep keys.
-7. **On-widget badge** ("N of M filters") shown only when ≥1 active filter is ignored (Phase 95).
-8. **Combination-orchestrator** (Phase 90) is the sole-materialize-trigger for combination views — mirrors useDynamicViewMaterializeChain; must precede renderer wiring.
-
-### v1.18 Test Gates (every phase)
-
-- **Frontend phases (88, 90, 91, 92, 95):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard green.
-- **Server-touching phases (89, 93, 94):** ALL of the above + supertests in BOTH auth modes; server `tsc` clean; server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (NEVER a fixed pass-count).
-- **Phase 96 (verification):** ALL of the above + a blocking live operator walk-through, with any gaps fixed in-session and re-walked to PASS.
-- **Invariant (all phases):** sole-materialize-trigger — static grep: `grep -r "materializeFilter|dropFilterView" packages/web/src/components/charts/` finds only authorized call sites. No individual chart renderer calls these functions.
-
-### v1.18 Requirement Coverage
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| FSCOPE-V118-01 | Phase 93 | Pending |
-| FSCOPE-V118-02 | Phase 93 | Pending |
-| FSCOPE-V118-03 | Phase 94 | Pending |
-| COMBO-V118-01 | Phase 90 | Pending |
-| COMBO-V118-02 | Phase 89 | Pending |
-| COMBO-V118-03 | Phase 90 | Pending |
-| COMBO-V118-04 | Phase 91 | Pending |
-| READ-V118-01 | Phase 91 | Pending |
-| READ-V118-02 | Phase 92 | Pending |
-| COMM-V118-01 | Phase 95 | Pending |
-| VERIFY-V118-01 | Phase 96 | Pending |
-
-**Coverage: 11/11 (100%)**
-
-### v1.18 Key Architectural Decisions (locked)
-
-- **Phase 93-01 (2026-06-28):** `records` excluded from FILTER_PRODUCING_TYPES — it is a filter TARGET, never SOURCE; `allowedSourceWidgetIds` widened to `(number | string)[]` for SPATIAL_DRAWS_SENTINEL; sentinel stored in Phase 93 only, resolver deferred to Phase 93.5; `widgetId` threaded as optional prop into ChartConfigPanel for self-exclusion.
-- **Phase 93.5-01 (2026-06-28):** `stableComboHash` extended with optional `shapes?` 4th param (Pick<Shape,"wkt">[]); NOFILTER sentinel fires only when BOTH column and spatial segments empty; `;s:` delimiter chosen (column segments always contain `|`, WKT never does — no collision); `resolveSpatialShapes` is all-or-nothing (no per-shape sourceWidgetId exists; SPATIAL_DRAWS_SENTINEL is single per-viz toggle); separate file for clear grep target (mirrors Phase-88 resolveFilterSet separation).
-- **New store:** `filterCombinationStore` keyed by stableComboHash string (not tableId); parallel to filterViewStore pattern; becomes the 9th store in both cleanup chains (App.tsx + DashboardsPage.tsx).
-- **stableComboHash:** deterministic sorted-JSON key encoding sourceType + sourceId + resolved filter array; NOFILTER sentinel for empty (no view created); comboShortHash (FNV-1a 8-char) for Kinetica view name suffix.
-- **Orchestrator hook:** mirrors useDynamicViewMaterializeChain; fires on filterVersion tick; computes unique combinations; diffs registry; fires exactly one POST per new combination; enforces MAX_COMBINATION_VIEWS_PER_TABLE ceiling with fallback to global view.
-- **Server extension:** viewNaming.ts gains optional `comboShort?` param (byte-identical when absent); POST /api/filter/materialize accepts optional `combinationKey` in body; DELETE extended to accept viewName directly for combination-view cleanup.
-- **Read path A (WidgetRenderer):** filterViewStore.views[tableId] selectors replaced with filterCombinationStore.vizToHash[vizKey] + registry[hash] selectors; Effect 1 rewritten; combinationVersion replaces clearMaterializingVersion as Effect 2 dep.
-- **Read path B (MapChartRenderer):** viewsKey replaced with comboViewsKey; BOTH buildWmsParams call sites (Effect 2 line ~1229 + Effect 3 line ~1477) read from combination entries; both dep arrays updated.
-- **layer.filterScope:** TOP-LEVEL layer field, never nested in layer.config — track_config-toplevel-field recurring pattern.
-- **PITFALL S-02 lock:** all store selectors project to primitive strings (vizToHash[vizKey] scoped to one entry, or combinationVersion integer); never subscribe to the registry object.
-
-### v1.18 Open Tech Debt (carried from v1.17)
-
-TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
-
-### v1.16 Phase Map
+## v1.21 Phase Map
 
 | Phase | Name | Stack | Key Requirements |
-|-------|------|-------|------------------|
-| 80 | Token Foundation + Aurora Default Theme | FRONTEND-ONLY | TOKENS-V116-01/02/03/04, THEME-V116-01/02/03 |
-| 81 | Brand Config Server Foundation | SERVER-ONLY | BRANDFND-01/02, SECA-V116-01, CSS-V116-02 |
-| 82 | Client Token Pipeline + FOUC Prevention + Identity | FRONTEND-ONLY | BRANDFND-03/04, BRANDUI-01 |
-| 83 | Branding Admin UI | FRONTEND-ONLY | BRANDUI-02/03/04/05, CSS-V116-01, SECA-V116-02 |
-| 84 | Verification + Live UAT | BOTH + operator | VERIFY-V116-01 |
+|-------|------|-------|-------------------|
+| 111 | Map Default View — Capture & Save | FRONTEND-ONLY | MAPVIEW-V121-01, MAPVIEW-V121-04 |
+| 112 | Map Default View — Apply on Load | FRONTEND-ONLY | MAPVIEW-V121-02, MAPVIEW-V121-03, MAPVIEW-V121-05, MAPVIEW-V121-06 |
+| 113 | Dashboard URL Sync | FRONTEND-ONLY | DLINK-V121-01, DLINK-V121-06, DLINK-V121-07 |
+| 114 | Deep Link Load & Error States | FRONTEND-ONLY | DLINK-V121-02, DLINK-V121-04, DLINK-V121-05 |
+| 115 | Deep Link Authentication Flow | FRONTEND-ONLY | DLINK-V121-03 |
 
-**Dependency spine:** 80 → 81 → 82 → 83 → 84 (strictly sequential; each phase's output is the next phase's input). Phases 80 and 81 CAN run in parallel (80 is frontend-only, 81 is server-only, no shared outputs at execution time), but 82 requires both to be complete.
-
-### v1.16 Scope (locked 2026-06-23)
-
-White-label theming. Config model = **runtime admin UI** (permission-gated; brand persisted server-side, applied live, no redeploy). Brandable: logo + app name, color palette (+ light/dark), typography, custom-CSS override (sanitized/scoped). Plus the "Aurora" distinctive Kinetica default theme. **Styling approach (research-locked 2026-06-22): EXTEND the existing CSS-custom-property token system — no Tailwind/Shadcn.**
-
-### v1.16 Key Architectural Decisions (locked)
-
-- **Styling approach:** Extend CSS custom-property token system. `document.documentElement.style.setProperty()` for runtime token application (inline styles beat stylesheet specificity). `removeProperty()` for reset.
-- **Aurora default theme baseline:** Kinetica violet `#7f40ed` on near-black `#0a0a12`, Manrope body + Space Grotesk display, compact density, glassmorphic panels, hex-mesh + aurora-glow body treatment. Full token table in `.planning/design/CHOSEN-DIRECTION.md`.
-- **Two-tier accent rule:** `--accent` for fills only; `--accent-text` for readable accent-colored text/icons (`#c4b5fd` on dark, darker variant on light). WCAG guardrails enforce this.
-- **Brand config server:** `brand_config` singleton SQLite table (`CHECK(id=1)`, `INSERT OR IGNORE` seed). Precedent: `column_display_config` (v1.15).
-- **18th permission:** `branding:manage` — writes gated; `GET /api/branding` unauthenticated (login page needs brand before auth). Precedent: `dashboards:manage_access` (v1.10).
-- **FOUC prevention:** inline `<head>` script reads `localStorage("kbi-brand-tokens")` synchronously before any CSS file parses. Extension of the existing dark/light FOUC guard in `index.html`.
-- **Cross-tab propagation:** `BroadcastChannel("kbi-brand-updated")` + `window.focus` refetch fallback for suspended tabs.
-- **SVG logo safety:** DOMPurify (SVG profile) at upload; always rendered as `<img>` never inline; MIME + magic-byte validation via `file-type`.
-- **CSS sanitization:** PostCSS AST at `PUT /api/branding` save time (recommended; strips `url()`, `@import`, `@font-face`, `expression()`). Reserve DOMPurify for SVG/HTML only.
-- **Custom CSS scoping:** OPEN DECISION 1 — settle at Phase 81/83 plan time: `@scope (#root)` (Baseline Dec 2025) vs no scoping (trust `branding:manage` boundary). If `@scope` chosen, `:root` overrides via custom CSS are blocked; document as intentional.
-- **Chart color integration:** `useChartAxisColors()` extended to read `brandStore` for axis/grid colors (SVG presentation attributes don't resolve CSS vars). WMS map layer class-break colors are explicitly out of scope (per-layer designer data, not chrome).
-- **Theme-guard extension:** extended in Phase 80 to cover structural token literals (spacing, type, radius, motion); brand admin components added to ALLOWLIST with justification comments in the same commit that introduces them.
-- **New deps:** web — `react-colorful@5.7.0`, `colord@2.9.x`; server — `multer@2.2.0`, `DOMPurify@3.4.x`, `postcss` (+ `file-type`).
-
-### v1.16 Open Decisions (must resolve at plan time)
-
-| Decision | Phase | Options | Recommendation |
-|----------|-------|---------|----------------|
-| Open Decision 1: Custom CSS scoping | 81 / 83 | A: No scoping (trust permission boundary) / B: `@scope (#root)` (Baseline Dec 2025) / C: Server-side selector prefix `[data-kbi-app]` | Option B if `:root` override not needed from escape hatch; Option A if admins must override tokens via custom CSS |
-| Open Decision 2: CSS sanitizer | 81 | PostCSS AST (walk every declaration node) vs regex (known unicode-escape bypass risk) | PostCSS AST — Pitfalls researcher confirmed regex is bypassed by real CVE patterns |
-
-### v1.16 Test Gates (every phase)
-
-- **Frontend phases (80, 82, 83):** frontend vitest 100% from `packages/web`; web `tsc` clean; theme-guard green (extended structural guard from Phase 80 onward).
-- **Server phase (81):** supertests in BOTH auth modes (password + oidc); server `tsc` clean; server vitest SET-BASED (failing files ⊆ TD-V16-TEST-ISOLATION — NEVER a fixed pass-count).
-- **Phase 84 (verification):** ALL of the above + blocking live operator walk-through.
-- **Invariant (all phases):** `AggregatedWidgetRenderer` remains the SOLE materialize trigger — branding is a pure style/identity layer, no data-query coupling.
-- **Theme-guard invariant:** brand admin components (`BrandColorPicker.tsx`, etc.) are added to the ALLOWLIST in the SAME commit that introduces them, with explicit one-line justification comments (pattern: `ChartConfigPanel.tsx`).
-
-### v1.16 Requirement Coverage
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| TOKENS-V116-01 | Phase 80 | Pending |
-| TOKENS-V116-02 | Phase 80 | Pending |
-| TOKENS-V116-03 | Phase 80 | Pending |
-| TOKENS-V116-04 | Phase 80 | Pending |
-| THEME-V116-01 | Phase 80 | Pending |
-| THEME-V116-02 | Phase 80 | Pending |
-| THEME-V116-03 | Phase 80 | Pending |
-| BRANDFND-01 | Phase 81 | Complete |
-| BRANDFND-02 | Phase 81 | Complete |
-| SECA-V116-01 | Phase 81 | Complete |
-| CSS-V116-02 | Phase 81 | Complete |
-| BRANDFND-03 | Phase 82 | Pending |
-| BRANDFND-04 | Phase 82 | Pending |
-| BRANDUI-01 | Phase 82 | Pending |
-| BRANDUI-02 | Phase 83 | Pending |
-| BRANDUI-03 | Phase 83 | Pending |
-| BRANDUI-04 | Phase 83 | Pending |
-| BRANDUI-05 | Phase 83 | Pending |
-| CSS-V116-01 | Phase 83 | Pending |
-| SECA-V116-02 | Phase 83 | Pending |
-| VERIFY-V116-01 | Phase 84 | Pending |
-
-**Coverage: 21/21 (100%)**
-
-### v1.15 Scope (locked 2026-06-19)
-
-Three feature areas (phase numbering continues from 74) — NOT frontend-only (server tables/endpoints + new permission):
-
-1. **Client-side column formatting + custom labels (global per-table):** new `column_display_config` table (table_id + column → label + format spec) + CRUD; pure client formatter lib (numbers: commas/decimals/currency/percent + advanced d3-format string; dates: presets + custom pattern); client-side only (no Kinetica SQL change). New dep `d3-format` (web).
-2. **Column Formatting editor UI** — per-table editor from the Tables area; per-column label + format with live preview; saves to global config.
-3. **Apply labels + formatting** — records-table (headers=label, cells=formatted), chart tooltips + axes + in-chart series legends, map info popups (template + KV). Map layers legend EXCLUDED.
-4. **View TTL keep-alive** — dashboard-level touch-query (get first records) a configurable lead-time before expiry, for filter-views + dynamic-views; verify-live that a read resets Kinetica TTL (re-materialize = documented fallback).
-5. **App settings infra + 2 settings** — `app_settings` KV table + admin GET/PATCH + new admin-settings permission + admin settings UI; `default_view_ttl_minutes` (replaces hardcoded TTL=5 in both materialize endpoints) + `ttl_keepalive_lead_minutes` (default 1).
-
-Test gates: frontend vitest 100% from `packages/web`; web + server `tsc` clean (separate gates); server vitest SET-BASED ⊆ TD-V16-TEST-ISOLATION (never a fixed pass-count). `AggregatedWidgetRenderer` stays sole materialize trigger; theme-tokens-only.
-
-### v1.15 Open Tech Debt (carried)
-
-TD-V16-TEST-ISOLATION (server set-gate), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
-
-### v1.15 Phase Map
-
-| Phase | Name | Stack | Key Requirements |
-|-------|------|-------|------------------|
-| 74 | App-Settings Infrastructure + TTL Defaults | BOTH (server-heavy) | SETTINGS-V115-01, -02, -03 |
-| 75 | Column Display Config Foundation | BOTH | COLCFG-V115-01, -02, -03 |
-| 76 | Column Formatting Editor UI | FRONTEND-ONLY | COLEDIT-V115-01, -02, -03 |
-| 77 | Apply Labels + Formatting at Render Surfaces | FRONTEND-ONLY | COLAPPLY-V115-01, -02, -03, -04 |
-| 78 | View TTL Keep-Alive Touch | FRONTEND-ONLY | TTLKEEP-V115-01 |
-| 79 | Verification + Live UAT | BOTH + operator | TTLKEEP-V115-02, VERIFY-V115-01 |
-
-**Dependency spine:** Phase 74 is the FOUNDATION (no app-settings infra exists today — everything is env-var driven) and unblocks Phase 78 (which needs `ttl_keepalive_lead_minutes` + the configurable `expiresAt`). Phase 75 is the column-config FOUNDATION (server table+CRUD + pure formatter lib + store/helpers) and unblocks Phases 76 + 77, which are independent of each other. Execution: 74 → {75 (independent of 74), 78 (needs 74)} → {76, 77} (both need 75, parallel-safe) → 79 (verifies after all land).
-
-**This is the first server-touching milestone since v1.12.** Server work: two new SQLite tables (`app_settings` KV + `column_display_config` keyed `table_id`+`column_name`) in `db.ts` SCHEMA_DDL; admin settings GET/PATCH + column-config CRUD endpoints in `index.ts`; `default_view_ttl_minutes` replaces the hardcoded `TTL = 5` at `index.ts:1057` (filter-materialize) + `index.ts:1720` (dynamic-view materialize) via `lib/materializedView.ts:35`; endpoints return `expiresAt` from the configured value.
-
-**NEW PERMISSION (flag):** `app:manage_settings` added to the `lib/permissions.ts` catalog + `rbacSeed.ts` (admin gets it, once-only seed mirroring the v1.10 17th-permission `dashboards:manage_access` pattern; operator removals survive restarts) + mirrored byte-for-byte in the web `PERMISSIONS` list. Admin settings UI mirrors the v1.8 Users/Roles management page pattern (hide-don't-disable).
-
-**NEW WEB DEPENDENCY (flag):** `d3-format` in `packages/web` (Phase 75) — for the advanced number-format string escape hatch in the pure formatter lib; web-only, no server/SQL coupling.
-
-**Test gates (per phase):**
-
-- Server phases (74, 75 server portion, 79): supertests in BOTH auth modes (password + oidc) + server `tsc` clean + server vitest SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky — NEVER a fixed pass-count).
-- Frontend phases (75 client portion, 76, 77, 78): frontend vitest 100% from `packages/web` + web `tsc` clean + theme-guard.spec.ts green (theme tokens only, no raw hex).
-- Phase 79 gates BOTH stacks + a blocking live operator walk-through (incl. the live TTLKEEP-V115-02 confirmation that a read resets the Kinetica view TTL; re-materialize = documented fallback).
-- `AggregatedWidgetRenderer` remains the SOLE materialize trigger throughout — Phase 77 is read-path label/format injection (no new materialize) and Phase 78's keep-alive touch is a READ, not a materialize (statically assert the keep-alive hook never imports `materializeFilter`/`materializeDynamicView`).
-
-### v1.15 Locked Scope Decisions (2026-06-19)
-
-- **Global per-table config:** label + format spec attaches to `table_id` + `column_name`, reused across ALL dashboards using that table (set once, applies everywhere). Per-dashboard overrides deferred.
-- **Client-side formatting only:** the formatter is a PURE client library — it NEVER alters the SQL sent to Kinetica. Numbers (commas/decimals/currency/percent + advanced d3-format string) + dates (presets + custom pattern); invalid/empty spec → raw value fallback.
-- **Chart labels reach tooltips + axes + in-chart series legends** (not only tooltips). Records-table headers/cells + map info popups (template + KV) also use labels/formatting. The map LAYERS LEGEND (`LayersLegendPanel`) is NEVER affected — locked by an explicit test (COLAPPLY-V115-04).
-- **Keep-alive = touch-query (READ) + verify-live:** lead-time exposed as `ttl_keepalive_lead_minutes` (default 1) so it can be moved earlier if a read-reset proves slow; re-materialize is the documented FALLBACK if reads don't reset TTL (validated live in Phase 79).
-- **App-settings store is extensible** but only the two TTL settings are in scope this milestone.
-
-### v1.14 Scope (locked 2026-06-18)
-
-Three frontend refinements (phase numbering continues from 70):
-
-1. **Numeric `<other>` bucket** — class-break numeric breaks emit `<other>` catch-all (`1:3,3:5,<other>`); default-ON for new/edited configs only; existing saved numeric layers untouched until re-saved. (`cbConfig.ts`, `wmsUrlBuilder.ts:392`, `CbConfigForm.tsx`)
-2. **SHAPE* hidden for lat/lon points** — hide SHAPEFILLCOLOR/SHAPELINECOLOR/SHAPELINEWIDTH when `spatialMode === "latlon"`, in BOTH layer form (`KineticaWmsLayerForm.tsx:1184-1313`) and per-break advanced panel (`CbConfigForm.tsx:948-1056`); applies to point raster + cb raster; ALSO suppress WMS emission (`wmsUrlBuilder.ts:340-349`) so stale saved values don't leak.
-3. **Group-by for timeline + numeric-line** — add optional `groupByColumn` mirroring the bar/line/pie pattern (`ChartConfigPanel.tsx:268-321`); single-metric-when-grouped (multi-metric only when no group-by); N-series rendering. (`Timeline*`/`NumericLine*` config panels + renderers + SQL builders)
-
-All three FRONTEND-ONLY expected (`packages/web`): frontend vitest 100% + web tsc clean; flag any server diff. `AggregatedWidgetRenderer` stays the sole materialize trigger.
-
-### v1.14 Open Tech Debt (carried from v1.13)
-
-TD-V16-TEST-ISOLATION (server set-based gate), TD-V14-WKB-SPIKE, TD-V17-LIVE-UAT, GAP-54-04 (legend layer names), CALX-V2-* (calendar v2 backlog).
-
-### v1.14 Phase Map
-
-| Phase | Name | Stack | Key Requirements |
-|-------|------|-------|------------------|
-| 70 | Numeric `<other>` Catch-All Bucket | FRONTEND-ONLY | CBOTHER-V114-01, -02, -03 |
-| 71 | SHAPE* Hidden for Lat/Lon Point Layers | FRONTEND-ONLY | SHAPE-V114-01, -02, -03 |
-| 72 | Group-By for Timeline + Numeric-Line Charts | FRONTEND-ONLY | GROUP-V114-01, -02, -03, -04 |
-| 73 | Verification + Live UAT | BOTH + operator | VERIFY-V114-01 |
-
-Phases 70/71/72 are INDEPENDENT (no cross-feature dependency) — any order or parallel. All three are FRONTEND-ONLY (`packages/web`): frontend vitest 100% (run from `packages/web`) + web tsc clean; flag any server diff. Phase 73 verifies BOTH stacks + a blocking live operator walk-through (mirrors v1.13 Phase 69 / v1.12 Phase 64), then compiles the verification record.
-
-Test gates (every phase): frontend vitest 100% from `packages/web`; web + server `tsc` clean as SEPARATE gates; server vitest is a SET-BASED gate (failing files ⊆ TD-V16-TEST-ISOLATION known-flaky — NEVER a fixed pass-count); theme-guard.spec.ts green (theme tokens only, no raw hex). `AggregatedWidgetRenderer` remains the SOLE materialize trigger (timeline + numeric-line are `usesAggregation:false` and own their SQL lifecycle — not routed through it).
-
-### v1.14 Locked Scope Decisions (2026-06-18)
-
-- **`<other>` default-on, new/edited only:** a missing `<other>` flag on an already-saved numeric config does NOT silently inject `<other>` — `coalesceCbConfig` must preserve current render until the layer is re-saved. Mirrors the categorical `<other>` shipped in v1.7 Phase 39.
-- **Group-by collapses to a single metric:** enabling a group-by on timeline/numeric-line restricts to one metric (each series = one group value); multi-metric (1–4) stays available only when no group-by is set; UI enforces the mutual exclusion; renderers apply a top-N group cap.
-- **SHAPE* hiding gates BOTH the UI AND the WMS emission:** hide fields when `spatialMode === "latlon"` in `KineticaWmsLayerForm` (layer-level) + `CbConfigForm` (per-break), and suppress SHAPE* param emission in `wmsUrlBuilder` so saved-but-hidden values don't leak. Pattern precedent: v1.9 POINT*/SHAPE* suppression under track mode.
+All 5 phases are FRONTEND-ONLY (`packages/web`) — no server diff expected anywhere in this milestone; the map default view persists in the existing widget `config` blob (no migration) and dashboard links are pure client-side URL state via the native History API. Gates per phase: `npx tsc --noEmit` clean, `npx vitest run` 100%, `npx vitest run src/styles/theme-guard.spec.ts` green. Dependency spine: 111 → 112 (sequential, same track); 113 → 114 → 115 (sequential, same track); the two tracks are mutually independent and parallel-safe.
 
 ## v1.13 Phase Map
 
@@ -801,6 +440,10 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 109.2 P01 | 14min | 2 tasks | 6 files |
 | Phase 109.2 P02 | 25min | 2 tasks | 6 files |
 | Phase 110 P01 | 15min | 2 tasks | 4 files |
+| Phase 111 P01 | 12min | 3 tasks | 7 files |
+| Phase 111 P03 | 8min | 2 tasks | 2 files |
+| Phase 111 P02 | 12min | 3 tasks | 7 files |
+| Phase 112 P01 | 35min | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -1183,6 +826,15 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 109.2]: Calendar's respondToFilters migration coalesce discriminated by key presence (not value), keeping the coalesce entirely calendar-only at each read site (renderer FROM path, config-panel display, WidgetCard badge) rather than inside shared resolvers.
 - [Phase 110]: DashboardSettingsModal is a pure controlled toggle (no API calls); parent owns updateDashboard PATCH + state-lift for trivial testability
 - [Phase 110]: Reused existing .radiogroup--buttons/.radiogroup-button classes verbatim for the segmented toggle -- zero new CSS classes
+- [Phase 111]: mapCurrentViewStore is a separate always-on widgetId-keyed store from mapViewportSyncStore (Phase 104), which is sync-toggle-gated and dashboardId-keyed
+- [Phase 111]: defaultView stored in EPSG:3857 with exact fractional zoom; formatLatLon/formatZoom are display-only and never touch the stored value
+- [Phase 111]: getDefaultView returns undefined as the correct default state (no substituted fallback) — Phase 112 owns the world-view fallback
+- [Phase 111]: MapConfigPanel DEFAULT VIEW: scoped selector s.views[widgetId] to avoid whole-store subscription; Clear deletes the key (never sets undefined), matching existing changeBasemapCss precedent
+- [Phase 111]: Requirements MAPVIEW-V121-01/-04 left unchecked after 111-03: functional completion needs 111-02 (live-view publisher) for -01 and Phase 112 (world-view fallback) for -04's full user-visible behavior
+- [Phase 111-02]: Effect 9c (MapChartRenderer) is deliberately ungated (no syncViewport/dashboardId/isSyncDrivenRef) — the ONLY guard is `if (!map) return;`; publishes once at mount (before any moveend) plus on every moveend, clears its widget's store slot on unmount; mapCurrentViewStore joined both cleanup chains (App.tsx logout, DashboardsPage.tsx dashboard-switch) as the 13th store, right after useFilterHighlightStore (12th)
+- [Phase 111-02]: With 111-02 (publisher) + 111-03 (consumer) both now complete, MAPVIEW-V121-01 (save) is functionally complete and marked done in REQUIREMENTS.md; MAPVIEW-V121-04 (clear) stays In Progress — clearing already works in the config panel, but the "returns to world view" half of its behavior is a Phase 112 (apply-on-load) concern
+- [Phase 111-02]: Making the publish unconditional exposed 3 pre-existing hand-rolled OL Map test mocks (WidgetRenderer.spec.tsx, actionEngine.canary.spec.tsx, DashboardsPage.spec.tsx) whose getView() stub lacked getCenter/getZoom — Effect 9c calls both at mount for every map widget now, not just when syncViewport was on; fixed by adding the missing methods to each mock (Rule 3, flagged as an expected risk by the plan itself)
+- [Phase 112]: resolveInitialView resolved at render time as a constructor arg to new OlView(...) — no post-construction setCenter/setZoom/animate/fit, structurally preventing the world-view flash
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1589,6 +1241,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-07-12T20:56:34.639Z
-Stopped at: Completed 110-01-PLAN.md
+Last session: 2026-09-09T20:37:48.225Z
+Stopped at: Completed 112-01-PLAN.md
 Resume file: None

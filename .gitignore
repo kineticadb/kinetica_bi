@@ -13,9 +13,15 @@ dist/
 /packages/server/src/spikes/wmsCapabilities.xml
 # CB+Track WMS spike raw tile-byte output (Phase 37) — only 37-SPIKE-NOTES.md + pasted screenshots commit
 /packages/server/spike-output/
-# Internal GSD planning docs + local agent config — excluded from the public repo
-.planning/
+# Local agent config — excluded from the repo
 .claude/
+# NOTE (2026-09-10): `.planning/` used to be listed here, but 31 files under it
+# were already tracked, so the rule only half-applied: gsd-tools reported
+# "skipped_gitignored" on every planning commit, plain `git add` refused tracked
+# files, and a fresh clone got a ROADMAP referencing a REQUIREMENTS.md it could
+# not see. Now tracked in full (operator decision) so the planning set is
+# coherent for anyone who clones. Verified before publishing: no real secret
+# values, only placeholders (`replace-me`, `<secret>`, `[redacted]`).
 # Local-only runtime data dir
 /packages/server/data/
 # macOS Finder metadata
