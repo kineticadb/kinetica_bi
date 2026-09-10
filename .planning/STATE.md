@@ -4,12 +4,12 @@ milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
 stopped_at: Completed 112-01-PLAN.md
-last_updated: "2026-09-09T20:37:48.233Z"
+last_updated: "2026-09-10T13:31:08.071Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State

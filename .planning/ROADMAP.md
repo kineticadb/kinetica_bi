@@ -42,7 +42,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 ## Phases
 
 - [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
-- [ ] **Phase 112: Map Default View — Apply on Load** - Maps open at their saved default view (or world view if none saved)
+- [x] **Phase 112: Map Default View — Apply on Load** - Maps open at their saved default view (or world view if none saved)
 - [ ] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API
 - [ ] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
 - [ ] **Phase 115: Deep Link Authentication Flow** - A dashboard link works logged-out too, routing through login and landing on the linked dashboard
@@ -72,9 +72,9 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   2. A map widget with no saved default view opens exactly as it does today: world view, `center [0,0]`, `zoom 2`.
   3. Reloading the dashboard (browser refresh) reopens each map at its saved default view — the save survives a reload.
   4. Two map widgets on the same dashboard with different saved defaults each open at their own view, independent of one another.
-**Plans**: 2 plans in 2 waves
+**Plans**: 2 plans in 2 waves — COMPLETE (verified 6/6)
 - [x] 112-01-PLAN.md — resolveInitialView helper + MapChartRenderer OlView construction + all four REQ tests (wave 1) (completed 2026-09-09)
-- [ ] 112-02-PLAN.md — full gate run + operator walk-through (no-flash, real refresh, two-map independence) (wave 2)
+- [x] 112-02-PLAN.md — full gate run + operator walk-through (no-flash, real refresh, two-map independence) (wave 2) (operator-approved 2026-09-10)
 
 ### Phase 113: Dashboard URL Sync
 **Goal**: The browser address bar always reflects which dashboard, if any, is open — kept in sync via the native History API, no new dependency.
@@ -84,7 +84,9 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   1. Opening any dashboard immediately updates the browser address bar to a URL identifying that dashboard.
   2. Pressing Back while a dashboard is open returns to the dashboard list, both on screen and in the address bar.
   3. Navigating from an open dashboard back to the dashboard list clears the dashboard identifier from the address bar — the URL never describes a view the user is no longer on.
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves — COMPLETE (verified 6/6, operator-approved 2026-09-10)
+- [x] 112-01-PLAN.md — resolveInitialView helper + OlView constructed from it, not hardcoded (wave 1)
+- [x] 112-02-PLAN.md — full gate run + blocking operator walk-through: no-flash, real reload, two-map independence (wave 2)
 
 ### Phase 114: Deep Link Load & Error States
 **Goal**: Visiting or pasting a dashboard URL opens that dashboard directly — or, if it can't, shows a clear message instead of a blank or broken page.
