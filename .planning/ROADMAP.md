@@ -39,6 +39,33 @@
 
 Within each track phases are sequential (apply-on-load needs the saved field to exist first; inbound deep-link parsing needs the URL format the outbound sync established; the auth flow needs inbound parsing to route to). Across tracks, 111/112 and 113/114/115 can be planned and executed in either order or interleaved.
 
+---
+
+## v1.20 Filter Panel — SHIPPED 2026-08-27
+
+<details>
+<summary>✅ v1.20 (Phases 105-110 incl. 109.1 / 109.2) — SHIPPED 2026-08-27 — full phase details archived in milestones/v1.20-ROADMAP.md</summary>
+
+- [x] Phase 105: Reverse-Mapping Pure Lib + Tests
+- [x] Phase 106: Display-Mode Persistence
+- [x] Phase 107: Panel Shell + Reflow + XOR Switch + Chips
+- [x] Phase 108: Applies-To List + On-Canvas Highlight
+- [x] Phase 109: Global Clear-All
+- [x] Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED)
+- [x] Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
+- [x] Phase 110: Designer Settings UI + Verification + Live UAT
+
+**Verification:** 19/19 requirements Complete; both-stack automated gates green (web vitest 154 files / 3439 tests; server SET-BASED ⊆ TD-V16-TEST-ISOLATION); operator UAT PASS on all 8 groups. See `phases/110-*/110-VERIFICATION.md`.
+
+</details>
+
+<!-- LAYOUT NOTE (2026-09-10): archived milestones are kept ABOVE the active
+     milestone's `## Phases` section on purpose. `gsd-tools roadmap
+     update-plan-progress` and `phase complete` only rewrite content that
+     appears AFTER the last `</details>` in this file. With the archive at the
+     bottom they silently no-opped on every Phase 111/112 update and each one
+     had to be hand-edited. Keep new archives here, not at the end. -->
+
 ## Phases
 
 - [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
@@ -115,27 +142,8 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
-| 112. Map Default View — Apply on Load | 1/2 | In Progress | - |
+| 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
 | 113. Dashboard URL Sync | 0/TBD | Not started | - |
 | 114. Deep Link Load & Error States | 0/TBD | Not started | - |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
 
----
-
-## v1.20 Filter Panel — SHIPPED 2026-08-27
-
-<details>
-<summary>✅ v1.20 (Phases 105-110 incl. 109.1 / 109.2) — SHIPPED 2026-08-27 — full phase details archived in milestones/v1.20-ROADMAP.md</summary>
-
-- [x] Phase 105: Reverse-Mapping Pure Lib + Tests
-- [x] Phase 106: Display-Mode Persistence
-- [x] Phase 107: Panel Shell + Reflow + XOR Switch + Chips
-- [x] Phase 108: Applies-To List + On-Canvas Highlight
-- [x] Phase 109: Global Clear-All
-- [x] Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED)
-- [x] Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
-- [x] Phase 110: Designer Settings UI + Verification + Live UAT
-
-**Verification:** 19/19 requirements Complete; both-stack automated gates green (web vitest 154 files / 3439 tests; server SET-BASED ⊆ TD-V16-TEST-ISOLATION); operator UAT PASS on all 8 groups. See `phases/110-*/110-VERIFICATION.md`.
-
-</details>

@@ -108,9 +108,31 @@ export const useColumnDisplayConfigStore = create<ColumnDisplayConfigState>((set
 
   // On-demand per-table load: fetch the table's full config from the server and feed into setConfig.
   // Consumers call this to populate the cache lazily; setConfig always bumps configVersion.
+  /**
+   * Best-effort cache warm. NEVER REJECTS.
+   *
+   * Callers fire this from effects as `loadConfig(tableId)` or
+   * `void loadConfig(tableId)` — neither of which attaches a rejection handler —
+   * so a throwing implementation surfaced as an unhandled rejection. Under
+   * vitest that printed a wall of "Unhandled Errors" (mocked 401s from specs
+   * that never stub this endpoint), which made every run's error count
+   * nondeterministic and trained us to ignore real errors in that section.
+   *
+   * Swallowing is also the semantically correct behaviour, not just noise
+   * suppression: display config is purely additive. With none loaded,
+   * resolveLabel falls back to the raw column name and resolveFormatter to an
+   * identity passthrough, so a failed load degrades to "unformatted" rather
+   * than to "broken". Compare useCustomMetricsStore.loadConfig, which has the
+   * same shape but is `.catch(() => {})`-ed at every call site instead — this
+   * store's callers were inconsistent, so the guarantee belongs here.
+   */
   loadConfig: async (tableId) => {
-    const rows = await listColumnDisplayConfig(tableId);
-    useColumnDisplayConfigStore.getState().setConfig(tableId, rows);
+    try {
+      const rows = await listColumnDisplayConfig(tableId);
+      useColumnDisplayConfigStore.getState().setConfig(tableId, rows);
+    } catch {
+      // Intentionally ignored — see the JSDoc above. The store simply stays unset.
+    }
   },
 
   // Hard-set to initial state; NOT an increment (mirrors dynamicViewStore.reset).

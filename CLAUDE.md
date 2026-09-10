@@ -24,6 +24,26 @@ This app has **no `<Button>`/design-system component** — UI uses plain element
 - **Never hardcode hex** in component CSS/TSX — use the token vars (`var(--accent)`, `var(--text)`, `var(--bg)`, `var(--panel)`, `var(--border)`, `var(--muted)`, `var(--danger)`, `var(--accent-text)`, etc.). `theme-guard.spec.ts` fails the build on raw hex in components (legit exceptions go in its ALLOWLIST with a one-line justification, in the same commit).
 - Uploaded/user images render as `<img>` only — never inline SVG / `dangerouslySetInnerHTML` (XSS boundary). The bundled default logo is the one inline-SVG exception (`DefaultLogo.tsx`, trusted first-party, themed via `var(--accent)`/`var(--text)`).
 
+## Writing verifiable acceptance criteria
+
+A grep-based acceptance criterion is only meaningful if it **reads 0 (or fails) BEFORE the work is done**. Verify the current count first, in the same breath as writing the criterion.
+
+Real examples from Phase 111/112 planning, all of which passed before any code was written and so proved nothing:
+
+| Criterion | Why it was toothless |
+|---|---|
+| `grep -c "id: 11"` → `≥1` | `id: 11` already occurred **14** times in that spec's unrelated fixtures |
+| `grep -c "mock.calls[1][0]"` → `≥1` | already occurred **4** times |
+| `grep -c "Test G:"` → `1` | already occurred **6** times |
+
+Three in two phases. The habit, not the individual mistakes, is the problem — a guard that cannot fail manufactures confidence instead of providing it, which is the same mechanism that let seven heatmap UI defects pass `tsc`, `vitest` AND `theme-guard` while rendering visibly broken.
+
+**Rules:**
+- Before committing to a grep criterion, run it. If it already passes, pick a different anchor (a new symbol name, a new test title, a new constant) and re-check.
+- Prefer asserting on something the work *introduces* (`resolveInitialView`, `LONDON`, `H4:`) over something incidental that happens to appear near it.
+- Some requirements are **not** automatically verifiable — "no visible flash", "the readout is legible", "colours read correctly in dark mode". Say so and route them to a `checkpoint:human-verify`. Do not dress an unprovable requirement in a grep that only looks rigorous. Expressing the *structural precondition* (e.g. "the view is a constructor argument; `setCenter`/`setZoom`/`.fit(` are absent") plus a human check is the honest pattern.
+- If an executor finds a criterion that cannot discriminate, it should report it and verify the real requirement directly — never edit code to satisfy a broken check.
+
 ## Test gates
 - Web: `cd packages/web && npx tsc --noEmit` clean; `npx vitest run` 100%; `npx vitest run src/styles/theme-guard.spec.ts` green.
 - Server: `cd packages/server && npx tsc --noEmit` clean; server vitest is **SET-BASED** — failing files must be ⊆ the known `TD-V16-TEST-ISOLATION` set (cross-mode contamination that passes in isolation); never assert a fixed pass-count.
