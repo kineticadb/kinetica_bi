@@ -111,9 +111,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
   1. Opening any dashboard immediately updates the browser address bar to a URL identifying that dashboard.
   2. Pressing Back while a dashboard is open returns to the dashboard list, both on screen and in the address bar.
   3. Navigating from an open dashboard back to the dashboard list clears the dashboard identifier from the address bar — the URL never describes a view the user is no longer on.
-**Plans**: 2 plans in 2 waves — COMPLETE (verified 6/6, operator-approved 2026-09-10)
-- [x] 112-01-PLAN.md — resolveInitialView helper + OlView constructed from it, not hardcoded (wave 1)
-- [x] 112-02-PLAN.md — full gate run + blocking operator walk-through: no-flash, real reload, two-map independence (wave 2)
+**Plans**: TBD
 
 ### Phase 114: Deep Link Load & Error States
 **Goal**: Visiting or pasting a dashboard URL opens that dashboard directly — or, if it can't, shows a clear message instead of a blank or broken page.
