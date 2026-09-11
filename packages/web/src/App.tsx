@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import DashboardsPage from "./components/DashboardsPage";
@@ -26,6 +26,7 @@ import { useMapViewportSyncStore } from "./store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "./store/filterHighlightStore";
 import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
 import { PERMISSIONS } from "./lib/permissions";
+import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
 
@@ -73,6 +74,27 @@ const App = () => {
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const markUnauthenticated = useAuthStore((s) => s.markUnauthenticated);
   const hasPermission = useAuthStore((s) => s.hasPermission);
+
+  // Phase 114 (DLINK-V121-02/04/05): the boot URL's ?dashboard=<id>, as a resolved state machine.
+  const deepLink = useDeepLinkDashboard();
+  const [deepLinkBannerDismissed, setDeepLinkBannerDismissed] = useState(false);
+  // Consumed-ONCE handoff. DashboardsPage reads initialOpenDashboard in its mount-time useState
+  // initializer, so the value must be present during that render — hence a ref read in render
+  // rather than state set in an effect (state would arrive one commit too late and the LIST
+  // would mount first, which is exactly the flash criterion 1 forbids).
+  // The ref flips immediately afterwards so that navigating away (Datasets) and back to
+  // Dashboards remounts the page on the LIST, rather than silently re-opening the deep link.
+  const deepLinkConsumedRef = useRef(false);
+  const initialOpenDashboard =
+    deepLink.status === "opened" && !deepLinkConsumedRef.current ? deepLink.dashboard : undefined;
+  // Flip gated on page === "dashboards" too (Rule 1 fix, see SUMMARY): a ReturnTo restore to a
+  // DIFFERENT page (e.g. "roles") can still be active in the render where deepLink first
+  // resolves to "opened" — DashboardsPage has not mounted yet on that render, so flipping the
+  // ref there would burn the one-shot handoff before anyone consumed it. Gating on `page` too
+  // defers the flip to the render where DashboardsPage actually receives the value.
+  useEffect(() => {
+    if (initialOpenDashboard && page === "dashboards") deepLinkConsumedRef.current = true;
+  }, [initialOpenDashboard, page]);
 
   useEffect(() => {
     bootstrap();
@@ -237,6 +259,21 @@ const App = () => {
     // Run once per status transition into "authenticated".
   }, [status]);
 
+  // Phase 114 (DLINK-V121-02): a pasted dashboard link is a fresh, explicit intent, so it wins
+  // over Phase 7's sessionStorage ReturnTo page restore — including on the failure paths, whose
+  // banner belongs on the dashboard list. Ordering is deterministic, not luck: the ReturnTo
+  // effect above runs synchronously on the transition into "authenticated", while this one can
+  // only fire after an awaited listDashboards() round-trip, and it is declared after it.
+  // The ReturnTo block itself is untouched — Phase 115 has to extend it.
+  useEffect(() => {
+    if (deepLink.status === "opened") {
+      setPage("dashboards");
+      setDashboardViewMode("open");
+    } else if (deepLink.status === "unavailable" || deepLink.status === "error") {
+      setPage("dashboards");
+    }
+  }, [deepLink]);
+
   // Client-side access gate for the branding page: if the active page is
   // "branding" but the user lacks branding:manage (e.g. their role changed
   // mid-session, or a stale restored page), fall back to dashboards. The nav
@@ -278,12 +315,29 @@ const App = () => {
     return () => controller.abort();
   }, [status, hasPermission]);
 
+  // One shell, defined once, so the deep-link hold and the auth-bootstrap hold are LITERALLY the
+  // same markup — there is no second loading state for the user to notice changing.
+  const loadingShell = (
+    <div className="login-shell"><div className="muted">Loading…</div><BrandStyleInjector /><Toast /></div>
+  );
+
   if (status === "unknown") {
-    return <div className="login-shell"><div className="muted">Loading…</div><BrandStyleInjector /><Toast /></div>;
+    return loadingShell;
   }
 
+  // Phase 115 boundary: an unauthenticated deep-link arrival goes to LOGIN, not to the hold
+  // below — this branch must stay ABOVE it or such a visit would wait on Loading… forever.
+  // The ?dashboard param is deliberately left in the address bar for Phase 115 to consume.
   if (status !== "authenticated") {
     return <><LoginPage /><BrandStyleInjector /><Toast /></>;
+  }
+
+  // Phase 114 (DLINK-V121-02): hold the app-level Loading… while a deep link resolves. We must
+  // NOT hand off to DashboardsPage here: its own "Loading dashboards…" (DashboardsPage.tsx:202)
+  // renders INSIDE the list chrome, so doing so would put the dashboard-list page on screen —
+  // exactly what ROADMAP criterion 1 forbids.
+  if (deepLink.status === "pending") {
+    return loadingShell;
   }
 
   return (
@@ -315,7 +369,13 @@ const App = () => {
             <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setBannerDismissed(true)}>×</button>
           </div>
         )}
-        {page === "dashboards" && <DashboardsPage onViewChange={setDashboardViewMode} />}
+        {deepLink.status === "unavailable" && !deepLinkBannerDismissed && (
+          <div className="onboarding-banner" role="status" data-testid="deep-link-banner">
+            {DEEP_LINK_UNAVAILABLE_MESSAGE}
+            <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setDeepLinkBannerDismissed(true)}>×</button>
+          </div>
+        )}
+        {page === "dashboards" && <DashboardsPage onViewChange={setDashboardViewMode} initialOpenDashboard={initialOpenDashboard} />}
         {page === "datasets" && <DatasetsPage />}
         {page === "settings" && (
           <div className="muted">Section coming soon.</div>
