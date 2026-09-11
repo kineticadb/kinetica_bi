@@ -71,6 +71,7 @@ import { clearAllFilters } from "../lib/clearAllFilters";  // Phase 109 Plan 01 
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
+import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07)
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -109,6 +110,27 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
     onViewChange?.(v.mode);
   };
 
+  // Phase 113 (DLINK-V121-06/07): react to history navigation. TWO cases, neither of
+  // which ever OPENS a dashboard — resolving a URL into an open dashboard is Phase 114.
+  //  1. param absent  -> the user navigated back to the list; show the list.
+  //  2. param present but we are NOT on a dashboard -> the user pressed browser FORWARD
+  //     into an entry they had already left. The list is on screen, so a stale
+  //     ?dashboard=<id> in the address bar would describe a screen they are not on
+  //     (DLINK-V121-07). Reconcile the address bar down to the list, in place.
+  //     replaceState via clearDashboardUrl(), NOT a push and NOT an open.
+  useEffect(() => {
+    const onPopState = () => {
+      if (readDashboardIdFromSearch(window.location.search) === null) {
+        setViewState({ mode: "list" });
+        onViewChange?.("list");
+      } else if (view.mode !== "open") {
+        clearDashboardUrl();
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [onViewChange, view.mode]);
+
   const handleDelete = (dash: DashboardDto) => {
     if (!window.confirm(`Delete dashboard "${dash.name}"?`)) return;
     deleteDashboard(dash.id)
@@ -120,7 +142,7 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
     return (
       <DashboardOpen
         dashboard={view.dashboard}
-        onBack={() => setView({ mode: "list" })}
+        onBack={() => { leaveDashboardUrl(); setView({ mode: "list" }); }}
         onDashboardUpdated={(updated) => {
           setView({ mode: "open", dashboard: updated });
           setDashboards((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
@@ -200,7 +222,7 @@ const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => voi
                 <span className="ds-schema">{dash.description || "—"}</span>
                 <span className="ds-meta">{new Date(dash.updated_at).toLocaleString()}</span>
                 <span className="ds-actions">
-                  <button className="btn-primary btn-sm" onClick={() => setView({ mode: "open", dashboard: dash })}>
+                  <button className="btn-primary btn-sm" onClick={() => { openDashboardUrl(dash.id); setView({ mode: "open", dashboard: dash }); }}>
                     Open
                   </button>
                   <button className="ghost-sm" onClick={() => setView({ mode: "view", dashboard: dash })}>
@@ -582,6 +604,39 @@ const DashboardOpen = ({
       useMapCurrentViewStore.getState().reset();
     };
   }, [dashboard.id]);
+
+  // Phase 113 (DLINK-V121-07): leaving an open dashboard by ANY route must clear the
+  // address bar. App.tsx:318 renders DashboardsPage conditionally, so a sidebar click to
+  // Datasets/Settings/etc. fully unmounts this component while the URL still says
+  // ?dashboard=<id> — copying the link at that moment shares the wrong screen.
+  //
+  // Deferred by one macrotask on purpose, for two reasons:
+  //  (a) StrictMode. React 18 runs mount -> cleanup -> mount on the SAME hook state in dev
+  //      (main.tsx:14; same hazard as PITFALL M-01 in MapChartRenderer). The spurious
+  //      cleanup fires right after we pushed the URL; deferring lets the re-mount cancel it.
+  //  (b) It lets the auth status settle before we read it, so a 401/logout teardown is
+  //      reliably seen as unauthenticated.
+  // NOT cleared on logout/401: Phase 115 may need the id to survive re-auth.
+  const clearUrlTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (clearUrlTimer.current !== null) {
+      clearTimeout(clearUrlTimer.current);   // StrictMode re-mount: cancel the spurious clear
+      clearUrlTimer.current = null;
+    }
+    // Capture THIS instance's id. The deferred clear must be instance-scoped, not
+    // "is some id present": if the user reopens a DIFFERENT dashboard B inside the
+    // one-macrotask window, B has already pushed ?dashboard=<B.id> by the time our
+    // timer fires, and a global check would wipe B's valid, freshly-pushed param.
+    const openedId = dashboard.id;
+    return () => {
+      clearUrlTimer.current = window.setTimeout(() => {
+        if (useAuthStore.getState().status !== "authenticated") return;   // 401/logout: leave it for Phase 115
+        if (readDashboardIdFromSearch(window.location.search) !== openedId) return;  // not OUR param (already clean, or B's)
+        clearDashboardUrl();
+      }, 0);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount-lifetime effect; dashboard.id is fixed for this instance
+  }, []);
 
   // Phase 12: Load layers on dashboard open; reset on dashboard switch / unmount.
   // NOTE: filter bar visibility for layer-bound tables works because the LayersModal
