@@ -31,6 +31,14 @@ export function readDashboardIdFromSearch(search: string): number | null {
   return id > 0 ? id : null; // rejects "0"
 }
 
+/** True iff the dashboard param key is present at all — INCLUDING a value that does not
+ *  parse to an id ("?dashboard=abc"). Pairs with readDashboardIdFromSearch (which returns
+ *  null for that case) so a caller can tell "no deep link" from "junk deep link" and strip
+ *  the junk rather than leaving it in the address bar (DLINK-V121-07). Phase 114. */
+export function hasDashboardParam(search: string): boolean {
+  return new URLSearchParams(search).has(DASHBOARD_URL_PARAM);
+}
+
 /** Build a same-origin relative URL with the dashboard param set (id) or removed (null). */
 export function buildDashboardUrl(
   loc: { pathname: string; search: string; hash: string },

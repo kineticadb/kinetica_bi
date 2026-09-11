@@ -20,6 +20,7 @@ import {
   openDashboardUrl,
   leaveDashboardUrl,
   clearDashboardUrl,
+  hasDashboardParam,
 } from "./dashboardUrl";
 
 describe("dashboardUrl", () => {
@@ -167,6 +168,29 @@ describe("dashboardUrl", () => {
       expect(window.location.search).toBe("");
       expect(backSpy).not.toHaveBeenCalled();
       backSpy.mockRestore();
+    });
+  });
+
+  describe("hasDashboardParam", () => {
+    it('HASPARAM-114: returns true for "?dashboard=12"', () => {
+      expect(hasDashboardParam("?dashboard=12")).toBe(true);
+    });
+
+    it("HASPARAM-114: reports a junk param as present even though it does not parse to an id", () => {
+      expect(hasDashboardParam("?dashboard=abc")).toBe(true);
+      expect(readDashboardIdFromSearch("?dashboard=abc")).toBeNull();
+    });
+
+    it('HASPARAM-114: returns true for "?dashboard=" (present, empty value)', () => {
+      expect(hasDashboardParam("?dashboard=")).toBe(true);
+    });
+
+    it('HASPARAM-114: returns false for "" (no query string at all)', () => {
+      expect(hasDashboardParam("")).toBe(false);
+    });
+
+    it('HASPARAM-114: returns false for "?foo=1" (param absent)', () => {
+      expect(hasDashboardParam("?foo=1")).toBe(false);
     });
   });
 });
