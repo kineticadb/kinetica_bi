@@ -45,7 +45,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 
 - [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
 - [x] **Phase 112: Map Default View — Apply on Load** - Maps open at their saved default view (or world view if none saved)
-- [ ] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API
+- [x] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API (completed 2026-09-11)
 - [ ] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
 - [ ] **Phase 115: Deep Link Authentication Flow** - A dashboard link works logged-out too, routing through login and landing on the linked dashboard
 
@@ -119,7 +119,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 |-------|----------------|--------|-----------|
 | 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
 | 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
-| 113. Dashboard URL Sync | 1/2 | In Progress|  |
+| 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
 | 114. Deep Link Load & Error States | 0/TBD | Not started | - |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
 

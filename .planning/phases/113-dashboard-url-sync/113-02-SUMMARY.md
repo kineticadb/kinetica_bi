@@ -3,7 +3,7 @@ phase: 113-dashboard-url-sync
 plan: 02
 subsystem: ui
 tags: [history-api, dashboards, react, uat, checkpoint]
-status: checkpoint-pending
+status: complete
 
 # Dependency graph
 requires:
@@ -11,7 +11,7 @@ requires:
     provides: "dashboardUrl.ts + DashboardsPage.tsx wiring (open pushes, in-app Back leaves, popstate returns-or-reconciles, unmount clears)"
 provides:
   - "Re-confirmed gate results (tsc / vitest / theme-guard) on the tree Plan 01 left behind"
-  - "A blocking checkpoint awaiting the operator's real-browser walk-through of the address bar, Back/Forward, and sidebar navigation"
+  - "Operator walk-through of the address bar, Back/Forward and sidebar navigation — APPROVED 6/6 on 2026-09-11 (see 113-UAT.md)"
 affects: [114-deep-link-load-and-error-states, 115-deep-link-authentication-flow]
 
 # Tech tracking
@@ -27,14 +27,14 @@ key-decisions: []
 
 patterns-established: []
 
-requirements-completed: []  # Intentionally empty — DLINK-V121-01/-06/-07 remain "In Progress" pending the operator's UAT verdict below; do not mark complete until 113-UAT.md exists and is approved.
+requirements-completed: [DLINK-V121-01, DLINK-V121-06, DLINK-V121-07]  # Closed 2026-09-11 after the operator approved 6/6 in 113-UAT.md and the verifier independently confirmed the code behind them.
 
 # Metrics
 duration: N/A (checkpoint reached on first task; no code changed)
 completed: 2026-09-11
 ---
 
-# Phase 113 Plan 02: Dashboard URL Sync — Operator UAT Checkpoint (PARTIAL — awaiting human verification)
+# Phase 113 Plan 02: Dashboard URL Sync — Operator UAT Checkpoint
 
 **No code changed. This plan's sole task is a blocking real-browser checkpoint; gates were re-confirmed clean, then execution stopped exactly where the plan requires a human.**
 
@@ -78,8 +78,31 @@ None. Gates are clean; the only "blocker" is the intended one — a human has no
 
 ---
 *Phase: 113-dashboard-url-sync*
-*Completed: PARTIAL — checkpoint pending, not yet approved*
+*Completed: 2026-09-11 — checkpoint APPROVED by the operator, 6/6 checks passed*
 
 ## Self-Check: PASSED
 
 Verified directly: `.planning/phases/113-dashboard-url-sync/113-UAT.md` does not exist (`MISSING` as expected — it is the checkpoint's own output, not yet produced). `git status --short` clean; `git log --oneline -3` confirms `feat/dashboard-url-sync` HEAD is unchanged by this run except for this SUMMARY.md, which is committed separately below. No fabricated commit hashes are claimed above.
+
+
+## Operator verdict — 2026-09-11
+
+**APPROVED, 6/6.** Full record in `113-UAT.md`. Two things the walk-through surfaced
+that the script did not anticipate:
+
+1. **Check 4 was initially reported FAIL** because pasting the URL into a new tab
+   lands on the dashboard LIST rather than opening the dashboard. That is correct
+   for Phase 113 — opening FROM a URL is Phase 114 — but the check buried that in
+   a parenthetical and read like a feature test. The check's wording was at fault,
+   not the operator. The actual criterion (`?dashboard=<plain number>`) was then
+   confirmed.
+
+2. **A pre-existing navigation defect was found by accident**: the operator clicked
+   the sidebar "Dashboards" link instead of "Datasets" and stayed on the open
+   dashboard. `App.tsx:248` calls `setPage("dashboards")`, a no-op when already on
+   that page, so `DashboardsPage` never unmounts. Verified pre-existing (this
+   branch's `App.tsx` diff vs `origin/master` is empty) and NOT a
+   DLINK-V121-07 violation — screen and URL agree. Carried as tech debt.
+
+Check 6 proper (via Datasets) then passed, which is the only evidence that the
+deferred unmount cleanup works — that failure is invisible from the screen.
