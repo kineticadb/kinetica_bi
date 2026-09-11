@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 113-01-PLAN.md
-last_updated: "2026-09-11T15:47:40.318Z"
+stopped_at: Phase 114 context gathered
+last_updated: "2026-09-11T16:37:41.024Z"
 progress:
   total_phases: 5
   completed_phases: 3
@@ -1243,6 +1243,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-11T14:45:54.822Z
-Stopped at: Completed 113-01-PLAN.md
-Resume file: None
+Last session: 2026-09-11T16:37:41.012Z
+Stopped at: Phase 114 context gathered
+Resume file: .planning/phases/114-deep-link-load-error-states/114-CONTEXT.md
