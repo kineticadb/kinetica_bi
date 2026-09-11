@@ -46,7 +46,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 - [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
 - [x] **Phase 112: Map Default View — Apply on Load** - Maps open at their saved default view (or world view if none saved)
 - [x] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API (completed 2026-09-11)
-- [ ] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
+- [x] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
 - [ ] **Phase 115: Deep Link Authentication Flow** - A dashboard link works logged-out too, routing through login and landing on the linked dashboard
 
 ## Phase Details
@@ -110,9 +110,9 @@ Plans:
           half wins; the wording was amended to match reality rather than weakening the
           design to match the wording. -->
 **Plans**: 3 plans
-- [ ] 114-01-PLAN.md — hasDashboardParam + the useDeepLinkDashboard boot-URL state machine (resolve via the permission-filtered list; one combined failure outcome)
-- [ ] 114-02-PLAN.md — wire App.tsx (hold the app-level Loading…, failure banner, one-shot handoff) + DashboardsPage initialOpenDashboard
-- [ ] 114-03-PLAN.md — operator UAT: no-flash arrival, and both failure causes producing identical banner text
+- [x] 114-01-PLAN.md — hasDashboardParam + the useDeepLinkDashboard boot-URL state machine (resolve via the permission-filtered list; one combined failure outcome) (completed 2026-09-11)
+- [x] 114-02-PLAN.md — wire App.tsx (hold the app-level Loading…, failure banner, one-shot handoff) + DashboardsPage initialOpenDashboard (completed 2026-09-11)
+- [x] 114-03-PLAN.md — operator UAT: no-flash arrival, and both failure causes producing identical banner text (operator-approved 2026-09-11 — 6 pass, 1 not exercised (loading state too fast to see), 1 defect found+fixed+re-verified)
 
 ### Phase 115: Deep Link Authentication Flow
 **Goal**: A dashboard link works even for a visitor who isn't logged in yet — it routes through login and lands them on the dashboard from the link, not the dashboard list.
@@ -133,7 +133,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
 | 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
-| 114. Deep Link Load & Error States | 2/3 | In Progress|  |
+| 114. Deep Link Load & Error States | 3/3 | Complete   | 2026-09-11 |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
 
 ---
