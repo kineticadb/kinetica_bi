@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Phase 114 context gathered
-last_updated: "2026-09-11T16:37:41.024Z"
+stopped_at: Completed 114-01-PLAN.md
+last_updated: "2026-09-11T17:08:56.486Z"
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 10
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 113 — dashboard-url-sync
+**Current focus:** Phase 114 — deep-link-load-error-states
 
 ## Current Position
 
-Phase: 113 (dashboard-url-sync) — EXECUTING
-Plan: 2 of 2
+Phase: 114 (deep-link-load-error-states) — EXECUTING
+Plan: 2 of 3 (114-01 complete)
 
 ### Open tech debt carried forward
 
@@ -445,6 +445,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 111 P02 | 12min | 3 tasks | 7 files |
 | Phase 112 P01 | 35min | 3 tasks | 6 files |
 | Phase 113 P01 | 20min | 2 tasks | 4 files |
+| Phase 114 P01 | 9min | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -837,6 +838,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 111-02]: Making the publish unconditional exposed 3 pre-existing hand-rolled OL Map test mocks (WidgetRenderer.spec.tsx, actionEngine.canary.spec.tsx, DashboardsPage.spec.tsx) whose getView() stub lacked getCenter/getZoom — Effect 9c calls both at mount for every map widget now, not just when syncViewport was on; fixed by adding the missing methods to each mock (Rule 3, flagged as an expected risk by the plan itself)
 - [Phase 112]: resolveInitialView resolved at render time as a constructor arg to new OlView(...) — no post-construction setCenter/setZoom/animate/fit, structurally preventing the world-view flash
 - [Phase 113]: Dashboard URL sync uses a ref-cancelled deferred unmount cleanup (window.setTimeout + useRef) scoped to the departing instance's own dashboard id, to survive React 18 StrictMode's mount->cleanup->mount without wiping a freshly reopened different dashboard's param
+- [Phase 114]: Junk deep link (?dashboard=abc) treated as no deep link, silently stripped, not shown as a failure
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1243,6 +1245,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-11T16:37:41.012Z
-Stopped at: Phase 114 context gathered
-Resume file: .planning/phases/114-deep-link-load-error-states/114-CONTEXT.md
+Last session: 2026-09-11T17:08:56.475Z
+Stopped at: Completed 114-01-PLAN.md
+Resume file: None
