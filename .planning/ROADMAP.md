@@ -97,8 +97,18 @@ Plans:
 **Requirements**: DLINK-V121-02, DLINK-V121-04, DLINK-V121-05
 **Success Criteria** (what must be TRUE):
   1. Loading the app directly at a dashboard URL opens straight into that dashboard, without the dashboard-list page appearing first.
-  2. Visiting a link to a dashboard the signed-in user is not permitted to view shows a clear "not permitted" message — never a blank/broken page and never the dashboard's content (per v1.10 view permissions; must not leak existence or contents).
-  3. Visiting a link to a dashboard that no longer exists shows a clear "not found" message.
+  2. Visiting a link that cannot be opened — whether the dashboard was deleted OR the signed-in user is not permitted to view it — shows ONE clear, honest combined message, never a blank/broken page and never the dashboard's content.
+  3. That message does not reveal which of the two reasons applies, so a stranger pasting ids cannot learn which exist.
+     <!-- AMENDED 2026-09-11 (operator decision, see 114-CONTEXT.md). Criteria 2 and 3
+          originally demanded DISTINCT "not permitted" and "not found" messages. That is not
+          implementable without undoing a deliberate security property: there is no
+          GET /api/dashboards/:id route, the list is permission-filtered server-side
+          (index.ts:783), and every per-dashboard sub-resource returns an identical
+          404 "Dashboard not found." for both cases (index.ts:879/918/949/1043) — v1.10's
+          non-leak design. The original criterion 2 contradicted itself, demanding a distinct
+          "not permitted" message while also requiring that existence not leak. The security
+          half wins; the wording was amended to match reality rather than weakening the
+          design to match the wording. -->
 **Plans**: TBD
 
 ### Phase 115: Deep Link Authentication Flow
