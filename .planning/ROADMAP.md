@@ -133,7 +133,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
 | 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
-| 114. Deep Link Load & Error States | 1/3 | In Progress|  |
+| 114. Deep Link Load & Error States | 2/3 | In Progress|  |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
 
 ---

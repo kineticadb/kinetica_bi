@@ -63,10 +63,10 @@ Populated during roadmap creation.
 | MAPVIEW-V121-05 | Phase 112 | Complete |
 | MAPVIEW-V121-06 | Phase 112 | Complete |
 | DLINK-V121-01 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
-| DLINK-V121-02 | Phase 114 | In Progress (114-01 resolution layer done; 114-02 wires App.tsx/DashboardsPage.tsx) |
+| DLINK-V121-02 | Phase 114 | In Progress (114-01 resolution layer + 114-02 App.tsx/DashboardsPage.tsx wiring done, both code-verified; 114-03 operator checkpoint pending) |
 | DLINK-V121-03 | Phase 115 | Pending |
-| DLINK-V121-04 | Phase 114 | In Progress (114-01 resolution layer done; 114-02 wires App.tsx/DashboardsPage.tsx) |
-| DLINK-V121-05 | Phase 114 | In Progress (114-01 resolution layer done; 114-02 wires App.tsx/DashboardsPage.tsx) |
+| DLINK-V121-04 | Phase 114 | In Progress (114-01 resolution layer + 114-02 App.tsx/DashboardsPage.tsx wiring done, both code-verified; 114-03 operator checkpoint pending) |
+| DLINK-V121-05 | Phase 114 | In Progress (114-01 resolution layer + 114-02 App.tsx/DashboardsPage.tsx wiring done, both code-verified; 114-03 operator checkpoint pending) |
 | DLINK-V121-06 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
 | DLINK-V121-07 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
 

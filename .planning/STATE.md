@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 114-01-PLAN.md
-last_updated: "2026-09-11T17:08:56.486Z"
+stopped_at: Completed 114-02-PLAN.md
+last_updated: "2026-09-11T17:24:12.000Z"
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 ## Current Position
 
 Phase: 114 (deep-link-load-error-states) — EXECUTING
-Plan: 2 of 3 (114-01 complete)
+Plan: 3 of 3 (114-01, 114-02 complete; 114-03 operator checkpoint pending)
 
 ### Open tech debt carried forward
 
@@ -446,6 +446,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 112 P01 | 35min | 3 tasks | 6 files |
 | Phase 113 P01 | 20min | 2 tasks | 4 files |
 | Phase 114 P01 | 9min | 2 tasks | 4 files |
+| Phase 114 P02 | 15min | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -839,6 +840,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 112]: resolveInitialView resolved at render time as a constructor arg to new OlView(...) — no post-construction setCenter/setZoom/animate/fit, structurally preventing the world-view flash
 - [Phase 113]: Dashboard URL sync uses a ref-cancelled deferred unmount cleanup (window.setTimeout + useRef) scoped to the departing instance's own dashboard id, to survive React 18 StrictMode's mount->cleanup->mount without wiping a freshly reopened different dashboard's param
 - [Phase 114]: Junk deep link (?dashboard=abc) treated as no deep link, silently stripped, not shown as a failure
+- [Phase 114-02]: App.tsx's one-shot ref handoff to DashboardsPage's mount-time initializer must gate its flip on the SAME condition that gates the consumer's actual mount (page === "dashboards"), not merely on the handoff value being momentarily truthy — otherwise a competing Phase 7 ReturnTo to a different page burns the handoff before DashboardsPage ever mounts with it
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
