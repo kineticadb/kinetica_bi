@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Phase 113 context gathered
-last_updated: "2026-09-11T13:27:15.183Z"
+stopped_at: Completed 113-01-PLAN.md
+last_updated: "2026-09-11T14:45:54.830Z"
 progress:
-  total_phases: 91
-  completed_phases: 82
-  total_plans: 221
-  completed_plans: 218
+  total_phases: 5
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 112 — map-default-view-apply-on-load
+**Current focus:** Phase 113 — dashboard-url-sync
 
 ## Current Position
 
-Phase: 112 (map-default-view-apply-on-load) — EXECUTING
+Phase: 113 (dashboard-url-sync) — EXECUTING
 Plan: 2 of 2
 
 ### Open tech debt carried forward
@@ -444,6 +444,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 111 P03 | 8min | 2 tasks | 2 files |
 | Phase 111 P02 | 12min | 3 tasks | 7 files |
 | Phase 112 P01 | 35min | 3 tasks | 6 files |
+| Phase 113 P01 | 20min | 2 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -835,6 +836,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 111-02]: With 111-02 (publisher) + 111-03 (consumer) both now complete, MAPVIEW-V121-01 (save) is functionally complete and marked done in REQUIREMENTS.md; MAPVIEW-V121-04 (clear) stays In Progress — clearing already works in the config panel, but the "returns to world view" half of its behavior is a Phase 112 (apply-on-load) concern
 - [Phase 111-02]: Making the publish unconditional exposed 3 pre-existing hand-rolled OL Map test mocks (WidgetRenderer.spec.tsx, actionEngine.canary.spec.tsx, DashboardsPage.spec.tsx) whose getView() stub lacked getCenter/getZoom — Effect 9c calls both at mount for every map widget now, not just when syncViewport was on; fixed by adding the missing methods to each mock (Rule 3, flagged as an expected risk by the plan itself)
 - [Phase 112]: resolveInitialView resolved at render time as a constructor arg to new OlView(...) — no post-construction setCenter/setZoom/animate/fit, structurally preventing the world-view flash
+- [Phase 113]: Dashboard URL sync uses a ref-cancelled deferred unmount cleanup (window.setTimeout + useRef) scoped to the departing instance's own dashboard id, to survive React 18 StrictMode's mount->cleanup->mount without wiping a freshly reopened different dashboard's param
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1241,6 +1243,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-11T13:27:15.166Z
-Stopped at: Phase 113 context gathered
-Resume file: .planning/phases/113-dashboard-url-sync/113-CONTEXT.md
+Last session: 2026-09-11T14:45:54.822Z
+Stopped at: Completed 113-01-PLAN.md
+Resume file: None

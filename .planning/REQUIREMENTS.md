@@ -16,13 +16,13 @@
 
 ### Dashboard Links
 
-- [ ] **DLINK-V121-01**: Opening a dashboard puts a link to that dashboard in the browser address bar
+- [x] **DLINK-V121-01**: Opening a dashboard puts a link to that dashboard in the browser address bar
 - [ ] **DLINK-V121-02**: Visiting a dashboard link opens that dashboard directly, without passing through the dashboard-list page
 - [ ] **DLINK-V121-03**: Visiting a dashboard link while not authenticated routes to login, then lands on that dashboard once authenticated
 - [ ] **DLINK-V121-04**: Visiting a link for a dashboard the user is not permitted to view shows a clear message, not a blank or broken page
 - [ ] **DLINK-V121-05**: Visiting a link for a dashboard that no longer exists shows a clear message
-- [ ] **DLINK-V121-06**: Browser Back from an open dashboard returns to the dashboard list
-- [ ] **DLINK-V121-07**: Leaving a dashboard removes that dashboard from the address bar, so the link never describes a view the user is no longer on
+- [x] **DLINK-V121-06**: Browser Back from an open dashboard returns to the dashboard list
+- [x] **DLINK-V121-07**: Leaving a dashboard removes that dashboard from the address bar, so the link never describes a view the user is no longer on
 
 ## Future Requirements
 
@@ -62,13 +62,13 @@ Populated during roadmap creation.
 | MAPVIEW-V121-04 | Phase 111 | Complete (world-view fallback landed in Phase 112; operator-verified 2026-09-10) |
 | MAPVIEW-V121-05 | Phase 112 | Complete |
 | MAPVIEW-V121-06 | Phase 112 | Complete |
-| DLINK-V121-01 | Phase 113 | Pending |
+| DLINK-V121-01 | Phase 113 | Complete |
 | DLINK-V121-02 | Phase 114 | Pending |
 | DLINK-V121-03 | Phase 115 | Pending |
 | DLINK-V121-04 | Phase 114 | Pending |
 | DLINK-V121-05 | Phase 114 | Pending |
-| DLINK-V121-06 | Phase 113 | Pending |
-| DLINK-V121-07 | Phase 113 | Pending |
+| DLINK-V121-06 | Phase 113 | Complete |
+| DLINK-V121-07 | Phase 113 | Complete |
 
 **Coverage:**
 - v1.21 requirements: 13 total
