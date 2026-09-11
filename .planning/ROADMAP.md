@@ -109,7 +109,10 @@ Plans:
           "not permitted" message while also requiring that existence not leak. The security
           half wins; the wording was amended to match reality rather than weakening the
           design to match the wording. -->
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 114-01-PLAN.md — hasDashboardParam + the useDeepLinkDashboard boot-URL state machine (resolve via the permission-filtered list; one combined failure outcome)
+- [ ] 114-02-PLAN.md — wire App.tsx (hold the app-level Loading…, failure banner, one-shot handoff) + DashboardsPage initialOpenDashboard
+- [ ] 114-03-PLAN.md — operator UAT: no-flash arrival, and both failure causes producing identical banner text
 
 ### Phase 115: Deep Link Authentication Flow
 **Goal**: A dashboard link works even for a visitor who isn't logged in yet — it routes through login and lands them on the dashboard from the link, not the dashboard list.
@@ -130,7 +133,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
 | 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
-| 114. Deep Link Load & Error States | 0/TBD | Not started | - |
+| 114. Deep Link Load & Error States | 0/3 | Not started | - |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
 
 ---
