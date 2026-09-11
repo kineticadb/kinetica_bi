@@ -235,3 +235,71 @@ describe("DashboardsPage URL sync (Phase 113)", () => {
     expect(window.location.search).toBe("?dashboard=88"); // B's param survives
   });
 });
+
+// Phase 114 Plan 02 (DLINK-V121-02): initialOpenDashboard wiring. Every title prefixed
+// "DEEPLINK-114:" per the plan's grep anchor.
+const DASH_77 = {
+  id: 77,
+  name: "Deep Linked",
+  filter_display_mode: "topbar" as const,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+describe("DashboardsPage initialOpenDashboard (Phase 114 Plan 02)", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+    seedDesignerStore();
+    (listDashboards as ReturnType<typeof vi.fn>).mockReset();
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockReset();
+    (listViews as ReturnType<typeof vi.fn>).mockReset();
+    (listWidgets as ReturnType<typeof vi.fn>).mockReset();
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  });
+
+  it("DEEPLINK-114: mounts straight into the open dashboard when initialOpenDashboard is supplied", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77");
+    const { unmount } = render(<DashboardsPage initialOpenDashboard={DASH_77} />);
+    expect(await screen.findByRole("button", { name: /^back/i })).toBeInTheDocument();
+    expect(screen.queryByText("Dashboards")).toBeNull();
+    expect(screen.queryByRole("button", { name: /new dashboard/i })).toBeNull();
+    // Explicit unmount + macrotask flush so this instance's deferred unmount-cleanup timer
+    // (DashboardsPage.tsx DashboardOpen, Phase 113) fires and settles WITHIN this test rather
+    // than leaking into the next test's identical dashboard id via RTL's automatic afterEach
+    // cleanup() (see URLSYNC-113's own "stale unmount timer" test for the same hazard).
+    unmount();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  });
+
+  it("DEEPLINK-114: a deep-link arrival pushes no history entry of its own", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77");
+    const { unmount } = render(<DashboardsPage initialOpenDashboard={DASH_77} />);
+    await screen.findByRole("button", { name: /^back/i });
+    expect(window.location.search).toBe("?dashboard=77");
+    expect((window.history.state as Record<string, unknown> | null ?? {})[DASHBOARD_HISTORY_MARKER]).toBeUndefined();
+    unmount();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  });
+
+  it("DEEPLINK-114: the in-app Back button from a deep-link arrival writes the list URL instead of ejecting", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77");
+    render(<DashboardsPage initialOpenDashboard={DASH_77} />);
+    const backBtn = await screen.findByRole("button", { name: /^back/i });
+    await userEvent.click(backBtn);
+    await waitFor(() => expect(window.location.search).toBe(""));
+    expect(await screen.findByRole("button", { name: /^open$/i })).toBeInTheDocument();
+  });
+
+  it("DEEPLINK-114: without initialOpenDashboard the page still starts on the list", async () => {
+    render(<DashboardsPage />);
+    expect(await screen.findByRole("button", { name: /^open$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^back/i })).toBeNull();
+  });
+});

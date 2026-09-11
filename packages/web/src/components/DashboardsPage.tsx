@@ -86,11 +86,26 @@ type View =
 // Phase 44 (FILTER-V17-05): Filter-bar chip text now comes from buildChipText in columnTypes.ts.
 // Previously duplicated here; consolidated to single source of truth.
 
-const DashboardsPage = ({ onViewChange }: { onViewChange?: (mode: string) => void }) => {
+const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
+  onViewChange?: (mode: string) => void;
+  // Phase 114 (DLINK-V121-02): a dashboard resolved from ?dashboard=<id> at boot, handed down
+  // by App.tsx. Consumed ONCE, by the useState initializer below.
+  initialOpenDashboard?: DashboardDto;
+}) => {
   const { loading, data, error } = useApiQuery<DashboardDto[]>(() => listDashboards(), []);
   const [dashboards, setDashboards] = useState<DashboardDto[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [view, setViewState] = useState<View>({ mode: "list" });
+  // Phase 114 (DLINK-V121-02): a deep link mounts us straight into the open view, so the LIST
+  // IS NEVER RENDERED — that is ROADMAP criterion 1's no-flash requirement, expressed
+  // structurally rather than asserted visually.
+  // Lazy initializer on purpose: mount-only. A later prop change must never re-open a dashboard.
+  // Note what is NOT here: openDashboardUrl(). The user ARRIVED on this URL, so the current
+  // history entry already carries ?dashboard=<id>; pushing would manufacture a second entry and
+  // break Phase 113's marker logic. leaveDashboardUrl()'s unmarked-entry branch then correctly
+  // writes the list URL instead of history.back()-ing the user out of the app.
+  const [view, setViewState] = useState<View>(() =>
+    initialOpenDashboard ? { mode: "open", dashboard: initialOpenDashboard } : { mode: "list" },
+  );
 
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canCreate = hasPermission(PERMISSIONS.DASHBOARDS_CREATE);
