@@ -41,31 +41,6 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 
 ---
 
-## v1.20 Filter Panel — SHIPPED 2026-08-27
-
-<details>
-<summary>✅ v1.20 (Phases 105-110 incl. 109.1 / 109.2) — SHIPPED 2026-08-27 — full phase details archived in milestones/v1.20-ROADMAP.md</summary>
-
-- [x] Phase 105: Reverse-Mapping Pure Lib + Tests
-- [x] Phase 106: Display-Mode Persistence
-- [x] Phase 107: Panel Shell + Reflow + XOR Switch + Chips
-- [x] Phase 108: Applies-To List + On-Canvas Highlight
-- [x] Phase 109: Global Clear-All
-- [x] Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED)
-- [x] Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
-- [x] Phase 110: Designer Settings UI + Verification + Live UAT
-
-**Verification:** 19/19 requirements Complete; both-stack automated gates green (web vitest 154 files / 3439 tests; server SET-BASED ⊆ TD-V16-TEST-ISOLATION); operator UAT PASS on all 8 groups. See `phases/110-*/110-VERIFICATION.md`.
-
-</details>
-
-<!-- LAYOUT NOTE (2026-09-10): archived milestones are kept ABOVE the active
-     milestone's `## Phases` section on purpose. `gsd-tools roadmap
-     update-plan-progress` and `phase complete` only rewrite content that
-     appears AFTER the last `</details>` in this file. With the archive at the
-     bottom they silently no-opped on every Phase 111/112 update and each one
-     had to be hand-edited. Keep new archives here, not at the end. -->
-
 ## Phases
 
 - [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
@@ -145,3 +120,30 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 114. Deep Link Load & Error States | 0/TBD | Not started | - |
 | 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
 
+---
+
+<!-- LAYOUT NOTE (2026-09-11): archived milestones live at the END of this file
+     and are NOT wrapped in <details>. Both details matter, and they were
+     established empirically after a wrong first fix:
+       - WRAPPED in <details>  -> `roadmap update-plan-progress` and `phase
+         complete` silently no-op (they only rewrite content after the last
+         closing details tag, which the archive was sitting after).
+       - Archive moved to the TOP -> that fixed the above but broke
+         `init plan-phase`'s phase_req_ids extraction, which returned null and
+         would have silently skipped the requirements-coverage gate.
+     Unwrapped + at the end is the only arrangement where BOTH work. Verified on
+     phases 111/112/113. Keep new archives here, unwrapped.
+     Also note: update-plan-progress stamps TODAY's date rather than preserving
+     the original, so do not re-run it on an already-complete phase. -->
+
+## v1.20 Filter Panel — SHIPPED 2026-08-27
+✅ v1.20 (Phases 105-110 incl. 109.1 / 109.2) — SHIPPED 2026-08-27 — full phase details archived in `milestones/v1.20-ROADMAP.md`
+- [x] Phase 105: Reverse-Mapping Pure Lib + Tests
+- [x] Phase 106: Display-Mode Persistence
+- [x] Phase 107: Panel Shell + Reflow + XOR Switch + Chips
+- [x] Phase 108: Applies-To List + On-Canvas Highlight
+- [x] Phase 109: Global Clear-All
+- [x] Phase 109.1: Filter Scope for Custom-Panel Charts (INSERTED)
+- [x] Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
+- [x] Phase 110: Designer Settings UI + Verification + Live UAT
+**Verification:** 19/19 requirements Complete; both-stack automated gates green (web vitest 154 files / 3439 tests; server SET-BASED ⊆ TD-V16-TEST-ISOLATION); operator UAT PASS on all 8 groups. See `phases/110-*/110-VERIFICATION.md`.
