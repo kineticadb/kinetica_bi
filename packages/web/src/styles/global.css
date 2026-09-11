@@ -4815,7 +4815,15 @@ input[type="checkbox"],
   gap: var(--space-2);
   background: rgba(56, 189, 248, 0.08);
   border-bottom: 1px solid rgba(56, 189, 248, 0.3);
-  color: #cae8ff;
+  /* var(--text), not a hex. #cae8ff was a pale blue tuned for the dark theme and
+     was near-invisible on the light theme's near-white banner ground — reported
+     unreadable in light mode during Phase 114 UAT. --text is defined for BOTH
+     themes (#ece9f6 dark / #1e1b2e light), so the banner stays legible in each.
+     Note this hex survived because theme-guard allowlists global.css wholesale
+     for the hex scan (:root blocks legitimately hold hex), while its structural
+     guard only covers px/ms — so colour literals in global.css RULES fall
+     through both checks. */
+  color: var(--text);
   font-size: var(--text-lg);
   padding: var(--space-2) var(--space-5);
   flex-shrink: 0;
