@@ -18,7 +18,7 @@
 
 - [x] **DLINK-V121-01**: Opening a dashboard puts a link to that dashboard in the browser address bar
 - [x] **DLINK-V121-02**: Visiting a dashboard link opens that dashboard directly, without passing through the dashboard-list page
-- [ ] **DLINK-V121-03**: Visiting a dashboard link while not authenticated routes to login, then lands on that dashboard once authenticated
+- [x] **DLINK-V121-03**: Visiting a dashboard link while not authenticated routes to login, then lands on that dashboard once authenticated
 - [x] **DLINK-V121-04**: Visiting a link for a dashboard the user is not permitted to view shows a clear message, not a blank or broken page
 - [x] **DLINK-V121-05**: Visiting a link for a dashboard that no longer exists shows a clear message
 - [x] **DLINK-V121-06**: Browser Back from an open dashboard returns to the dashboard list
@@ -109,7 +109,7 @@ Populated during roadmap creation.
 | MAPVIEW-V121-06 | Phase 112 | Complete |
 | DLINK-V121-01 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
 | DLINK-V121-02 | Phase 114 | Complete (114-01/02 code + tests; 114-03 operator UAT approved 6 pass / 1 not exercised (loading state too fast to see, structurally proven instead) / 1 defect found+fixed 2026-09-11) |
-| DLINK-V121-03 | Phase 115 | Pending |
+| DLINK-V121-03 | Phase 115 | Complete (115-01/02/03 code + tests; 115-04 operator UAT approved 7/7 2026-09-14 — banner legible in both themes and password-mode deep-link-to-login-to-dashboard confirmed live; OIDC round trip NOT exercised live, environment is password-mode only (`AUTH_MODE=password`) — covered by automated tests + mutation probes, see 115-UAT.md Coverage Limitation) |
 | DLINK-V121-04 | Phase 114 | Complete (114-01/02 code + tests; 114-03 operator UAT approved 2026-09-11 — identical banner text confirmed for deleted vs not-permitted, non-leak property also structurally enforced) |
 | DLINK-V121-05 | Phase 114 | Complete (114-01/02 code + tests; 114-03 operator UAT approved 2026-09-11) |
 | DLINK-V121-06 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
