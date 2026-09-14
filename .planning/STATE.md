@@ -4,12 +4,12 @@ milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
 stopped_at: Completed 116-06-PLAN.md autonomous work — CHECKPOINT PENDING operator response (Task 2, 116-UAT.md)
-last_updated: "2026-09-14T17:50:05.356Z"
+last_updated: "2026-09-14T18:43:19.652Z"
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 20
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State
@@ -459,6 +459,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116 P04 | 9min | 2 tasks | 2 files |
 | Phase 116-table-deep-links P05 | 35min | 3 tasks | 5 files |
 | Phase 116 P06 | 25min | 2 tasks | 2 files |
+| Phase 115 P04 | 20min | 3 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -864,6 +865,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116-table-deep-links]: No TLINK requirement marked complete by Plan 05, per explicit instruction — plan 06 (checkpoint/UAT) remains, mirroring 116-04's precedent
 - [Phase 116-table-deep-links]: 116-06: TLINK-V121-01..07 completion deliberately deferred to post-checkpoint (orchestrator instruction overrides plan Task 1's literal wording); TLINK-F1..F4 deferred-work entries added to REQUIREMENTS.md independent of that gating
 - [Phase 116-table-deep-links]: 116-06: criterion 6's generalize-don't-fork clause recorded honestly as sibling-module duplication (dashboardUrl.ts 109L/tableUrl.ts 150L, useDeepLinkDashboard.ts 99L/useDeepLinkTable.ts 129L), not de-duplication — forced by the 132-test blast radius of a shared factory
+- [Phase 115]: DLINK-V121-03 closed: operator UAT approved 7/7 (password mode); OIDC round trip explicitly recorded as not exercised (AUTH_MODE=password is the only available environment) rather than upgraded to a pass — see 115-UAT.md
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
