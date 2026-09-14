@@ -25,7 +25,7 @@
 - ✅ **v1.18 Per-Visualization Filter Selection** — Phases 88-96 incl. 93.5 (shipped 2026-06-30) — see `milestones/v1.18-ROADMAP.md`
 - ✅ **v1.19 Visualization Customization** — Phases 97-104 (shipped 2026-07-08) — see `milestones/v1.19-ROADMAP.md`
 - ✅ **v1.20 Filter Panel** — Phases 105-110 incl. 109.1 / 109.2 (shipped 2026-08-27) — see `milestones/v1.20-ROADMAP.md`
-- 🚧 **v1.21 Dashboard Links & Map Default View** — Phases 111-115 (in progress)
+- 🚧 **v1.21 Dashboard Links & Map Default View** — Phases 111-116 (in progress)
 
 ---
 
@@ -48,6 +48,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 - [x] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API (completed 2026-09-11)
 - [x] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
 - [ ] **Phase 115: Deep Link Authentication Flow** - A dashboard link works logged-out too, routing through login and landing on the linked dashboard
+- [ ] **Phase 116: Table Deep Links** - A table's view or edit screen is reachable by URL, exactly as a dashboard is
 
 ## Phase Details
 
