@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   listTables,
   updateTable,
@@ -10,6 +10,11 @@ import {
   TableDto
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
+import { useAuthStore } from "../store/auth";
+import {
+  openTableUrl, clearTableUrl, setTableMode, leaveTableUrl,
+  readTableIdFromSearch, type TableMode,
+} from "../lib/tableUrl";
 import ChartCard from "./ChartCard";
 import ColumnFormatEditorModal from "./ColumnFormatEditorModal";
 import CustomMetricsEditorModal from "./CustomMetricsEditorModal";
@@ -20,16 +25,90 @@ type View =
   | { mode: "edit"; table: TableDto }
   | { mode: "create" };
 
-const DatasetsPage = () => {
+const DatasetsPage = ({ initialOpenTable }: {
+  /** Phase 116 (TLINK-V121-02): a table resolved from ?table=<id>[&mode=edit] at boot, handed
+   *  down by App.tsx. Consumed ONCE, by the useState initializer below. */
+  initialOpenTable?: { table: TableDto; mode: TableMode };
+} = {}) => {
   const { loading, data, error } = useApiQuery<TableDto[]>(() => listTables(), []);
   const [tables, setTables] = useState<TableDto[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [view, setView] = useState<View>({ mode: "list" });
+  // Phase 116 (TLINK-V121-02): a deep link mounts us straight into view/edit, so the LIST IS NEVER
+  // RENDERED — that is the no-flash requirement, expressed structurally rather than asserted visually.
+  // Lazy initializer on purpose: mount-only. A later prop change must never re-open a table.
+  // Note what is NOT here: openTableUrl(). The user ARRIVED on this URL, so the current history entry
+  // already carries ?table=<id>; pushing would manufacture a second entry and break the marker logic.
+  // leaveTableUrl()'s unmarked-entry branch then correctly WRITES the list URL instead of
+  // history.back()-ing the user out of the application.
+  const [view, setView] = useState<View>(() =>
+    initialOpenTable
+      ? { mode: initialOpenTable.mode, table: initialOpenTable.table }
+      : { mode: "list" },
+  );
 
   // Sync tables from query data; local state used for delete mutations
   useEffect(() => {
     if (data) setTables(data);
   }, [data]);
+
+  // Phase 116 (TLINK-V121-05/06): react to history navigation. TWO cases, neither of which ever
+  // OPENS a table — resolving a URL into an open table is App.tsx's job via useDeepLinkTable.
+  //  1. param absent -> the user navigated Back to the list; show the list.
+  //  2. param present but we are NOT on a table -> browser FORWARD into an entry already left.
+  //     The list is on screen, so a stale ?table=<id> would describe a screen the user is not on
+  //     (TLINK-V121-06). Reconcile the bar down to the list, in place, via clearTableUrl().
+  //
+  // NOT handled here, deliberately: reconciling the MODE qualifier against the open view. There is
+  // no UI path that reaches a differing mode on the same entry — the only way into edit is the list's
+  // Edit button (a fresh push), and TableDetail has no Edit affordance. If one is ever added, this
+  // handler needs a third case.
+  useEffect(() => {
+    const onPopState = () => {
+      if (readTableIdFromSearch(window.location.search) === null) {
+        setView({ mode: "list" });
+      } else if (view.mode !== "view" && view.mode !== "edit") {
+        clearTableUrl();
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [view.mode]);
+
+  // Phase 116 (TLINK-V121-06): leaving the Datasets page by ANY route must clear the address bar.
+  // App.tsx renders DatasetsPage conditionally, so a sidebar click to Dashboards/Settings fully
+  // unmounts this component while the URL still says ?table=<id> — copying the link at that moment
+  // shares the wrong screen.
+  //
+  // Deferred by one macrotask on purpose, mirroring DashboardsPage.tsx:635-654:
+  //  (a) StrictMode runs mount -> cleanup -> mount on the SAME hook state in dev (main.tsx:14); the
+  //      spurious cleanup fires right after we pushed the URL, and deferring lets the re-mount cancel it.
+  //  (b) it lets the auth status settle, so a 401/logout teardown is reliably seen as unauthenticated.
+  // NOT cleared on logout/401: the logged-out journey (Plan 05) needs the id to survive re-auth.
+  const openTableIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    openTableIdRef.current =
+      view.mode === "view" || view.mode === "edit" ? view.table.id : null;
+  }, [view]);
+
+  const clearUrlTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (clearUrlTimer.current !== null) {
+      clearTimeout(clearUrlTimer.current);   // StrictMode re-mount: cancel the spurious clear
+      clearUrlTimer.current = null;
+    }
+    return () => {
+      // Capture the id at CLEANUP time, not at mount: unlike DashboardOpen (one instance per
+      // dashboard), this component outlives every table it opens, so the id is only known now.
+      const openedId = openTableIdRef.current;
+      clearUrlTimer.current = window.setTimeout(() => {
+        if (openedId === null) return;                                              // no table was open
+        if (useAuthStore.getState().status !== "authenticated") return;             // 401/logout: leave it
+        if (readTableIdFromSearch(window.location.search) !== openedId) return;     // not OUR param
+        clearTableUrl();
+      }, 0);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount-lifetime effect
+  }, []);
 
   const handleDelete = (table: TableDto) => {
     if (!window.confirm(`Delete dataset "${table.name}"?`)) return;
@@ -44,6 +123,7 @@ const DatasetsPage = () => {
         onBack={() => setView({ mode: "list" })}
         onSaved={(created) => {
           setTables((prev) => [created, ...prev]);
+          openTableUrl(created.id, "view");
           setView({ mode: "view", table: created });
         }}
       />
@@ -51,16 +131,25 @@ const DatasetsPage = () => {
   }
 
   if (view.mode === "view") {
-    return <TableDetail table={view.table} onBack={() => setView({ mode: "list" })} />;
+    return (
+      <TableDetail
+        table={view.table}
+        onBack={() => { leaveTableUrl(); setView({ mode: "list" }); }}
+      />
+    );
   }
 
   if (view.mode === "edit") {
     return (
       <TableEdit
         table={view.table}
-        onBack={() => setView({ mode: "list" })}
+        onBack={() => { leaveTableUrl(); setView({ mode: "list" }); }}
         onSaved={(updated) => {
           setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+          // In-place mode change on the SAME entry — not a leave, not a fresh open;
+          // setTableMode preserves whether this entry is ours or arrived-on, which
+          // leaveTableUrl() must still read correctly afterwards.
+          setTableMode(updated.id, "view");
           setView({ mode: "view", table: updated });
         }}
       />
@@ -103,10 +192,10 @@ const DatasetsPage = () => {
                 <span>{Object.keys(t.columns).length}</span>
                 <span className="ds-meta">{new Date(t.updated_at).toLocaleString()}</span>
                 <span className="ds-actions">
-                  <button className="ghost-sm" onClick={() => setView({ mode: "view", table: t })}>
+                  <button className="ghost-sm" onClick={() => { openTableUrl(t.id, "view"); setView({ mode: "view", table: t }); }}>
                     View
                   </button>
-                  <button className="ghost-sm" onClick={() => setView({ mode: "edit", table: t })}>
+                  <button className="ghost-sm" onClick={() => { openTableUrl(t.id, "edit"); setView({ mode: "edit", table: t }); }}>
                     Edit
                   </button>
                   <button className="ghost-sm ghost-danger" onClick={() => handleDelete(t)}>
