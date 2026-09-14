@@ -27,6 +27,7 @@ import { useFilterHighlightStore } from "./store/filterHighlightStore";
 import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
 import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
+import { isValidDashboardId } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
 
@@ -36,10 +37,42 @@ type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profil
 type ReturnTo = {
   page?: Page;
   dashboardViewMode?: string;
+  // Phase 115 (DLINK-V121-03): the dashboard a logged-out visitor's link pointed at. Written ONLY
+  // by handleSignInCommit below, because the OIDC round trip destroys window.location.search
+  // (server redirects to a bare `/`). Extending THIS shape rather than adding a second key is
+  // locked by ROADMAP §Phase 115 criterion 2. Validated on read with the same positive-integer
+  // predicate the URL path uses — an id out of sessionStorage is attacker-controllable in exactly
+  // the sense the `page` field already is (App.spec.tsx:180 proves the page allow-list rejects junk).
+  dashboardId?: number;
 };
 
 const RETURN_TO_KEY = "kbi_returnTo";
 const SIDEBAR_COLLAPSED_KEY = "kbi_sidebarCollapsed";
+
+/** Phase 115 (DLINK-V121-03): read ONLY the pending dashboard id out of kbi_returnTo, WITHOUT
+ *  consuming it. The single-use clear stays owned by the restore effect below — this is a second
+ *  read of the SAME key in the SAME module, not a second mechanism.
+ *
+ *  Read at MOUNT (a useState initializer), not in an effect: useDeepLinkDashboard consumes the
+ *  value in its own mount-time initializer, so it must be present on App's FIRST render. An
+ *  effect would arrive one commit late, by which time App would already have rendered the
+ *  dashboard LIST — the flash ROADMAP §Phase 114 criterion 1 forbids.
+ *
+ *  "Elsewhere wins" is enforced structurally here too: an id is honoured only alongside page
+ *  "dashboards" (or no page at all). handleSignInCommit always writes the pair; any other
+ *  pairing is hand-crafted storage and is rejected. */
+function readPendingDashboardId(): number | null {
+  try {
+    const raw = sessionStorage.getItem(RETURN_TO_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ReturnTo;
+    if (parsed.page !== undefined && parsed.page !== "dashboards") return null;
+    return isValidDashboardId(parsed.dashboardId) ? parsed.dashboardId : null;
+  } catch {
+    // Corrupt JSON, disabled storage, unknown shape — no pending link.
+    return null;
+  }
+}
 
 const App = () => {
   const [page, setPage] = useState<Page>("dashboards");
@@ -75,8 +108,11 @@ const App = () => {
   const markUnauthenticated = useAuthStore((s) => s.markUnauthenticated);
   const hasPermission = useAuthStore((s) => s.hasPermission);
 
+  // Phase 115 (DLINK-V121-03): a dashboard id recovered from kbi_returnTo after an OIDC round
+  // trip, read once at mount so the hook has it on the FIRST render (no list flash).
+  const [pendingDashboardIdFromStorage] = useState<number | null>(() => readPendingDashboardId());
   // Phase 114 (DLINK-V121-02/04/05): the boot URL's ?dashboard=<id>, as a resolved state machine.
-  const deepLink = useDeepLinkDashboard();
+  const deepLink = useDeepLinkDashboard(pendingDashboardIdFromStorage);
   const [deepLinkBannerDismissed, setDeepLinkBannerDismissed] = useState(false);
   // Consumed-ONCE handoff. DashboardsPage reads initialOpenDashboard in its mount-time useState
   // initializer, so the value must be present during that render — hence a ref read in render
@@ -85,6 +121,13 @@ const App = () => {
   // The ref flips immediately afterwards so that navigating away (Datasets) and back to
   // Dashboards remounts the page on the LIST, rather than silently re-opening the deep link.
   const deepLinkConsumedRef = useRef(false);
+  // Phase 115: did the session expire in THIS document? Distinguishes "the ReturnTo sitting in
+  // storage was captured by the expiry that just happened here" (its page is the MORE RECENT
+  // intent — do not clobber it) from "a ReturnTo left over from a previous document, after which
+  // the user loaded a fresh URL" (the URL is then the more recent intent). Encodes 115-CONTEXT.md's
+  // "whichever signal is the more recent expression of intent wins" WITHOUT a clock — the locked
+  // decision is single-use, no TTL, no timestamp.
+  const expiredHereRef = useRef(false);
   const initialOpenDashboard =
     deepLink.status === "opened" && !deepLinkConsumedRef.current ? deepLink.dashboard : undefined;
   // Flip gated on page === "dashboards" too (Rule 1 fix, see SUMMARY): a ReturnTo restore to a
@@ -192,6 +235,7 @@ const App = () => {
         try {
           const payload: ReturnTo = { page, dashboardViewMode };
           sessionStorage.setItem(RETURN_TO_KEY, JSON.stringify(payload));
+          expiredHereRef.current = true;   // Phase 115: this document wrote that ReturnTo.
         } catch {
           // Best-effort: sessionStorage may be disabled (private mode in some browsers).
           // Falling through to the default landing page is acceptable.
@@ -204,6 +248,45 @@ const App = () => {
     // Effect deps include page + dashboardViewMode so the handler closure always
     // captures fresh values (otherwise the closure would freeze at mount).
   }, [markUnauthenticated, page, dashboardViewMode]);
+
+  // Phase 115 (DLINK-V121-03): the COMMIT-moment write — fired by LoginPage when the user
+  // actually commits to signing in, NOT when the deep link first reaches the login page.
+  // Why commit and not arrival: browsing away from login never commits, so nothing is stored;
+  // without this, a link you walked away from could hijack a later sign-in in the same tab.
+  //
+  // ⚠️ DELIBERATELY NOT UNIFIED with the UNAUTHORIZED_EVENT write above. It is tempting to see
+  // an inconsistency and collapse them — you cannot. At UNAUTHORIZED_EVENT time the app is still
+  // mounted and in-memory `page`/`dashboardViewMode` are the ONLY source of where the user was;
+  // by the time this runs those components have unmounted and window.location.search (captured
+  // at boot by useDeepLinkDashboard) is the only source of the dashboard id. Two journeys, two
+  // sources, two write moments, ONE key. This is a decision, not a defect.
+  const handleSignInCommit = () => {
+    if (deepLink.status !== "pending") return;                       // no link waiting
+    if (useAuthStore.getState().authMode !== "oidc") return;         // password never leaves the
+      // page, so the URL itself is the carrier (proved by src/App.passwordDeepLink.spec.tsx).
+      // A write here would create a SECOND source to reconcile against the same URL-sourced id.
+    try {
+      if (expiredHereRef.current) {
+        const raw = sessionStorage.getItem(RETURN_TO_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as ReturnTo;
+          // Conflict rule (115-CONTEXT.md): for an EXPIRY, where you actually were wins. A 401 can
+          // outrun DashboardsPage's deferred address-bar clear (DashboardsPage.tsx:646-651), so a
+          // STALE ?dashboard= can still sit in the bar while the user was on e.g. Roles. The
+          // expiry capture is the newer intent — leave it untouched.
+          if (parsed.page !== undefined && parsed.page !== "dashboards") return;
+        }
+      }
+      // `page: "dashboards"` is written EXPLICITLY, not omitted: it overwrites any leftover
+      // ReturnTo page from an earlier, never-resolved expiry, so a fresh paste can never trip
+      // the "elsewhere wins" branch on restore (115-RESEARCH.md §Q5's named edge case).
+      const payload: ReturnTo = { dashboardId: deepLink.id, page: "dashboards" };
+      sessionStorage.setItem(RETURN_TO_KEY, JSON.stringify(payload));
+    } catch {
+      // Best-effort: sessionStorage may be disabled (private mode). The user still signs in;
+      // they just land on the dashboard list instead of the linked dashboard.
+    }
+  };
 
   // Phase 48 (GATE-V18-01): PERMISSION_DENIED_EVENT listener — re-syncs /me so gated
   // surfaces re-render immediately after a mid-session role change.
@@ -329,7 +412,7 @@ const App = () => {
   // below — this branch must stay ABOVE it or such a visit would wait on Loading… forever.
   // The ?dashboard param is deliberately left in the address bar for Phase 115 to consume.
   if (status !== "authenticated") {
-    return <><LoginPage /><BrandStyleInjector /><Toast /></>;
+    return <><LoginPage deepLinkPending={deepLink.status === "pending"} onSignInCommit={handleSignInCommit} /><BrandStyleInjector /><Toast /></>;
   }
 
   // Phase 114 (DLINK-V121-02): hold the app-level Loading… while a deep link resolves. We must
