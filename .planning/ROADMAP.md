@@ -128,6 +128,20 @@ Plans:
 - [ ] 115-03-PLAN.md — restore side: expiry-elsewhere suppression, address-bar restore after the OIDC round trip, and the one amended Phase 114 precedence test (wave 3)
 - [ ] 115-04-PLAN.md — full gate run, static audit of the locked constraints, and the operator walk-through (banner in both themes + the real OIDC round trip) (wave 4)
 
+### Phase 116: Table Deep Links
+**Goal**: A table's view or edit screen is reachable by URL, exactly as a dashboard is — bookmarkable, pasteable, and surviving a logged-out arrival.
+**Depends on**: Phases 113, 114 and 115 (this phase GENERALIZES the three mechanisms they built; it must not fork them)
+**Requirements**: TLINK-V121-01, TLINK-V121-02, TLINK-V121-03, TLINK-V121-04, TLINK-V121-05, TLINK-V121-06, TLINK-V121-07
+**Canonical refs**: `.planning/phases/113-dashboard-url-sync/113-CONTEXT.md`, `.planning/phases/114-deep-link-load-error-states/114-CONTEXT.md`, `.planning/phases/115-deep-link-authentication-flow/115-CONTEXT.md`
+**Success Criteria** (what must be TRUE):
+  1. Opening a table puts `?table=<id>` in the address bar, and `?table=<id>&mode=edit` when the edit screen is open; leaving removes it.
+  2. Visiting a table link opens that table directly in the mode the link names, without the tables-list page appearing first.
+  3. A link to a table that is missing or not permitted lands on the tables list with a clear, non-leaking message — not a blank or broken page.
+  4. Browser Back from an open table returns to the tables list, and an arrival with no prior history entry does not eject the user from the app.
+  5. A logged-out visit routes through login and lands on the table from the link, reusing the same `kbi_returnTo` mechanism — no second storage key.
+  6. The dashboard link behaviour built in Phases 113-115 is unchanged: its tests still pass, and the shared code is generalized rather than duplicated.
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -140,6 +154,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
 | 114. Deep Link Load & Error States | 3/3 | Complete   | 2026-09-11 |
 | 115. Deep Link Authentication Flow | 3/4 | In Progress|  |
+| 116. Table Deep Links | 0/TBD | Not started | - |
 
 ---
 

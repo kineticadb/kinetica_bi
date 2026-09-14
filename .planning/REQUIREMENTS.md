@@ -24,6 +24,22 @@
 - [x] **DLINK-V121-06**: Browser Back from an open dashboard returns to the dashboard list
 - [x] **DLINK-V121-07**: Leaving a dashboard removes that dashboard from the address bar, so the link never describes a view the user is no longer on
 
+### Table Links
+
+Added 2026-09-14 at the operator's request, partially promoting DLINK-F4 out of Future. Every
+behavioural decision is INHERITED verbatim from the Dashboard Links work (Phases 113-115) — see
+`.planning/phases/116-table-deep-links/116-CONTEXT.md`. The only genuinely new decision is the
+view/edit mode qualifier (TLINK-V121-07), because `DatasetsPage` has a four-mode view state
+machine where `DashboardsPage` had two.
+
+- [ ] **TLINK-V121-01**: Opening a table puts a link to that table in the browser address bar
+- [ ] **TLINK-V121-02**: Visiting a table link opens that table directly, without passing through the tables-list page
+- [ ] **TLINK-V121-03**: Visiting a table link while not authenticated routes to login, then lands on that table once authenticated
+- [ ] **TLINK-V121-04**: Visiting a link for a table that no longer exists, or that the user is not permitted to see, shows a clear message rather than a blank or broken page
+- [ ] **TLINK-V121-05**: Browser Back from an open table returns to the tables list
+- [ ] **TLINK-V121-06**: Leaving a table removes that table from the address bar, so the link never describes a view the user is no longer on
+- [ ] **TLINK-V121-07**: The link distinguishes view mode from edit mode, so a link opens the same mode it was copied from
+
 ## Future Requirements
 
 Acknowledged, deliberately not in v1.21.
@@ -33,7 +49,7 @@ Acknowledged, deliberately not in v1.21.
 - **DLINK-F1**: Explicit "Copy link" button in the dashboard UI — the address bar is sufficient for v1.21
 - **DLINK-F2**: URL encodes active filter state, for sharing "this dashboard, filtered to this slice" — would reverse the v1.4 exclusion below; revisit on a customer ask
 - **DLINK-F3**: URL encodes each map's viewport
-- **DLINK-F4**: Linkable URLs for other pages (Roles, Tables, Settings) — only dashboards are linkable in v1.21
+- **DLINK-F4**: Linkable URLs for Roles and Settings — PARTIALLY PROMOTED 2026-09-14: the Tables half became TLINK-V121-01..07 (Phase 116) at the operator's request. Roles and Settings remain deferred.
 
 ### Map Default View
 
@@ -69,10 +85,17 @@ Populated during roadmap creation.
 | DLINK-V121-05 | Phase 114 | Complete (114-01/02 code + tests; 114-03 operator UAT approved 2026-09-11) |
 | DLINK-V121-06 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
 | DLINK-V121-07 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
+| TLINK-V121-01 | Phase 116 | Pending |
+| TLINK-V121-02 | Phase 116 | Pending |
+| TLINK-V121-03 | Phase 116 | Pending |
+| TLINK-V121-04 | Phase 116 | Pending |
+| TLINK-V121-05 | Phase 116 | Pending |
+| TLINK-V121-06 | Phase 116 | Pending |
+| TLINK-V121-07 | Phase 116 | Pending |
 
 **Coverage:**
-- v1.21 requirements: 13 total
-- Mapped to phases: 13 (Phases 111-115)
+- v1.21 requirements: 20 total
+- Mapped to phases: 20 (Phases 111-116)
 - Unmapped: 0
 
 ## Implementation constraints carried into planning
