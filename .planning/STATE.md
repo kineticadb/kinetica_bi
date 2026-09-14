@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Phase 115 context gathered
-last_updated: "2026-09-11T19:10:53.246Z"
+stopped_at: Completed 115-01-PLAN.md
+last_updated: "2026-09-14T13:36:53.627Z"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 14
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 114 — deep-link-load-error-states
+**Current focus:** Phase 115 — Deep Link Authentication Flow
 
 ## Current Position
 
-Phase: 114 (deep-link-load-error-states) — EXECUTING
-Plan: 3 of 3 (114-01, 114-02 complete; 114-03 operator checkpoint pending)
+Phase: 115 (Deep Link Authentication Flow) — EXECUTING
+Plan: 2 of 4
 
 ### Open tech debt carried forward
 
@@ -447,6 +447,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 113 P01 | 20min | 2 tasks | 4 files |
 | Phase 114 P01 | 9min | 2 tasks | 4 files |
 | Phase 114 P02 | 15min | 2 tasks | 4 files |
+| Phase 115 P01 | 25min | 3 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -841,6 +842,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 113]: Dashboard URL sync uses a ref-cancelled deferred unmount cleanup (window.setTimeout + useRef) scoped to the departing instance's own dashboard id, to survive React 18 StrictMode's mount->cleanup->mount without wiping a freshly reopened different dashboard's param
 - [Phase 114]: Junk deep link (?dashboard=abc) treated as no deep link, silently stripped, not shown as a failure
 - [Phase 114-02]: App.tsx's one-shot ref handoff to DashboardsPage's mount-time initializer must gate its flip on the SAME condition that gates the consumer's actual mount (page === "dashboards"), not merely on the handoff value being momentarily truthy — otherwise a competing Phase 7 ReturnTo to a different page burns the handoff before DashboardsPage ever mounts with it
+- [Phase 115]: Password mode's half of DLINK-V121-03 needed only a regression test (App.passwordDeepLink.spec.tsx); App.tsx/LoginPage.tsx unchanged, confirming 115-RESEARCH.md §Q1
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1247,6 +1249,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-11T19:10:53.236Z
-Stopped at: Phase 115 context gathered
-Resume file: .planning/phases/115-deep-link-authentication-flow/115-CONTEXT.md
+Last session: 2026-09-14T13:36:53.617Z
+Stopped at: Completed 115-01-PLAN.md
+Resume file: None
