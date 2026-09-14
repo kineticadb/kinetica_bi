@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 116-06-PLAN.md autonomous work — CHECKPOINT PENDING operator response (Task 2, 116-UAT.md)
-last_updated: "2026-09-14T18:43:19.652Z"
+stopped_at: "Completed 116-06-PLAN.md — Phase 116 CLOSED: operator UAT 16/16 approved, TLINK-V121-01..07 marked Complete"
+last_updated: "2026-09-14T18:50:04.418Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,15 +19,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 116 — Table Deep Links
+**Current focus:** v1.21 milestone — all 6 phases complete (Phase 116 closed 2026-09-14)
 
 ## Current Position
 
-Phase: 116 (Table Deep Links) — AWAITING OPERATOR CHECKPOINT RESPONSE
-Plan: 6 of 6 — autonomous work complete (criterion-6 evidence pasted, TLINK-F1..F4 recorded,
-116-UAT.md written); Task 2's checkpoint is a WRITE-then-PAUSE that requires an operator reply
-("defer" to close pending live UAT, or Group A results/issues) before TLINK-V121-01..07 can be
-marked complete in REQUIREMENTS.md.
+Phase: 116 (Table Deep Links) — COMPLETE
+Plan: 6 of 6 — criterion-6 evidence pasted, TLINK-F1..F4 recorded, 116-UAT.md written and run by
+the operator (16/16 pass, 2026-09-14). TLINK-V121-01..07 are marked Complete in REQUIREMENTS.md.
+v1.21 (Dashboard Links & Map Default View) now has all 6 phases (111-116) complete.
 
 ### Open tech debt carried forward
 
@@ -866,6 +865,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116-table-deep-links]: 116-06: TLINK-V121-01..07 completion deliberately deferred to post-checkpoint (orchestrator instruction overrides plan Task 1's literal wording); TLINK-F1..F4 deferred-work entries added to REQUIREMENTS.md independent of that gating
 - [Phase 116-table-deep-links]: 116-06: criterion 6's generalize-don't-fork clause recorded honestly as sibling-module duplication (dashboardUrl.ts 109L/tableUrl.ts 150L, useDeepLinkDashboard.ts 99L/useDeepLinkTable.ts 129L), not de-duplication — forced by the 132-test blast radius of a shared factory
 - [Phase 115]: DLINK-V121-03 closed: operator UAT approved 7/7 (password mode); OIDC round trip explicitly recorded as not exercised (AUTH_MODE=password is the only available environment) rather than upgraded to a pass — see 115-UAT.md
+- [Phase 116-table-deep-links]: Phase 116 CLOSED: operator UAT approved 16/16 (2026-09-14); TLINK-V121-01..07 flipped to Complete in REQUIREMENTS.md; TLINK-V121-03's OIDC half recorded as not exercised live (AUTH_MODE=password is the only available environment), mirroring the 115 precedent
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1273,6 +1273,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T17:49:37.390Z
-Stopped at: Completed 116-06-PLAN.md autonomous work — CHECKPOINT PENDING operator response (Task 2, 116-UAT.md)
+Last session: 2026-09-14T18:49:46.891Z
+Stopped at: Completed 116-06-PLAN.md — Phase 116 CLOSED: operator UAT 16/16 approved, TLINK-V121-01..07 marked Complete
 Resume file: None
