@@ -32,13 +32,13 @@ behavioural decision is INHERITED verbatim from the Dashboard Links work (Phases
 view/edit mode qualifier (TLINK-V121-07), because `DatasetsPage` has a four-mode view state
 machine where `DashboardsPage` had two.
 
-- [ ] **TLINK-V121-01**: Opening a table puts a link to that table in the browser address bar
-- [ ] **TLINK-V121-02**: Visiting a table link opens that table directly, without passing through the tables-list page
-- [ ] **TLINK-V121-03**: Visiting a table link while not authenticated routes to login, then lands on that table once authenticated
-- [ ] **TLINK-V121-04**: Visiting a link for a table that no longer exists, or that the user is not permitted to see, shows a clear message rather than a blank or broken page
-- [ ] **TLINK-V121-05**: Browser Back from an open table returns to the tables list
-- [ ] **TLINK-V121-06**: Leaving a table removes that table from the address bar, so the link never describes a view the user is no longer on
-- [ ] **TLINK-V121-07**: The link distinguishes view mode from edit mode, so a link opens the same mode it was copied from
+- [x] **TLINK-V121-01**: Opening a table puts a link to that table in the browser address bar
+- [x] **TLINK-V121-02**: Visiting a table link opens that table directly, without passing through the tables-list page
+- [x] **TLINK-V121-03**: Visiting a table link while not authenticated routes to login, then lands on that table once authenticated
+- [x] **TLINK-V121-04**: Visiting a link for a table that no longer exists, or that the user is not permitted to see, shows a clear message rather than a blank or broken page
+- [x] **TLINK-V121-05**: Browser Back from an open table returns to the tables list
+- [x] **TLINK-V121-06**: Leaving a table removes that table from the address bar, so the link never describes a view the user is no longer on
+- [x] **TLINK-V121-07**: The link distinguishes view mode from edit mode, so a link opens the same mode it was copied from
 
 ## Future Requirements
 
@@ -114,13 +114,13 @@ Populated during roadmap creation.
 | DLINK-V121-05 | Phase 114 | Complete (114-01/02 code + tests; 114-03 operator UAT approved 2026-09-11) |
 | DLINK-V121-06 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
 | DLINK-V121-07 | Phase 113 | Complete (113-01 code + tests; 113-02 operator UAT approved 6/6 2026-09-11) |
-| TLINK-V121-01 | Phase 116 | Pending |
-| TLINK-V121-02 | Phase 116 | Pending |
-| TLINK-V121-03 | Phase 116 | Pending |
-| TLINK-V121-04 | Phase 116 | Pending |
-| TLINK-V121-05 | Phase 116 | Pending |
-| TLINK-V121-06 | Phase 116 | Pending |
-| TLINK-V121-07 | Phase 116 | Pending |
+| TLINK-V121-01 | Phase 116 | Complete (116-01/03 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — address bar reads `?table=<id>` on View) |
+| TLINK-V121-02 | Phase 116 | Complete (116-02/03 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — pasted link opens directly, no list flash confirmed live) |
+| TLINK-V121-03 | Phase 116 | Complete (116-05 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — logged-out `?table=<id>&mode=edit` arrival routes through login and lands on the table, confirmed live in PASSWORD mode only (`AUTH_MODE=password`); the OIDC half of this requirement (the `kbi_returnTo` table-id round trip through a real IdP) is NOT exercised live — covered by automated tests + Plan 05's three mutation probes only, see 116-UAT.md Coverage Limitation) |
+| TLINK-V121-04 | Phase 116 | Complete (116-02/03/04 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — nonexistent-table banner and param-clear confirmed live) |
+| TLINK-V121-05 | Phase 116 | Complete (116-01/03 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — browser Back from an open table, including a fresh deep-link arrival with no prior history entry, confirmed live) |
+| TLINK-V121-06 | Phase 116 | Complete (116-01/03 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — Back and sidebar-away both confirmed to clear `?table=` live) |
+| TLINK-V121-07 | Phase 116 | Complete (116-01 code + tests; 116-06 operator UAT approved 16/16 2026-09-14 — view/edit mode qualifier and banana-mode fallback confirmed live) |
 
 **Coverage:**
 - v1.21 requirements: 20 total
