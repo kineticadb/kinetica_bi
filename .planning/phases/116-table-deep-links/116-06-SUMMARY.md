@@ -30,7 +30,7 @@ key-decisions:
   - "TLINK-F1..F4 (deferred/tech-debt documentation, not completion marks) WERE written to REQUIREMENTS.md's Future Requirements section in this plan, since documenting scoped-out work is independent of marking the in-scope requirements complete."
   - "criterion 6's second clause (generalize, don't fork) is recorded honestly as NOT de-duplication: dashboardUrl.ts (109 lines) / tableUrl.ts (150 lines) and useDeepLinkDashboard.ts (99 lines) / useDeepLinkTable.ts (129 lines) are structurally parallel siblings, forced by the 132-test import-path blast radius of any shared-factory refactor (116-RESEARCH §Q1)."
 
-requirements-completed: []
+requirements-completed: [TLINK-V121-01, TLINK-V121-02, TLINK-V121-03, TLINK-V121-04, TLINK-V121-05, TLINK-V121-06, TLINK-V121-07]
 
 duration: ~25min
 completed: 2026-09-14
@@ -237,3 +237,57 @@ down, since Group B (the only group that would have needed it) is empty by desig
 - FOUND: `.planning/phases/116-table-deep-links/116-06-SUMMARY.md`
 - FOUND commit `0aef444` (Task 1 — `docs(116-06): prove criterion 6 with pasted evidence, record deferred table-links work`)
 - FOUND commit `700ce8d` (Task 2 — `docs(116-06): write deferred operator UAT walkthrough for table deep links`)
+
+---
+
+## Checkpoint Resolution (continuation session, 2026-09-14)
+
+The Task 2 checkpoint (`checkpoint:human-verify`, write-then-pause) was resolved by the operator:
+they ran the full Group A walkthrough against the app shell (Kinetica became reachable) and
+reported **16/16 PASS** — `UAT-116-1` through `UAT-116-16`, including the two checks the phase's
+own research flagged as highest-risk:
+
+- **UAT-116-6** — browser Back from a fresh deep-link arrival (no prior history entry) stays in
+  the app, the edge case 113-CONTEXT named "the thing most likely to be got wrong."
+- **UAT-116-15 / UAT-116-16** — the in-place mode-change writer (Save from a deep-linked Edit
+  screen) behaves identically whether the edit screen was reached by a pasted link or a click,
+  the one piece of this phase with no dashboard precedent.
+- **UAT-116-8 / UAT-116-13** — both the table-unavailable banner and the login "Sign in to open
+  this table" banner read legibly in BOTH light and dark mode — the exact theme-guard blind spot
+  (raw hex/rgba in `global.css`, exempted from the hex scan) that let a Phase 114 light-mode
+  banner defect through UAT-114's own automated gates.
+- **UAT-116-11** — dashboard deep links confirmed unchanged by hand, corroborating the
+  byte-identical `git diff --numstat` evidence already pasted above.
+
+**One coverage limitation, recorded rather than glossed over:** `packages/server/.env:15` is
+`AUTH_MODE=password`, so **UAT-116-12** (the logged-out arrival, `TLINK-V121-03`) ran in PASSWORD
+mode only — recorded on that check's `Auth mode used:` line in `116-UAT.md`. The OIDC-specific
+half of the table auth flow — the table branch of `handleSignInCommit`'s `sessionStorage` write,
+and the post-round-trip address-bar restore, both of which are only reachable via an OIDC IdP's
+full-page navigation — was **not** exercised live. It remains covered by automated tests and by
+Plan 05's three mutation probes (all of which reddened as required; see the Mutation Probe
+Rollup above), but has not been seen working in a browser. `116-UAT.md` now carries this as an
+explicit "Coverage Limitation" section, mirroring `115-UAT.md`'s identical caveat for the
+dashboard side of the same mechanism, with the same recommendation: re-verify live whenever an
+OIDC-configured deployment is next available.
+
+**Actions taken to close the checkpoint:**
+1. `116-UAT.md` updated: all 16 `Result:` lines set to `pass`, `Auth mode used: password` recorded
+   on UAT-116-12, status flipped from `deferred` to `complete`, and a "Coverage Limitation"
+   section added — commit `48441b0`.
+2. `.planning/REQUIREMENTS.md`: all seven `TLINK-V121-01..07` requirements flipped from `[ ]` to
+   `[x]` in the checklist, and from `Pending` to `Complete` in the traceability table, each citing
+   "operator UAT 16/16 on 2026-09-14"; `TLINK-V121-03`'s row additionally names the password-mode-
+   only limitation — commit `405fe8f`. Verified the DLINK (7 checkboxes, all `[x]`) and MAPVIEW
+   (6 checkboxes, all `[x]`) rows were untouched by this edit (`git diff` shows only TLINK lines
+   changed).
+3. This SUMMARY extended in place (this section) rather than rewritten, per instruction.
+4. STATE.md and ROADMAP.md updated via `gsd-tools` (`state advance-plan`, `state update-progress`,
+   `state record-session`, `roadmap update-plan-progress 116`) so Phase 116 reads **Complete 6/6**.
+
+**requirements-completed (this continuation):** TLINK-V121-01, TLINK-V121-02, TLINK-V121-03,
+TLINK-V121-04, TLINK-V121-05, TLINK-V121-06, TLINK-V121-07.
+
+Phase 116 — Table Deep Links — is now CLOSED: all six plans complete, all seven requirements
+complete, criterion 6 proven with pasted evidence, and live operator UAT approved 16/16 with one
+honestly-recorded coverage limitation.
