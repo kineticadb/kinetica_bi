@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 20 plans, 20/20 requirements. Archived to `milestones/v1.21-ROADMAP.md` + `milestones/v1.21-REQUIREMENTS.md`;
 MILESTONES.md entry added; PROJECT.md evolution review complete (locked scope decision 4 corrected
 to record the deliberate Table Links scope-widening); `packages/web` + `packages/server`
-`package.json` bumped to 1.21.0; tagged `v1.21`. REQUIREMENTS.md deleted (fresh for next milestone).
+`package.json` bumped to 1.21.0; tagged `v1.21.0` (three-part per RELEASING.md — the codebase's own release-tag convention, fixed 2026-08-28 in commit 2c2a005, overrides the two-part `v1.21` scheme used through v1.20). REQUIREMENTS.md deleted (fresh for next milestone).
 No next milestone defined yet.
 
 Previously — Phase 116 (Table Deep Links) COMPLETE: criterion-6 evidence pasted, TLINK-F1..F4

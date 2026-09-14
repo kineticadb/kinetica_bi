@@ -4,7 +4,7 @@
 
 **Phases completed:** 6 phases (111–116), 20 plans
 
-**Delivered:** Two navigation frictions removed — a map that always opened on the whole world, and a dashboard reachable only by clicking through the list page — plus a mid-milestone operator-requested extension to tables. 20/20 requirements; frontend-only throughout (`packages/server` unchanged, no new dependency, no router). Test suite grew from 3439 to 3902 passing tests across 175 files. Tag `v1.21`.
+**Delivered:** Two navigation frictions removed — a map that always opened on the whole world, and a dashboard reachable only by clicking through the list page — plus a mid-milestone operator-requested extension to tables. 20/20 requirements; frontend-only throughout (`packages/server` unchanged, no new dependency, no router). Test suite grew from 3439 to 3902 passing tests across 175 files. Tag `v1.21.0` (three-part per RELEASING.md; the tag naming convention was fixed alongside this release — see RELEASING.md and 2c2a005).
 
 **Key accomplishments:**
 
