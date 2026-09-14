@@ -49,7 +49,36 @@ Acknowledged, deliberately not in v1.21.
 - **DLINK-F1**: Explicit "Copy link" button in the dashboard UI — the address bar is sufficient for v1.21
 - **DLINK-F2**: URL encodes active filter state, for sharing "this dashboard, filtered to this slice" — would reverse the v1.4 exclusion below; revisit on a customer ask
 - **DLINK-F3**: URL encodes each map's viewport
-- **DLINK-F4**: Linkable URLs for Roles and Settings — PARTIALLY PROMOTED 2026-09-14: the Tables half became TLINK-V121-01..07 (Phase 116) at the operator's request. Roles and Settings remain deferred.
+- **DLINK-F4**: Linkable URLs for Roles and Settings — PARTIALLY PROMOTED 2026-09-14: the Tables half is now DELIVERED by Phase 116 (see `TLINK-V121-01..07`). Roles and Settings remain deferred.
+
+### Table Links
+
+- **TLINK-F1**: Unsaved-edit leave guard for the table edit form — deliberately scoped OUT of
+  Phase 116 by operator decision (2026-09-14). Implementing it requires adding dirty-state
+  tracking to `TableEdit`, which does not exist today; that is form-state work, not URL work.
+  Phase 116 does not create the risk it would address: before the phase, browser Back from a
+  table edit left the application entirely; after it, Back lands on the tables list, which is
+  strictly better. Covers all three leave vectors (in-app Cancel, sidebar navigation away, and
+  browser Back). A full implementation sketch — including the `popstate`-undo-via-repush technique,
+  the `brandPageGuard`-style singleton, and the named caveats — is in
+  `.planning/phases/116-table-deep-links/116-RESEARCH.md` §Q3.
+- **TLINK-F2**: Revisit the table unavailable-message copy if per-table view permissions are ever
+  added. Phase 116 narrowed it to "This table isn't available — it may have been deleted."
+  (dropping the dashboard's "…or you may not have access" clause) because, verified against
+  `packages/server/src/index.ts`, neither `GET /api/tables` nor `GET /api/tables/:id` carries any
+  permission middleware, no `DATASETS_VIEW` permission exists, and the Datasets nav is ungated —
+  so "not permitted" is currently an UNREACHABLE state for tables. The moment that changes, this
+  copy must change with it.
+- **TLINK-F3**: Sidebar "Datasets" is a no-op while a table is open — the tables twin of the
+  pre-existing Phase 113 UAT tech debt on "Dashboards" (`App.tsx`'s `onSelect` calls `setPage`,
+  which does nothing when already on that page, so the open table stays on screen with its URL).
+  Confirmed present by 116-03-SUMMARY.md. Recorded, deliberately not fixed in Phase 116.
+- **TLINK-F4**: `lib/tableUrl.ts` / `hooks/useDeepLinkTable.ts` are structural DUPLICATES of their
+  dashboard siblings, not a shared abstraction. This was forced: renaming or parameterizing the
+  originals would have required import-path edits across 7 spec files / 132 tests, violating
+  ROADMAP §Phase 116 criterion 6. The standing cost is that a fix to one must be mirrored into the
+  other. If a third linkable entity is ever added (Roles/Settings, `DLINK-F4`), extract the shared
+  core THEN, in a phase whose gate permits touching the existing specs.
 
 ### Map Default View
 
