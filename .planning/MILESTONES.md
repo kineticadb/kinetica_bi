@@ -1,5 +1,33 @@
 # Milestones
 
+## v1.21 Dashboard Links & Map Default View (Shipped: 2026-09-14)
+
+**Phases completed:** 6 phases (111–116), 20 plans
+
+**Delivered:** Two navigation frictions removed — a map that always opened on the whole world, and a dashboard reachable only by clicking through the list page — plus a mid-milestone operator-requested extension to tables. 20/20 requirements; frontend-only throughout (`packages/server` unchanged, no new dependency, no router). Test suite grew from 3439 to 3902 passing tests across 175 files. Tag `v1.21`.
+
+**Key accomplishments:**
+
+- **Map default view — capture & save** (Phase 111) — a designer can save a map widget's exact current zoom + center as that widget's default from the map's own config panel, and clear it again, with visible confirmation. Required a NEW widgetId-keyed live-view mechanism (`mapViewportSyncStore` was confirmed not reusable — it's dashboardId-keyed and gated behind the "Sync viewport" toggle) so the config panel can always read the live view of the specific map instance it configures, independent of any other map on the dashboard.
+- **Map default view — apply on load** (Phase 112) — a map with a saved default opens at that exact view with no world-view flash, by passing the resolved view straight into the OpenLayers `View` constructor rather than a post-mount `setCenter`/`.fit(`; a map with no saved default remains byte-identical to today (world view, `[0,0]`, zoom 2); the save survives a reload; two map widgets on the same dashboard each honor their own default independently, including when both have "Sync viewport" enabled.
+- **Dashboard URL sync** (Phase 113) — opening a dashboard writes `?dashboard=<id>` into the address bar immediately via the native History API (no router dependency, per the milestone's locked scope decision); the URL stays honest on every exit path (in-app Back, browser Back, Back-then-Forward, sidebar navigate-away).
+- **Deep link load & error states** (Phase 114) — visiting a dashboard URL directly opens straight into that dashboard, with the list page never flashing first; a link that cannot be opened (deleted or not-permitted) shows one honest, non-leaking combined message rather than two distinct ones, preserving the v1.10 non-leak design (there is no `GET /api/dashboards/:id`; the list is permission-filtered server-side).
+- **Deep link authentication flow** (Phase 115) — a dashboard link works for a visitor who isn't logged in yet: it routes to login and, after authenticating, lands the user on the dashboard from the original link by extending the existing Phase 7 `kbi_returnTo` sessionStorage mechanism — not a second mechanism.
+- **Table deep links** (Phase 116, added mid-milestone at the operator's request 2026-09-14, partially promoting `DLINK-F4` out of Future) — a table's view or edit screen is reachable by URL exactly as a dashboard is, inheriting every behavioral decision from Phases 113–115 verbatim, plus one genuinely new decision: a `mode=edit` URL qualifier, because `DatasetsPage` has a four-mode view-state machine where `DashboardsPage` had two.
+
+**Known gaps and standing costs — recorded here deliberately, not smoothed over:**
+
+- **Scope was deliberately widened mid-milestone.** PROJECT.md's locked scope decision originally read "Scope held to these two features. Deliberately not padded from the backlog." The operator explicitly added Table Links (Phase 116) on 2026-09-14 — an operator decision, not scope creep that slipped through. PROJECT.md's decision has been corrected to reflect what actually happened.
+- **Phase 116's ROADMAP criterion 6 was only half met.** Clause 1 (dashboard behaviour unchanged) held — the protected-set diff is empty and 158 dashboard tests are byte-identical, independently re-verified. Clause 2 ("generalized rather than duplicated") was NOT met: `lib/tableUrl.ts` and `hooks/useDeepLinkTable.ts` are structural duplicates of their dashboard siblings, not a shared abstraction. This was deliberate — de-duplicating would have forced import-path edits across 7 spec files / 132 tests and broken clause 1. Recorded as `TLINK-F4`; the verifier graded Phase 116 22/23 for this reason. A fix to one must be mirrored into the other until a third linkable entity (Roles/Settings) justifies extracting the shared core in a phase whose gate permits touching the existing specs.
+- **The OIDC auth path was never browser-verified.** Both Phase 115 and Phase 116 UAT ran in password mode only (`packages/server/.env` has `AUTH_MODE=password`). The `kbi_returnTo` carry mechanism — the entire reason that storage exists — is covered by automated tests and mutation probes but has not been observed working live against a real IdP. Carried forward as open verification debt for the next OIDC-configured deployment.
+- **TD-02 was audited and amended on 2026-09-14** (commit `8847551`) — the claimed credential exposure does not exist in this repository's history (0 of 823 commits touch any `.env` file; the 3 `KINETICA_PASSWORD` commits carry placeholders only). It almost certainly described a predecessor repository. Reflected as amended, not re-raised as a blocker.
+- **Process lesson:** twelve toothless grep acceptance criteria occurred across Phases 115–116, every one anchoring a grep on prose the plan itself had just mandated in a code comment, so the criterion could not fail before the work was done. This is a planner-side habit worth fixing at the source (see CLAUDE.md's "Writing verifiable acceptance criteria" section, added as a result).
+- Phase 111's UAT formally sits at test 1 (covered in substance by Phase 112's checkpoint).
+
+**Open tech debt carried to the backlog:** `TLINK-F1` (unsaved-edit leave guard, scoped out by operator decision), `TLINK-F2` (revisit table banner copy if per-table permissions are added), `TLINK-F3` (sidebar "Datasets" no-op while a table is open, and its Phase 113 dashboard twin), `TLINK-F4` (the tableUrl/dashboardUrl duplication above), `DLINK-F1..F4` (Roles/Settings links remain deferred), plus the pre-existing theme-guard hole that exempts `global.css` wholesale from its hex scan (a test-infrastructure fix, never scheduled).
+
+---
+
 ## v1.20 Filter Panel (Shipped: 2026-08-27)
 
 **Phases completed:** 8 phases (105–110, incl. inserted 109.1 + 109.2), 12 plans
