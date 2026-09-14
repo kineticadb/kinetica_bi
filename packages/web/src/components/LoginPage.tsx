@@ -3,11 +3,15 @@ import { useAuthStore } from "../store/auth";
 import { API_BASE } from "../api/client";
 import { useBrandStore } from "../store/brandStore";
 
-const LoginPage = ({ deepLinkPending = false, onSignInCommit }: {
+const LoginPage = ({ deepLinkPending = false, deepLinkTablePending = false, onSignInCommit }: {
   /** Phase 115 (DLINK-V121-03): a dashboard link is waiting for this visitor. Computed by App
    *  from useDeepLinkDashboard — LoginPage deliberately does NOT re-derive it from the URL, so
    *  there is one source of truth and this stays testable without a router. */
   deepLinkPending?: boolean;
+  /** Phase 116 (TLINK-V121-03): a TABLE link is waiting for this visitor. Computed by App from
+   *  useDeepLinkTable — LoginPage deliberately does NOT re-derive it from the URL, so there is one
+   *  source of truth and this stays testable without a router. */
+  deepLinkTablePending?: boolean;
   /** Phase 115: fired at the moment the user commits to signing in, so App can persist the
    *  pending dashboard id before a full-page navigation destroys the query string. */
   onSignInCommit?: () => void;
@@ -28,12 +32,18 @@ const LoginPage = ({ deepLinkPending = false, onSignInCommit }: {
   // Non-leak check (v1.10): the deep-link line reveals only that a dashboard id was in the URL
   // the visitor pasted themselves. It says nothing about whether that id exists or who may see it.
   // Reuses the existing .login-banner class — no new class (CLAUDE.md).
+  // Phase 116 (TLINK-V121-03): the non-leak check holds identically for tables — the line reveals
+  // only that a table id was in the URL the visitor pasted themselves, and says nothing about
+  // whether that id exists or who may see it. `deepLinkPending` is checked first so the
+  // dashboard-wins precedence is consistent with App.tsx's handleSignInCommit/table-open effect.
   const bannerText =
     reason === "session-expired"
       ? "Your session has ended. Please sign in again."
       : deepLinkPending
         ? "Sign in to open this dashboard."
-        : null;
+        : deepLinkTablePending
+          ? "Sign in to open this table."
+          : null;
   const banner = bannerText && (
     <div className="login-banner" role="status">{bannerText}</div>
   );
