@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 115-03-PLAN.md
-last_updated: "2026-09-14T13:57:36.395Z"
+stopped_at: Completed 116-01-PLAN.md
+last_updated: "2026-09-14T17:02:33.831Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 4
-  total_plans: 14
-  completed_plans: 13
+  total_plans: 20
+  completed_plans: 14
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 115 — Deep Link Authentication Flow
+**Current focus:** Phase 116 — Table Deep Links
 
 ## Current Position
 
-Phase: 115 (Deep Link Authentication Flow) — EXECUTING
-Plan: 4 of 4
+Phase: 116 (Table Deep Links) — EXECUTING
+Plan: 2 of 6
 
 ### Open tech debt carried forward
 
@@ -450,6 +450,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 115 P01 | 25min | 3 tasks | 5 files |
 | Phase 115 P02 | 35min | 3 tasks | 5 files |
 | Phase 115 P03 | 15min | 2 tasks | 2 files |
+| Phase 116 P01 | 15 | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -847,6 +848,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 115]: Password mode's half of DLINK-V121-03 needed only a regression test (App.passwordDeepLink.spec.tsx); App.tsx/LoginPage.tsx unchanged, confirming 115-RESEARCH.md §Q1
 - [Phase 115]: The two write moments (UNAUTHORIZED_EVENT expiry write vs handleSignInCommit paste write) are deliberately NOT unified — two journeys, two id sources, one kbi_returnTo key.
 - [Phase 115]: 115-03: amended DEEPLINK-114's inverted-precedence test (kbi_returnTo={page:roles}+?dashboard=7 is the expiry-elsewhere case under 115-CONTEXT's locked conflict rule, not a paste-beats-ReturnTo case) — replaced with 2 tests + a recorded amendment comment; returnToWonElsewhereRef suppresses a stale deep link IMMEDIATELY, not delayed, per 115-RESEARCH §Q4/Q5 Pitfall 3
+- [Phase 116]: setTableMode preserves window.history.state verbatim (not null, not a hardcoded marker) so leaveTableUrl's pop-vs-write branch is unaffected by an edit-mode Save — proven via mutation probe
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1253,6 +1255,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T13:57:15.872Z
-Stopped at: Completed 115-03-PLAN.md
+Last session: 2026-09-14T17:02:33.821Z
+Stopped at: Completed 116-01-PLAN.md
 Resume file: None
