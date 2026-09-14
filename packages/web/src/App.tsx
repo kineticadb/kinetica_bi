@@ -29,7 +29,7 @@ import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
 import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
 import { useDeepLinkTable, DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkTable";  // Phase 116 (TLINK-V121-02/04)
-import { hasTableParam, clearTableUrl, restoreTableUrl } from "./lib/tableUrl";                     // Phase 116
+import { hasTableParam, clearTableUrl, restoreTableUrl, isValidTableId, type TableMode } from "./lib/tableUrl";  // Phase 116
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
 
@@ -46,6 +46,13 @@ type ReturnTo = {
   // predicate the URL path uses — an id out of sessionStorage is attacker-controllable in exactly
   // the sense the `page` field already is (App.spec.tsx:180 proves the page allow-list rejects junk).
   dashboardId?: number;
+  // Phase 116 (TLINK-V121-03): the table a logged-out visitor's link pointed at, and which of the
+  // two screens it named. Written ONLY by handleSignInCommit below, for the same reason dashboardId
+  // is: the OIDC round trip destroys window.location.search (the server redirects to a bare `/`).
+  // These extend the SAME key — ROADMAP §Phase 116 criterion 5 forbids a second one. Validated on
+  // read with the same positive-integer predicate the URL path uses.
+  tableId?: number;
+  tableMode?: "view" | "edit";
 };
 
 const RETURN_TO_KEY = "kbi_returnTo";
@@ -72,6 +79,29 @@ function readPendingDashboardId(): number | null {
     return isValidDashboardId(parsed.dashboardId) ? parsed.dashboardId : null;
   } catch {
     // Corrupt JSON, disabled storage, unknown shape — no pending link.
+    return null;
+  }
+}
+
+/** Phase 116 (TLINK-V121-03): the table sibling of readPendingDashboardId, above. Read ONLY —
+ *  the single-use clear stays owned by the restore effect below, a second read of the SAME key
+ *  in the SAME module, not a second mechanism. Read at MOUNT for the identical reason: an effect
+ *  would arrive one commit late, after the tables LIST had already rendered for a frame. */
+function readPendingTable(): { id: number; mode: TableMode } | null {
+  try {
+    const raw = sessionStorage.getItem(RETURN_TO_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ReturnTo;
+    // STRICTER than readPendingDashboardId, deliberately: that one tolerates an ABSENT page,
+    // because "dashboards" is the app's default landing page so absent-means-dashboards is a fair
+    // reading. "datasets" is NOT the default, so an absent page can never mean it. Anything other
+    // than an explicit "datasets" is hand-crafted storage and is rejected.
+    if (parsed.page !== "datasets") return null;
+    if (!isValidTableId(parsed.tableId)) return null;
+    // Same absent-or-unrecognised-means-view rule the URL reader uses (116-CONTEXT's one new decision).
+    const mode: TableMode = parsed.tableMode === "edit" ? "edit" : "view";
+    return { id: parsed.tableId, mode };
+  } catch {
     return null;
   }
 }
@@ -148,9 +178,13 @@ const App = () => {
     if (initialOpenDashboard && page === "dashboards") deepLinkConsumedRef.current = true;
   }, [initialOpenDashboard, page]);
 
+  // Phase 116 (TLINK-V121-03): a table id recovered from kbi_returnTo after an OIDC round trip,
+  // read once at mount so the hook has it on the FIRST render (no list flash) — mirrors
+  // pendingDashboardIdFromStorage above.
+  const [pendingTableFromStorage] = useState<{ id: number; mode: TableMode } | null>(() => readPendingTable());
   // Phase 116 (TLINK-V121-02/04): the boot URL's ?table=<id>[&mode=edit], as a resolved state
-  // machine. Plan 05 passes the post-OIDC stored value in; until then it takes no argument.
-  const deepLinkTable = useDeepLinkTable();
+  // machine.
+  const deepLinkTable = useDeepLinkTable(pendingTableFromStorage);
   const [deepLinkTableBannerDismissed, setDeepLinkTableBannerDismissed] = useState(false);
   // Parallel one-shot refs, NOT a reuse of the dashboard ones. Sharing a single consumed-ref between
   // two independent entities would let whichever link resolves FIRST permanently suppress the other's
@@ -292,31 +326,52 @@ const App = () => {
   // by the time this runs those components have unmounted and window.location.search (captured
   // at boot by useDeepLinkDashboard) is the only source of the dashboard id. Two journeys, two
   // sources, two write moments, ONE key. This is a decision, not a defect.
+  // Phase 116 (TLINK-V121-03): the table journey uses the same two moments for the same reasons —
+  // extended into this SAME function, not a second one, per 116-RESEARCH §Q4.
   const handleSignInCommit = () => {
-    if (deepLink.status !== "pending") return;                       // no link waiting
-    if (useAuthStore.getState().authMode !== "oidc") return;         // password never leaves the
-      // page, so the URL itself is the carrier (proved by src/App.passwordDeepLink.spec.tsx).
-      // A write here would create a SECOND source to reconcile against the same URL-sourced id.
+    // Password mode never leaves the page, so the URL itself is the carrier (proved for dashboards
+    // by App.passwordDeepLink.spec.tsx and for tables by App.tablePasswordDeepLink.spec.tsx). A
+    // write here would create a SECOND source to reconcile against the same URL-sourced id.
+    if (useAuthStore.getState().authMode !== "oidc") return;
+
+    // DASHBOARD WINS — the same explicit precedence the table-open effect uses. Both params present
+    // is only reachable by hand-crafting a URL; writing both would stash a tableId that the read
+    // side would reject anyway (readPendingTable requires page "datasets"), so simply not writing it
+    // is equivalent and clearer.
+    const dashboardPending = deepLink.status === "pending";
+    const tablePending = !dashboardPending && deepLinkTable.status === "pending";
+    if (!dashboardPending && !tablePending) return;   // no link waiting
+
     try {
+      const expectedPage: Page = dashboardPending ? "dashboards" : "datasets";
       if (expiredHereRef.current) {
         const raw = sessionStorage.getItem(RETURN_TO_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as ReturnTo;
           // Conflict rule (115-CONTEXT.md): for an EXPIRY, where you actually were wins. A 401 can
-          // outrun DashboardsPage's deferred address-bar clear (DashboardsPage.tsx:646-651), so a
-          // STALE ?dashboard= can still sit in the bar while the user was on e.g. Roles. The
-          // expiry capture is the newer intent — leave it untouched.
-          if (parsed.page !== undefined && parsed.page !== "dashboards") return;
+          // outrun the deferred address-bar clear, so a STALE ?dashboard=/?table= can still sit in
+          // the bar while the user was elsewhere. The expiry capture is the newer intent.
+          if (parsed.page !== undefined && parsed.page !== expectedPage) return;
         }
       }
-      // `page: "dashboards"` is written EXPLICITLY, not omitted: it overwrites any leftover
-      // ReturnTo page from an earlier, never-resolved expiry, so a fresh paste can never trip
-      // the "elsewhere wins" branch on restore (115-RESEARCH.md §Q5's named edge case).
-      const payload: ReturnTo = { dashboardId: deepLink.id, page: "dashboards" };
+      // Built conditionally, NOT as a spread with undefined-valued keys: App.signincommit.spec.tsx
+      // asserts toEqual({dashboardId, page}) on the PARSED object, and relying on JSON.stringify
+      // silently dropping undefined keys would be invisible and fragile.
+      // `page` is written EXPLICITLY in both branches so a fresh paste always overwrites any leftover
+      // ReturnTo page from an earlier, never-resolved expiry.
+      let payload: ReturnTo | null = null;
+      const d = deepLink;
+      const t = deepLinkTable;
+      if (d.status === "pending") {
+        payload = { dashboardId: d.id, page: "dashboards" };
+      } else if (t.status === "pending") {
+        payload = { tableId: t.id, tableMode: t.mode, page: "datasets" };
+      }
+      if (!payload) return;
       sessionStorage.setItem(RETURN_TO_KEY, JSON.stringify(payload));
     } catch {
       // Best-effort: sessionStorage may be disabled (private mode). The user still signs in;
-      // they just land on the dashboard list instead of the linked dashboard.
+      // they just land on the list instead of the linked screen.
     }
   };
 
@@ -370,6 +425,17 @@ const App = () => {
           deepLinkConsumedRef.current = true;
           // DLINK-V121-07: the bar must not describe a dashboard while the user is on Roles.
           if (hasDashboardParam(window.location.search)) clearDashboardUrl();
+        }
+        if (parsed.page !== "datasets") {
+          // Phase 116 mirror-image of the block above: an expiry captured the user somewhere other
+          // than Datasets, so that capture is the newer intent and any ?table= still in the bar is
+          // stale (a 401 outran DatasetsPage's deferred clear). Suppress NOW rather than merely
+          // delaying — burning the one-shot here stops the stale link silently reopening later in
+          // the session if the user navigates to Datasets by hand.
+          tableReturnToWonElsewhereRef.current = true;
+          tableDeepLinkConsumedRef.current = true;
+          // TLINK-V121-06: the bar must not describe a table while the user is on Roles.
+          if (hasTableParam(window.location.search)) clearTableUrl();
         }
       }
       if (typeof parsed.dashboardViewMode === "string") {
@@ -497,7 +563,7 @@ const App = () => {
   // below — this branch must stay ABOVE it or such a visit would wait on Loading… forever.
   // The ?dashboard param is deliberately left in the address bar for Phase 115 to consume.
   if (status !== "authenticated") {
-    return <><LoginPage deepLinkPending={deepLink.status === "pending"} onSignInCommit={handleSignInCommit} /><BrandStyleInjector /><Toast /></>;
+    return <><LoginPage deepLinkPending={deepLink.status === "pending"} deepLinkTablePending={deepLinkTable.status === "pending"} onSignInCommit={handleSignInCommit} /><BrandStyleInjector /><Toast /></>;
   }
 
   // Phase 114 (DLINK-V121-02): hold the app-level Loading… while a deep link resolves. We must
