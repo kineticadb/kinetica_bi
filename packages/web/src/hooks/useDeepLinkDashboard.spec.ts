@@ -172,3 +172,101 @@ describe("useDeepLinkDashboard", () => {
     expect(DEEP_LINK_UNAVAILABLE_MESSAGE.toLowerCase()).not.toMatch(/deleted\b.*only|not permitted\b.*only/);
   });
 });
+
+describe("useDeepLinkDashboard — storedId parameter (Phase 115, AUTHLINK-115)", () => {
+  it("AUTHLINK-115: storedId 12 on a bare URL + authenticated + list contains 12 -> opened", async () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard12 = makeDashboard(12);
+    listDashboardsMock.mockResolvedValue([dashboard12]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard(12));
+
+    expect(result.current.status).toBe("pending");
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    expect((result.current as Extract<DeepLinkState, { status: "opened" }>).dashboard).toEqual(dashboard12);
+  });
+
+  it("AUTHLINK-115: storedId 12 with auth status unknown at boot stays pending until authenticated, then resolves", async () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "unknown" });
+    const dashboard12 = makeDashboard(12);
+    listDashboardsMock.mockResolvedValue([dashboard12]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard(12));
+
+    expect(result.current.status).toBe("pending");
+    expect(listDashboardsMock).not.toHaveBeenCalled();
+
+    act(() => {
+      useAuthStore.setState({ status: "authenticated" });
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+  });
+
+  it("AUTHLINK-115: URL \"?dashboard=7\" beats storedId 12 -> resolves 7, not 12", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard(12));
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    expect((result.current as Extract<DeepLinkState, { status: "opened" }>).dashboard).toEqual(dashboard7);
+  });
+
+  it("AUTHLINK-115: storedId null/undefined/absent on a bare URL -> none, listDashboards never called", () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "authenticated" });
+
+    const { result: resultNull } = renderHook(() => useDeepLinkDashboard(null));
+    expect(resultNull.current.status).toBe("none");
+
+    const { result: resultUndefined } = renderHook(() => useDeepLinkDashboard(undefined));
+    expect(resultUndefined.current.status).toBe("none");
+
+    const { result: resultAbsent } = renderHook(() => useDeepLinkDashboard());
+    expect(resultAbsent.current.status).toBe("none");
+
+    expect(listDashboardsMock).not.toHaveBeenCalled();
+  });
+
+  it("AUTHLINK-115: invalid storedId shapes (0, -3, 1.5, \"12\") on a bare URL -> none, listDashboards never called", () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "authenticated" });
+
+    for (const bad of [0, -3, 1.5, "12" as unknown as number]) {
+      const { result } = renderHook(() => useDeepLinkDashboard(bad));
+      expect(result.current.status).toBe("none");
+    }
+
+    expect(listDashboardsMock).not.toHaveBeenCalled();
+  });
+
+  it("AUTHLINK-115: a stored id resolves with exactly ONE listDashboards call under StrictMode", async () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "authenticated" });
+    listDashboardsMock.mockResolvedValue([makeDashboard(12)]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard(12), {
+      wrapper: ({ children }) => React.createElement(React.StrictMode, null, children),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    expect(listDashboardsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("AUTHLINK-115: URL \"?dashboard=abc\" (junk) is stripped AND the stored 12 still resolves", async () => {
+    window.history.replaceState(null, "", "/?dashboard=abc");
+    useAuthStore.setState({ status: "authenticated" });
+    listDashboardsMock.mockResolvedValue([makeDashboard(12)]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard(12));
+
+    expect(window.location.search).toBe("");
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    expect((result.current as Extract<DeepLinkState, { status: "opened" }>).dashboard.id).toBe(12);
+  });
+});
