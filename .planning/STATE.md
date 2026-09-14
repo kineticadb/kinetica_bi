@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 116-05-PLAN.md
-last_updated: "2026-09-14T17:39:59.438Z"
+stopped_at: Completed 116-06-PLAN.md autonomous work — CHECKPOINT PENDING operator response (Task 2, 116-UAT.md)
+last_updated: "2026-09-14T17:50:05.356Z"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -23,8 +23,11 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 
 ## Current Position
 
-Phase: 116 (Table Deep Links) — EXECUTING
-Plan: 6 of 6 (Plan 05 complete; Plan 06 — checkpoint/UAT — remains)
+Phase: 116 (Table Deep Links) — AWAITING OPERATOR CHECKPOINT RESPONSE
+Plan: 6 of 6 — autonomous work complete (criterion-6 evidence pasted, TLINK-F1..F4 recorded,
+116-UAT.md written); Task 2's checkpoint is a WRITE-then-PAUSE that requires an operator reply
+("defer" to close pending live UAT, or Group A results/issues) before TLINK-V121-01..07 can be
+marked complete in REQUIREMENTS.md.
 
 ### Open tech debt carried forward
 
@@ -455,6 +458,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116 P03 | 20min | 2 tasks | 2 files |
 | Phase 116 P04 | 9min | 2 tasks | 2 files |
 | Phase 116-table-deep-links P05 | 35min | 3 tasks | 5 files |
+| Phase 116 P06 | 25min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -858,6 +862,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116]: 116-04: dashboard-wins precedence implemented as a one-sided guard in the new table effect only; the existing dashboard effect has a verified 0-line diff
 - [Phase 116-table-deep-links]: handleSignInCommit narrows via locally-captured consts checked by status directly, not intermediate booleans (TS control-flow narrowing limitation) — no behavioral change from plan's sketch
 - [Phase 116-table-deep-links]: No TLINK requirement marked complete by Plan 05, per explicit instruction — plan 06 (checkpoint/UAT) remains, mirroring 116-04's precedent
+- [Phase 116-table-deep-links]: 116-06: TLINK-V121-01..07 completion deliberately deferred to post-checkpoint (orchestrator instruction overrides plan Task 1's literal wording); TLINK-F1..F4 deferred-work entries added to REQUIREMENTS.md independent of that gating
+- [Phase 116-table-deep-links]: 116-06: criterion 6's generalize-don't-fork clause recorded honestly as sibling-module duplication (dashboardUrl.ts 109L/tableUrl.ts 150L, useDeepLinkDashboard.ts 99L/useDeepLinkTable.ts 129L), not de-duplication — forced by the 132-test blast radius of a shared factory
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1251,6 +1257,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - ~~**GAP-24-02-A** (new, 2026-05-11 — outstanding v1.4 followup): HIGH — dashboard-switch crash at MapChartRenderer.tsx:483.~~ → **CLOSED (2026-05-11, Phase 24-06, commit 7b21520)**
 - **TD-V17-LIVE-UAT** (new, v1.8 carry-in): Phase 43 milestone-level live walk-through never run (classbreak + track visual confirmation + legend parity). Pre-existing at v1.8 start.
 - **TD-V16-TEST-ISOLATION** (inherited): server cross-mode suite contamination (~106 red). v1.9 Phase 53 must not worsen this; all new regression specs are frontend-only (wmsUrlBuilder/KineticaWmsLayerForm vitest — no new server specs expected).
+- Phase 116 checkpoint PENDING (116-06 Task 2): 116-UAT.md written (16 checks, all Group A, Group B empty by design) but not yet run — operator's Kinetica instance was unavailable at plan-execution time. TLINK-V121-01..07 remain Pending in REQUIREMENTS.md by deliberate instruction until the operator responds ("defer" or Group A results).
 
 ### Phase 83 Plan 01 Decisions (locked 2026-06-25)
 
@@ -1264,6 +1271,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T17:39:38.533Z
-Stopped at: Completed 116-05-PLAN.md
+Last session: 2026-09-14T17:49:37.390Z
+Stopped at: Completed 116-06-PLAN.md autonomous work — CHECKPOINT PENDING operator response (Task 2, 116-UAT.md)
 Resume file: None
