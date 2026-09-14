@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 115-02-PLAN.md
-last_updated: "2026-09-14T13:50:06.772Z"
+stopped_at: Completed 115-03-PLAN.md
+last_updated: "2026-09-14T13:57:36.395Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 ## Current Position
 
 Phase: 115 (Deep Link Authentication Flow) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ### Open tech debt carried forward
 
@@ -449,6 +449,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 114 P02 | 15min | 2 tasks | 4 files |
 | Phase 115 P01 | 25min | 3 tasks | 5 files |
 | Phase 115 P02 | 35min | 3 tasks | 5 files |
+| Phase 115 P03 | 15min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -845,6 +846,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 114-02]: App.tsx's one-shot ref handoff to DashboardsPage's mount-time initializer must gate its flip on the SAME condition that gates the consumer's actual mount (page === "dashboards"), not merely on the handoff value being momentarily truthy — otherwise a competing Phase 7 ReturnTo to a different page burns the handoff before DashboardsPage ever mounts with it
 - [Phase 115]: Password mode's half of DLINK-V121-03 needed only a regression test (App.passwordDeepLink.spec.tsx); App.tsx/LoginPage.tsx unchanged, confirming 115-RESEARCH.md §Q1
 - [Phase 115]: The two write moments (UNAUTHORIZED_EVENT expiry write vs handleSignInCommit paste write) are deliberately NOT unified — two journeys, two id sources, one kbi_returnTo key.
+- [Phase 115]: 115-03: amended DEEPLINK-114's inverted-precedence test (kbi_returnTo={page:roles}+?dashboard=7 is the expiry-elsewhere case under 115-CONTEXT's locked conflict rule, not a paste-beats-ReturnTo case) — replaced with 2 tests + a recorded amendment comment; returnToWonElsewhereRef suppresses a stale deep link IMMEDIATELY, not delayed, per 115-RESEARCH §Q4/Q5 Pitfall 3
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1251,6 +1253,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T13:50:06.761Z
-Stopped at: Completed 115-02-PLAN.md
+Last session: 2026-09-14T13:57:15.872Z
+Stopped at: Completed 115-03-PLAN.md
 Resume file: None
