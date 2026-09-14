@@ -48,7 +48,7 @@ Within each track phases are sequential (apply-on-load needs the saved field to 
 - [x] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API (completed 2026-09-11)
 - [x] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
 - [x] **Phase 115: Deep Link Authentication Flow** - A dashboard link works logged-out too, routing through login and landing on the linked dashboard (completed 2026-09-14)
-- [ ] **Phase 116: Table Deep Links** - A table's view or edit screen is reachable by URL, exactly as a dashboard is
+- [x] **Phase 116: Table Deep Links** - A table's view or edit screen is reachable by URL, exactly as a dashboard is (completed 2026-09-14)
 
 ## Phase Details
 
@@ -163,7 +163,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
 | 114. Deep Link Load & Error States | 3/3 | Complete   | 2026-09-11 |
 | 115. Deep Link Authentication Flow | 4/4 | Complete   | 2026-09-14 |
-| 116. Table Deep Links | 6/6 | In Progress (awaiting operator checkpoint response) |  |
+| 116. Table Deep Links | 6/6 | Complete   | 2026-09-14 |
 
 ---
 
