@@ -25,145 +25,7 @@
 - ✅ **v1.18 Per-Visualization Filter Selection** — Phases 88-96 incl. 93.5 (shipped 2026-06-30) — see `milestones/v1.18-ROADMAP.md`
 - ✅ **v1.19 Visualization Customization** — Phases 97-104 (shipped 2026-07-08) — see `milestones/v1.19-ROADMAP.md`
 - ✅ **v1.20 Filter Panel** — Phases 105-110 incl. 109.1 / 109.2 (shipped 2026-08-27) — see `milestones/v1.20-ROADMAP.md`
-- 🚧 **v1.21 Dashboard Links & Map Default View** — Phases 111-116 (in progress)
-
----
-
-## 🚧 v1.21 Dashboard Links & Map Default View (In Progress)
-
-**Milestone Goal:** Remove two navigation frictions — a map that always opens on the whole world, and a dashboard reachable only by clicking through the list page. Frontend-only (`packages/web`); no server changes.
-
-**Two independent tracks, parallel-safe** (different files, no shared state — do not serialize them for no reason):
-- **Map Default View** (Phases 111 → 112): designer saves/clears a map widget's zoom+center as its default; that default is applied on load.
-- **Dashboard Links** (Phases 113 → 114 → 115): the address bar tracks the open dashboard via the native History API (no router dependency); a pasted link opens that dashboard directly, including through login and permission/not-found error states.
-
-Within each track phases are sequential (apply-on-load needs the saved field to exist first; inbound deep-link parsing needs the URL format the outbound sync established; the auth flow needs inbound parsing to route to). Across tracks, 111/112 and 113/114/115 can be planned and executed in either order or interleaved.
-
----
-
-## Phases
-
-- [x] **Phase 111: Map Default View — Capture & Save** - Designer captures and persists a map widget's zoom+center as its default, from the map's config
-- [x] **Phase 112: Map Default View — Apply on Load** - Maps open at their saved default view (or world view if none saved)
-- [x] **Phase 113: Dashboard URL Sync** - Address bar reflects the open dashboard via the native History API (completed 2026-09-11)
-- [x] **Phase 114: Deep Link Load & Error States** - A dashboard URL opens that dashboard directly, or shows a clear not-permitted/not-found message
-- [x] **Phase 115: Deep Link Authentication Flow** - A dashboard link works logged-out too, routing through login and landing on the linked dashboard (completed 2026-09-14)
-- [x] **Phase 116: Table Deep Links** - A table's view or edit screen is reachable by URL, exactly as a dashboard is (completed 2026-09-14)
-
-## Phase Details
-
-### Phase 111: Map Default View — Capture & Save
-**Goal**: A designer can capture a map widget's exact current view and persist or clear it as that widget's default, from the map's own config panel.
-**Depends on**: Nothing (first phase; independent of the Dashboard Links track)
-**Requirements**: MAPVIEW-V121-01, MAPVIEW-V121-04
-**Research flag**: HIGHEST-RISK phase in the milestone. `mapViewportSyncStore` is NOT reusable (see Implementation constraints in REQUIREMENTS.md) — the config panel needs its own path to the live view (zoom/center) of the specific map instance it is configuring, keyed by `widgetId`, independent of the per-map "Sync viewport" toggle. Resolve this mechanism before/at plan time for this phase.
-**Success Criteria** (what must be TRUE):
-  1. From a map widget's config panel, the designer can save the map's exact current zoom and center as that widget's default view, with visible confirmation that the save happened.
-  2. The designer can clear a previously saved default view from the same config panel; the control then clearly shows no default is set.
-  3. Saving or clearing one map widget's default view does not alter any other map widget's saved default or its current on-screen view.
-**Plans**: 3 plans in 2 waves
-- [x] 111-01-PLAN.md — Foundation: widgetId-keyed live-view store, EPSG:3857 -> degrees formatter, `config.defaultView` field + `getDefaultView` (wave 1) (completed 2026-09-09)
-- [x] 111-02-PLAN.md — Publisher: MapChartRenderer always-on live-view publish (mount + moveend) + both reset chains (wave 2) (completed 2026-09-09)
-- [x] 111-03-PLAN.md — Consumer: MapConfigPanel DEFAULT VIEW section — live readout, Set as default, Clear (wave 2) (completed 2026-09-09)
-
-### Phase 112: Map Default View — Apply on Load
-**Goal**: A map widget opens at its designer-chosen default view instead of always at the world view — without resurrecting auto-fit-to-data (deliberately removed in Phase 12-02).
-**Depends on**: Phase 111 (needs the saved-default field to exist)
-**Requirements**: MAPVIEW-V121-02, MAPVIEW-V121-03, MAPVIEW-V121-05, MAPVIEW-V121-06
-**Success Criteria** (what must be TRUE):
-  1. A map widget with a saved default view opens already at that zoom and center — no visible world-view flash beforehand.
-  2. A map widget with no saved default view opens exactly as it does today: world view, `center [0,0]`, `zoom 2`.
-  3. Reloading the dashboard (browser refresh) reopens each map at its saved default view — the save survives a reload.
-  4. Two map widgets on the same dashboard with different saved defaults each open at their own view, independent of one another.
-**Plans**: 2 plans in 2 waves — COMPLETE (verified 6/6)
-- [x] 112-01-PLAN.md — resolveInitialView helper + MapChartRenderer OlView construction + all four REQ tests (wave 1) (completed 2026-09-09)
-- [x] 112-02-PLAN.md — full gate run + operator walk-through (no-flash, real refresh, two-map independence) (wave 2) (operator-approved 2026-09-10)
-
-### Phase 113: Dashboard URL Sync
-**Goal**: The browser address bar always reflects which dashboard, if any, is open — kept in sync via the native History API, no new dependency.
-**Depends on**: Nothing (independent of the Map Default View track)
-**Requirements**: DLINK-V121-01, DLINK-V121-06, DLINK-V121-07
-**Success Criteria** (what must be TRUE):
-  1. Opening any dashboard immediately updates the browser address bar to a URL identifying that dashboard.
-  2. Pressing Back while a dashboard is open returns to the dashboard list, both on screen and in the address bar.
-  3. Navigating from an open dashboard back to the dashboard list clears the dashboard identifier from the address bar — the URL never describes a view the user is no longer on.
-**Plans**: 2 plans
-Plans:
-- [ ] 113-01-PLAN.md — dashboardUrl helper + DashboardsPage wiring (push on open, pop on in-app Back, popstate to list)
-- [ ] 113-02-PLAN.md — operator walk-through of the address bar and Back button in a real browser
-
-### Phase 114: Deep Link Load & Error States
-**Goal**: Visiting or pasting a dashboard URL opens that dashboard directly — or, if it can't, shows a clear message instead of a blank or broken page.
-**Depends on**: Phase 113 (establishes the URL/param format this phase parses on load)
-**Requirements**: DLINK-V121-02, DLINK-V121-04, DLINK-V121-05
-**Success Criteria** (what must be TRUE):
-  1. Loading the app directly at a dashboard URL opens straight into that dashboard, without the dashboard-list page appearing first.
-  2. Visiting a link that cannot be opened — whether the dashboard was deleted OR the signed-in user is not permitted to view it — shows ONE clear, honest combined message, never a blank/broken page and never the dashboard's content.
-  3. That message does not reveal which of the two reasons applies, so a stranger pasting ids cannot learn which exist.
-     <!-- AMENDED 2026-09-11 (operator decision, see 114-CONTEXT.md). Criteria 2 and 3
-          originally demanded DISTINCT "not permitted" and "not found" messages. That is not
-          implementable without undoing a deliberate security property: there is no
-          GET /api/dashboards/:id route, the list is permission-filtered server-side
-          (index.ts:783), and every per-dashboard sub-resource returns an identical
-          404 "Dashboard not found." for both cases (index.ts:879/918/949/1043) — v1.10's
-          non-leak design. The original criterion 2 contradicted itself, demanding a distinct
-          "not permitted" message while also requiring that existence not leak. The security
-          half wins; the wording was amended to match reality rather than weakening the
-          design to match the wording. -->
-**Plans**: 3 plans
-- [x] 114-01-PLAN.md — hasDashboardParam + the useDeepLinkDashboard boot-URL state machine (resolve via the permission-filtered list; one combined failure outcome) (completed 2026-09-11)
-- [x] 114-02-PLAN.md — wire App.tsx (hold the app-level Loading…, failure banner, one-shot handoff) + DashboardsPage initialOpenDashboard (completed 2026-09-11)
-- [x] 114-03-PLAN.md — operator UAT: no-flash arrival, and both failure causes producing identical banner text (operator-approved 2026-09-11 — 6 pass, 1 not exercised (loading state too fast to see), 1 defect found+fixed+re-verified)
-
-### Phase 115: Deep Link Authentication Flow
-**Goal**: A dashboard link works even for a visitor who isn't logged in yet — it routes through login and lands them on the dashboard from the link, not the dashboard list.
-**Depends on**: Phase 114 (needs inbound URL parsing to exist so there's a target to return to)
-**Requirements**: DLINK-V121-03
-**Success Criteria** (what must be TRUE):
-  1. Visiting a dashboard link while not authenticated routes to the login page rather than erroring.
-  2. After completing authentication, the user lands directly on the dashboard from the original link — reusing/extending the existing Phase 7 sessionStorage return-to-page mechanism, not a second mechanism.
-**Plans**: 4 plans in 4 waves
-Plans:
-- [ ] 115-01-PLAN.md — foundation: isValidDashboardId + restoreDashboardUrl, useDeepLinkDashboard(storedId), and the password-mode regression test that passes on the UNCHANGED tree (wave 1)
-- [ ] 115-02-PLAN.md — ReturnTo gains dashboardId, the sign-in-commit write, and LoginPage's pending-link banner + SSO onClick (wave 2)
-- [ ] 115-03-PLAN.md — restore side: expiry-elsewhere suppression, address-bar restore after the OIDC round trip, and the one amended Phase 114 precedence test (wave 3)
-- [ ] 115-04-PLAN.md — full gate run, static audit of the locked constraints, and the operator walk-through (banner in both themes + the real OIDC round trip) (wave 4)
-
-### Phase 116: Table Deep Links
-**Goal**: A table's view or edit screen is reachable by URL, exactly as a dashboard is — bookmarkable, pasteable, and surviving a logged-out arrival.
-**Depends on**: Phases 113, 114 and 115 (this phase GENERALIZES the three mechanisms they built; it must not fork them)
-**Requirements**: TLINK-V121-01, TLINK-V121-02, TLINK-V121-03, TLINK-V121-04, TLINK-V121-05, TLINK-V121-06, TLINK-V121-07
-**Canonical refs**: `.planning/phases/113-dashboard-url-sync/113-CONTEXT.md`, `.planning/phases/114-deep-link-load-error-states/114-CONTEXT.md`, `.planning/phases/115-deep-link-authentication-flow/115-CONTEXT.md`
-**Success Criteria** (what must be TRUE):
-  1. Opening a table puts `?table=<id>` in the address bar, and `?table=<id>&mode=edit` when the edit screen is open; leaving removes it.
-  2. Visiting a table link opens that table directly in the mode the link names, without the tables-list page appearing first.
-  3. A link to a table that is missing or not permitted lands on the tables list with a clear, non-leaking message — not a blank or broken page.
-  4. Browser Back from an open table returns to the tables list, and an arrival with no prior history entry does not eject the user from the app.
-  5. A logged-out visit routes through login and lands on the table from the link, reusing the same `kbi_returnTo` mechanism — no second storage key.
-  6. The dashboard link behaviour built in Phases 113-115 is unchanged: its tests still pass, and the shared code is generalized rather than duplicated.
-**Plans**: 6 plans in 5 waves
-
-Plans:
-- [ ] 116-01-PLAN.md — lib/tableUrl.ts: the sibling URL module (+ the mode qualifier and the marker-preserving mode-change writer) [wave 1]
-- [ ] 116-02-PLAN.md — hooks/useDeepLinkTable.ts: the five-state resolution machine, via listTables() [wave 2]
-- [ ] 116-03-PLAN.md — DatasetsPage: URL on every mode transition, popstate, unmount clear, initialOpenTable [wave 2]
-- [ ] 116-04-PLAN.md — App.tsx: loading hold, banner, initialOpenTable handoff, explicit dashboard-wins precedence [wave 3]
-- [ ] 116-05-PLAN.md — Logged-out arrival: kbi_returnTo extended (no second key) + the LoginPage table banner [wave 4]
-- [ ] 116-06-PLAN.md — Criterion-6 no-regression evidence, deferred TLINK-F* notes, and the deferred live UAT script [wave 5]
-
-## Progress
-
-**Execution Order:**
-Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 115); the 111-112 pair and the 113-115 chain are independent tracks and may be planned/executed in either order relative to each other.
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 111. Map Default View — Capture & Save | 3/3 | Complete   | 2026-09-09 |
-| 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
-| 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
-| 114. Deep Link Load & Error States | 3/3 | Complete   | 2026-09-11 |
-| 115. Deep Link Authentication Flow | 4/4 | Complete   | 2026-09-14 |
-| 116. Table Deep Links | 6/6 | Complete   | 2026-09-14 |
+- ✅ **v1.21 Dashboard Links & Map Default View** — Phases 111-116 (shipped 2026-09-14) — see `milestones/v1.21-ROADMAP.md`
 
 ---
 
@@ -192,3 +54,14 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 - [x] Phase 109.2: Wire Custom-Panel Charts into Filter-Scope Engine and Reverse-Map (INSERTED)
 - [x] Phase 110: Designer Settings UI + Verification + Live UAT
 **Verification:** 19/19 requirements Complete; both-stack automated gates green (web vitest 154 files / 3439 tests; server SET-BASED ⊆ TD-V16-TEST-ISOLATION); operator UAT PASS on all 8 groups. See `phases/110-*/110-VERIFICATION.md`.
+
+## v1.21 Dashboard Links & Map Default View — SHIPPED 2026-09-14
+✅ v1.21 (Phases 111-116) — SHIPPED 2026-09-14 — full phase details archived in `milestones/v1.21-ROADMAP.md`
+- [x] Phase 111: Map Default View — Capture & Save
+- [x] Phase 112: Map Default View — Apply on Load
+- [x] Phase 113: Dashboard URL Sync
+- [x] Phase 114: Deep Link Load & Error States
+- [x] Phase 115: Deep Link Authentication Flow
+- [x] Phase 116: Table Deep Links (added mid-milestone at operator request, partially promoting DLINK-F4)
+**Verification:** 20/20 requirements Complete; web vitest 175 files / 3902 tests, web+server tsc clean, theme-guard green; frontend-only (`packages/server` unchanged throughout). See `phases/115-*/115-VERIFICATION.md` + `phases/116-*/116-VERIFICATION.md`.
+**Known gaps carried, not smoothed over:** (1) scope was deliberately widened mid-milestone — Table Links (Phase 116) was an operator-added feature, not scope creep that slipped through; (2) Phase 116 criterion 6 was only half met — dashboard behaviour is byte-identical (clause 1 held, independently re-verified) but `lib/tableUrl.ts`/`hooks/useDeepLinkTable.ts` are structural duplicates of their dashboard siblings rather than a shared abstraction (clause 2 not met, deliberately — de-duplicating would have forced import-path edits across 132 tests and broken clause 1; recorded as `TLINK-F4`, graded 22/23 by the verifier for this reason); (3) the OIDC auth path (`kbi_returnTo` carry mechanism) was never browser-verified live in either Phase 115 or 116 UAT — both ran in password mode only, covered by automated tests + mutation probes but not seen working live; (4) TD-02 was audited and amended 2026-09-14 (commit `8847551`) — the claimed credential exposure does not exist in this repository's history, almost certainly describes a predecessor repo.
