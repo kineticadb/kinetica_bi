@@ -21,6 +21,8 @@ import {
   leaveDashboardUrl,
   clearDashboardUrl,
   hasDashboardParam,
+  isValidDashboardId,
+  restoreDashboardUrl,
 } from "./dashboardUrl";
 
 describe("dashboardUrl", () => {
@@ -168,6 +170,82 @@ describe("dashboardUrl", () => {
       expect(window.location.search).toBe("");
       expect(backSpy).not.toHaveBeenCalled();
       backSpy.mockRestore();
+    });
+  });
+
+  describe("isValidDashboardId", () => {
+    it("AUTHLINK-115: isValidDashboardId(12) === true", () => {
+      expect(isValidDashboardId(12)).toBe(true);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(0) === false", () => {
+      expect(isValidDashboardId(0)).toBe(false);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(-3) === false", () => {
+      expect(isValidDashboardId(-3)).toBe(false);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(1.5) === false", () => {
+      expect(isValidDashboardId(1.5)).toBe(false);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(\"12\") === false — a string is NOT a valid id", () => {
+      expect(isValidDashboardId("12")).toBe(false);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(undefined) === false", () => {
+      expect(isValidDashboardId(undefined)).toBe(false);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(null) === false", () => {
+      expect(isValidDashboardId(null)).toBe(false);
+    });
+
+    it("AUTHLINK-115: isValidDashboardId(NaN) === false", () => {
+      expect(isValidDashboardId(NaN)).toBe(false);
+    });
+  });
+
+  describe("restoreDashboardUrl", () => {
+    let backSpy: ReturnType<typeof vi.spyOn>;
+    let pushSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      backSpy = vi.spyOn(window.history, "back");
+      pushSpy = vi.spyOn(window.history, "pushState");
+    });
+
+    afterEach(() => {
+      backSpy.mockRestore();
+      pushSpy.mockRestore();
+    });
+
+    it("AUTHLINK-115: restoreDashboardUrl(7) on \"/\" sets window.location.search to \"?dashboard=7\"", () => {
+      restoreDashboardUrl(7);
+      expect(window.location.search).toBe("?dashboard=7");
+      expect(backSpy).not.toHaveBeenCalled();
+      expect(pushSpy).not.toHaveBeenCalled();
+    });
+
+    it("AUTHLINK-115: restoreDashboardUrl(7) does NOT change history.length (replaceState, never pushState)", () => {
+      const lengthBefore = window.history.length;
+      restoreDashboardUrl(7);
+      expect(window.history.length).toBe(lengthBefore);
+      expect(pushSpy).not.toHaveBeenCalled();
+    });
+
+    it("AUTHLINK-115: restoreDashboardUrl(7) preserves unrelated params (\"/?a=1\" -> \"?a=1&dashboard=7\")", () => {
+      window.history.replaceState(null, "", "/?a=1");
+      restoreDashboardUrl(7);
+      expect(window.location.search).toBe("?a=1&dashboard=7");
+    });
+
+    it("AUTHLINK-115: restoreDashboardUrl(7) is idempotent when the param already reads 7", () => {
+      window.history.replaceState(null, "", "/?dashboard=7");
+      restoreDashboardUrl(7);
+      expect(window.location.search).toBe("?dashboard=7");
+      expect(pushSpy).not.toHaveBeenCalled();
     });
   });
 

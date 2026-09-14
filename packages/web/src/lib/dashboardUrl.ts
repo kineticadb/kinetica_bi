@@ -23,12 +23,20 @@ export const DASHBOARD_URL_PARAM = "dashboard";
 /** Marker stored in the pushed history entry's state so we know we own that entry. */
 export const DASHBOARD_HISTORY_MARKER = "kbiDashboardEntry";
 
+/** Phase 115 (DLINK-V121-03): the ONE definition of a well-formed dashboard id.
+ *  Shared deliberately: the id now arrives from TWO untrusted sources — the URL param and
+ *  the `kbi_returnTo` sessionStorage blob — and two independently-maintained shape checks
+ *  drift. A type-guard (not a boolean) so callers narrow `unknown` straight to `number`. */
+export function isValidDashboardId(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
 /** Parse a location.search string. Returns null when absent or not a positive integer. */
 export function readDashboardIdFromSearch(search: string): number | null {
   const raw = new URLSearchParams(search).get(DASHBOARD_URL_PARAM);
   if (raw === null || !/^\d+$/.test(raw)) return null; // rejects "", "12abc", "1.5", "-3"
   const id = Number(raw);
-  return id > 0 ? id : null; // rejects "0"
+  return isValidDashboardId(id) ? id : null; // rejects "0"
 }
 
 /** True iff the dashboard param key is present at all — INCLUDING a value that does not
@@ -70,6 +78,17 @@ export function clearDashboardUrl(): void {
   // manufacturing a new one. Also drops our marker from this entry, which is correct:
   // once the param is gone the entry no longer represents an open dashboard.
   window.history.replaceState(null, "", buildDashboardUrl(window.location, null));
+}
+
+/** Phase 115 (DLINK-V121-03): put ?dashboard=<id> back on the CURRENT history entry.
+ *  Needed because the OIDC success redirect returns the browser to a bare `/`
+ *  (packages/server/src/index.ts:637) — the query string is gone, so after the round trip the
+ *  address bar must be re-synced or it would describe the dashboard LIST while a dashboard is
+ *  open (DLINK-V121-07). replaceState, NEVER pushState: the user did not navigate within the
+ *  app to get here, so no history entry is manufactured (same reasoning as clearDashboardUrl).
+ *  Idempotent — a no-op when the param already reads <id>. */
+export function restoreDashboardUrl(id: number): void {
+  window.history.replaceState(null, "", buildDashboardUrl(window.location, id));
 }
 
 /** Leave the open dashboard. Pops our pushed entry if we own the current one,
