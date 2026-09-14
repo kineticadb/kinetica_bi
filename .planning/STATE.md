@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
-status: unknown
-stopped_at: "Completed 116-06-PLAN.md — Phase 116 CLOSED: operator UAT 16/16 approved, TLINK-V121-01..07 marked Complete"
-last_updated: "2026-09-14T18:50:04.418Z"
+status: v1.21 milestone complete
+stopped_at: "Completed v1.21 milestone (/gsd:complete-milestone) — archived, PROJECT.md evolved, tagged v1.21"
+last_updated: "2026-09-14T19:30:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -16,17 +16,23 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
+See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.21 milestone — all 6 phases complete (Phase 116 closed 2026-09-14)
+**Current focus:** Planning next milestone (`/gsd:new-milestone`) — v1.21 shipped and archived 2026-09-14
 
 ## Current Position
 
-Phase: 116 (Table Deep Links) — COMPLETE
-Plan: 6 of 6 — criterion-6 evidence pasted, TLINK-F1..F4 recorded, 116-UAT.md written and run by
-the operator (16/16 pass, 2026-09-14). TLINK-V121-01..07 are marked Complete in REQUIREMENTS.md.
-v1.21 (Dashboard Links & Map Default View) now has all 6 phases (111-116) complete.
+**v1.21 Dashboard Links & Map Default View — SHIPPED 2026-09-14.** All 6 phases (111-116) complete,
+20 plans, 20/20 requirements. Archived to `milestones/v1.21-ROADMAP.md` + `milestones/v1.21-REQUIREMENTS.md`;
+MILESTONES.md entry added; PROJECT.md evolution review complete (locked scope decision 4 corrected
+to record the deliberate Table Links scope-widening); `packages/web` + `packages/server`
+`package.json` bumped to 1.21.0; tagged `v1.21`. REQUIREMENTS.md deleted (fresh for next milestone).
+No next milestone defined yet.
+
+Previously — Phase 116 (Table Deep Links) COMPLETE: criterion-6 evidence pasted, TLINK-F1..F4
+recorded, 116-UAT.md written and run by the operator (16/16 pass, 2026-09-14). TLINK-V121-01..07
+were marked Complete in REQUIREMENTS.md before it was archived.
 
 ### Open tech debt carried forward
 
