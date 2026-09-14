@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 116-03-PLAN.md
-last_updated: "2026-09-14T17:16:46.473Z"
+stopped_at: Completed 116-04-PLAN.md
+last_updated: "2026-09-14T17:28:01.569Z"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 ## Current Position
 
 Phase: 116 (Table Deep Links) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 
 ### Open tech debt carried forward
 
@@ -453,6 +453,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116 P01 | 15 | 2 tasks | 2 files |
 | Phase 116 P02 | 6min | 2 tasks | 2 files |
 | Phase 116 P03 | 20min | 2 tasks | 2 files |
+| Phase 116 P04 | 9min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -853,6 +854,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116]: setTableMode preserves window.history.state verbatim (not null, not a hardcoded marker) so leaveTableUrl's pop-vs-write branch is unaffected by an edit-mode Save — proven via mutation probe
 - [Phase 116]: hooks/useDeepLinkTable.ts: narrowed single-clause unavailable message (not the dashboard's two-clause wording) since not-permitted is unreachable for tables today; resolves via listTables()+find, not the dead getTableById route
 - [Phase 116]: 116-03: setTableMode preserves history marker; grep-toothless exact-count criteria (openTableUrl/leaveTableUrl) reported, real call sites verified manually
+- [Phase 116]: 116-04: dashboard-wins precedence implemented as a one-sided guard in the new table effect only; the existing dashboard effect has a verified 0-line diff
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1259,6 +1261,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T17:16:46.465Z
-Stopped at: Completed 116-03-PLAN.md
+Last session: 2026-09-14T17:28:01.561Z
+Stopped at: Completed 116-04-PLAN.md
 Resume file: None
