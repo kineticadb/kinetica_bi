@@ -163,7 +163,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
 | 114. Deep Link Load & Error States | 3/3 | Complete   | 2026-09-11 |
 | 115. Deep Link Authentication Flow | 3/4 | In Progress|  |
-| 116. Table Deep Links | 4/6 | In Progress|  |
+| 116. Table Deep Links | 5/6 | In Progress|  |
 
 ---
 

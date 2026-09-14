@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
 status: unknown
-stopped_at: Completed 116-04-PLAN.md
-last_updated: "2026-09-14T17:28:01.569Z"
+stopped_at: Completed 116-05-PLAN.md
+last_updated: "2026-09-14T17:39:59.438Z"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
 ## Current Position
 
 Phase: 116 (Table Deep Links) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6 (Plan 05 complete; Plan 06 — checkpoint/UAT — remains)
 
 ### Open tech debt carried forward
 
@@ -454,6 +454,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116 P02 | 6min | 2 tasks | 2 files |
 | Phase 116 P03 | 20min | 2 tasks | 2 files |
 | Phase 116 P04 | 9min | 2 tasks | 2 files |
+| Phase 116-table-deep-links P05 | 35min | 3 tasks | 5 files |
 
 ### Quick Tasks Completed
 
@@ -855,6 +856,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116]: hooks/useDeepLinkTable.ts: narrowed single-clause unavailable message (not the dashboard's two-clause wording) since not-permitted is unreachable for tables today; resolves via listTables()+find, not the dead getTableById route
 - [Phase 116]: 116-03: setTableMode preserves history marker; grep-toothless exact-count criteria (openTableUrl/leaveTableUrl) reported, real call sites verified manually
 - [Phase 116]: 116-04: dashboard-wins precedence implemented as a one-sided guard in the new table effect only; the existing dashboard effect has a verified 0-line diff
+- [Phase 116-table-deep-links]: handleSignInCommit narrows via locally-captured consts checked by status directly, not intermediate booleans (TS control-flow narrowing limitation) — no behavioral change from plan's sketch
+- [Phase 116-table-deep-links]: No TLINK requirement marked complete by Plan 05, per explicit instruction — plan 06 (checkpoint/UAT) remains, mirroring 116-04's precedent
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1261,6 +1264,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T17:28:01.561Z
-Stopped at: Completed 116-04-PLAN.md
+Last session: 2026-09-14T17:39:38.533Z
+Stopped at: Completed 116-05-PLAN.md
 Resume file: None
