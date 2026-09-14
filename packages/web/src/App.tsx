@@ -28,6 +28,8 @@ import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
 import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
 import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
+import { useDeepLinkTable, DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkTable";  // Phase 116 (TLINK-V121-02/04)
+import { hasTableParam, clearTableUrl, restoreTableUrl } from "./lib/tableUrl";                     // Phase 116
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
 
@@ -145,6 +147,29 @@ const App = () => {
   useEffect(() => {
     if (initialOpenDashboard && page === "dashboards") deepLinkConsumedRef.current = true;
   }, [initialOpenDashboard, page]);
+
+  // Phase 116 (TLINK-V121-02/04): the boot URL's ?table=<id>[&mode=edit], as a resolved state
+  // machine. Plan 05 passes the post-OIDC stored value in; until then it takes no argument.
+  const deepLinkTable = useDeepLinkTable();
+  const [deepLinkTableBannerDismissed, setDeepLinkTableBannerDismissed] = useState(false);
+  // Parallel one-shot refs, NOT a reuse of the dashboard ones. Sharing a single consumed-ref between
+  // two independent entities would let whichever link resolves FIRST permanently suppress the other's
+  // otherwise-valid deep link for the rest of the session (116-RESEARCH §Q4). Two refs, cheaply.
+  const tableDeepLinkConsumedRef = useRef(false);
+  // Written by the Phase 7 ReturnTo restore effect in Plan 05; read here from the start so the
+  // precedence contract is declared in one place.
+  const tableReturnToWonElsewhereRef = useRef(false);
+  const tableDeepLinkReady = deepLinkTable.status === "opened" && !tableDeepLinkConsumedRef.current;
+  const initialOpenTable = tableDeepLinkReady
+    ? { table: deepLinkTable.table, mode: deepLinkTable.mode }
+    : undefined;
+  // Flip gated on page === "datasets" too, for the same reason the dashboard one is: a ReturnTo
+  // restore to a DIFFERENT page can still be active in the render where deepLinkTable first resolves,
+  // and DatasetsPage would not have mounted yet — flipping there would burn the handoff before
+  // anyone consumed it.
+  useEffect(() => {
+    if (tableDeepLinkReady && page === "datasets") tableDeepLinkConsumedRef.current = true;
+  }, [tableDeepLinkReady, page]);
 
   useEffect(() => {
     bootstrap();
@@ -390,6 +415,33 @@ const App = () => {
     }
   }, [deepLink]);
 
+  // Phase 116 (TLINK-V121-02/04): the table sibling of the dashboard deep-link effect above. The
+  // existing effect is UNTOUCHED — this one carries the whole precedence rule.
+  //
+  // PRECEDENCE, stated explicitly rather than left to effect-declaration order (116-RESEARCH §Q4):
+  // DASHBOARD WINS. If any dashboard link is in play at all — pending, opened, unavailable or error —
+  // this effect does nothing except strip the stale ?table= so the address bar does not describe two
+  // screens at once. Arbitrary between the two entities, but explicit and testable, and it leaves
+  // the dashboard path needing zero changes. `?dashboard=&?table=` together is only reachable by
+  // hand-crafting a URL; it has no UI path.
+  useEffect(() => {
+    if (tableReturnToWonElsewhereRef.current) return;
+    if (deepLink.status !== "none") {
+      if (hasTableParam(window.location.search)) clearTableUrl();
+      tableDeepLinkConsumedRef.current = true;
+      return;
+    }
+    if (deepLinkTable.status === "opened") {
+      setPage("datasets");
+      // After an OIDC round trip the server returns the browser to a bare `/`, so the id came from
+      // kbi_returnTo rather than the URL — put it back, or the bar would describe the tables LIST
+      // while a table is open (TLINK-V121-06). Idempotent, so a no-op on every other arrival path.
+      restoreTableUrl(deepLinkTable.table.id, deepLinkTable.mode);
+    } else if (deepLinkTable.status === "unavailable" || deepLinkTable.status === "error") {
+      setPage("datasets");
+    }
+  }, [deepLink, deepLinkTable]);
+
   // Client-side access gate for the branding page: if the active page is
   // "branding" but the user lacks branding:manage (e.g. their role changed
   // mid-session, or a stale restored page), fall back to dashboards. The nav
@@ -451,8 +503,10 @@ const App = () => {
   // Phase 114 (DLINK-V121-02): hold the app-level Loading… while a deep link resolves. We must
   // NOT hand off to DashboardsPage here: its own "Loading dashboards…" (DashboardsPage.tsx:202)
   // renders INSIDE the list chrome, so doing so would put the dashboard-list page on screen —
-  // exactly what ROADMAP criterion 1 forbids.
-  if (deepLink.status === "pending") {
+  // exactly what ROADMAP criterion 1 forbids. The same reasoning applies to DatasetsPage: its own
+  // "Loading tables…" (DatasetsPage.tsx:170) renders INSIDE the list chrome, so handing off here
+  // would put the tables-list page on screen — exactly what TLINK-V121-02 forbids.
+  if (deepLink.status === "pending" || deepLinkTable.status === "pending") {
     return loadingShell;
   }
 
@@ -491,8 +545,14 @@ const App = () => {
             <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setDeepLinkBannerDismissed(true)}>×</button>
           </div>
         )}
+        {deepLinkTable.status === "unavailable" && !deepLinkTableBannerDismissed && !tableReturnToWonElsewhereRef.current && (
+          <div className="onboarding-banner" role="status" data-testid="deep-link-table-banner">
+            {DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE}
+            <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setDeepLinkTableBannerDismissed(true)}>×</button>
+          </div>
+        )}
         {page === "dashboards" && <DashboardsPage onViewChange={setDashboardViewMode} initialOpenDashboard={initialOpenDashboard} />}
-        {page === "datasets" && <DatasetsPage />}
+        {page === "datasets" && <DatasetsPage initialOpenTable={initialOpenTable} />}
         {page === "settings" && (
           <div className="muted">Section coming soon.</div>
         )}
