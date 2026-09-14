@@ -140,7 +140,15 @@ Plans:
   4. Browser Back from an open table returns to the tables list, and an arrival with no prior history entry does not eject the user from the app.
   5. A logged-out visit routes through login and lands on the table from the link, reusing the same `kbi_returnTo` mechanism — no second storage key.
   6. The dashboard link behaviour built in Phases 113-115 is unchanged: its tests still pass, and the shared code is generalized rather than duplicated.
-**Plans**: TBD
+**Plans**: 6 plans in 5 waves
+
+Plans:
+- [ ] 116-01-PLAN.md — lib/tableUrl.ts: the sibling URL module (+ the mode qualifier and the marker-preserving mode-change writer) [wave 1]
+- [ ] 116-02-PLAN.md — hooks/useDeepLinkTable.ts: the five-state resolution machine, via listTables() [wave 2]
+- [ ] 116-03-PLAN.md — DatasetsPage: URL on every mode transition, popstate, unmount clear, initialOpenTable [wave 2]
+- [ ] 116-04-PLAN.md — App.tsx: loading hold, banner, initialOpenTable handoff, explicit dashboard-wins precedence [wave 3]
+- [ ] 116-05-PLAN.md — Logged-out arrival: kbi_returnTo extended (no second key) + the LoginPage table banner [wave 4]
+- [ ] 116-06-PLAN.md — Criterion-6 no-regression evidence, deferred TLINK-F* notes, and the deferred live UAT script [wave 5]
 
 ## Progress
 
