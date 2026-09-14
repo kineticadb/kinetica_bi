@@ -121,7 +121,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Visiting a dashboard link while not authenticated routes to the login page rather than erroring.
   2. After completing authentication, the user lands directly on the dashboard from the original link — reusing/extending the existing Phase 7 sessionStorage return-to-page mechanism, not a second mechanism.
-**Plans**: TBD
+**Plans**: 4 plans in 4 waves
+Plans:
+- [ ] 115-01-PLAN.md — foundation: isValidDashboardId + restoreDashboardUrl, useDeepLinkDashboard(storedId), and the password-mode regression test that passes on the UNCHANGED tree (wave 1)
+- [ ] 115-02-PLAN.md — ReturnTo gains dashboardId, the sign-in-commit write, and LoginPage's pending-link banner + SSO onClick (wave 2)
+- [ ] 115-03-PLAN.md — restore side: expiry-elsewhere suppression, address-bar restore after the OIDC round trip, and the one amended Phase 114 precedence test (wave 3)
+- [ ] 115-04-PLAN.md — full gate run, static audit of the locked constraints, and the operator walk-through (banner in both themes + the real OIDC round trip) (wave 4)
 
 ## Progress
 
@@ -134,7 +139,7 @@ Within v1.21, phases execute in numeric order (111 → 112 → 113 → 114 → 1
 | 112. Map Default View — Apply on Load | 2/2 | Complete   | 2026-09-10 |
 | 113. Dashboard URL Sync | 2/2 | Complete   | 2026-09-11 |
 | 114. Deep Link Load & Error States | 3/3 | Complete   | 2026-09-11 |
-| 115. Deep Link Authentication Flow | 0/TBD | Not started | - |
+| 115. Deep Link Authentication Flow | 0/4 | Planned | - |
 
 ---
 
