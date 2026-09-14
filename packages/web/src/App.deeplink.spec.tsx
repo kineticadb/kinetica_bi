@@ -180,14 +180,99 @@ describe("App deep-link wiring (Phase 114 Plan 02)", () => {
     expect(pageAgain.getAttribute("data-deeplink")).toBe("");
   });
 
-  it("DEEPLINK-114: a pasted link beats the Phase 7 ReturnTo page restore", async () => {
-    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "roles" }));
+  // ─── PHASE 115 AMENDMENT (DLINK-V121-03) ────────────────────────────────────────────────
+  // Phase 114's test here was `DEEPLINK-114: a pasted link beats the Phase 7 ReturnTo page
+  // restore`, set up as kbi_returnTo={page:"roles"} + URL ?dashboard=7, asserting the dashboard
+  // won. Phase 115's locked conflict rule (115-CONTEXT.md) reclassifies that EXACT state: a
+  // ReturnTo whose page is not "dashboards" can only have been written by the UNAUTHORIZED_EVENT
+  // handler, i.e. an expiry that captured the user somewhere else — and for an expiry, where you
+  // actually were wins. The app never produces that shape for a paste: the commit-time write
+  // (App.tsx handleSignInCommit) always pairs the id with page:"dashboards". So Phase 114's
+  // INTENT survives untouched and is re-tested below in its real shape; only the hand-written
+  // setup, which no code path produces, is reclassified. This is a deliberate, recorded
+  // amendment — not an accidental weakening.
+  //
+  // The "paste overwrites a stale ReturnTo page" guard that used to live here now lives in
+  // App.signincommit.spec.tsx (Plan 02, test 2) — coverage was moved, not dropped.
+  // ────────────────────────────────────────────────────────────────────────────────────────
+
+  it("AUTHLINK-115: a committed fresh paste beats a leftover ReturnTo page", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 7, page: "dashboards" }));
     window.history.replaceState(null, "", "/?dashboard=7");
     (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
     render(<App />);
     const page = await screen.findByTestId("page-dashboards");
     expect(page.getAttribute("data-deeplink")).toBe("7");
     expect(screen.queryByTestId("page-roles")).toBeNull();
+  });
+
+  it("AUTHLINK-115: an expiry captured on Roles beats a stale dashboard param, and the param is stripped", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "roles", dashboardViewMode: "list" }));
+    window.history.replaceState(null, "", "/?dashboard=7");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    render(<App />);
+    await screen.findByTestId("page-roles");
+    expect(screen.queryByTestId("page-dashboards")).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(screen.queryByTestId("deep-link-banner")).toBeNull();
+  });
+
+  it("AUTHLINK-115: the suppressed stale link does not resurface later in the same session", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "roles", dashboardViewMode: "list" }));
+    window.history.replaceState(null, "", "/?dashboard=7");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    render(<App />);
+    await screen.findByTestId("page-roles");
+    await userEvent.click(screen.getByText("nav-dashboards"));
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page.getAttribute("data-deeplink")).toBe("");
+  });
+
+  it("AUTHLINK-115: after the OIDC round trip the restored id opens the dashboard", async () => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 7, page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page.getAttribute("data-deeplink")).toBe("7");
+  });
+
+  it("AUTHLINK-115: after the OIDC round trip the address bar is restored to ?dashboard=7", async () => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 7, page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    render(<App />);
+    await screen.findByTestId("page-dashboards");
+    expect(window.location.search).toBe("?dashboard=7");
+  });
+
+  it("AUTHLINK-115: the OIDC round trip does not manufacture a history entry", async () => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 7, page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    const lengthBefore = window.history.length;
+    render(<App />);
+    await screen.findByTestId("page-dashboards");
+    expect(window.history.length).toBe(lengthBefore);
+  });
+
+  it("AUTHLINK-115: the restored kbi_returnTo is single-use — the key is cleared", async () => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 7, page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    render(<App />);
+    await screen.findByTestId("page-dashboards");
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  });
+
+  it("AUTHLINK-115: an unavailable restored id lands on the list with Phase 114's existing banner", async () => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 7, page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...DASH_7, id: 8 }]);
+    render(<App />);
+    const banner = await screen.findByTestId("deep-link-banner");
+    expect(banner.textContent).toContain(DEEP_LINK_UNAVAILABLE_MESSAGE);
+    expect(window.location.search).toBe("");
   });
 
   it("DEEPLINK-114: an unauthenticated arrival goes to login and keeps the param for Phase 115", async () => {
