@@ -27,7 +27,7 @@ import { useFilterHighlightStore } from "./store/filterHighlightStore";
 import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
 import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
-import { isValidDashboardId } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
+import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
 
 type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
 
@@ -128,6 +128,13 @@ const App = () => {
   // "whichever signal is the more recent expression of intent wins" WITHOUT a clock — the locked
   // decision is single-use, no TTL, no timestamp.
   const expiredHereRef = useRef(false);
+  // Phase 115 (DLINK-V121-03): a ReturnTo page OTHER than "dashboards" was restored, so the
+  // expiry capture is the more recent intent and the URL's ?dashboard= is stale. Read by the
+  // deep-link effect below and by the banner render, both of which run strictly LATER (the
+  // restore effect is synchronous on the status transition; deep-link resolution needs an
+  // awaited listDashboards()). A ref, not state: it must be readable during the SAME render
+  // in which deepLink first resolves, exactly like deepLinkConsumedRef at :87.
+  const returnToWonElsewhereRef = useRef(false);
   const initialOpenDashboard =
     deepLink.status === "opened" && !deepLinkConsumedRef.current ? deepLink.dashboard : undefined;
   // Flip gated on page === "dashboards" too (Rule 1 fix, see SUMMARY): a ReturnTo restore to a
@@ -323,6 +330,22 @@ const App = () => {
         (parsed.page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE))
       ) {
         setPage(parsed.page);
+        if (parsed.page !== "dashboards") {
+          // Conflict rule (115-CONTEXT.md): for an EXPIRY, where you actually WERE wins. The
+          // ?dashboard= still in the bar is stale — a 401 outran DashboardsPage's deferred clear
+          // (DashboardsPage.tsx:646-651). Mirror-image of Phase 114's rule, under one principle:
+          // whichever signal is the more recent expression of intent wins. On a paste the URL is
+          // newer; on an expiry the ReturnTo capture is newer.
+          returnToWonElsewhereRef.current = true;
+          // SUPPRESS NOW, do not merely delay. deepLinkConsumedRef's existing gate
+          // (`page === "dashboards"`) would only DEFER the flip — and `page` may become
+          // "dashboards" later this session via a sidebar click, at which point the stale link
+          // would silently reopen. That is the Phase 114 Wave-2 defect class, delayed instead of
+          // immediate (115-RESEARCH.md §Q4/§Q5 Pitfall 3). Burning the one-shot here kills it.
+          deepLinkConsumedRef.current = true;
+          // DLINK-V121-07: the bar must not describe a dashboard while the user is on Roles.
+          if (hasDashboardParam(window.location.search)) clearDashboardUrl();
+        }
       }
       if (typeof parsed.dashboardViewMode === "string") {
         setDashboardViewMode(parsed.dashboardViewMode);
@@ -349,9 +372,19 @@ const App = () => {
   // only fire after an awaited listDashboards() round-trip, and it is declared after it.
   // The ReturnTo block itself is untouched — Phase 115 has to extend it.
   useEffect(() => {
+    // Phase 115 (DLINK-V121-03): an expiry captured the user somewhere other than the dashboard
+    // list — that is the newer intent. Do not navigate them, and do not show the deep link's
+    // failure banner either; the link is dead for this session (see the restore effect above).
+    if (returnToWonElsewhereRef.current) return;
     if (deepLink.status === "opened") {
       setPage("dashboards");
       setDashboardViewMode("open");
+      // Phase 115: after an OIDC round trip the server returned the browser to a bare `/`
+      // (packages/server/src/index.ts:637), so the id came from kbi_returnTo, not the URL —
+      // put it back or the bar would describe the LIST while a dashboard is open, breaking
+      // Back, copy-link and refresh for OIDC users ONLY (DLINK-V121-07). Idempotent, so this
+      // is a no-op on every other arrival path.
+      restoreDashboardUrl(deepLink.dashboard.id);
     } else if (deepLink.status === "unavailable" || deepLink.status === "error") {
       setPage("dashboards");
     }
@@ -452,7 +485,7 @@ const App = () => {
             <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setBannerDismissed(true)}>×</button>
           </div>
         )}
-        {deepLink.status === "unavailable" && !deepLinkBannerDismissed && (
+        {deepLink.status === "unavailable" && !deepLinkBannerDismissed && !returnToWonElsewhereRef.current && (
           <div className="onboarding-banner" role="status" data-testid="deep-link-banner">
             {DEEP_LINK_UNAVAILABLE_MESSAGE}
             <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setDeepLinkBannerDismissed(true)}>×</button>
