@@ -20,10 +20,14 @@ vi.mock("./components/Topbar", () => ({ default: () => <header data-testid="topb
 // prop-reflector falsely fails (App's own effects mutate the prop's upstream state after
 // mount; see App.deeplink.spec.tsx:27-32 and 115-RESEARCH.md §Q1/Pitfall 2).
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
     return (
-      <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
         Dashboards
       </main>
     );
@@ -153,6 +157,34 @@ describe("password-mode logged-out deep link paste (AUTHLINK-115)", () => {
     });
 
     await screen.findByTestId("page-dashboards");
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  });
+
+  // Phase 117 (DSET-V122-07): the mode qualifier is entity-agnostic here too — the URL itself
+  // is the carrier in password mode, exactly as the bare-id case above already proved.
+  it("DSET-117: password mode — a ?dashboard=12&mode=edit arrival writes NOTHING to kbi_returnTo and lands on the edit screen after authentication", async () => {
+    window.history.replaceState(null, "", "/?dashboard=12&mode=edit");
+    setAuth({
+      status: "unauthenticated",
+      user: null,
+      authMode: "password",
+      reason: null,
+      error: null,
+      bootstrap: async () => {},
+    });
+
+    render(<App />);
+    expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+
+    setAuth({
+      status: "authenticated",
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+    });
+
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "edit");
     expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
   });
 });

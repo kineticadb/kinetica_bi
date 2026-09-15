@@ -26,9 +26,17 @@ vi.mock("./components/Topbar", () => ({
   default: () => <header data-testid="topbar" />,
 }));
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
-    return <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>Dashboards</main>;
+    return (
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
+        Dashboards
+      </main>
+    );
   },
 }));
 // ⚠️ THE STUB TRAP (116-RESEARCH §Q5/Pitfall 2). A stub reading `initialOpenTable` as a PLAIN

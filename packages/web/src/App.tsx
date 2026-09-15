@@ -27,7 +27,7 @@ import { useFilterHighlightStore } from "./store/filterHighlightStore";
 import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
 import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
-import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
+import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl, type DashboardMode } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
 import { useDeepLinkTable, DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkTable";  // Phase 116 (TLINK-V121-02/04)
 import { hasTableParam, clearTableUrl, restoreTableUrl, isValidTableId, type TableMode } from "./lib/tableUrl";  // Phase 116
 
@@ -46,6 +46,11 @@ type ReturnTo = {
   // predicate the URL path uses — an id out of sessionStorage is attacker-controllable in exactly
   // the sense the `page` field already is (App.spec.tsx:180 proves the page allow-list rejects junk).
   dashboardId?: number;
+  // Phase 117 (DSET-V122-07): WHICH dashboard screen a logged-out visitor's link named. Absent means
+  // "open", mirroring the URL's own absent-means-open rule, which is what keeps the pre-Phase-117
+  // ReturnTo payloads readable and App.signincommit.spec.tsx's closed-shape assertions green.
+  // Extends the SAME kbi_returnTo key — ROADMAP §Phase 115 criterion 2 forbids a second one.
+  dashboardMode?: "view" | "edit";
   // Phase 116 (TLINK-V121-03): the table a logged-out visitor's link pointed at, and which of the
   // two screens it named. Written ONLY by handleSignInCommit below, for the same reason dashboardId
   // is: the OIDC round trip destroys window.location.search (the server redirects to a bare `/`).
@@ -70,20 +75,24 @@ const SIDEBAR_COLLAPSED_KEY = "kbi_sidebarCollapsed";
  *  "Elsewhere wins" is enforced structurally here too: an id is honoured only alongside page
  *  "dashboards" (or no page at all). handleSignInCommit always writes the pair; any other
  *  pairing is hand-crafted storage and is rejected. */
-function readPendingDashboardId(): number | null {
+function readPendingDashboard(): { id: number; mode: DashboardMode } | null {
   try {
     const raw = sessionStorage.getItem(RETURN_TO_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ReturnTo;
     if (parsed.page !== undefined && parsed.page !== "dashboards") return null;
-    return isValidDashboardId(parsed.dashboardId) ? parsed.dashboardId : null;
+    if (!isValidDashboardId(parsed.dashboardId)) return null;
+    // Same absent-or-unrecognised-means-"open" rule the URL reader uses.
+    const mode: DashboardMode =
+      parsed.dashboardMode === "edit" ? "edit" : parsed.dashboardMode === "view" ? "view" : "open";
+    return { id: parsed.dashboardId, mode };
   } catch {
     // Corrupt JSON, disabled storage, unknown shape — no pending link.
     return null;
   }
 }
 
-/** Phase 116 (TLINK-V121-03): the table sibling of readPendingDashboardId, above. Read ONLY —
+/** Phase 116 (TLINK-V121-03): the table sibling of readPendingDashboard, above. Read ONLY —
  *  the single-use clear stays owned by the restore effect below, a second read of the SAME key
  *  in the SAME module, not a second mechanism. Read at MOUNT for the identical reason: an effect
  *  would arrive one commit late, after the tables LIST had already rendered for a frame. */
@@ -92,7 +101,7 @@ function readPendingTable(): { id: number; mode: TableMode } | null {
     const raw = sessionStorage.getItem(RETURN_TO_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ReturnTo;
-    // STRICTER than readPendingDashboardId, deliberately: that one tolerates an ABSENT page,
+    // STRICTER than readPendingDashboard, deliberately: that one tolerates an ABSENT page,
     // because "dashboards" is the app's default landing page so absent-means-dashboards is a fair
     // reading. "datasets" is NOT the default, so an absent page can never mean it. Anything other
     // than an explicit "datasets" is hand-crafted storage and is rejected.
@@ -142,9 +151,9 @@ const App = () => {
 
   // Phase 115 (DLINK-V121-03): a dashboard id recovered from kbi_returnTo after an OIDC round
   // trip, read once at mount so the hook has it on the FIRST render (no list flash).
-  const [pendingDashboardIdFromStorage] = useState<number | null>(() => readPendingDashboardId());
+  const [pendingDashboardFromStorage] = useState<{ id: number; mode: DashboardMode } | null>(() => readPendingDashboard());
   // Phase 114 (DLINK-V121-02/04/05): the boot URL's ?dashboard=<id>, as a resolved state machine.
-  const deepLink = useDeepLinkDashboard(pendingDashboardIdFromStorage);
+  const deepLink = useDeepLinkDashboard(pendingDashboardFromStorage);
   const [deepLinkBannerDismissed, setDeepLinkBannerDismissed] = useState(false);
   // Consumed-ONCE handoff. DashboardsPage reads initialOpenDashboard in its mount-time useState
   // initializer, so the value must be present during that render — hence a ref read in render
@@ -168,7 +177,9 @@ const App = () => {
   // in which deepLink first resolves, exactly like deepLinkConsumedRef at :87.
   const returnToWonElsewhereRef = useRef(false);
   const initialOpenDashboard =
-    deepLink.status === "opened" && !deepLinkConsumedRef.current ? deepLink.dashboard : undefined;
+    deepLink.status === "opened" && !deepLinkConsumedRef.current
+      ? { dashboard: deepLink.dashboard, mode: deepLink.mode }
+      : undefined;
   // Flip gated on page === "dashboards" too (Rule 1 fix, see SUMMARY): a ReturnTo restore to a
   // DIFFERENT page (e.g. "roles") can still be active in the render where deepLink first
   // resolves to "opened" — DashboardsPage has not mounted yet on that render, so flipping the
@@ -363,7 +374,13 @@ const App = () => {
       const d = deepLink;
       const t = deepLinkTable;
       if (d.status === "pending") {
-        payload = { dashboardId: d.id, page: "dashboards" };
+        // Built conditionally, NOT as a spread with an undefined-valued key: App.signincommit.spec.tsx
+        // asserts toEqual({dashboardId, page}) on the PARSED object for a BARE ?dashboard= link, and
+        // relying on JSON.stringify silently dropping an undefined key would be invisible and fragile.
+        // Absent dashboardMode means "open", mirroring the URL's own absent-means-open rule.
+        payload = d.mode === "open"
+          ? { dashboardId: d.id, page: "dashboards" }
+          : { dashboardId: d.id, dashboardMode: d.mode, page: "dashboards" };
       } else if (t.status === "pending") {
         payload = { tableId: t.id, tableMode: t.mode, page: "datasets" };
       }
@@ -469,13 +486,15 @@ const App = () => {
     if (returnToWonElsewhereRef.current) return;
     if (deepLink.status === "opened") {
       setPage("dashboards");
-      setDashboardViewMode("open");
-      // Phase 115: after an OIDC round trip the server returned the browser to a bare `/`
-      // (packages/server/src/index.ts:637), so the id came from kbi_returnTo, not the URL —
-      // put it back or the bar would describe the LIST while a dashboard is open, breaking
-      // Back, copy-link and refresh for OIDC users ONLY (DLINK-V121-07). Idempotent, so this
-      // is a no-op on every other arrival path.
-      restoreDashboardUrl(deepLink.dashboard.id);
+      // Phase 117 (DSET-V122-03): the resolved mode, not a hardcoded "open". Before this milestone
+      // `open` was the only linkable dashboard mode, so hardcoding it was correct; it no longer is.
+      setDashboardViewMode(deepLink.mode);
+      // Phase 115 + 117: after an OIDC round trip the server returned the browser to a bare `/`
+      // (packages/server/src/index.ts:637), so the id AND the mode came from kbi_returnTo, not the
+      // URL — put BOTH back, or the bar would describe the running dashboard while the settings
+      // screen is open, breaking Back, copy-link and refresh for OIDC users ONLY (DLINK-V121-07).
+      // Idempotent, so this is a no-op on every other arrival path.
+      restoreDashboardUrl(deepLink.dashboard.id, deepLink.mode);
     } else if (deepLink.status === "unavailable" || deepLink.status === "error") {
       setPage("dashboards");
     }

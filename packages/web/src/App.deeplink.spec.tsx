@@ -31,9 +31,17 @@ vi.mock("./components/Topbar", () => ({
 // a second App render in the same effect flush, after which the real prop is already undefined
 // — irrelevant to the real component because it never re-reads the prop after mount).
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
-    return <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>Dashboards</main>;
+    return (
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
+        Dashboards
+      </main>
+    );
   },
 }));
 vi.mock("./components/DatasetsPage", () => ({
@@ -57,6 +65,11 @@ vi.mock("./api/client", async () => {
     fetchMe: vi.fn(() => Promise.resolve(null)),
     listUsers: vi.fn(() => Promise.resolve([])),
     listDashboards: vi.fn(),
+    // Phase 117 (DSET-117 bullet 11, dashboard-wins precedence): a `&table=` param in the same
+    // URL activates useDeepLinkTable's own network call. Unmocked, that hits a real request
+    // (any dev server on API_BASE answers 401 with no session cookie) the same way the WMS
+    // probe below would — stub it inert; this file tests the dashboard, not the table, path.
+    listTables: vi.fn(() => Promise.resolve([])),
     // Phase 11 MAP-01/02's WMS probe fires on every authenticated mount; unmocked, it hits a
     // real network call (any dev server on API_BASE answers 401 with no session cookie),
     // which dispatches UNAUTHORIZED_EVENT and logs the test out mid-await. Not part of what
@@ -282,5 +295,117 @@ describe("App deep-link wiring (Phase 114 Plan 02)", () => {
     expect(await screen.findByTestId("login-page")).toBeInTheDocument();
     expect(window.location.search).toBe("?dashboard=7");
     expect(listDashboards).not.toHaveBeenCalled();
+  });
+});
+
+// ─── PHASE 117 (DSET-V122-03/04/07/08) — App-level arrival coverage for all three dashboard
+// modes. New describe block, same harness (child stubs, api/client mock, auth seeding, and the
+// beforeEach history/session reset above) — Plan 05 Task 1. ──────────────────────────────────
+const DASH_77 = {
+  id: 77,
+  name: "Settings Linked",
+  filter_display_mode: "topbar" as const,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+describe("App dashboard-mode arrival wiring (Phase 117 Plan 05)", () => {
+  it("DSET-117: ?dashboard=77&mode=view resolves and the page receives data-mode=\"view\"", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77&mode=view");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "view");
+  });
+
+  it("DSET-117: ?dashboard=77&mode=edit resolves and the page receives data-mode=\"edit\"", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77&mode=edit");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "edit");
+  });
+
+  it("DSET-117: a bare ?dashboard=77 resolves and the page receives data-mode=\"open\" (DSET-V122-08)", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "open");
+  });
+
+  it("DSET-117: after a bare arrival resolves, the address bar carries no mode qualifier (DSET-V122-08)", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    await screen.findByTestId("page-dashboards");
+    // Two independent assertions, deliberately: a single toBe would also pass if the whole
+    // param were dropped rather than the mode qualifier specifically being absent.
+    expect(window.location.search).toBe("?dashboard=77");
+    expect(window.location.search).not.toContain("mode");
+  });
+
+  it("DSET-117: after a &mode=view arrival resolves, the address bar is exactly ?dashboard=77&mode=view", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77&mode=view");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    await screen.findByTestId("page-dashboards");
+    expect(window.location.search).toBe("?dashboard=77&mode=view");
+  });
+
+  it("DSET-117: ?dashboard=77&mode=banana resolves to data-mode=\"open\", not to the failure banner", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77&mode=banana");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "open");
+    expect(screen.queryByTestId("deep-link-banner")).toBeNull();
+  });
+
+  it("DSET-117: the app-level Loading… is held for the whole of a &mode=edit resolution — page-dashboards never renders while pending", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77&mode=edit");
+    (listDashboards as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {})); // never settles
+    render(<App />);
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-dashboards")).toBeNull();
+  });
+
+  it("DSET-117: ?dashboard=99&mode=view not in the list -> the list with the combined banner, both params stripped", async () => {
+    window.history.replaceState(null, "", "/?dashboard=99&mode=view");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    const banner = await screen.findByTestId("deep-link-banner");
+    expect(banner.textContent).toContain(DEEP_LINK_UNAVAILABLE_MESSAGE);
+    expect(screen.getByTestId("page-dashboards")).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+
+  it("DSET-117: that banner names neither the reason nor the requested id (DSET-V122-04 regression)", async () => {
+    window.history.replaceState(null, "", "/?dashboard=99&mode=view");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_77]);
+    render(<App />);
+    const banner = await screen.findByTestId("deep-link-banner");
+    expect(banner.textContent).not.toContain("99");
+    expect(banner.textContent).not.toMatch(/not permitted|no permission|does not exist|not found/i);
+  });
+
+  it("DSET-117: an UNAUTHENTICATED ?dashboard=77&mode=edit arrival goes to login and keeps BOTH params in the bar", async () => {
+    window.history.replaceState(null, "", "/?dashboard=77&mode=edit");
+    setAuth({ status: "unauthenticated", user: null });
+    render(<App />);
+    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+    expect(window.location.search).toBe("?dashboard=77&mode=edit");
+    expect(listDashboards).not.toHaveBeenCalled();
+  });
+
+  it("DSET-117: ?dashboard=7&mode=view&table=12 — the DASHBOARD opens, page-datasets is not rendered, stale ?table= is stripped", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=view&table=12");
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_7]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page.getAttribute("data-deeplink")).toBe("7");
+    expect(page).toHaveAttribute("data-mode", "view");
+    expect(screen.queryByTestId("page-datasets")).toBeNull();
+    expect(window.location.search).not.toContain("table=");
   });
 });

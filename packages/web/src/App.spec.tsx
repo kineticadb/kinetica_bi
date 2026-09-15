@@ -234,6 +234,19 @@ describe("App — read+restore+clear on status='authenticated' (UX-06)", () => {
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
   });
+
+  // Phase 117 (DSET-V122-07): per 117-RESEARCH §Q5's correction, this file's harness cannot
+  // carry a VALID dashboardId (this mock does not stub listDashboards — see comment above), so
+  // only the ONE negative case this harness CAN carry lives here: a dashboardMode with NO
+  // dashboardId at all must not wedge the boot.
+  it("DSET-117: a ReturnTo carrying dashboardMode but NO dashboardId does not wedge the boot", () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "dashboards", dashboardMode: "edit" }));
+    setAuth({ status: "authenticated", authMode: "oidc" });
+    render(<App />);
+    expect(screen.getByTestId("page-dashboards")).toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  });
 });
 
 describe("App — status gates (regression — Pitfall #2)", () => {

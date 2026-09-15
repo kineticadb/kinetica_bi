@@ -26,6 +26,43 @@
 - ✅ **v1.19 Visualization Customization** — Phases 97-104 (shipped 2026-07-08) — see `milestones/v1.19-ROADMAP.md`
 - ✅ **v1.20 Filter Panel** — Phases 105-110 incl. 109.1 / 109.2 (shipped 2026-08-27) — see `milestones/v1.20-ROADMAP.md`
 - ✅ **v1.21 Dashboard Links & Map Default View** — Phases 111-116 (shipped 2026-09-14) — see `milestones/v1.21-ROADMAP.md`
+- 🚧 **v1.22 Dashboard Settings Links** — Phase 117 (in progress)
+
+---
+
+## 🚧 v1.22 Dashboard Settings Links (In Progress)
+
+**Milestone Goal:** Close the one gap v1.21 left — a dashboard's **view** and **edit** settings screens are reachable by URL, exactly as a table's are. Frontend-only (`packages/web`); no server changes.
+
+`DashboardsPage` has five view modes (`list | view | edit | create | open`). v1.21 wired only `open` — the running dashboard at `?dashboard=<id>`. Phase 116 gave tables the view/edit treatment; dashboards never got it.
+
+## Phases
+
+- [x] **Phase 117: Dashboard Settings Links** - A dashboard's view and edit screens are reachable by URL, without changing what a bare `?dashboard=<id>` link does (completed 2026-09-15)
+
+## Phase Details
+
+### Phase 117: Dashboard Settings Links
+**Goal**: A dashboard's view (settings) and edit screens are reachable by URL, exactly as a table's are — while a bare `?dashboard=<id>` link keeps opening the running dashboard as it does today.
+**Depends on**: Phases 113-116 (this phase extends the mechanism they built; the Phase 116 table implementation is the direct template)
+**Requirements**: DSET-V122-01, DSET-V122-02, DSET-V122-03, DSET-V122-04, DSET-V122-05, DSET-V122-06, DSET-V122-07, DSET-V122-08
+**Canonical refs**: `.planning/milestones/v1.21-ROADMAP.md`, `.planning/phases/116-table-deep-links/116-CONTEXT.md`, `.planning/phases/113-dashboard-url-sync/113-CONTEXT.md`
+**Success Criteria** (what must be TRUE):
+  1. Opening a dashboard's view screen writes a distinct URL; opening its edit screen writes a different one; leaving either removes it.
+  2. Visiting either link opens that screen directly, in the mode the link names, with no flash of the dashboard-list page first.
+  3. A bare `?dashboard=<id>` link still opens the RUNNING dashboard — unchanged behaviour, and the Phase 113-115 tests that prove it still pass.
+  4. A settings link to a missing or not-permitted dashboard lands on the list with a clear, non-leaking message.
+  5. Browser Back from a settings screen returns to the dashboard list, and an arrival with no prior history entry does not eject the user from the app.
+  6. A logged-out visit routes through login and lands on the named screen, reusing the same `kbi_returnTo` mechanism — no second storage key.
+  7. The `TLINK-F4` duplication decision is explicitly revisited and its outcome recorded — either the shared core is extracted, or the reason for keeping three parallel implementations is written down. **Recorded:** `.planning/REQUIREMENTS.md` §"Carried Tech Debt", `TLINK-F4 (resolved 2026-09-15 …)` — kept duplicated, extraction deferred to a dedicated phase.
+**Plans**: 6 plans
+Plans:
+- [x] 117-01-PLAN.md — three-mode vocabulary (open/view/edit) in `lib/dashboardUrl.ts` + spec
+- [x] 117-02-PLAN.md — all twelve `DashboardsPage` mode transitions + the mode-carrying arrival prop
+- [x] 117-03-PLAN.md — unmount-clear timers for the settings and edit screens (id-AND-mode scoped)
+- [x] 117-04-PLAN.md — mode resolution in `useDeepLinkDashboard` + `App.tsx` threading (ReturnTo, commit, restore)
+- [x] 117-05-PLAN.md — App-level arrival/logged-out coverage + the dedicated DSET-V122-08 audit
+- [x] 117-06-PLAN.md — `TLINK-F4` resolution recorded, debt written down, human browser verification
 
 ---
 

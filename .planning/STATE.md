@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.21
-milestone_name: Dashboard Links & Map Default View
-status: v1.21 milestone complete
-stopped_at: "Completed v1.21 milestone (/gsd:complete-milestone) — archived, PROJECT.md evolved, tagged v1.21"
-last_updated: "2026-09-14T19:30:00.000Z"
+milestone: v1.22
+milestone_name: Dashboard Settings Links
+status: unknown
+stopped_at: Completed 117-06-PLAN.md — Phase 117 closed
+last_updated: "2026-09-15T20:48:39.777Z"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 20
-  completed_plans: 20
+  total_phases: 1
+  completed_phases: 1
+  total_plans: 6
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,20 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Planning next milestone (`/gsd:new-milestone`) — v1.21 shipped and archived 2026-09-14
+**Current focus:** Phase 117 — Dashboard Settings Links
 
 ## Current Position
 
-**v1.21 Dashboard Links & Map Default View — SHIPPED 2026-09-14.** All 6 phases (111-116) complete,
-20 plans, 20/20 requirements. Archived to `milestones/v1.21-ROADMAP.md` + `milestones/v1.21-REQUIREMENTS.md`;
-MILESTONES.md entry added; PROJECT.md evolution review complete (locked scope decision 4 corrected
-to record the deliberate Table Links scope-widening); `packages/web` + `packages/server`
-`package.json` bumped to 1.21.0; tagged `v1.21.0` (three-part per RELEASING.md — the codebase's own release-tag convention, fixed 2026-08-28 in commit 2c2a005, overrides the two-part `v1.21` scheme used through v1.20). REQUIREMENTS.md deleted (fresh for next milestone).
-No next milestone defined yet.
-
-Previously — Phase 116 (Table Deep Links) COMPLETE: criterion-6 evidence pasted, TLINK-F1..F4
-recorded, 116-UAT.md written and run by the operator (16/16 pass, 2026-09-14). TLINK-V121-01..07
-were marked Complete in REQUIREMENTS.md before it was archived.
+Phase: 117 (Dashboard Settings Links) — COMPLETE
+Plan: 6 of 6 (complete)
 
 ### Open tech debt carried forward
 
@@ -465,6 +457,12 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116-table-deep-links P05 | 35min | 3 tasks | 5 files |
 | Phase 116 P06 | 25min | 2 tasks | 2 files |
 | Phase 115 P04 | 20min | 3 tasks | 2 files |
+| Phase 117 P01 | 22min | 2 tasks | 2 files |
+| Phase 117 P02 | 35min | 2 tasks | 9 files |
+| Phase 117 P03 | 25min | 2 tasks | 2 files |
+| Phase 117 P04 | 30min | 3 tasks | 3 files |
+| Phase 117 P05 | 45min | 3 tasks | 4 files |
+| Phase 117 P06 | 35min | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -872,6 +870,15 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116-table-deep-links]: 116-06: criterion 6's generalize-don't-fork clause recorded honestly as sibling-module duplication (dashboardUrl.ts 109L/tableUrl.ts 150L, useDeepLinkDashboard.ts 99L/useDeepLinkTable.ts 129L), not de-duplication — forced by the 132-test blast radius of a shared factory
 - [Phase 115]: DLINK-V121-03 closed: operator UAT approved 7/7 (password mode); OIDC round trip explicitly recorded as not exercised (AUTH_MODE=password is the only available environment) rather than upgraded to a pass — see 115-UAT.md
 - [Phase 116-table-deep-links]: Phase 116 CLOSED: operator UAT approved 16/16 (2026-09-14); TLINK-V121-01..07 flipped to Complete in REQUIREMENTS.md; TLINK-V121-03's OIDC half recorded as not exercised live (AUTH_MODE=password is the only available environment), mirroring the 115 precedent
+- [Phase 117]: setDashboardMode mirrors setTableMode's window.history.state pass-through exactly; openDashboardUrl push-count assertions use a pushState spy instead of a raw history.length delta (jsdom cross-test forward-history truncation artifact, not a code bug)
+- [Phase 117]: Split two composite mutation-probe-target tests into four independent ones so Probe A (missing write) and Probe B (wrong writer) redden disjoint test sets, per CLAUDE.md's discrimination rule
+- [Phase 117]: Corrected 117-RESEARCH.md §Q3's id-only unmount-clear guard to id-AND-mode-scoped, proved by two directional mutation probes (B/C) that redden when the mode check is removed
+- [Phase 117 P04]: App.tsx's dashboard deep-link effect, handleSignInCommit's payload, and initialOpenDashboard's page prop all now read deepLink.mode, replacing Plan 02's temporary "open" as const literal; handleSignInCommit builds the payload conditionally (dashboardMode included only when mode !== "open") so the two pre-existing closed-shape App.signincommit.spec.tsx assertions stay unmodified
+- [Phase 117 P04]: Two of the plan's own grep-based acceptance criteria were arithmetically/factually off (Task 2's "deepLink.mode -> exactly 4" vs. the real 3 sites since d.mode is a local alias; Task 3's "storedId -> 0" originally satisfied only by renaming stale test-title prose, not the already-correct call-site reshape) — verified the real requirement directly in both cases rather than gaming the grep
+- [Phase 117]: Task 3's DSET-V122-08 audit run with commit-scoped git log -p (not a bare git diff, which is provably 0 unconditionally after per-task commits): 0 deleted assertions, 5 deleted-then-renamed test titles (all Plan 04's own documented storedId->stored dashboard prose renames, verified pairwise), and the readDashboardModeFromSearch fallback mutation reddened 5 of 7 dashboard-family files (15 tests) -- well above the 3-file threshold.
+- [Phase 117]: Followed 117-RESEARCH $Q5's correction: mode read-validation positive cases live in App.signincommit.spec.tsx (stubs listDashboards); App.spec.tsx got only the one negative case its harness can carry (dashboardMode with no dashboardId).
+- [Phase 117]: UAT-117-G27 (OIDC half of DSET-V122-07) recorded as not-exercised, never upgraded to a pass — packages/server/.env is AUTH_MODE=password on this instance, mirroring DLINK-V121-03's identical limitation
+- [Phase 117]: All eight DSET-V122 requirements flipped to Complete after operator UAT approved 23/23 checks live in a real browser, including A1-A4 (bare link), D15 (no-ejection), E20 (both-theme banner), and C11/C12 (id-AND-mode deferred-timer guard)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1279,6 +1286,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T18:49:46.891Z
-Stopped at: Completed 116-06-PLAN.md — Phase 116 CLOSED: operator UAT 16/16 approved, TLINK-V121-01..07 marked Complete
+Last session: 2026-09-15T20:46:38.708Z
+Stopped at: Completed 117-06-PLAN.md — Phase 117 closed
 Resume file: None

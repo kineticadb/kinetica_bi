@@ -27,9 +27,17 @@ vi.mock("./components/Topbar", () => ({
 // prop-reflector would falsely fail (App's own effects mutate the prop's upstream state after
 // mount). Same pattern as App.deeplink.spec.tsx.
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
-    return <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>Dashboards</main>;
+    return (
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
+        Dashboards
+      </main>
+    );
   },
 }));
 vi.mock("./components/DatasetsPage", () => ({
@@ -79,6 +87,15 @@ vi.mock("./components/settings/BrandingSettingsPage", () => ({
 }));
 
 import App from "./App";
+import { listDashboards } from "./api/client";
+
+const DASH_12 = {
+  id: 12,
+  name: "Deep Linked",
+  filter_display_mode: "topbar" as const,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
 
 const setAuth = (patch: Partial<ReturnType<typeof useAuthStore.getState>>) => {
   act(() => {
@@ -193,5 +210,84 @@ describe("App — AUTHLINK-115 commit-moment sessionStorage write (Phase 115 Pla
     setAuth({ status: "unauthenticated", authMode: "oidc" });
     render(<App />);
     expect(screen.getByTestId("login-page").getAttribute("data-pending")).toBe("0");
+  });
+});
+
+// ─── PHASE 117 (DSET-V122-07) — the mode qualifier round-trips through the SAME kbi_returnTo
+// key, on both the commit-write side and the restore-on-authenticate side. New describe block,
+// same harness. ────────────────────────────────────────────────────────────────────────────
+describe("App — DSET-117 kbi_returnTo mode round-trip (Phase 117 Plan 05)", () => {
+  it("DSET-117: committing with a pending ?dashboard=12&mode=view writes dashboardMode: \"view\"", () => {
+    window.history.replaceState(null, "", "/?dashboard=12&mode=view");
+    setAuth({ status: "unauthenticated", authMode: "oidc" });
+    render(<App />);
+    act(() => {
+      screen.getByText("commit-signin").click();
+    });
+    expect(readReturnTo()).toEqual({ dashboardId: 12, dashboardMode: "view", page: "dashboards" });
+  });
+
+  it("DSET-117: committing with a pending ?dashboard=12&mode=edit writes dashboardMode: \"edit\"", () => {
+    window.history.replaceState(null, "", "/?dashboard=12&mode=edit");
+    setAuth({ status: "unauthenticated", authMode: "oidc" });
+    render(<App />);
+    act(() => {
+      screen.getByText("commit-signin").click();
+    });
+    expect(readReturnTo()).toEqual({ dashboardId: 12, dashboardMode: "edit", page: "dashboards" });
+  });
+
+  it("DSET-117: committing with a pending BARE ?dashboard=12 writes exactly { dashboardId, page } — no dashboardMode key at all", () => {
+    window.history.replaceState(null, "", "/?dashboard=12");
+    setAuth({ status: "unauthenticated", authMode: "oidc" });
+    render(<App />);
+    act(() => {
+      screen.getByText("commit-signin").click();
+    });
+    expect(readReturnTo()).toEqual({ dashboardId: 12, page: "dashboards" });
+  });
+
+  it("DSET-117: a stored dashboardMode: \"edit\" on a bare URL restores to the edit screen and puts the mode back in the bar", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 12, dashboardMode: "edit", page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValueOnce([DASH_12]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "edit");
+    expect(window.location.search).toBe("?dashboard=12&mode=edit");
+  });
+
+  it("DSET-117: a stored unrecognised dashboardMode falls back to the RUNNING dashboard, it does not fail", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 12, dashboardMode: "hacker", page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValueOnce([DASH_12]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "open");
+  });
+
+  it("DSET-117: a stored ReturnTo with NO mode key restores to data-mode=\"open\" (backward compatibility)", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 12, page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValueOnce([DASH_12]);
+    render(<App />);
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "open");
+  });
+
+  it("DSET-117: the key is still single-use after a mode-carrying restore", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ dashboardId: 12, dashboardMode: "edit", page: "dashboards" }));
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValueOnce([DASH_12]);
+    render(<App />);
+    await screen.findByTestId("page-dashboards");
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  });
+
+  it("DSET-117: only ONE storage key is ever written after a mode-carrying commit", () => {
+    window.history.replaceState(null, "", "/?dashboard=12&mode=edit");
+    setAuth({ status: "unauthenticated", authMode: "oidc" });
+    render(<App />);
+    act(() => {
+      screen.getByText("commit-signin").click();
+    });
+    const kbiKeys = Object.keys(sessionStorage).filter((k) => k.startsWith("kbi_"));
+    expect(kbiKeys).toEqual(["kbi_returnTo"]);
   });
 });

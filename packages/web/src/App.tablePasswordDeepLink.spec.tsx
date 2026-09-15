@@ -19,10 +19,14 @@ import { useAuthStore } from "./store/auth";
 vi.mock("./components/Sidebar", () => ({ default: () => <nav data-testid="sidebar" /> }));
 vi.mock("./components/Topbar", () => ({ default: () => <header data-testid="topbar" /> }));
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
     return (
-      <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
         Dashboards
       </main>
     );
