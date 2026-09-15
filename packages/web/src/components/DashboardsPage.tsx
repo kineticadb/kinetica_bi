@@ -71,7 +71,7 @@ import { clearAllFilters } from "../lib/clearAllFilters";  // Phase 109 Plan 01 
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
-import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02)
+import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -315,6 +315,46 @@ const DashboardDetail = ({
 }) => {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canEdit = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+
+  // Phase 117 (DSET-V122-06): leaving the settings screen by ANY route must clear the address bar.
+  // App.tsx renders DashboardsPage conditionally, so a sidebar click to Datasets/Settings fully
+  // unmounts this component while the bar still says ?dashboard=<id>&mode=view — copying the link
+  // at that moment shares a screen the user is no longer on.
+  //
+  // NET-NEW: this screen had no such timer before Phase 117, because it was not linkable.
+  // Deliberately its OWN small effect, NOT folded into DashboardOpen's existing unmount timer —
+  // that one is entangled with a 13-Zustand-store reset and is keyed to a different component's
+  // lifecycle.
+  //
+  // Deferred by one macrotask, mirroring DashboardOpen's timer, for two reasons:
+  //  (a) StrictMode runs mount -> cleanup -> mount on the SAME hook state in dev (main.tsx), so the
+  //      spurious cleanup fires right after a URL write; deferring lets the re-mount cancel it.
+  //  (b) it lets the auth status settle, so a 401/logout teardown is reliably seen as unauthenticated.
+  //
+  // ⚠️ THE GUARD IS ON id AND MODE, NOT id ALONE. The in-app Edit button (transition #9) unmounts
+  // THIS component while the SAME dashboard id stays in the bar under a different qualifier. An
+  // id-only guard — which is all DashboardOpen ever needed, because `open` has no in-place sibling
+  // transition — would pass and wipe the ?mode=edit that the click just wrote. Mode-scoping is what
+  // makes a per-component timer safe here at all; DatasetsPage solved the same hazard by putting a
+  // single timer on the PAGE instead.
+  const detailClearUrlTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (detailClearUrlTimer.current !== null) {
+      clearTimeout(detailClearUrlTimer.current);   // StrictMode re-mount: cancel the spurious clear
+      detailClearUrlTimer.current = null;
+    }
+    const openedId = dashboard.id;
+    return () => {
+      detailClearUrlTimer.current = window.setTimeout(() => {
+        if (useAuthStore.getState().status !== "authenticated") return;              // 401/logout: leave it for the re-auth journey
+        if (readDashboardIdFromSearch(window.location.search) !== openedId) return;  // not OUR param (already clean, or another dashboard's)
+        if (readDashboardModeFromSearch(window.location.search) !== "view") return;  // we moved to edit in place — that URL is current, not stale
+        clearDashboardUrl();
+      }, 0);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount-lifetime effect; dashboard.id is fixed for this instance
+  }, []);
+
   return (
   <div className="dashboard-list">
     <ChartCard
@@ -361,6 +401,45 @@ const DashboardEdit = ({
   const [description, setDescription] = useState(dashboard.description || "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Phase 117 (DSET-V122-06): leaving the edit screen by ANY route must clear the address bar.
+  // App.tsx renders DashboardsPage conditionally, so a sidebar click to Datasets/Settings fully
+  // unmounts this component while the bar still says ?dashboard=<id>&mode=edit — copying the link
+  // at that moment shares a screen the user is no longer on.
+  //
+  // NET-NEW: this screen had no such timer before Phase 117, because it was not linkable.
+  // Deliberately its OWN small effect, NOT folded into DashboardOpen's existing unmount timer —
+  // that one is entangled with a 13-Zustand-store reset and is keyed to a different component's
+  // lifecycle.
+  //
+  // Deferred by one macrotask, mirroring DashboardOpen's timer, for two reasons:
+  //  (a) StrictMode runs mount -> cleanup -> mount on the SAME hook state in dev (main.tsx), so the
+  //      spurious cleanup fires right after a URL write; deferring lets the re-mount cancel it.
+  //  (b) it lets the auth status settle, so a 401/logout teardown is reliably seen as unauthenticated.
+  //
+  // ⚠️ THE GUARD IS ON id AND MODE, NOT id ALONE. The after-Save edit->view transition (transition
+  // #11) unmounts THIS component while the SAME dashboard id stays in the bar under a different
+  // qualifier. An id-only guard — which is all DashboardOpen ever needed, because `open` has no
+  // in-place sibling transition — would pass and wipe the ?mode=view that the Save just wrote.
+  // Mode-scoping is what makes a per-component timer safe here at all; DatasetsPage solved the
+  // same hazard by putting a single timer on the PAGE instead.
+  const editClearUrlTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (editClearUrlTimer.current !== null) {
+      clearTimeout(editClearUrlTimer.current);   // StrictMode re-mount: cancel the spurious clear
+      editClearUrlTimer.current = null;
+    }
+    const openedId = dashboard.id;
+    return () => {
+      editClearUrlTimer.current = window.setTimeout(() => {
+        if (useAuthStore.getState().status !== "authenticated") return;              // 401/logout: leave it for the re-auth journey
+        if (readDashboardIdFromSearch(window.location.search) !== openedId) return;  // not OUR param (already clean, or another dashboard's)
+        if (readDashboardModeFromSearch(window.location.search) !== "edit") return;  // we moved to view in place (after-Save) — that URL is current, not stale
+        clearDashboardUrl();
+      }, 0);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount-lifetime effect; dashboard.id is fixed for this instance
+  }, []);
 
   const handleSave = () => {
     setSaving(true);
