@@ -603,3 +603,163 @@ describe("DashboardsPage view/edit URL sync (Phase 117 Plan 02)", () => {
     expect(readHistoryMarker()).toBeUndefined();
   });
 });
+
+// Phase 117 Plan 03 (DSET-V122-06): the two new deferred unmount-clear timers on DashboardDetail
+// and DashboardEdit, and the mutation-probe-protected proof that the mode half of their guard is
+// load-bearing. Every title prefixed "DSET-117:" per the plan's grep anchor. A FOURTH describe
+// block, separate from URLSYNC-113 / DEEPLINK-114 / Plan 02's DSET-117 block above.
+describe("DashboardsPage settings/edit unmount-clear (Phase 117 Plan 03)", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+    seedDesignerStore();
+    (listDashboards as ReturnType<typeof vi.fn>).mockReset();
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockReset();
+    (listViews as ReturnType<typeof vi.fn>).mockReset();
+    (listWidgets as ReturnType<typeof vi.fn>).mockReset();
+    (createDashboard as ReturnType<typeof vi.fn>).mockReset();
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([DASH_42]);
+    (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── The genuine leave: unmount clears ───────────────────────────────────────────
+
+  it("DSET-117: unmounting the page while the settings screen is open clears the address bar", async () => {
+    const { unmount } = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^view$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+    unmount();
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  it("DSET-117: unmounting the page while the edit screen is open clears the address bar", async () => {
+    const { unmount } = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=edit");
+    unmount();
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  // ── 401/logout: leave the param alone ───────────────────────────────────────────
+
+  it("DSET-117: unmounting the settings screen after the session ended leaves the param alone", async () => {
+    const { unmount } = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^view$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+    useAuthStore.setState({ status: "unauthenticated", user: null });
+    unmount();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+  });
+
+  it("DSET-117: unmounting the edit screen after the session ended leaves the param alone", async () => {
+    const { unmount } = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=edit");
+    useAuthStore.setState({ status: "unauthenticated", user: null });
+    unmount();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(window.location.search).toBe("?dashboard=42&mode=edit");
+  });
+
+  // ── The correction: in-place transitions must survive the outgoing screen's timer ──
+
+  it("DSET-117: saving from the edit screen leaves ?mode=view in the bar after the deferred macrotask, and the settings screen stays rendered", async () => {
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=edit");
+    await userEvent.click(await screen.findByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(window.location.search).toBe("?dashboard=42&mode=view"));
+    // Flush the outgoing DashboardEdit's deferred unmount-clear timer — the macrotask MUST run
+    // before the assertion, or this test passes vacuously against a broken guard.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+    // Assert the flush was real: the settings screen (not the list) is still on screen.
+    expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
+  it("DSET-117: clicking the in-app Edit button leaves ?mode=edit in the bar after the deferred macrotask, and the edit screen stays rendered", async () => {
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^view$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+    await userEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=edit");
+    // Flush the outgoing DashboardDetail's deferred unmount-clear timer.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(window.location.search).toBe("?dashboard=42&mode=edit");
+    // Assert the flush was real: the edit screen (not the list) is still on screen.
+    expect(await screen.findByRole("button", { name: /^save$/i })).toBeInTheDocument();
+  });
+
+  // ── StrictMode double-invoke ─────────────────────────────────────────────────────
+
+  it("DSET-117: a StrictMode double-invoke does not wipe a just-written &mode=view param", async () => {
+    const React = await import("react");
+    await act(async () => {
+      render(
+        React.createElement(
+          React.StrictMode,
+          null,
+          React.createElement(DashboardsPage, { onViewChange: () => {} }),
+        ),
+      );
+    });
+    await screen.findByText(DASH_42.name);
+    const viewBtn = await screen.findByRole("button", { name: /^view$/i });
+    await act(async () => {
+      await userEvent.click(viewBtn);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+  });
+
+  // ── Stale timer vs. a different dashboard's freshly pushed param ────────────────
+
+  it("DSET-117: a stale settings-screen timer does not clear a different dashboard's freshly pushed param", async () => {
+    const { unmount } = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^view$/i }));
+    expect(window.location.search).toBe("?dashboard=42&mode=view");
+    // sidebar-away (unmount) — this SCHEDULES dashboard 42's deferred clear
+    unmount();
+    // user immediately opens a DIFFERENT dashboard's settings screen, synchronously
+    openDashboardUrl(88, "view");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0)); // now 42's stale timer fires
+    });
+    expect(window.location.search).toBe("?dashboard=88&mode=view"); // 88's param survives
+  });
+
+  // ── Regression: DashboardOpen's own unmount clear is untouched ──────────────────
+
+  it("DSET-117: the running dashboard's own unmount clear still works (DashboardOpen untouched)", async () => {
+    const { unmount } = render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(DASH_42.name);
+    const openBtn = await screen.findByRole("button", { name: /^open$/i });
+    await userEvent.click(openBtn);
+    expect(window.location.search).toBe("?dashboard=42");
+    unmount();
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+});
