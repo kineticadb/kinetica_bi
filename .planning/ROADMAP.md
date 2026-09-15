@@ -54,15 +54,15 @@
   4. A settings link to a missing or not-permitted dashboard lands on the list with a clear, non-leaking message.
   5. Browser Back from a settings screen returns to the dashboard list, and an arrival with no prior history entry does not eject the user from the app.
   6. A logged-out visit routes through login and lands on the named screen, reusing the same `kbi_returnTo` mechanism — no second storage key.
-  7. The `TLINK-F4` duplication decision is explicitly revisited and its outcome recorded — either the shared core is extracted, or the reason for keeping three parallel implementations is written down.
+  7. The `TLINK-F4` duplication decision is explicitly revisited and its outcome recorded — either the shared core is extracted, or the reason for keeping three parallel implementations is written down. **Recorded:** `.planning/REQUIREMENTS.md` §"Carried Tech Debt", `TLINK-F4 (resolved 2026-09-15 …)` — kept duplicated, extraction deferred to a dedicated phase.
 **Plans**: 6 plans
 Plans:
-- [ ] 117-01-PLAN.md — three-mode vocabulary (open/view/edit) in `lib/dashboardUrl.ts` + spec
-- [ ] 117-02-PLAN.md — all twelve `DashboardsPage` mode transitions + the mode-carrying arrival prop
-- [ ] 117-03-PLAN.md — unmount-clear timers for the settings and edit screens (id-AND-mode scoped)
-- [ ] 117-04-PLAN.md — mode resolution in `useDeepLinkDashboard` + `App.tsx` threading (ReturnTo, commit, restore)
-- [ ] 117-05-PLAN.md — App-level arrival/logged-out coverage + the dedicated DSET-V122-08 audit
-- [ ] 117-06-PLAN.md — `TLINK-F4` resolution recorded, debt written down, human browser verification
+- [x] 117-01-PLAN.md — three-mode vocabulary (open/view/edit) in `lib/dashboardUrl.ts` + spec
+- [x] 117-02-PLAN.md — all twelve `DashboardsPage` mode transitions + the mode-carrying arrival prop
+- [x] 117-03-PLAN.md — unmount-clear timers for the settings and edit screens (id-AND-mode scoped)
+- [x] 117-04-PLAN.md — mode resolution in `useDeepLinkDashboard` + `App.tsx` threading (ReturnTo, commit, restore)
+- [x] 117-05-PLAN.md — App-level arrival/logged-out coverage + the dedicated DSET-V122-08 audit
+- [x] 117-06-PLAN.md — `TLINK-F4` resolution recorded, debt written down, human browser verification
 
 ---
 
