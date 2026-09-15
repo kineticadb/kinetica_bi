@@ -38,7 +38,7 @@
 
 ## Phases
 
-- [ ] **Phase 117: Dashboard Settings Links** - A dashboard's view and edit screens are reachable by URL, without changing what a bare `?dashboard=<id>` link does
+- [x] **Phase 117: Dashboard Settings Links** - A dashboard's view and edit screens are reachable by URL, without changing what a bare `?dashboard=<id>` link does (completed 2026-09-15)
 
 ## Phase Details
 
