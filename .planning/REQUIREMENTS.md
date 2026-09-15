@@ -23,7 +23,7 @@ dashboards never got it.
 - [ ] **DSET-V122-03**: Visiting a dashboard settings link opens that screen directly, in the mode the link names, without passing through the dashboard-list page
 - [ ] **DSET-V122-04**: Visiting a settings link for a dashboard that no longer exists, or that the user is not permitted to see, shows a clear message rather than a blank or broken page
 - [ ] **DSET-V122-05**: Browser Back from a dashboard settings screen returns to the dashboard list, and an arrival with no prior history entry does not eject the user from the app
-- [ ] **DSET-V122-06**: Leaving a settings screen removes it from the address bar, so the link never describes a view the user is no longer on
+- [x] **DSET-V122-06**: Leaving a settings screen removes it from the address bar, so the link never describes a view the user is no longer on
 - [ ] **DSET-V122-07**: Visiting a dashboard settings link while not authenticated routes to login, then lands on that screen once authenticated
 - [ ] **DSET-V122-08**: A bare `?dashboard=<id>` link continues to open the RUNNING dashboard exactly as it does today — existing links, bookmarks and tests are unaffected
 
@@ -66,7 +66,7 @@ Acknowledged, deliberately not in v1.22.
 | DSET-V122-03 | Phase 117 | Pending |
 | DSET-V122-04 | Phase 117 | Pending |
 | DSET-V122-05 | Phase 117 | Pending |
-| DSET-V122-06 | Phase 117 | Pending |
+| DSET-V122-06 | Phase 117 | Complete |
 | DSET-V122-07 | Phase 117 | Pending |
 | DSET-V122-08 | Phase 117 | Pending |
 

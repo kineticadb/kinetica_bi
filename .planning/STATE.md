@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.22
 milestone_name: Dashboard Settings Links
 status: unknown
-stopped_at: Completed 117-02-PLAN.md
-last_updated: "2026-09-15T18:33:33.931Z"
+stopped_at: Completed 117-03-PLAN.md
+last_updated: "2026-09-15T19:02:13.531Z"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 117 (Dashboard Settings Links) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 
 ### Open tech debt carried forward
 
@@ -459,6 +459,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 115 P04 | 20min | 3 tasks | 2 files |
 | Phase 117 P01 | 22min | 2 tasks | 2 files |
 | Phase 117 P02 | 35min | 2 tasks | 9 files |
+| Phase 117 P03 | 25min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -868,6 +869,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116-table-deep-links]: Phase 116 CLOSED: operator UAT approved 16/16 (2026-09-14); TLINK-V121-01..07 flipped to Complete in REQUIREMENTS.md; TLINK-V121-03's OIDC half recorded as not exercised live (AUTH_MODE=password is the only available environment), mirroring the 115 precedent
 - [Phase 117]: setDashboardMode mirrors setTableMode's window.history.state pass-through exactly; openDashboardUrl push-count assertions use a pushState spy instead of a raw history.length delta (jsdom cross-test forward-history truncation artifact, not a code bug)
 - [Phase 117]: Split two composite mutation-probe-target tests into four independent ones so Probe A (missing write) and Probe B (wrong writer) redden disjoint test sets, per CLAUDE.md's discrimination rule
+- [Phase 117]: Corrected 117-RESEARCH.md §Q3's id-only unmount-clear guard to id-AND-mode-scoped, proved by two directional mutation probes (B/C) that redden when the mode check is removed
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1275,6 +1277,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-15T18:33:21.739Z
-Stopped at: Completed 117-02-PLAN.md
+Last session: 2026-09-15T19:02:13.519Z
+Stopped at: Completed 117-03-PLAN.md
 Resume file: None
