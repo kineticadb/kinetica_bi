@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.22
 milestone_name: Dashboard Settings Links
 status: unknown
-stopped_at: Completed 117-01-PLAN.md — three-mode dashboardUrl.ts vocabulary added, 64/64 spec tests passing, 4 mutation probes fired correctly
-last_updated: "2026-09-15T18:04:04.859Z"
+stopped_at: Completed 117-02-PLAN.md
+last_updated: "2026-09-15T18:33:33.931Z"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 117 (Dashboard Settings Links) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 
 ### Open tech debt carried forward
 
@@ -458,6 +458,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116 P06 | 25min | 2 tasks | 2 files |
 | Phase 115 P04 | 20min | 3 tasks | 2 files |
 | Phase 117 P01 | 22min | 2 tasks | 2 files |
+| Phase 117 P02 | 35min | 2 tasks | 9 files |
 
 ### Quick Tasks Completed
 
@@ -866,6 +867,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 115]: DLINK-V121-03 closed: operator UAT approved 7/7 (password mode); OIDC round trip explicitly recorded as not exercised (AUTH_MODE=password is the only available environment) rather than upgraded to a pass — see 115-UAT.md
 - [Phase 116-table-deep-links]: Phase 116 CLOSED: operator UAT approved 16/16 (2026-09-14); TLINK-V121-01..07 flipped to Complete in REQUIREMENTS.md; TLINK-V121-03's OIDC half recorded as not exercised live (AUTH_MODE=password is the only available environment), mirroring the 115 precedent
 - [Phase 117]: setDashboardMode mirrors setTableMode's window.history.state pass-through exactly; openDashboardUrl push-count assertions use a pushState spy instead of a raw history.length delta (jsdom cross-test forward-history truncation artifact, not a code bug)
+- [Phase 117]: Split two composite mutation-probe-target tests into four independent ones so Probe A (missing write) and Probe B (wrong writer) redden disjoint test sets, per CLAUDE.md's discrimination rule
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1273,6 +1275,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-15T18:04:04.822Z
-Stopped at: Completed 117-01-PLAN.md — three-mode dashboardUrl.ts vocabulary added, 64/64 spec tests passing, 4 mutation probes fired correctly
+Last session: 2026-09-15T18:33:21.739Z
+Stopped at: Completed 117-02-PLAN.md
 Resume file: None
