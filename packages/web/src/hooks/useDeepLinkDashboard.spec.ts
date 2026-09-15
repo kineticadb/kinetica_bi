@@ -173,27 +173,27 @@ describe("useDeepLinkDashboard", () => {
   });
 });
 
-describe("useDeepLinkDashboard — storedId parameter (Phase 115, AUTHLINK-115)", () => {
-  it("AUTHLINK-115: storedId 12 on a bare URL + authenticated + list contains 12 -> opened", async () => {
+describe("useDeepLinkDashboard — storedDashboard parameter (Phase 115, AUTHLINK-115)", () => {
+  it("AUTHLINK-115: stored dashboard 12 on a bare URL + authenticated + list contains 12 -> opened", async () => {
     window.history.replaceState(null, "", "/");
     useAuthStore.setState({ status: "authenticated" });
     const dashboard12 = makeDashboard(12);
     listDashboardsMock.mockResolvedValue([dashboard12]);
 
-    const { result } = renderHook(() => useDeepLinkDashboard(12));
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "open" }));
 
     expect(result.current.status).toBe("pending");
     await waitFor(() => expect(result.current.status).toBe("opened"));
     expect((result.current as Extract<DeepLinkState, { status: "opened" }>).dashboard).toEqual(dashboard12);
   });
 
-  it("AUTHLINK-115: storedId 12 with auth status unknown at boot stays pending until authenticated, then resolves", async () => {
+  it("AUTHLINK-115: stored dashboard 12 with auth status unknown at boot stays pending until authenticated, then resolves", async () => {
     window.history.replaceState(null, "", "/");
     useAuthStore.setState({ status: "unknown" });
     const dashboard12 = makeDashboard(12);
     listDashboardsMock.mockResolvedValue([dashboard12]);
 
-    const { result } = renderHook(() => useDeepLinkDashboard(12));
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "open" }));
 
     expect(result.current.status).toBe("pending");
     expect(listDashboardsMock).not.toHaveBeenCalled();
@@ -205,19 +205,19 @@ describe("useDeepLinkDashboard — storedId parameter (Phase 115, AUTHLINK-115)"
     await waitFor(() => expect(result.current.status).toBe("opened"));
   });
 
-  it("AUTHLINK-115: URL \"?dashboard=7\" beats storedId 12 -> resolves 7, not 12", async () => {
+  it("AUTHLINK-115: URL \"?dashboard=7\" beats stored dashboard 12 -> resolves 7, not 12", async () => {
     window.history.replaceState(null, "", "/?dashboard=7");
     useAuthStore.setState({ status: "authenticated" });
     const dashboard7 = makeDashboard(7);
     listDashboardsMock.mockResolvedValue([dashboard7]);
 
-    const { result } = renderHook(() => useDeepLinkDashboard(12));
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "open" }));
 
     await waitFor(() => expect(result.current.status).toBe("opened"));
     expect((result.current as Extract<DeepLinkState, { status: "opened" }>).dashboard).toEqual(dashboard7);
   });
 
-  it("AUTHLINK-115: storedId null/undefined/absent on a bare URL -> none, listDashboards never called", () => {
+  it("AUTHLINK-115: stored dashboard null/undefined/absent on a bare URL -> none, listDashboards never called", () => {
     window.history.replaceState(null, "", "/");
     useAuthStore.setState({ status: "authenticated" });
 
@@ -233,12 +233,12 @@ describe("useDeepLinkDashboard — storedId parameter (Phase 115, AUTHLINK-115)"
     expect(listDashboardsMock).not.toHaveBeenCalled();
   });
 
-  it("AUTHLINK-115: invalid storedId shapes (0, -3, 1.5, \"12\") on a bare URL -> none, listDashboards never called", () => {
+  it("AUTHLINK-115: invalid stored dashboard id shapes (0, -3, 1.5, \"12\") on a bare URL -> none, listDashboards never called", () => {
     window.history.replaceState(null, "", "/");
     useAuthStore.setState({ status: "authenticated" });
 
     for (const bad of [0, -3, 1.5, "12" as unknown as number]) {
-      const { result } = renderHook(() => useDeepLinkDashboard(bad));
+      const { result } = renderHook(() => useDeepLinkDashboard({ id: bad, mode: "open" }));
       expect(result.current.status).toBe("none");
     }
 
@@ -250,7 +250,7 @@ describe("useDeepLinkDashboard — storedId parameter (Phase 115, AUTHLINK-115)"
     useAuthStore.setState({ status: "authenticated" });
     listDashboardsMock.mockResolvedValue([makeDashboard(12)]);
 
-    const { result } = renderHook(() => useDeepLinkDashboard(12), {
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "open" }), {
       wrapper: ({ children }) => React.createElement(React.StrictMode, null, children),
     });
 
@@ -263,10 +263,176 @@ describe("useDeepLinkDashboard — storedId parameter (Phase 115, AUTHLINK-115)"
     useAuthStore.setState({ status: "authenticated" });
     listDashboardsMock.mockResolvedValue([makeDashboard(12)]);
 
-    const { result } = renderHook(() => useDeepLinkDashboard(12));
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "open" }));
 
     expect(window.location.search).toBe("");
     await waitFor(() => expect(result.current.status).toBe("opened"));
     expect((result.current as Extract<DeepLinkState, { status: "opened" }>).dashboard.id).toBe(12);
+  });
+});
+
+describe("useDeepLinkDashboard — mode resolution (Phase 117, DSET-117)", () => {
+  it("DSET-117: ?dashboard=7 + authenticated + in the list -> opened with mode open, param left in place", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.mode).toBe("open");
+    expect(window.location.search).toBe("?dashboard=7");
+  });
+
+  it("DSET-117: ?dashboard=7&mode=view -> opened with mode view, param left in place", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=view");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.mode).toBe("view");
+    expect(window.location.search).toBe("?dashboard=7&mode=view");
+  });
+
+  it("DSET-117: ?dashboard=7&mode=edit -> opened with mode edit, param left in place", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=edit");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.mode).toBe("edit");
+    expect(window.location.search).toBe("?dashboard=7&mode=edit");
+  });
+
+  it("DSET-117: ?dashboard=7&mode=banana -> opened with mode open, NOT unavailable and NOT error", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=banana");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.mode).toBe("open");
+  });
+
+  it("DSET-117: ?dashboard=7&mode=EDIT -> opened with mode open (exact match only)", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=EDIT");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.mode).toBe("open");
+  });
+
+  it("DSET-117: ?dashboard=99&mode=view absent from the list -> unavailable, BOTH params stripped", async () => {
+    window.history.replaceState(null, "", "/?dashboard=99&mode=view");
+    useAuthStore.setState({ status: "authenticated" });
+    listDashboardsMock.mockResolvedValue([makeDashboard(7)]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    expect(window.location.search).toBe("");
+  });
+
+  it("DSET-117: the unavailable message is the two-clause combined wording, naming neither a permission nor an id", () => {
+    expect(DEEP_LINK_UNAVAILABLE_MESSAGE).toBe(
+      "This dashboard isn't available — it may have been deleted, or you may not have access.",
+    );
+  });
+
+  it("DSET-117: stored {id:12, mode:'edit'} on a BARE url -> opened with mode edit", async () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard12 = makeDashboard(12);
+    listDashboardsMock.mockResolvedValue([dashboard12]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "edit" }));
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.dashboard.id).toBe(12);
+    expect(opened.mode).toBe("edit");
+  });
+
+  it("DSET-117: stored {id:12, mode:'view'} on ?dashboard=7&mode=edit -> resolves id 7 in mode edit (URL beats storage for the mode too)", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=edit");
+    useAuthStore.setState({ status: "authenticated" });
+    const dashboard7 = makeDashboard(7);
+    listDashboardsMock.mockResolvedValue([dashboard7]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard({ id: 12, mode: "view" }));
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    const opened = result.current as Extract<DeepLinkState, { status: "opened" }>;
+    expect(opened.dashboard.id).toBe(7);
+    expect(opened.mode).toBe("edit");
+  });
+
+  it("DSET-117: stored null on a bare url -> none, listDashboards never called", () => {
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState({ status: "authenticated" });
+
+    const { result } = renderHook(() => useDeepLinkDashboard(null));
+
+    expect(result.current.status).toBe("none");
+    expect(listDashboardsMock).not.toHaveBeenCalled();
+  });
+
+  it("DSET-117: ?dashboard=7&mode=edit still calls listDashboards exactly once under StrictMode", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=edit");
+    useAuthStore.setState({ status: "authenticated" });
+    listDashboardsMock.mockResolvedValue([makeDashboard(7)]);
+
+    const { result } = renderHook(() => useDeepLinkDashboard(), {
+      wrapper: ({ children }) => React.createElement(React.StrictMode, null, children),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("opened"));
+    expect(listDashboardsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DSET-117: a rejection arriving after the session ends stays pending with the mode intact and the param surviving", async () => {
+    window.history.replaceState(null, "", "/?dashboard=7&mode=edit");
+    useAuthStore.setState({ status: "authenticated" });
+    let rejectFn!: (err: unknown) => void;
+    listDashboardsMock.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectFn = reject;
+      }),
+    );
+
+    const { result } = renderHook(() => useDeepLinkDashboard());
+    expect(result.current.status).toBe("pending");
+    expect((result.current as Extract<DeepLinkState, { status: "pending" }>).mode).toBe("edit");
+
+    act(() => {
+      useAuthStore.setState({ status: "unauthenticated" });
+    });
+
+    await act(async () => {
+      rejectFn(new Error("401"));
+      await Promise.resolve();
+    });
+
+    expect(result.current.status).toBe("pending");
+    expect((result.current as Extract<DeepLinkState, { status: "pending" }>).mode).toBe("edit");
+    expect(window.location.search).toBe("?dashboard=7&mode=edit");
   });
 });
