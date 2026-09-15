@@ -18,14 +18,14 @@ Phases 113-115 wired exactly one of them: `open`, the running dashboard (`?dashb
 `DashboardsPage.tsx:180`/`:189`) have no URL at all. Phase 116 gave tables exactly this capability;
 dashboards never got it.
 
-- [ ] **DSET-V122-01**: Opening a dashboard's view (settings) screen puts a link to it in the browser address bar
-- [ ] **DSET-V122-02**: Opening a dashboard's edit screen puts a link to it in the address bar, distinct from the view link
-- [ ] **DSET-V122-03**: Visiting a dashboard settings link opens that screen directly, in the mode the link names, without passing through the dashboard-list page
-- [ ] **DSET-V122-04**: Visiting a settings link for a dashboard that no longer exists, or that the user is not permitted to see, shows a clear message rather than a blank or broken page
-- [ ] **DSET-V122-05**: Browser Back from a dashboard settings screen returns to the dashboard list, and an arrival with no prior history entry does not eject the user from the app
-- [ ] **DSET-V122-06**: Leaving a settings screen removes it from the address bar, so the link never describes a view the user is no longer on
-- [ ] **DSET-V122-07**: Visiting a dashboard settings link while not authenticated routes to login, then lands on that screen once authenticated
-- [ ] **DSET-V122-08**: A bare `?dashboard=<id>` link continues to open the RUNNING dashboard exactly as it does today — existing links, bookmarks and tests are unaffected
+- [x] **DSET-V122-01**: Opening a dashboard's view (settings) screen puts a link to it in the browser address bar
+- [x] **DSET-V122-02**: Opening a dashboard's edit screen puts a link to it in the address bar, distinct from the view link
+- [x] **DSET-V122-03**: Visiting a dashboard settings link opens that screen directly, in the mode the link names, without passing through the dashboard-list page
+- [x] **DSET-V122-04**: Visiting a settings link for a dashboard that no longer exists, or that the user is not permitted to see, shows a clear message rather than a blank or broken page
+- [x] **DSET-V122-05**: Browser Back from a dashboard settings screen returns to the dashboard list, and an arrival with no prior history entry does not eject the user from the app
+- [x] **DSET-V122-06**: Leaving a settings screen removes it from the address bar, so the link never describes a view the user is no longer on
+- [x] **DSET-V122-07**: Visiting a dashboard settings link while not authenticated routes to login, then lands on that screen once authenticated
+- [x] **DSET-V122-08**: A bare `?dashboard=<id>` link continues to open the RUNNING dashboard exactly as it does today — existing links, bookmarks and tests are unaffected
 
 ## Future Requirements
 
@@ -64,14 +64,14 @@ Acknowledged, deliberately not in v1.22.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DSET-V122-01 | Phase 117 | Pending (code+tests landed in 117-02, App-level arrival proof in 117-05; stays Pending until the 117-06 operator UAT checkpoint confirms it live, per this project's convention that Complete means code + tests + live verification) |
-| DSET-V122-02 | Phase 117 | Pending (code+tests landed in 117-02; stays Pending until 117-06 operator UAT confirms the edit link live) |
-| DSET-V122-03 | Phase 117 | Pending (App.tsx mode threading landed in 117-04, App-level no-flash proof in 117-05 Task 1; the actual no-flash claim is structurally provable by jsdom but not eye-provable — stays Pending until 117-06 operator UAT observes it in a real browser) |
-| DSET-V122-04 | Phase 117 | Pending (combined-message logic re-verified unchanged in 117-04/117-05; banner legibility in both themes is not grep-provable — stays Pending until 117-06 operator UAT) |
-| DSET-V122-05 | Phase 117 | Pending (Back/no-eject wiring landed in 117-02; stays Pending until 117-06 operator UAT confirms live) |
-| DSET-V122-06 | Phase 117 | Pending (code+tests landed in 117-03; stays Pending until the 117-06 operator UAT, per this project's convention that Complete means code + tests + live verification) |
-| DSET-V122-07 | Phase 117 | Pending (App.tsx ReturnTo/mode threading landed in 117-04; stays Pending until 117-06 operator UAT — Group G is password-mode only on this instance, so the OIDC half cannot be exercised live and will be recorded as such, not as a pass) |
-| DSET-V122-08 | Phase 117 | Pending (dedicated audit landed in 117-05 Task 3 — mutation-probe-verified at the lib/hook/page/App layers, 220 tests strictly superset of the 132-test pre-Phase-117 baseline — stays Pending until 117-06 operator UAT checks A2/A4 confirm the bare link live, per this project's convention that a live-in-the-wild URL's protection is not Complete on suite evidence alone) |
+| DSET-V122-01 | Phase 117 | Complete (code+tests landed in 117-02, App-level arrival proof in 117-05; operator UAT approved 2026-09-15 — UAT-117-A1/A2/B5 confirmed the settings link live) |
+| DSET-V122-02 | Phase 117 | Complete (code+tests landed in 117-02; operator UAT approved 2026-09-15 — UAT-117-B7 confirmed the distinct edit link live) |
+| DSET-V122-03 | Phase 117 | Complete (App.tsx mode threading landed in 117-04, App-level no-flash proof in 117-05 Task 1; operator UAT approved 2026-09-15 — UAT-117-C9/C10 and D13/D14 observed no list-flash and direct-mode arrival live in a real browser) |
+| DSET-V122-04 | Phase 117 | Complete (combined-message logic re-verified unchanged in 117-04/117-05; operator UAT approved 2026-09-15 — UAT-117-E17/E18/E19/E20 confirmed the combined message and both-theme legibility live) |
+| DSET-V122-05 | Phase 117 | Complete (Back/no-eject wiring landed in 117-02; operator UAT approved 2026-09-15 — UAT-117-B6/B8/D15/D16 confirmed Back-to-list and no-ejection live) |
+| DSET-V122-06 | Phase 117 | Complete (code+tests landed in 117-03; operator UAT approved 2026-09-15 — UAT-117-F21/F22/F23 confirmed the param clears on leave live) |
+| DSET-V122-07 | Phase 117 | Complete (App.tsx ReturnTo/mode threading landed in 117-04; operator UAT approved 2026-09-15 — UAT-117-G24/G25/G26 confirmed the password-mode login-then-land flow live. **This instance is `AUTH_MODE=password` only**: the OIDC half of the `kbi_returnTo` carry (UAT-117-G27) was NOT exercised live — covered by automated tests + mutation probes, see `117-UAT.md` Coverage Limitation — mirroring `DLINK-V121-03`'s identical password-mode-only limitation) |
+| DSET-V122-08 | Phase 117 | Complete (dedicated audit landed in 117-05 Task 3 — mutation-probe-verified at the lib/hook/page/App layers, 220 tests strictly superset of the 132-test pre-Phase-117 baseline; operator UAT approved 2026-09-15 — UAT-117-A1-A4 confirmed the bare `?dashboard=<id>` link carries no `mode=` and opens the running dashboard directly, live) |
 
 **Coverage:**
 - v1.22 requirements: 8 total
