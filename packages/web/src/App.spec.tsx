@@ -191,6 +191,49 @@ describe("App — read+restore+clear on status='authenticated' (UX-06)", () => {
     render(<App />);
     expect(screen.getByTestId("page-dashboards")).toBeInTheDocument();
   });
+
+  // Phase 115 (DLINK-V121-03): stored dashboardId READ validation. Only NEGATIVE (rejected-id)
+  // cases live here — this file's api/client mock does NOT stub listDashboards, so a VALID id
+  // would leave the deep link "pending" and trigger a real network call. Positive cases live in
+  // App.signincommit.spec.tsx, which mocks it.
+  const assertJunkDashboardIdRejected = (junkId: unknown) => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "dashboards", dashboardId: junkId }));
+    setAuth({ status: "authenticated", authMode: "oidc" });
+    render(<App />);
+    // Not stuck on the app-level Loading… hold — the junk id was never honoured.
+    expect(screen.getByTestId("page-dashboards")).toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  };
+
+  it("AUTHLINK-115: rejects a non-numeric dashboardId; key is still cleared", () => {
+    assertJunkDashboardIdRejected("abc");
+  });
+
+  it("AUTHLINK-115: rejects a negative dashboardId; key is still cleared", () => {
+    assertJunkDashboardIdRejected(-3);
+  });
+
+  it("AUTHLINK-115: rejects a zero dashboardId; key is still cleared", () => {
+    assertJunkDashboardIdRejected(0);
+  });
+
+  it("AUTHLINK-115: rejects a non-integer dashboardId; key is still cleared", () => {
+    assertJunkDashboardIdRejected(1.5);
+  });
+
+  it("AUTHLINK-115: rejects a null dashboardId; key is still cleared", () => {
+    assertJunkDashboardIdRejected(null);
+  });
+
+  it("AUTHLINK-115: ignores a dashboardId paired with a non-dashboards page ('elsewhere wins' at the read boundary)", () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "roles", dashboardId: 12 }));
+    setAuth({ status: "authenticated", authMode: "oidc" });
+    render(<App />);
+    expect(screen.getByTestId("page-roles")).toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  });
 });
 
 describe("App — status gates (regression — Pitfall #2)", () => {

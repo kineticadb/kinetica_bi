@@ -1,7 +1,7 @@
 // Phase 7 (OIDC-01): LoginPage renders OIDC branch or password branch based on authStore.authMode.
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import LoginPage from "./LoginPage";
 import { useAuthStore } from "../store/auth";
 
@@ -97,5 +97,84 @@ describe("LoginPage — null authMode fallback (initial state)", () => {
     render(<LoginPage />);
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
     expect(screen.queryByText("Sign in with SSO")).not.toBeInTheDocument();
+  });
+});
+
+// Phase 115 (DLINK-V121-03): the pending-link banner + the SSO commit onClick.
+describe("LoginPage — AUTHLINK-115 deep-link banner + commit (OIDC branch)", () => {
+  it("AUTHLINK-115: deepLinkPending=true, reason=null — exactly one status banner reading 'Sign in to open this dashboard.'", () => {
+    setAuth({ authMode: "oidc", reason: null });
+    render(<LoginPage deepLinkPending={true} />);
+    const banners = screen.getAllByRole("status");
+    expect(banners).toHaveLength(1);
+    expect(banners[0].textContent).toContain("Sign in to open this dashboard.");
+  });
+
+  it("AUTHLINK-115: deepLinkPending=true, reason='session-expired' — exactly ONE banner, expiry text only, never stacked", () => {
+    setAuth({ authMode: "oidc", reason: "session-expired" });
+    render(<LoginPage deepLinkPending={true} />);
+    const banners = screen.getAllByRole("status");
+    expect(banners).toHaveLength(1);
+    expect(banners[0].textContent).toContain("Your session has ended");
+    expect(banners[0].textContent).not.toContain("Sign in to open this dashboard.");
+  });
+
+  it("AUTHLINK-115: deepLinkPending=false/undefined, reason=null — no status banner (Phase 7 regression)", () => {
+    setAuth({ authMode: "oidc", reason: null });
+    render(<LoginPage />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("AUTHLINK-115: the SSO anchor still has href + className 'login-submit' after the change", () => {
+    setAuth({ authMode: "oidc" });
+    render(<LoginPage deepLinkPending={true} onSignInCommit={vi.fn()} />);
+    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    expect(link.getAttribute("href")).toMatch(/\/api\/auth\/oidc\/start$/);
+    expect(link).toHaveClass("login-submit");
+  });
+
+  it("AUTHLINK-115: clicking 'Sign in with SSO' calls onSignInCommit exactly once", () => {
+    setAuth({ authMode: "oidc" });
+    const onSignInCommit = vi.fn();
+    render(<LoginPage deepLinkPending={true} onSignInCommit={onSignInCommit} />);
+    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    // jsdom logs "Not implemented: navigation (except hash changes)" for the anchor's default
+    // action — EXPECTED, not a failure. Do NOT "fix" this by adding preventDefault to the
+    // component, which would break the real redirect in production.
+    fireEvent.click(link);
+    expect(onSignInCommit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("LoginPage — AUTHLINK-115 deep-link banner (password branch)", () => {
+  it("AUTHLINK-115: deepLinkPending=true, reason=null — exactly one status banner reading 'Sign in to open this dashboard.'", () => {
+    setAuth({ authMode: "password", reason: null });
+    render(<LoginPage deepLinkPending={true} />);
+    const banners = screen.getAllByRole("status");
+    expect(banners).toHaveLength(1);
+    expect(banners[0].textContent).toContain("Sign in to open this dashboard.");
+  });
+
+  it("AUTHLINK-115: deepLinkPending=true, reason='session-expired' — exactly ONE banner, expiry text only, never stacked", () => {
+    setAuth({ authMode: "password", reason: "session-expired" });
+    render(<LoginPage deepLinkPending={true} />);
+    const banners = screen.getAllByRole("status");
+    expect(banners).toHaveLength(1);
+    expect(banners[0].textContent).toContain("Your session has ended");
+    expect(banners[0].textContent).not.toContain("Sign in to open this dashboard.");
+  });
+
+  it("AUTHLINK-115: deepLinkPending=false/undefined, reason=null — no status banner (Phase 7 regression)", () => {
+    setAuth({ authMode: "password", reason: null });
+    render(<LoginPage />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("AUTHLINK-115: submitting the password form does NOT call onSignInCommit", () => {
+    setAuth({ authMode: "password" });
+    const onSignInCommit = vi.fn();
+    render(<LoginPage deepLinkPending={true} onSignInCommit={onSignInCommit} />);
+    fireEvent.submit(screen.getByRole("button", { name: /^sign in$/i }).closest("form")!);
+    expect(onSignInCommit).not.toHaveBeenCalled();
   });
 });

@@ -2,29 +2,37 @@
 gsd_state_version: 1.0
 milestone: v1.21
 milestone_name: Dashboard Links & Map Default View
-status: unknown
-stopped_at: Completed 112-01-PLAN.md
-last_updated: "2026-09-10T13:31:08.071Z"
+status: v1.21 milestone complete
+stopped_at: "Completed v1.21 milestone (/gsd:complete-milestone) — archived, PROJECT.md evolved, tagged v1.21"
+last_updated: "2026-09-14T19:30:00.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 20
+  completed_plans: 20
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-09 — v1.21 STARTED)
+See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 112 — map-default-view-apply-on-load
+**Current focus:** Planning next milestone (`/gsd:new-milestone`) — v1.21 shipped and archived 2026-09-14
 
 ## Current Position
 
-Phase: 112 (map-default-view-apply-on-load) — EXECUTING
-Plan: 2 of 2
+**v1.21 Dashboard Links & Map Default View — SHIPPED 2026-09-14.** All 6 phases (111-116) complete,
+20 plans, 20/20 requirements. Archived to `milestones/v1.21-ROADMAP.md` + `milestones/v1.21-REQUIREMENTS.md`;
+MILESTONES.md entry added; PROJECT.md evolution review complete (locked scope decision 4 corrected
+to record the deliberate Table Links scope-widening); `packages/web` + `packages/server`
+`package.json` bumped to 1.21.0; tagged `v1.21.0` (three-part per RELEASING.md — the codebase's own release-tag convention, fixed 2026-08-28 in commit 2c2a005, overrides the two-part `v1.21` scheme used through v1.20). REQUIREMENTS.md deleted (fresh for next milestone).
+No next milestone defined yet.
+
+Previously — Phase 116 (Table Deep Links) COMPLETE: criterion-6 evidence pasted, TLINK-F1..F4
+recorded, 116-UAT.md written and run by the operator (16/16 pass, 2026-09-14). TLINK-V121-01..07
+were marked Complete in REQUIREMENTS.md before it was archived.
 
 ### Open tech debt carried forward
 
@@ -444,6 +452,19 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 111 P03 | 8min | 2 tasks | 2 files |
 | Phase 111 P02 | 12min | 3 tasks | 7 files |
 | Phase 112 P01 | 35min | 3 tasks | 6 files |
+| Phase 113 P01 | 20min | 2 tasks | 4 files |
+| Phase 114 P01 | 9min | 2 tasks | 4 files |
+| Phase 114 P02 | 15min | 2 tasks | 4 files |
+| Phase 115 P01 | 25min | 3 tasks | 5 files |
+| Phase 115 P02 | 35min | 3 tasks | 5 files |
+| Phase 115 P03 | 15min | 2 tasks | 2 files |
+| Phase 116 P01 | 15 | 2 tasks | 2 files |
+| Phase 116 P02 | 6min | 2 tasks | 2 files |
+| Phase 116 P03 | 20min | 2 tasks | 2 files |
+| Phase 116 P04 | 9min | 2 tasks | 2 files |
+| Phase 116-table-deep-links P05 | 35min | 3 tasks | 5 files |
+| Phase 116 P06 | 25min | 2 tasks | 2 files |
+| Phase 115 P04 | 20min | 3 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -835,6 +856,22 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 111-02]: With 111-02 (publisher) + 111-03 (consumer) both now complete, MAPVIEW-V121-01 (save) is functionally complete and marked done in REQUIREMENTS.md; MAPVIEW-V121-04 (clear) stays In Progress — clearing already works in the config panel, but the "returns to world view" half of its behavior is a Phase 112 (apply-on-load) concern
 - [Phase 111-02]: Making the publish unconditional exposed 3 pre-existing hand-rolled OL Map test mocks (WidgetRenderer.spec.tsx, actionEngine.canary.spec.tsx, DashboardsPage.spec.tsx) whose getView() stub lacked getCenter/getZoom — Effect 9c calls both at mount for every map widget now, not just when syncViewport was on; fixed by adding the missing methods to each mock (Rule 3, flagged as an expected risk by the plan itself)
 - [Phase 112]: resolveInitialView resolved at render time as a constructor arg to new OlView(...) — no post-construction setCenter/setZoom/animate/fit, structurally preventing the world-view flash
+- [Phase 113]: Dashboard URL sync uses a ref-cancelled deferred unmount cleanup (window.setTimeout + useRef) scoped to the departing instance's own dashboard id, to survive React 18 StrictMode's mount->cleanup->mount without wiping a freshly reopened different dashboard's param
+- [Phase 114]: Junk deep link (?dashboard=abc) treated as no deep link, silently stripped, not shown as a failure
+- [Phase 114-02]: App.tsx's one-shot ref handoff to DashboardsPage's mount-time initializer must gate its flip on the SAME condition that gates the consumer's actual mount (page === "dashboards"), not merely on the handoff value being momentarily truthy — otherwise a competing Phase 7 ReturnTo to a different page burns the handoff before DashboardsPage ever mounts with it
+- [Phase 115]: Password mode's half of DLINK-V121-03 needed only a regression test (App.passwordDeepLink.spec.tsx); App.tsx/LoginPage.tsx unchanged, confirming 115-RESEARCH.md §Q1
+- [Phase 115]: The two write moments (UNAUTHORIZED_EVENT expiry write vs handleSignInCommit paste write) are deliberately NOT unified — two journeys, two id sources, one kbi_returnTo key.
+- [Phase 115]: 115-03: amended DEEPLINK-114's inverted-precedence test (kbi_returnTo={page:roles}+?dashboard=7 is the expiry-elsewhere case under 115-CONTEXT's locked conflict rule, not a paste-beats-ReturnTo case) — replaced with 2 tests + a recorded amendment comment; returnToWonElsewhereRef suppresses a stale deep link IMMEDIATELY, not delayed, per 115-RESEARCH §Q4/Q5 Pitfall 3
+- [Phase 116]: setTableMode preserves window.history.state verbatim (not null, not a hardcoded marker) so leaveTableUrl's pop-vs-write branch is unaffected by an edit-mode Save — proven via mutation probe
+- [Phase 116]: hooks/useDeepLinkTable.ts: narrowed single-clause unavailable message (not the dashboard's two-clause wording) since not-permitted is unreachable for tables today; resolves via listTables()+find, not the dead getTableById route
+- [Phase 116]: 116-03: setTableMode preserves history marker; grep-toothless exact-count criteria (openTableUrl/leaveTableUrl) reported, real call sites verified manually
+- [Phase 116]: 116-04: dashboard-wins precedence implemented as a one-sided guard in the new table effect only; the existing dashboard effect has a verified 0-line diff
+- [Phase 116-table-deep-links]: handleSignInCommit narrows via locally-captured consts checked by status directly, not intermediate booleans (TS control-flow narrowing limitation) — no behavioral change from plan's sketch
+- [Phase 116-table-deep-links]: No TLINK requirement marked complete by Plan 05, per explicit instruction — plan 06 (checkpoint/UAT) remains, mirroring 116-04's precedent
+- [Phase 116-table-deep-links]: 116-06: TLINK-V121-01..07 completion deliberately deferred to post-checkpoint (orchestrator instruction overrides plan Task 1's literal wording); TLINK-F1..F4 deferred-work entries added to REQUIREMENTS.md independent of that gating
+- [Phase 116-table-deep-links]: 116-06: criterion 6's generalize-don't-fork clause recorded honestly as sibling-module duplication (dashboardUrl.ts 109L/tableUrl.ts 150L, useDeepLinkDashboard.ts 99L/useDeepLinkTable.ts 129L), not de-duplication — forced by the 132-test blast radius of a shared factory
+- [Phase 115]: DLINK-V121-03 closed: operator UAT approved 7/7 (password mode); OIDC round trip explicitly recorded as not exercised (AUTH_MODE=password is the only available environment) rather than upgraded to a pass — see 115-UAT.md
+- [Phase 116-table-deep-links]: Phase 116 CLOSED: operator UAT approved 16/16 (2026-09-14); TLINK-V121-01..07 flipped to Complete in REQUIREMENTS.md; TLINK-V121-03's OIDC half recorded as not exercised live (AUTH_MODE=password is the only available environment), mirroring the 115 precedent
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1228,6 +1265,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - ~~**GAP-24-02-A** (new, 2026-05-11 — outstanding v1.4 followup): HIGH — dashboard-switch crash at MapChartRenderer.tsx:483.~~ → **CLOSED (2026-05-11, Phase 24-06, commit 7b21520)**
 - **TD-V17-LIVE-UAT** (new, v1.8 carry-in): Phase 43 milestone-level live walk-through never run (classbreak + track visual confirmation + legend parity). Pre-existing at v1.8 start.
 - **TD-V16-TEST-ISOLATION** (inherited): server cross-mode suite contamination (~106 red). v1.9 Phase 53 must not worsen this; all new regression specs are frontend-only (wmsUrlBuilder/KineticaWmsLayerForm vitest — no new server specs expected).
+- Phase 116 checkpoint PENDING (116-06 Task 2): 116-UAT.md written (16 checks, all Group A, Group B empty by design) but not yet run — operator's Kinetica instance was unavailable at plan-execution time. TLINK-V121-01..07 remain Pending in REQUIREMENTS.md by deliberate instruction until the operator responds ("defer" or Group A results).
 
 ### Phase 83 Plan 01 Decisions (locked 2026-06-25)
 
@@ -1241,6 +1279,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-09T20:37:48.225Z
-Stopped at: Completed 112-01-PLAN.md
+Last session: 2026-09-14T18:49:46.891Z
+Stopped at: Completed 116-06-PLAN.md — Phase 116 CLOSED: operator UAT 16/16 approved, TLINK-V121-01..07 marked Complete
 Resume file: None
