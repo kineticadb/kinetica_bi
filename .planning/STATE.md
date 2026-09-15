@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.21
-milestone_name: Dashboard Links & Map Default View
-status: v1.21 milestone complete
-stopped_at: "Completed v1.21 milestone (/gsd:complete-milestone) — archived, PROJECT.md evolved, tagged v1.21"
-last_updated: "2026-09-14T19:30:00.000Z"
+milestone: v1.22
+milestone_name: Dashboard Settings Links
+status: unknown
+stopped_at: Completed 117-01-PLAN.md — three-mode dashboardUrl.ts vocabulary added, 64/64 spec tests passing, 4 mutation probes fired correctly
+last_updated: "2026-09-15T18:04:04.859Z"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 20
-  completed_plans: 20
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 6
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,20 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Planning next milestone (`/gsd:new-milestone`) — v1.21 shipped and archived 2026-09-14
+**Current focus:** Phase 117 — Dashboard Settings Links
 
 ## Current Position
 
-**v1.21 Dashboard Links & Map Default View — SHIPPED 2026-09-14.** All 6 phases (111-116) complete,
-20 plans, 20/20 requirements. Archived to `milestones/v1.21-ROADMAP.md` + `milestones/v1.21-REQUIREMENTS.md`;
-MILESTONES.md entry added; PROJECT.md evolution review complete (locked scope decision 4 corrected
-to record the deliberate Table Links scope-widening); `packages/web` + `packages/server`
-`package.json` bumped to 1.21.0; tagged `v1.21.0` (three-part per RELEASING.md — the codebase's own release-tag convention, fixed 2026-08-28 in commit 2c2a005, overrides the two-part `v1.21` scheme used through v1.20). REQUIREMENTS.md deleted (fresh for next milestone).
-No next milestone defined yet.
-
-Previously — Phase 116 (Table Deep Links) COMPLETE: criterion-6 evidence pasted, TLINK-F1..F4
-recorded, 116-UAT.md written and run by the operator (16/16 pass, 2026-09-14). TLINK-V121-01..07
-were marked Complete in REQUIREMENTS.md before it was archived.
+Phase: 117 (Dashboard Settings Links) — EXECUTING
+Plan: 2 of 6
 
 ### Open tech debt carried forward
 
@@ -465,6 +457,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 116-table-deep-links P05 | 35min | 3 tasks | 5 files |
 | Phase 116 P06 | 25min | 2 tasks | 2 files |
 | Phase 115 P04 | 20min | 3 tasks | 2 files |
+| Phase 117 P01 | 22min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -872,6 +865,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 116-table-deep-links]: 116-06: criterion 6's generalize-don't-fork clause recorded honestly as sibling-module duplication (dashboardUrl.ts 109L/tableUrl.ts 150L, useDeepLinkDashboard.ts 99L/useDeepLinkTable.ts 129L), not de-duplication — forced by the 132-test blast radius of a shared factory
 - [Phase 115]: DLINK-V121-03 closed: operator UAT approved 7/7 (password mode); OIDC round trip explicitly recorded as not exercised (AUTH_MODE=password is the only available environment) rather than upgraded to a pass — see 115-UAT.md
 - [Phase 116-table-deep-links]: Phase 116 CLOSED: operator UAT approved 16/16 (2026-09-14); TLINK-V121-01..07 flipped to Complete in REQUIREMENTS.md; TLINK-V121-03's OIDC half recorded as not exercised live (AUTH_MODE=password is the only available environment), mirroring the 115 precedent
+- [Phase 117]: setDashboardMode mirrors setTableMode's window.history.state pass-through exactly; openDashboardUrl push-count assertions use a pushState spy instead of a raw history.length delta (jsdom cross-test forward-history truncation artifact, not a code bug)
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1279,6 +1273,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-14T18:49:46.891Z
-Stopped at: Completed 116-06-PLAN.md — Phase 116 CLOSED: operator UAT 16/16 approved, TLINK-V121-01..07 marked Complete
+Last session: 2026-09-15T18:04:04.822Z
+Stopped at: Completed 117-01-PLAN.md — three-mode dashboardUrl.ts vocabulary added, 64/64 spec tests passing, 4 mutation probes fired correctly
 Resume file: None
