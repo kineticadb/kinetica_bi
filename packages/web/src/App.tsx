@@ -178,11 +178,7 @@ const App = () => {
   const returnToWonElsewhereRef = useRef(false);
   const initialOpenDashboard =
     deepLink.status === "opened" && !deepLinkConsumedRef.current
-      // Phase 117: DashboardsPage now needs to know WHICH screen the link named, not just which
-      // dashboard. TEMPORARY LITERAL — Plan 04 replaces `"open" as const` with `deepLink.mode`
-      // once useDeepLinkDashboard resolves the qualifier. Until then every arrival is `open`,
-      // which is exactly today's behaviour, so nothing changes for the user in this wave.
-      ? { dashboard: deepLink.dashboard, mode: "open" as const }
+      ? { dashboard: deepLink.dashboard, mode: deepLink.mode }
       : undefined;
   // Flip gated on page === "dashboards" too (Rule 1 fix, see SUMMARY): a ReturnTo restore to a
   // DIFFERENT page (e.g. "roles") can still be active in the render where deepLink first
@@ -378,7 +374,13 @@ const App = () => {
       const d = deepLink;
       const t = deepLinkTable;
       if (d.status === "pending") {
-        payload = { dashboardId: d.id, page: "dashboards" };
+        // Built conditionally, NOT as a spread with an undefined-valued key: App.signincommit.spec.tsx
+        // asserts toEqual({dashboardId, page}) on the PARSED object for a BARE ?dashboard= link, and
+        // relying on JSON.stringify silently dropping an undefined key would be invisible and fragile.
+        // Absent dashboardMode means "open", mirroring the URL's own absent-means-open rule.
+        payload = d.mode === "open"
+          ? { dashboardId: d.id, page: "dashboards" }
+          : { dashboardId: d.id, dashboardMode: d.mode, page: "dashboards" };
       } else if (t.status === "pending") {
         payload = { tableId: t.id, tableMode: t.mode, page: "datasets" };
       }
@@ -484,13 +486,15 @@ const App = () => {
     if (returnToWonElsewhereRef.current) return;
     if (deepLink.status === "opened") {
       setPage("dashboards");
-      setDashboardViewMode("open");
-      // Phase 115: after an OIDC round trip the server returned the browser to a bare `/`
-      // (packages/server/src/index.ts:637), so the id came from kbi_returnTo, not the URL —
-      // put it back or the bar would describe the LIST while a dashboard is open, breaking
-      // Back, copy-link and refresh for OIDC users ONLY (DLINK-V121-07). Idempotent, so this
-      // is a no-op on every other arrival path.
-      restoreDashboardUrl(deepLink.dashboard.id);
+      // Phase 117 (DSET-V122-03): the resolved mode, not a hardcoded "open". Before this milestone
+      // `open` was the only linkable dashboard mode, so hardcoding it was correct; it no longer is.
+      setDashboardViewMode(deepLink.mode);
+      // Phase 115 + 117: after an OIDC round trip the server returned the browser to a bare `/`
+      // (packages/server/src/index.ts:637), so the id AND the mode came from kbi_returnTo, not the
+      // URL — put BOTH back, or the bar would describe the running dashboard while the settings
+      // screen is open, breaking Back, copy-link and refresh for OIDC users ONLY (DLINK-V121-07).
+      // Idempotent, so this is a no-op on every other arrival path.
+      restoreDashboardUrl(deepLink.dashboard.id, deepLink.mode);
     } else if (deepLink.status === "unavailable" || deepLink.status === "error") {
       setPage("dashboards");
     }
