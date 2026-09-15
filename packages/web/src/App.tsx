@@ -168,7 +168,13 @@ const App = () => {
   // in which deepLink first resolves, exactly like deepLinkConsumedRef at :87.
   const returnToWonElsewhereRef = useRef(false);
   const initialOpenDashboard =
-    deepLink.status === "opened" && !deepLinkConsumedRef.current ? deepLink.dashboard : undefined;
+    deepLink.status === "opened" && !deepLinkConsumedRef.current
+      // Phase 117: DashboardsPage now needs to know WHICH screen the link named, not just which
+      // dashboard. TEMPORARY LITERAL — Plan 04 replaces `"open" as const` with `deepLink.mode`
+      // once useDeepLinkDashboard resolves the qualifier. Until then every arrival is `open`,
+      // which is exactly today's behaviour, so nothing changes for the user in this wave.
+      ? { dashboard: deepLink.dashboard, mode: "open" as const }
+      : undefined;
   // Flip gated on page === "dashboards" too (Rule 1 fix, see SUMMARY): a ReturnTo restore to a
   // DIFFERENT page (e.g. "roles") can still be active in the render where deepLink first
   // resolves to "opened" — DashboardsPage has not mounted yet on that render, so flipping the

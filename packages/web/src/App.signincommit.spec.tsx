@@ -27,9 +27,17 @@ vi.mock("./components/Topbar", () => ({
 // prop-reflector would falsely fail (App's own effects mutate the prop's upstream state after
 // mount). Same pattern as App.deeplink.spec.tsx.
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
-    return <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>Dashboards</main>;
+    return (
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
+        Dashboards
+      </main>
+    );
   },
 }));
 vi.mock("./components/DatasetsPage", () => ({

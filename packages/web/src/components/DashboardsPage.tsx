@@ -71,7 +71,7 @@ import { clearAllFilters } from "../lib/clearAllFilters";  // Phase 109 Plan 01 
 import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
-import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07)
+import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02)
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -88,9 +88,11 @@ type View =
 
 const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   onViewChange?: (mode: string) => void;
-  // Phase 114 (DLINK-V121-02): a dashboard resolved from ?dashboard=<id> at boot, handed down
-  // by App.tsx. Consumed ONCE, by the useState initializer below.
-  initialOpenDashboard?: DashboardDto;
+  // Phase 114 (DLINK-V121-02) / Phase 117 (DSET-V122-03): a dashboard resolved from
+  // ?dashboard=<id>[&mode=view|edit] at boot, handed down by App.tsx together with WHICH SCREEN the
+  // link named. Was a bare DashboardDto before Phase 117, when `open` was the only linkable mode.
+  // Consumed ONCE, by the useState initializer below.
+  initialOpenDashboard?: { dashboard: DashboardDto; mode: DashboardMode };
 }) => {
   const { loading, data, error } = useApiQuery<DashboardDto[]>(() => listDashboards(), []);
   const [dashboards, setDashboards] = useState<DashboardDto[]>([]);
@@ -103,9 +105,18 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   // history entry already carries ?dashboard=<id>; pushing would manufacture a second entry and
   // break Phase 113's marker logic. leaveDashboardUrl()'s unmarked-entry branch then correctly
   // writes the list URL instead of history.back()-ing the user out of the app.
-  const [view, setViewState] = useState<View>(() =>
-    initialOpenDashboard ? { mode: "open", dashboard: initialOpenDashboard } : { mode: "list" },
-  );
+  // Phase 117 (DSET-V122-03): the mode now comes in WITH the dashboard, so a view/edit arrival
+  // mounts straight into that screen instead of always into `open`.
+  const [view, setViewState] = useState<View>(() => {
+    if (!initialOpenDashboard) return { mode: "list" };
+    const { dashboard, mode } = initialOpenDashboard;
+    // Explicit narrowing, not a spread: View's three dashboard-carrying members are separate union
+    // arms, and `create`/`list` carry no dashboard. DashboardMode's three values map 1:1 onto the
+    // three that do.
+    if (mode === "view") return { mode: "view", dashboard };
+    if (mode === "edit") return { mode: "edit", dashboard };
+    return { mode: "open", dashboard };
+  });
 
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canCreate = hasPermission(PERMISSIONS.DASHBOARDS_CREATE);
@@ -128,17 +139,22 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   // Phase 113 (DLINK-V121-06/07): react to history navigation. TWO cases, neither of
   // which ever OPENS a dashboard — resolving a URL into an open dashboard is Phase 114.
   //  1. param absent  -> the user navigated back to the list; show the list.
-  //  2. param present but we are NOT on a dashboard -> the user pressed browser FORWARD
-  //     into an entry they had already left. The list is on screen, so a stale
-  //     ?dashboard=<id> in the address bar would describe a screen they are not on
-  //     (DLINK-V121-07). Reconcile the address bar down to the list, in place.
+  //  2. param present but NO dashboard screen is on screen (we are on the list, or on create) ->
+  //     the user pressed browser FORWARD into an entry they had already left. The list is on
+  //     screen, so a stale ?dashboard=<id> in the address bar would describe a screen they are
+  //     not on (DLINK-V121-07). Reconcile the address bar down to the list, in place.
   //     replaceState via clearDashboardUrl(), NOT a push and NOT an open.
+  //  Phase 117 (DSET-V122-01/02): widened from one dashboard-screen state to three (open/view/
+  //  edit). The mode qualifier is deliberately NOT reconciled here. `view <-> edit` does reach a
+  //  differing mode on the same entry (transitions #9 and #11), but only ever via `replaceState`,
+  //  never via a `pushState`/`popstate` pair — so `popstate` itself can never observe a mismatch,
+  //  and a third case would be dead code.
   useEffect(() => {
     const onPopState = () => {
       if (readDashboardIdFromSearch(window.location.search) === null) {
         setViewState({ mode: "list" });
         onViewChange?.("list");
-      } else if (view.mode !== "open") {
+      } else if (view.mode !== "open" && view.mode !== "view" && view.mode !== "edit") {
         clearDashboardUrl();
       }
     };
@@ -172,6 +188,8 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
         onBack={() => setView({ mode: "list" })}
         onSaved={(created) => {
           setDashboards((prev) => [created, ...prev]);
+          // Phase 117 (DSET-V122-01): the first-ever linkable moment for a fresh dashboard — push.
+          openDashboardUrl(created.id, "view");
           setView({ mode: "view", dashboard: created });
         }}
       />
@@ -182,8 +200,15 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
     return (
       <DashboardDetail
         dashboard={view.dashboard}
-        onBack={() => setView({ mode: "list" })}
-        onEdit={() => setView({ mode: "edit", dashboard: view.dashboard })}
+        onBack={() => { leaveDashboardUrl(); setView({ mode: "list" }); }}
+        onEdit={() => {
+          // Phase 117 (DSET-V122-02): in-place mode change on the SAME entry — not a leave and not
+          // a fresh open. No table analogue: TableDetail has no Edit affordance. setDashboardMode
+          // preserves whether this entry is ours, which leaveDashboardUrl() must still read
+          // correctly afterwards.
+          setDashboardMode(view.dashboard.id, "edit");
+          setView({ mode: "edit", dashboard: view.dashboard });
+        }}
       />
     );
   }
@@ -192,9 +217,13 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
     return (
       <DashboardEdit
         dashboard={view.dashboard}
-        onBack={() => setView({ mode: "list" })}
+        onBack={() => { leaveDashboardUrl(); setView({ mode: "list" }); }}
         onSaved={(updated) => {
           setDashboards((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+          // Phase 117 (DSET-V122-02): in-place. Reachable from TWO origins (a fresh list->edit
+          // push, or an in-place view->edit) — ONE call site handles both, because setDashboardMode
+          // preserves whatever window.history.state already was.
+          setDashboardMode(updated.id, "view");
           setView({ mode: "view", dashboard: updated });
         }}
       />
@@ -240,11 +269,11 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
                   <button className="btn-primary btn-sm" onClick={() => { openDashboardUrl(dash.id); setView({ mode: "open", dashboard: dash }); }}>
                     Open
                   </button>
-                  <button className="ghost-sm" onClick={() => setView({ mode: "view", dashboard: dash })}>
+                  <button className="ghost-sm" onClick={() => { openDashboardUrl(dash.id, "view"); setView({ mode: "view", dashboard: dash }); }}>
                     View
                   </button>
                   {canEdit && (
-                    <button className="ghost-sm" onClick={() => setView({ mode: "edit", dashboard: dash })}>
+                    <button className="ghost-sm" onClick={() => { openDashboardUrl(dash.id, "edit"); setView({ mode: "edit", dashboard: dash }); }}>
                       Edit
                     </button>
                   )}

@@ -31,9 +31,17 @@ vi.mock("./components/Topbar", () => ({
 // a second App render in the same effect flush, after which the real prop is already undefined
 // — irrelevant to the real component because it never re-reads the prop after mount).
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
-    return <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>Dashboards</main>;
+    return (
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
+        Dashboards
+      </main>
+    );
   },
 }));
 vi.mock("./components/DatasetsPage", () => ({

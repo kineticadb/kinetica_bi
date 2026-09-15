@@ -20,10 +20,14 @@ vi.mock("./components/Topbar", () => ({ default: () => <header data-testid="topb
 // prop-reflector falsely fails (App's own effects mutate the prop's upstream state after
 // mount; see App.deeplink.spec.tsx:27-32 and 115-RESEARCH.md §Q1/Pitfall 2).
 vi.mock("./components/DashboardsPage", () => ({
-  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { id: number } }) => {
+  default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
     return (
-      <main data-testid="page-dashboards" data-deeplink={captured ? String(captured.id) : ""}>
+      <main
+        data-testid="page-dashboards"
+        data-deeplink={captured ? String(captured.dashboard.id) : ""}
+        data-mode={captured?.mode ?? ""}
+      >
         Dashboards
       </main>
     );
