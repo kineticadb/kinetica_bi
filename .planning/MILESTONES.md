@@ -1,5 +1,33 @@
 # Milestones
 
+## v1.22 Dashboard Settings Links (Shipped: 2026-09-15)
+
+**Phases completed:** 1 phase (117), 6 plans
+
+**Delivered:** Closed the one gap v1.21 left — a dashboard's `view` (settings) and `edit` screens are now reachable by URL, exactly as a table's are. `?dashboard=<id>&mode=view` and `?dashboard=<id>&mode=edit` reach a dashboard's settings and edit screens directly, through login and permission/not-found error states, without touching what a bare `?dashboard=<id>` link does. 8/8 requirements; operator UAT 23/23 checks PASS (1 recorded "not exercised" — the OIDC half of the login-flow requirement). Frontend-only throughout — `packages/server` untouched, no new dependency, no router. Tag `v1.22.0` (three-part per RELEASING.md).
+
+**Key accomplishments:**
+
+- **Three-mode URL vocabulary** (117-01) — `lib/dashboardUrl.ts` extended from the two-mode (`open` only) vocabulary v1.21 shipped to a three-value `open`/`view`/`edit` vocabulary, with a mode-change writer that preserves the StrictMode dev-mode history marker in both directions.
+- **All twelve `DashboardsPage` mode transitions wired** (117-02) — every list button (Open/View/Edit) and both in-place transitions (view→edit via the in-screen Edit button, edit→view via Save) write the correct URL; Back-to-list and no-history-eject protection reused as-is from the existing `leaveDashboardUrl()` mechanism, needing no new logic.
+- **Id-AND-mode-scoped unmount-clear timers** (117-03) — `DashboardDetail`/`DashboardEdit` each carry a deferred clear-on-unmount timer guarded on BOTH id and mode (not id alone, which RESEARCH had proposed and which would have wiped the URL one macrotask after every `edit→view` Save — caught and fixed before shipping).
+- **Mode resolution + App-level threading** (117-04) — `useDeepLinkDashboard`'s `DeepLinkState` now carries a `mode`; `App.tsx`'s `ReturnTo` gained `dashboardMode`, threaded through the sign-in-commit write and the post-redirect restore, extending rather than duplicating the existing Phase 7 `kbi_returnTo` mechanism.
+- **App-level arrival proof + the dedicated bare-link audit** (117-05) — direct proof that the app-level `Loading…` shell holds for the whole of a `&mode=edit` resolution (no list-page flash), plus a dedicated mutation-probe-verified audit that the bare `?dashboard=<id>` link is byte-identical to pre-Phase-117 behavior across all four layers (lib/hook/page/App) — 220 dashboard-family tests, a strict superset of the 132-test pre-phase baseline.
+- **`TLINK-F4` explicitly revisited and resolved** (117-06) — the Phase 116 duplication question (dashboard vs. table URL/hook code) was reopened now that dashboards have the mode vocabulary a shared core would have needed, and resolved as "keep duplicated" by measurement rather than left pending — see Known Gaps below.
+
+**Known gaps and standing costs — recorded here deliberately, not smoothed over:**
+
+- **The test suite is NON-DETERMINISTIC under parallel load — this milestone's most significant finding, and the operator has scheduled it as the NEXT milestone (v1.23).** Four spec files (`DatasetsPage.spec.tsx`, `actionEngine.canary.spec.tsx`, `App.tableDeeplink.spec.tsx`, `DashboardContext.spec.tsx`) flaked at different points, non-reproducibly, with zero diff on disk. Both the phase closeout AND the independent verifier each needed THREE full-suite runs to get one clean pass, failing on a different file each time. Every endpoint was green and no failure reproduced at a known-good commit — but a suite that reddens differently each run is weaker evidence than a stable one, and this milestone leans heavily on automated coverage. See `deferred-items.md`.
+- **`TLINK-F4` was RESOLVED, not deferred again** — "keep duplicated," by measurement: the feature already touched all 132 dashboard tests unconditionally, and extracting a shared core would additionally have put the table family's 100 tests in play, inside the phase whose highest-stakes requirement is not regressing a live URL. There are now THREE parallel implementations. The rewritten `REQUIREMENTS.md` entry (archived at `milestones/v1.22-REQUIREMENTS.md`) carries an explicit reopening condition (a fourth linkable entity or mode, or a dedicated tech-debt phase). Carried forward as a standing cost, not a success.
+- **Two of the phase's own planning documents were wrong, and both errors were caught before they shipped.** (a) RESEARCH proposed unmount-clear timers guarded on id alone, which would have wiped the URL one macrotask after every `edit→view` Save; the timers shipped scoped on id AND mode instead. (b) A plan's audit for the highest-stakes requirement (DSET-V122-08, "do not regress the bare link") used a bare `git diff` with no revision range, which returns 0 unconditionally because every task commits immediately — a guard that could not fail. Both are recorded as process findings.
+- **TWENTY-ONE toothless acceptance criteria occurred across Phases 115-117**, from several distinct causes: plans anchoring greps on prose they themselves mandated in comments; simply-wrong arithmetic; case-sensitivity mismatches; and a criterion whose own enumeration contradicted its stated count. All were reported rather than satisfied by bending correct code. This is a planner-side defect worth fixing at the source (see CLAUDE.md's "Writing verifiable acceptance criteria" section).
+- **The OIDC path has STILL never been browser-verified** — three milestones running. `AUTH_MODE=password` on this instance, so the `kbi_returnTo` carry across a real IdP redirect is covered by automated tests and mutation probes only. Carried forward as open verification debt.
+- **20/20 mutation probes reddened** — zero non-firing. Recorded as the positive counterpart to the toothless-criteria finding above: where criteria were designed to fail on demand, they did.
+
+**Open tech debt carried to the backlog:** the flaky suite (→ v1.23, the operator's next scheduled target); `TLINK-F1` (unsaved-edit leave guards, both forms or neither); `TLINK-F2` (table banner copy, revisit if per-table permissions are added); `TLINK-F3` (sidebar "Datasets"/"Dashboards" no-op while that page's item is already open); `TLINK-F4` (the tableUrl/dashboardUrl/DatasetsPage-DashboardsPage duplication, now three implementations); `DSET-F1` (linkable `create` screens — nothing to identify until the record exists); `DLINK-F1..F4` (Roles/Settings links still deferred; explicit "Copy link" button; URL-encoded filter state; URL-encoded map viewport); theme-guard's wholesale `global.css` hex-scan exemption.
+
+---
+
 ## v1.21 Dashboard Links & Map Default View (Shipped: 2026-09-14)
 
 **Phases completed:** 6 phases (111–116), 20 plans
