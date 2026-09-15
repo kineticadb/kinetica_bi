@@ -159,4 +159,32 @@ describe("password-mode logged-out deep link paste (AUTHLINK-115)", () => {
     await screen.findByTestId("page-dashboards");
     expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
   });
+
+  // Phase 117 (DSET-V122-07): the mode qualifier is entity-agnostic here too — the URL itself
+  // is the carrier in password mode, exactly as the bare-id case above already proved.
+  it("DSET-117: password mode — a ?dashboard=12&mode=edit arrival writes NOTHING to kbi_returnTo and lands on the edit screen after authentication", async () => {
+    window.history.replaceState(null, "", "/?dashboard=12&mode=edit");
+    setAuth({
+      status: "unauthenticated",
+      user: null,
+      authMode: "password",
+      reason: null,
+      error: null,
+      bootstrap: async () => {},
+    });
+
+    render(<App />);
+    expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+
+    setAuth({
+      status: "authenticated",
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+    });
+
+    const page = await screen.findByTestId("page-dashboards");
+    expect(page).toHaveAttribute("data-mode", "edit");
+    expect(sessionStorage.getItem("kbi_returnTo")).toBeNull();
+  });
 });
