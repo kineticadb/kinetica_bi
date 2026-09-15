@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.22
 milestone_name: Dashboard Settings Links
 status: unknown
-stopped_at: Completed 117-04-PLAN.md
-last_updated: "2026-09-15T19:25:46.808Z"
+stopped_at: Completed 117-05-PLAN.md
+last_updated: "2026-09-15T19:52:15.281Z"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 117 (Dashboard Settings Links) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 
 ### Open tech debt carried forward
 
@@ -461,6 +461,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 117 P02 | 35min | 2 tasks | 9 files |
 | Phase 117 P03 | 25min | 2 tasks | 2 files |
 | Phase 117 P04 | 30min | 3 tasks | 3 files |
+| Phase 117 P05 | 45min | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -873,6 +874,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 117]: Corrected 117-RESEARCH.md §Q3's id-only unmount-clear guard to id-AND-mode-scoped, proved by two directional mutation probes (B/C) that redden when the mode check is removed
 - [Phase 117 P04]: App.tsx's dashboard deep-link effect, handleSignInCommit's payload, and initialOpenDashboard's page prop all now read deepLink.mode, replacing Plan 02's temporary "open" as const literal; handleSignInCommit builds the payload conditionally (dashboardMode included only when mode !== "open") so the two pre-existing closed-shape App.signincommit.spec.tsx assertions stay unmodified
 - [Phase 117 P04]: Two of the plan's own grep-based acceptance criteria were arithmetically/factually off (Task 2's "deepLink.mode -> exactly 4" vs. the real 3 sites since d.mode is a local alias; Task 3's "storedId -> 0" originally satisfied only by renaming stale test-title prose, not the already-correct call-site reshape) — verified the real requirement directly in both cases rather than gaming the grep
+- [Phase 117]: Task 3's DSET-V122-08 audit run with commit-scoped git log -p (not a bare git diff, which is provably 0 unconditionally after per-task commits): 0 deleted assertions, 5 deleted-then-renamed test titles (all Plan 04's own documented storedId->stored dashboard prose renames, verified pairwise), and the readDashboardModeFromSearch fallback mutation reddened 5 of 7 dashboard-family files (15 tests) -- well above the 3-file threshold.
+- [Phase 117]: Followed 117-RESEARCH $Q5's correction: mode read-validation positive cases live in App.signincommit.spec.tsx (stubs listDashboards); App.spec.tsx got only the one negative case its harness can carry (dashboardMode with no dashboardId).
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1280,6 +1283,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-15T19:25:46.797Z
-Stopped at: Completed 117-04-PLAN.md
+Last session: 2026-09-15T19:52:15.271Z
+Stopped at: Completed 117-05-PLAN.md
 Resume file: None
