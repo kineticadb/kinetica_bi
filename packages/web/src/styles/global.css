@@ -4105,6 +4105,27 @@ input[type="checkbox"],
   opacity: 0.45;
 }
 
+/* Phase 118 (ZLGND-V123-01/02): zoom-inactive — the layer is eye-ON and materialized, but
+   the map's current zoom sits outside its configured range, so OL is not drawing it.
+   MUST read as a third, distinct thing:
+     .hidden (0.45, operator chose it)  vs  --stale (0.55, dv cannot render)  vs  this.
+   Deliberately the LIGHTEST dim of the three — this state resolves itself by zooming, it is
+   not a problem — plus a --warning left rule so the cue is colour as well as brightness
+   (colourblind-safer than opacity alone, and unambiguous next to the other two).
+   LayersLegendPanel computes mutual exclusion in JS (showZoomInactive), so this rule never
+   competes with .hidden / --stale for the same element — do not add cascade-order workarounds.
+   The range chip is deliberately EXCLUDED from the dim: it is the actionable information
+   ("zoom 3–10") that explains why the row is faded, so it must stay fully legible.
+   TOKENS ONLY: theme-guard ALLOWLISTS this file from its hex scan, so a raw colour literal
+   here would pass every automated gate and fail only in front of a human. */
+.layers-legend-panel-layer-block--zoom-inactive .layers-legend-panel-layer-name,
+.layers-legend-panel-layer-block--zoom-inactive .layers-legend-panel-break-row {
+  opacity: 0.65;
+}
+.layers-legend-panel-layer-block--zoom-inactive .layers-legend-panel-layer {
+  border-left: 2px solid var(--warning);
+}
+
 /* Inline status pill next to the layer name when dv-bound layer is not materialized.
    Yellow (warning) for over_threshold / pending / absent — all "fixable / transient".
    Red for error — needs operator attention. */
@@ -4141,7 +4162,11 @@ input[type="checkbox"],
   color: #991b1b;
 }
 
-/* Render-mode chip mirrors .layer-row-badge exactly per research */
+/* Phase 118 (ZLGND-V123-03): per-layer configured zoom-range chip (e.g. "zoom 3–10").
+   Previously dead CSS from the render-mode chip that Phase 118 revives verbatim per
+   CLAUDE.md (never invent a class that already exists) — the .hidden/--stale dim rules
+   above already apply to this class, so an eye-off or dv-stale row's chip inherits the
+   correct dimming with no new CSS. */
 .layers-legend-panel-mode-chip {
   display: inline-block;
   font-size: var(--text-sm);
