@@ -55,7 +55,11 @@
   5. The standalone Legend widget shows the same indication for its bound map, and falls back to today's appearance when that map's live zoom is unavailable.
   6. A layer with no configured range renders exactly as it does today.
   7. No new hardcoded colour literal ships: new styling uses theme tokens and is verified by eye in BOTH themes (theme-guard exempts `global.css` from its hex scan — how Phase 114's light-mode defect shipped).
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves (sequential — each wave consumes the previous wave's artifact)
+Plans:
+- [ ] 118-01-PLAN.md — Extract ONE shared zoom-range predicate (`lib/zoomRangeBounds.ts`) and converge BOTH existing implementations on it, including the pre-existing `isLayerVisibleAtCurrentZoom` info-click divergence (operator put it in scope) [wave 1, autonomous]
+- [ ] 118-02-PLAN.md — Thread optional live zoom through `resolveLegendLayers`; render the zoom-inactive state + configured-range chip; token-only `global.css` [wave 2, autonomous]
+- [ ] 118-03-PLAN.md — Wire both consumers (in-map legend + standalone Legend widget) to `mapCurrentViewStore`; blocking operator UAT covering both themes, live zoom and the info-click change [wave 3, has checkpoint]
 
 ---
 
