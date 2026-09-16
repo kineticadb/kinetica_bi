@@ -38,7 +38,7 @@
 
 ## Phases
 
-- [ ] **Phase 118: Zoom-Aware Layer Legend** - The legend distinguishes drawing / zoom-inactive / eye-off, live as the operator zooms
+- [x] **Phase 118: Zoom-Aware Layer Legend** - The legend distinguishes drawing / zoom-inactive / eye-off, live as the operator zooms (completed 2026-09-16)
 
 ## Phase Details
 

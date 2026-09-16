@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.23
 milestone_name: Zoom-Aware Layer Legend
 status: unknown
-stopped_at: Completed 118-02-PLAN.md
-last_updated: "2026-09-16T18:49:27.680Z"
+stopped_at: Completed 118-03-PLAN.md — Phase 118 closed
+last_updated: "2026-09-16T20:09:51.813Z"
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-Phase: 118 (Zoom-Aware Layer Legend) — EXECUTING
-Plan: 3 of 3
+Phase: 118 (Zoom-Aware Layer Legend) — COMPLETE
+Plan: 3 of 3 (complete)
 
 ### Open tech debt carried forward
 
@@ -465,6 +465,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 117 P06 | 35min | 3 tasks | 4 files |
 | Phase 118 P01 | 10min | 3 tasks | 4 files |
 | Phase 118 P02 | 12min | 3 tasks | 5 files |
+| Phase 118 P03 | 12min | 3 tasks | 6 files |
 
 ### Quick Tasks Completed
 
@@ -884,6 +885,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 118]: Extracted zoomRangeBounds.ts (toOlZoomBounds + isLayerActiveAtZoom) as the single source of truth for zoom-range visibility; repointed the info-click gate onto it, fixing a shipped fractional-zoom divergence (operator-approved behaviour change).
 - [Phase 118]: resolveLegendLayers gets an optional 3rd zoom param; zoomActive is genuinely three-state (undefined/true/false), never coerced to false when zoom is unknown, so LegendRenderer degrades safely.
 - [Phase 118]: LayersLegendPanel computes zoom-inactive/hidden/stale mutual exclusion in JS precedence (hidden > stale > zoom-inactive), not CSS cascade; chip reuses previously-dead .layers-legend-panel-mode-chip class per CLAUDE.md (never invent a new class).
+- [Phase 118]: Phase 118: All 7 ZLGND-V123 requirements (incl. -05) flipped Complete together on 118-03's operator UAT (8/8 PASS, 2026-09-16) — this phase's convention is Complete = code + tests + operator UAT, not code-complete alone
+- [Phase 118]: Phase 118: full 6-probe mutation rollup (2 per plan) all reddened + reverted cleanly; two global.css colour audits (hex + rgba) both 0 — theme-guard allowlists global.css wholesale, so this manual audit plus both-theme operator UAT (D/E) was the only real guard on the new zoom-inactive styling
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1291,6 +1294,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-16T18:49:27.671Z
-Stopped at: Completed 118-02-PLAN.md
+Last session: 2026-09-16T20:09:51.804Z
+Stopped at: Completed 118-03-PLAN.md — Phase 118 closed
 Resume file: None
