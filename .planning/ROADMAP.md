@@ -30,6 +30,65 @@
 
 - ✅ **v1.23 Zoom-Aware Layer Legend** — Phase 118 (shipped 2026-09-16) — see `milestones/v1.23-ROADMAP.md`
 
+- 🚧 **v1.24 Dashboard Export & Import** — Phases 119-121 (in progress)
+
+---
+
+## 🚧 v1.24 Dashboard Export & Import (In Progress)
+
+**Milestone Goal:** A dashboard, with all its visualizations, can be exported to a JSON file and imported into another environment — getting fresh ids, matching tables by `schema.name`, and carrying the custom metrics its widgets depend on.
+
+**Why the id remapping is the hard part.** Three reference kinds live INSIDE serialized JSON config, not in FK columns: `widgets.config.tableId`, `widgets.config.sourceMapWidgetId` (widget→widget, the standalone Legend binding), and widget→`custom_metrics.id`. A widget that keeps a stale id does not error — it silently renders the wrong table, the wrong metric, or an unbound legend.
+
+**First milestone since v1.20 to require server work.** v1.21-v1.23 were all frontend-only.
+
+## Phases
+
+- [ ] **Phase 119: Export** - A dashboard and its full dependency graph serialize to a versioned JSON file
+- [ ] **Phase 120: Import** - That file recreates the dashboard elsewhere with fresh ids, every reference remapped, atomically
+- [ ] **Phase 121: UI + Cross-Environment Verification** - Download/upload in the app, and an operator round-trip between two environments
+
+## Phase Details
+
+### Phase 119: Export
+**Goal**: A dashboard and everything needed to recreate it — widgets, layers, dynamic views, table definitions, and the custom metrics its widgets reference — serialize to a single versioned JSON file, excluding runtime state and access grants.
+**Depends on**: Nothing
+**Requirements**: DXIM-V124-01, DXIM-V124-02, DXIM-V124-08
+**Canonical refs**: `packages/server/src/db.ts` (the schema and its soft-FK comments), `.planning/REQUIREMENTS.md` §"Decisions deferred to research"
+**Success Criteria** (what must be TRUE):
+  1. Exporting a dashboard produces a JSON file containing its widgets, layers, dynamic views, referenced table definitions (`schema`, `name`, `columns`), and referenced custom metrics.
+  2. The file carries a schema version field.
+  3. Runtime state does NOT appear in the export — specifically `dashboard_table_views` (materialized-view bookkeeping).
+  4. Access grants do NOT appear in the export (DXIM-V124-08).
+  5. The set of exported entities is derived by walking the dependency graph, not by a hand-maintained list — a widget config referencing a custom metric must pull that metric in.
+**Plans**: TBD
+
+### Phase 120: Import
+**Goal**: An export file recreates the dashboard in a target environment with fresh ids, every intra-file reference remapped, tables matched by `schema.name`, and nothing left behind if it fails.
+**Depends on**: Phase 119 (needs the format to consume)
+**Requirements**: DXIM-V124-03, DXIM-V124-04, DXIM-V124-05, DXIM-V124-06, DXIM-V124-07, DXIM-V124-09, DXIM-V124-10, DXIM-V124-11
+**Research flag**: HIGHEST-RISK phase of the milestone. The id remapping rewrites references inside serialized JSON; a missed reference fails SILENTLY and renders wrong data rather than erroring.
+**Success Criteria** (what must be TRUE):
+  1. Importing a file whose dashboard and widget ids collide with existing records succeeds, and leaves those existing records untouched.
+  2. Every `tableId`, `sourceMapWidgetId`, and custom-metric reference inside imported widget config points at the NEWLY created/matched record — verified per reference kind, not assumed.
+  3. A table whose `schema.name` already exists in the target is reused; one that does not is created; the same `schema.name` is never duplicated.
+  4. Custom metrics referenced by imported widgets exist in the target after import, matched by label where already present.
+  5. Import is atomic: an induced failure partway through leaves no dashboard, widgets, layers, or table entries behind.
+  6. Import returns a report naming the new dashboard id, tables matched vs created, and metrics created.
+  7. A malformed, truncated, or hand-edited file is rejected with a clear message and changes nothing.
+**Plans**: TBD
+
+### Phase 121: UI + Cross-Environment Verification
+**Goal**: The operator can export a dashboard from one environment and import it into another entirely from the app, and the imported dashboard renders identically to the original.
+**Depends on**: Phases 119 and 120
+**Requirements**: DXIM-V124-01, DXIM-V124-03, DXIM-V124-10
+**Success Criteria** (what must be TRUE):
+  1. A dashboard can be exported to a downloaded file from the dashboard UI, gated on the appropriate existing permission.
+  2. An export file can be uploaded and imported from the UI, with the import report surfaced to the operator.
+  3. An operator round-trip between two real environments reproduces the dashboard with all visualizations rendering the same data.
+  4. Every interactive feature of the imported dashboard still works — drill-down, filters, map layers, and any standalone Legend binding — confirming the id remapping held in practice, not just in tests.
+**Plans**: TBD
+
 ---
 
 <!-- LAYOUT NOTE (2026-09-11): archived milestones live at the END of this file
