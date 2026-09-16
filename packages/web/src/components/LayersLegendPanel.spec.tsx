@@ -548,3 +548,100 @@ describe("COMM-V118-02: per-layer filter-scope indicator in LayersLegendPanel", 
     expect(src).toContain("filterSummary");
   });
 });
+
+describe("Phase 118 (ZLGND-V123-01/02/03/06/07): zoom-aware legend rendering", () => {
+  it("ZLP1: visible + zoomActive false + range → carries --zoom-inactive, does NOT carry hidden", () => {
+    const layer = makeResolvedLayer({ id: 701 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      visible: true,
+      zoomActive: false,
+      zoomRange: { minZoom: 3, maxZoom: 10 },
+    };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const block = container.querySelector(".layers-legend-panel-layer-block")!;
+    expect(block.className).toContain("layers-legend-panel-layer-block--zoom-inactive");
+    expect(block.className).not.toContain("hidden");
+  });
+
+  it("ZLP2: visible + zoomActive true + range → does NOT carry --zoom-inactive; chip reads 'zoom 3–10'", () => {
+    const layer = makeResolvedLayer({ id: 702 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      visible: true,
+      zoomActive: true,
+      zoomRange: { minZoom: 3, maxZoom: 10 },
+    };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const block = container.querySelector(".layers-legend-panel-layer-block")!;
+    expect(block.className).not.toContain("layers-legend-panel-layer-block--zoom-inactive");
+    expect(screen.getByText("zoom 3–10")).toBeTruthy();
+  });
+
+  it("ZLP3: eye-off AND zoom-inactive → carries hidden, does NOT carry --zoom-inactive (D1 mutual exclusion)", () => {
+    const layer = makeResolvedLayer({ id: 703 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      visible: false,
+      zoomActive: false,
+      zoomRange: { minZoom: 3, maxZoom: 10 },
+    };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const block = container.querySelector(".layers-legend-panel-layer-block")!;
+    expect(block.className).toContain("hidden");
+    expect(block.className).not.toContain("layers-legend-panel-layer-block--zoom-inactive");
+  });
+
+  it("ZLP4: dv-stale AND zoom-inactive → carries --stale, does NOT carry --zoom-inactive", () => {
+    const layer = makeResolvedLayer({ id: 704 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      visible: true,
+      dvStatus: "over_threshold",
+      zoomActive: false,
+      zoomRange: { minZoom: 3, maxZoom: 10 },
+    };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const block = container.querySelector(".layers-legend-panel-layer-block")!;
+    expect(block.className).toContain("layers-legend-panel-layer-block--stale");
+    expect(block.className).not.toContain("layers-legend-panel-layer-block--zoom-inactive");
+  });
+
+  it("ZLP5: no zoomRange/zoomActive → className EXACTLY layers-legend-panel-layer-block, no chip (ZLGND-V123-07)", () => {
+    const layer = makeResolvedLayer({ id: 705 });
+    const entry: ResolvedLegendLayer = { ...layer, visible: true };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const block = container.querySelector(".layers-legend-panel-layer-block")!;
+    expect(block.className).toBe("layers-legend-panel-layer-block");
+    expect(container.querySelector(".layers-legend-panel-mode-chip")).toBeNull();
+  });
+
+  it("ZLP6: range known but zoom unknown (zoomActive undefined) → no chip, no --zoom-inactive (ZLGND-V123-06)", () => {
+    const layer = makeResolvedLayer({ id: 706 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      visible: true,
+      zoomRange: { minZoom: 3, maxZoom: 10 },
+      zoomActive: undefined,
+    };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    const block = container.querySelector(".layers-legend-panel-layer-block")!;
+    expect(block.className).not.toContain("layers-legend-panel-layer-block--zoom-inactive");
+    expect(container.querySelector(".layers-legend-panel-mode-chip")).toBeNull();
+  });
+
+  it("ZLP7: chip copy — both bounds 'zoom 3–10'; minZoom only '≥ 3'; maxZoom only '≤ 10'", () => {
+    const both = makeResolvedLayer({ id: 707 });
+    const minOnly = makeResolvedLayer({ id: 708 });
+    const maxOnly = makeResolvedLayer({ id: 709 });
+    const entries: ResolvedLegendLayer[] = [
+      { ...both, visible: true, zoomActive: true, zoomRange: { minZoom: 3, maxZoom: 10 } },
+      { ...minOnly, visible: true, zoomActive: true, zoomRange: { minZoom: 3, maxZoom: undefined } },
+      { ...maxOnly, visible: true, zoomActive: true, zoomRange: { minZoom: undefined, maxZoom: 10 } },
+    ];
+    render(<LayersLegendPanel {...defaultProps()} layers={entries} />);
+    expect(screen.getByText("zoom 3–10")).toBeTruthy();
+    expect(screen.getByText("zoom ≥ 3")).toBeTruthy();
+    expect(screen.getByText("zoom ≤ 10")).toBeTruthy();
+  });
+});
