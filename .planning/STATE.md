@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.22
-milestone_name: Dashboard Settings Links
+milestone: v1.23
+milestone_name: Zoom-Aware Layer Legend
 status: unknown
-stopped_at: Completed 117-06-PLAN.md — Phase 117 closed
-last_updated: "2026-09-15T20:48:39.777Z"
+stopped_at: Completed 118-01-PLAN.md
+last_updated: "2026-09-16T18:37:21.915Z"
 progress:
   total_phases: 1
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 0
+  total_plans: 3
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 117 — Dashboard Settings Links
+**Current focus:** Phase 118 — Zoom-Aware Layer Legend
 
 ## Current Position
 
-Phase: 117 (Dashboard Settings Links) — COMPLETE
-Plan: 6 of 6 (complete)
+Phase: 118 (Zoom-Aware Layer Legend) — EXECUTING
+Plan: 2 of 3
 
 ### Open tech debt carried forward
 
@@ -463,6 +463,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 117 P04 | 30min | 3 tasks | 3 files |
 | Phase 117 P05 | 45min | 3 tasks | 4 files |
 | Phase 117 P06 | 35min | 3 tasks | 4 files |
+| Phase 118 P01 | 10min | 3 tasks | 4 files |
 
 ### Quick Tasks Completed
 
@@ -879,6 +880,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - [Phase 117]: Followed 117-RESEARCH $Q5's correction: mode read-validation positive cases live in App.signincommit.spec.tsx (stubs listDashboards); App.spec.tsx got only the one negative case its harness can carry (dashboardMode with no dashboardId).
 - [Phase 117]: UAT-117-G27 (OIDC half of DSET-V122-07) recorded as not-exercised, never upgraded to a pass — packages/server/.env is AUTH_MODE=password on this instance, mirroring DLINK-V121-03's identical limitation
 - [Phase 117]: All eight DSET-V122 requirements flipped to Complete after operator UAT approved 23/23 checks live in a real browser, including A1-A4 (bare link), D15 (no-ejection), E20 (both-theme banner), and C11/C12 (id-AND-mode deferred-timer guard)
+- [Phase 118]: Extracted zoomRangeBounds.ts (toOlZoomBounds + isLayerActiveAtZoom) as the single source of truth for zoom-range visibility; repointed the info-click gate onto it, fixing a shipped fractional-zoom divergence (operator-approved behaviour change).
 
 ### Phase 54-verification-live-walk-through (gap-54-10)
 
@@ -1286,6 +1288,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-15T20:46:38.708Z
-Stopped at: Completed 117-06-PLAN.md — Phase 117 closed
+Last session: 2026-09-16T18:37:08.380Z
+Stopped at: Completed 118-01-PLAN.md
 Resume file: None
