@@ -27,6 +27,7 @@ import { applyLayerOverrides } from "../../lib/applyLayerOverrides";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
+import { useMapCurrentViewStore } from "../../store/mapCurrentViewStore";
 import { useDashboardContext } from "../DashboardContext";
 import { useLayerVisibilityToggle } from "../../hooks/useLayerVisibilityToggle";
 import type { WidgetDto } from "../../api/client";
@@ -44,6 +45,24 @@ export default function LegendRenderer({
   const sourceMapWidgetId = widget.config.sourceMapWidgetId as
     | number
     | undefined;
+
+  // Phase 118 (ZLGND-V123-06): the BOUND map's live zoom, read from the store the map publishes
+  // into (keyed by widget.id). Primitive `number | undefined` selector per this file's documented
+  // subscription discipline — never a whole-object selector, which would re-render this tile on
+  // unrelated store writes.
+  //
+  // `undefined` here is the FOURTH state and it needs no UI of its own: the binding is valid
+  // (isOrphan stays false) but that map is not currently mounted. This store (imported above)
+  // has no code path that leaves a stale entry — clear() deletes on unmount, reset() wipes on
+  // dashboard-switch and logout — so undefined always means "genuinely unknown", never
+  // "possibly outdated".
+  // Passing it straight through to resolveLegendLayers makes this degrade through the SAME path as
+  // "no range configured": zoomActive stays undefined and the panel renders exactly as it does
+  // today. Do NOT add a "zoom unavailable" banner or fold this into the orphan UI — the locked
+  // decision is explicitly to show nothing new.
+  const currentZoom = useMapCurrentViewStore((s) =>
+    sourceMapWidgetId === undefined ? undefined : s.views[sourceMapWidgetId]?.zoom,
+  );
 
   // v1.14 fix: read OVERLAY-MERGED layers, exactly like MapChartRenderer.effectiveLayers.
   // Previously this read the raw store via a primitive legendKey and IGNORED the v1.11
@@ -89,7 +108,7 @@ export default function LegendRenderer({
 
   const resolvedLegendLayers = useMemo<ResolvedLegendLayer[]>(() => {
     if (isOrphan) return [];
-    const base = resolveLegendLayers(effectiveLayers, includedLayerIds);
+    const base = resolveLegendLayers(effectiveLayers, includedLayerIds, currentZoom);
     // Enrich each entry with dv-materialization status (read imperatively from the store).
     // dynamicViewVersion above is the reactive trigger that fires this useMemo.
     const dvViews = useDynamicViewStore.getState().views;
@@ -102,8 +121,9 @@ export default function LegendRenderer({
     });
     // effectiveLayers is the (overlay-merged) read-trigger; includedLayerIds is the filter
     // trigger; dynamicViewVersion is the dv-state re-render trigger; isOrphan gates render.
+    // Phase 118: the live zoom is now a recomputation trigger, so zoom-activity updates live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveLayers, includedLayerIds, isOrphan, dynamicViewVersion]);
+  }, [effectiveLayers, includedLayerIds, isOrphan, dynamicViewVersion, currentZoom]);
 
   if (isOrphan) {
     return (

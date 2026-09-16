@@ -77,6 +77,7 @@ import { useDashboardContextOptional } from "../DashboardContext";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { isViewExpired } from "../../lib/viewExpiry";
 import { resolveLayerViewName } from "../../lib/resolveLayerViewName";
+import { toOlZoomBounds, isLayerActiveAtZoom } from "../../lib/zoomRangeBounds";
 import { useToastStore } from "../../store/toast";
 import { buildWmsParams, type MapWidgetConfig, coalesceTrackConfig } from "../../lib/wmsUrlBuilder";
 import { isLayerEffectivelyVisible } from "../../lib/layerVisibility";
@@ -186,14 +187,9 @@ export function isConfigComplete(config: Partial<MapWidgetConfig>): boolean {
 /**
  * Apply an inclusive [minZoom, maxZoom] range to an OL ImageLayer.
  *
- * Wire format (layer.config) uses INCLUSIVE semantics — `[3, 10]` means
- * "show at zoom 3, 4, 5, ..., 10". OL's BaseLayer convention is:
- *   - minZoom is EXCLUSIVE (visible when view.zoom > minZoom)
- *   - maxZoom is INCLUSIVE (visible when view.zoom <= maxZoom)
- * Translation: internalMin = userMin - 1, internalMax = userMax.
- *
- * `undefined` values on the wire mean "no constraint" → fall back to OL's
- * defaults (-Infinity / Infinity) so the layer renders at every zoom.
+ * The inclusive-wire-to-OL-bounds translation rules now live in the
+ * extracted zoom-range helper (lib) — see that module's doc comment for the
+ * full semantics.
  *
  * Idempotent: skips setMinZoom / setMaxZoom when the current OL value
  * already matches the target (avoids unnecessary OL renderFrame triggers
@@ -203,12 +199,11 @@ export function applyZoomRangeToLayer(
   imageLayer: import("ol/layer/Image").default<any>,
   config: { minZoom?: number; maxZoom?: number },
 ): void {
-  // INCLUSIVE userMin → EXCLUSIVE internal: subtract 1. When undefined → -Infinity.
-  const nextMinZoom =
-    config.minZoom === undefined ? -Infinity : config.minZoom - 1;
-  // INCLUSIVE userMax → INCLUSIVE internal: pass through. When undefined → Infinity.
-  const nextMaxZoom =
-    config.maxZoom === undefined ? Infinity : config.maxZoom;
+  // Phase 118 (ZLGND-V123-05): the inclusive→OL translation now lives in the
+  // extracted zoom-range helper module (imported above) so the legend panel
+  // and the info-click gate derive the SAME answer. Do not re-inline the
+  // `- 1` here.
+  const { minZoom: nextMinZoom, maxZoom: nextMaxZoom } = toOlZoomBounds(config);
   if (imageLayer.getMinZoom() !== nextMinZoom) {
     imageLayer.setMinZoom(nextMinZoom);
   }
@@ -695,6 +690,17 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // widgetConfig is Record<string,unknown>; includedLayerIds is NOT a MapWidgetConfig field —
   // it's a top-level widget config field read from the raw blob.
   const includedLayerIdsForLegend = widgetConfig.includedLayerIds as number[] | undefined;
+  // Phase 118 (ZLGND-V123-04): the in-map legend's live zoom. This widget already PUBLISHES
+  // its view into mapCurrentViewStore on mount + every moveend (Effect 9c, ~line 2300); this
+  // reads it back so the legend can mark which layers OL is actually drawing.
+  // A primitive `number | undefined` selector, matching the MapConfigPanel.tsx:160 precedent and
+  // this file's convention of primitive useMemo deps (legendKey / filterVersion / shapesKey).
+  // Cheap: the store only changes on moveend, never continuously during a drag.
+  // NEVER replace this with mapRef.current.getView().getZoom() — a ref read is not reactive and
+  // would freeze the legend at whatever zoom happened to be current on some arbitrary render.
+  const currentZoomForLegend = useMapCurrentViewStore(
+    (s) => s.views[widget.id]?.zoom,
+  );
   const resolvedLegendLayers = useMemo<ResolvedLegendLayer[]>(() => {
     // GAP-61-01 fix: resolve from effectiveLayers (overlay-merged) so the legend's
     // renderMode/cb_config reflect the active radio-group overlay, matching the WMS
@@ -702,6 +708,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     const base = resolveLegendLayers(
       effectiveLayers,
       includedLayerIdsForLegend,
+      currentZoomForLegend,
     );
     // Phase 44 follow-up: enrich each entry with dv-materialization status so the
     // legend panel can show inline "Over threshold" / "Materializing…" / "Error"
@@ -777,8 +784,9 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // dynamicViewsKey is the dv-state re-render trigger.
     // filterVersion drives re-computation when filters change (already subscribed above).
     // shapesKey drives re-computation when spatial shapes change (already subscribed above).
+    // Phase 118: the live zoom is now a recomputation trigger, so zoom-activity updates live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legendKey, includedLayerIdsForLegend, dynamicViewsKey, filterVersion, shapesKey]);
+  }, [legendKey, includedLayerIdsForLegend, dynamicViewsKey, filterVersion, shapesKey, currentZoomForLegend]);
 
   // v1.7 Phase 41 (PANEL-V17-06): session-only collapse state. NOT persisted to MapWidgetConfig.
   const [legendCollapsed, setLegendCollapsed] = useState<boolean>(false);
@@ -1784,17 +1792,23 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       // tile rendered for that layer) but still receives records from a layer
       // they can't see. Skipping is silent (NOT errorCount++) because the
       // layer's absence at this zoom is operator-configured, not an error
-      // condition. Wire format is INCLUSIVE on both bounds (mirrors
-      // ZoomRangeSlider + applyZoomRangeToLayer semantics).
+      // condition. The single source of truth for this translation is the
+      // extracted zoom-range helper module (imported above).
       const currentZoom = view.getZoom();
       const isLayerVisibleAtCurrentZoom = (
         layer: DashboardLayerDto,
       ): boolean => {
         if (currentZoom === undefined) return false; // defensive — no info-query when zoom is unknown
-        const cfg = layer.config as Partial<MapWidgetConfig>;
-        const min = cfg.minZoom ?? -Infinity;
-        const max = cfg.maxZoom ?? Infinity;
-        return currentZoom >= min && currentZoom <= max;
+        // Phase 118 (ZLGND-V123-05, operator-approved behaviour change): this gate used to
+        // re-implement the range check with RAW inclusive bounds (`currentZoom >= min`),
+        // which disagreed with applyZoomRangeToLayer at fractional zoom — with minZoom 3, OL
+        // DREW the layer at zoom 2.9 while this gate suppressed info-clicks on it. It now
+        // derives from the same shared predicate, so "visible" here means exactly "OL is
+        // drawing it". Regression coverage: P5z4 / P5z5 in MapChartRenderer.spec.tsx.
+        return isLayerActiveAtZoom(
+          layer.config as Partial<MapWidgetConfig>,
+          currentZoom,
+        );
       };
 
       for (const layer of eligibleLayers) {

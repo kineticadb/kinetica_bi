@@ -2461,6 +2461,83 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
     expect(_infoQueryMock).toHaveBeenCalledTimes(1);
   });
 
+  // Phase 118 (ZLGND-V123-05, operator-approved fix to the pre-existing
+  // isLayerVisibleAtCurrentZoom divergence): the info-click gate previously
+  // re-implemented the range check with raw inclusive bounds, disagreeing
+  // with what OL actually draws at fractional zoom. Do not "restore" the old
+  // formula — see MapChartRenderer.tsx's info-click gate comment.
+  it("P5z4: fractional zoom 2.9 with minZoom 3 → OL is drawing the layer, info-click now reaches it", async () => {
+    const layer = makeLayer({
+      id: 1,
+      position: 0,
+      table_id: 10,
+      info_enabled: 1,
+      config: {
+        spatialMode: "latlon",
+        latColumn: "lat",
+        lonColumn: "lon",
+        renderMode: "raster",
+        visible: true,
+        POINTOPACITY: 100,
+        minZoom: 3,
+        maxZoom: 10,
+      },
+    });
+    _layersState.layers = [layer];
+    _infoQueryMock.mockResolvedValueOnce({
+      rows: [{ id: 1 }],
+      columns: ["id"],
+      hasMore: false,
+      page: 0,
+    });
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    // Fractional zoom 2.9 with minZoom 3: OL's translated bound is (2, 10], so 2.9 > 2 → the
+    // map IS drawing this layer. Before Phase 118 the info-click gate used the raw inclusive
+    // bound (2.9 >= 3 → false) and silently swallowed the click.
+    lastMockView.getZoom.mockReturnValue(2.9);
+    await act(async () => {
+      await capturedSingleclickHandler!({ coordinate: [0, 0] });
+    });
+    expect(_infoQueryMock).toHaveBeenCalledTimes(1);
+    expect(_infoQueryMock.mock.calls[0][0].layerId).toBe(1);
+  });
+
+  // Phase 118 (ZLGND-V123-05, operator-approved fix to the pre-existing
+  // isLayerVisibleAtCurrentZoom divergence): proves the fix narrows to the
+  // genuine (minZoom-1, minZoom) fractional window rather than disabling
+  // the gate entirely.
+  it("P5z5: zoom 1.5 with minZoom 3 → still outside range, info-click gate still rejects", async () => {
+    const layer = makeLayer({
+      id: 1,
+      position: 0,
+      table_id: 10,
+      info_enabled: 1,
+      config: {
+        spatialMode: "latlon",
+        latColumn: "lat",
+        lonColumn: "lon",
+        renderMode: "raster",
+        visible: true,
+        POINTOPACITY: 100,
+        minZoom: 3,
+        maxZoom: 10,
+      },
+    });
+    _layersState.layers = [layer];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    lastMockView.getZoom.mockReturnValue(1.5);
+    await act(async () => {
+      await capturedSingleclickHandler!({ coordinate: [0, 0] });
+    });
+    expect(_infoQueryMock).not.toHaveBeenCalled();
+  });
+
   it("P5: info_enabled=0 layer excluded → not queried", async () => {
     const enabled = makeEligibleLayer(1, 0, 10);
     const disabled = makeLayer({
@@ -5257,6 +5334,91 @@ describe("LayersLegendPanel mount (Phase 41)", () => {
     expect(src).toMatch(/\.join\("\|"\)/);
     // Forbid the pre-fix store-selector form (legendKey must no longer read the persisted store).
     expect(src).not.toContain("const legendKey = useDashboardLayersStore");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  LayersLegendPanel zoom activity (Phase 118 / ZLGND-V123-04)        */
+/* ------------------------------------------------------------------ */
+
+describe("LayersLegendPanel zoom activity (Phase 118 / ZLGND-V123-04)", () => {
+  beforeEach(() => {
+    _layersState.layers = [];
+    lastMockView = null;
+    capturedMoveendHandlers = [];
+    _currentViewState.views = {};
+    _currentViewState.publish.mockClear();
+    vi.clearAllMocks();
+  });
+
+  // The in-map legend's zoom-inactive state tracks the LIVE zoom read back from
+  // mapCurrentViewStore, not whatever zoom happened to be current at mount.
+  it("ZLM1: the panel's zoom-inactive class + range chip follow the live zoom, not a mount-time snapshot", () => {
+    _layersState.layers = [
+      makeLayer({
+        id: 1,
+        table_id: 11,
+        config: { renderMode: "raster", visible: true, minZoom: 3, maxZoom: 10 },
+      }),
+    ];
+    const { rerender } = render(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    // Effect 9c published the mock's default zoom (10) on mount, but this harness's
+    // mapCurrentViewStore mock is a plain function with no zustand subscription (see the
+    // HONESTY NOTE below) — an explicit rerender is required to re-read the store before
+    // the mount-time value becomes visible in this component's output.
+    rerender(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    let block = document.querySelector(".layers-legend-panel-layer-block");
+    expect(block).not.toBeNull();
+    expect(
+      block!.classList.contains("layers-legend-panel-layer-block--zoom-inactive"),
+    ).toBe(false);
+    expect(block!.textContent).toContain("zoom 3–10");
+
+    // HONESTY NOTE — the mapCurrentViewStore mock in this harness is
+    // `(selector) => selector(_currentViewState)`: a plain function with NO zustand
+    // subscription. A store write therefore does NOT schedule a React re-render. This test
+    // drives the re-read with an explicit rerender(...) after fireAllMoveend(). That proves
+    // the DATA PATH end to end (moveend -> publish -> store -> selector ->
+    // resolveLegendLayers -> DOM) and proves the value is not frozen at mount — but it does
+    // NOT prove zustand auto-re-renders on the real store write. Do not "strengthen" this
+    // test into that claim. The auto-re-render half of ZLGND-V123-04 is covered
+    // structurally by ZLM2 below and for real by UAT check UAT-118-C in Task 3.
+    lastMockView.getZoom.mockReturnValue(10.5);
+    act(() => {
+      fireAllMoveend();
+    });
+    rerender(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    block = document.querySelector(".layers-legend-panel-layer-block");
+    expect(block).not.toBeNull();
+    expect(
+      block!.classList.contains("layers-legend-panel-layer-block--zoom-inactive"),
+    ).toBe(true);
+  });
+
+  // ZLM2 (structural): the legend's zoom must come from a reactive store selector, never
+  // an imperative mapRef.current.getView().getZoom() read inside the memo body — the
+  // anti-pattern that would freeze the legend's zoom at whatever it was on some arbitrary
+  // render.
+  it("ZLM2: resolvedLegendLayers derives zoom from a reactive mapCurrentViewStore selector, never an imperative view.getZoom() read", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "MapChartRenderer.tsx"),
+      "utf-8",
+    );
+    expect(/useMapCurrentViewStore\(\s*\(s\)\s*=>/.test(src)).toBe(true);
+    const memoStart = src.indexOf("const resolvedLegendLayers = useMemo");
+    expect(memoStart).toBeGreaterThan(-1);
+    const depArrayMarker = src.indexOf("}, [legendKey", memoStart);
+    expect(depArrayMarker).toBeGreaterThan(memoStart);
+    const memoBody = src.slice(memoStart, depArrayMarker);
+    expect(memoBody).not.toContain("getView().getZoom()");
   });
 });
 

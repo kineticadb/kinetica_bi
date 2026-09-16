@@ -19,6 +19,16 @@
  *
  * <other> value is rendered verbatim (no titlecasing) per Phase 39 spec lock.
  * Label fallback: if break.label is empty/undefined, shows String(break.value).
+ *
+ * Phase 118 (ZLGND-V123-01/02/03/06/07): a THIRD per-layer visual state — zoom-inactive —
+ * distinct from `hidden` (eye-off) and `--stale` (dv not materialized). The three are
+ * mutually exclusive by JS PRECEDENCE, computed once per layer (`showZoomInactive`),
+ * NOT by CSS cascade/source order:
+ *   hidden (operator chose it)  >  stale (dv cannot render)  >  zoom-inactive (map zoom)
+ * A layer with no configured range, or a configured range but unknown live zoom
+ * (`zoomActive === undefined`), renders EXACTLY as before this phase — zero new markup.
+ * The configured-range chip (reused `.layers-legend-panel-mode-chip`) renders independently
+ * whenever the range is known AND the zoom is known, regardless of active/inactive.
  */
 
 import type { LegendPanelCorner } from "../lib/legendPanelConfig";
@@ -129,6 +139,19 @@ function formatRangeBound(n: number): string {
 }
 
 /**
+ * Phase 118 (ZLGND-V123-03): render a layer's CONFIGURED zoom range for the legend chip.
+ * Both wire bounds are INCLUSIVE (see lib/zoomRangeBounds.ts), so an open bound reads
+ * ≥ / ≤ — deliberately NOT breakDisplayText's `<`, whose upper bound is exclusive.
+ * Callers only invoke this when at least one bound is defined.
+ */
+function zoomRangeChipText(range: { minZoom?: number; maxZoom?: number }): string {
+  const { minZoom, maxZoom } = range;
+  if (minZoom !== undefined && maxZoom !== undefined) return `zoom ${minZoom}–${maxZoom}`;
+  if (minZoom !== undefined) return `zoom ≥ ${minZoom}`;
+  return `zoom ≤ ${maxZoom}`;
+}
+
+/**
  * Phase 44 follow-up: map dv-materialization status → inline legend-badge label.
  * Returns null for "materialized" (no badge — the normal case).
  * Operator-facing copy locked here so screen reader + visual stay in sync.
@@ -209,7 +232,7 @@ export function LayersLegendPanel({
               No layers configured on this widget.
             </div>
           ) : (
-            layers.map(({ layer, visible, dvStatus, filterSummary }) => {
+            layers.map(({ layer, visible, dvStatus, filterSummary, zoomRange, zoomActive }) => {
               const renderMode =
                 ((layer.config as { renderMode?: string })?.renderMode) ?? "raster";
               const cb = coalesceCbConfig(layer.cb_config);
@@ -236,10 +259,22 @@ export function LayersLegendPanel({
               const badgeLabel = dvStatus ? dvStatusBadgeLabel(dvStatus) : null;
               const stale = dvStatus !== undefined && dvStatus !== "materialized";
 
+              // Phase 118 (ZLGND-V123-01/02) — D1: precedence is computed HERE in JS, not left to
+              // the global.css cascade. .hidden and --stale already resolve against each other by
+              // source order alone (same specificity, an accident not a design); a third
+              // independent boolean modifier would compound that. Mutual exclusion also makes
+              // "zoom-inactive must not look like eye-off" true by construction.
+              //   hidden (operator chose it)  >  stale (dv cannot render)  >  zoom-inactive
+              const showZoomInactive = visible && !stale && zoomActive === false;
+              // D2: the chip shows whenever the range is configured AND the live zoom is known —
+              // active or not. zoomActive === undefined covers BOTH "no range" (ZLGND-07) and
+              // "zoom unavailable" (ZLGND-06) with one condition, so neither needs its own branch.
+              const showZoomRangeChip = zoomActive !== undefined && zoomRange !== undefined;
+
               return (
                 <div
                   key={layer.id}
-                  className={`layers-legend-panel-layer-block${visible ? "" : " hidden"}${stale ? " layers-legend-panel-layer-block--stale" : ""}`}
+                  className={`layers-legend-panel-layer-block${visible ? "" : " hidden"}${stale ? " layers-legend-panel-layer-block--stale" : ""}${showZoomInactive ? " layers-legend-panel-layer-block--zoom-inactive" : ""}`}
                 >
                   {/* Per-layer header: eye toggle (optional) + fold chevron (classbreak only) + name + dv-status badge */}
                   <div className="layers-legend-panel-layer">
@@ -291,6 +326,18 @@ export function LayersLegendPanel({
                       </button>
                     )}
                     <span className="layers-legend-panel-layer-name">{layerName}</span>
+                    {showZoomRangeChip && (
+                      <span
+                        className="layers-legend-panel-mode-chip"
+                        title={
+                          zoomActive
+                            ? "Drawing at the current zoom"
+                            : "Not drawing — zoom into this range to show this layer"
+                        }
+                      >
+                        {zoomRangeChipText(zoomRange!)}
+                      </span>
+                    )}
                     {badgeLabel !== null && (
                       <span
                         className={`layers-legend-panel-dv-badge layers-legend-panel-dv-badge--${dvStatus}`}
