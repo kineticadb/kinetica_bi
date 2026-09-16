@@ -2461,6 +2461,83 @@ describe("POPUP-V14 — info popup integration (Phase 21)", () => {
     expect(_infoQueryMock).toHaveBeenCalledTimes(1);
   });
 
+  // Phase 118 (ZLGND-V123-05, operator-approved fix to the pre-existing
+  // isLayerVisibleAtCurrentZoom divergence): the info-click gate previously
+  // re-implemented the range check with raw inclusive bounds, disagreeing
+  // with what OL actually draws at fractional zoom. Do not "restore" the old
+  // formula — see MapChartRenderer.tsx's info-click gate comment.
+  it("P5z4: fractional zoom 2.9 with minZoom 3 → OL is drawing the layer, info-click now reaches it", async () => {
+    const layer = makeLayer({
+      id: 1,
+      position: 0,
+      table_id: 10,
+      info_enabled: 1,
+      config: {
+        spatialMode: "latlon",
+        latColumn: "lat",
+        lonColumn: "lon",
+        renderMode: "raster",
+        visible: true,
+        POINTOPACITY: 100,
+        minZoom: 3,
+        maxZoom: 10,
+      },
+    });
+    _layersState.layers = [layer];
+    _infoQueryMock.mockResolvedValueOnce({
+      rows: [{ id: 1 }],
+      columns: ["id"],
+      hasMore: false,
+      page: 0,
+    });
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    // Fractional zoom 2.9 with minZoom 3: OL's translated bound is (2, 10], so 2.9 > 2 → the
+    // map IS drawing this layer. Before Phase 118 the info-click gate used the raw inclusive
+    // bound (2.9 >= 3 → false) and silently swallowed the click.
+    lastMockView.getZoom.mockReturnValue(2.9);
+    await act(async () => {
+      await capturedSingleclickHandler!({ coordinate: [0, 0] });
+    });
+    expect(_infoQueryMock).toHaveBeenCalledTimes(1);
+    expect(_infoQueryMock.mock.calls[0][0].layerId).toBe(1);
+  });
+
+  // Phase 118 (ZLGND-V123-05, operator-approved fix to the pre-existing
+  // isLayerVisibleAtCurrentZoom divergence): proves the fix narrows to the
+  // genuine (minZoom-1, minZoom) fractional window rather than disabling
+  // the gate entirely.
+  it("P5z5: zoom 1.5 with minZoom 3 → still outside range, info-click gate still rejects", async () => {
+    const layer = makeLayer({
+      id: 1,
+      position: 0,
+      table_id: 10,
+      info_enabled: 1,
+      config: {
+        spatialMode: "latlon",
+        latColumn: "lat",
+        lonColumn: "lon",
+        renderMode: "raster",
+        visible: true,
+        POINTOPACITY: 100,
+        minZoom: 3,
+        maxZoom: 10,
+      },
+    });
+    _layersState.layers = [layer];
+
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    lastMockView.getZoom.mockReturnValue(1.5);
+    await act(async () => {
+      await capturedSingleclickHandler!({ coordinate: [0, 0] });
+    });
+    expect(_infoQueryMock).not.toHaveBeenCalled();
+  });
+
   it("P5: info_enabled=0 layer excluded → not queried", async () => {
     const enabled = makeEligibleLayer(1, 0, 10);
     const disabled = makeLayer({
