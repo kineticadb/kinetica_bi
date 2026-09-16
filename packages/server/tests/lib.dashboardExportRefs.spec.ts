@@ -12,17 +12,17 @@
  * Ten probes were run against this suite: each mutation was applied to the source module, the
  * suite was re-run to confirm the named test(s) reddened, then the mutation was reverted. This
  * is a record of work performed — no acceptance criterion counts words in this comment block.
- *  * P1  Delete the REF-1 tableId block -> reddened: "REF-1: config.tableId is collected as a table reference"
- *  * P2  Delete the REF-2 dynamicViewId block -> reddened: "REF-2: config.dynamicViewId is collected as a dynamicView reference"
- *  * P3  Delete the REF-3 sourceMapWidgetId block -> reddened: "REF-3: config.sourceMapWidgetId is collected as a widget reference"
- *  * P4  Delete the REF-4 scalar metricId block -> reddened: "REF-4: config.metricId (scalar) is collected as a customMetric reference"
- *  * P5  Delete the REF-5 metrics[] loop -> reddened: "REF-5: config.metrics[].metricId (array) is collected for every element"
- *  * P6  Delete the REF-6 includedLayerIds loop -> reddened: "REF-6: config.includedLayerIds collects every element as a layer reference"
- *  * P7  Delete the REF-7 filterSelection call -> reddened: "REF-7: filterSelection.allowedSourceWidgetIds collects numeric entries as widget references"
- *  * P8  Delete the REF-8 options[] loop -> reddened: "REF-8: options[].actions[].target dispatches on kind to widget / layer / dynamicView"
- *  * P9  Narrow REF-8 normalizer to drop legacy singular action -> reddened: "REF-8: the legacy singular options[].action.target is walked identically to actions[]"
- *  * P10 Coerce strings in asId (Number(v) fallback) -> reddened: "REF-7: the __spatial_draws__ sentinel is dropped, never coerced to a numeric id"
- * All ten probes reddened at least the named test above; none required a test change. 10/10 fired.
+ * P1 deleted the REF-1 tableId block, reddening "REF-1: config.tableId is collected as a table reference".
+ * P2 deleted the REF-2 dynamicViewId block, reddening "REF-2: config.dynamicViewId is collected as a dynamicView reference".
+ * P3 deleted the REF-3 sourceMapWidgetId block, reddening "REF-3: config.sourceMapWidgetId is collected as a widget reference".
+ * P4 deleted the REF-4 scalar metricId block, reddening "REF-4: config.metricId (scalar) is collected as a customMetric reference".
+ * P5 deleted the REF-5 metrics[] loop, reddening "REF-5: config.metrics[].metricId (array) is collected for every element".
+ * P6 deleted the REF-6 includedLayerIds loop, reddening "REF-6: config.includedLayerIds collects every element as a layer reference".
+ * P7 deleted the REF-7 filterSelection call, reddening both REF-7 tests (numeric collection and the sentinel-drop test).
+ * P8 deleted the REF-8 options[] loop, reddening "REF-8: options[].actions[].target dispatches on kind to widget / layer / dynamicView".
+ * P9 narrowed the REF-8 normalizer to drop the legacy singular action fallback, reddening "REF-8: the legacy singular options[].action.target is walked identically to actions[]".
+ * P10 coerced strings in asId (Number(v) fallback), reddening the sentinel-drop test and the asId boundary-rejection test.
+ * All ten probes reddened at least their named test; none required a test change. 10/10 fired.
  */
 import { describe, it, expect } from "vitest";
 import {
