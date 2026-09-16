@@ -13,6 +13,7 @@
  */
 
 import type { DashboardLayerDto } from "../api/client";
+import { isLayerActiveAtZoom } from "./zoomRangeBounds";
 
 /**
  * Phase 44 follow-up: dynamic-view materialization state for layers bound to a dv.
@@ -41,6 +42,22 @@ export type ResolvedLegendLayer = {
    * undefined = no filter computation performed (e.g. no active filters at all).
    */
   filterSummary?: { appliedCount: number; totalCount: number };
+  /**
+   * Phase 118 (ZLGND-V123-03): the layer's CONFIGURED wire range, present iff
+   * layer.config has minZoom OR maxZoom. Raw inclusive wire values — NOT the
+   * translated OL bounds. Consumers render this as-is in the range chip.
+   */
+  zoomRange?: { minZoom?: number; maxZoom?: number };
+  /**
+   * Phase 118 (ZLGND-V123-05/06/07): THREE-state, never a boolean-with-a-default.
+   *   undefined → unknown: either no range is configured, or the caller had no live
+   *               zoom to pass (map not mounted). BOTH mean "render exactly as today".
+   *   true/false → known, computed by the one shared predicate in lib/zoomRangeBounds.
+   * NEVER coerce unknown to false: that would dim every zoom-limited layer in the
+   * standalone Legend widget the moment its source map isn't mounted — the
+   * "confidently wrong panel" failure this phase exists to prevent.
+   */
+  zoomActive?: boolean;
 };
 
 /**
@@ -54,13 +71,27 @@ export type ResolvedLegendLayer = {
 export function resolveLegendLayers(
   storeLayers: DashboardLayerDto[],
   includedLayerIds: number[] | undefined,
+  /**
+   * Phase 118: the bound map's LIVE fractional OL zoom, or undefined when the caller
+   * has none (LegendRenderer whose source map isn't mounted). Never round it.
+   */
+  zoom?: number,
 ): ResolvedLegendLayer[] {
   const filtered =
     includedLayerIds && includedLayerIds.length > 0
       ? storeLayers.filter((l) => includedLayerIds.includes(l.id))
       : storeLayers;
-  return filtered.map((layer) => ({
-    layer,
-    visible: (layer.config as { visible?: boolean })?.visible !== false,
-  }));
+  return filtered.map((layer) => {
+    const cfg = layer.config as { visible?: boolean; minZoom?: number; maxZoom?: number };
+    const hasRange = cfg?.minZoom !== undefined || cfg?.maxZoom !== undefined;
+    return {
+      layer,
+      visible: cfg?.visible !== false,
+      zoomRange: hasRange ? { minZoom: cfg.minZoom, maxZoom: cfg.maxZoom } : undefined,
+      zoomActive:
+        hasRange && zoom !== undefined
+          ? isLayerActiveAtZoom({ minZoom: cfg.minZoom, maxZoom: cfg.maxZoom }, zoom)
+          : undefined,
+    };
+  });
 }
