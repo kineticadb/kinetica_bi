@@ -690,6 +690,17 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // widgetConfig is Record<string,unknown>; includedLayerIds is NOT a MapWidgetConfig field —
   // it's a top-level widget config field read from the raw blob.
   const includedLayerIdsForLegend = widgetConfig.includedLayerIds as number[] | undefined;
+  // Phase 118 (ZLGND-V123-04): the in-map legend's live zoom. This widget already PUBLISHES
+  // its view into mapCurrentViewStore on mount + every moveend (Effect 9c, ~line 2300); this
+  // reads it back so the legend can mark which layers OL is actually drawing.
+  // A primitive `number | undefined` selector, matching the MapConfigPanel.tsx:160 precedent and
+  // this file's convention of primitive useMemo deps (legendKey / filterVersion / shapesKey).
+  // Cheap: the store only changes on moveend, never continuously during a drag.
+  // NEVER replace this with mapRef.current.getView().getZoom() — a ref read is not reactive and
+  // would freeze the legend at whatever zoom happened to be current on some arbitrary render.
+  const currentZoomForLegend = useMapCurrentViewStore(
+    (s) => s.views[widget.id]?.zoom,
+  );
   const resolvedLegendLayers = useMemo<ResolvedLegendLayer[]>(() => {
     // GAP-61-01 fix: resolve from effectiveLayers (overlay-merged) so the legend's
     // renderMode/cb_config reflect the active radio-group overlay, matching the WMS
@@ -697,6 +708,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     const base = resolveLegendLayers(
       effectiveLayers,
       includedLayerIdsForLegend,
+      currentZoomForLegend,
     );
     // Phase 44 follow-up: enrich each entry with dv-materialization status so the
     // legend panel can show inline "Over threshold" / "Materializing…" / "Error"
@@ -772,8 +784,9 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // dynamicViewsKey is the dv-state re-render trigger.
     // filterVersion drives re-computation when filters change (already subscribed above).
     // shapesKey drives re-computation when spatial shapes change (already subscribed above).
+    // Phase 118: the live zoom is now a recomputation trigger, so zoom-activity updates live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legendKey, includedLayerIdsForLegend, dynamicViewsKey, filterVersion, shapesKey]);
+  }, [legendKey, includedLayerIdsForLegend, dynamicViewsKey, filterVersion, shapesKey, currentZoomForLegend]);
 
   // v1.7 Phase 41 (PANEL-V17-06): session-only collapse state. NOT persisted to MapWidgetConfig.
   const [legendCollapsed, setLegendCollapsed] = useState<boolean>(false);

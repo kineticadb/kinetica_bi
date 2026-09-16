@@ -5338,6 +5338,91 @@ describe("LayersLegendPanel mount (Phase 41)", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  LayersLegendPanel zoom activity (Phase 118 / ZLGND-V123-04)        */
+/* ------------------------------------------------------------------ */
+
+describe("LayersLegendPanel zoom activity (Phase 118 / ZLGND-V123-04)", () => {
+  beforeEach(() => {
+    _layersState.layers = [];
+    lastMockView = null;
+    capturedMoveendHandlers = [];
+    _currentViewState.views = {};
+    _currentViewState.publish.mockClear();
+    vi.clearAllMocks();
+  });
+
+  // The in-map legend's zoom-inactive state tracks the LIVE zoom read back from
+  // mapCurrentViewStore, not whatever zoom happened to be current at mount.
+  it("ZLM1: the panel's zoom-inactive class + range chip follow the live zoom, not a mount-time snapshot", () => {
+    _layersState.layers = [
+      makeLayer({
+        id: 1,
+        table_id: 11,
+        config: { renderMode: "raster", visible: true, minZoom: 3, maxZoom: 10 },
+      }),
+    ];
+    const { rerender } = render(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    // Effect 9c published the mock's default zoom (10) on mount, but this harness's
+    // mapCurrentViewStore mock is a plain function with no zustand subscription (see the
+    // HONESTY NOTE below) — an explicit rerender is required to re-read the store before
+    // the mount-time value becomes visible in this component's output.
+    rerender(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    let block = document.querySelector(".layers-legend-panel-layer-block");
+    expect(block).not.toBeNull();
+    expect(
+      block!.classList.contains("layers-legend-panel-layer-block--zoom-inactive"),
+    ).toBe(false);
+    expect(block!.textContent).toContain("zoom 3–10");
+
+    // HONESTY NOTE — the mapCurrentViewStore mock in this harness is
+    // `(selector) => selector(_currentViewState)`: a plain function with NO zustand
+    // subscription. A store write therefore does NOT schedule a React re-render. This test
+    // drives the re-read with an explicit rerender(...) after fireAllMoveend(). That proves
+    // the DATA PATH end to end (moveend -> publish -> store -> selector ->
+    // resolveLegendLayers -> DOM) and proves the value is not frozen at mount — but it does
+    // NOT prove zustand auto-re-renders on the real store write. Do not "strengthen" this
+    // test into that claim. The auto-re-render half of ZLGND-V123-04 is covered
+    // structurally by ZLM2 below and for real by UAT check UAT-118-C in Task 3.
+    lastMockView.getZoom.mockReturnValue(10.5);
+    act(() => {
+      fireAllMoveend();
+    });
+    rerender(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    block = document.querySelector(".layers-legend-panel-layer-block");
+    expect(block).not.toBeNull();
+    expect(
+      block!.classList.contains("layers-legend-panel-layer-block--zoom-inactive"),
+    ).toBe(true);
+  });
+
+  // ZLM2 (structural): the legend's zoom must come from a reactive store selector, never
+  // an imperative mapRef.current.getView().getZoom() read inside the memo body — the
+  // anti-pattern that would freeze the legend's zoom at whatever it was on some arbitrary
+  // render.
+  it("ZLM2: resolvedLegendLayers derives zoom from a reactive mapCurrentViewStore selector, never an imperative view.getZoom() read", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "MapChartRenderer.tsx"),
+      "utf-8",
+    );
+    expect(/useMapCurrentViewStore\(\s*\(s\)\s*=>/.test(src)).toBe(true);
+    const memoStart = src.indexOf("const resolvedLegendLayers = useMemo");
+    expect(memoStart).toBeGreaterThan(-1);
+    const depArrayMarker = src.indexOf("}, [legendKey", memoStart);
+    expect(depArrayMarker).toBeGreaterThan(memoStart);
+    const memoBody = src.slice(memoStart, depArrayMarker);
+    expect(memoBody).not.toContain("getView().getZoom()");
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  GAP-54-01 / TRACKFIX-V19-01 — saved track layer renders            */
 /* ------------------------------------------------------------------ */
 
