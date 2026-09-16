@@ -3,7 +3,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 
 // ── CSS custom-property stub for jsdom ──────────────────────────────────────
 // jsdom does not parse CSS files, so getComputedStyle returns "" for custom
@@ -61,3 +61,6 @@ afterEach(() => {
   // every fake-timer spec sets vi.useFakeTimers() in a beforeEach, so this never strands them.
   vi.useRealTimers();
 });
+
+// EXPERIMENT 2026-09-16: RTL asyncUtilTimeout default is 1000ms; vitest testTimeout is 5000ms.
+configure({ asyncUtilTimeout: 5000 });

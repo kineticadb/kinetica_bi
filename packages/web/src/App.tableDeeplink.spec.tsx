@@ -185,7 +185,11 @@ describe("App table deep-link wiring (Phase 116 Plan 04)", () => {
     render(<App />);
     const banner = await screen.findByTestId("deep-link-table-banner");
     expect(banner.textContent).toContain(DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE);
-    expect(screen.getByTestId("page-datasets")).toBeInTheDocument();
+    // findBy, NOT getBy: the banner and the datasets page land in DIFFERENT React commits, so a
+    // synchronous query here passes only when the second commit happens to have flushed already.
+    // Under full-suite load it has not, which is what made this test fail 2/2 full runs while
+    // passing in isolation. See .planning/v123-flake-investigation-notes.md (defect 2).
+    expect(await screen.findByTestId("page-datasets")).toBeInTheDocument();
     expect(window.location.search).toBe("");
   });
 
