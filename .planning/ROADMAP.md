@@ -28,6 +28,35 @@
 - ✅ **v1.21 Dashboard Links & Map Default View** — Phases 111-116 (shipped 2026-09-14) — see `milestones/v1.21-ROADMAP.md`
 - ✅ **v1.22 Dashboard Settings Links** — Phase 117 (shipped 2026-09-15) — see `milestones/v1.22-ROADMAP.md`
 
+- 🚧 **v1.23 Zoom-Aware Layer Legend** — Phase 118 (in progress)
+
+---
+
+## 🚧 v1.23 Zoom-Aware Layer Legend (In Progress)
+
+**Milestone Goal:** The layers panel shows which layers are actually drawing on the map at the current zoom — and which are dimmed because the zoom moved past their configured range. Client-only; no server changes.
+
+## Phases
+
+- [ ] **Phase 118: Zoom-Aware Layer Legend** - The legend distinguishes drawing / zoom-inactive / eye-off, live as the operator zooms
+
+## Phase Details
+
+### Phase 118: Zoom-Aware Layer Legend
+**Goal**: The layers panel makes it obvious which layers are drawing at the current zoom, distinguishes zoom-inactive from operator-hidden, and shows the zoom range that would bring a dimmed layer back.
+**Depends on**: Phase 41 (`LayersLegendPanel`), Phase 42 (standalone Legend widget — a SECOND consumer), Phase 111 (`mapCurrentViewStore`, live zoom per widgetId)
+**Requirements**: ZLGND-V123-01, ZLGND-V123-02, ZLGND-V123-03, ZLGND-V123-04, ZLGND-V123-05, ZLGND-V123-06, ZLGND-V123-07
+**Canonical refs**: `packages/web/src/components/charts/MapChartRenderer.tsx` (:185-215 applyZoomRangeToLayer semantics), `packages/web/src/lib/resolveLegendLayers.ts`, `packages/web/src/components/charts/LegendRenderer.tsx`
+**Success Criteria** (what must be TRUE):
+  1. At a given zoom, the panel marks exactly the layers OL is actually drawing — verified against `applyZoomRangeToLayer`'s inclusive/exclusive translation, not a re-derived rule.
+  2. Zoom-inactive and eye-off are visually distinct from each other and from active.
+  3. A zoom-limited row shows its configured range.
+  4. Zooming updates the panel live, with no reload or re-open.
+  5. The standalone Legend widget shows the same indication for its bound map, and falls back to today's appearance when that map's live zoom is unavailable.
+  6. A layer with no configured range renders exactly as it does today.
+  7. No new hardcoded colour literal ships: new styling uses theme tokens and is verified by eye in BOTH themes (theme-guard exempts `global.css` from its hex scan — how Phase 114's light-mode defect shipped).
+**Plans**: TBD
+
 ---
 
 <!-- LAYOUT NOTE (2026-09-11): archived milestones live at the END of this file
