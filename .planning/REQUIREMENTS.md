@@ -23,7 +23,7 @@ of whether it is currently drawing. The panel therefore describes the *configura
 - [ ] **ZLGND-V123-02**: A layer that is not drawing because the current zoom is outside its configured range is visually distinct from one the operator has toggled off with the eye control — the two states must not look the same
 - [ ] **ZLGND-V123-03**: A zoom-limited layer shows its configured zoom range, so the operator can see what zoom would bring it back
 - [ ] **ZLGND-V123-04**: The indication updates live as the operator zooms, without a reload or a panel re-open
-- [x] **ZLGND-V123-05**: The panel's notion of "currently drawing" matches what OpenLayers actually renders, including the inclusive-vs-exclusive `minZoom` translation — the panel must never mark a layer active at a zoom where the map is not drawing it
+- [ ] **ZLGND-V123-05**: The panel's notion of "currently drawing" matches what OpenLayers actually renders, including the inclusive-vs-exclusive `minZoom` translation — the panel must never mark a layer active at a zoom where the map is not drawing it
 - [ ] **ZLGND-V123-06**: The standalone Legend widget (Phase 42) shows the same indication for the map widget it is bound to, and degrades gracefully to today's appearance when that map's live zoom is unavailable
 - [ ] **ZLGND-V123-07**: A layer with no configured zoom range continues to render exactly as it does today — no new styling, since it is always active
 
@@ -70,7 +70,7 @@ Acknowledged, deliberately not in v1.23.
 | ZLGND-V123-02 | Phase 118 | Pending |
 | ZLGND-V123-03 | Phase 118 | Pending |
 | ZLGND-V123-04 | Phase 118 | Pending |
-| ZLGND-V123-05 | Phase 118 | Complete |
+| ZLGND-V123-05 | Phase 118 | Pending (predicate + boundary table landed in 118-01 and proven by tests; the PANEL does not consume it until 118-02/03, and this project's convention is Complete = code + tests + operator UAT) |
 | ZLGND-V123-06 | Phase 118 | Pending |
 | ZLGND-V123-07 | Phase 118 | Pending |
 
