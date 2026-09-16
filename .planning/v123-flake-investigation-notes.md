@@ -167,3 +167,72 @@ whether either build went red.** Note the server job uses the set-based gate and
    `TD-V16-TEST-ISOLATION`.
 
 Prefer 1 (+2 if needed). Reach for 3 only for whatever remains genuinely unexplainable.
+
+---
+
+# CORRECTED FINDINGS — 2026-09-16, after testing the proposed fix
+
+## There are TWO distinct defects, not one. Both were masked as "flakiness".
+
+### Defect 1 — RTL's 1000 ms `asyncUtilTimeout` is too tight at full-suite scale — **FIX CONFIRMED**
+
+`setup.ts` never called `configure()`, so RTL's 1000 ms default governed every `findBy*`/`waitFor`
+suite-wide, while vitest's own `testTimeout` sits at 5000 ms — two budgets 5x apart, the tighter one
+belonging to the library nobody configured. At full-suite scale jsdom setup dominates (~1260 s
+aggregate), and sub-second renders exceed the 1 s window.
+
+**Evidence:** `DatasetsPage.spec.tsx > renders a 'Format columns' button` failed **4/4** full-suite runs
+before; **0/3** after adding `configure({ asyncUtilTimeout: 5000 })`. Passes 6/6 in isolation either way.
+
+**Bisection proved there is NO contaminating file** — every subset passed (1 file, +36 charts,
++14 root-half-1, +14 root-half-2); only the full 68-file components dir and the 175-file suite failed.
+The absence of a contaminator was itself the finding: it ruled out a state-leak hunt.
+
+### Defect 2 — synchronous `getBy*` asserting on content from a LATER React commit — **NOT FIXED**
+
+Exposed once defect 1 stopped masking it. `App.tableDeeplink.spec.tsx:186-188`:
+
+```js
+const banner = await screen.findByTestId("deep-link-table-banner");  // waits — commit N
+expect(banner.textContent).toContain(...);
+expect(screen.getByTestId("page-datasets")).toBeInTheDocument();     // SYNC — needs commit N+1
+```
+
+The banner and the page render in different commits. `getBy*` does not wait at all, so
+`asyncUtilTimeout` cannot help it. Under load the second commit has not landed when the sync
+assertion runs.
+
+**Evidence:** failed **2/2** confirmation runs after defect 1 was fixed (it had failed only 1/4 before,
+while defect 1 dominated).
+
+**Blast radius — CANDIDATES, not confirmed defects:** ~106 sites across 12 spec files match
+"sync `getBy*` following an `await findBy*`" (`DynamicViewsModal` 69, `DashboardsPage` 12,
+`App.deeplink` 7, `DataFilterRenderer` 4, `App.tableDeeplink` 4, …). **Most are probably safe** — the
+pattern only breaks when the asserted element arrives in a later commit. Each site needs judgement;
+do NOT mass-rewrite.
+
+## Corrected diagnosis history — four wrong turns, recorded so they are not repeated
+
+1. "Pre-existing flake" — an executor's claim, never tested against a baseline.
+2. "Caused by the orchestrator's own concurrent agents" — refuted: reproduced with ONE vitest
+   instance on an idle machine.
+3. "Assertion failure therefore contamination" — refuted: RTL reports async-query TIMEOUTS as
+   `Unable to find …`, which reads exactly like an assertion failure.
+4. "Deterministic contamination, find the poisoning file" — refuted by bisection; no contaminator exists.
+
+A fifth near-miss: a single clean full-suite run after the defect-1 fix nearly ended the
+investigation. Two confirmation runs immediately reddened on a DIFFERENT file, exposing defect 2.
+**n=1 against a 4/4 baseline is not a fix.**
+
+## Status of the change on disk
+
+`packages/web/src/test/setup.ts` currently carries the defect-1 fix (`configure({ asyncUtilTimeout: 5000 })`),
+**uncommitted**. Backup of the original at `/tmp/setup.ts.bak`. Keep or revert deliberately.
+
+## Bearing on the server's `TD-V16-TEST-ISOLATION`
+
+The server suite carries a permanent known-failing set behind `scripts/test-gate.mjs`, attributed to
+"cross-mode contamination". **That attribution has never been tested the way this one just was.** If the
+server's failures are also async-query timeouts rather than contamination, the same one-line fix may
+apply — and the set-based gate has been masking a fixable defect for several milestones. Worth checking
+before porting that gate to web.
