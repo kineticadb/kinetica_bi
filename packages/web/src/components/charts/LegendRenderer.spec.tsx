@@ -31,6 +31,18 @@ vi.mock("../../store/dashboardLayersStore", () => {
   return { useDashboardLayersStore: hook };
 });
 
+// Phase 118: read-only mapCurrentViewStore mock (LegendRenderer never writes to it).
+// Mirrors MapConfigPanel.spec.tsx:44-50. `views` is mutated per-test to simulate the bound map
+// being mounted (entry present) or not mounted (key absent — the real store's only "unavailable"
+// shape, since clear()/reset() delete rather than sentinel).
+const _currentViewState = {
+  views: {} as Record<number, { center: [number, number]; zoom: number } | undefined>,
+};
+vi.mock("../../store/mapCurrentViewStore", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useMapCurrentViewStore: (selector: (s: any) => any) => selector(_currentViewState),
+}));
+
 // Import LegendRenderer AFTER the mocks. widgetActionStore + dynamicViewStore are the
 // REAL stores (not mocked) — default empty, seeded explicitly in the overlay test below.
 import LegendRenderer from "./LegendRenderer";
@@ -87,6 +99,7 @@ function renderWithContext(
 beforeEach(() => {
   _storeState.layers = [];
   lastLayersLegendPanelProps = null;
+  _currentViewState.views = {};
   // Reset the real action-engine overlay store between tests (prevents bleed).
   useWidgetActionStore.setState({ layerOverrides: {} });
 });
@@ -290,5 +303,73 @@ describe("LegendRenderer (Phase 42 / WIDGET-V17-01..05)", () => {
     expect(css).toMatch(/\.legend-widget-orphan/);
     expect(css).toMatch(/\.legend-widget-orphan-message/);
     expect(css).toMatch(/\.legend-widget-orphan-reconfigure/);
+  });
+
+  it("ZLR1: bound map mounted at zoom 10.5 (out of [3,10]) — zoomActive false, zoomRange preserved", () => {
+    _storeState.layers = [makeLayer(1, { config: { minZoom: 3, maxZoom: 10 } })];
+    _currentViewState.views = { 7: { center: [0, 0], zoom: 10.5 } };
+    const mapA = makeWidget({ id: 7, type: "map", config: {} });
+    const legendWidget = makeWidget({
+      id: 100,
+      type: "legend",
+      config: { sourceMapWidgetId: 7 },
+    });
+    renderWithContext(legendWidget, [mapA, legendWidget]);
+    const layers = lastLayersLegendPanelProps?.layers as Array<{
+      zoomActive?: boolean;
+      zoomRange?: { minZoom?: number; maxZoom?: number };
+    }>;
+    expect(layers[0].zoomActive).toBe(false);
+    expect(layers[0].zoomRange).toEqual({ minZoom: 3, maxZoom: 10 });
+  });
+
+  it("ZLR1b: bound map mounted at zoom 2.9 (in range) — zoomActive true, matching the map's own fractional-boundary answer (ZLGND-V123-05/06)", () => {
+    _storeState.layers = [makeLayer(1, { config: { minZoom: 3, maxZoom: 10 } })];
+    _currentViewState.views = { 7: { center: [0, 0], zoom: 2.9 } };
+    const mapA = makeWidget({ id: 7, type: "map", config: {} });
+    const legendWidget = makeWidget({
+      id: 100,
+      type: "legend",
+      config: { sourceMapWidgetId: 7 },
+    });
+    renderWithContext(legendWidget, [mapA, legendWidget]);
+    const layers = lastLayersLegendPanelProps?.layers as Array<{
+      zoomActive?: boolean;
+    }>;
+    expect(layers[0].zoomActive).toBe(true);
+  });
+
+  it("ZLR2: bound map NOT mounted (views is {}, the real unavailable shape) — zoomActive undefined, NOT false", () => {
+    _storeState.layers = [makeLayer(1, { config: { minZoom: 3, maxZoom: 10 } })];
+    _currentViewState.views = {}; // never a stale entry — clear()/reset() delete, never sentinel
+    const mapA = makeWidget({ id: 7, type: "map", config: {} });
+    const legendWidget = makeWidget({
+      id: 100,
+      type: "legend",
+      config: { sourceMapWidgetId: 7 },
+    });
+    renderWithContext(legendWidget, [mapA, legendWidget]);
+    const layers = lastLayersLegendPanelProps?.layers as Array<{
+      zoomActive?: boolean;
+      zoomRange?: { minZoom?: number; maxZoom?: number };
+    }>;
+    expect(layers[0].zoomActive).toBeUndefined();
+    expect(layers[0].zoomRange).toEqual({ minZoom: 3, maxZoom: 10 });
+  });
+
+  it("ZLR3: the fourth state (bound map not mounted) is NOT the orphan state — the binding is valid, only the live zoom is missing", () => {
+    _storeState.layers = [makeLayer(1, { config: { minZoom: 3, maxZoom: 10 } })];
+    _currentViewState.views = {};
+    const mapA = makeWidget({ id: 7, type: "map", config: {} });
+    const legendWidget = makeWidget({
+      id: 100,
+      type: "legend",
+      config: { sourceMapWidgetId: 7 },
+    });
+    renderWithContext(legendWidget, [mapA, legendWidget]);
+    expect(screen.getByTestId("mocked-layers-legend-panel")).toBeTruthy();
+    expect(screen.queryByText(/Source map widget not found/)).toBeNull();
+    expect(document.querySelector(".legend-widget-orphan")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reconfigure" })).toBeNull();
   });
 });
