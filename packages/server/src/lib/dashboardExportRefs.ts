@@ -1,9 +1,10 @@
 /**
- * Phase 119 Plan 01 — the single source of truth for WHERE ids hide inside a persisted
- * dashboard's JSON (widgets.config, dashboard_layers.filter_scope) and its FK columns.
+ * Phase 119 Plan 01 / Phase 120 Plan 01 — the single source of truth for WHERE ids hide inside a
+ * persisted dashboard's JSON (widgets.config, dashboard_layers.filter_scope) and its FK columns.
  *
- * Research (119-RESEARCH.md §Q1) found EIGHT reference kinds inside `widgets.config`, plus a
- * sixth site carrying the same shape on the `dashboard_layers.filter_scope` DB column:
+ * Research (119-RESEARCH.md §Q1, confirmed again in 120-RESEARCH.md) found EIGHT reference kinds
+ * inside `widgets.config`, plus a sixth site carrying the same shape on the
+ * `dashboard_layers.filter_scope` DB column:
  *
  *   REF-1  config.tableId                              -> table
  *   REF-2  config.dynamicViewId                         -> dynamicView
@@ -19,15 +20,18 @@
  *   `table_id`, `dynamic_view_id` (FK columns) and `filter_scope` (same shape as REF-7).
  * And on `dashboard_dynamic_views`: `source_table_id`.
  *
- * Adding a NINTH reference kind anywhere in `packages/web/src/components/charts/` (a new widget
- * type, or a new id-valued field on an existing config) requires updating this module and its
- * spec (`tests/lib.dashboardExportRefs.spec.ts`) — this file is the only place a value is allowed
- * to become an id for export purposes.
+ * ONE TRAVERSAL, TWO DIRECTIONS (Phase 120 Plan 01). `visitWidgetConfigRefs` is now the ONLY place
+ * these eight sites are enumerated. `collectWidgetConfigRefs` drives it with an identity visitor
+ * (report the id, keep it unchanged); Phase 120's `remapWidgetConfigRefs` drives the SAME function
+ * with a map-or-strip visitor (report the id, write back the mapped id or delete the site). Adding
+ * a NINTH reference kind means adding exactly one new block inside `visitWidgetConfigRefs` — both
+ * collect and remap automatically pick it up, because there is no second list to forget.
+ * `visitFilterSelectionRefs` is the equivalent single traversal for the REF-7 / sixth-site shape
+ * (`{ sourceMode, allowedSourceWidgetIds }`), shared by `collectFilterSelectionRefs` and Phase 120's
+ * `remapFilterSelection`.
  *
  * Pure module — NO DB access, NO Express, NO new dependency. Only a type-only import of the two
- * row shapes it reads. This is deliberate: Phase 120's import remapper consumes the same
- * `ExportRefs` shape produced here, and the assembler (Plan 02) is kept separate so the walk
- * itself stays fully unit-testable in isolation.
+ * row shapes it reads.
  */
 import type { DashboardLayer, DashboardDynamicView } from "../types";
 
@@ -89,36 +93,22 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
- * REF-7 / sixth-site shared shape: `{ sourceMode, allowedSourceWidgetIds: (number | string)[] }`.
- * Accepts either an already-parsed object (widgets.config.filterSelection, always an object) or a
- * raw JSON string (dashboard_layers.filter_scope is typed `string | null` at the DB boundary,
- * though `mapDashboardLayer` in practice hands back a parsed object — accept both rather than
- * trusting a type that is documented to lie).
- *
- * Returns only the numeric, positive-integer entries. Anything non-numeric — including the
- * spatial-draws sentinel string (see `SPATIAL_DRAWS_SENTINEL` in
- * `packages/web/src/components/charts/filterSourceTypes.ts`) — is dropped silently by `asId`'s
- * structural check. Never `Number(entry)`, never `parseInt`: that would turn the sentinel into
- * `NaN`, which would then survive into the array and corrupt filter behaviour on import.
+ * Called once per reference SITE found by the traversal.
+ * Return a number    -> that value is written back AT THAT SITE.
+ * Return `undefined` -> the reference is unresolvable and the site is STRIPPED per its own rule.
+ *                        NEVER left as the original id (see Pitfall 3 in 120-RESEARCH.md).
+ * The identity visitor (`(site) => site.id`) turns this into a pure, non-mutating COLLECT pass.
  */
-export const collectFilterSelectionRefs = (value: unknown): number[] => {
-  let parsed: unknown = value;
-  if (typeof parsed === "string") {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      return [];
-    }
-  }
-  if (!isPlainObject(parsed)) return [];
-  const ids = parsed.allowedSourceWidgetIds;
-  if (!Array.isArray(ids)) return [];
-  const out: number[] = [];
-  for (const entry of ids) {
-    const id = asId(entry);
-    if (id !== undefined) out.push(id);
-  }
-  return out;
+export type RefVisitor = (site: { kind: RefKind; id: number }) => number | undefined;
+
+/** Side-channel for site-specific outcomes the flat visitor signature cannot express. */
+export type VisitNotes = {
+  /**
+   * Set true when a NON-EMPTY includedLayerIds array became EMPTY because every element was
+   * unmapped. `[]` means ALL LAYERS, so this is a silent WIDENING of what the widget shows and the
+   * caller MUST surface it. Never fires for an already-empty or absent array.
+   */
+  layerFilterWidened: boolean;
 };
 
 /** RadioGroup action shape as read off a persisted config option (both `actions[]` and legacy `action`). */
@@ -137,54 +127,135 @@ const getOptionActionsLike = (option: Record<string, unknown>): ActionLike[] => 
 };
 
 /**
- * Walk a single widget's parsed `config` object and extract every reference kind (REF-1..8).
- * Returns `emptyExportRefs()` for any non-object config (null, undefined, string, array) — a
- * widget with a malformed config simply contributes no references rather than throwing.
+ * REF-7 / sixth-site shared traversal: `{ sourceMode, allowedSourceWidgetIds: (number | string)[] }`.
+ * Takes an ALREADY-PARSED object — string parsing (dashboard_layers.filter_scope is typed
+ * `string | null` at the DB boundary, though `mapDashboardLayer` in practice hands back a parsed
+ * object) stays where it already lives: `collectFilterSelectionRefs` and Phase 120's
+ * `remapFilterSelection`.
+ *
+ * Rebuilds `allowedSourceWidgetIds` in place. Non-numeric entries — including the spatial-draws
+ * sentinel string (see `SPATIAL_DRAWS_SENTINEL` in
+ * `packages/web/src/components/charts/filterSourceTypes.ts`) — are pushed through completely
+ * VERBATIM, never inspected, never coerced: a naive `.map()` over the whole array would look the
+ * sentinel up in a `Map<number, number>`, get `undefined` back, and silently destroy spatial-draw
+ * filtering on the imported dashboard.
  */
-export const collectWidgetConfigRefs = (config: unknown): ExportRefs => {
-  const out = emptyExportRefs();
-  if (!isPlainObject(config)) return out;
+export const visitFilterSelectionRefs = (value: unknown, visit: RefVisitor): void => {
+  if (!isPlainObject(value)) return;
+  const ids = value.allowedSourceWidgetIds;
+  if (!Array.isArray(ids)) return;
+  const out: unknown[] = [];
+  for (const entry of ids) {
+    const id = asId(entry);
+    if (id === undefined) {
+      out.push(entry); // non-numeric (including the sentinel) passes through untouched
+      continue;
+    }
+    const next = visit({ kind: "widget", id });
+    if (next !== undefined) out.push(next); // unmapped => dropped, never left as the old id
+  }
+  value.allowedSourceWidgetIds = out;
+};
+
+/**
+ * Walk a single widget's parsed `config` object, visiting every reference kind (REF-1..8) exactly
+ * once each. Mutates `config` IN PLACE — callers that must not mutate their own object (e.g.
+ * `collectWidgetConfigRefs`) must pass a clone.
+ *
+ * This is the ONLY place the eight sites are enumerated. `collectWidgetConfigRefs` drives it with
+ * an identity visitor; Phase 120's `remapWidgetConfigRefs` drives it with a map-or-strip visitor.
+ * A ninth reference kind added here is automatically picked up by both directions.
+ */
+export const visitWidgetConfigRefs = (
+  config: unknown,
+  visit: RefVisitor,
+  notes?: VisitNotes
+): void => {
+  if (!isPlainObject(config)) return;
   const cfg = config;
 
   // REF-1: config.tableId -> table
-  const tableId = asId(cfg.tableId);
-  if (tableId !== undefined) out.tableIds.push(tableId);
+  {
+    const id = asId(cfg.tableId);
+    if (id !== undefined) {
+      const next = visit({ kind: "table", id });
+      if (next === undefined) delete cfg.tableId;
+      else cfg.tableId = next;
+    }
+  }
 
   // REF-2: config.dynamicViewId -> dynamicView
-  const dynamicViewId = asId(cfg.dynamicViewId);
-  if (dynamicViewId !== undefined) out.dynamicViewIds.push(dynamicViewId);
+  {
+    const id = asId(cfg.dynamicViewId);
+    if (id !== undefined) {
+      const next = visit({ kind: "dynamicView", id });
+      if (next === undefined) delete cfg.dynamicViewId;
+      else cfg.dynamicViewId = next;
+    }
+  }
 
   // REF-3: config.sourceMapWidgetId -> widget (standalone Legend widget, Phase 42)
-  const sourceMapWidgetId = asId(cfg.sourceMapWidgetId);
-  if (sourceMapWidgetId !== undefined) out.widgetIds.push(sourceMapWidgetId);
+  {
+    const id = asId(cfg.sourceMapWidgetId);
+    if (id !== undefined) {
+      const next = visit({ kind: "widget", id });
+      if (next === undefined) delete cfg.sourceMapWidgetId;
+      else cfg.sourceMapWidgetId = next;
+    }
+  }
 
   // REF-4: config.metricId (scalar) -> customMetric
-  const metricId = asId(cfg.metricId);
-  if (metricId !== undefined) out.customMetricIds.push(metricId);
+  {
+    const id = asId(cfg.metricId);
+    if (id !== undefined) {
+      const next = visit({ kind: "customMetric", id });
+      if (next === undefined) delete cfg.metricId;
+      else cfg.metricId = next;
+    }
+  }
 
-  // REF-5: config.metrics[].metricId (array) -> customMetric, one per element
+  // REF-5: config.metrics[].metricId (array) -> customMetric, one per element.
+  // On strip, delete the ELEMENT's metricId only — dropping the element itself would renumber
+  // the metrics list and shift every sibling's position.
   if (Array.isArray(cfg.metrics)) {
     for (const el of cfg.metrics) {
       if (!isPlainObject(el)) continue;
       const id = asId(el.metricId);
-      if (id !== undefined) out.customMetricIds.push(id);
+      if (id !== undefined) {
+        const next = visit({ kind: "customMetric", id });
+        if (next === undefined) delete el.metricId;
+        else el.metricId = next;
+      }
     }
   }
 
   // REF-6: config.includedLayerIds (array) -> layer, one per element.
-  // An empty array AND an absent field BOTH mean "render all layers" (Map-widget sentinel).
-  // Both therefore contribute ZERO layer references here — never expand either one to the
-  // dashboard's full layer list, that would fabricate references the operator never made and
-  // would defeat the sentinel on import.
+  // An empty array is a SENTINEL meaning ALL LAYERS (including layers added later) — it must
+  // NEVER be materialised into a concrete list, and it must survive as [] unchanged. If every
+  // element of a NON-empty array is unmapped, dropping them all yields [] too — indistinguishable
+  // from the ALL-layers sentinel, and there is no representation for "zero layers" (the UI cannot
+  // produce that state either). That is UNFIXABLE; `notes.layerFilterWidened` surfaces it instead.
   if (Array.isArray(cfg.includedLayerIds)) {
-    for (const el of cfg.includedLayerIds) {
+    const src = cfg.includedLayerIds as unknown[];
+    const out: unknown[] = [];
+    let numericSeen = 0;
+    for (const el of src) {
       const id = asId(el);
-      if (id !== undefined) out.layerIds.push(id);
+      if (id === undefined) {
+        out.push(el); // non-numeric passes through verbatim
+        continue;
+      }
+      numericSeen++;
+      const next = visit({ kind: "layer", id });
+      if (next !== undefined) out.push(next); // unmapped => dropped
     }
+    cfg.includedLayerIds = out;
+    if (notes && numericSeen > 0 && out.length === 0) notes.layerFilterWidened = true;
   }
 
-  // REF-7: config.filterSelection.allowedSourceWidgetIds -> widget (mixed with sentinel string)
-  out.widgetIds.push(...collectFilterSelectionRefs(cfg.filterSelection));
+  // REF-7: config.filterSelection.allowedSourceWidgetIds -> widget (mixed with sentinel string).
+  // No `notes`: an emptied allowlist narrows (fewer filter sources apply), it does not widen.
+  visitFilterSelectionRefs(cfg.filterSelection, visit);
 
   // REF-8: config.options[].actions[].target (and legacy singular options[].action.target)
   // -> polymorphic {kind, id} dispatch to widget / layer / dynamicView.
@@ -193,30 +264,112 @@ export const collectWidgetConfigRefs = (config: unknown): ExportRefs => {
   if (Array.isArray(cfg.options)) {
     for (const option of cfg.options) {
       if (!isPlainObject(option)) continue;
+      const usesArray = Array.isArray(option.actions);
       const actions = getOptionActionsLike(option);
+      const keep: ActionLike[] = [];
       for (const action of actions) {
-        if (!action || !isPlainObject(action.target as unknown)) continue;
+        if (!action || !isPlainObject(action.target)) {
+          keep.push(action);
+          continue;
+        }
         const target = action.target as Record<string, unknown>;
         const id = asId(target.id);
-        if (id === undefined) continue;
-        switch (target.kind) {
-          case "widget":
-            out.widgetIds.push(id);
-            break;
-          case "layer":
-            out.layerIds.push(id);
-            break;
-          case "dynamicView":
-            out.dynamicViewIds.push(id);
-            break;
-          default:
-            // unknown target.kind is ignored rather than mis-filed
-            break;
+        if (id === undefined) {
+          keep.push(action); // no numeric id: untouched, never mis-filed
+          continue;
         }
+        const kind: RefKind | undefined =
+          target.kind === "widget"
+            ? "widget"
+            : target.kind === "layer"
+              ? "layer"
+              : target.kind === "dynamicView"
+                ? "dynamicView"
+                : undefined;
+        if (kind === undefined) {
+          keep.push(action); // unknown target.kind: untouched, never mis-filed
+          continue;
+        }
+        const next = visit({ kind, id });
+        if (next === undefined) continue; // DROP the whole action: a stale target.id with no
+        // remapped destination is the exact "points at a coincidental pre-existing record"
+        // defect this module exists to prevent; WidgetActionTargetSchema also requires a
+        // positive integer id, so nulling target.id would be malformed anyway.
+        target.id = next;
+        keep.push(action);
       }
+      if (usesArray) option.actions = keep;
+      else if (keep.length === 0) delete option.action;
+      // else: the legacy singular `action` object was mutated in place above (keep[0] === it).
     }
   }
+};
 
+/**
+ * Deep-clone a plain-JSON value via a JSON round-trip. Widget config is pure JSON by construction
+ * (`mapWidget` produces it via `JSON.parse`), so this avoids any `structuredClone`
+ * global/lib-typing question while guaranteeing the visitor's in-place mutation never reaches the
+ * caller's own object.
+ */
+const cloneJson = <T,>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
+
+/**
+ * REF-7 / sixth-site shared shape: `{ sourceMode, allowedSourceWidgetIds: (number | string)[] }`.
+ * Accepts either an already-parsed object (widgets.config.filterSelection, always an object) or a
+ * raw JSON string (dashboard_layers.filter_scope is typed `string | null` at the DB boundary,
+ * though `mapDashboardLayer` in practice hands back a parsed object — accept both rather than
+ * trusting a type that is documented to lie).
+ *
+ * Returns only the numeric, positive-integer entries, by driving `visitFilterSelectionRefs` over a
+ * CLONE with an identity visitor — collecting must never mutate the caller's object.
+ */
+export const collectFilterSelectionRefs = (value: unknown): number[] => {
+  let parsed: unknown = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return [];
+    }
+  }
+  const out: number[] = [];
+  visitFilterSelectionRefs(cloneJson(parsed), (site) => {
+    out.push(site.id);
+    return site.id; // identity => no observable rewrite
+  });
+  return out;
+};
+
+/**
+ * Walk a single widget's parsed `config` object and extract every reference kind (REF-1..8).
+ * Returns `emptyExportRefs()` for any non-object config (null, undefined, string, array) — a
+ * widget with a malformed config simply contributes no references rather than throwing.
+ *
+ * Drives the single shared `visitWidgetConfigRefs` traversal with an identity visitor over a
+ * CLONE of `config` — collecting must never mutate the caller's object.
+ */
+export const collectWidgetConfigRefs = (config: unknown): ExportRefs => {
+  const out = emptyExportRefs();
+  visitWidgetConfigRefs(cloneJson(config), (site) => {
+    switch (site.kind) {
+      case "table":
+        out.tableIds.push(site.id);
+        break;
+      case "widget":
+        out.widgetIds.push(site.id);
+        break;
+      case "layer":
+        out.layerIds.push(site.id);
+        break;
+      case "dynamicView":
+        out.dynamicViewIds.push(site.id);
+        break;
+      case "customMetric":
+        out.customMetricIds.push(site.id);
+        break;
+    }
+    return site.id; // identity => no observable rewrite
+  });
   return normalize(out);
 };
 

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: Completed 119-04-PLAN.md — operator checkpoint APPROVED; Phase 119 (Export) COMPLETE 4/4 plans
-last_updated: "2026-09-16T21:00:00Z"
+stopped_at: "Completed 119-04-PLAN.md — operator checkpoint APPROVED; Phase 119 (Export) COMPLETE 4/4 plans. Next: plan Phase 120 (Import)."
+last_updated: "2026-09-17T02:34:34.340Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 4
+  total_plans: 9
   completed_plans: 4
 ---
 
@@ -19,13 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 119 — Export — COMPLETE. Phase 120 (Import) not yet planned.
+**Current focus:** Phase 120 — Import
 
 ## Current Position
 
-Phase: 119 (Export) — COMPLETE (4/4 plans; operator checkpoint APPROVED 2026-09-16)
-Plan: 4 of 4 — all done
-Next: Phase 120 (Import) — run `/gsd:plan-phase 120` to plan it
+Phase: 120 (Import) — EXECUTING
+Plan: 1 of 5
 
 ### Open tech debt carried forward
 
@@ -659,6 +658,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator checkpoint APPROVED.** Exported dashboard id 4 ("Test Dashboard"): 7 widgets, 4 layers,
   3 tables, `dashboardTableIds: 3`, 0 custom metrics, 0 dynamic views, 0 dangling references. All
   envelope keys present; filename sensible; file readable. No gap found.
+
 - **Recorded as 5/8 live-verified, 3/8 automated-only — deliberately NOT "8/8 operator-verified".**
   REF-1 (`tableId`), REF-3 (`sourceMapWidgetId`, via the legend widget), REF-6 (`includedLayerIds`,
   via the map widget + 4 layers), REF-8 (`options[].actions[].target`, via the radiogroup widget),
@@ -668,11 +668,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
   automated suite (Plan 01 unit tests + Plan 03 kitchen-sink fixture) only. Phase 120's remapper
   inherits this inventory, so which kinds have only ever been seen in a fixture is recorded now
   rather than assumed equivalent to the 5 that were operator-verified.
+
 - **DXIM-V124-01, -02, -08 marked Complete** in `.planning/REQUIREMENTS.md` (both checkbox list and
   traceability table) — citing this operator export. -08 additionally cites Phase 119-03's
   exclusion canaries. DXIM-V124-03..07/-09..11 remain Pending — Phase 120/121's work.
+
 - **Phase 119 marked COMPLETE (4/4 plans)** in `.planning/ROADMAP.md` and this file — the export
   half of v1.24 is done; Phase 120 (Import) has not yet been planned.
+
 - **Process findings recorded in `119-04-SUMMARY.md`:** 20/20 mutation probes fired and reverted
   across the phase (10 in Plan 01, 10 in Plan 03); the self-tripped-criterion trap (a plan mandating
   a comment that quotes the exact token its own grep counts) hit all three prior waves and was
@@ -680,6 +683,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
   advance-plan` / `roadmap update-plan-progress` still cannot parse this project's STATE.md/
   ROADMAP.md formats — all four waves of this phase worked around it manually, worth fixing at the
   source or formally documenting given the repeat cost.
+
 - **Gates re-verified against the current tree** (not reused from Plan 03): server `tsc --noEmit`
   clean; `node scripts/test-gate.mjs` → `GATE PASSED` (1044/1097, 8 known-failing files, no new
   regressions); `git diff --numstat 6ccf6d8 -- packages/web` empty.
