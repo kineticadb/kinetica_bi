@@ -400,6 +400,75 @@ export const listDashboards = async (): Promise<DashboardDto[]> => {
   return json.data as DashboardDto[];
 };
 
+// ─── Dashboard Export / Import (Phase 121) ─────────────────────────────────
+// v1.24 Phase 121 (DXIM-V124-01/-03/-10): dashboard export download + import upload.
+// The server contract is CLOSED (Phases 119/120) — these are thin, faithful mirrors.
+export type TableResolutionDto = { oldId: number; newId: number; schema: string; name: string; tableRef: string };
+export type MetricResolutionDto = { oldId: number; newId: number; tableId: number; tableRef: string; label: string };
+export type MetricConflictDto = MetricResolutionDto & {
+  existingExpression: string;
+  importedExpression: string;
+  /** Operator-facing sentence built at packages/server/src/lib/dashboardImport.ts:443.
+   *  It names both expressions and says which one the imported widgets now use. It is the ONLY
+   *  signal for a risk the operator explicitly accepted — render it VERBATIM, never as a count. */
+  message: string;
+};
+export type StrippedReferenceDto = { from: string; kind: string; id: number };
+export type ImportReportDto = {
+  dashboardId: number;
+  dashboardName: string;
+  widgetsCreated: number;
+  layersCreated: number;
+  dynamicViewsCreated: number;
+  tablesMatched: TableResolutionDto[];
+  tablesCreated: TableResolutionDto[];
+  metricsMatched: MetricResolutionDto[];
+  metricsCreated: MetricResolutionDto[];
+  metricConflicts: MetricConflictDto[];
+  strippedReferences: StrippedReferenceDto[];
+  warnings: string[];
+  /** Added by the route on top of ImportReport (index.ts:820) — Tier-2 validation's own
+   *  recomputed dangling list, never trusted from the file's self-reported count. */
+  preflightDangling: StrippedReferenceDto[];
+};
+
+// The server sets the authoritative filename in its attachment response header (see
+// dashboardExport.ts exportFileName), but that header is invisible to cross-origin client JS:
+// cors() at packages/server/src/index.ts:140-145 sets no `exposedHeaders`, so reading it off
+// `response.headers` returns null in dev (SPA :5173 -> API :4000). Deriving the filename
+// client-side from data already in DashboardDto is origin-agnostic and needs no server change —
+// this is a byte-for-byte mirror of exportFileName's slug rule.
+export const exportFileNameForClient = (dashboard: Pick<DashboardDto, "id" | "name">): string => {
+  const slug = String(dashboard.name ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return `dashboard-${dashboard.id}-${slug || "export"}.json`;
+};
+
+// GET /api/dashboards/:id/export -> blob -> synthetic <a download> click.
+// A `blob:` URL is same-origin to the creating page BY CONSTRUCTION, which is what makes
+// `download` honored in BOTH dev (cross-origin API) and behind nginx (same-origin) with one
+// code path. A plain `<a href="http://localhost:4000/...">` would have `download` IGNORED
+// cross-origin and navigate the SPA away — the exact friction the operator hit in Phase 119.
+export const downloadDashboardExport = async (
+  dashboard: Pick<DashboardDto, "id" | "name">,
+): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboard.id}/export`);
+  if (!response.ok) await throwForStatus(response, "Failed to export dashboard");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = exportFileNameForClient(dashboard);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
 export type TableDto = {
   id: number;
   name: string;

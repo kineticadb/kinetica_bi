@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 120-05-PLAN.md — Phase 120 (Import) COMPLETE. routes.dashboard-import.refs.spec.ts proves all eight reference kinds (IMPNEW-REF1..REF8) point at the NEWLY created/matched record through the real HTTP route, against a fixture armed by rewriting tables[].schema so every old id still resolves to a pre-existing record; IMPNEW-sweep re-drives collectWidgetConfigRefs per kind as a catch-all; the three rewrite traps (empty includedLayerIds, __spatial_draws__ sentinel, legacy singular action) verified end to end. 12/12 mutation probes fired on first attempt (39/39 phase-wide). Server gate exited 0 (SET-BASED); both-stack tsc clean; packages/web untouched by this phase. DXIM-V124-03/-04/-05/-06/-07/-09/-10/-11 marked Complete (automated) in REQUIREMENTS.md — the one-database limitation and REF-2/-4/-5 fixture-only status are recorded prominently as a Phase 121 hand-off requirement (exercise a real dashboard with a custom metric AND a dynamic view before the cross-environment round trip). Next: plan Phase 121 (UI + Cross-Environment Verification — download/upload in the app, operator round-trip between two real environments)."
-last_updated: "2026-09-17T03:00:00Z"
+stopped_at: "Completed 120-02-PLAN.md — validateImportFile two-tier validation gate + resolveTables/resolveCustomMetrics match-or-create resolution (DXIM-V124-06/-07/-11 implemented; requirement closure deferred to 120-05 per plan instruction). Next: plan/execute 120-03 (applyDashboardImport transaction + route)."
+last_updated: "2026-09-17T15:53:20.301Z"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 9
+  total_plans: 13
   completed_plans: 9
 ---
 
@@ -23,11 +23,8 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-Phase: 120 (Import) — COMPLETE (all 5 plans executed — see 120-01-SUMMARY.md, 120-02-SUMMARY.md, 120-03-SUMMARY.md, 120-04-SUMMARY.md, 120-05-SUMMARY.md)
-Next: Phase 121 (UI + Cross-Environment Verification) — not yet planned. Depends on Phases 119 and
-120 (both complete). Requirements: DXIM-V124-01, DXIM-V124-03, DXIM-V124-10. Hand-off from Phase
-120: the operator must build a dashboard using a custom metric AND a dynamic view before the
-cross-environment round trip, or REF-2/-4/-5 will still never have been exercised outside a test.
+Phase: 121 (UI + Cross-Environment Verification) — EXECUTING
+Plan: 1 of 4
 
 ### Open tech debt carried forward
 
@@ -664,14 +661,17 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
   grep-measured `0` DB-write-call count at the end of Task 1. Tier 2 (referential) never trusts the
   file's own self-reported `danglingReferences` — recomputed from the file's own id sets via the
   SAME `collect*` functions Plan 01 established.
+
 - **Metric-label conflict policy (120-CONTEXT.md, operator-locked 2026-09-16) implemented
   verbatim:** a same-label, different-expression match on the resolved table REUSES the target's
   existing definition and reports a message naming the metric label, the `schema.name` table, and
   the substring `DIFFERENT expression` — the operator's accepted cost (the imported widget computes
   something subtly different from the source) is made visible, not silent.
+
 - **`asId` exported from `dashboardExportRefs.ts`** so the validator reuses the canonical
   positive-integer predicate rather than defining a second one (the exact drift risk the plan
   called out).
+
 - **6/6 mutation probes fired; V5 required strengthening its test.** Dropping `resolveTables`' the
   per-run `seen` map did NOT redden the originally-planned assertions — `getTableBySchemaName` is a
   live query that independently lands on the same row the mutation's own preceding `createTable`
@@ -679,8 +679,10 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
   with a `vi.spyOn` call-count assertion (exactly 1 target query for a shared key across two file
   entries), which is the map's actual, provable effect. Documented in `120-02-SUMMARY.md` and the
   spec file's own header per CLAUDE.md's non-discriminating-criterion rule.
+
 - **No DXIM requirement marked complete** — closure remains Plan 05's job per this plan's explicit
   scope boundary.
+
 - **Tooling note (repeats every 119/120 wave):** `gsd-tools state advance-plan` /
   `roadmap update-plan-progress` still cannot parse this project's STATE.md/ROADMAP.md formats —
   both updated manually in the existing file style again this plan.
@@ -693,24 +695,31 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
   identity visitor, `remapWidgetConfigRefs`/`remapFilterSelection` (new) drive the SAME functions
   with a map-or-strip visitor. Both Phase 119 regression specs stayed green with ZERO edits
   throughout — the refactor changed no observable collect output.
+
 - **All three rewrite traps implemented and probe-verified**: REF-6 empty-array sentinel (never
   expanded; `layerFilterWidened` surfaces the unfixable all-unmapped case), REF-7
   `__spatial_draws__` (survives byte-identical), REF-8 legacy singular `options[].action`
   (rewritten identically to `actions[]`).
+
 - **Unmapped reference = STRIP + report, never a fallback to the old id** (Pitfall 3) —
   `RemapOutcome.stripped` names every stripped site's kind and OLD id. Verified by mutation probe P9
   (changing the miss-branch to fall back to the old id reddens 7 of 8 `IMP-STRIP*` tests).
+
 - **`getTableBySchemaName` added with NO schema change** — `ORDER BY id ASC LIMIT 1`
   (oldest-row-wins), documented as a deliberate limitation, not a fix for the underlying missing
   unique constraint.
+
 - **No ninth reference kind found.** No DXIM requirement marked complete — DXIM-V124-05/-06 are
   implemented here but closure remains Plan 05's job per this plan's explicit instruction.
+
 - **10/10 mutation probes fired and reverted**; source confirmed byte-identical to the committed
   state afterward. See `120-01-SUMMARY.md` for the full probe table.
+
 - **Two doc comments self-tripped their own acceptance-criteria greps** (restating
   `ORDER BY id ASC LIMIT 1` and `?? site.id` / `|| site.id` literally in prose) — caught by running
   the greps before committing, per CLAUDE.md's verifiable-acceptance-criteria rule; reworded, no
   code-logic change.
+
 - **Tooling note (repeats all four 119 waves):** `gsd-tools state advance-plan` /
   `roadmap update-plan-progress` still cannot parse this project's STATE.md/ROADMAP.md formats —
   both were updated manually in the existing file style again this plan.
