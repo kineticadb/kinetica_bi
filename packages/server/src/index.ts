@@ -21,6 +21,8 @@ import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
 // composer (CONTEXT.md § D7 — _kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>).
 import { buildDynamicViewName } from "./lib/dynamicViewName";
+// v1.24 Phase 119 (DXIM-V124-01/-02/-08): dashboard export assembler + download filename helper.
+import { buildDashboardExport, exportFileName } from "./lib/dashboardExport";
 // v1.7 Phase 38 (SCHEMA-V17-06): /api/quantile NTILE bucket-MIN query backing Phase 39 Auto-suggest.
 import { buildQuantileSql, parseQuantileResponse } from "./lib/quantileSql";
 import { buildTopValuesSql, parseTopValuesResponse } from "./lib/topValuesSql";
@@ -878,6 +880,25 @@ export const createApp = async (): Promise<express.Express> => {
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
     return res.json({ data: listWidgets(id) });
+  });
+
+  // v1.24 Phase 119 (DXIM-V124-01): dashboard export.
+  // Auth mirrors the five sibling per-dashboard GETs exactly: 404 for BOTH "no such dashboard"
+  // and "not permitted", so export does not become the one endpoint that reveals which dashboard
+  // ids exist. No additional permission gate is added — dashboards:view has zero enforcement
+  // call sites in this file and canViewDashboard IS the control. No Kinetica-config guard either
+  // — export never touches Kinetica.
+  app.get("/api/dashboards/:id/export", (req, res) => {
+    const id = Number(req.params.id);
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    const payload = buildDashboardExport(id)!;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFileName(payload.dashboard)}"`);
+    // Explicit send of a pre-stringified body: res.json() would re-derive Content-Type and would
+    // minify. Pretty-print is deliberate — the file exists to be reviewed, diffed and attached to
+    // a ticket (CONTEXT.md locked decision 1).
+    return res.send(JSON.stringify(payload, null, 2));
   });
 
   app.post("/api/dashboards/:id/widgets", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
