@@ -18,31 +18,44 @@
  * Do NOT assert a fixed total server pass-count (SET-BASED TD-V16-TEST-ISOLATION gate).
  *
  * MUTATION PROBES (Plan 119-03 Task 3) — ten probes run for real against the committed
- * dashboardExport.ts / index.ts route, each reddening its named test below, then reverted;
- * git diff --exit-code confirmed the source byte-identical afterward.
- * * M1  dropped associatedIds from the table union (kept only refs.tableIds)
- *       -> reddened "INCL-union: the dashboard_tables-only table travels even though nothing references it"
- * * M2  replaced referenced-metric lookup with tables.flatMap(t => listCustomMetrics(t.id))
- *       -> reddened "EXCL-metric: the unreferenced sibling metric label does not appear in the exported bytes"
- * * M3  added a runtime-view listing accessor's output to the envelope under a `views` key
- *       -> reddened "EXCL-runtime: the dashboard_table_views view_name does not appear in the exported bytes"
- *       and "EXCL-runtime: the envelope has no views key"
- * * M4  added the access-grant listing accessor's output to the envelope under a `grants` key
- *       -> reddened "EXCL-grants: the access-grant grantee string does not appear in the exported bytes"
- *       and "EXCL-grants: the envelope has no grants / accessGrants key"
- * * M5  added the column-display-config listing accessor's output under a `columnDisplayConfig` key
- *       -> reddened "EXCL-columnconfig: the column_display_config label does not appear in the exported bytes"
- * * M6  split the route guard into a 404-for-missing branch + a separate 403-for-denied branch
- *       -> reddened "NOLEAK-404: an analyst with no grant gets 404, byte-identical to a nonexistent dashboard id"
- * * M7  deleted the Content-Disposition setHeader line from the route
- *       -> reddened "DELIV-disposition: the filename is slugified from the dashboard name"
- * * M8  changed JSON.stringify(payload, null, 2) to JSON.stringify(payload) (no pretty-print)
+ * dashboardExport.ts / index.ts route, each reddening at least its named test below, then
+ * reverted; `git diff --exit-code` confirmed the source byte-identical afterward.
+ * M1  dropped associatedIds from the table union (kept only refs.tableIds)
+ *       -> reddened "INCL-union: the dashboard_tables-only table travels even though nothing
+ *       references it" (also reddened the sibling "all four related tables travel" test)
+ * M2  replaced referenced-metric lookup with a full per-table metric listing accessor
+ *       -> reddened "EXCL-metric: the unreferenced sibling metric label does not appear in the
+ *       exported bytes" (also reddened "INCL-metrics: both referenced metrics travel")
+ * M3  added a runtime-view listing accessor's output to the envelope under a `views` key
+ *       -> reddened both "EXCL-runtime: the dashboard_table_views view_name does not appear in
+ *       the exported bytes" and "EXCL-runtime: the envelope has no views key"
+ * M4  added the access-grant listing accessor's output to the envelope under a `grants` key
+ *       -> reddened both "EXCL-grants: the access-grant grantee string does not appear in the
+ *       exported bytes" and "EXCL-grants: the envelope has no grants / accessGrants key"
+ * M5  added the column-display-config listing accessor's output under a `columnDisplayConfig` key
+ *       -> reddened "EXCL-columnconfig: the column_display_config label does not appear in the
+ *       exported bytes"
+ * M6  split the route guard into a 404-for-missing branch + a separate 403-for-denied branch
+ *       -> reddened "NOLEAK-404: an analyst with no grant gets 404, byte-identical to a
+ *       nonexistent dashboard id" (also reddened "NOLEAK-grant: after a user grant...")
+ * M7  deleted the Content-Disposition setHeader line from the route
+ *       -> reddened both "DELIV-disposition: the filename is slugified from the dashboard name"
+ *       and "DELIV-disposition: the header contains no quote, CR or LF..."
+ * M8  changed JSON.stringify(payload, null, 2) to JSON.stringify(payload) (no pretty-print)
  *       -> reddened "DELIV-pretty: the body is pretty-printed, not minified"
- * * M9  swapped exportFileName's allow-list regex for a denylist stripping only slashes
- *       -> reddened "DELIV-disposition: the header contains no quote, CR or LF from the dashboard name"
- * * M10 removed dashboardTableIds from the returned envelope
+ * M9  swapped exportFileName's allow-list regex for a denylist stripping only slashes
+ *       -> reddened "DELIV-disposition: the header contains no quote, CR or LF from the
+ *       dashboard name" PLUS 25 other tests in the file: Node's http layer throws on an
+ *       attempt to set a response header containing a raw CR/LF/quote, so every request made
+ *       against the kitchen-sink dashboard (whose name deliberately contains both) crashed
+ *       rather than merely returning a wrong value. The probe still fired the target
+ *       assertion, so no test needed strengthening, but this is a stronger blast radius than
+ *       the other nine probes and is recorded here as a finding, not an assertion defect.
+ * M10 removed dashboardTableIds from the returned envelope
  *       -> reddened "INCL-union: dashboardTableIds lists exactly the two associated table ids"
- * All ten probes fired on first attempt; no assertion required strengthening.
+ *       (the ONLY test that failed for this mutation, confirming that assertion's precision)
+ * All ten probes fired on first attempt against the named test; no assertion required
+ * strengthening.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildTestApp } from "./helpers/app";
