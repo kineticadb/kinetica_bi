@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: Completed 119-03-PLAN.md — kitchen-sink completeness proof, exclusion canaries, non-leak 404, SET-BASED gate
-last_updated: "2026-09-16T20:20:00Z"
+stopped_at: Completed 119-04-PLAN.md — operator checkpoint APPROVED; Phase 119 (Export) COMPLETE 4/4 plans
+last_updated: "2026-09-16T21:00:00Z"
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 119 — Export
+**Current focus:** Phase 119 — Export — COMPLETE. Phase 120 (Import) not yet planned.
 
 ## Current Position
 
-Phase: 119 (Export) — EXECUTING
-Plan: 4 of 4
+Phase: 119 (Export) — COMPLETE (4/4 plans; operator checkpoint APPROVED 2026-09-16)
+Plan: 4 of 4 — all done
+Next: Phase 120 (Import) — run `/gsd:plan-phase 120` to plan it
 
 ### Open tech debt carried forward
 
@@ -652,6 +653,36 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 119 Plan 04 Decisions (2026-09-16) — Phase 119 CLOSED
+
+- **Operator checkpoint APPROVED.** Exported dashboard id 4 ("Test Dashboard"): 7 widgets, 4 layers,
+  3 tables, `dashboardTableIds: 3`, 0 custom metrics, 0 dynamic views, 0 dangling references. All
+  envelope keys present; filename sensible; file readable. No gap found.
+- **Recorded as 5/8 live-verified, 3/8 automated-only — deliberately NOT "8/8 operator-verified".**
+  REF-1 (`tableId`), REF-3 (`sourceMapWidgetId`, via the legend widget), REF-6 (`includedLayerIds`,
+  via the map widget + 4 layers), REF-8 (`options[].actions[].target`, via the radiogroup widget),
+  and the `dashboard_tables` UNION edge were all exercised live on a real, operator-known dashboard.
+  REF-2 (`dynamicViewId`), REF-4 (scalar `metricId`), and REF-5 (`metrics[].metricId`) were NOT
+  exercised — this dashboard has no dynamic view and no custom metric — and remain covered by the
+  automated suite (Plan 01 unit tests + Plan 03 kitchen-sink fixture) only. Phase 120's remapper
+  inherits this inventory, so which kinds have only ever been seen in a fixture is recorded now
+  rather than assumed equivalent to the 5 that were operator-verified.
+- **DXIM-V124-01, -02, -08 marked Complete** in `.planning/REQUIREMENTS.md` (both checkbox list and
+  traceability table) — citing this operator export. -08 additionally cites Phase 119-03's
+  exclusion canaries. DXIM-V124-03..07/-09..11 remain Pending — Phase 120/121's work.
+- **Phase 119 marked COMPLETE (4/4 plans)** in `.planning/ROADMAP.md` and this file — the export
+  half of v1.24 is done; Phase 120 (Import) has not yet been planned.
+- **Process findings recorded in `119-04-SUMMARY.md`:** 20/20 mutation probes fired and reverted
+  across the phase (10 in Plan 01, 10 in Plan 03); the self-tripped-criterion trap (a plan mandating
+  a comment that quotes the exact token its own grep counts) hit all three prior waves and was
+  caught each time by running the acceptance-criteria greps before committing; `gsd-tools state
+  advance-plan` / `roadmap update-plan-progress` still cannot parse this project's STATE.md/
+  ROADMAP.md formats — all four waves of this phase worked around it manually, worth fixing at the
+  source or formally documenting given the repeat cost.
+- **Gates re-verified against the current tree** (not reused from Plan 03): server `tsc --noEmit`
+  clean; `node scripts/test-gate.mjs` → `GATE PASSED` (1044/1097, 8 known-failing files, no new
+  regressions); `git diff --numstat 6ccf6d8 -- packages/web` empty.
 
 ### Phase 119 Plan 03 Decisions (2026-09-16)
 
@@ -1320,6 +1351,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-16T20:20:00Z
-Stopped at: Completed 119-03-PLAN.md — kitchen-sink completeness proof, exclusion canaries, non-leak 404, SET-BASED gate
+Last session: 2026-09-16T21:00:00Z
+Stopped at: Completed 119-04-PLAN.md — operator checkpoint APPROVED; Phase 119 (Export) COMPLETE 4/4 plans. Next: plan Phase 120 (Import).
 Resume file: None
