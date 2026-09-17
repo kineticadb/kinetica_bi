@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 120-03-PLAN.md — applyDashboardImport two-pass create-then-rewrite inside one db.transaction, atomicity proven via 3 trigger-induced rollbacks, 6 mutation probes. Next: plan/execute 120-04 (POST /api/dashboards/import route + body-parser error branches)."
-last_updated: "2026-09-16T23:55:00Z"
+stopped_at: "Completed 120-04-PLAN.md — POST /api/dashboards/import route gated on dashboards:create AND datasets:manage (no new permission), errorMiddleware taught entity.parse.failed (400 MALFORMED_JSON) and entity.too.large (413 PAYLOAD_TOO_LARGE), confirmed both previously surfaced as bare 500. 5 mutation probes (2 required new single-permission fixtures to discriminate the AND-gate). Next: plan/execute 120-05 (per-reference-kind NEW-id proofs, 12 mutation probes, SET-BASED gate — closes DXIM-V124-03/-10/-11)."
+last_updated: "2026-09-17T01:57:00Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 120 (Import) — EXECUTING
-Plan: 4 of 5 (120-01, 120-02, 120-03 COMPLETE — see 120-01-SUMMARY.md, 120-02-SUMMARY.md, 120-03-SUMMARY.md)
+Plan: 5 of 5 (120-01, 120-02, 120-03, 120-04 COMPLETE — see 120-01-SUMMARY.md, 120-02-SUMMARY.md, 120-03-SUMMARY.md, 120-04-SUMMARY.md)
 
 ### Open tech debt carried forward
 
