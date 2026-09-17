@@ -15,6 +15,41 @@
  * that the permission catalog is unchanged at 18 entries.
  *
  * Do NOT assert a fixed total server pass-count (SET-BASED TD-V16-TEST-ISOLATION gate).
+ *
+ * MUTATION PROBES (Plan 120-04 Task 3) — 5 probes run for real against the committed
+ * src/index.ts route + errorMiddleware branches, then reverted; `git diff --exit-code -- src/index.ts`
+ * confirmed the source byte-identical afterward each time.
+ * R1  removed the `...requirePermission(PERMISSIONS.DATASETS_MANAGE)` spread from the route
+ *       -> did NOT redden on first attempt: an analyst holds NEITHER gate permission, so removing
+ *       one gate still left the other to deny (403), which is exactly the "guard that cannot
+ *       fail manufactures confidence" case CLAUDE.md warns about. STRENGTHENED with a new fixture
+ *       `seedCreateOnlySession` (custom role holding EXACTLY dashboards:create) and a new test
+ *       "ROUTE-403: a user holding only dashboards:create is still denied (datasets:manage is
+ *       required too)" — that test DOES redden under this mutation (403 -> 400, the gate no
+ *       longer blocks so the request reaches validation), re-run and confirmed.
+ * R2  removed the `...requirePermission(PERMISSIONS.DASHBOARDS_CREATE)` spread from the route
+ *       -> also did NOT redden on first attempt, for the same reason in reverse: every existing
+ *       fixture either holds neither permission or already lacks datasets:manage regardless.
+ *       STRENGTHENED with the mirror fixture `seedManageOnlySession` (custom role holding EXACTLY
+ *       datasets:manage) and a new test "ROUTE-403: a user holding only datasets:manage is still
+ *       denied (dashboards:create is required too)" — reddens under this mutation (403 -> 400),
+ *       re-run and confirmed.
+ * R3  skipped validateImportFile and called applyDashboardImport(req.body as any) directly
+ *       -> reddened "ROUTE-400: a structurally malformed file returns 400 with the validator's
+ *       message" (400 -> 422, since the un-validated body throws inside applyDashboardImport and
+ *       is caught by the route's own try/catch instead of being rejected by the validator) and
+ *       "ROUTE-400: an unsupported schemaVersion returns 400 naming the version" (400 -> 201,
+ *       since nothing rejects the version once validation is skipped). "ROUTE-400: a rejected
+ *       import writes nothing" did NOT redden — expected and correct: with no rows written before
+ *       the thrown TypeError, the dashboard/widget counts stay unchanged either way (rejected by
+ *       validation, or thrown-and-rolled-back mid-transaction); the assertion is about a
+ *       write-count invariant that genuinely holds under both paths, not a discrimination gap.
+ * R4  deleted the `entity.parse.failed` branch from errorMiddleware
+ *       -> reddened both MALFORMED-truncated tests (400 -> 500, "Internal server error").
+ * R5  deleted the `entity.too.large` branch from errorMiddleware
+ *       -> reddened both OVERSIZE-limit tests (413 -> 500, "Internal server error").
+ * 5/5 probes fired (after strengthening R1 and R2 with two new single-permission fixtures); no
+ * other assertion required strengthening.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildTestApp } from "./helpers/app";
@@ -42,6 +77,46 @@ const seedAnalystSession = (username: string): { cookie: string } => {
   return { cookie: `kbi_session=${token}` };
 };
 
+/**
+ * Seeds a session for a user holding EXACTLY `dashboards:create` — no built-in role holds one
+ * of the two import permissions without the other, so this custom role is the only fixture that
+ * can discriminate the SECOND half of the AND-gate (Task 3, mutation probe R1: an analyst holds
+ * NEITHER permission, so removing `datasets:manage` alone still leaves `dashboards:create` to
+ * deny — that probe cannot fail without this fixture).
+ */
+const seedCreateOnlySession = (username: string): { cookie: string } => {
+  db.prepare("INSERT INTO roles (name, description, built_in) VALUES ('creator_only', '', 0)").run();
+  const role = db.prepare("SELECT id FROM roles WHERE name = 'creator_only'").get() as { id: number };
+  db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)").run(
+    role.id,
+    PERMISSIONS.DASHBOARDS_CREATE
+  );
+  db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(username, role.id);
+  const sid = createSession({ username, secret: "creator-only-pw", kineticaUrl: KINETICA_URL });
+  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
+  return { cookie: `kbi_session=${token}` };
+};
+
+/**
+ * Mirror of `seedCreateOnlySession` holding EXACTLY `datasets:manage` — added to discriminate
+ * mutation probe R2 (Task 3): removing the `dashboards:create` spread alone does not redden any
+ * existing test (an analyst holds neither permission, and the create-only fixture still lacks
+ * `datasets:manage` regardless of whether the `dashboards:create` gate is present), so this is
+ * the fixture that proves the FIRST half of the AND-gate independently.
+ */
+const seedManageOnlySession = (username: string): { cookie: string } => {
+  db.prepare("INSERT INTO roles (name, description, built_in) VALUES ('manager_only', '', 0)").run();
+  const role = db.prepare("SELECT id FROM roles WHERE name = 'manager_only'").get() as { id: number };
+  db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)").run(
+    role.id,
+    PERMISSIONS.DATASETS_MANAGE
+  );
+  db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(username, role.id);
+  const sid = createSession({ username, secret: "manage-only-pw", kineticaUrl: KINETICA_URL });
+  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
+  return { cookie: `kbi_session=${token}` };
+};
+
 beforeEach(() => {
   db.exec(`
     DELETE FROM dashboard_access_grants;
@@ -53,6 +128,8 @@ beforeEach(() => {
     DELETE FROM dashboards;
     DELETE FROM tables;
     DELETE FROM user_roles;
+    DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE built_in = 0);
+    DELETE FROM roles WHERE built_in = 0;
     DELETE FROM sessions;
   `);
 });
@@ -167,6 +244,32 @@ describe("ROUTE: POST /api/dashboards/import", () => {
     const { cookie } = seedAnalystSession("import_analyst2");
     const res = await app.post("/api/dashboards/import").set("Cookie", cookie).send({});
     expect([PERMISSIONS.DASHBOARDS_CREATE, PERMISSIONS.DATASETS_MANAGE]).toContain(res.body.permission);
+  });
+
+  it("ROUTE-403: a user holding only dashboards:create is still denied (datasets:manage is required too)", async () => {
+    // Added for Task 3 mutation probe R1: an analyst holds NEITHER gate permission, so removing
+    // just one requirePermission spread still leaves the other to deny — that probe cannot fail
+    // without a fixture holding exactly ONE of the two. This test is the one that discriminates
+    // the second half of the AND-gate.
+    const app = await buildTestApp();
+    const { cookie } = seedCreateOnlySession("import_create_only");
+    const res = await app.post("/api/dashboards/import").set("Cookie", cookie).send({});
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("PERMISSION_DENIED");
+    expect(res.body.permission).toBe(PERMISSIONS.DATASETS_MANAGE);
+  });
+
+  it("ROUTE-403: a user holding only datasets:manage is still denied (dashboards:create is required too)", async () => {
+    // Added for Task 3 mutation probe R2: removing the dashboards:create spread alone reddens
+    // NOTHING without this fixture — every other fixture either holds neither permission
+    // (analyst) or lacks datasets:manage regardless (the create-only fixture above). This test
+    // discriminates the FIRST half of the AND-gate independently of the second.
+    const app = await buildTestApp();
+    const { cookie } = seedManageOnlySession("import_manage_only");
+    const res = await app.post("/api/dashboards/import").set("Cookie", cookie).send({});
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("PERMISSION_DENIED");
+    expect(res.body.permission).toBe(PERMISSIONS.DASHBOARDS_CREATE);
   });
 
   it("ROUTE-201: an admin import returns 201", async () => {
