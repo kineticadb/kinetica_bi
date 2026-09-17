@@ -139,7 +139,11 @@ describe("importDashboardFile", () => {
   });
 
   it("IMPCLI-post: POSTs the file's exact text as JSON with Content-Type application/json", async () => {
-    const fileText = '{"schemaVersion":1}';
+    // Deliberately includes whitespace a JSON.parse+JSON.stringify round trip would normalize
+    // away (collapsed to '{"schemaVersion":1,"note":"kept as-is"}') — this is what makes the
+    // body assertion below discriminate a wasteful re-serialization from sending the file
+    // verbatim; a byte-identical minified fixture cannot tell the two apart (mutation probe P5).
+    const fileText = '{ "schemaVersion": 1, "note": "kept as-is" }';
     const fetchSpy = makeFetchStub({ data: { dashboardId: 7 } }, { ok: true, status: 201 });
     vi.stubGlobal("fetch", fetchSpy);
 
