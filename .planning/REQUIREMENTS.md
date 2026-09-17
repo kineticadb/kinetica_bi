@@ -30,15 +30,15 @@ wrong table, the wrong metric, or an unbound legend.
 
 - [x] **DXIM-V124-01**: A dashboard can be exported to a JSON file that contains everything needed to recreate it elsewhere — operator-verified 2026-09-16 (Phase 119 export of dashboard id 4, "Test Dashboard": 7 widgets, 4 layers, 3 tables, 0 dangling references)
 - [x] **DXIM-V124-02**: The export includes every visualization (widget) on the dashboard, with its full configuration — operator-verified 2026-09-16 (all 7 widgets — heatmap, legend, map, radiogroup, records, table — exported with full config)
-- [ ] **DXIM-V124-03**: Importing that file into another environment recreates the dashboard and all its visualizations
-- [ ] **DXIM-V124-04**: Import always assigns NEW dashboard and widget ids — importing a file whose original ids collide with existing records must succeed, leaving the existing records untouched
-- [ ] **DXIM-V124-05**: Every id reference inside exported configuration is remapped to the new ids on import — including widget→widget, widget→table, and widget→custom-metric references — so no imported widget points at a pre-existing record by accident
-- [ ] **DXIM-V124-06**: Tables are matched by `schema.name` on import: an existing registry entry is reused, a missing one is created — never duplicated for the same `schema.name`
-- [ ] **DXIM-V124-07**: Custom metrics referenced by imported widgets travel with the export and are created in the target if absent, so no imported widget loses its metric
+- [x] **DXIM-V124-03**: Importing that file into another environment recreates the dashboard and all its visualizations — automated 2026-09-17 (Phase 120: `routes.dashboard-import.spec.ts` ROUTE-201 report-shape tests + `routes.dashboard-import.refs.spec.ts`'s full kitchen-sink round trip through `POST /api/dashboards/import`; NOT operator-verified across two real environments — that is Phase 121's scope)
+- [x] **DXIM-V124-04**: Import always assigns NEW dashboard and widget ids — importing a file whose original ids collide with existing records must succeed, leaving the existing records untouched — automated 2026-09-17 (Phase 120-03's `NEWID-collision` tests directly insert pre-existing rows at the file's exact ids and prove them byte-identical after import; Phase 120-05's `IMPNEW-decoy` proves every old id in the armed fixture still resolves to an untouched pre-existing record)
+- [x] **DXIM-V124-05**: Every id reference inside exported configuration is remapped to the new ids on import — including widget→widget, widget→table, and widget→custom-metric references — so no imported widget points at a pre-existing record by accident — automated 2026-09-17 (`routes.dashboard-import.refs.spec.ts`: `IMPNEW-REF1..REF8` each assert the NEW id and NOT the file's, against a fixture armed so a skipped remap would silently point at a real pre-existing record; `IMPNEW-sweep` re-drives the shipped `collectWidgetConfigRefs` per kind as a catch-all; 12/12 Task-2 mutation probes fired, one per reference kind plus the union edge and the sweep. LIMITATION: proven in one database — proves remapping, not cross-environment portability; REF-2/`dynamicViewId`, REF-4/scalar `metricId` and REF-5/`metrics[].metricId` have never been exercised outside a fixture — Phase 121 must exercise a real dashboard with a custom metric AND a dynamic view)
+- [x] **DXIM-V124-06**: Tables are matched by `schema.name` on import: an existing registry entry is reused, a missing one is created — never duplicated for the same `schema.name` — automated 2026-09-17 (Phase 120-02's `RESOLVE-table` tests + Phase 120-05's `tablesMatched`/`tablesCreated` report assertions against the armed fixture, where every table is genuinely CREATED because the schema was rewritten to `kbi_target`)
+- [x] **DXIM-V124-07**: Custom metrics referenced by imported widgets travel with the export and are created in the target if absent, so no imported widget loses its metric — automated 2026-09-17 (Phase 120-02's `RESOLVE-metric` tests, incl. the locked same-label/different-expression conflict policy; Phase 120-05's `IMPNEW-REF4`/`IMPNEW-REF5` extra proofs against the armed fixture where metrics are genuinely CREATED)
 - [x] **DXIM-V124-08**: User access grants are NOT exported or imported — the imported dashboard starts with the target environment's own access rules — proven by Phase 119-03's exclusion canaries (access-grant grantee absent from raw response bytes) AND by the operator's own search of the exported file finding no usernames/roles, 2026-09-16
-- [ ] **DXIM-V124-09**: Import is atomic — a failure partway through leaves no partial dashboard, orphaned widgets, or stray table entries behind
-- [ ] **DXIM-V124-10**: Import reports what it did — which tables were matched vs created, which custom metrics were created, and the new dashboard id
-- [ ] **DXIM-V124-11**: A malformed, truncated, or hand-edited export file is rejected with a clear message rather than partially applied
+- [x] **DXIM-V124-09**: Import is atomic — a failure partway through leaves no partial dashboard, orphaned widgets, or stray table entries behind — automated 2026-09-17 (Phase 120-03: three SQLite `RAISE(ABORT)` trigger-induced rollbacks at three different points in the two-pass sequence — first widget insert, first layer insert, and the LAST creation step — each asserting a full seven-table row-count snapshot is unchanged; an `ATOMIC-clean` control run confirms no trigger leaked)
+- [x] **DXIM-V124-10**: Import reports what it did — which tables were matched vs created, which custom metrics were created, and the new dashboard id — automated 2026-09-17 (Phase 120-03's `REPORT-` tests + Phase 120-04's `ROUTE-201` response-shape tests: `dashboardId`, `tablesMatched`/`tablesCreated`, `metricsMatched`/`metricsCreated`/`metricConflicts`, `strippedReferences`, `warnings`)
+- [x] **DXIM-V124-11**: A malformed, truncated, or hand-edited export file is rejected with a clear message rather than partially applied — automated 2026-09-17 (Phase 120-02's `VALID-reject`/`VALID-dangle`/`VALID-nowrite` tests — zero DB access during validation — plus Phase 120-04's `MALFORMED-truncated`/`OVERSIZE-limit` body-parser tests turning a prior bare 500 into a typed 400/413)
 
 ## Locked decisions (operator, 2026-09-16)
 
@@ -106,15 +106,25 @@ Acknowledged, deliberately not in v1.24.
 |-------------|-------|--------|
 | DXIM-V124-01 | Phase 119 | Complete (2026-09-16 operator export) |
 | DXIM-V124-02 | Phase 119 | Complete (2026-09-16 operator export) |
-| DXIM-V124-03 | Phase 120 | Pending |
-| DXIM-V124-04 | Phase 120 | Pending |
-| DXIM-V124-05 | Phase 120 | Pending |
-| DXIM-V124-06 | Phase 120 | Pending |
-| DXIM-V124-07 | Phase 120 | Pending |
+| DXIM-V124-03 | Phase 120 | Complete (automated 2026-09-17; cross-environment operator UAT is Phase 121) |
+| DXIM-V124-04 | Phase 120 | Complete (automated 2026-09-17) |
+| DXIM-V124-05 | Phase 120 | Complete (automated 2026-09-17; one-database fixture — see note below) |
+| DXIM-V124-06 | Phase 120 | Complete (automated 2026-09-17) |
+| DXIM-V124-07 | Phase 120 | Complete (automated 2026-09-17) |
 | DXIM-V124-08 | Phase 119 | Complete (2026-09-16 exclusion canaries + operator search) |
-| DXIM-V124-09 | Phase 120 | Pending |
-| DXIM-V124-10 | Phase 120 | Pending |
-| DXIM-V124-11 | Phase 120 | Pending |
+| DXIM-V124-09 | Phase 120 | Complete (automated 2026-09-17) |
+| DXIM-V124-10 | Phase 120 | Complete (automated 2026-09-17; also re-verified by Phase 121's UI) |
+| DXIM-V124-11 | Phase 120 | Complete (automated 2026-09-17) |
+
+**Note on Phase 120's closure (recorded here, not smoothed over):** every Phase 120 proof runs
+inside ONE database — the armed fixture rewrites `tables[].schema` to force genuine old->new
+id maps while staying in one SQLite connection. This proves reference REMAPPING; it does NOT
+prove cross-environment PORTABILITY, which is Phase 121's operator round-trip between two real
+environments. REF-2 (`dynamicViewId`), REF-4 (scalar `metricId`) and REF-5 (`metrics[].metricId`)
+have NEVER been exercised outside a fixture — the operator's Phase 119 export contained no dynamic
+views and no custom metrics. **Phase 121 must ask the operator to build a dashboard using a custom
+metric AND a dynamic view before the cross-environment round trip**, or those three reference kinds
+will still never have run outside a test.
 
 **Coverage:**
 - v1.24 requirements: 11 total

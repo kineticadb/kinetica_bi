@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 120-04-PLAN.md — POST /api/dashboards/import route gated on dashboards:create AND datasets:manage (no new permission), errorMiddleware taught entity.parse.failed (400 MALFORMED_JSON) and entity.too.large (413 PAYLOAD_TOO_LARGE), confirmed both previously surfaced as bare 500. 5 mutation probes (2 required new single-permission fixtures to discriminate the AND-gate). Next: plan/execute 120-05 (per-reference-kind NEW-id proofs, 12 mutation probes, SET-BASED gate — closes DXIM-V124-03/-10/-11)."
-last_updated: "2026-09-17T01:57:00Z"
+stopped_at: "Completed 120-05-PLAN.md — Phase 120 (Import) COMPLETE. routes.dashboard-import.refs.spec.ts proves all eight reference kinds (IMPNEW-REF1..REF8) point at the NEWLY created/matched record through the real HTTP route, against a fixture armed by rewriting tables[].schema so every old id still resolves to a pre-existing record; IMPNEW-sweep re-drives collectWidgetConfigRefs per kind as a catch-all; the three rewrite traps (empty includedLayerIds, __spatial_draws__ sentinel, legacy singular action) verified end to end. 12/12 mutation probes fired on first attempt (39/39 phase-wide). Server gate exited 0 (SET-BASED); both-stack tsc clean; packages/web untouched by this phase. DXIM-V124-03/-04/-05/-06/-07/-09/-10/-11 marked Complete (automated) in REQUIREMENTS.md — the one-database limitation and REF-2/-4/-5 fixture-only status are recorded prominently as a Phase 121 hand-off requirement (exercise a real dashboard with a custom metric AND a dynamic view before the cross-environment round trip). Next: plan Phase 121 (UI + Cross-Environment Verification — download/upload in the app, operator round-trip between two real environments)."
+last_updated: "2026-09-17T03:00:00Z"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -19,12 +19,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 120 — Import
+**Current focus:** Phase 121 — UI + Cross-Environment Verification
 
 ## Current Position
 
-Phase: 120 (Import) — EXECUTING
-Plan: 5 of 5 (120-01, 120-02, 120-03, 120-04 COMPLETE — see 120-01-SUMMARY.md, 120-02-SUMMARY.md, 120-03-SUMMARY.md, 120-04-SUMMARY.md)
+Phase: 120 (Import) — COMPLETE (all 5 plans executed — see 120-01-SUMMARY.md, 120-02-SUMMARY.md, 120-03-SUMMARY.md, 120-04-SUMMARY.md, 120-05-SUMMARY.md)
+Next: Phase 121 (UI + Cross-Environment Verification) — not yet planned. Depends on Phases 119 and
+120 (both complete). Requirements: DXIM-V124-01, DXIM-V124-03, DXIM-V124-10. Hand-off from Phase
+120: the operator must build a dashboard using a custom metric AND a dynamic view before the
+cross-environment round trip, or REF-2/-4/-5 will still never have been exercised outside a test.
 
 ### Open tech debt carried forward
 

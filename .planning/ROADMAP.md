@@ -45,7 +45,7 @@
 ## Phases
 
 - [x] **Phase 119: Export** - A dashboard and its full dependency graph serialize to a versioned JSON file
-- [ ] **Phase 120: Import** - That file recreates the dashboard elsewhere with fresh ids, every reference remapped, atomically
+- [x] **Phase 120: Import** - That file recreates the dashboard elsewhere with fresh ids, every reference remapped, atomically
 - [ ] **Phase 121: UI + Cross-Environment Verification** - Download/upload in the app, and an operator round-trip between two environments
 
 ## Phase Details
@@ -80,12 +80,20 @@
   5. Import is atomic: an induced failure partway through leaves no dashboard, widgets, layers, or table entries behind.
   6. Import returns a report naming the new dashboard id, tables matched vs created, and metrics created.
   7. A malformed, truncated, or hand-edited file is rejected with a clear message and changes nothing.
-**Plans**: 5 plans (4/5 executed)
+**Plans**: 5/5 plans executed — Phase 120 COMPLETE (automated; cross-environment UAT is Phase 121)
 - [x] 120-01-PLAN.md — Shared visitor traversal + remap primitives + `getTableBySchemaName` (see 120-01-SUMMARY.md)
 - [x] 120-02-PLAN.md — Two-tier validation + table/metric resolution with conflict reporting (see 120-02-SUMMARY.md)
 - [x] 120-03-PLAN.md — Two-pass create-then-rewrite inside one transaction + atomicity (see 120-03-SUMMARY.md)
 - [x] 120-04-PLAN.md — `POST /api/dashboards/import` + body-parser error branches (see 120-04-SUMMARY.md)
-- [ ] 120-05-PLAN.md — Per-reference-kind NEW-id proofs, 12 mutation probes, SET-BASED gate
+- [x] 120-05-PLAN.md — Per-reference-kind NEW-id proofs, 12 mutation probes, SET-BASED gate (see 120-05-SUMMARY.md)
+
+**Verification:** 8/8 requirements (DXIM-V124-03/-04/-05/-06/-07/-09/-10/-11) automated-complete;
+`packages/server && npx tsc --noEmit` and `packages/web && npx tsc --noEmit` both clean; server
+gate exited 0 — `GATE PASSED`, SET-BASED (no fixed pass-count; 1 file — `auth.login-rbac.spec.ts` —
+passed alone as TD-V16-TEST-ISOLATION contamination); `packages/web` carries zero diff from this
+phase (base `3aba760`..HEAD); phase-wide mutation-probe tally 39/39 fired (10+6+6+5+12 across
+120-01..05). Cross-environment portability and REF-2/-4/-5 outside a fixture are explicitly NOT
+proven here — see 120-05-SUMMARY.md and REQUIREMENTS.md's note — that is Phase 121's job.
 
 ### Phase 121: UI + Cross-Environment Verification
 **Goal**: The operator can export a dashboard from one environment and import it into another entirely from the app, and the imported dashboard renders identically to the original.
