@@ -28,14 +28,14 @@ Renumbering on import therefore means rewriting references inside serialized JSO
 reassigning primary keys. A widget that keeps a stale id does not error — it silently renders the
 wrong table, the wrong metric, or an unbound legend.
 
-- [ ] **DXIM-V124-01**: A dashboard can be exported to a JSON file that contains everything needed to recreate it elsewhere
-- [ ] **DXIM-V124-02**: The export includes every visualization (widget) on the dashboard, with its full configuration
+- [x] **DXIM-V124-01**: A dashboard can be exported to a JSON file that contains everything needed to recreate it elsewhere — operator-verified 2026-09-16 (Phase 119 export of dashboard id 4, "Test Dashboard": 7 widgets, 4 layers, 3 tables, 0 dangling references)
+- [x] **DXIM-V124-02**: The export includes every visualization (widget) on the dashboard, with its full configuration — operator-verified 2026-09-16 (all 7 widgets — heatmap, legend, map, radiogroup, records, table — exported with full config)
 - [ ] **DXIM-V124-03**: Importing that file into another environment recreates the dashboard and all its visualizations
 - [ ] **DXIM-V124-04**: Import always assigns NEW dashboard and widget ids — importing a file whose original ids collide with existing records must succeed, leaving the existing records untouched
 - [ ] **DXIM-V124-05**: Every id reference inside exported configuration is remapped to the new ids on import — including widget→widget, widget→table, and widget→custom-metric references — so no imported widget points at a pre-existing record by accident
 - [ ] **DXIM-V124-06**: Tables are matched by `schema.name` on import: an existing registry entry is reused, a missing one is created — never duplicated for the same `schema.name`
 - [ ] **DXIM-V124-07**: Custom metrics referenced by imported widgets travel with the export and are created in the target if absent, so no imported widget loses its metric
-- [ ] **DXIM-V124-08**: User access grants are NOT exported or imported — the imported dashboard starts with the target environment's own access rules
+- [x] **DXIM-V124-08**: User access grants are NOT exported or imported — the imported dashboard starts with the target environment's own access rules — proven by Phase 119-03's exclusion canaries (access-grant grantee absent from raw response bytes) AND by the operator's own search of the exported file finding no usernames/roles, 2026-09-16
 - [ ] **DXIM-V124-09**: Import is atomic — a failure partway through leaves no partial dashboard, orphaned widgets, or stray table entries behind
 - [ ] **DXIM-V124-10**: Import reports what it did — which tables were matched vs created, which custom metrics were created, and the new dashboard id
 - [ ] **DXIM-V124-11**: A malformed, truncated, or hand-edited export file is rejected with a clear message rather than partially applied
@@ -104,14 +104,14 @@ Acknowledged, deliberately not in v1.24.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DXIM-V124-01 | Phase 119 | Pending |
-| DXIM-V124-02 | Phase 119 | Pending |
+| DXIM-V124-01 | Phase 119 | Complete (2026-09-16 operator export) |
+| DXIM-V124-02 | Phase 119 | Complete (2026-09-16 operator export) |
 | DXIM-V124-03 | Phase 120 | Pending |
 | DXIM-V124-04 | Phase 120 | Pending |
 | DXIM-V124-05 | Phase 120 | Pending |
 | DXIM-V124-06 | Phase 120 | Pending |
 | DXIM-V124-07 | Phase 120 | Pending |
-| DXIM-V124-08 | Phase 119 | Pending |
+| DXIM-V124-08 | Phase 119 | Complete (2026-09-16 exclusion canaries + operator search) |
 | DXIM-V124-09 | Phase 120 | Pending |
 | DXIM-V124-10 | Phase 120 | Pending |
 | DXIM-V124-11 | Phase 120 | Pending |
