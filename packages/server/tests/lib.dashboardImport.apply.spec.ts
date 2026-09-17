@@ -350,3 +350,134 @@ describe("applyDashboardImport — always-new ids (NEWID-collision)", () => {
     for (const w of created) expect(w.config).not.toEqual({});
   });
 });
+
+// ─── Task 2: ATOMIC- (trigger-induced rollback proofs) ─────────────────────────
+
+/**
+ * Full row-count snapshot across every table `applyDashboardImport` can write. A per-table
+ * `toBe` would let a stray row in an unchecked table slip through unnoticed — a single `toEqual`
+ * covering all seven tables does not.
+ */
+const countRows = () => ({
+  dashboards: (db.prepare("SELECT COUNT(*) c FROM dashboards").get() as any).c,
+  widgets: (db.prepare("SELECT COUNT(*) c FROM widgets").get() as any).c,
+  layers: (db.prepare("SELECT COUNT(*) c FROM dashboard_layers").get() as any).c,
+  dynamicViews: (db.prepare("SELECT COUNT(*) c FROM dashboard_dynamic_views").get() as any).c,
+  tables: (db.prepare("SELECT COUNT(*) c FROM tables").get() as any).c,
+  metrics: (db.prepare("SELECT COUNT(*) c FROM custom_metrics").get() as any).c,
+  dashboardTables: (db.prepare("SELECT COUNT(*) c FROM dashboard_tables").get() as any).c,
+});
+
+/**
+ * Installs a `RAISE(ABORT)` trigger on `table` for the duration of `fn`, then ALWAYS drops it —
+ * even if `fn` throws (which it is expected to, in every caller here). A leaked trigger would
+ * silently redden every OTHER spec file that inserts into the same table days later, and
+ * `test-gate.mjs`'s set-based re-run would misattribute it to `TD-V16-TEST-ISOLATION` instead of
+ * surfacing the real regression. The `finally` here plus the `beforeEach` module-level drop
+ * (above) are the two lines this file's own acceptance criteria count.
+ */
+const withAbortTriggerOn = (table: string, fn: () => void) => {
+  db.exec("DROP TRIGGER IF EXISTS kbi_test_abort;");
+  db.exec(
+    `CREATE TRIGGER kbi_test_abort BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'induced import failure'); END;`
+  );
+  try {
+    fn();
+  } finally {
+    db.exec("DROP TRIGGER IF EXISTS kbi_test_abort;");
+  }
+};
+
+describe("applyDashboardImport — atomicity (ATOMIC-)", () => {
+  it("ATOMIC-widgets: a failure at the first widget insert leaves zero new rows in ANY table", () => {
+    const file = buildFixtureFile();
+    const before = countRows();
+    withAbortTriggerOn("widgets", () => {
+      expect(() => applyDashboardImport(file)).toThrow();
+    });
+    const after = countRows();
+    expect(after).toEqual(before);
+  });
+
+  it("ATOMIC-widgets: the table row created earlier in the same import is rolled back too", () => {
+    const file = buildFixtureFile();
+    const beforeTables = (db.prepare("SELECT COUNT(*) c FROM tables").get() as any).c;
+    withAbortTriggerOn("widgets", () => {
+      expect(() => applyDashboardImport(file)).toThrow();
+    });
+    const afterTables = (db.prepare("SELECT COUNT(*) c FROM tables").get() as any).c;
+    // Tables (Pass 1 step 1) are created strictly before widgets (step 4) in the same
+    // transaction — proving THIS count is unchanged proves rollback reached backward across
+    // entity kinds, not merely that the failing insert itself never landed.
+    expect(afterTables).toBe(beforeTables);
+  });
+
+  it("ATOMIC-layers: a failure at the first layer insert leaves zero new rows in ANY table", () => {
+    const file = buildFixtureFile();
+    const before = countRows();
+    withAbortTriggerOn("dashboard_layers", () => {
+      expect(() => applyDashboardImport(file)).toThrow();
+    });
+    const after = countRows();
+    expect(after).toEqual(before);
+  });
+
+  it("ATOMIC-layers: the dashboard, widgets and dynamic views created earlier are all rolled back", () => {
+    const file = buildFixtureFile();
+    const before = {
+      dashboards: (db.prepare("SELECT COUNT(*) c FROM dashboards").get() as any).c,
+      widgets: (db.prepare("SELECT COUNT(*) c FROM widgets").get() as any).c,
+      dynamicViews: (db.prepare("SELECT COUNT(*) c FROM dashboard_dynamic_views").get() as any).c,
+    };
+    withAbortTriggerOn("dashboard_layers", () => {
+      expect(() => applyDashboardImport(file)).toThrow();
+    });
+    const after = {
+      dashboards: (db.prepare("SELECT COUNT(*) c FROM dashboards").get() as any).c,
+      widgets: (db.prepare("SELECT COUNT(*) c FROM widgets").get() as any).c,
+      dynamicViews: (db.prepare("SELECT COUNT(*) c FROM dashboard_dynamic_views").get() as any).c,
+    };
+    expect(after).toEqual(before);
+  });
+
+  it("ATOMIC-metrics: a failure at the custom_metrics insert — the LAST creation step — still rolls back everything", () => {
+    const file = buildFixtureFile();
+    // The fixture's customMetrics must resolve to a metric the (freshly-reset, empty) target
+    // does not already have, or the trigger never fires (resolveCustomMetrics matches instead of
+    // inserting) — ATOMIC-clean (below) proves this fixture creates >= 1 metric on a clean import.
+    const before = countRows();
+    withAbortTriggerOn("custom_metrics", () => {
+      expect(() => applyDashboardImport(file)).toThrow();
+    });
+    const after = countRows();
+    expect(after).toEqual(before);
+  });
+
+  it("ATOMIC-throws: applyDashboardImport propagates the failure rather than returning a partial report", () => {
+    const file = buildFixtureFile();
+    withAbortTriggerOn("dashboard_layers", () => {
+      let threw = false;
+      let result: unknown;
+      try {
+        result = applyDashboardImport(file);
+      } catch {
+        threw = true;
+      }
+      expect(threw).toBe(true);
+      expect(result).toBeUndefined();
+    });
+  });
+
+  // Run LAST (declaration order in this file is execution order for vitest's default sequential
+  // scheduling within one file): if any trigger above leaked, this control fails loudly here
+  // instead of silently reddening an unrelated spec file three days later.
+  it("ATOMIC-clean: with no trigger installed, the same file imports successfully", () => {
+    const file = buildFixtureFile();
+    const report = applyDashboardImport(file);
+    expect(report.dashboardId).toBeGreaterThan(0);
+    // Also the fixture-validity proof ATOMIC-metrics depends on: this fixture DOES create at
+    // least one metric on a clean import, so the metrics trigger above genuinely fires on an
+    // INSERT rather than being skipped by resolveCustomMetrics' match-and-reuse path.
+    expect(report.metricsCreated.length).toBeGreaterThanOrEqual(1);
+  });
+});
