@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 121-02-PLAN.md — ImportDashboardModal.tsx + spec added (DXIM-V124-10 UI surface; requirement closure NOT touched — Plan 121-04 owns the operator round-trip outcome and reopening on failure). Two-phase modal (pick -> report) mirrors DashboardAccessModal chrome exactly, zero new CSS; renders every MetricConflict.message and warnings[] string verbatim, matched-vs-created disposition for tables/metrics. 14 IMPRPT- unit tests pass; 5/5 mutation probes fired clean (no strengthening needed), including the load-bearing M2 probe simulating the DXIM-V124-10 count-summary failure mode. Web gates green: tsc clean, vitest 178 files/4054 tests/0 failed, theme-guard 152/152 (+2 from the one new component, as predicted); packages/server carries zero diff. Recorded TD-V123-THEMEGUARD-HOLE finding for Plan 04's visual check (allowlisted raw-hex .error class). Next: plan/execute 121-03 (DashboardsPage export/import UI wiring)."
-last_updated: "2026-09-17T16:45:00.000Z"
+stopped_at: "Completed 121-03-PLAN.md — DashboardsPage export/import UI wiring (DXIM-V124-01/-03/-10 UI surface; requirement closure NOT touched — Plan 121-04 owns the operator round-trip outcome and reopening on failure). Per-row Export button (unconditional, mirrors the export route's canViewDashboard-only gate) + page-level Import dashboard control gated on canImport = canCreate AND hasPermission(DATASETS_MANAGE) (a genuine AND mirroring index.ts:809-812 exactly, proven by two single-permission negative fixtures — a client-side OR would show the button to someone the server refuses). ImportDashboardModal mounted conditionally; onImported -> refetch() so the list reflects the new dashboard live. Deliberate, in-scope class swap: '+ New Dashboard' btn-primary -> btn-primary btn-sm now that it shares the ds-actions row with Import dashboard (CLAUDE.md's primary-in-an-action-pair rule) — the only styling change this whole phase authorizes. 13 UIWIRE- tests pass; 6/6 mutation probes fired clean on first attempt (no strengthening needed), including the two AND-gate probes (M1/M2) that Phase 120 Wave 4 previously missed. Web gates green: tsc clean, vitest 179 files/4067 tests/0 failed, theme-guard 152/152 (unchanged — no new component file); packages/server and global.css both carry zero diff. Next: execute 121-04 (BLOCKING operator round trip between two real environments — a FAIL reopens DXIM-V124-01/-03/-10)."
+last_updated: "2026-09-17T17:20:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 121 (UI + Cross-Environment Verification) — EXECUTING
-Plan: 2 of 4 COMPLETE (121-01-SUMMARY.md, 121-02-SUMMARY.md) — next: 121-03
+Plan: 3 of 4 COMPLETE (121-01-SUMMARY.md, 121-02-SUMMARY.md, 121-03-SUMMARY.md) — next: 121-04 (BLOCKING operator round trip)
 
 ### Phase 121 Plan 01 decisions (2026-09-17)
 
@@ -55,6 +55,32 @@ Plan: 2 of 4 COMPLETE (121-01-SUMMARY.md, 121-02-SUMMARY.md) — next: 121-03
   need a human visual check in both light and dark themes during Plan 04's operator UAT.
 - 5/5 mutation probes fired clean on the first attempt — no fixture strengthening needed this plan
   (contrast Plan 01's P5). See 121-02-SUMMARY.md for the full probe table.
+
+### Phase 121 Plan 03 decisions (2026-09-17)
+
+- `canImport = canCreate && hasPermission(PERMISSIONS.DATASETS_MANAGE)` is a genuine client-side AND,
+  mirroring the import route's own gate exactly (`index.ts:809-812` spreads
+  `requirePermission(DASHBOARDS_CREATE)` AND `requirePermission(DATASETS_MANAGE)`). Proven by two
+  single-permission negative fixtures (`UIWIRE-import-create-only`, `UIWIRE-import-manage-only`)
+  seeded inline via `useAuthStore.setState` — `seedAuthStore.ts` was NOT edited, per constraint.
+  Mutation probes M1 (drop the `DATASETS_MANAGE` half) and M2 (drop the `canCreate` half) each
+  reddened exactly one of those two fixtures on the first attempt — the exact discrimination gap
+  that Phase 120 Wave 4 previously missed with an analyst-only (neither-permission) fixture.
+- Export is rendered unconditionally per row (no client-side permission gate) — the export route
+  gates on `canViewDashboard` only, and `GET /api/dashboards` already server-filters the list by it,
+  so every visible row has already passed the server's gate. `UIWIRE-export-analyst` pins this
+  deliberate asymmetry with Import; mutation probe M6 (gating Export behind `canEdit`) correctly
+  reddened it, guarding against a plausible future "tidy-up" that would over-restrict analysts.
+- `+ New Dashboard` changed from `btn-primary` to `btn-primary btn-sm` — a DELIBERATE, in-scope
+  consequence of CLAUDE.md's primary-in-an-action-pair rule now that it shares the `ds-actions` row
+  with `Import dashboard`. The only styling change this whole phase authorizes.
+- `onImported={() => refetch()}` (not a local list prepend) — the import report carries only
+  `dashboardId`/`dashboardName`, not a full `DashboardDto`, so a live re-fetch is the only way to get
+  a well-formed row for the new dashboard.
+- 6/6 mutation probes fired clean on the first attempt — no test strengthening needed this plan
+  (contrast Plan 01's P5). See 121-03-SUMMARY.md for the full probe table.
+- No DXIM requirement was marked complete or reopened by this plan — Plan 04 owns the operator
+  round-trip outcome and all DXIM-V124-01/-03/-10 closure decisions.
 
 ### Open tech debt carried forward
 
