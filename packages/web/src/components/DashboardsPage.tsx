@@ -17,10 +17,12 @@ import {
   deleteWidget,
   listViews,
   createView,
+  downloadDashboardExport,  // Phase 121 (DXIM-V124-01)
   DashboardDto,
   TableDto,
   WidgetDto,
   ViewDto,
+  type ImportReportDto,  // Phase 121 (DXIM-V124-10)
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
@@ -40,6 +42,7 @@ import LayersModal from "./LayersModal";
 import DynamicViewsModal from "./DynamicViewsModal";  // Phase 34 (DV-V16-08)
 import DashboardAccessModal from "./DashboardAccessModal";  // Phase 56 (GRANTUI-V110-03)
 import DashboardSettingsModal from "./DashboardSettingsModal";  // Phase 110 (FSET-V120-01)
+import ImportDashboardModal from "./ImportDashboardModal";  // Phase 121 (DXIM-V124-03/-10)
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import {
   listDashboardLayers,
@@ -94,7 +97,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   // Consumed ONCE, by the useState initializer below.
   initialOpenDashboard?: { dashboard: DashboardDto; mode: DashboardMode };
 }) => {
-  const { loading, data, error } = useApiQuery<DashboardDto[]>(() => listDashboards(), []);
+  const { loading, data, error, refetch } = useApiQuery<DashboardDto[]>(() => listDashboards(), []);
   const [dashboards, setDashboards] = useState<DashboardDto[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Phase 114 (DLINK-V121-02): a deep link mounts us straight into the open view, so the LIST
@@ -123,8 +126,14 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   const canEdit   = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
   const canDelete = hasPermission(PERMISSIONS.DASHBOARDS_DELETE);
   const canManageAccess = hasPermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS);  // Phase 56 (GRANTUI-V110-03)
+  // Phase 121 (DXIM-V124-03): mirrors the import route's OWN gate exactly — index.ts:809-812 spreads
+  // requirePermission(DASHBOARDS_CREATE) AND requirePermission(DATASETS_MANAGE). An AND, so the
+  // control is hidden rather than offered to someone the server will refuse.
+  const canImport = canCreate && hasPermission(PERMISSIONS.DATASETS_MANAGE);
 
   const [accessModalDashboard, setAccessModalDashboard] = useState<DashboardDto | null>(null);  // Phase 56 (GRANTUI-V110-03)
+  const [showImportModal, setShowImportModal] = useState(false);  // Phase 121 (DXIM-V124-10)
+  const [exportError, setExportError] = useState<string | null>(null);  // Phase 121 (DXIM-V124-01)
 
   // Sync dashboards state from useApiQuery data (preserves local mutation for delete)
   useEffect(() => {
@@ -236,10 +245,19 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
         title="Dashboards"
         description="All saved dashboards from the backend"
         actions={
-          canCreate ? (
-            <button className="btn-primary" onClick={() => setView({ mode: "create" })}>
-              + New Dashboard
-            </button>
+          canCreate || canImport ? (
+            <div className="ds-actions">
+              {canCreate && (
+                <button className="btn-primary btn-sm" onClick={() => setView({ mode: "create" })}>
+                  + New Dashboard
+                </button>
+              )}
+              {canImport && (
+                <button className="ghost-sm" onClick={() => setShowImportModal(true)}>
+                  Import dashboard
+                </button>
+              )}
+            </div>
           ) : undefined
         }
       >
@@ -251,6 +269,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
           <div className="error">{error.message}</div>
         )}
         {deleteError && <div className="error">{deleteError}</div>}
+        {exportError && <div className="error">{exportError}</div>}
         {!loading && !error && dashboards.length === 0 && <div className="muted">No dashboards have been shared with you yet.</div>}
         {!loading && !error && dashboards.length > 0 && (
           <div className="datasets-table">
@@ -287,6 +306,15 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
                       Manage access
                     </button>
                   )}
+                  <button
+                    className="ghost-sm"
+                    onClick={() => {
+                      setExportError(null);
+                      downloadDashboardExport(dash).catch((err) => setExportError((err as Error).message));
+                    }}
+                  >
+                    Export
+                  </button>
                 </span>
               </div>
             ))}
@@ -298,6 +326,15 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
           dashboardId={accessModalDashboard.id}
           dashboardName={accessModalDashboard.name}
           onClose={() => setAccessModalDashboard(null)}
+        />
+      )}
+      {showImportModal && (
+        <ImportDashboardModal
+          onClose={() => setShowImportModal(false)}
+          // The modal stays open showing the report; the list refreshes underneath so the imported
+          // dashboard is already there when the operator closes it. refetch() rather than a local
+          // prepend: the report carries only dashboardId/dashboardName, not a full DashboardDto.
+          onImported={() => refetch()}
         />
       )}
     </div>
