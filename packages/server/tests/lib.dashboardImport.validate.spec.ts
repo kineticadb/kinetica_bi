@@ -10,10 +10,40 @@
  *
  * Task 2 (`RESOLVE-*`): table and custom-metric match-or-create resolution.
  *
- * Task 3: MUTATION PROBES block appended below once Tasks 1/2 are committed.
+ * MUTATION PROBES (Plan 120-02 Task 3) — six probes run for real against the committed
+ * dashboardImport.ts, each reddening at least its named test below, then reverted via
+ * `git checkout --`; `git diff --exit-code` confirmed the source byte-identical afterward.
+ * V1 removed the SUPPORTED_IMPORT_SCHEMA_VERSIONS membership check (accept any positive integer)
+ *      -> reddened "VALID-reject: schemaVersion 2 is rejected naming both 2 and the supported version"
+ * V2 treated a missing `widgets` collection as `[]` instead of rejecting
+ *      -> reddened "VALID-reject: a missing widgets array is rejected naming \"widgets\"" (the
+ *      mutation crashes with a TypeError inside the Tier-2 walk rather than returning ok:false —
+ *      still a failing test, and arguably a WORSE outcome than a clean rejection)
+ * V3 deleted the within-collection duplicate-id check
+ *      -> reddened "VALID-reject: duplicate widget ids inside the file are rejected"
+ * V4 made a recomputed dangling reference FATAL (rejected instead of reported)
+ *      -> reddened "VALID-dangle: a widget referencing a widget id absent from the file is
+ *      reported, NOT rejected"
+ * V5 in resolveTables, dropped the `seen` map so a repeated schema.name look up the target again
+ *      -> did NOT redden the original three assertions on first attempt: getTableBySchemaName is a
+ *      live query, so the second file entry's re-query finds the row the first entry just created
+ *      and still resolves to the same id, by coincidence rather than by the `seen` map's doing.
+ *      STRENGTHENED the test with a `vi.spyOn(getTableBySchemaName)` call-count assertion
+ *      (expect 1 call for the shared key, not 2) — this is what the `seen` map actually buys, and
+ *      it reddens correctly under the mutation. Recorded here per CLAUDE.md's non-discriminating-
+ *      criterion rule: the original assertions were confirmed to pass BOTH with and without the
+ *      map, so they proved nothing about it; the call-count assertion is the one that does.
+ *      -> reddened "RESOLVE-table: TWO file entries sharing one schema.name resolve to the SAME
+ *      new id and create ONE row" (strengthened form)
+ * V6 in resolveCustomMetrics, skipped the `existing.expression !== m.expression` comparison
+ *      (reported every match as clean)
+ *      -> reddened "RESOLVE-metric: a same-label DIFFERENT-expression match is reported in
+ *      conflicts"
+ * All six probes fired; V5 required strengthening its test (see above) before it did.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, createTable, createCustomMetric } from "../src/db";
+import * as dbModule from "../src/db";
 import {
   validateImportFile,
   SUPPORTED_IMPORT_SCHEMA_VERSIONS,
@@ -351,12 +381,19 @@ describe("resolveTables — match by schema.name, create when absent, never dupl
   });
 
   it("RESOLVE-table: TWO file entries sharing one schema.name resolve to the SAME new id and create ONE row", () => {
+    // Also asserts the target is queried only ONCE for this key — a live getTableBySchemaName
+    // re-query alone would (by coincidence, since it reads the row the first entry just created)
+    // still land on the same id without a per-run `seen` map, so that alone would not discriminate
+    // the map's removal. The call-count assertion is what actually proves the map is doing work.
+    const spy = vi.spyOn(dbModule, "getTableBySchemaName");
     const before = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
     const result = resolveTables([fileTable(500, "kbi_x", "dup_table"), fileTable(501, "kbi_x", "dup_table")]);
     const after = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
     expect(result.created).toHaveLength(1);
     expect(result.map.get(500)).toBe(result.map.get(501));
     expect(after - before).toBe(1);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("RESOLVE-table: the total tables row count grows by exactly the number reported as created", () => {
