@@ -1,7 +1,7 @@
 # Phase 119 Plan 04: Ninth-Reference-Kind Audit + Operator Export Checkpoint Summary
 
-**Status: Task 1 (automated audit) complete. Task 2 (blocking operator checkpoint) is PENDING — this
-file will be updated with an `## Operator verdict` section once the operator responds.**
+**Status: COMPLETE. Task 1 (automated audit) and Task 2 (blocking operator checkpoint) both done —
+operator APPROVED, 2026-09-16. See `## Operator verdict` below for the full record.**
 
 ## Task 1: Ninth-reference-kind audit against a recorded baseline
 
@@ -125,8 +125,94 @@ customer-built dashboard the way a human export-and-inspect can.
 
 ---
 
-## Task 2: Operator exports a real dashboard — AWAITING RESPONSE
+## Task 2: Operator exports a real dashboard
 
-This is a blocking `checkpoint:human-verify` task. See the orchestrator's checkpoint message for the
-verbatim steps presented to the operator. This section will be replaced with the actual
-`## Operator verdict` once they respond, per the plan's instruction.
+## Operator verdict
+
+**APPROVED.**
+
+The operator exported one of their own real dashboards and reviewed the downloaded file directly
+(verified by the orchestrator reading the downloaded file, not from the operator's self-report
+alone).
+
+**Dashboard exported:** id `4`, "Test Dashboard" — downloaded as
+`~/Downloads/dashboard-4-test-dashboard.json`.
+
+**Measured contents:**
+
+| Field | Value |
+|---|---|
+| `schemaVersion` | 1 |
+| `widgets` | 7 (types: heatmap, legend, map, radiogroup, records, table) |
+| `layers` | 4 |
+| `tables` | 3 |
+| `dashboardTableIds` | 3 |
+| `customMetrics` | 0 |
+| `dynamicViews` | 0 |
+| `danglingReferences` | 0 |
+
+Envelope keys present and correct: `schemaVersion, exportedAt, dashboard, widgets, layers,
+dynamicViews, tables, customMetrics, dashboardTableIds, danglingReferences`. The suggested filename
+(`dashboard-4-test-dashboard.json`) is sensible and the file is readable/diffable.
+
+`danglingReferences: 0` confirms no broken bindings on this particular dashboard.
+
+### Reference-kind coverage — honest accounting (NOT "8/8 operator-verified")
+
+This export exercised **5 of the 8** reference kinds live, on a real, operator-known dashboard,
+including the three riskiest (widget-to-widget, layer-array, and the polymorphic action-target
+kind). It did NOT exercise the remaining 3, because this particular dashboard contains none of the
+relevant objects — those 3 remain covered by the automated suite (Plan 01 unit tests + Plan 03
+kitchen-sink fixture) only, never by a human eye on a real customer-built dashboard.
+
+**Live-verified by this operator export (5/8):**
+
+| REF-n | Kind | Evidence in this export |
+|---|---|---|
+| REF-1 | `tableId` | 3 tables present |
+| REF-3 | `sourceMapWidgetId` | a **legend** widget present (standalone Legend → map binding) |
+| REF-6 | `includedLayerIds` | a **map** widget plus 4 layers |
+| REF-8 | `options[].actions[].target` (+ legacy singular `action`) | a **radiogroup** widget present |
+| — | `dashboard_tables` UNION edge | `dashboardTableIds: 3` |
+
+**NOT exercised by this export — automated-only coverage (3/8):**
+
+| REF-n | Kind | Why not exercised | Coverage that DOES exist |
+|---|---|---|---|
+| REF-2 | `dynamicViewId` | `dynamicViews: 0` — this dashboard has no dynamic view | Plan 01 unit test + Plan 03 kitchen-sink fixture only |
+| REF-4 | scalar `metricId` | `customMetrics: 0` — this dashboard uses no custom metric | Plan 01 unit test + Plan 03 kitchen-sink fixture only |
+| REF-5 | `metrics[].metricId` (array form) | `customMetrics: 0` — same reason | Plan 01 unit test + Plan 03 kitchen-sink fixture only |
+
+This 5/8-vs-3/8 split is recorded deliberately (mirroring how Phases 115-117 recorded their
+not-exercised items) because Phase 120 builds its id remapper directly on this inventory, and
+"which reference kinds have only ever been seen in a fixture, never in a real customer dashboard"
+must be known going in, not assumed to be equivalent to the 5 that were.
+
+### Gap found
+
+None. The operator found nothing missing, nothing extra, and no dangling references. No
+`/gsd:plan-phase 119 --gaps` follow-up is required.
+
+### Process findings (recorded per this plan's closing instruction)
+
+- **20/20 mutation probes fired across the phase** (10 in Plan 01 against the pure reference-walk
+  module, 10 in Plan 03 against the assembler/route), each reverted with the source confirmed
+  byte-identical afterward (`git diff --exit-code` clean both times).
+- **The self-tripped-criterion trap** (a plan mandating a code comment that literally quotes the
+  very token its own acceptance-criteria grep counts, and the comment scoring against its own
+  criterion) **hit all three prior waves** (119-01, 119-02, 119-03) and was caught each time by
+  running the acceptance-criteria greps before committing rather than assuming they would pass —
+  never by weakening the check.
+- **`gsd-tools state advance-plan` / `roadmap update-plan-progress` cannot parse this project's
+  STATE.md/ROADMAP.md file formats** (`Plan: N of M` vs. the tool's expected `Current Plan:` /
+  `Total Plans in Phase:` headings). All four waves of this phase (119-01 through 119-04) hit this
+  and worked around it with manual edits in the existing file style. Worth fixing at the source
+  (teaching the tool this project's actual heading format) or formally documenting as a permanent
+  tooling gap, since four consecutive waves have now paid the same workaround cost.
+
+### Gates re-run against the current tree (2026-09-16, this continuation)
+
+- `packages/server && npx tsc --noEmit` → clean.
+- `node scripts/test-gate.mjs` → `GATE PASSED` (SET-BASED; 1044/1097 passed, 8 files failing, all 8
+  on the documented known-failing list — no new regressions since Plan 03's run).
+- `git diff --numstat 6ccf6d8 -- packages/web` → empty (server-only phase, confirmed again).
