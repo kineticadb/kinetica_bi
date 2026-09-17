@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: Completed 119-01-PLAN.md — pure dashboardExportRefs walk (8/8 REF kinds, 10/10 mutation probes fired)
-last_updated: "2026-09-17T00:00:46.775Z"
+stopped_at: Completed 119-02-PLAN.md — dashboard export assembler + GET /api/dashboards/:id/export route
+last_updated: "2026-09-17T00:07:32Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 119 (Export) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ### Open tech debt carried forward
 
@@ -467,6 +467,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 118 P02 | 12min | 3 tasks | 5 files |
 | Phase 118 P03 | 12min | 3 tasks | 6 files |
 | Phase 119 P01 | 5min | 2 tasks | 2 files |
+| Phase 119 P02 | 6min | 2 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -651,6 +652,14 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 119 Plan 02 Decisions (2026-09-16)
+
+- **Table set is the UNION of `dashboard_tables` membership and walk-derived table refs**; `dashboardTableIds` is kept as a SEPARATE field (associated-only subset) so Phase 120 import can recreate the join-table rows a flat `tables` array cannot express.
+- **Only widget-referenced custom metrics travel** — never the full per-table metric listing — confirmed by a dedicated `EXCL-metric` test asserting a sibling metric on an exported table is absent.
+- **`danglingReferences` is informational, never blocking** — a single `absorb()` pass records any reference pointing off-dashboard (e.g. a Legend's `sourceMapWidgetId` targeting a widget on another dashboard) alongside accumulating the Plan 01 walk's refs, so provenance (`from: widget:<id>`) survives the later merge.
+- **The export route adds NO new permission and NO 403 branch** — `canViewDashboard`'s existing 404-collapse guard is reused verbatim from the five sibling per-dashboard GET routes; `requirePermission` count in `index.ts` stays frozen at 45, `res.status(403)` stays at 4.
+- **Acceptance-criteria comment trap recurred from Plan 01:** explanatory comments that literally quote an excluded table/function name (or the literal string `requirePermission()`) self-trip the corresponding zero-count grep criterion (grep counts LINES). Fixed both instances by paraphrasing before committing — no code-logic change.
 
 ### Phase 119 Plan 01 Decisions (2026-09-16)
 
@@ -1302,6 +1311,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-17T00:00:00.456Z
-Stopped at: Completed 119-01-PLAN.md — pure dashboardExportRefs walk (8/8 REF kinds, 10/10 mutation probes fired)
+Last session: 2026-09-17T00:07:32Z
+Stopped at: Completed 119-02-PLAN.md — dashboard export assembler + GET /api/dashboards/:id/export route
 Resume file: None
