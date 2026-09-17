@@ -31,14 +31,27 @@ import {
   collectDynamicViewRefs,
   collectLayerRefs,
   collectWidgetConfigRefs,
+  emptyRefIdMaps,
+  remapFilterSelection,
+  remapWidgetConfigRefs,
+  type RefIdMaps,
   type RefKind,
 } from "./dashboardExportRefs";
 import {
+  addDashboardTable,
   createCustomMetric,
+  createDashboard,
+  createDashboardDynamicView,
+  createDashboardLayer,
   createTable,
+  createWidget,
+  db,
   getTable,
   getTableBySchemaName,
   listCustomMetrics,
+  updateDashboard,
+  updateDashboardLayer,
+  updateWidget,
 } from "../db";
 
 /** This build reads exactly these envelope versions. EXPORT_SCHEMA_VERSION is currently 1. */
@@ -463,4 +476,195 @@ export type ImportReport = {
   /** Human-readable notes that are not errors but change behaviour — e.g. a layer filter that
    *  widened to ALL LAYERS, a skipped metric, a skipped layer. */
   warnings: string[];
+};
+
+// -------------------------------------------------------------------------------------------
+// applyDashboardImport (DXIM-V124-03/-04/-09/-10) — Plan 120-03.
+//
+// WHY THIS IS A TWO-PASS IMPORT, NOT A CLEVER ORDERING. Widgets and layers reference EACH
+// OTHER: a widget's config can name a LAYER (`includedLayerIds`, REF-6; `options[].actions[]`
+// with `kind: "layer"`, REF-8), and a layer's `filter_scope` can name a WIDGET
+// (`allowedSourceWidgetIds`, the sixth site). No topological order satisfies both directions at
+// once. The codebase's own write API already concedes this: `createDashboardLayer` (db.ts)
+// accepts only `{ table_id, layer_type, position, config }` — no `filter_scope`, no
+// `dynamic_view_id` — only `updateDashboardLayer` can set them. Import reuses that existing
+// two-step shape rather than inventing a new accessor.
+//
+// PASS 1 creates every row with a placeholder, accumulating five old->new id maps (table,
+// widget, layer, dynamicView, customMetric). PASS 2 runs only once ALL FIVE maps are complete,
+// and rewrites every widget config and every layer `filter_scope`. The widget placeholder is
+// `config: {}` — never the file's original config — for two reasons: the real config cannot be
+// written yet (it may reference a sibling widget or a layer that has no new id until Pass 1
+// step 5 runs), and writing the file's OLD ids into the target database means a missed Pass-2
+// rewrite would silently point at whatever pre-existing record happens to carry that old id
+// there. With `{}`, a missed rewrite instead produces a visibly EMPTY widget.
+//
+// `applyDashboardImport` does NOT call `validateImportFile` — the caller (the route, Plan
+// 120-04) validates first and only calls this with an already-validated file, so a rejected
+// file provably never opens a transaction.
+// -------------------------------------------------------------------------------------------
+
+export const applyDashboardImport = (file: DashboardExportFile): ImportReport => {
+  const txn = db.transaction((f: DashboardExportFile): ImportReport => {
+    const maps: RefIdMaps = emptyRefIdMaps();
+    const warnings: string[] = [];
+    const strippedReferences: ImportReport["strippedReferences"] = [];
+
+    // ─── Pass 1 — create everything, accumulating the five maps ───────────────────────────
+
+    // 1. Tables.
+    const t = resolveTables(f.tables);
+    maps.table = t.map;
+
+    // 2. Dashboard. createDashboard has no parameter for filter_display_mode, so a second call
+    // sets it when the file carries a non-default value.
+    const newDashboard = createDashboard(f.dashboard.name, f.dashboard.description);
+    if (f.dashboard.filter_display_mode === "topbar" || f.dashboard.filter_display_mode === "panel") {
+      updateDashboard(newDashboard.id, { filter_display_mode: f.dashboard.filter_display_mode });
+    }
+
+    // 3. Dynamic views. An unresolvable source table means there is nothing valid to bind to —
+    // skip the dv, report it, and do NOT add it to maps.dynamicView (widgets pointing at it will
+    // have that reference stripped and reported separately by Pass 2 — the correct outcome).
+    for (const dv of f.dynamicViews) {
+      const newSourceTableId = maps.table.get(dv.source_table_id);
+      if (newSourceTableId === undefined) {
+        warnings.push(
+          `Dynamic view "${dv.name}" (file id ${dv.id}) references a table that could not be resolved; it was skipped.`
+        );
+        continue;
+      }
+      const created = createDashboardDynamicView(newDashboard.id, {
+        source_table_id: newSourceTableId,
+        name: dv.name,
+        template_sql: dv.template_sql,
+        max_records: dv.max_records,
+        columns_json: dv.columns_json,
+      });
+      maps.dynamicView.set(dv.id, created.id);
+    }
+
+    // 4. Widgets. The placeholder is `config: {}` — see the file-header note above for why this
+    // must never be `w.config`.
+    for (const w of f.widgets) {
+      const created = createWidget(newDashboard.id, {
+        title: w.title,
+        type: w.type,
+        position: w.position,
+        config: {},
+      });
+      maps.widget.set(w.id, created.id);
+    }
+
+    // 5. Layers. `dashboard_layers.table_id` is NOT NULL, so an unresolvable table_id means the
+    // layer is SKIPPED (there is nothing valid to write), reported, and never added to
+    // maps.layer.
+    for (const l of f.layers) {
+      const newTableId = maps.table.get(l.table_id);
+      if (newTableId === undefined) {
+        warnings.push(`Layer (file id ${l.id}) references a table that could not be resolved; it was skipped.`);
+        continue;
+      }
+      const created = createDashboardLayer(newDashboard.id, {
+        table_id: newTableId,
+        layer_type: l.layer_type,
+        position: l.position,
+        config: l.config,
+      });
+      updateDashboardLayer(created.id, {
+        // `?? null` here is a MAP-MISS handler, not a fallback to the layer's old dv id — an
+        // unresolvable dv binding becomes "table-bound", the app's own existing well-defined
+        // state. This is the one place `??` is correct (contrast Pitfall 3's ban on `?? oldId`
+        // elsewhere in this module): dynamic_view_id is nullable, and a missing map entry
+        // legitimately means "no dv binding" rather than "keep the stale foreign id".
+        dynamic_view_id: l.dynamic_view_id == null ? null : (maps.dynamicView.get(l.dynamic_view_id) ?? null),
+        info_enabled: l.info_enabled,
+        info_columns: l.info_columns,
+        info_template: l.info_template,
+        cb_config: l.cb_config,
+        track_config: l.track_config,
+        // filter_scope is deliberately NOT set here — it names widgets, and only Pass 2 (which
+        // runs once maps.widget is complete) can resolve it.
+      });
+      maps.layer.set(l.id, created.id);
+    }
+
+    // 6. Custom metrics — LAST, deliberately. Nothing in steps 3-5 needs a metric id; only Pass 2
+    // does. Creating metrics last maximises how much already-written work a mid-import failure
+    // has to roll back, which is the strongest form of the atomicity proof (Task 2).
+    const m = resolveCustomMetrics(f.customMetrics, maps.table);
+    maps.customMetric = m.map;
+
+    // ─── Pass 2 — rewrite, only now that all five maps are complete ────────────────────────
+
+    // 7. Widget config rewrite.
+    let widgetsRewritten = 0;
+    for (const w of f.widgets) {
+      const newWidgetId = maps.widget.get(w.id)!;
+      const outcome = remapWidgetConfigRefs(w.config, maps);
+      updateWidget(newWidgetId, { config: outcome.config });
+      widgetsRewritten++;
+      for (const s of outcome.stripped) {
+        strippedReferences.push({ from: `widget:${w.id}`, kind: s.kind, id: s.id });
+      }
+      if (outcome.layerFilterWidened) {
+        warnings.push(
+          `Widget "${w.title}" (file id ${w.id}): every layer in its includedLayerIds was unresolvable, ` +
+            `so the list is now EMPTY — which means ALL LAYERS. Review this widget after import.`
+        );
+      }
+    }
+    // Cheap invariant: converts a future refactor bug (e.g. Pass 2 silently skipping a widget)
+    // into a rolled-back failure instead of a silent partial import.
+    if (widgetsRewritten !== f.widgets.length) {
+      throw new Error(`dashboardImport: pass 2 rewrote ${widgetsRewritten} of ${f.widgets.length} widgets`);
+    }
+
+    // 8. Layer filter_scope rewrite. Always JSON.stringify the result — updateDashboardLayer
+    // expects a STRING for this column (db.ts's own comment: the route stringifies on write),
+    // while mapDashboardLayer hands back a parsed OBJECT on read. The type says `string | null`
+    // and lies about the read side; the write side is genuinely a string.
+    for (const l of f.layers) {
+      const newLayerId = maps.layer.get(l.id);
+      if (newLayerId === undefined) continue; // skipped in Pass 1 (unresolvable table_id)
+      if (l.filter_scope === null || l.filter_scope === undefined) continue;
+      const { value, stripped } = remapFilterSelection(l.filter_scope, maps.widget);
+      updateDashboardLayer(newLayerId, { filter_scope: value === null ? null : JSON.stringify(value) });
+      for (const s of stripped) {
+        strippedReferences.push({ from: `layer:${l.id}`, kind: s.kind, id: s.id });
+      }
+    }
+
+    // 9. dashboard_tables union edge. addDashboardTable is INSERT OR IGNORE — duplicates are
+    // harmless.
+    for (const oldTableId of f.dashboardTableIds) {
+      const newTableId = maps.table.get(oldTableId);
+      if (newTableId === undefined) {
+        strippedReferences.push({ from: "dashboardTables", kind: "table", id: oldTableId });
+        continue;
+      }
+      addDashboardTable(newDashboard.id, newTableId);
+    }
+
+    for (const s of m.skipped) {
+      warnings.push(`Custom metric "${s.label}" (file id ${s.oldId}) skipped: ${s.reason}.`);
+    }
+
+    return {
+      dashboardId: newDashboard.id,
+      dashboardName: newDashboard.name,
+      widgetsCreated: maps.widget.size,
+      layersCreated: maps.layer.size,
+      dynamicViewsCreated: maps.dynamicView.size,
+      tablesMatched: t.matched,
+      tablesCreated: t.created,
+      metricsMatched: m.matched,
+      metricsCreated: m.created,
+      metricConflicts: m.conflicts,
+      strippedReferences,
+      warnings,
+    };
+  });
+
+  return txn(file);
 };
