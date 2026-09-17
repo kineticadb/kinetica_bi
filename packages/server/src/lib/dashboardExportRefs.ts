@@ -61,8 +61,12 @@ export const emptyExportRefs = (): ExportRefs => ({
  * rejected outright — this is what makes the spatial-draws sentinel string (see
  * `filterSourceTypes.ts` on the web side) pass through harmlessly instead of becoming `NaN`.
  * Never coerce with `Number(v)` or `parseInt`.
+ *
+ * Exported (Phase 120 Plan 02) so `dashboardImport.ts`'s structural validator reuses this exact
+ * predicate rather than defining a second one — two positive-integer checks would be the same
+ * drift problem this module exists to avoid.
  */
-const asId = (v: unknown): number | undefined =>
+export const asId = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isInteger(v) && v > 0 ? v : undefined;
 
 const dedupSorted = (list: number[]): number[] => [...new Set(list)].sort((a, b) => a - b);
