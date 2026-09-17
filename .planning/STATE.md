@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 119-04-PLAN.md — operator checkpoint APPROVED; Phase 119 (Export) COMPLETE 4/4 plans. Next: plan Phase 120 (Import)."
-last_updated: "2026-09-17T02:34:34.340Z"
+stopped_at: "Completed 120-01-PLAN.md — shared visitor traversal + remap primitives + getTableBySchemaName. Next: plan/execute 120-02 (validation + table/metric resolution)."
+last_updated: "2026-09-17T02:44:50Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 120 (Import) — EXECUTING
-Plan: 1 of 5
+Plan: 2 of 5 (120-01 COMPLETE — see 120-01-SUMMARY.md)
 
 ### Open tech debt carried forward
 
@@ -652,6 +652,36 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 120 Plan 01 Decisions (2026-09-17)
+
+- **Design A (single shared visitor) held for the whole plan** — no fallback to Design B was
+  needed. `visitWidgetConfigRefs`/`visitFilterSelectionRefs` are now the ONLY enumeration of the
+  eight reference sites; `collectWidgetConfigRefs`/`collectFilterSelectionRefs` drive them with an
+  identity visitor, `remapWidgetConfigRefs`/`remapFilterSelection` (new) drive the SAME functions
+  with a map-or-strip visitor. Both Phase 119 regression specs stayed green with ZERO edits
+  throughout — the refactor changed no observable collect output.
+- **All three rewrite traps implemented and probe-verified**: REF-6 empty-array sentinel (never
+  expanded; `layerFilterWidened` surfaces the unfixable all-unmapped case), REF-7
+  `__spatial_draws__` (survives byte-identical), REF-8 legacy singular `options[].action`
+  (rewritten identically to `actions[]`).
+- **Unmapped reference = STRIP + report, never a fallback to the old id** (Pitfall 3) —
+  `RemapOutcome.stripped` names every stripped site's kind and OLD id. Verified by mutation probe P9
+  (changing the miss-branch to fall back to the old id reddens 7 of 8 `IMP-STRIP*` tests).
+- **`getTableBySchemaName` added with NO schema change** — `ORDER BY id ASC LIMIT 1`
+  (oldest-row-wins), documented as a deliberate limitation, not a fix for the underlying missing
+  unique constraint.
+- **No ninth reference kind found.** No DXIM requirement marked complete — DXIM-V124-05/-06 are
+  implemented here but closure remains Plan 05's job per this plan's explicit instruction.
+- **10/10 mutation probes fired and reverted**; source confirmed byte-identical to the committed
+  state afterward. See `120-01-SUMMARY.md` for the full probe table.
+- **Two doc comments self-tripped their own acceptance-criteria greps** (restating
+  `ORDER BY id ASC LIMIT 1` and `?? site.id` / `|| site.id` literally in prose) — caught by running
+  the greps before committing, per CLAUDE.md's verifiable-acceptance-criteria rule; reworded, no
+  code-logic change.
+- **Tooling note (repeats all four 119 waves):** `gsd-tools state advance-plan` /
+  `roadmap update-plan-progress` still cannot parse this project's STATE.md/ROADMAP.md formats —
+  both were updated manually in the existing file style again this plan.
 
 ### Phase 119 Plan 04 Decisions (2026-09-16) — Phase 119 CLOSED
 
@@ -1355,6 +1385,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-16T21:00:00Z
-Stopped at: Completed 119-04-PLAN.md — operator checkpoint APPROVED; Phase 119 (Export) COMPLETE 4/4 plans. Next: plan Phase 120 (Import).
+Last session: 2026-09-17T02:44:50Z
+Stopped at: Completed 120-01-PLAN.md — shared visitor traversal + remap primitives + getTableBySchemaName (DXIM-V124-05/-06 implemented; requirement closure deferred to 120-05 per plan instruction). Next: plan/execute 120-02.
 Resume file: None
