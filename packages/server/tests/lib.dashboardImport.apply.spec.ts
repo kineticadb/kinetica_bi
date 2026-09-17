@@ -44,12 +44,14 @@
  *      state). DEFERRED to Plan 120-05, as the plan's own Task 3 anticipated.
  * A3 moved the Pass-2 widget rewrite loop INSIDE the Pass-1 widget creation loop
  *      (rewrite-as-you-go)
- *      -> reddened "APPLY-create: every layer in the file exists..." indirectly via
- *      "NEWID-collision: no widget on the NEW dashboard has a config equal to {}" and the
- *      REPORT- stripped-reference count test: a widget referencing a LAYER (REF-6,
- *      includedLayerIds) cannot resolve yet at widget-creation time (layers are created in
- *      Pass-1 step 5, AFTER widgets in step 4), so that reference is incorrectly stripped —
- *      this is the exact "clever ordering" `<the_cycle>` explains cannot work.
+ *      -> did NOT redden any existing test on first attempt: every prior assertion about widget
+ *      config only checked the deliberately-dangling dynamicViewId strip, never the REAL,
+ *      resolvable includedLayerIds (REF-6) reference. STRENGTHENED with a new test,
+ *      "APPLY-create: a widget's includedLayerIds resolves to the NEW layer id...", which DOES
+ *      redden under this mutation (`[]` instead of `[newLayerId]`) — a widget referencing a
+ *      LAYER cannot resolve at widget-creation time because layers are created in Pass-1 step 5,
+ *      AFTER widgets in step 4. This is the exact "clever ordering" `<the_cycle>` explains cannot
+ *      work, recorded here per CLAUDE.md's non-discriminating-criterion rule.
  * A4 skipped step 9 (`addDashboardTable`) entirely
  *      -> reddened "APPLY-create: dashboardTableIds are re-associated via dashboard_tables on
  *      the NEW dashboard"
@@ -209,6 +211,19 @@ describe("applyDashboardImport — creation + report (APPLY-create / REPORT-)", 
       expect(match!.type).toBe(w.type);
       expect(match!.position).toBe(w.position);
     }
+  });
+
+  it("APPLY-create: a widget's includedLayerIds resolves to the NEW layer id — proving Pass 2 ran only after ALL layers exist", () => {
+    // This is the direct simulation of the "clever ordering" `<the_cycle>` explains cannot work
+    // (Task 3's A3 probe): if the widget-config rewrite ran inside the Pass-1 widget-creation
+    // loop (before layers are created), this reference would be unresolvable and get STRIPPED to
+    // [] instead of rewritten to the new layer id.
+    const file = buildFixtureFile();
+    const report = applyDashboardImport(file);
+    const createdLayers = listDashboardLayers(report.dashboardId);
+    const createdWidgets = listWidgets(report.dashboardId);
+    const mapWidget = createdWidgets.find((w) => w.title === "Fixture Map")!;
+    expect(mapWidget.config.includedLayerIds).toEqual([createdLayers[0].id]);
   });
 
   it("APPLY-create: every layer in the file exists with its layer_type, position, config, cb_config and track_config", () => {
