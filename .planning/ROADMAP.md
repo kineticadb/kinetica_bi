@@ -44,7 +44,7 @@
 
 ## Phases
 
-- [ ] **Phase 119: Export** - A dashboard and its full dependency graph serialize to a versioned JSON file
+- [x] **Phase 119: Export** - A dashboard and its full dependency graph serialize to a versioned JSON file
 - [ ] **Phase 120: Import** - That file recreates the dashboard elsewhere with fresh ids, every reference remapped, atomically
 - [ ] **Phase 121: UI + Cross-Environment Verification** - Download/upload in the app, and an operator round-trip between two environments
 
@@ -61,11 +61,11 @@
   3. Runtime state does NOT appear in the export — specifically `dashboard_table_views` (materialized-view bookkeeping).
   4. Access grants do NOT appear in the export (DXIM-V124-08).
   5. The set of exported entities is derived by walking the dependency graph, not by a hand-maintained list — a widget config referencing a custom metric must pull that metric in.
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans executed — Phase 119 COMPLETE (operator-verified 2026-09-16)
 - [x] 119-01-PLAN.md — The dependency walk as a pure, mutation-probed module (all 8 reference kinds)
 - [x] 119-02-PLAN.md — Export envelope + assembler + `GET /api/dashboards/:id/export`
 - [x] 119-03-PLAN.md — Kitchen-sink completeness, exclusion canaries, non-leak 404, SET-BASED gate
-- [ ] 119-04-PLAN.md — Ninth-reference-kind audit + operator export of a real dashboard (checkpoint)
+- [x] 119-04-PLAN.md — Ninth-reference-kind audit + operator export of a real dashboard (checkpoint) — APPROVED; 5/8 reference kinds live-verified, 3/8 automated-only (see 119-04-SUMMARY.md)
 
 ### Phase 120: Import
 **Goal**: An export file recreates the dashboard in a target environment with fresh ids, every intra-file reference remapped, tables matched by `schema.name`, and nothing left behind if it fails.
