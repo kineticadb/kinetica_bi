@@ -4,15 +4,15 @@
  *
  * Coverage:
  *   EXPDL- : exportFileNameForClient (slug rule) + downloadDashboardExport (blob/anchor mechanism)
- *   IMPCLI-: importDashboardFile (client-side JSON pre-check + JSON-body POST) — added in Task 2
+ *   IMPCLI-: importDashboardFile (client-side JSON pre-check + JSON-body POST)
  *
  * EXPDL-nocd is the load-bearing CORS test — it proves the filename is derived client-side and
- * never depends on reading a Content-Disposition header, which is invisible cross-origin (see
+ * never depends on reading the attachment response header, which is invisible cross-origin (see
  * packages/server/src/index.ts:140-145 — no exposedHeaders configured).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { exportFileNameForClient, downloadDashboardExport } from "./client";
+import { exportFileNameForClient, downloadDashboardExport, importDashboardFile } from "./client";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -124,5 +124,117 @@ describe("downloadDashboardExport", () => {
     await expect(downloadDashboardExport({ id: 4, name: "Test Dashboard" })).rejects.toMatchObject({
       name: "PermissionError",
     });
+  });
+});
+
+// ─── IMPCLI- : importDashboardFile ─────────────────────────────────────────
+
+function makeFakeFile(text: string, name = "dashboard-4-test-dashboard.json"): File {
+  return { name, text: () => Promise.resolve(text) } as unknown as File;
+}
+
+describe("importDashboardFile", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("IMPCLI-post: POSTs the file's exact text as JSON with Content-Type application/json", async () => {
+    const fileText = '{"schemaVersion":1}';
+    const fetchSpy = makeFetchStub({ data: { dashboardId: 7 } }, { ok: true, status: 201 });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await importDashboardFile(makeFakeFile(fileText));
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, opts] = fetchSpy.mock.calls[0] as [string, RequestInit | undefined];
+    expect(url).toContain("/api/dashboards/import");
+    expect(opts?.method).toBe("POST");
+    expect((opts?.headers as Record<string, string>)?.["Content-Type"]).toBe("application/json");
+    expect(opts?.body).toBe(fileText);
+  });
+
+  it("IMPCLI-report: resolves to the inner data object, with metricConflicts and warnings intact", async () => {
+    const report = {
+      dashboardId: 7,
+      dashboardName: "Copy",
+      widgetsCreated: 3,
+      layersCreated: 1,
+      dynamicViewsCreated: 0,
+      tablesMatched: [],
+      tablesCreated: [],
+      metricsMatched: [],
+      metricsCreated: [],
+      metricConflicts: [{ oldId: 1, newId: 2, tableId: 3, tableRef: "s.t", label: "Revenue", existingExpression: "SUM(a)", importedExpression: "SUM(a)*1.1", message: "conflict message" }],
+      strippedReferences: [],
+      warnings: ["layerFilterWidened"],
+      preflightDangling: [],
+    };
+    const fetchSpy = makeFetchStub({ data: report }, { ok: true, status: 201 });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await importDashboardFile(makeFakeFile('{"schemaVersion":1}'));
+
+    expect(result.dashboardId).toBe(7);
+    expect(result.metricConflicts).toEqual(report.metricConflicts);
+    expect(result.warnings).toEqual(report.warnings);
+  });
+
+  it("IMPCLI-nonjson: rejects before any network call when file text is not valid JSON", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(importDashboardFile(makeFakeFile("not json at all"))).rejects.toThrow(
+      "not valid JSON",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("IMPCLI-400: rejects with the server's malformed-import message verbatim", async () => {
+    const fetchSpy = makeFetchStub(
+      { error: "Import file is malformed: widgets must be an array (got undefined).", code: "IMPORT_MALFORMED" },
+      { ok: false, status: 400 },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(importDashboardFile(makeFakeFile('{"a":1}'))).rejects.toThrow(
+      "Import file is malformed: widgets must be an array (got undefined).",
+    );
+  });
+
+  it("IMPCLI-413: rejects with the server's payload-too-large message", async () => {
+    const fetchSpy = makeFetchStub(
+      { error: "Request body too large.", code: "PAYLOAD_TOO_LARGE" },
+      { ok: false, status: 413 },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(importDashboardFile(makeFakeFile('{"a":1}'))).rejects.toThrow(
+      "Request body too large.",
+    );
+  });
+
+  it("IMPCLI-403: rejects with a PermissionError", async () => {
+    const fetchSpy = makeFetchStub({}, { ok: false, status: 403 });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(importDashboardFile(makeFakeFile('{"a":1}'))).rejects.toMatchObject({
+      name: "PermissionError",
+    });
+  });
+
+  it("IMPCLI-422: rejects with the rollback sentence verbatim", async () => {
+    const fetchSpy = makeFetchStub(
+      {
+        error:
+          "Import failed partway through and was rolled back. No dashboard, widgets, layers or table entries were created.",
+        code: "IMPORT_FAILED",
+      },
+      { ok: false, status: 422 },
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(importDashboardFile(makeFakeFile('{"a":1}'))).rejects.toThrow(
+      "Import failed partway through and was rolled back. No dashboard, widgets, layers or table entries were created.",
+    );
   });
 });

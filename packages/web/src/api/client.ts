@@ -469,6 +469,30 @@ export const downloadDashboardExport = async (
   URL.revokeObjectURL(url);
 };
 
+// POST /api/dashboards/import — plain JSON body (no multer, no multipart — index.ts:809-842).
+export const importDashboardFile = async (file: File): Promise<ImportReportDto> => {
+  const fileText = await file.text();
+  // Parse-and-discard. The SERVER is the single source of truth for what a valid export file looks
+  // like (Phase 120's validateImportFile) — duplicating its structural checks here would create a
+  // second thing to keep in sync. This parse exists ONLY so a non-JSON file gets an immediate,
+  // unambiguous client-side message instead of a round trip to learn the same from MALFORMED_JSON.
+  try {
+    JSON.parse(fileText);
+  } catch {
+    throw new Error(`"${file.name}" is not valid JSON. Choose a dashboard export file.`);
+  }
+  const response = await apiFetch(`${API_BASE}/api/dashboards/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // The file's bytes ARE already valid JSON (the parse above succeeded), so send them as-is.
+    // JSON.stringify(JSON.parse(text)) would only burn CPU on a 1 MB-capped payload.
+    body: fileText,
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to import dashboard");
+  const json = await response.json();
+  return json.data as ImportReportDto;
+};
+
 export type TableDto = {
   id: number;
   name: string;
