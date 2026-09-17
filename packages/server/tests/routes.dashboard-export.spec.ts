@@ -234,6 +234,13 @@ beforeEach(() => {
       allowedSourceWidgetIds: [wBar.id, "__spatial_draws__"],
     }), // sixth site
   });
+
+  // Three EXCLUSION canaries — distinctive strings that exist in the database and must not
+  // appear anywhere in the exported bytes. Seeding them (rather than leaving the underlying
+  // tables empty) is what makes the exclusion assertions capable of failing.
+  addDashboardGrant(dash.id, "user", "canary-grantee-9f3a"); // DXIM-V124-08
+  upsertColumnDisplayConfig(tWidget.id, "c1", "canary-column-label-7b2c", null); // operator-locked
+  createView(dash.id, tWidget.id, "canary_view_name_5d1e", "c1 > 0"); // runtime bookkeeping
 });
 
 // ─── Task 1: kitchen-sink inclusion + dangling ───────────────────────────────
@@ -450,5 +457,127 @@ describe("GET /api/dashboards/:id/export — kitchen-sink completeness", () => {
       kind: "widget",
       id: otherWidget.id,
     });
+  });
+});
+
+// ─── Task 2: exclusion canaries, non-leak 404, delivery headers, parity ──────
+
+describe("GET /api/dashboards/:id/export — exclusions, non-leak, delivery", () => {
+  it("EXCL-grants: the access-grant grantee string does not appear in the exported bytes", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.text).not.toContain("canary-grantee-9f3a");
+  });
+
+  it("EXCL-grants: the envelope has no grants / accessGrants key", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.body).not.toHaveProperty("grants");
+    expect(res.body).not.toHaveProperty("accessGrants");
+  });
+
+  it("EXCL-columnconfig: the column_display_config label does not appear in the exported bytes", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.text).not.toContain("canary-column-label-7b2c");
+  });
+
+  it("EXCL-runtime: the dashboard_table_views view_name does not appear in the exported bytes", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.text).not.toContain("canary_view_name_5d1e");
+  });
+
+  it("EXCL-runtime: the envelope has no views key", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.body).not.toHaveProperty("views");
+  });
+
+  it("EXCL-metric: the unreferenced sibling metric label does not appear in the exported bytes", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.text).not.toContain("ZZ Unreferenced Metric");
+    expect(mOrphan.label).toBe("ZZ Unreferenced Metric");
+  });
+
+  it("NOLEAK-401: no cookie returns 401", async () => {
+    const app = await buildTestApp();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`);
+    expect(res.status).toBe(401);
+  });
+
+  it("NOLEAK-404: an analyst with no grant gets 404, byte-identical to a nonexistent dashboard id", async () => {
+    const { cookie } = seedAnalystSession("analyst-noleak");
+    const denied = await (await buildTestApp()).get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    const missing = await (await buildTestApp()).get(`/api/dashboards/999999/export`).set("Cookie", cookie);
+    expect(denied.status).toBe(404);
+    expect(denied.status).toBe(missing.status);
+    expect(denied.body).toEqual(missing.body);
+  });
+
+  it("NOLEAK-404: a non-numeric :id returns 404 with the same body", async () => {
+    const { cookie } = seedAnalystSession("analyst-noleak-2");
+    const missing = await (await buildTestApp()).get(`/api/dashboards/999999/export`).set("Cookie", cookie);
+    const nonNumeric = await (await buildTestApp())
+      .get(`/api/dashboards/abc/export`)
+      .set("Cookie", cookie);
+    expect(nonNumeric.status).toBe(404);
+    expect(nonNumeric.body).toEqual(missing.body);
+  });
+
+  it("NOLEAK-grant: after a user grant the same analyst gets 200", async () => {
+    const { cookie } = seedAnalystSession("analyst-noleak-3");
+    const app = await buildTestApp();
+    const denied = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(denied.status).toBe(404);
+    addDashboardGrant(dash.id, "user", "analyst-noleak-3");
+    const allowed = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(allowed.status).toBe(200);
+  });
+
+  it("DELIV-type: Content-Type is application/json", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.headers["content-type"]).toMatch(/^application\/json/);
+  });
+
+  it("DELIV-disposition: the filename is slugified from the dashboard name", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    const cd = res.headers["content-disposition"];
+    expect(cd).toBe(`attachment; filename="dashboard-${dash.id}-q3-sales-report.json"`);
+  });
+
+  it("DELIV-disposition: the header contains no quote, CR or LF from the dashboard name", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    const cd = res.headers["content-disposition"] as string;
+    // The dashboard is literally named 'Q3 "Sales"\r\nReport'. Assert the escape hatches are shut.
+    expect(cd.slice('attachment; filename="'.length, -1)).not.toMatch(/["\r\n]/);
+  });
+
+  it("DELIV-pretty: the body is pretty-printed, not minified", async () => {
+    const app = await buildTestApp();
+    const { cookie } = createAdminSession();
+    const res = await app.get(`/api/dashboards/${dash.id}/export`).set("Cookie", cookie);
+    expect(res.text).toContain('\n  "schemaVersion"');
+  });
+
+  it("PARITY: the permission catalog still has exactly 18 entries", () => {
+    expect(Object.keys(PERMISSIONS)).toHaveLength(18);
+  });
+
+  it("PARITY: no export-specific permission string exists", () => {
+    expect(Object.values(PERMISSIONS).some((p) => String(p).includes("export"))).toBe(false);
   });
 });
