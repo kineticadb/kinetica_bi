@@ -46,6 +46,28 @@ That asymmetry should drive the plan's testing strategy. "Import succeeded" prov
 5. **Column display config does NOT travel** — it is shared per-table across every dashboard in the
    target, and importing it would silently change how OTHER dashboards render.
 
+### Custom-metric label conflict — OPERATOR DECISION, 2026-09-16
+
+**Recorded after this file was first written**, so it is captured here for traceability — the plan
+checker correctly flagged that Plan 02 asserted an operator lock with no verifiable provenance in any
+committed artifact. It was a real decision, made in session on 2026-09-16 in response to a direct
+question; it simply had not been written down. That gap is the finding, and this entry closes it.
+
+**The question put to the operator:** import brings a custom metric labelled e.g. "Revenue" on a
+table; the target already has a metric with that label on that table but a **different expression**.
+Reuse the target's? Fail the import? Create under a modified name?
+
+**The operator chose: reuse the target's definition, and report it.**
+
+Rationale, as put to them and accepted: it matches the already-locked "match by label" rule and
+respects that the target environment's definition is deliberate. **The accepted cost is that the
+imported widget then computes something subtly different from the source**, and the import report is
+the ONLY thing that makes that visible rather than silent.
+
+**Therefore the report entry is load-bearing, not cosmetic.** It must name the metric label, the
+table, and the fact that the expressions differed — "matched: Revenue" would hide precisely the risk
+the operator agreed to take.
+
 ### The eight reference kinds — established and verified three times
 
 From Phase 119's research, confirmed independently by the plan checker and by a third audit sweep:
