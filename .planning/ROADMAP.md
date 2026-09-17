@@ -80,9 +80,9 @@
   5. Import is atomic: an induced failure partway through leaves no dashboard, widgets, layers, or table entries behind.
   6. Import returns a report naming the new dashboard id, tables matched vs created, and metrics created.
   7. A malformed, truncated, or hand-edited file is rejected with a clear message and changes nothing.
-**Plans**: 5 plans (1/5 executed)
+**Plans**: 5 plans (2/5 executed)
 - [x] 120-01-PLAN.md — Shared visitor traversal + remap primitives + `getTableBySchemaName` (see 120-01-SUMMARY.md)
-- [ ] 120-02-PLAN.md — Two-tier validation + table/metric resolution with conflict reporting
+- [x] 120-02-PLAN.md — Two-tier validation + table/metric resolution with conflict reporting (see 120-02-SUMMARY.md)
 - [ ] 120-03-PLAN.md — Two-pass create-then-rewrite inside one transaction + atomicity
 - [ ] 120-04-PLAN.md — `POST /api/dashboards/import` + body-parser error branches
 - [ ] 120-05-PLAN.md — Per-reference-kind NEW-id proofs, 12 mutation probes, SET-BASED gate

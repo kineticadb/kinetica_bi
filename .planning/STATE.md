@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 120-01-PLAN.md — shared visitor traversal + remap primitives + getTableBySchemaName. Next: plan/execute 120-02 (validation + table/metric resolution)."
-last_updated: "2026-09-17T02:44:50Z"
+stopped_at: "Completed 120-02-PLAN.md — validateImportFile two-tier validation + resolveTables/resolveCustomMetrics match-or-create resolution. Next: plan/execute 120-03 (applyDashboardImport transaction + route)."
+last_updated: "2026-09-16T22:59:00Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 120 (Import) — EXECUTING
-Plan: 2 of 5 (120-01 COMPLETE — see 120-01-SUMMARY.md)
+Plan: 3 of 5 (120-01, 120-02 COMPLETE — see 120-01-SUMMARY.md, 120-02-SUMMARY.md)
 
 ### Open tech debt carried forward
 
@@ -652,6 +652,35 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 120 Plan 02 Decisions (2026-09-16)
+
+- **Two-tier validation gate implemented exactly as designed:** Tier 1 (structural) runs entirely
+  in memory over the parsed JSON, fails fast on the first problem, and does ZERO DB calls — a
+  rejected file provably writes nothing (DXIM-V124-11), verified by `VALID-nowrite` and by a
+  grep-measured `0` DB-write-call count at the end of Task 1. Tier 2 (referential) never trusts the
+  file's own self-reported `danglingReferences` — recomputed from the file's own id sets via the
+  SAME `collect*` functions Plan 01 established.
+- **Metric-label conflict policy (120-CONTEXT.md, operator-locked 2026-09-16) implemented
+  verbatim:** a same-label, different-expression match on the resolved table REUSES the target's
+  existing definition and reports a message naming the metric label, the `schema.name` table, and
+  the substring `DIFFERENT expression` — the operator's accepted cost (the imported widget computes
+  something subtly different from the source) is made visible, not silent.
+- **`asId` exported from `dashboardExportRefs.ts`** so the validator reuses the canonical
+  positive-integer predicate rather than defining a second one (the exact drift risk the plan
+  called out).
+- **6/6 mutation probes fired; V5 required strengthening its test.** Dropping `resolveTables`' the
+  per-run `seen` map did NOT redden the originally-planned assertions — `getTableBySchemaName` is a
+  live query that independently lands on the same row the mutation's own preceding `createTable`
+  call just committed, so the test proved nothing about the `seen` map specifically. Strengthened
+  with a `vi.spyOn` call-count assertion (exactly 1 target query for a shared key across two file
+  entries), which is the map's actual, provable effect. Documented in `120-02-SUMMARY.md` and the
+  spec file's own header per CLAUDE.md's non-discriminating-criterion rule.
+- **No DXIM requirement marked complete** — closure remains Plan 05's job per this plan's explicit
+  scope boundary.
+- **Tooling note (repeats every 119/120 wave):** `gsd-tools state advance-plan` /
+  `roadmap update-plan-progress` still cannot parse this project's STATE.md/ROADMAP.md formats —
+  both updated manually in the existing file style again this plan.
 
 ### Phase 120 Plan 01 Decisions (2026-09-17)
 
@@ -1385,6 +1414,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-17T02:44:50Z
-Stopped at: Completed 120-01-PLAN.md — shared visitor traversal + remap primitives + getTableBySchemaName (DXIM-V124-05/-06 implemented; requirement closure deferred to 120-05 per plan instruction). Next: plan/execute 120-02.
+Last session: 2026-09-16T22:59:00Z
+Stopped at: Completed 120-02-PLAN.md — validateImportFile two-tier validation gate + resolveTables/resolveCustomMetrics match-or-create resolution (DXIM-V124-06/-07/-11 implemented; requirement closure deferred to 120-05 per plan instruction). Next: plan/execute 120-03 (applyDashboardImport transaction + route).
 Resume file: None
