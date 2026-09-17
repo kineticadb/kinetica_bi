@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.23
-milestone_name: Zoom-Aware Layer Legend
+milestone: v1.24
+milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: Completed 118-03-PLAN.md — Phase 118 closed
-last_updated: "2026-09-16T20:09:51.813Z"
+stopped_at: Completed 119-01-PLAN.md — pure dashboardExportRefs walk (8/8 REF kinds, 10/10 mutation probes fired)
+last_updated: "2026-09-17T00:00:46.775Z"
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 3
+  completed_phases: 0
+  total_plans: 4
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 118 — Zoom-Aware Layer Legend
+**Current focus:** Phase 119 — Export
 
 ## Current Position
 
-Phase: 118 (Zoom-Aware Layer Legend) — COMPLETE
-Plan: 3 of 3 (complete)
+Phase: 119 (Export) — EXECUTING
+Plan: 2 of 4
 
 ### Open tech debt carried forward
 
@@ -466,6 +466,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 118 P01 | 10min | 3 tasks | 4 files |
 | Phase 118 P02 | 12min | 3 tasks | 5 files |
 | Phase 118 P03 | 12min | 3 tasks | 6 files |
+| Phase 119 P01 | 5min | 2 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -650,6 +651,13 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 119 Plan 01 Decisions (2026-09-16)
+
+- **`dashboardExportRefs.ts` is the single chokepoint for id-extraction.** `asId(v)` rejects everything but positive integers, so the `__spatial_draws__` sentinel and any non-integer JSON junk are excluded structurally (never by string-comparison) — this is what makes Plan 02/Phase 120 safe to trust the module's output without re-checking shapes.
+- **`getOptionActionsLike` mirrors `radioGroupConfig.ts`'s `getOptionActions` exactly**: `actions[]` first, legacy singular `action` fallback second — never both. Confirmed by mutation probe P9 (narrowing to `actions[]`-only reddens the legacy-field test).
+- **REF-6 empty-array is a zero-ref case, not "all layers expanded"** — both the source comment and a dedicated test state this explicitly; conflating it with "no `includedLayerIds` field at all" would fabricate references on import.
+- 10/10 mutation probes fired against the real committed module (not simulated); none required strengthening a test. See `.planning/phases/119-export/119-01-SUMMARY.md` for the full probe table.
 
 ### Theming hardening (2026-06-15, tech-debt — recurring theme-drift bugs)
 
@@ -1294,6 +1302,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-16T20:09:51.804Z
-Stopped at: Completed 118-03-PLAN.md — Phase 118 closed
+Last session: 2026-09-17T00:00:00.456Z
+Stopped at: Completed 119-01-PLAN.md — pure dashboardExportRefs walk (8/8 REF kinds, 10/10 mutation probes fired)
 Resume file: None
