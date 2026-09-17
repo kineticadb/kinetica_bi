@@ -576,6 +576,27 @@ export const getTable = (id: number): Table | undefined => {
   return row ? mapTable(row) : undefined;
 };
 
+/**
+ * `getTableBySchemaName` — v1.24 Phase 120 (DXIM-V124-06): application-level table matching for
+ * import, so an imported dashboard reuses an existing registry row instead of duplicating it.
+ *
+ * `tables` has NO UNIQUE constraint on (schema, name) — confirmed against the DDL above — and
+ * nothing in this app has ever prevented an operator registering the same physical table twice
+ * via POST /api/tables. A real target database may therefore ALREADY hold duplicates.
+ *
+ * KNOWN, DELIBERATE LIMITATION: this accessor does not detect or repair pre-existing duplicates.
+ * The oldest row wins, deterministically, so that import never creates a THIRD row for a
+ * schema.name it can already see. Adding a UNIQUE index would be the better long-term fix but is a
+ * SCHEMA CHANGE, explicitly out of this phase's scope (it would need its own migration/backfill
+ * story for rows that already violate it).
+ */
+export const getTableBySchemaName = (schema: string, name: string): Table | undefined => {
+  const row = db
+    .prepare("SELECT * FROM tables WHERE schema = ? AND name = ? ORDER BY id ASC LIMIT 1")
+    .get(schema, name);
+  return row ? mapTable(row) : undefined;
+};
+
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
   const stmt = db.prepare("INSERT INTO tables (name, schema, description, columns) VALUES (?, ?, ?, ?)");
   const result = stmt.run(input.name, input.schema, input.description ?? null, JSON.stringify(input.columns ?? {}));

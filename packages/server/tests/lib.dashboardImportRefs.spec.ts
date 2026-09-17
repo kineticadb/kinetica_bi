@@ -23,13 +23,14 @@
  * P10 changed getTableBySchemaName's `ORDER BY id ASC` to `ORDER BY id DESC`, reddening "TBLMATCH: getTableBySchemaName returns the OLDEST row when duplicates exist".
  * All ten probes reddened at least their named test; none required a test change. 10/10 fired.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   emptyRefIdMaps,
   remapWidgetConfigRefs,
   remapFilterSelection,
   type RefIdMaps,
 } from "../src/lib/dashboardExportRefs";
+import { createTable, getTableBySchemaName, db } from "../src/db";
 
 const SPATIAL_DRAWS_SENTINEL = "__spatial_draws__";
 
@@ -362,5 +363,22 @@ describe("remapWidgetConfigRefs / remapFilterSelection — purity", () => {
       sourceMode: "allowlist",
       allowedSourceWidgetIds: [9004],
     });
+  });
+});
+
+describe("getTableBySchemaName", () => {
+  beforeEach(() => {
+    db.exec("DELETE FROM tables;");
+  });
+
+  it("TBLMATCH: getTableBySchemaName returns the OLDEST row when duplicates exist", () => {
+    const first = createTable({ schema: "public", name: "orders" });
+    createTable({ schema: "public", name: "orders" });
+    const result = getTableBySchemaName("public", "orders");
+    expect(result?.id).toBe(first.id);
+  });
+
+  it("TBLMATCH: getTableBySchemaName returns undefined for an unknown schema.name", () => {
+    expect(getTableBySchemaName("public", "does_not_exist")).toBeUndefined();
   });
 });
