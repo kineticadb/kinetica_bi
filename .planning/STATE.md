@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 121-01-PLAN.md — exportFileNameForClient + downloadDashboardExport + importDashboardFile + ImportReportDto family added to packages/web/src/api/client.ts (DXIM-V124-01/-03 client-side contract surface; requirement closure NOT touched — Plan 121-04 owns the operator round-trip outcome and reopening on failure). 15 EXPDL-/IMPCLI- unit tests pass; 6/6 mutation probes fired (1 fixture strengthened, documented in 121-01-SUMMARY.md). Web gates green: tsc clean, vitest 177 files/4040 tests/0 failed, theme-guard 150/150 unchanged; packages/server carries zero diff. Next: plan/execute 121-02 (DashboardsPage export/import UI wiring)."
-last_updated: "2026-09-17T16:05:16.000Z"
+stopped_at: "Completed 121-02-PLAN.md — ImportDashboardModal.tsx + spec added (DXIM-V124-10 UI surface; requirement closure NOT touched — Plan 121-04 owns the operator round-trip outcome and reopening on failure). Two-phase modal (pick -> report) mirrors DashboardAccessModal chrome exactly, zero new CSS; renders every MetricConflict.message and warnings[] string verbatim, matched-vs-created disposition for tables/metrics. 14 IMPRPT- unit tests pass; 5/5 mutation probes fired clean (no strengthening needed), including the load-bearing M2 probe simulating the DXIM-V124-10 count-summary failure mode. Web gates green: tsc clean, vitest 178 files/4054 tests/0 failed, theme-guard 152/152 (+2 from the one new component, as predicted); packages/server carries zero diff. Recorded TD-V123-THEMEGUARD-HOLE finding for Plan 04's visual check (allowlisted raw-hex .error class). Next: plan/execute 121-03 (DashboardsPage export/import UI wiring)."
+last_updated: "2026-09-17T16:45:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 121 (UI + Cross-Environment Verification) — EXECUTING
-Plan: 1 of 4 COMPLETE (121-01-SUMMARY.md) — next: 121-02
+Plan: 2 of 4 COMPLETE (121-01-SUMMARY.md, 121-02-SUMMARY.md) — next: 121-03
 
 ### Phase 121 Plan 01 decisions (2026-09-17)
 
@@ -39,6 +39,22 @@ Plan: 1 of 4 COMPLETE (121-01-SUMMARY.md) — next: 121-02
   the file verbatim (JS string `toBe` is value equality, and `JSON.stringify(JSON.parse(x))` happened
   to be byte-identical for that specific single-key fixture) — strengthened the fixture, did not weaken
   the probe. See 121-01-SUMMARY.md for the full 6-row mutation probe table.
+
+### Phase 121 Plan 02 decisions (2026-09-17)
+
+- `ImportDashboardModal` reuses `DashboardAccessModal.tsx`'s chrome byte-for-byte (modal-overlay >
+  modal-content > modal-header + modal-body, datasets-table/ds-row rows) — zero new CSS, zero invented
+  classNames; className-vocabulary guard confirmed every literal resolves to an existing `global.css`
+  selector.
+- Every `MetricConflict.message` and `warnings[]` string renders VERBATIM (no `.length`/`.slice()`
+  summarization) — proven by the load-bearing `IMPRPT-conflict-verbatim` test and mutation probe M2,
+  which simulates the exact DXIM-V124-10 failure mode (a count-summary instead of the message) and
+  correctly reddens the test.
+- Recorded `TD-V123-THEMEGUARD-HOLE` for Plan 04: the reused `.error` class is a pre-existing raw hex
+  in the allowlisted `global.css` (theme-guard never checks absence there), so the metric-conflict rows
+  need a human visual check in both light and dark themes during Plan 04's operator UAT.
+- 5/5 mutation probes fired clean on the first attempt — no fixture strengthening needed this plan
+  (contrast Plan 01's P5). See 121-02-SUMMARY.md for the full probe table.
 
 ### Open tech debt carried forward
 
