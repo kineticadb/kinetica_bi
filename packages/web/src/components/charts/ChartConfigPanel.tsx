@@ -137,16 +137,6 @@ const ChartConfigPanel = ({
     setTitleDraft(title);
   }, [title]);
 
-  // Phase 100 (METRIC-V119-01/03): load custom metrics for the current table on mount/table change.
-  // Lazy: no-op when tableId is unknown; store deduplicates repeated fetches via setConfig bump.
-  useEffect(() => {
-    const tableId = typeof draft.tableId === "number" ? draft.tableId : undefined;
-    if (tableId !== undefined) {
-      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.tableId]);
-
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 35 (DV-V16-12): dataSourceOptions union extended with the "dynamic" kind.
   // Discriminator prefix `dv:<id>` on `value` keeps the option value space disjoint
@@ -244,6 +234,21 @@ const ChartConfigPanel = ({
     }
     return tables.find((t) => t.id === selectedSource.tableId) ?? null;
   }, [tables, selectedSource]);
+
+  // Phase 100 (METRIC-V119-01/03): load custom metrics for the current table on mount/table change.
+  // Lazy: no-op while no source is selected; loadConfig replaces that table's cache entry.
+  //
+  // Keyed on selectedTable?.id — THE SAME value the metric picker reads. Keying on
+  // draft.tableId instead silently broke the picker, because handleTableChange writes only
+  // `table` into the draft; tableId lands in the config at SAVE time. So a widget that had
+  // never been saved with a tableId never fetched at all (empty "Custom metrics" optgroup,
+  // surviving reloads), and switching a saved widget's source fetched the OLD table's metrics.
+  useEffect(() => {
+    const tableId = selectedTable?.id;
+    if (tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+    }
+  }, [selectedTable?.id]);
 
   // Phase 35 (DV-V16-12): when bound to a dynamic-view, column pickers source
   // from the dv's columns_json instead of the source-table's columns map.
