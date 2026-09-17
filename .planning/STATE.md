@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 120-02-PLAN.md — validateImportFile two-tier validation gate + resolveTables/resolveCustomMetrics match-or-create resolution (DXIM-V124-06/-07/-11 implemented; requirement closure deferred to 120-05 per plan instruction). Next: plan/execute 120-03 (applyDashboardImport transaction + route)."
-last_updated: "2026-09-17T15:53:20.301Z"
+stopped_at: "Completed 121-01-PLAN.md — exportFileNameForClient + downloadDashboardExport + importDashboardFile + ImportReportDto family added to packages/web/src/api/client.ts (DXIM-V124-01/-03 client-side contract surface; requirement closure NOT touched — Plan 121-04 owns the operator round-trip outcome and reopening on failure). 15 EXPDL-/IMPCLI- unit tests pass; 6/6 mutation probes fired (1 fixture strengthened, documented in 121-01-SUMMARY.md). Web gates green: tsc clean, vitest 177 files/4040 tests/0 failed, theme-guard 150/150 unchanged; packages/server carries zero diff. Next: plan/execute 121-02 (DashboardsPage export/import UI wiring)."
+last_updated: "2026-09-17T16:05:16.000Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -24,7 +24,21 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 121 (UI + Cross-Environment Verification) — EXECUTING
-Plan: 1 of 4
+Plan: 1 of 4 COMPLETE (121-01-SUMMARY.md) — next: 121-02
+
+### Phase 121 Plan 01 decisions (2026-09-17)
+
+- Filename for the export download is derived client-side (`exportFileNameForClient`, a byte-for-byte
+  mirror of the server's `exportFileName` slug rule) — never from `Content-Disposition`, which is
+  invisible to cross-origin client JS because `cors()` at `packages/server/src/index.ts:140-145` sets
+  no `exposedHeaders`. Filed as a FINDING for a future phase, not fixed (out of scope: no CORS change).
+- `importDashboardFile` does a throwaway client-side `JSON.parse` purely to fail fast on a non-JSON
+  file before any network call; the server's `validateImportFile` remains the sole source of truth for
+  structural validation. Sends the file's raw text verbatim as the POST body (not re-stringified).
+- Mutation probe P5's original fixture could not discriminate a wasteful re-serialization from sending
+  the file verbatim (JS string `toBe` is value equality, and `JSON.stringify(JSON.parse(x))` happened
+  to be byte-identical for that specific single-key fixture) — strengthened the fixture, did not weaken
+  the probe. See 121-01-SUMMARY.md for the full 6-row mutation probe table.
 
 ### Open tech debt carried forward
 
