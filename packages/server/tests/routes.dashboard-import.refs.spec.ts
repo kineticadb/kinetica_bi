@@ -35,6 +35,60 @@
  * target kinds).
  *
  * Do NOT assert a fixed total server pass-count (SET-BASED TD-V16-TEST-ISOLATION gate).
+ *
+ * MUTATION PROBES (Plan 120-05 Task 2) — twelve probes run for real against the committed
+ * dashboardExportRefs.ts / dashboardImport.ts, each reddening at least its named test below, then
+ * reverted; `git diff --exit-code` confirmed the source byte-identical afterward each time. All
+ * 12/12 fired on the FIRST attempt — no test required strengthening.
+ * M1  deleted the REF-1 `tableId` block from `visitWidgetConfigRefs`
+ *       -> reddened "IMPNEW-REF1: the imported bar widget's tableId is the NEW table id..."
+ * M2  deleted the REF-2 `dynamicViewId` block
+ *       -> reddened "IMPNEW-REF2: the imported calendar widget's dynamicViewId is the NEW..."
+ * M3  deleted the REF-3 `sourceMapWidgetId` block
+ *       -> reddened "IMPNEW-REF3: the imported legend's sourceMapWidgetId is the NEW map..."
+ * M4  deleted the REF-4 scalar `metricId` block
+ *       -> reddened "IMPNEW-REF4: the imported bar widget's scalar metricId is the NEW..." — the
+ *       shared traversal also drives EXPORT's own collector, so removing the block additionally
+ *       means the scalar metric is no longer collected at export time at all, cascading into the
+ *       two REF-4/-5 extra-proof tests too (wider blast radius than the single named test, still
+ *       a correct and expected consequence of the one-traversal-two-directions design).
+ * M5  deleted the REF-5 `metrics[]` loop
+ *       -> reddened "IMPNEW-REF5: the imported numericline's metrics[0].metricId is the NEW..."
+ *       and the REF-5 extra-proof test (same shared-traversal cascade as M4).
+ * M6  deleted the REF-6 `includedLayerIds` loop
+ *       -> reddened "IMPNEW-REF6: the imported map widget's includedLayerIds are the two NEW..."
+ * M7  deleted the REF-7 `visitFilterSelectionRefs(cfg.filterSelection, visit)` call (config site)
+ *       -> reddened "IMPNEW-REF7: the imported numericline's allowedSourceWidgetIds numeric
+ *       entry is the NEW widget id" and "IMPTRAP7: allowedSourceWidgetIds is exactly [...]".
+ * M8  deleted the REF-8 `options[]` loop
+ *       -> reddened all three `IMPNEW-REF8:` tests (widget-kind, layer-kind, legacy singular).
+ * M9  in `dashboardImport.ts`, skipped the Pass-2 layer `filter_scope` update (looped over `[]`)
+ *       -> reddened "IMPNEW-REF7: the imported layer's filter_scope names the NEW widget id (the
+ *       sixth site)" (also reddened "IMPTRAP7: ...no null or undefined entry" as a side effect of
+ *       the layer's filter_scope staying null).
+ * M10 in `dashboardImport.ts`, mapped `dashboardTableIds` through the identity instead of
+ *     `maps.table.get(...)`
+ *       -> reddened "IMPNEW-union: the two dashboard_tables associations point at NEW table ids"
+ *       (also reddened `ROUNDTRIP-shape` as a side effect).
+ * M11 **(deferred probe A2 from Plan 120-03)** changed the widget placeholder from `config: {}`
+ *     to `config: w.config`, AND made the Pass-2 rewrite loop skip the LAST widget (the invariant
+ *     that would otherwise throw and roll back the whole transaction was neutralized so the
+ *     defect surfaces instead of being masked)
+ *       -> reddened "IMPNEW-sweep: no imported widget config contains ANY id from the file's
+ *       SAME-KIND original id set" — exactly the defect the sweep exists to catch: with the
+ *       original config as the placeholder, the skipped last widget (Radio) keeps its OLD widget/
+ *       layer/dynamicView ids. Also reddened the three `IMPNEW-REF8:` tests and `ROUNDTRIP-refs`
+ *       as expected side effects (Radio's config carries REF-8 sites).
+ * M12 in `dashboardExportRefs.ts`, replaced the REF-7 `asId`-gated loop in
+ *     `visitFilterSelectionRefs` with a naive `ids.map((entry) => visit({kind:"widget",
+ *     id: entry as number}))` (no sentinel gate)
+ *       -> reddened BOTH `IMPTRAP7:` tests (the `__spatial_draws__` sentinel is fed into
+ *       `visit()` instead of passing through, producing `undefined` in its place) and the
+ *       REF-7 config-site test as a side effect.
+ * 12/12 probes fired on first attempt. Phase-wide running total: 10 (120-01) + 6 (120-02) +
+ * 6 (120-03) + 5 (120-04) + 12 (120-05) = 39 probes, 39/39 fired (three — V5/120-02, A3/120-03,
+ * R1+R2/120-04 — required a test strengthened before they discriminated; this plan's 12 needed
+ * none).
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildTestApp } from "./helpers/app";
