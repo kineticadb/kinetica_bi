@@ -43,11 +43,31 @@ function makeMaps(entries: Partial<Record<keyof RefIdMaps, [number, number][]>>)
   return maps;
 }
 
-describe("remapWidgetConfigRefs — IMP-REF1..8: each kind rewrites to the NEW id", () => {
+describe("remapWidgetConfigRefs — IMP-REF1..9: each kind rewrites to the NEW id", () => {
   it("IMP-REF1: tableId is rewritten to the NEW table id", () => {
     const maps = makeMaps({ table: [[7, 9007]] });
     const result = remapWidgetConfigRefs({ tableId: 7 }, maps);
     expect(result.config).toEqual({ tableId: 9007 });
+    expect(result.stripped).toEqual([]);
+  });
+
+  it("IMP-REF9: every spatialTargets[].tableId is rewritten to its NEW table id", () => {
+    const maps = makeMaps({ table: [[7, 9007], [4, 9004]] });
+    const result = remapWidgetConfigRefs(
+      {
+        spatialTargets: [
+          { tableId: 7, spatialMode: "latlon", lonCol: "lon", latCol: "lat" },
+          { tableId: 4, spatialMode: "wkt", spatialCol: "geom" },
+        ],
+      },
+      maps,
+    );
+    expect(result.config).toEqual({
+      spatialTargets: [
+        { tableId: 9007, spatialMode: "latlon", lonCol: "lon", latCol: "lat" },
+        { tableId: 9004, spatialMode: "wkt", spatialCol: "geom" },
+      ],
+    });
     expect(result.stripped).toEqual([]);
   });
 
@@ -246,6 +266,23 @@ describe("remapWidgetConfigRefs — the strip rules (Pitfall 3)", () => {
     const result = remapWidgetConfigRefs({ tableId: 7 }, maps);
     expect(result.config).toEqual({});
     expect(result.stripped).toEqual([{ kind: "table", id: 7 }]);
+  });
+
+  it("IMP-STRIP9: an unmapped spatialTargets element is DROPPED, never left on the old id", () => {
+    const maps = makeMaps({ table: [[7, 9007]] });
+    const result = remapWidgetConfigRefs(
+      {
+        spatialTargets: [
+          { tableId: 7, spatialMode: "wkt", spatialCol: "geom" },
+          { tableId: 4, spatialMode: "wkt", spatialCol: "geom" },
+        ],
+      },
+      maps,
+    );
+    expect(result.config).toEqual({
+      spatialTargets: [{ tableId: 9007, spatialMode: "wkt", spatialCol: "geom" }],
+    });
+    expect(result.stripped).toEqual([{ kind: "table", id: 4 }]);
   });
 
   it("IMP-STRIP5: an unmapped metrics[].metricId is deleted but the element survives", () => {

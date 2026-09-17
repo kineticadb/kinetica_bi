@@ -78,7 +78,7 @@ function makeDynamicView(overrides: Partial<DashboardDynamicView> = {}): Dashboa
   };
 }
 
-describe("collectWidgetConfigRefs — REF-1..8", () => {
+describe("collectWidgetConfigRefs — REF-1..9", () => {
   it("REF-1: config.tableId is collected as a table reference", () => {
     expect(collectWidgetConfigRefs({ tableId: 5 })).toEqual(refs({ tableIds: [5] }));
   });
@@ -172,6 +172,29 @@ describe("collectWidgetConfigRefs — REF-1..8", () => {
             actions: [{ target: { kind: "bogus", id: 55 }, configPatch: {} }],
           },
         ],
+      }),
+    ).toEqual(emptyExportRefs());
+  });
+
+  // REF-9 — the kind 119-RESEARCH, the plan checker and the third audit sweep all missed.
+  // A map widget's spatialTargets[].tableId selects which registry table a drawn spatial
+  // filter applies to; unremapped, an imported map filters the wrong table silently.
+  it("REF-9: config.spatialTargets[].tableId is collected for every element", () => {
+    expect(
+      collectWidgetConfigRefs({
+        spatialTargets: [
+          { tableId: 4, spatialMode: "latlon", lonCol: "lon", latCol: "lat" },
+          { tableId: 2, spatialMode: "wkt", spatialCol: "geom" },
+          { tableId: 4, spatialMode: "wkb" },
+        ],
+      }),
+    ).toEqual(refs({ tableIds: [2, 4] }));
+  });
+
+  it("REF-9: a spatialTargets element with no numeric tableId contributes nothing", () => {
+    expect(
+      collectWidgetConfigRefs({
+        spatialTargets: [{ spatialMode: "latlon" }, { tableId: "4" }, null, "x"],
       }),
     ).toEqual(emptyExportRefs());
   });

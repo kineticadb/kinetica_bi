@@ -239,7 +239,18 @@ beforeEach(async () => {
   wRadio = createWidget(dash.id, { title: "Radio", type: "radiogroup", position: 6, config: {} }); // REF-8, patched below
 
   // Close the cycles — what makes REF-3, REF-6, REF-7 and REF-8 real.
-  updateWidget(wMap.id, { config: { includedLayerIds: [layerTable.id, layerDv.id] } }); // REF-6
+  updateWidget(wMap.id, {
+    config: {
+      includedLayerIds: [layerTable.id, layerDv.id], // REF-6
+      // REF-9 — spatialTargets[].tableId, the kind Phase 121 found missing from the inventory.
+      // Two entries so a single-element loop cannot pass by accident, on two DIFFERENT tables
+      // so a remapper that reuses one mapping for both is caught.
+      spatialTargets: [
+        { tableId: tWidget.id, spatialMode: "latlon", lonCol: "lon", latCol: "lat" },
+        { tableId: tLayer.id, spatialMode: "wkt", spatialCol: "geom" },
+      ],
+    },
+  });
   updateWidget(wLegend.id, { config: { sourceMapWidgetId: wMap.id } }); // REF-3
   updateWidget(wNumLine.id, {
     config: {
@@ -412,6 +423,20 @@ describe("IMPNEW — per-reference-kind NEW-id proofs, end to end through the ro
     const target = radio.config.options[1].action.target;
     expect(target).toEqual({ kind: "dynamicView", id: newDv.id });
     expect(target.id).not.toBe(dv.id);
+  });
+
+  it("IMPNEW-REF9: every spatialTargets[].tableId is the NEW table id", () => {
+    const map = newWidgetByTitle("Map");
+    const targets = map.config.spatialTargets;
+    expect(targets).toHaveLength(2);
+    expect(targets[0].tableId).toBe(newTableIdFor(tWidget.id));
+    expect(targets[1].tableId).toBe(newTableIdFor(tLayer.id));
+    // The armed half: the file's own ids must not survive into the target.
+    expect(targets[0].tableId).not.toBe(tWidget.id);
+    expect(targets[1].tableId).not.toBe(tLayer.id);
+    // The non-id fields ride along untouched.
+    expect(targets[0].lonCol).toBe("lon");
+    expect(targets[1].spatialCol).toBe("geom");
   });
 
   it("IMPNEW-union: the two dashboard_tables associations point at NEW table ids", () => {

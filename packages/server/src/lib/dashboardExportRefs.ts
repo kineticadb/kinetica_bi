@@ -4,7 +4,8 @@
  *
  * Research (119-RESEARCH.md §Q1, confirmed again in 120-RESEARCH.md) found EIGHT reference kinds
  * inside `widgets.config`, plus a sixth site carrying the same shape on the
- * `dashboard_layers.filter_scope` DB column:
+ * `dashboard_layers.filter_scope` DB column. Phase 121 found a NINTH (REF-9) that all three
+ * earlier sweeps missed — see the note under REF-9 below:
  *
  *   REF-1  config.tableId                              -> table
  *   REF-2  config.dynamicViewId                         -> dynamicView
@@ -15,13 +16,14 @@
  *   REF-7  config.filterSelection.allowedSourceWidgetIds   -> widget (mixed with a non-id sentinel string)
  *   REF-8  config.options[].actions[].target               -> widget | layer | dynamicView (polymorphic),
  *          AND the legacy singular config.options[].action.target (pre-Phase-60.2 persisted blobs)
+ *   REF-9  config.spatialTargets[].tableId (array)      -> table         (map widget, v1.5 Phase 28)
  *
  * Plus, on `dashboard_layers` directly (not nested in `config`):
  *   `table_id`, `dynamic_view_id` (FK columns) and `filter_scope` (same shape as REF-7).
  * And on `dashboard_dynamic_views`: `source_table_id`.
  *
  * ONE TRAVERSAL, TWO DIRECTIONS (Phase 120 Plan 01). `visitWidgetConfigRefs` is now the ONLY place
- * these eight sites are enumerated. `collectWidgetConfigRefs` drives it with an identity visitor
+ * these sites are enumerated. `collectWidgetConfigRefs` drives it with an identity visitor
  * (report the id, keep it unchanged); Phase 120's `remapWidgetConfigRefs` drives the SAME function
  * with a map-or-strip visitor (report the id, write back the mapped id or delete the site). Adding
  * a NINTH reference kind means adding exactly one new block inside `visitWidgetConfigRefs` — both
@@ -162,11 +164,11 @@ export const visitFilterSelectionRefs = (value: unknown, visit: RefVisitor): voi
 };
 
 /**
- * Walk a single widget's parsed `config` object, visiting every reference kind (REF-1..8) exactly
+ * Walk a single widget's parsed `config` object, visiting every reference kind (REF-1..9) exactly
  * once each. Mutates `config` IN PLACE — callers that must not mutate their own object (e.g.
  * `collectWidgetConfigRefs`) must pass a clone.
  *
- * This is the ONLY place the eight sites are enumerated. `collectWidgetConfigRefs` drives it with
+ * This is the ONLY place these sites are enumerated. `collectWidgetConfigRefs` drives it with
  * an identity visitor; Phase 120's `remapWidgetConfigRefs` drives it with a map-or-strip visitor.
  * A ninth reference kind added here is automatically picked up by both directions.
  */
@@ -307,6 +309,41 @@ export const visitWidgetConfigRefs = (
       // else: the legacy singular `action` object was mutated in place above (keep[0] === it).
     }
   }
+
+  // REF-9: config.spatialTargets[].tableId -> table, one per element (map widget, v1.5 Phase 28).
+  //
+  // Missed by 119-RESEARCH, by the plan checker, AND by the third audit sweep — all three looked
+  // for id-valued fields at the TOP level of config and inside the arrays they already knew about,
+  // and `spatialTargets` is a map-widget-only array whose elements are mostly column names. It is
+  // a genuine table reference: `SpatialTarget.tableId` (web `lib/spatialTargets.ts`) selects which
+  // registry table a drawn spatial filter applies to. Left unremapped, an imported map filters
+  // against whatever table happens to occupy that id in the target environment — the silent
+  // wrong-data failure this module exists to prevent.
+  //
+  // Strip semantics: DROP the element, mirroring REF-8's drop-the-action. `tableId` is required by
+  // SpatialTarget, so a stripped element would be malformed; and unlike REF-6's `includedLayerIds`
+  // an empty `spatialTargets` carries no sentinel meaning — `getSpatialTargets` returns [] for
+  // legacy widgets that never had the field, which is simply "no spatial filtering configured".
+  if (Array.isArray(cfg.spatialTargets)) {
+    const src = cfg.spatialTargets as unknown[];
+    const keep: unknown[] = [];
+    for (const target of src) {
+      if (!isPlainObject(target)) {
+        keep.push(target); // non-object passes through verbatim, never mis-filed
+        continue;
+      }
+      const id = asId(target.tableId);
+      if (id === undefined) {
+        keep.push(target); // no numeric tableId: untouched
+        continue;
+      }
+      const next = visit({ kind: "table", id });
+      if (next === undefined) continue; // unmapped => drop the whole target
+      target.tableId = next;
+      keep.push(target);
+    }
+    cfg.spatialTargets = keep;
+  }
 };
 
 /**
@@ -345,7 +382,7 @@ export const collectFilterSelectionRefs = (value: unknown): number[] => {
 };
 
 /**
- * Walk a single widget's parsed `config` object and extract every reference kind (REF-1..8).
+ * Walk a single widget's parsed `config` object and extract every reference kind (REF-1..9).
  * Returns `emptyExportRefs()` for any non-object config (null, undefined, string, array) — a
  * widget with a malformed config simply contributes no references rather than throwing.
  *
