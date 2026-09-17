@@ -236,6 +236,32 @@ describe("validateImportFile — Tier 1 structural rejection", () => {
     if (!result.ok) expect(result.rejection.message).toContain("dynamicViews[0].template_sql");
   });
 
+  // max_records is a ROW CAP, not an id: 0 means UNLIMITED (db.ts:128, index.ts:1694/2011).
+  // Validating it with asId rejected every export whose dv had the Unlimited box ticked —
+  // a well-formed file produced by the app's own UI, refused at the import boundary.
+  it("VALID-accept: max_records 0 (the UNLIMITED sentinel) is accepted, not rejected as non-positive", () => {
+    const file = makeValidFile();
+    file.dynamicViews[0].max_records = 0;
+    const result = validateImportFile(file);
+    expect(result.ok).toBe(true);
+  });
+
+  it("VALID-reject: a NEGATIVE max_records is still rejected naming dynamicViews[0].max_records", () => {
+    const file = makeValidFile();
+    file.dynamicViews[0].max_records = -1;
+    const result = validateImportFile(file);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.rejection.message).toContain("dynamicViews[0].max_records");
+  });
+
+  it("VALID-reject: a FRACTIONAL max_records is rejected naming dynamicViews[0].max_records", () => {
+    const file = makeValidFile();
+    file.dynamicViews[0].max_records = 1.5;
+    const result = validateImportFile(file);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.rejection.message).toContain("dynamicViews[0].max_records");
+  });
+
   it("VALID-reject: a table with an empty name is rejected naming tables[0].name", () => {
     const file = makeValidFile();
     file.tables[0].name = "";

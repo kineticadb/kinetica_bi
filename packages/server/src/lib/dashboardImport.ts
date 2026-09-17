@@ -68,6 +68,21 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
+/**
+ * A ROW CAP, not an id. `max_records` is the one numeric field in the envelope where ZERO is
+ * meaningful: `db.ts:128` documents `0 = unlimited (no row cap)`, `POST /api/dashboards/:id/
+ * dynamic-views` accepts `>= 0` ("must be 0 (unlimited) or a positive number", `index.ts:1694`),
+ * and the materialize gate reads `max_records === 0` as "skip the threshold check"
+ * (`index.ts:2011`).
+ *
+ * Validating it with `asId` — as this module originally did — rejected every export whose dv had
+ * the Unlimited box ticked. The file was well-formed and produced by the app's own UI; import
+ * refused it with "must be a positive integer (got number)". Keep `asId` for ids only: its `> 0`
+ * rule is what makes an id predicate correct and a count predicate wrong.
+ */
+const isNonNegativeInt = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0;
+
 /** Human-readable type label for a malformed-field message (`got <actualType>`). */
 const typeLabel = (v: unknown): string => {
   if (v === null) return "null";
@@ -195,8 +210,9 @@ export const validateImportFile = (raw: unknown): ValidateResult => {
     if (!isNonEmptyString(d.template_sql)) {
       return malformed(`dynamicViews[${i}].template_sql`, "must be a non-empty string", d.template_sql);
     }
-    if (asId(d.max_records) === undefined) {
-      return malformed(`dynamicViews[${i}].max_records`, "must be a positive integer", d.max_records);
+    if (!isNonNegativeInt(d.max_records)) {
+      // 0 is legal and means UNLIMITED — see isNonNegativeInt.
+      return malformed(`dynamicViews[${i}].max_records`, "must be a non-negative integer", d.max_records);
     }
     if (d.columns_json !== null && d.columns_json !== undefined && !Array.isArray(d.columns_json)) {
       return malformed(`dynamicViews[${i}].columns_json`, "must be null or an array", d.columns_json);
