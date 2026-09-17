@@ -61,10 +61,10 @@
   3. Runtime state does NOT appear in the export — specifically `dashboard_table_views` (materialized-view bookkeeping).
   4. Access grants do NOT appear in the export (DXIM-V124-08).
   5. The set of exported entities is derived by walking the dependency graph, not by a hand-maintained list — a widget config referencing a custom metric must pull that metric in.
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 - [x] 119-01-PLAN.md — The dependency walk as a pure, mutation-probed module (all 8 reference kinds)
 - [x] 119-02-PLAN.md — Export envelope + assembler + `GET /api/dashboards/:id/export`
-- [ ] 119-03-PLAN.md — Kitchen-sink completeness, exclusion canaries, non-leak 404, SET-BASED gate
+- [x] 119-03-PLAN.md — Kitchen-sink completeness, exclusion canaries, non-leak 404, SET-BASED gate
 - [ ] 119-04-PLAN.md — Ninth-reference-kind audit + operator export of a real dashboard (checkpoint)
 
 ### Phase 120: Import

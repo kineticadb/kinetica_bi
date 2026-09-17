@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: Completed 119-02-PLAN.md — dashboard export assembler + GET /api/dashboards/:id/export route
-last_updated: "2026-09-17T00:07:32Z"
+stopped_at: Completed 119-03-PLAN.md — kitchen-sink completeness proof, exclusion canaries, non-leak 404, SET-BASED gate
+last_updated: "2026-09-16T20:20:00Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 119 (Export) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ### Open tech debt carried forward
 
@@ -652,6 +652,15 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 119 Plan 03 Decisions (2026-09-16)
+
+- **One kitchen-sink dashboard fixture exercises all eight widget-config reference kinds plus the sixth-site layer `filter_scope`** — every referenced table/metric/layer/dynamic-view is asserted present by id-SET equality (`toEqual` on a sorted array), not `toContain`, so a stray extra inclusion fails the assertion too.
+- **Three exclusion canaries (access-grant grantee, column-display label, `dashboard_table_views` view name) are seeded as live rows, then asserted absent from `res.text` (raw bytes)**, not `res.body` — proves the exclusion by construction rather than by an empty-table false negative.
+- **The non-leak 404 test compares `denied.body` to `missing.body` directly (response-to-response), not to a literal** — any future divergence (403, a different message shape, a different key) fails it; this is the exact "helpful" 403-split refactor mutation probe M6 confirmed would reintroduce the id-enumeration leak v1.10 closed.
+- **Ten mutation probes were run for real against the committed `dashboardExport.ts`/`index.ts`, each reverted; all ten fired their named assertion on the first attempt** — no test needed strengthening. M9 (filename allow-list -> denylist swap) crashed 26 tests, not just its target one, because Node's http layer throws when a header value contains a raw CR/LF; recorded as a finding in the spec's header comment, not treated as a broken criterion.
+- **No DXIM requirement was marked complete** — all eleven remain `Pending` in REQUIREMENTS.md; Plan 04 owns closure after the operator checkpoint.
+- **Tooling note (repeats 119-01/119-02):** `gsd-tools state advance-plan` / `roadmap update-plan-progress` cannot parse this project's STATE.md/ROADMAP.md formats — both were updated manually in the existing file style.
 
 ### Phase 119 Plan 02 Decisions (2026-09-16)
 
@@ -1311,6 +1320,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-17T00:07:32Z
-Stopped at: Completed 119-02-PLAN.md — dashboard export assembler + GET /api/dashboards/:id/export route
+Last session: 2026-09-16T20:20:00Z
+Stopped at: Completed 119-03-PLAN.md — kitchen-sink completeness proof, exclusion canaries, non-leak 404, SET-BASED gate
 Resume file: None
