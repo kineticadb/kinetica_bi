@@ -23,6 +23,8 @@ import { createOrReplaceMaterialized } from "./lib/materializedView";
 import { buildDynamicViewName } from "./lib/dynamicViewName";
 // v1.24 Phase 119 (DXIM-V124-01/-02/-08): dashboard export assembler + download filename helper.
 import { buildDashboardExport, exportFileName } from "./lib/dashboardExport";
+// v1.24 Phase 120 (DXIM-V124-03/-10/-11): dashboard import — structural validation then apply.
+import { validateImportFile, applyDashboardImport } from "./lib/dashboardImport";
 // v1.7 Phase 38 (SCHEMA-V17-06): /api/quantile NTILE bucket-MIN query backing Phase 39 Auto-suggest.
 import { buildQuantileSql, parseQuantileResponse } from "./lib/quantileSql";
 import { buildTopValuesSql, parseTopValuesResponse } from "./lib/topValuesSql";
@@ -792,6 +794,52 @@ export const createApp = async (): Promise<express.Express> => {
     const dashboard = createDashboard(name, description);
     return res.status(201).json(dashboard);
   });
+
+  // v1.24 Phase 120 (DXIM-V124-03/10/11): dashboard import.
+  //
+  // Gate: dashboards:create AND datasets:manage. Both already exist — designer and admin hold both,
+  // analyst and user_admin hold neither. requirePermission()'s element [0] (requireAuth) is
+  // documented idempotent, which is what makes two back-to-back spreads a genuine AND-gate.
+  // No new PERMISSIONS entry is added; doing so would ripple across four spec files and
+  // permissionGroups wiring for no behavioural gain.
+  //
+  // NOTE: no non-leak 404 here. The per-dashboard GETs collapse "missing" and "denied" into one 404
+  // so export cannot enumerate dashboard ids. Import CREATES — there is no existing id to leak — so
+  // the RBAC 403 is the correct and honest answer. Do not "fix" this into a 404.
+  app.post(
+    "/api/dashboards/import",
+    ...requirePermission(PERMISSIONS.DASHBOARDS_CREATE),
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      // Tier 1 runs entirely in memory, BEFORE any transaction opens — which is what makes
+      // DXIM-V124-11's "changes nothing" guarantee true by construction rather than by rollback.
+      const result = validateImportFile(req.body);
+      if (!result.ok) {
+        return res.status(400).json({ error: result.rejection.message, code: result.rejection.code });
+      }
+      try {
+        const report = applyDashboardImport(result.file);
+        return res.status(201).json({ data: { ...report, preflightDangling: result.dangling } });
+      } catch (err) {
+        // The ONE place import diverges from this file's "let typed errors bubble to
+        // errorMiddleware" convention: a SQLite constraint error mid-import is not a typed
+        // Kinetica error, so it would become a bare 500 and the operator would not learn the
+        // crucial fact — that the transaction rolled back and nothing was left behind.
+        console.error(
+          JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "error",
+            event: "dashboard_import_failed",
+            message: err instanceof Error ? err.message : String(err),
+          })
+        );
+        return res.status(422).json({
+          error: "Import failed partway through and was rolled back. No dashboard, widgets, layers or table entries were created.",
+          code: "IMPORT_FAILED",
+        });
+      }
+    }
+  );
 
   app.patch("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
