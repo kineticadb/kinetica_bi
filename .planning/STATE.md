@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: unknown
-stopped_at: "Completed 120-02-PLAN.md — validateImportFile two-tier validation + resolveTables/resolveCustomMetrics match-or-create resolution. Next: plan/execute 120-03 (applyDashboardImport transaction + route)."
-last_updated: "2026-09-16T22:59:00Z"
+stopped_at: "Completed 120-03-PLAN.md — applyDashboardImport two-pass create-then-rewrite inside one db.transaction, atomicity proven via 3 trigger-induced rollbacks, 6 mutation probes. Next: plan/execute 120-04 (POST /api/dashboards/import route + body-parser error branches)."
+last_updated: "2026-09-16T23:55:00Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 ## Current Position
 
 Phase: 120 (Import) — EXECUTING
-Plan: 3 of 5 (120-01, 120-02 COMPLETE — see 120-01-SUMMARY.md, 120-02-SUMMARY.md)
+Plan: 4 of 5 (120-01, 120-02, 120-03 COMPLETE — see 120-01-SUMMARY.md, 120-02-SUMMARY.md, 120-03-SUMMARY.md)
 
 ### Open tech debt carried forward
 
