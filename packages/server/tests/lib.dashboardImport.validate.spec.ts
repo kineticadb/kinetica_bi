@@ -13,11 +13,14 @@
  * Task 3: MUTATION PROBES block appended below once Tasks 1/2 are committed.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { db } from "../src/db";
+import { db, createTable, createCustomMetric } from "../src/db";
 import {
   validateImportFile,
   SUPPORTED_IMPORT_SCHEMA_VERSIONS,
+  resolveTables,
+  resolveCustomMetrics,
 } from "../src/lib/dashboardImport";
+import type { Table, CustomMetricRow } from "../src/types";
 
 // ─── Fixture ──────────────────────────────────────────────────────────────────
 
@@ -306,5 +309,177 @@ describe("validateImportFile — acceptance and Tier 2 referential handling", ()
     };
 
     expect(after).toEqual(before);
+  });
+});
+
+// ─── RESOLVE-table / RESOLVE-metric ────────────────────────────────────────
+
+const fileTable = (
+  id: number,
+  schema: string,
+  name: string,
+  columns: Record<string, string> = { c1: "int" }
+): Table => ({ id, name, schema, description: "", columns, created_at: "t", updated_at: "t" });
+
+const fileMetric = (id: number, tableId: number, label: string, expression: string): CustomMetricRow => ({
+  id,
+  table_id: tableId,
+  label,
+  expression,
+  format_spec: null,
+  created_at: "t",
+  updated_at: "t",
+});
+
+describe("resolveTables — match by schema.name, create when absent, never duplicate", () => {
+  it("RESOLVE-table: a schema.name absent from the target is CREATED and reported under created", () => {
+    const result = resolveTables([fileTable(500, "kbi_new", "brand_new_table")]);
+    expect(result.created).toHaveLength(1);
+    expect(result.matched).toHaveLength(0);
+    expect(result.map.get(500)).toBe(result.created[0].newId);
+  });
+
+  it("RESOLVE-table: a schema.name already in the target is REUSED — its existing id, and no new row", () => {
+    const existing = createTable({ schema: "kbi_x", name: "t_existing", columns: { c1: "int" } });
+    const before = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    const result = resolveTables([fileTable(500, "kbi_x", "t_existing")]);
+    const after = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    expect(result.matched).toHaveLength(1);
+    expect(result.created).toHaveLength(0);
+    expect(result.map.get(500)).toBe(existing.id);
+    expect(after).toBe(before);
+  });
+
+  it("RESOLVE-table: TWO file entries sharing one schema.name resolve to the SAME new id and create ONE row", () => {
+    const before = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    const result = resolveTables([fileTable(500, "kbi_x", "dup_table"), fileTable(501, "kbi_x", "dup_table")]);
+    const after = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    expect(result.created).toHaveLength(1);
+    expect(result.map.get(500)).toBe(result.map.get(501));
+    expect(after - before).toBe(1);
+  });
+
+  it("RESOLVE-table: the total tables row count grows by exactly the number reported as created", () => {
+    createTable({ schema: "kbi_x", name: "existing_one", columns: {} });
+    const before = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    const result = resolveTables([
+      fileTable(500, "kbi_x", "existing_one"), // matched, no new row
+      fileTable(501, "kbi_x", "new_one_a"),
+      fileTable(502, "kbi_x", "new_one_b"),
+    ]);
+    const after = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    expect(result.created).toHaveLength(2);
+    expect(after - before).toBe(result.created.length);
+  });
+
+  it("RESOLVE-table: a matched table keeps the TARGET's existing columns — the file does not overwrite them", () => {
+    const existing = createTable({ schema: "kbi_x", name: "t_cols", columns: { target_col: "text" } });
+    resolveTables([fileTable(500, "kbi_x", "t_cols", { file_col: "int" })]);
+    const reread = db.prepare("SELECT columns FROM tables WHERE id = ?").get(existing.id) as any;
+    expect(JSON.parse(reread.columns)).toEqual({ target_col: "text" });
+  });
+
+  it("RESOLVE-table: when the target already holds DUPLICATE schema.name rows, the OLDEST is reused and no third row is made", () => {
+    const first = createTable({ schema: "kbi_x", name: "dup_target", columns: {} });
+    const second = createTable({ schema: "kbi_x", name: "dup_target", columns: {} }); // no UNIQUE constraint — this succeeds
+    const before = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    const result = resolveTables([fileTable(500, "kbi_x", "dup_target")]);
+    const after = (db.prepare("SELECT COUNT(*) as c FROM tables").get() as any).c;
+    expect(result.map.get(500)).toBe(first.id);
+    expect(result.map.get(500)).not.toBe(second.id);
+    expect(after).toBe(before);
+  });
+});
+
+describe("resolveCustomMetrics — match by exact label, create when absent, locked conflict policy", () => {
+  const setupTable = () => createTable({ schema: "kbi_x", name: "t_metrics", columns: { c1: "int" } });
+
+  it("RESOLVE-metric: a label absent on the matched table is CREATED and reported under created", () => {
+    const table = setupTable();
+    const tableIdMap = new Map([[500, table.id]]);
+    const result = resolveCustomMetrics([fileMetric(900, 500, "New Metric", "SUM(c1)")], tableIdMap);
+    expect(result.created).toHaveLength(1);
+    expect(result.map.get(900)).toBe(result.created[0].newId);
+  });
+
+  it("RESOLVE-metric: a label already present on the matched table is REUSED — its existing id, and no new row", () => {
+    const table = setupTable();
+    const existing = createCustomMetric(table.id, "Existing Metric", "SUM(c1)", null);
+    const tableIdMap = new Map([[500, table.id]]);
+    const before = (db.prepare("SELECT COUNT(*) as c FROM custom_metrics").get() as any).c;
+    const result = resolveCustomMetrics([fileMetric(900, 500, "Existing Metric", "SUM(c1)")], tableIdMap);
+    const after = (db.prepare("SELECT COUNT(*) as c FROM custom_metrics").get() as any).c;
+    expect(result.matched).toHaveLength(1);
+    expect(result.created).toHaveLength(0);
+    expect(result.map.get(900)).toBe(existing.id);
+    expect(after).toBe(before);
+  });
+
+  it('RESOLVE-metric: matching is case-SENSITIVE — "Revenue" and "revenue" are different metrics', () => {
+    const table = setupTable();
+    createCustomMetric(table.id, "Revenue", "SUM(c1)", null);
+    const tableIdMap = new Map([[500, table.id]]);
+    const result = resolveCustomMetrics([fileMetric(900, 500, "revenue", "SUM(c1)")], tableIdMap);
+    expect(result.created).toHaveLength(1); // distinct from "Revenue" — a new row, not a match
+    expect(result.matched).toHaveLength(0);
+  });
+
+  it("RESOLVE-metric: a same-label DIFFERENT-expression match is reported in conflicts", () => {
+    const table = setupTable();
+    createCustomMetric(table.id, "Revenue", "SUM(c1)", null);
+    const tableIdMap = new Map([[500, table.id]]);
+    const result = resolveCustomMetrics([fileMetric(900, 500, "Revenue", "SUM(c2)")], tableIdMap);
+    expect(result.conflicts).toHaveLength(1);
+  });
+
+  it("RESOLVE-metric: the conflict message names the metric label, the schema.name table, and that the expressions differed", () => {
+    const table = createTable({ schema: "kbi_conflict", name: "t_conflict", columns: { c1: "int" } });
+    createCustomMetric(table.id, "Revenue", "SUM(c1)", null);
+    const tableIdMap = new Map([[500, table.id]]);
+    const result = resolveCustomMetrics([fileMetric(900, 500, "Revenue", "SUM(c2)")], tableIdMap);
+    expect(result.conflicts).toHaveLength(1);
+    const msg = result.conflicts[0].message;
+    expect(msg).toContain("Revenue");
+    expect(msg).toContain("kbi_conflict.t_conflict");
+    expect(msg).toContain("DIFFERENT expression");
+  });
+
+  it("RESOLVE-metric: a conflicted metric is ALSO present in matched — it was reused, not skipped", () => {
+    const table = setupTable();
+    const existing = createCustomMetric(table.id, "Revenue", "SUM(c1)", null);
+    const tableIdMap = new Map([[500, table.id]]);
+    const result = resolveCustomMetrics([fileMetric(900, 500, "Revenue", "SUM(c2)")], tableIdMap);
+    expect(result.matched).toHaveLength(1);
+    expect(result.matched[0].newId).toBe(existing.id);
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it("RESOLVE-metric: a metric whose table_id is unresolvable is skipped and reported, not thrown", () => {
+    const tableIdMap = new Map<number, number>(); // empty — 500 not resolvable
+    let result: ReturnType<typeof resolveCustomMetrics> | undefined;
+    expect(() => {
+      result = resolveCustomMetrics([fileMetric(900, 500, "Orphan Metric", "SUM(c1)")], tableIdMap);
+    }).not.toThrow();
+    expect(result!.skipped).toHaveLength(1);
+    expect(result!.skipped[0].label).toBe("Orphan Metric");
+    expect(result!.created).toHaveLength(0);
+  });
+
+  it("RESOLVE-metric: the custom_metrics row count grows by exactly the number reported as created", () => {
+    const table = setupTable();
+    createCustomMetric(table.id, "Existing", "SUM(c1)", null); // will be matched, not counted
+    const tableIdMap = new Map([[500, table.id]]);
+    const before = (db.prepare("SELECT COUNT(*) as c FROM custom_metrics").get() as any).c;
+    const result = resolveCustomMetrics(
+      [
+        fileMetric(900, 500, "Existing", "SUM(c1)"), // matched
+        fileMetric(901, 500, "Brand New A", "SUM(c1)"),
+        fileMetric(902, 500, "Brand New B", "SUM(c1)"),
+      ],
+      tableIdMap
+    );
+    const after = (db.prepare("SELECT COUNT(*) as c FROM custom_metrics").get() as any).c;
+    expect(result.created).toHaveLength(2);
+    expect(after - before).toBe(result.created.length);
   });
 });

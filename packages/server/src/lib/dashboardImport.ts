@@ -24,6 +24,7 @@
  * silent failure mode, so both report what they did — see `resolveCustomMetrics`'s doc comment
  * for the locked metric-conflict policy.
  */
+import type { CustomMetricRow, Table } from "../types";
 import type { DashboardExportFile, DanglingReference } from "./dashboardExport";
 import {
   asId,
@@ -32,6 +33,13 @@ import {
   collectWidgetConfigRefs,
   type RefKind,
 } from "./dashboardExportRefs";
+import {
+  createCustomMetric,
+  createTable,
+  getTable,
+  getTableBySchemaName,
+  listCustomMetrics,
+} from "../db";
 
 /** This build reads exactly these envelope versions. EXPORT_SCHEMA_VERSION is currently 1. */
 export const SUPPORTED_IMPORT_SCHEMA_VERSIONS: readonly number[] = [1];
@@ -268,4 +276,191 @@ export const validateImportFile = (raw: unknown): ValidateResult => {
   }
 
   return { ok: true, file, dangling };
+};
+
+// -------------------------------------------------------------------------------------------
+// Table resolution (DXIM-V124-06) — match by schema.name, create when absent, never duplicate
+// either against the target or within one file.
+// -------------------------------------------------------------------------------------------
+
+export type TableResolution = {
+  oldId: number;
+  newId: number;
+  schema: string;
+  name: string;
+  /** `${schema}.${name}` — the operator-facing identity used throughout the report. */
+  tableRef: string;
+};
+
+export type ResolveTablesResult = {
+  /** old file table id -> target table id */
+  map: Map<number, number>;
+  matched: TableResolution[];
+  created: TableResolution[];
+};
+
+/**
+ * For each file table, in array order: reuse a target row already resolved earlier in THIS run
+ * for the same `schema.name` (a second file entry naming one `schema.name` must not create a
+ * second row — DXIM-V124-06 says "never duplicated", and that includes within one file); else
+ * reuse an existing target row via `getTableBySchemaName`; else create one.
+ *
+ * A matched row's `columns`/`description` are NEVER overwritten from the file — the target's
+ * registry entry is authoritative for the target environment, and every OTHER dashboard already
+ * using that table would silently change if it were.
+ */
+export const resolveTables = (tables: Table[]): ResolveTablesResult => {
+  const map = new Map<number, number>();
+  const matched: TableResolution[] = [];
+  const created: TableResolution[] = [];
+  const seen = new Map<string, number>();
+
+  for (const t of tables) {
+    const key = `${t.schema}.${t.name}`;
+    let newId = seen.get(key);
+    if (newId === undefined) {
+      const existing = getTableBySchemaName(t.schema, t.name);
+      if (existing) {
+        newId = existing.id;
+        matched.push({ oldId: t.id, newId, schema: t.schema, name: t.name, tableRef: key });
+      } else {
+        const createdRow = createTable({
+          schema: t.schema,
+          name: t.name,
+          columns: t.columns,
+          description: t.description,
+        });
+        newId = createdRow.id;
+        created.push({ oldId: t.id, newId, schema: t.schema, name: t.name, tableRef: key });
+      }
+      seen.set(key, newId);
+    }
+    map.set(t.id, newId);
+  }
+
+  return { map, matched, created };
+};
+
+// -------------------------------------------------------------------------------------------
+// Custom-metric resolution (DXIM-V124-07) — match by exact label on the resolved table, create
+// when absent.
+// -------------------------------------------------------------------------------------------
+
+export type MetricResolution = {
+  oldId: number;
+  newId: number;
+  tableId: number;
+  tableRef: string;
+  label: string;
+};
+
+export type MetricConflict = MetricResolution & {
+  existingExpression: string;
+  importedExpression: string;
+  /** Operator-facing sentence. Names the metric, the table, and that the expressions differed. */
+  message: string;
+};
+
+export type ResolveMetricsResult = {
+  /** old file metric id -> target metric id */
+  map: Map<number, number>;
+  matched: MetricResolution[];
+  created: MetricResolution[];
+  conflicts: MetricConflict[];
+  skipped: { oldId: number; label: string; reason: string }[];
+};
+
+/**
+ * Metric-label conflict policy — LOCKED by the operator, 2026-09-16 (recorded in
+ * `120-CONTEXT.md` §"Custom-metric label conflict — OPERATOR DECISION", closing a provenance gap
+ * the plan checker flagged: the decision was made in session before that file existed).
+ *
+ * When the matched table already has a metric with the SAME label but a DIFFERENT expression,
+ * import REUSES the target's existing definition rather than creating a duplicate or renaming.
+ * This matches the already-locked "match by label" rule and respects that the target
+ * environment's definition is deliberate. The ACCEPTED COST: the imported widget then computes
+ * something subtly different from what it computed in the source environment. This function's
+ * `conflicts` array is the ONLY thing that turns that from silent into visible — the message
+ * below MUST name the metric label, the table, and the fact that the expressions differed; a
+ * bare "matched: Revenue" would hide exactly the risk the operator agreed to take.
+ *
+ * A conflicted metric is ALSO present in `matched` — it WAS reused, not skipped.
+ */
+export const resolveCustomMetrics = (
+  metrics: CustomMetricRow[],
+  tableIdMap: Map<number, number>
+): ResolveMetricsResult => {
+  const map = new Map<number, number>();
+  const matched: MetricResolution[] = [];
+  const created: MetricResolution[] = [];
+  const conflicts: MetricConflict[] = [];
+  const skipped: { oldId: number; label: string; reason: string }[] = [];
+
+  for (const m of metrics) {
+    const newTableId = tableIdMap.get(m.table_id);
+    if (newTableId === undefined) {
+      // The table itself was not resolvable (e.g. a dangling table_id already stripped by the
+      // Plan 120-01 remapper). Skip rather than throw — the widgets referencing this metric will
+      // have that reference stripped and reported separately.
+      skipped.push({ oldId: m.id, label: m.label, reason: "table not resolvable" });
+      continue;
+    }
+
+    const targetTable = getTable(newTableId);
+    const tableRef = targetTable ? `${targetTable.schema}.${targetTable.name}` : `table#${newTableId}`;
+
+    // Exact string equality: `label` has no COLLATE NOCASE in the custom_metrics DDL, so
+    // SQLite's own UNIQUE(table_id, label) constraint is case-sensitive too. Matching must agree
+    // with the constraint, or the createCustomMetric call below would throw on a case-only
+    // "duplicate" that the constraint does not actually consider one.
+    const existing = listCustomMetrics(newTableId).find((r) => r.label === m.label);
+
+    if (existing) {
+      map.set(m.id, existing.id);
+      matched.push({ oldId: m.id, newId: existing.id, tableId: newTableId, tableRef, label: m.label });
+      if (existing.expression !== m.expression) {
+        conflicts.push({
+          oldId: m.id,
+          newId: existing.id,
+          tableId: newTableId,
+          tableRef,
+          label: m.label,
+          existingExpression: existing.expression,
+          importedExpression: m.expression,
+          message: `Custom metric "${m.label}" on ${tableRef} already exists in this environment with a DIFFERENT expression. Imported widgets now use the EXISTING definition (${existing.expression}); the file's definition (${m.expression}) was NOT applied.`,
+        });
+      }
+    } else {
+      const createdRow = createCustomMetric(newTableId, m.label, m.expression, m.format_spec);
+      map.set(m.id, createdRow.id);
+      created.push({ oldId: m.id, newId: createdRow.id, tableId: newTableId, tableRef, label: m.label });
+    }
+  }
+
+  return { map, matched, created, conflicts, skipped };
+};
+
+// -------------------------------------------------------------------------------------------
+// ImportReport — the shape Plan 120-03's applyDashboardImport fills in. Declared here so both
+// resolution functions' output types (TableResolution / MetricResolution / MetricConflict) and
+// the report itself live next to each other.
+// -------------------------------------------------------------------------------------------
+
+export type ImportReport = {
+  dashboardId: number;
+  dashboardName: string;
+  widgetsCreated: number;
+  layersCreated: number;
+  dynamicViewsCreated: number;
+  tablesMatched: TableResolution[];
+  tablesCreated: TableResolution[];
+  metricsMatched: MetricResolution[];
+  metricsCreated: MetricResolution[];
+  metricConflicts: MetricConflict[];
+  /** References that pointed outside the file and were removed rather than left pointing at
+   *  whatever happens to carry that id in the target. */
+  strippedReferences: { from: string; kind: RefKind; id: number }[];
+  /** Human-readable notes that are not errors but change behaviour — e.g. a layer filter that
+   *  widened to ALL LAYERS, a skipped metric, a skipped layer. */
+  warnings: string[];
 };
