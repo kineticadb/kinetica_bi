@@ -2917,6 +2917,8 @@ export const createApp = async (): Promise<express.Express> => {
  *   - KineticaAuthError       → 401 + { error, code: "REAUTH_REQUIRED" } + clearSessionCookie
  *   - KineticaPermissionError → 403 + { error }  (NO code field)
  *   - KineticaUpstreamError   → 502 + { error }  (NO code field)
+ *   - body-parser JSON parse failure  → 400 + { error, code } (v1.24 Phase 120, see below)
+ *   - body-parser payload-too-large   → 413 + { error, code } (v1.24 Phase 120, see below)
  *   - Anything else           → 500 + generic error message + console.error
  *
  * NOTE: The middleware does NOT call deleteSession — orphaned rows are GC'd by the
@@ -2939,6 +2941,26 @@ export const errorMiddleware = (
   }
   if (err instanceof KineticaUpstreamError) {
     res.status(502).json({ error: err.message });
+    return;
+  }
+  // v1.24 Phase 120 (DXIM-V124-11): body-parser failures. The global 1 MB JSON body-size limit
+  // (see createApp() near the top of this file) is enforced BEFORE routing, so a route's own
+  // validation never sees these two cases. Without these branches both surface as a bare
+  // 500 "Internal server error", which is the opposite of the clear rejection message
+  // DXIM-V124-11 requires for a truncated or oversized dashboard-import file.
+  const bodyErrType = (err as { type?: unknown } | null)?.type;
+  if (bodyErrType === "entity.parse.failed") {
+    res.status(400).json({
+      error: "Request body is not valid JSON. If this is a dashboard export file, it may be truncated or hand-edited.",
+      code: "MALFORMED_JSON",
+    });
+    return;
+  }
+  if (bodyErrType === "entity.too.large") {
+    res.status(413).json({
+      error: "Request body exceeds the 1 MB limit. A dashboard export of this size is unexpected — check the file.",
+      code: "PAYLOAD_TOO_LARGE",
+    });
     return;
   }
   // Defensive: non-typed error — should not happen once routes are stripped (Plan 03-02).
