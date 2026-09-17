@@ -104,7 +104,11 @@ proven here — see 120-05-SUMMARY.md and REQUIREMENTS.md's note — that is Pha
   2. An export file can be uploaded and imported from the UI, with the import report surfaced to the operator.
   3. An operator round-trip between two real environments reproduces the dashboard with all visualizations rendering the same data.
   4. Every interactive feature of the imported dashboard still works — drill-down, filters, map layers, and any standalone Legend binding — confirming the id remapping held in practice, not just in tests.
-**Plans**: TBD
+**Plans**: 4 plans in 4 waves (sequential — each builds on the previous)
+- [ ] 121-01-PLAN.md — Client API layer: blob download for export, JSON-body POST for import, `ImportReportDto` mirrors
+- [ ] 121-02-PLAN.md — `ImportDashboardModal`: file picker + FULL report, every `MetricConflict.message` verbatim
+- [ ] 121-03-PLAN.md — `DashboardsPage` wiring: per-row Export, `dashboards:create` AND `datasets:manage` gated Import
+- [ ] 121-04-PLAN.md — **BLOCKING operator round trip between two servers with separate DB files** — a FAIL REOPENS DXIM-V124-01/-03/-10
 
 ---
 
