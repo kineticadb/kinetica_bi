@@ -402,3 +402,99 @@ export const collectDynamicViewRefs = (dv: DashboardDynamicView): ExportRefs => 
   if (tableId !== undefined) out.tableIds.push(tableId);
   return normalize(out);
 };
+
+// ---------------------------------------------------------------------------------------------
+// Phase 120 Plan 01 — the remap side. Drives the SAME `visitWidgetConfigRefs` /
+// `visitFilterSelectionRefs` traversal as the collectors above, with a map-or-strip visitor
+// instead of an identity one. There is no second enumeration of the eight sites here.
+// ---------------------------------------------------------------------------------------------
+
+/** Old-id -> new-id, one map per RefKind. A MISSING key means "unresolvable" -> strip the site. */
+export type RefIdMaps = {
+  table: Map<number, number>;
+  widget: Map<number, number>;
+  layer: Map<number, number>;
+  dynamicView: Map<number, number>;
+  customMetric: Map<number, number>;
+};
+
+export const emptyRefIdMaps = (): RefIdMaps => ({
+  table: new Map(),
+  widget: new Map(),
+  layer: new Map(),
+  dynamicView: new Map(),
+  customMetric: new Map(),
+});
+
+export type StrippedRef = { kind: RefKind; id: number };
+
+export type RemapOutcome = {
+  /** A NEW object. The input is never mutated. */
+  config: Record<string, unknown>;
+  /** Every site whose old id had no entry in the corresponding map. Reported, never silently kept. */
+  stripped: StrippedRef[];
+  /** See VisitNotes.layerFilterWidened — a non-empty layer filter became [] (= ALL LAYERS). */
+  layerFilterWidened: boolean;
+};
+
+/**
+ * Rewrite every reference site inside a widget's `config` to its NEW id, per `maps`. Any old id
+ * with no entry in the matching map is STRIPPED (never left in place — see Pitfall 3,
+ * 120-RESEARCH.md: an unmapped old id in the TARGET environment silently points at whatever
+ * happens to carry that id there). The visitor below never falls back to the site's own original
+ * value on a lookup miss — a missing map entry always resolves to `undefined`, i.e. strip.
+ */
+export const remapWidgetConfigRefs = (config: unknown, maps: RefIdMaps): RemapOutcome => {
+  const next = isPlainObject(config) ? cloneJson(config) : {};
+  const stripped: StrippedRef[] = [];
+  const notes: VisitNotes = { layerFilterWidened: false };
+  visitWidgetConfigRefs(
+    next,
+    (site) => {
+      const mapped = maps[site.kind].get(site.id);
+      if (mapped === undefined) {
+        stripped.push({ kind: site.kind, id: site.id });
+        return undefined;
+      }
+      return mapped;
+    },
+    notes,
+  );
+  return { config: next, stripped, layerFilterWidened: notes.layerFilterWidened };
+};
+
+/**
+ * Rewrite a `filterSelection`-shaped value (widgets.config.filterSelection, or the sixth site
+ * `dashboard_layers.filter_scope`) to NEW widget ids. Accepts either an already-parsed object or a
+ * raw JSON string (mirrors `collectFilterSelectionRefs`'s "accept both" rule — `filter_scope` is
+ * typed `string | null` but `mapDashboardLayer` hands back a parsed object at runtime).
+ *
+ * The CALLER is responsible for `JSON.stringify`-ing the returned `value` before it reaches
+ * `updateDashboardLayer` (see db.ts's own "Route stringifies on write" comment) — this function
+ * only ever returns a plain object or `null`.
+ */
+export const remapFilterSelection = (
+  value: unknown,
+  widgetIdMap: Map<number, number>,
+): { value: Record<string, unknown> | null; stripped: StrippedRef[] } => {
+  let parsed: unknown = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return { value: null, stripped: [] };
+    }
+  }
+  if (!isPlainObject(parsed)) return { value: null, stripped: [] };
+  const next = cloneJson(parsed);
+  const stripped: StrippedRef[] = [];
+  visitFilterSelectionRefs(next, (site) => {
+    const mapped = widgetIdMap.get(site.id);
+    if (mapped === undefined) {
+      stripped.push({ kind: site.kind, id: site.id });
+      return undefined;
+    }
+    return mapped;
+  });
+  return { value: next, stripped };
+};
