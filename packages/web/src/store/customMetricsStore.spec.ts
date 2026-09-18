@@ -10,7 +10,7 @@
  *   - listCustomMetrics is mocked — this store is pure client-side; no fetch in tests.
  */
 import { describe, it, expect, vi } from "vitest";
-import { useCustomMetricsStore, selectMetrics } from "./customMetricsStore";
+import { useCustomMetricsStore, selectMetrics, isMetricsHydrated } from "./customMetricsStore";
 import type { CustomMetricRow } from "../api/client";
 
 // Mock the api/client module so listCustomMetrics never hits the network.
@@ -215,5 +215,33 @@ describe("selectMetrics", () => {
     useCustomMetricsStore.getState().upsertMetric(tableId, updatedA);
     const result = selectMetrics(tableId);
     expect(result[0].label).toBe("Revenue (Updated)");
+  });
+});
+
+describe("isMetricsHydrated (v1.24 frozen-config.sql fix)", () => {
+  it("METRICSTORE-HYDRATED-reset: is false on a freshly reset store", () => {
+    expect(isMetricsHydrated(tableId)).toBe(false);
+  });
+
+  it("METRICSTORE-HYDRATED-empty-load: an EMPTY setConfig still counts as hydrated", () => {
+    useCustomMetricsStore.getState().setConfig(tableId, []);
+    expect(isMetricsHydrated(tableId)).toBe(true);
+    expect(selectMetrics(tableId)).toEqual([]);
+  });
+
+  it("METRICSTORE-HYDRATED-upsert: is true after upsertMetric", () => {
+    useCustomMetricsStore.getState().upsertMetric(tableId, rowA);
+    expect(isMetricsHydrated(tableId)).toBe(true);
+  });
+
+  it("METRICSTORE-HYDRATED-per-table: stays false for a different table (no cross-talk)", () => {
+    useCustomMetricsStore.getState().setConfig(tableId, [rowA]);
+    expect(isMetricsHydrated(tableId2)).toBe(false);
+  });
+
+  it("METRICSTORE-HYDRATED-reset-clears: returns to false after reset()", () => {
+    useCustomMetricsStore.getState().setConfig(tableId, [rowA]);
+    useCustomMetricsStore.getState().reset();
+    expect(isMetricsHydrated(tableId)).toBe(false);
   });
 });
