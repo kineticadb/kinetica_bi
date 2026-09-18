@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
-status: unknown
-stopped_at: "Completed 121-03-PLAN.md — DashboardsPage export/import UI wiring (DXIM-V124-01/-03/-10 UI surface; requirement closure NOT touched — Plan 121-04 owns the operator round-trip outcome and reopening on failure). Per-row Export button (unconditional, mirrors the export route's canViewDashboard-only gate) + page-level Import dashboard control gated on canImport = canCreate AND hasPermission(DATASETS_MANAGE) (a genuine AND mirroring index.ts:809-812 exactly, proven by two single-permission negative fixtures — a client-side OR would show the button to someone the server refuses). ImportDashboardModal mounted conditionally; onImported -> refetch() so the list reflects the new dashboard live. Deliberate, in-scope class swap: '+ New Dashboard' btn-primary -> btn-primary btn-sm now that it shares the ds-actions row with Import dashboard (CLAUDE.md's primary-in-an-action-pair rule) — the only styling change this whole phase authorizes. 13 UIWIRE- tests pass; 6/6 mutation probes fired clean on first attempt (no strengthening needed), including the two AND-gate probes (M1/M2) that Phase 120 Wave 4 previously missed. Web gates green: tsc clean, vitest 179 files/4067 tests/0 failed, theme-guard 152/152 (unchanged — no new component file); packages/server and global.css both carry zero diff. Next: execute 121-04 (BLOCKING operator round trip between two real environments — a FAIL reopens DXIM-V124-01/-03/-10)."
-last_updated: "2026-09-17T17:20:00.000Z"
+status: phase-complete
+stopped_at: "Completed 121-04-PLAN.md — the BLOCKING cross-environment operator round trip, and with it Phase 121 (4/4) and the last open plan of v1.24. VERDICT: PASS on portability, with one High-severity defect; DXIM-V124-10 REOPENED by operator decision. Two server processes (:4000/data/kinetica.db and :4001/data/env-b.db, inline env vars only — packages/server/.env untouched), two Vite SPAs (5173/5174), dashboard 4 'Test Dashboard' extended with a custom metric AND a dynamic view, exported and imported through the UI three times. Export file: 9 widgets, 2 layers, 3 tables, 2 customMetrics, 1 dynamicView (max_records 0), 3 dashboardTableIds, 0 danglingReferences. All 11 comparison rows PASS except row 7 (standalone Legend — not in this dashboard; live-verified Phase 119): Bar Chart total_wo_tip reads 14.307650071701081 in BOTH environments, dv-bound bar chart and dv-bound map layer draw, layer toggle/drill-down/filters/Radio Group all work, no widget config landed as {}. REF-2, REF-4, REF-5 and REF-9 exercised live across environments for the FIRST time — no longer fixture-only. DEFECT (OPEN): ChartConfigPanel freezes the resolved custom-metric expression into widget.config.sql at Apply time; AggregatedWidgetRenderer (WidgetRenderer.tsx:403) renders that frozen text and never resolves the metric (grep -c resolveMetricExpr WidgetRenderer.tsx -> 0); dashboardImport.ts never rewrites config.sql. So the metricConflicts message's claim that imported widgets use the EXISTING definition is FALSE for bar/line/pie/scatter/table/bignumber/heatmap. Root cause CONFIRMED PRE-EXISTING — reproduced in environment A, which has never been imported into (try_again -> *700; config panel showed *700, chart kept rendering 14.307650071701081). The frozen SQL is a TENTH, TEXT-valued reference all nine id-valued sweeps structurally could not see. See .planning/defect-frozen-config-sql-metric-expression.md. NOTE: the side-by-side comparison PASSING is the defect's signature — the frozen SQL guarantees target matches source. Gates: web tsc clean, vitest 179 files/4069 tests/0 failed, theme-guard 152/152, server tsc clean, plan 04 changed zero source. Next: /gsd:plan-phase 121 --gaps for the frozen-config.sql fix (recommended fix is in the RENDERER — make AggregatedWidgetRenderer resolve live like TimelineRenderer/NumericLineRenderer already do — NOT in import). v1.24 stands at 10/11 requirements Complete."
+last_updated: "2026-09-18T13:05:00.000Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -23,8 +23,21 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-Phase: 121 (UI + Cross-Environment Verification) — EXECUTING
-Plan: 3 of 4 COMPLETE (121-01-SUMMARY.md, 121-02-SUMMARY.md, 121-03-SUMMARY.md) — next: 121-04 (BLOCKING operator round trip)
+Phase: 121 (UI + Cross-Environment Verification) — **COMPLETE** (2026-09-18)
+Plan: 4 of 4 COMPLETE (121-01/02/03/04-SUMMARY.md). Phase 121 was the last open phase of v1.24.
+
+**v1.24 status: 10/11 requirements Complete.** DXIM-V124-10 is REOPENED — the cross-environment
+checkpoint found the import report's metric-conflict message makes a false claim. The milestone
+cannot close until that is resolved. Next action: `/gsd:plan-phase 121 --gaps`.
+
+The recommended fix is in the RENDERER, not in export/import: make `AggregatedWidgetRenderer` resolve
+the custom-metric expression live, exactly as `TimelineRenderer`/`NumericLineRenderer` already do.
+That closes the seam and fixes the single-environment staleness bug at the same time. Regenerating
+`config.sql` during import Pass 2 would fix only the import symptom and leave environment A broken.
+
+**Live environments were left running** at :4000/:5173 (A) and :4001/:5174 (B) and can be torn down.
+Test data is deliberately dirty: A's `try_again` is `AVG(total_amount - tip_amount) * 700`, B's is
+`* 50.111111`, and `data/env-b.db` holds three imported copies of "Test Dashboard" (ids 1, 2, 3).
 
 ### Phase 121 Plan 01 decisions (2026-09-17)
 
