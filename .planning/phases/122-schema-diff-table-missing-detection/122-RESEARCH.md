@@ -1,5 +1,26 @@
 # Phase 122: Schema Diff & Table-Missing Detection - Research
 
+> **SUPERSEDED IN PART — read `122-SPIKE-NOTES.md` first.**
+>
+> This document answered the five deciding questions from DOCUMENTATION only, at MEDIUM confidence,
+> because the live spike could not run (credentials were absent from `.env`). The operator supplied
+> credentials on 2026-09-21 and the spike was run against the deployed instance. **Real response
+> bodies are in `122-SPIKE-NOTES.md`, and where the two disagree, the spike notes win.**
+>
+> Status of each documentary claim after live verification:
+> - Q1 char width lives in `properties` (`char1`/`char4`/`char16`) — **CONFIRMED**
+> - Q2 base types live in `type_schemas`; int width is a separate `properties` axis — **CONFIRMED**
+> - Q3 no stable per-column identifier — **CONFIRMED** (`type_ids` is per table type, not per column)
+> - Q4 `INFORMATION_SCHEMA.DATA_TYPE` carries no length — **CONFIRMED, AND WORSE THAN STATED**: every
+>   char column reports `character(256)` regardless of real width (char1, char4 and char16 all alike),
+>   so existing snapshots are actively wrong about width, not merely imprecise
+> - Q5 table-not-found — **RESOLVED**: `no_error_if_not_exists: true` returns HTTP 200 / `status: OK`
+>   with an empty `table_names`, structurally distinct from any connection failure
+>
+> One correction to this document's deferred-items reasoning: `IS_NULLABLE` and `ORDINAL_POSITION`
+> are already returned by the `INFORMATION_SCHEMA` query the app runs, so `SSYNC-F5` is deferred
+> because it is unused, not because it is unobservable.
+
 **Researched:** 2026-09-21
 **Domain:** Kinetica `/show/table` + `INFORMATION_SCHEMA.COLUMNS` response shape; server-side pure-lib diffing; SQLite snapshot storage
 **Confidence:** MEDIUM (documentary, not live-verified — see "Live Verification Blocked" below, which is the most important thing in this document)
