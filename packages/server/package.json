@@ -12,6 +12,7 @@
     "wkb-spike": "tsx src/spikes/wkbSpike.ts",
     "spatial-predicate-spike": "tsx src/spikes/spatialPredicateSpike.ts",
     "cb-track-spike": "tsx src/spikes/cbTrackSpike.ts",
+    "schema-fingerprint-spike": "tsx src/spikes/schemaFingerprintSpike.ts",
     "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
