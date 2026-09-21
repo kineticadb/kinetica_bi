@@ -17,22 +17,22 @@
  * notion of "same column" right next to the rename decision this module
  * exists to enforce.
  *
- * `ORDINAL_POSITION` is available from Kinetica's INFORMATION_SCHEMA but is
- * NEVER used here, or anywhere in this module, to pair columns — it is
- * positional, not identity, and pairing on it is precisely the heuristic the
- * milestone forbids (122-SPIKE-NOTES.md, "Unplanned finding").
+ * Kinetica's INFORMATION_SCHEMA also exposes each column's ordinal position,
+ * but it is NEVER used here, or anywhere in this module, to pair columns —
+ * it is positional, not identity, and pairing on it is precisely the
+ * heuristic the milestone forbids (122-SPIKE-NOTES.md, "Unplanned finding").
  *
  * This module is PURE: no `db`, no network, no Express. It only compares
  * already-parsed ColumnFingerprintMaps and (Task 2) builds the
- * SchemaCheckResult response contract that Phase 124 (impact report)
- * computes from and Phase 125 (apply + sync history) persists.
+ * SchemaCheckResult response contract that Phase 124 computes from and
+ * Phase 125 (apply + sync history) persists.
  *
- * Severity classification — whether a given retype is actually breaking to
- * the app (e.g. `int -> varchar` vs `int -> double`) — is deliberately NOT
- * this module's job (SSYNC-V125-12, Phase 124). This module reports the
- * precise structural change (both the stored and live ColumnFingerprint, not
- * just their rendered strings) so Phase 124 has what it needs to classify;
- * it never discards information toward that end.
+ * Classifying whether a given retype actually changes app behavior (e.g.
+ * `int -> varchar` vs `int -> double`) is deliberately NOT this module's job
+ * (SSYNC-V125-12, Phase 124's own concern). This module reports the precise
+ * structural change (both the stored and live ColumnFingerprint, not just
+ * their rendered strings) so Phase 124 has what it needs to classify; it
+ * never discards information toward that end.
  */
 
 import type { ColumnFingerprint, ColumnFingerprintMap } from "./schemaFingerprint";
@@ -54,9 +54,10 @@ export type SchemaDiff = {
   retyped: RetypedColumn[];
 };
 
-// Byte-stable ascending sort by column name. Deliberately NOT localeCompare —
-// Phase 125 persists these arrays and a locale-dependent order would produce
-// spurious history churn between machines/locales for identical input.
+// Byte-stable ascending sort by column name. Deliberately NOT locale-aware
+// string ordering — Phase 125 persists these arrays and a locale-dependent
+// order would produce spurious history churn between machines/locales for
+// identical input.
 function byColumnAscending<T extends { column: string }>(a: T, b: T): number {
   return a.column < b.column ? -1 : a.column > b.column ? 1 : 0;
 }
@@ -87,9 +88,9 @@ function fingerprintsEqual(a: ColumnFingerprint, b: ColumnFingerprint): boolean 
  *   BOTH.
  * - A key present in both, with equal fingerprints -> emitted in NO group.
  *
- * Key comparison is `===` on the raw string: no `toLowerCase`, no `trim`, no
- * normalization. A case-only change is therefore one removal plus one
- * addition, not a no-op and not a retype.
+ * Key comparison is `===` on the raw string: no case-folding, no trimming, no
+ * normalization of any kind. A case-only change is therefore one removal plus
+ * one addition, not a no-op and not a retype.
  */
 export function diffColumnFingerprints(
   stored: ColumnFingerprintMap,
@@ -130,3 +131,69 @@ export function diffColumnFingerprints(
 
   return { added, removed, retyped };
 }
+
+/**
+ * The check's response contract. THREE success outcomes, matching the three locked in
+ * 122-CONTEXT.md:
+ *   "diff"              -> changes found (or not: `hasChanges` false with three empty groups)
+ *   "baseline_required" -> this table's snapshot predates precise capture
+ *   "table_missing"     -> Kinetica no longer has the table
+ *
+ * The fourth locked outcome — "could not reach Kinetica" — is DELIBERATELY NOT a value here.
+ * It is a non-2xx response (KineticaAuthError 401 / KineticaPermissionError 403 /
+ * KineticaUpstreamError 502, via the global errorMiddleware). Making a failed check
+ * structurally incapable of being a 200 is what guarantees a connection blip can never be
+ * presented as "your table was deleted".
+ *
+ * Consumed by Phase 124 (impact report) and persisted by Phase 125 (sync history).
+ */
+export type SchemaCheckResult =
+  | {
+      outcome: "diff";
+      table: string;
+      hasChanges: boolean;
+      added: AddedColumn[];
+      removed: RemovedColumn[];
+      retyped: RetypedColumn[];
+      live: ColumnFingerprintMap;
+    }
+  | { outcome: "baseline_required"; table: string; message: string; live: ColumnFingerprintMap }
+  | { outcome: "table_missing"; table: string; message: string };
+
+export const tableMissingResult = (table: string): SchemaCheckResult => ({
+  outcome: "table_missing",
+  table,
+  message:
+    `Kinetica no longer has a table named ${table}. It may have been dropped, or renamed in ` +
+    `Kinetica — from outside, the two are indistinguishable.`,
+});
+
+export const baselineRequiredResult = (
+  table: string,
+  live: ColumnFingerprintMap,
+): SchemaCheckResult => ({
+  outcome: "baseline_required",
+  table,
+  message:
+    `The stored schema snapshot for ${table} predates precise type capture, so column types ` +
+    `cannot be compared yet. Apply this check to establish a baseline; type comparison starts ` +
+    `from the next check.`,
+  live,
+});
+
+export const diffResult = (
+  table: string,
+  stored: ColumnFingerprintMap,
+  live: ColumnFingerprintMap,
+): SchemaCheckResult => {
+  const { added, removed, retyped } = diffColumnFingerprints(stored, live);
+  return {
+    outcome: "diff",
+    table,
+    hasChanges: added.length > 0 || removed.length > 0 || retyped.length > 0,
+    added,
+    removed,
+    retyped,
+    live,
+  };
+};
