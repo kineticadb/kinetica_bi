@@ -32,6 +32,98 @@
 
 - ✅ **v1.24 Dashboard Export & Import** — Phases 119-121 (shipped 2026-09-21) — see `milestones/v1.24-ROADMAP.md`
 
+- 🚧 **v1.25 Schema Sync** — Phases 122-126 (in progress)
+
+---
+
+## 🚧 v1.25 Schema Sync (In Progress)
+
+**Milestone Goal:** An operator can re-sync a registered table's schema with the live Kinetica table, and see exactly what the change breaks before deciding to apply it. Detect and report only — the app never rewrites a widget, layer, metric or format rule.
+
+**Why there is no refresh path to extend.** `tables.columns` is a single TEXT column holding a flat `Record<columnName, kineticaType>` (`db.ts:23-31`), written exactly once at registration (`index.ts:2432`, `:2438`, `dashboardImport.ts:356`). No refresh path exists anywhere in the codebase; this milestone builds the first one. Live discovery, by contrast, already exists and is the one place Kinetica column metadata is read — `GET /api/kinetica/schemas/:schema/tables/:table/columns` (`index.ts:2583-2619`, `INFORMATION_SCHEMA.COLUMNS` + `/show/table` temporal enrichment via `lib/showTableTypes.ts`). Reuse it; a second discovery path is a defect, not a feature.
+
+**Why reference enumeration is the load-bearing piece.** ~240 column-reference sites across ~110 records in a 7-dashboard dev DB. ~170 are structured and exactly resolvable; ~70 are free SQL and heuristic-only (warn-only by locked decision, permanently). Twelve of the structured ones — 11 `cb_config` + 1 `track_config` — live inside `widgets.config.options[].actions[].configPatch` as JSON-in-JSON (`actionAllowList.ts:101-151`) and override the layer at click time, so a scan of `dashboard_layers` alone misses all twelve. That is v1.24's REF-9 miss-class repeating, and `SSYNC-V125-07` exists precisely for it.
+
+**Architecture note, assessed 2026-09-21.** `dashboardExportRefs.ts`'s one-traversal-two-directions discipline is the right *pattern* but the wrong *module* to extend: `asId` — its whole safety model — has no analogue for strings (widget configs are full of strings that are not columns: `colormap:"viridis"`, `pointShape`, hex colours), so identification must be path-driven, which is strictly more fragile; and column refs are TABLE-SCOPED (a widget binds via `config.tableId` OR `config.dynamicViewId`, and `spatialTargets[]` elements carry their own `tableId`) where id refs are global. Build a sibling `lib/columnRefs.ts` in the same house style, cross-referenced in comments, and leave the export/import path — currently correct — undisturbed.
+
+**Sequential by design.** Each phase consumes the one before it. v1.24's phases were sequential and that worked; no parallelism is invented here.
+
+## Phases
+
+- [ ] **Phase 122: Schema Diff & Table-Missing Detection** - The app can ask live Kinetica what a registered table looks like now and report how it differs, changing nothing
+- [ ] **Phase 123: Column Reference Enumeration** - One traversal that finds every place a column name is referenced, structured sites exactly and free SQL heuristically
+- [ ] **Phase 124: Impact Report** - A check returns a report naming the widgets, layers, metrics and format rules an operator has to fix
+- [ ] **Phase 125: Apply & Sync History** - The refreshed snapshot is stored on confirmation and the changeset persists as a durable worklist
+- [ ] **Phase 126: Datasets UI, Access Gating & Operator Verification** - The whole flow driven from Datasets, permission-gated, and run against a real Kinetica table by the operator
+
+## Phase Details
+
+### Phase 122: Schema Diff & Table-Missing Detection
+**Goal**: For one registered table, the app can read the live Kinetica column set on demand and report exactly how it differs from the stored snapshot — added, removed, retyped, or the table gone entirely — without writing anything.
+**Depends on**: Nothing
+**Requirements**: SSYNC-V125-02, SSYNC-V125-03, SSYNC-V125-04, SSYNC-V125-05
+**Canonical refs**: `packages/server/src/index.ts:2583-2619` (the existing live-discovery route), `packages/server/src/lib/showTableTypes.ts`, `packages/server/src/db.ts:23-31` (`tables.columns`), `db.ts:118-131` + `:907-922` (dynamic views' prior-art re-read-and-re-store contract)
+**Success Criteria** (what must be TRUE):
+  1. Checking a registered table whose live Kinetica columns have changed returns three distinct groups — added, removed, retyped — with the retyped entries naming both the stored type and the live type.
+  2. Checking a table Kinetica no longer has returns a distinct table-missing outcome, not a diff that reports every column as removed, and its wording covers both a deleted table and one renamed in Kinetica.
+  3. A column renamed in Kinetica comes back as one removal plus one addition; no pairing, similarity score or guessed rename appears anywhere in the response.
+  4. Running a check leaves the database unchanged — a before/after row snapshot of `tables`, `widgets`, `dashboard_layers`, `custom_metrics` and `column_display_config` is identical.
+  5. Live column discovery goes through the existing `INFORMATION_SCHEMA` + `/show/table` path; no second query of Kinetica column metadata is introduced.
+**Plans**: TBD
+
+### Phase 123: Column Reference Enumeration
+**Goal**: A single pure traversal answers "what in this app refers to column X of table Y", covering every structured site exactly and every free-SQL site heuristically, with each finding carrying which of the two it was.
+**Depends on**: Phase 122 (consumes its changeset shape)
+**Requirements**: SSYNC-V125-07, SSYNC-V125-08
+**Research flag**: HIGHEST-RISK phase of the milestone. This is where the REF-9 miss-class recurs — a forgotten site produces a report that is confidently incomplete, and a report that silently omits an affected widget is worse than no report, because the operator acts on it. Per-site coverage must be exhaustive and each site must have a test that fails if that site is removed from the traversal.
+**Canonical refs**: `packages/server/src/lib/dashboardExportRefs.ts` (the pattern to inherit, not the module to extend), `packages/server/src/lib/actionAllowList.ts:101-151` (`configPatch` allow-list), `packages/web/src/lib/columnTypes.ts` (`normalizeType`, `NUMERIC_TYPES`/`INTEGER_TYPES`/`DATETIME_TYPES`)
+**Success Criteria** (what must be TRUE):
+  1. Given a table and a column name, the traversal returns every structured reference site in the inventory — widget config `metricColumn`, `groupByColumn`, `groupByColumns[]`, `drillDownColumn`, `timeCol`, `xField`, `deltaField`, `sortField`, the comma-separated `columns` string, `metrics[].column`, `filterFields[].column`, `spatialTargets[]` lon/lat/spatial columns; layer `latColumn`/`lonColumn`/`wktColumn`/`wkbColumn`, `cb_config.attr`, `track_config` (`trackIdAttr`/`trackOrderAttr`/`xCol`/`yCol`), `info_columns`, `info_template` `{column}` placeholders; and `column_display_config.column_name` — each covered by a test that fails if that site is deleted from the traversal.
+  2. A `cb_config` or `track_config` embedded in a radio-group widget's `options[].actions[].configPatch` is returned as its own finding, distinct from the layer it patches, so the twelve dev-DB copies a `dashboard_layers`-only scan misses are all found.
+  3. Free-SQL sites (`widgets.config.sql`, `config.customWhere`, `custom_metrics.expression`, `dashboard_dynamic_views.template_sql`, `dashboard_table_views.filter_clause`) produce findings marked heuristic rather than exact, and the traversal never rewrites free SQL text.
+  4. Findings are table-scoped: a widget bound through `config.dynamicViewId` and a `spatialTargets[]` entry carrying its own `tableId` resolve against the right table, so a same-named column belonging to a different table yields no finding.
+  5. `dashboardExportRefs.ts` and the export/import behaviour it drives are unchanged (zero diff to that module), and `columnRefs.ts` carries a comment cross-referencing it so the one-enumeration discipline is visibly inherited rather than re-derived.
+**Plans**: TBD
+
+### Phase 124: Impact Report
+**Goal**: A check returns a report the operator can act on — every affected widget, layer, metric and format rule named in their own terms, breaking changes separated from harmless ones, and certainty stated rather than implied.
+**Depends on**: Phases 122 and 123
+**Requirements**: SSYNC-V125-06, SSYNC-V125-09, SSYNC-V125-10, SSYNC-V125-11, SSYNC-V125-12
+**Canonical refs**: `packages/web/src/components/ChartConfigPanel.tsx:1063-1065` (where `drillDownColumnType` is frozen at save time, 69 widget configs), `packages/web/src/stores/columnDisplayConfigStore.ts:151-161` (the silent formatting fallback)
+**Success Criteria** (what must be TRUE):
+  1. A check on a table with a removed or retyped column returns each affected widget identified by its title and its dashboard's name — not by id — alongside the affected map layers.
+  2. Every `column_display_config` rule bound to an affected column appears in the report; the case that today degrades with no error anywhere is now stated explicitly.
+  3. Added columns appear in their own section and no added column appears among the breaking findings.
+  4. A retyped column's entry states the stored type and the live type, and separately flags every widget whose config carries a frozen `drillDownColumnType` for that column, saying those widgets keep filtering with the stale type until reconfigured.
+  5. Exactly-resolved findings and heuristic free-SQL findings are distinguishable in the report, and the free-SQL ones are worded as *possibly* affected rather than confirmed.
+**Plans**: TBD
+
+### Phase 125: Apply & Sync History
+**Goal**: On explicit confirmation the stored snapshot is replaced with the live Kinetica column set and nothing else is touched, and the changeset plus the report survive as a durable per-table worklist.
+**Depends on**: Phases 122 and 124 (applies the changeset; records the report as it stood)
+**Requirements**: SSYNC-V125-13, SSYNC-V125-14, SSYNC-V125-15, SSYNC-V125-16, SSYNC-V125-17
+**Canonical refs**: `packages/server/src/db.ts` (`SCHEMA_DDL`, and the `CREATE TABLE IF NOT EXISTS` + additive-ALTER migration convention used for `column_display_config` and `custom_metrics`)
+**Success Criteria** (what must be TRUE):
+  1. After applying, reading the table's metadata returns the live Kinetica columns and types — the stale snapshot is gone.
+  2. After applying, every `widgets`, `dashboard_layers`, `custom_metrics` and `column_display_config` row is identical to before; a row snapshot shows only the `tables` row changed.
+  3. An apply carrying removals or retypes succeeds; no code path refuses it, demands a force flag, or requires the operator to resolve findings first.
+  4. Applying records a history entry for that table holding when it ran, the added/removed/retyped changeset, and the impact report as it stood at that moment; the entry is still readable after a server restart.
+  5. A history entry can be deleted on its own, leaving the table's other entries and its stored schema untouched.
+**Plans**: TBD
+
+### Phase 126: Datasets UI, Access Gating & Operator Verification
+**Goal**: The operator drives check, report, apply and history from the Datasets page, only with the permission that already governs dataset management, and confirms against a real Kinetica table that the report tells the truth.
+**Depends on**: Phases 122-125
+**Requirements**: SSYNC-V125-01, SSYNC-V125-18, SSYNC-V125-19
+**Canonical refs**: `packages/web/src/components/DatasetsPage.tsx` (`:395` is the existing live-columns caller), `packages/web/src/components/RolesPage.tsx` + `RolesPage.css` (closest component to mirror), `packages/web/src/styles/global.css` (`btn-primary btn-sm` / `ghost-sm` inside `ds-actions`, `ds-field`, `ds-select`, `config-group`), `packages/web/src/lib/permissions.ts` (`DATASETS_MANAGE`)
+**Success Criteria** (what must be TRUE):
+  1. From Datasets, an operator can check one table on demand, read the full impact report in the app, and apply it — built from existing `global.css` utility classes with no hardcoded hex (theme-guard green, and a hand-run rgba/wrong-token audit, since the guard only flags `#hex`).
+  2. Loading a dashboard issues no schema-check request and no extra Kinetica round-trip; no polling timer or interval exists anywhere in the feature.
+  3. A table's sync history is viewable from Datasets and individual entries can be cleared from there, so the worklist outlives the modal.
+  4. A user without `datasets:manage` sees no check, apply or history control in the UI, and the check, apply and clear-history endpoints reject that user.
+  5. `checkpoint:human-verify` — the operator alters a real Kinetica table (add, drop, rename, retype a column, and separately drop the table) and confirms the report names the right widgets, layers, metrics and formatting rules and misses none. **Report accuracy against a real database is not provable in jsdom**: the output is a document a human acts on, and the failure mode is a confidently incomplete list, which every automated gate reads as a pass. v1.24's equivalent checkpoint found four defects that `tsc`, `vitest` and `theme-guard` all missed, one of whose signature was a comparison PASSING.
+**Plans**: TBD
+
 ---
 
 ## v1.24 Dashboard Export & Import — SHIPPED 2026-09-21

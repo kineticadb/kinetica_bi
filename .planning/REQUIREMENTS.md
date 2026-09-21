@@ -78,12 +78,33 @@ Deferred. Tracked, not in this roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated during roadmap creation) | | |
+| SSYNC-V125-01 | Phase 126 — Datasets UI, Access Gating & Operator Verification | Pending |
+| SSYNC-V125-02 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
+| SSYNC-V125-03 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
+| SSYNC-V125-04 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
+| SSYNC-V125-05 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
+| SSYNC-V125-06 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-07 | Phase 123 — Column Reference Enumeration | Pending |
+| SSYNC-V125-08 | Phase 123 — Column Reference Enumeration | Pending |
+| SSYNC-V125-09 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-10 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-11 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-12 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-13 | Phase 125 — Apply & Sync History | Pending |
+| SSYNC-V125-14 | Phase 125 — Apply & Sync History | Pending |
+| SSYNC-V125-15 | Phase 125 — Apply & Sync History | Pending |
+| SSYNC-V125-16 | Phase 125 — Apply & Sync History | Pending |
+| SSYNC-V125-17 | Phase 125 — Apply & Sync History | Pending |
+| SSYNC-V125-18 | Phase 126 — Datasets UI, Access Gating & Operator Verification | Pending |
+| SSYNC-V125-19 | Phase 126 — Datasets UI, Access Gating & Operator Verification | Pending |
 
 **Coverage:**
 - v1.25 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 ⚠️
+- Mapped to phases: 19 ✓
+- Unmapped: 0
+- Every requirement maps to exactly one phase; no requirement appears in two phases.
+
+**Per-phase counts:** Phase 122 → 4 (`-02`, `-03`, `-04`, `-05`) · Phase 123 → 2 (`-07`, `-08`) · Phase 124 → 5 (`-06`, `-09`, `-10`, `-11`, `-12`) · Phase 125 → 5 (`-13`, `-14`, `-15`, `-16`, `-17`) · Phase 126 → 3 (`-01`, `-18`, `-19`). 4+2+5+5+3 = 19.
 
 ---
-*Requirements defined: 2026-09-21*
+*Requirements defined: 2026-09-21 · Traceability populated at roadmap creation: 2026-09-21 (Phases 122-126)*
