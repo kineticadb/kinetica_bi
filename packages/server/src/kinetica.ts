@@ -270,11 +270,20 @@ export const kineticaSql = async (
  * Used by the column-discovery route to recover TIMESTAMP/DATE/TIME/DATETIME
  * sub-types that INFORMATION_SCHEMA.COLUMNS.DATA_TYPE drops (it reports the base
  * `bigint`/`long` storage type). See lib/showTableTypes.ts.
+ *
+ * `showOptions` is spread into the Kinetica request's own `options` map. Phase 122's
+ * schema check passes `{ no_error_if_not_exists: "true" }` so that a table Kinetica
+ * no longer has returns HTTP 200 with an empty `table_names` instead of a
+ * `status: "ERROR"` body — which this function maps to `KineticaUpstreamError`, the
+ * SAME class a genuine connection failure produces. Without that option, "table
+ * missing" and "could not reach Kinetica" are indistinguishable by exception type.
+ * Verified against the live instance — see
+ * `.planning/phases/122-schema-diff-table-missing-detection/122-SPIKE-NOTES.md` Q5.
  */
 export const kineticaShowTable = async (
   req: AuthedRequest,
   tableName: string,
-  options: { route: string; op: KineticaOp }
+  options: { route: string; op: KineticaOp; showOptions?: Record<string, string> }
 ): Promise<unknown> => {
   const start = Date.now();
   const username = req.user?.creds?.username ?? "unknown";
@@ -295,7 +304,7 @@ export const kineticaShowTable = async (
         "Content-Type": "application/json",
         Authorization: buildAuthHeader(req),
       },
-      body: JSON.stringify({ table_name: tableName, options: {} }),
+      body: JSON.stringify({ table_name: tableName, options: { ...(options.showOptions ?? {}) } }),
     });
 
     if (!response.ok) {
