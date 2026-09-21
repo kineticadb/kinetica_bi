@@ -8,6 +8,34 @@ A business intelligence dashboard application for data engineers and business an
 
 Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
 
+## Current Milestone: v1.25 Schema Sync
+
+**Goal:** An operator can re-sync a registered table's schema with the live Kinetica table, and see exactly what the change breaks before deciding to apply it.
+
+**The problem:** `tables.columns` is written exactly once — at registration, from the New Dataset form — and never again (`db.ts:23-31`, the only writers being `index.ts:2432`, `:2438` and `dashboardImport.ts:356`). When a column is added, dropped, renamed or retyped in Kinetica, the app never learns. Config panels offer stale column lists, widgets query columns that no longer exist, and `column_display_config` silently stops applying labels and number formats with no error anywhere.
+
+**Target features:**
+- A manual "Check for changes" per table in Datasets — no background polling, no per-dashboard-load Kinetica round-trip
+- Detect added / removed / retyped columns, and report a table that is gone from Kinetica entirely (deleted or renamed — indistinguishable from outside)
+- An impact report naming every affected widget, layer, custom metric and column-format rule before anything is applied
+- Apply the refreshed snapshot on operator confirmation; never auto-repair references, never block
+- Persist per-table sync history so the operator has a durable worklist while fixing dashboards, rather than a modal they have to screenshot
+
+**Scope decisions locked at milestone open (2026-09-21):**
+1. **Detect and report only.** The app updates its schema snapshot and tells the operator what broke. It does NOT rewrite widget configs. ~170 of ~240 column-reference sites are structured and *could* be rewritten mechanically; that capability is deliberately deferred until the reporting half is proven.
+2. **Renames are reported as a drop plus an add.** Kinetica exposes no stable per-column identifier, so a rename is genuinely undecidable from metadata. The app will not guess, and will not ask the operator to pair columns this milestone — the persisted changeset is what they work from.
+3. **Free SQL is warn-only, permanently.** `config.sql` (42 sites in the dev DB), `customWhere` (12), `custom_metrics.expression` (10) and dynamic-view `template_sql` (5) are raw SQL. Column references there are detectable only by heuristic. The app reports them as *possibly* affected and never rewrites them.
+4. **Removing persisted `config.sql` is v1.26, not this milestone.** Generating chart SQL at render time would eliminate the frozen-SQL defect family at the root and shrink this feature's warn-only surface from ~70 sites to ~28. It is blocked on threading the table list into `AggregatedWidgetRenderer` (which has no `tables` prop, while the heatmap branch needs `columnTypeMap` — Phase 121 rejected the same refactor for exactly this reason, since a rebuild would emit an unbucketed heatmap query over the 5000-cell limit on the async-load path). Real work, real regression surface across 42 widgets and 7 chart types; it gets its own milestone.
+
+**Known hazards going in (from the code map, 2026-09-21):**
+- `drillDownColumnType` is frozen into **69 widget configs** at save time (`ChartConfigPanel.tsx:1063-1065`). A type change leaves stale literals, and the consequence is wrong SQL quoting — a string-quoted value against a now-numeric column. Wrong results, no error. Same frozen-value defect class as v1.24's `config.sql`.
+- **11 `cb_config` and 1 `track_config` copies are embedded inside radio-group widgets** as `configPatch` JSON-in-JSON (`actionAllowList.ts:145-150`) and overwrite the layer at click time. Any impact scan walking only `dashboard_layers` misses all 12. This is the REF-9 miss-class from v1.24 repeating.
+- `column_display_config` degrades **silently** on a rename (`columnDisplayConfigStore.ts:151-161` falls back to the raw name and identity formatter).
+- No server-side column-existence gate exists anywhere: `POST /api/filter/materialize` interpolates client-supplied column names straight into SQL without checking them against stored metadata (`whereClause.ts:14-20` documents a trust boundary that `index.ts:1246-1270` does not actually enforce).
+- Nullability is never read (`IS_NULLABLE` unqueried), so "nullable changed" is not observable and is out of scope by construction.
+
+**Prior art to build on:** dynamic views already re-read and re-store their output columns on every Preview, and clear them when the SQL changes (`db.ts:118-131`, `:907-922`) — the closest existing "re-read columns and re-store" contract. `dashboardExportRefs.ts`'s one-traversal-two-directions discipline is the right *pattern* for enumerating column references, but not the right module: `asId` has no analogue for strings, column refs are table-scoped rather than global, and three of the biggest sites are free SQL the id traversal cannot model. A sibling `lib/columnRefs.ts` in the same house style is the indicated shape.
+
 ## Shipped Milestone: v1.24 Dashboard Export & Import (2026-09-21)
 
 **Goal delivered:** A dashboard and its full dependency graph serialize to a versioned JSON file, and that file recreates the dashboard in a genuinely different environment — new ids throughout, every id reference remapped, tables matched by `schema.name`, custom metrics carried across, the import atomic, and a report telling the operator exactly what happened. Both directions drive from the app UI: a per-row Export button and an Import control gated on `dashboards:create` AND `datasets:manage`, mirroring the server route's own AND-gate so the UI cannot offer what the server refuses. 3 phases (119, 120, 121), 16 plans; 11/11 DXIM-V124 requirements Complete. First milestone since v1.20 to require server work. Web vitest 181 files / 4100 tests / 0 failed, web+server tsc clean, theme-guard 152/152, server `scripts/test-gate.mjs` GATE PASSED. Tag `v1.24.0` (three-part per RELEASING.md).

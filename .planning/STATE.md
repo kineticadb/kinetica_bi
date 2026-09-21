@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.24
-milestone_name: Dashboard Export & Import
-status: milestone-complete
-stopped_at: "v1.24 Dashboard Export & Import SHIPPED 2026-09-21 and archived. 3 phases (119-121), 16 plans, 11/11 DXIM-V124 requirements Complete. Milestone audit graded tech_debt — no blockers. Archived to milestones/v1.24-ROADMAP.md, v1.24-REQUIREMENTS.md and v1.24-MILESTONE-AUDIT.md; ROADMAP.md collapsed to the house one-liner; REQUIREMENTS.md deleted (fresh one comes from /gsd:new-milestone). Tag v1.24.0, three-part per RELEASING.md. NOT pushed — origin is shared with another developer, fetch before pushing. Gates at ship: web tsc clean, vitest 181 files/4100 tests/0 failed, theme-guard 152/152, server tsc clean, server test-gate.mjs GATE PASSED (set-based, 8 documented failing files). THE MILESTONE'S LESSON: four defects shipped past tsc, vitest AND theme-guard, and one operator cross-environment checkpoint found all four — spatialTargets[].tableId missing from the reference inventory, max_records 0 rejected at the import boundary, custom metrics loaded for the wrong table, and the frozen config.sql metric expression. The fourth's signature was the side-by-side comparison PASSING. CARRIED DEBT, highest first: loadConfig(...).catch(() => {}) suspends a widget in Loading... forever on a rejected fetch (pre-existing, project-wide, now reachable from seven more widget types — the one worth scheduling); defect-dv-combination-filter-view.md still OPEN; phases 119/120 never ran gsd-verifier; nginx same-origin path and data-source portability unverified; DXIM-F1-F5 deferred. TOOLING: gsd-tools state/roadmap/phase mutation commands are unusable here — state begin-phase and milestone complete each silently rewrote STATE.md (status to unknown, stopped_at rewound to a stale Phase 120-02 string), and verify key-links cannot parse correctly-nested plan frontmatter. Do all bookkeeping by hand. Next: /gsd:new-milestone."
-last_updated: "2026-09-21T14:50:00.000Z"
+milestone: v1.25
+milestone_name: Schema Sync
+status: defining-requirements
+stopped_at: "v1.25 Schema Sync opened 2026-09-21. Defining requirements; no phase started. Phases continue from 122. GOAL: an operator can re-sync a registered table's schema with the live Kinetica table and see exactly what the change breaks before applying it. THE PROBLEM: tables.columns is written once at registration and never again — no refresh path exists anywhere in the codebase. LOCKED SCOPE: manual 'Check for changes' per table (no polling, no per-dashboard-load round-trip); detect added/removed/retyped columns plus table-not-found; impact report before applying; DETECT AND REPORT ONLY (no auto-repair of references); renames reported as drop+add because Kinetica exposes no stable column id; free SQL is warn-only permanently; per-table sync history persisted so the operator has a durable worklist. DEFERRED TO v1.26: removing persisted config.sql in favour of generating chart SQL at render time — the root fix for the frozen-SQL defect family, blocked on threading the table list into AggregatedWidgetRenderer (no tables prop; heatmap branch needs columnTypeMap; Phase 121 rejected the same refactor because a rebuild would emit an unbucketed heatmap query over the 5000-cell limit on the async-load path). KNOWN HAZARDS: drillDownColumnType frozen in 69 widget configs (retype leaves stale literals -> wrong SQL quoting, silent); 12 cb_config/track_config copies embedded in radio-group configPatch JSON-in-JSON that a dashboard_layers-only scan would miss (the REF-9 miss-class repeating); column_display_config degrades silently on rename; no server-side column-existence gate exists. BLAST RADIUS (7-dashboard dev DB): ~240 column-reference sites, ~170 structured and ~70 free SQL. Next: define requirements, then roadmap."
+last_updated: "2026-09-21T15:10:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -23,20 +23,21 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-**v1.24 Dashboard Export & Import — SHIPPED 2026-09-21.** Archived. No phase in progress.
+**v1.25 Schema Sync — defining requirements.** No phase started. Phases continue from **122**.
 
-Milestone: 3 phases (119-121), 16 plans, 11/11 requirements Complete. Audit: `tech_debt`, no blockers.
-Tag `v1.24.0` created locally and **NOT pushed** — `origin` is shared with another developer, so
-fetch before pushing.
-
-**Next: `/gsd:new-milestone`** — it creates the fresh REQUIREMENTS.md (this milestone's was archived
-to `milestones/v1.24-REQUIREMENTS.md` and the working copy deleted, per the completion workflow).
+v1.24 Dashboard Export & Import shipped 2026-09-21 and is archived (tag `v1.24.0`, **not pushed** —
+`origin` is shared, fetch before pushing).
 
 **Carried debt, highest-value first:** `loadConfig(...).catch(() => {})` silently suspends a widget
-in `Loading...` forever on a rejected fetch — pre-existing and project-wide, but now reachable from
-seven more widget types than a week ago; `defect-dv-combination-filter-view.md` still OPEN; phases
-119/120 never ran through `gsd-verifier`; the nginx same-origin path and data-source portability are
-both unverified; `DXIM-F1`-`F5` deferred.
+in `Loading...` forever on a rejected fetch — pre-existing and project-wide, now reachable from
+seven more widget types; `defect-dv-combination-filter-view.md` still OPEN; phases 119/120 never ran
+through `gsd-verifier`; nginx same-origin path and data-source portability unverified; `DXIM-F1`-`F5`
+deferred.
+
+**Tooling, confirmed repeatedly:** `gsd-tools` `state`/`roadmap`/`phase`/`milestone` mutation
+commands corrupt this project's documents — `state begin-phase` and `milestone complete` each
+silently rewrote STATE.md, and `verify key-links` cannot parse correctly-nested plan frontmatter.
+Do all bookkeeping by hand.
 
 ### Phase 121 Plans 05-07 decisions (2026-09-21)
 
