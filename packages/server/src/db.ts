@@ -26,6 +26,12 @@ const SCHEMA_DDL = `
     schema TEXT NOT NULL DEFAULT '',
     description TEXT,
     columns TEXT NOT NULL DEFAULT '{}',
+    -- v1.25 Phase 122 (SSYNC-V125-02): precise per-column type fingerprint from
+    -- /show/table's type_schemas + properties. NULL = snapshot predates precise
+    -- capture (INFORMATION_SCHEMA reported character(256) for char1/char4/char16
+    -- alike, so old values are WRONG about width, not merely lossy). Written by
+    -- Phase 125's apply, never by a check.
+    columns_fingerprint TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -382,6 +388,19 @@ export const createDb = (dbPath: string): Database.Database => {
     instance.exec("ALTER TABLE dashboards ADD COLUMN filter_display_mode TEXT");
   }
 
+  // v1.25 Phase 122 (SSYNC-V125-02): add columns_fingerprint TEXT to existing `tables`.
+  // NULL = this table's snapshot predates precise type capture, so the first schema check
+  // reports baseline_required instead of diffing types (122-SPIKE-NOTES.md Q4: the stored
+  // INFORMATION_SCHEMA values are actively wrong about char width, so a diff would emit a
+  // false retype for every char column). Idempotent: PRAGMA guard makes a second boot a no-op.
+  const tableCols = instance
+    .prepare("PRAGMA table_info(tables)")
+    .all() as Array<{ name: string }>;
+  const tableColNames = new Set(tableCols.map((c) => c.name));
+  if (!tableColNames.has("columns_fingerprint")) {
+    instance.exec("ALTER TABLE tables ADD COLUMN columns_fingerprint TEXT");
+  }
+
   // v1.8 RBAC (SCHEMA-V18-01): idempotent built-in role + default-mapping seed.
   // Runs every boot; INSERT OR IGNORE makes it a no-op on subsequent restarts.
   seedRbac(instance);
@@ -595,6 +614,27 @@ export const getTableBySchemaName = (schema: string, name: string): Table | unde
     .prepare("SELECT * FROM tables WHERE schema = ? AND name = ? ORDER BY id ASC LIMIT 1")
     .get(schema, name);
   return row ? mapTable(row) : undefined;
+};
+
+/**
+ * getTableColumnsFingerprint — v1.25 Phase 122 (SSYNC-V125-02/-05).
+ *
+ * Returns the RAW `columns_fingerprint` TEXT (or null), deliberately unparsed: decoding is
+ * `lib/schemaFingerprint.ts`'s job, so db.ts stays ignorant of the fingerprint shape and
+ * `mapTable` / the `Table` type / the dashboard-export payload all stay at zero diff.
+ *
+ * null means "no precise baseline" — an old-format row, or a corrupt snapshot. Both cases
+ * are handled identically by the check (baseline_required), neither is an error.
+ *
+ * READ-ONLY BY CONSTRUCTION. Phase 122 ships NO writer for this column: SSYNC-V125-05 and
+ * phase success criterion 4 require a check to leave the database byte-identical. The writer
+ * belongs to Phase 125's apply. Do not add one here.
+ */
+export const getTableColumnsFingerprint = (id: number): string | null => {
+  const row = db
+    .prepare("SELECT columns_fingerprint FROM tables WHERE id = ?")
+    .get(id) as { columns_fingerprint: string | null } | undefined;
+  return row?.columns_fingerprint ?? null;
 };
 
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
