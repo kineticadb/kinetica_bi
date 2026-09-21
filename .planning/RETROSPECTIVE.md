@@ -629,6 +629,88 @@ A presentation layer over the existing filter system: a per-dashboard collapsibl
 - Model mix: single-session close-out on opus (1M) — gate re-runs, the info-click fix, and archival in one context.
 - Notable: the info-click bug was found by the operator asking a one-line question ("what table is the info click using?"), not by any gate. Cheapest bug-finding tool in the milestone.
 
+## Milestone: v1.24 — Dashboard Export & Import
+
+**Shipped:** 2026-09-21
+**Phases:** 3 (119, 120, 121) | **Plans:** 16 | **Commits:** 75 (17 `feat`) | **Timeline:** 6 days (2026-09-16 → 2026-09-21)
+
+*Note: v1.21-v1.23 sections were never backfilled here; see their MILESTONES.md entries.*
+
+### What Was Built
+
+A dashboard and its full dependency graph serialize to a versioned JSON file and recreate in a
+different environment: new ids throughout, every id reference remapped, tables matched by
+`schema.name`, custom metrics carried across, the import atomic, and a report of what happened.
+Both directions drive from the app UI. 11/11 requirements. First milestone since v1.20 to touch
+`packages/server`.
+
+### What Worked
+
+- **One traversal shared by both directions.** `visitWidgetConfigRefs` is driven by export's
+  `collect*` and import's `remap*` alike, so a reference kind cannot exist on one side only. This is
+  the structural fix for the milestone's dominant defect class, and it is why adding REF-9 mid-flight
+  was a one-block change picked up by both directions automatically.
+- **Pass 1 writes `{}` on purpose.** Import creates widget configs empty and rewrites them in Pass 2,
+  so a missed remap yields a visibly blank widget instead of one silently bound to whatever occupies
+  that id in the target. Designing the failure to be loud paid off directly during verification.
+- **The checkpoint was treated as a gate, not a formality.** All three of Phase 121's requirements
+  already read Complete on automated evidence. Running the round trip anyway reopened two of them.
+- **Mutation probes stayed honest.** 24 across Phase 121 and the gap closure, all firing. Twice a
+  probe failed to redden and the *fixture* was strengthened rather than the probe weakened — once
+  because the fixture pre-seeded state so the condition under test never occurred, once because the
+  assertion was structurally incapable of discriminating (two commuting operations produce
+  byte-identical output in either order), which was replaced by asserting the precondition directly.
+
+### What Was Inefficient
+
+- **Three reference-inventory sweeps missed REF-9**, because all three enumerated id-valued fields
+  at the top level of config or inside already-known arrays. `spatialTargets` is a map-widget-only
+  array whose other elements are column names.
+- **Four defects were found by one manual checkpoint after every automated gate was green.** Not
+  inefficiency in the checkpoint — inefficiency in believing the gates.
+- **Two of three phases never ran a verifier**, which surfaced only during the milestone audit.
+- **`gsd-tools` cost real time.** Two separate mutation commands silently corrupted STATE.md and had
+  to be reverted; a third cannot parse this project's plan frontmatter. All bookkeeping was manual.
+
+### Patterns Established
+
+- **A reference inventory must be enumerated by TYPE, not by field name.** The tenth reference kind
+  was `widget.config.sql` — a *string*. Nine sweeps looking for id-valued fields were structurally
+  blind to it. Ask "what in this payload carries environment-specific meaning?", not "which fields
+  end in `Id`?"
+- **When two code paths resolve the same thing, one of them will drift.** `TimelineRenderer` and
+  `NumericLineRenderer` resolved metrics live from Phase 100/103; `AggregatedWidgetRenderer` never
+  did. One dashboard, two answers, for four milestones.
+- **A passing comparison can be the defect's signature.** Frozen SQL guarantees target matches
+  source, so a side-by-side A/B check reads as a clean pass precisely when the bug is present.
+
+### Key Lessons
+
+1. **An automated gate proves the code agrees with the tests, not that either is right.** Three of
+   the four defects were invisible because implementation and fixtures shared the same wrong
+   assumption — no fixture used `max_records: 0`, the sentinel the app's own UI writes most often.
+2. **"It matches" is not verification unless a mismatch was possible.** Before accepting a
+   comparison as evidence, ask what would have to be true for it to fail. If nothing could, it
+   proves nothing. This generalizes the CLAUDE.md rule about greps that pass before the work.
+3. **Verify the thing the feature exists for, in the environment it exists for.** Phase 120's entire
+   proof suite imports into one database — which tests remapping and says nothing about portability.
+   Its own summary said so, and the milestone still nearly closed on it.
+4. **Record the operator's verdict as given.** The final checkpoint returned "All 4 pass" with no
+   per-check numbers; the summary says so rather than inventing plausible figures. Fabricated
+   evidence in a permanent record is worse than a thin record.
+5. **When tooling corrupts your documents twice, stop using it and say so in writing.** The cost of
+   hand-editing four planning files is minutes; the cost of an unnoticed rewind is a milestone's
+   context.
+
+### Cost Observations
+
+- Model mix: opus for planning and orchestration, sonnet for executors, plan-checker, verifier and
+  integration checker
+- Sessions: 1 long session covering phase 121 execution, gap planning, gap closure, audit and close
+- Notable: the gap-closure wave (2 executor plans + 1 checkpoint) cost roughly a third of what
+  Phase 121's original four plans did, because the defect was already root-caused in writing before
+  planning started. Front-loading the diagnosis into a defect document paid for itself.
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

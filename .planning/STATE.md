@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
-status: phase-complete
-stopped_at: "Completed 121-05, 121-06 and 121-07 — the gap closure for DXIM-V124-10, and with it Phase 121 (7/7) and milestone v1.24 (11/11 requirements Complete). The frozen-config.sql defect found by the 121-04 checkpoint is FIXED and the requirement re-closed. 121-05 built packages/web/src/lib/liveMetricSql.ts (depth- and quote-aware, fail-closed select-item swap: parseAggregatedSelectList / replaceValueSelectItem / applyLiveMetricExpr) plus isMetricsHydrated in customMetricsStore (entry-presence, NOT row count, so 'never loaded' is distinguishable from 'deleted'). 121-06 wired applyLiveMetricExpr into AggregatedWidgetRenderer (WidgetRenderer.tsx:428, resolving BEFORE the fromSwap at :651) with its own loadConfig hydration effect, gated on isCustomSelection(metricId) && tableId !== undefined so the change is inert for every real-column widget. All 125 pre-existing WidgetRenderer.spec.tsx tests pass UNMODIFIED (git diff on that file empty). 121-07 recorded the live verdict. Gates: web tsc clean, vitest 181 files/4100 tests/0 failed (from 179/4069 at gap-open; +31 tests), theme-guard 152/152, server tsc clean, server test-gate.mjs GATE PASSED (8 failing files, all documented: 7x TD-V11-04 OIDC + db.smoke drift + routes.wms). packages/server carries ZERO diff across all three plans — the fix is entirely in the renderer, so Phases 119 and 120 stay closed. Operator confirmed live 2026-09-21, both environments, all four checks PASS, including the single-environment metric edit that needs no import at all. 12/12 mutation probes fired; two M-probe FIXTURES were strengthened (never the probes) — M4 pre-seeded the store so the pending state never occurred, and M6 was structurally undiscriminating because this repo's fromSwap and the new swap commute. Next: v1.24 is ready for closeout — /gsd:audit-milestone or /gsd:ship. STILL OPEN, found alongside and deliberately not fixed: the loadConfig(...).catch(() => {}) idiom copied from TimelineRenderer.tsx:156-163 means a REJECTED metrics fetch suspends a widget in Loading... forever with no retry — pre-existing and project-wide, a candidate for a future phase."
-last_updated: "2026-09-21T10:30:00.000Z"
+status: milestone-complete
+stopped_at: "v1.24 Dashboard Export & Import SHIPPED 2026-09-21 and archived. 3 phases (119-121), 16 plans, 11/11 DXIM-V124 requirements Complete. Milestone audit graded tech_debt — no blockers. Archived to milestones/v1.24-ROADMAP.md, v1.24-REQUIREMENTS.md and v1.24-MILESTONE-AUDIT.md; ROADMAP.md collapsed to the house one-liner; REQUIREMENTS.md deleted (fresh one comes from /gsd:new-milestone). Tag v1.24.0, three-part per RELEASING.md. NOT pushed — origin is shared with another developer, fetch before pushing. Gates at ship: web tsc clean, vitest 181 files/4100 tests/0 failed, theme-guard 152/152, server tsc clean, server test-gate.mjs GATE PASSED (set-based, 8 documented failing files). THE MILESTONE'S LESSON: four defects shipped past tsc, vitest AND theme-guard, and one operator cross-environment checkpoint found all four — spatialTargets[].tableId missing from the reference inventory, max_records 0 rejected at the import boundary, custom metrics loaded for the wrong table, and the frozen config.sql metric expression. The fourth's signature was the side-by-side comparison PASSING. CARRIED DEBT, highest first: loadConfig(...).catch(() => {}) suspends a widget in Loading... forever on a rejected fetch (pre-existing, project-wide, now reachable from seven more widget types — the one worth scheduling); defect-dv-combination-filter-view.md still OPEN; phases 119/120 never ran gsd-verifier; nginx same-origin path and data-source portability unverified; DXIM-F1-F5 deferred. TOOLING: gsd-tools state/roadmap/phase mutation commands are unusable here — state begin-phase and milestone complete each silently rewrote STATE.md (status to unknown, stopped_at rewound to a stale Phase 120-02 string), and verify key-links cannot parse correctly-nested plan frontmatter. Do all bookkeeping by hand. Next: /gsd:new-milestone."
+last_updated: "2026-09-21T14:50:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -23,17 +23,20 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-Phase: 121 (UI + Cross-Environment Verification) — **COMPLETE** (2026-09-21, 7/7 plans)
-Plan: 7 of 7 COMPLETE (121-01..121-07). Phase 121 was the last open phase of v1.24.
+**v1.24 Dashboard Export & Import — SHIPPED 2026-09-21.** Archived. No phase in progress.
 
-**v1.24 status: 11/11 requirements Complete.** DXIM-V124-10 was reopened on 2026-09-18 by the
-cross-environment checkpoint and re-closed on 2026-09-21 by the renderer fix in plans 121-05/06.
-The milestone is ready for closeout.
+Milestone: 3 phases (119-121), 16 plans, 11/11 requirements Complete. Audit: `tech_debt`, no blockers.
+Tag `v1.24.0` created locally and **NOT pushed** — `origin` is shared with another developer, so
+fetch before pushing.
 
-**Live environments may still be running** at :4000/:5173 (A) and :4001/:5174 (B) and can be torn
-down. Test data is deliberately dirty: env B's `try_again` is `AVG(total_amount - tip_amount) *
-50.111111`, env A's was edited repeatedly during verification, and `data/env-b.db` holds several
-imported copies of "Test Dashboard".
+**Next: `/gsd:new-milestone`** — it creates the fresh REQUIREMENTS.md (this milestone's was archived
+to `milestones/v1.24-REQUIREMENTS.md` and the working copy deleted, per the completion workflow).
+
+**Carried debt, highest-value first:** `loadConfig(...).catch(() => {})` silently suspends a widget
+in `Loading...` forever on a rejected fetch — pre-existing and project-wide, but now reachable from
+seven more widget types than a week ago; `defect-dv-combination-filter-view.md` still OPEN; phases
+119/120 never ran through `gsd-verifier`; the nginx same-origin path and data-source portability are
+both unverified; `DXIM-F1`-`F5` deferred.
 
 ### Phase 121 Plans 05-07 decisions (2026-09-21)
 
