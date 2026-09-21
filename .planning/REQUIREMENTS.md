@@ -20,10 +20,10 @@ deliberately deferred until the reporting half is proven in the operator's hands
 ### Detection
 
 - [ ] **SSYNC-V125-01**: From the Datasets page, an operator can check a single registered table for schema changes against live Kinetica, on demand — no background polling and no added round-trip on dashboard load
-- [ ] **SSYNC-V125-02**: The check reports every column that exists in Kinetica but not in the app's snapshot (added), every column in the snapshot but no longer in Kinetica (removed), and every column whose Kinetica data type no longer matches the stored type (retyped)
-- [ ] **SSYNC-V125-03**: When the table itself is no longer found in Kinetica, the operator is told the table is missing — reported distinctly from a column diff, and stated so it covers both a deleted table and one renamed in Kinetica, which are indistinguishable from outside
-- [ ] **SSYNC-V125-04**: A renamed column is reported as one removal plus one addition; the app never guesses that two columns are the same column
-- [ ] **SSYNC-V125-05**: Running a check changes nothing — no stored schema, no widget, no layer, no metric — until the operator explicitly applies it
+- [x] **SSYNC-V125-02**: The check reports every column that exists in Kinetica but not in the app's snapshot (added), every column in the snapshot but no longer in Kinetica (removed), and every column whose Kinetica data type no longer matches the stored type (retyped) — automated 2026-09-21 (Phase 122). `parseColumnFingerprints` builds a per-column fingerprint combining the Avro base type from `type_schemas` with the width/temporal refinements from `properties` — the live spike proved neither source alone suffices; `diffColumnFingerprints` returns `added`/`removed`/`retyped` with both stored and live type on retypes. Precise enough for `int`->`double` AND `varchar(8)`->`varchar(32)`, the operator's two stated cases.
+- [x] **SSYNC-V125-03**: When the table itself is no longer found in Kinetica, the operator is told the table is missing — reported distinctly from a column diff, and stated so it covers both a deleted table and one renamed in Kinetica, which are indistinguishable from outside — automated 2026-09-21 (Phase 122). `/show/table` is called with `no_error_if_not_exists: "true"`; the authoritative signal is an empty `table_names` on an HTTP 200/`status:OK` response, which a connection failure structurally cannot produce (it throws before any outcome is built and surfaces as 502 via `errorMiddleware`). `tableMissingResult` omits the diff-group keys entirely rather than emptying them. Wording covers a deleted table and one renamed in Kinetica, which are indistinguishable from outside.
+- [x] **SSYNC-V125-04**: A renamed column is reported as one removal plus one addition; the app never guesses that two columns are the same column — automated 2026-09-21 (Phase 122). A renamed column returns as one removal plus one addition. Enforced by a forbidden-token test and mutation probe M6; zero hits tree-wide for `possibleRename`/`similarity`/`levenshtein`/`ordinal_position`/`pairRename`. `ORDINAL_POSITION` is available from Kinetica and is deliberately unused — it is positional, not identity.
+- [x] **SSYNC-V125-05**: Running a check changes nothing — no stored schema, no widget, no layer, no metric — until the operator explicitly applies it — automated 2026-09-21 (Phase 122). The route performs no write, and no writer for `columns_fingerprint` exists anywhere in the tree (Phase 125 adds the first). Proven by a byte-identical row-snapshot over `tables`, `widgets`, `dashboard_layers`, `custom_metrics` and `column_display_config` across all three 200 outcomes — with all five seeded and each asserted non-empty before comparison, because on a fresh `:memory:` DB an unseeded table compares equal to itself and proves nothing (caught by the plan checker pre-execution). Mutation probe M6 inserts an `updateTable` and reddens it.
 
 ### Impact report
 
@@ -79,10 +79,10 @@ Deferred. Tracked, not in this roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SSYNC-V125-01 | Phase 126 — Datasets UI, Access Gating & Operator Verification | Pending |
-| SSYNC-V125-02 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
-| SSYNC-V125-03 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
-| SSYNC-V125-04 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
-| SSYNC-V125-05 | Phase 122 — Schema Diff & Table-Missing Detection | Pending |
+| SSYNC-V125-02 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
+| SSYNC-V125-03 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
+| SSYNC-V125-04 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
+| SSYNC-V125-05 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
 | SSYNC-V125-06 | Phase 124 — Impact Report | Pending |
 | SSYNC-V125-07 | Phase 123 — Column Reference Enumeration | Pending |
 | SSYNC-V125-08 | Phase 123 — Column Reference Enumeration | Pending |
@@ -102,6 +102,7 @@ Deferred. Tracked, not in this roadmap.
 - v1.25 requirements: 19 total
 - Mapped to phases: 19 ✓
 - Unmapped: 0
+- **Complete: 4** (SSYNC-V125-02/-03/-04/-05, Phase 122, 2026-09-21)
 - Every requirement maps to exactly one phase; no requirement appears in two phases.
 
 **Per-phase counts:** Phase 122 → 4 (`-02`, `-03`, `-04`, `-05`) · Phase 123 → 2 (`-07`, `-08`) · Phase 124 → 5 (`-06`, `-09`, `-10`, `-11`, `-12`) · Phase 125 → 5 (`-13`, `-14`, `-15`, `-16`, `-17`) · Phase 126 → 3 (`-01`, `-18`, `-19`). 4+2+5+5+3 = 19.
