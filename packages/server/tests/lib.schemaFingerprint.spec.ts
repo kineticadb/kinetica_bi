@@ -127,6 +127,24 @@ describe("schemaFingerprint — pure /show/table body -> per-column type fingerp
     expect(out.passenger_count).not.toEqual(out.rate_code_id);
   });
 
+  it("refinements are sorted deterministically regardless of properties insertion order", () => {
+    // Synthetic: two type-refining markers on one column, inserted out of
+    // alphabetical order. Not a real Kinetica body — the width/temporal
+    // markers observed live are always singular per column — but this is the
+    // only way to make the parser's ordering guarantee (vs raw insertion
+    // order) observable at all, which matters for a stable fingerprint
+    // string/equality comparison downstream in Phase 124/125.
+    const body = {
+      table_names: ["s.t"],
+      type_schemas: [JSON.stringify({ fields: [{ name: "c", type: "string" }] })],
+      properties: [{ c: ["data", "zzz_marker", "aaa_marker"] }],
+    };
+    expect(parseColumnFingerprints(body, "s.t").c.refinements).toEqual([
+      "aaa_marker",
+      "zzz_marker",
+    ]);
+  });
+
   it("a nullable Avro union ['null','int'] fingerprints as base 'int'", () => {
     const body = {
       table_names: ["s.t"],
