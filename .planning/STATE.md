@@ -36,6 +36,28 @@ seven more widget types; `defect-dv-combination-filter-view.md` still OPEN; phas
 through `gsd-verifier`; nginx same-origin path and data-source portability unverified; `DXIM-F1`-`F5`
 deferred.
 
+**Parallel-wave git race — found 2026-09-21, independently reported by BOTH wave-1 executors of
+Phase 122.** When two plans in the same wave execute concurrently, they share ONE working tree and
+ONE git index. `git add <specific-files>` followed by `git commit` is therefore **not atomic**: the
+other executor's staging can land in between, so a commit sweeps in files the plan never touched.
+Observed: commit `ed4fc16` (plan 122-01) contains `tests/db.schemaFingerprintColumn.spec.ts`, which
+belongs to plan 122-02. No data loss — the content was correct and both plans completed — but
+attribution is wrong and `git show --stat` on that commit is misleading.
+
+It also produced two **transient** `test-gate.mjs` failures in files the running executor had never
+touched, at moments when the other executor had those exact files mid-edit and uncommitted. Both
+cleared on re-run. Correctly NOT added to `KNOWN_FAILING` — they were momentary states, not
+permanent failures. Worth knowing because it looks exactly like flakiness and could easily be
+mis-attributed to the `TD-V16-TEST-ISOLATION` set.
+
+Mitigations, in order of preference:
+1. Give parallel plans **separate git worktrees** (the Agent tool supports `isolation: "worktree"`).
+   This is the real fix and removes the shared index entirely.
+2. Failing that, pass an explicit trailing pathspec to `git commit` itself — not just to `git add` —
+   so commit scope is immune to concurrent staging. Plan 122-01's executor adopted this mid-run.
+3. Do not run the test gate while a concurrent executor is mid-edit; the failures are real states of
+   the tree, just not of any committed code.
+
 **Tooling, confirmed repeatedly:** `gsd-tools` `state`/`roadmap`/`phase`/`milestone` mutation
 commands corrupt this project's documents — `state begin-phase` and `milestone complete` each
 silently rewrote STATE.md, and `verify key-links` cannot parse correctly-nested plan frontmatter.
