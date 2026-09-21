@@ -16,6 +16,10 @@ import {
 } from "./auth";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
+// v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
+// diff contract for the on-demand schema-check route.
+import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
+import { diffResult, baselineRequiredResult, tableMissingResult } from "./lib/schemaDiff";
 import { buildFilterViewName } from "./lib/viewNaming";
 import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
@@ -97,6 +101,8 @@ import {
   createCustomMetric,
   updateCustomMetric,
   deleteCustomMetric,
+  // v1.25 Phase 122 (SSYNC-V125-05): SELECT-only stored-baseline accessor for the schema-check route.
+  getTableColumnsFingerprint,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -2446,6 +2452,69 @@ export const createApp = async (): Promise<express.Express> => {
     if (!ok) return res.status(404).json({ error: "Table not found." });
     return res.status(204).send();
   });
+
+  // v1.25 Phase 122 (SSYNC-V125-02/-03/-04/-05): on-demand schema check for ONE registered
+  // table. READS ONLY — no INSERT, no UPDATE, no DELETE, not even a baseline write. Phase 125's
+  // apply owns every write; phase success criterion 4 requires the five config tables to be
+  // byte-identical after a check.
+  //
+  // ONE Kinetica call, /show/table, with no_error_if_not_exists. That option is the whole
+  // three-outcome design: WITHOUT it a missing table returns HTTP 400 status:"ERROR", which
+  // kinetica.ts maps to KineticaUpstreamError — the SAME class a connection failure throws — so
+  // "your table was deleted" and "the network blipped" become indistinguishable. WITH it, a
+  // missing table is HTTP 200 / status:"OK" / table_names: [], which no failure can imitate.
+  // Verified live: 122-SPIKE-NOTES.md Q5.
+  //
+  // INFORMATION_SCHEMA is deliberately NOT consulted: it reports character(256) for char1,
+  // char4 and char16 alike (spike Q4), so it cannot contribute anything the fingerprint may
+  // trust, and a second source of truth is how the outcomes get confused again later.
+  //
+  // NO try/catch. The existing discovery route's best-effort fallback (index.ts ~2607) would
+  // report every temporal column as retyped timestamp -> bigint from an intermittent upstream
+  // failure. Here a thrown typed error IS the "could not reach Kinetica" outcome, and
+  // errorMiddleware turns it into 401/403/502 — structurally incapable of being a 200 finding.
+  app.get(
+    "/api/tables/:id/schema-check",
+    requireConfig,
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    asyncHandler(async (req, res) => {
+      const id = Number(req.params.id);
+      const table = getTable(id);
+      if (!table) return res.status(404).json({ error: "Table not found." });
+
+      const qualified = `${table.schema}.${table.name}`;
+
+      const body = await kineticaShowTable(req as AuthedRequest, qualified, {
+        route: "GET /api/tables/:id/schema-check",
+        op: "DISCOVERY",
+        showOptions: { no_error_if_not_exists: "true" },
+      });
+
+      const presence = tablePresence(body);
+      if (presence === "unreadable") {
+        throw new KineticaUpstreamError(
+          "Kinetica returned an unreadable /show/table response; the schema check could not complete."
+        );
+      }
+      if (presence === "missing") {
+        return res.json(tableMissingResult(qualified));
+      }
+
+      const live = parseColumnFingerprints(body, qualified);
+      if (Object.keys(live).length === 0) {
+        // The table exists but no column types could be read. Reporting a diff here would say
+        // every column was removed — a confidently wrong finding from a degraded response.
+        throw new KineticaUpstreamError(
+          "Kinetica reported the table exists but returned no readable column types; the schema check could not complete."
+        );
+      }
+
+      const stored = parseFingerprintSnapshot(getTableColumnsFingerprint(id));
+      if (!stored) return res.json(baselineRequiredResult(qualified, live));
+
+      return res.json(diffResult(qualified, stored, live));
+    })
+  );
 
   // v1.15 Phase 75 (COLCFG-V115-01): global per-table column display config.
   // READ ungated (requireAuth only) — render surfaces (Phase 77) resolve labels for any viewer.
