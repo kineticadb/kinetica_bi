@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.24
 milestone_name: Dashboard Export & Import
 status: phase-complete
-stopped_at: "Completed 121-04-PLAN.md — the BLOCKING cross-environment operator round trip, and with it Phase 121 (4/4) and the last open plan of v1.24. VERDICT: PASS on portability, with one High-severity defect; DXIM-V124-10 REOPENED by operator decision. Two server processes (:4000/data/kinetica.db and :4001/data/env-b.db, inline env vars only — packages/server/.env untouched), two Vite SPAs (5173/5174), dashboard 4 'Test Dashboard' extended with a custom metric AND a dynamic view, exported and imported through the UI three times. Export file: 9 widgets, 2 layers, 3 tables, 2 customMetrics, 1 dynamicView (max_records 0), 3 dashboardTableIds, 0 danglingReferences. All 11 comparison rows PASS except row 7 (standalone Legend — not in this dashboard; live-verified Phase 119): Bar Chart total_wo_tip reads 14.307650071701081 in BOTH environments, dv-bound bar chart and dv-bound map layer draw, layer toggle/drill-down/filters/Radio Group all work, no widget config landed as {}. REF-2, REF-4, REF-5 and REF-9 exercised live across environments for the FIRST time — no longer fixture-only. DEFECT (OPEN): ChartConfigPanel freezes the resolved custom-metric expression into widget.config.sql at Apply time; AggregatedWidgetRenderer (WidgetRenderer.tsx:403) renders that frozen text and never resolves the metric (grep -c resolveMetricExpr WidgetRenderer.tsx -> 0); dashboardImport.ts never rewrites config.sql. So the metricConflicts message's claim that imported widgets use the EXISTING definition is FALSE for bar/line/pie/scatter/table/bignumber/heatmap. Root cause CONFIRMED PRE-EXISTING — reproduced in environment A, which has never been imported into (try_again -> *700; config panel showed *700, chart kept rendering 14.307650071701081). The frozen SQL is a TENTH, TEXT-valued reference all nine id-valued sweeps structurally could not see. See .planning/defect-frozen-config-sql-metric-expression.md. NOTE: the side-by-side comparison PASSING is the defect's signature — the frozen SQL guarantees target matches source. Gates: web tsc clean, vitest 179 files/4069 tests/0 failed, theme-guard 152/152, server tsc clean, plan 04 changed zero source. Next: /gsd:plan-phase 121 --gaps for the frozen-config.sql fix (recommended fix is in the RENDERER — make AggregatedWidgetRenderer resolve live like TimelineRenderer/NumericLineRenderer already do — NOT in import). v1.24 stands at 10/11 requirements Complete."
-last_updated: "2026-09-18T13:05:00.000Z"
+stopped_at: "Completed 121-05, 121-06 and 121-07 — the gap closure for DXIM-V124-10, and with it Phase 121 (7/7) and milestone v1.24 (11/11 requirements Complete). The frozen-config.sql defect found by the 121-04 checkpoint is FIXED and the requirement re-closed. 121-05 built packages/web/src/lib/liveMetricSql.ts (depth- and quote-aware, fail-closed select-item swap: parseAggregatedSelectList / replaceValueSelectItem / applyLiveMetricExpr) plus isMetricsHydrated in customMetricsStore (entry-presence, NOT row count, so 'never loaded' is distinguishable from 'deleted'). 121-06 wired applyLiveMetricExpr into AggregatedWidgetRenderer (WidgetRenderer.tsx:428, resolving BEFORE the fromSwap at :651) with its own loadConfig hydration effect, gated on isCustomSelection(metricId) && tableId !== undefined so the change is inert for every real-column widget. All 125 pre-existing WidgetRenderer.spec.tsx tests pass UNMODIFIED (git diff on that file empty). 121-07 recorded the live verdict. Gates: web tsc clean, vitest 181 files/4100 tests/0 failed (from 179/4069 at gap-open; +31 tests), theme-guard 152/152, server tsc clean, server test-gate.mjs GATE PASSED (8 failing files, all documented: 7x TD-V11-04 OIDC + db.smoke drift + routes.wms). packages/server carries ZERO diff across all three plans — the fix is entirely in the renderer, so Phases 119 and 120 stay closed. Operator confirmed live 2026-09-21, both environments, all four checks PASS, including the single-environment metric edit that needs no import at all. 12/12 mutation probes fired; two M-probe FIXTURES were strengthened (never the probes) — M4 pre-seeded the store so the pending state never occurred, and M6 was structurally undiscriminating because this repo's fromSwap and the new swap commute. Next: v1.24 is ready for closeout — /gsd:audit-milestone or /gsd:ship. STILL OPEN, found alongside and deliberately not fixed: the loadConfig(...).catch(() => {}) idiom copied from TimelineRenderer.tsx:156-163 means a REJECTED metrics fetch suspends a widget in Loading... forever with no retry — pre-existing and project-wide, a candidate for a future phase."
+last_updated: "2026-09-21T10:30:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 16
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,21 +23,41 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-Phase: 121 (UI + Cross-Environment Verification) — **COMPLETE** (2026-09-18)
-Plan: 4 of 4 COMPLETE (121-01/02/03/04-SUMMARY.md). Phase 121 was the last open phase of v1.24.
+Phase: 121 (UI + Cross-Environment Verification) — **COMPLETE** (2026-09-21, 7/7 plans)
+Plan: 7 of 7 COMPLETE (121-01..121-07). Phase 121 was the last open phase of v1.24.
 
-**v1.24 status: 10/11 requirements Complete.** DXIM-V124-10 is REOPENED — the cross-environment
-checkpoint found the import report's metric-conflict message makes a false claim. The milestone
-cannot close until that is resolved. Next action: `/gsd:plan-phase 121 --gaps`.
+**v1.24 status: 11/11 requirements Complete.** DXIM-V124-10 was reopened on 2026-09-18 by the
+cross-environment checkpoint and re-closed on 2026-09-21 by the renderer fix in plans 121-05/06.
+The milestone is ready for closeout.
 
-The recommended fix is in the RENDERER, not in export/import: make `AggregatedWidgetRenderer` resolve
-the custom-metric expression live, exactly as `TimelineRenderer`/`NumericLineRenderer` already do.
-That closes the seam and fixes the single-environment staleness bug at the same time. Regenerating
-`config.sql` during import Pass 2 would fix only the import symptom and leave environment A broken.
+**Live environments may still be running** at :4000/:5173 (A) and :4001/:5174 (B) and can be torn
+down. Test data is deliberately dirty: env B's `try_again` is `AVG(total_amount - tip_amount) *
+50.111111`, env A's was edited repeatedly during verification, and `data/env-b.db` holds several
+imported copies of "Test Dashboard".
 
-**Live environments were left running** at :4000/:5173 (A) and :4001/:5174 (B) and can be torn down.
-Test data is deliberately dirty: A's `try_again` is `AVG(total_amount - tip_amount) * 700`, B's is
-`* 50.111111`, and `data/env-b.db` holds three imported copies of "Test Dashboard" (ids 1, 2, 3).
+### Phase 121 Plans 05-07 decisions (2026-09-21)
+
+- **Option (b) targeted swap, NOT option (a) shared SQL builder.** Two code-derived reasons: (1) the
+  renderer has no `tables` prop, so it cannot build the heatmap branch's `columnTypeMap`, and a
+  rebuild would emit an UNBUCKETED heatmap query over the 5000-cell limit until the table list lands
+  — a new visible defect created by the fix; (2) a rebuild changes the whole query string when the
+  defect is one substring, so configs saved by older builder versions would silently start querying
+  something different.
+- **A deleted metric falls back to the frozen `cfg.sql`** — last-known-good, deliberately, so a
+  working widget is not blanked. `isOrphanedMetric` already flags it in the config panel.
+- **An unhydrated store SUSPENDS rather than falling back.** `customMetricsStore` is empty when a
+  dashboard opens with no config panel; falling back during hydration would flash the stale number
+  on every load.
+- **`metricsPending` is in Effect 2's dep array by necessity, not tidiness.** For the orphaned and
+  unparseable outcomes `sql` is UNCHANGED, so without that dep the `pending -> ready` transition
+  would never re-fire and the widget would suspend forever. That is mutation probe M4.
+- **Resolution happens before `fromSwap`**, mirroring the CalendarRenderer ordering lock from v1.13
+  (DATE_TRUNC SQL can contain FROM tokens a first-FROM regex would clobber).
+- **Two mutation-probe FIXTURES were strengthened, never the probes.** M4's fixture pre-seeded the
+  store, so the pending state it targeted never occurred. M6 was structurally incapable of
+  discriminating: this repo's `fromSwap` and the new swap commute, producing byte-identical output
+  in either order, so it was replaced with a spy asserting the structural precondition directly —
+  the pattern CLAUDE.md prescribes for exactly this case.
 
 ### Phase 121 Plan 01 decisions (2026-09-17)
 
