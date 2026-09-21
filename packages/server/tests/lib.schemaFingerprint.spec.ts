@@ -138,9 +138,10 @@ describe("schemaFingerprint — pure /show/table body -> per-column type fingerp
 
   it("storage and index markers are excluded from the fingerprint (SSYNC-F5 stays deferred)", () => {
     const out = parseColumnFingerprints(pgViewsShowTable, "pg_catalog.pg_views");
-    // "nullable" is excluded (SSYNC-F5 deferred) — a nullable string column has no
-    // type-refining markers left once "data" and "nullable" are stripped.
-    expect(out.schemaname).toEqual({ base: "string", refinements: [] });
+    // "nullable" is excluded (SSYNC-F5 deferred) — schemaname keeps its real
+    // width marker (char256) but drops "data" and "nullable"; definition has
+    // no width marker at all once "data" and "nullable" are stripped.
+    expect(out.schemaname).toEqual({ base: "string", refinements: ["char256"] });
     expect(out.definition).toEqual({ base: "string", refinements: [] });
     // Real union body: "null" is filtered from the Avro union, leaving base "string".
     expect(out.schemaname.base).toBe("string");
