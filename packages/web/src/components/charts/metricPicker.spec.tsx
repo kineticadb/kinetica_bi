@@ -11,7 +11,7 @@
  * (no snapshot-only assertions) so that functional behaviour is verified.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
 
 // Mock the API client to prevent real HTTP calls from loadConfig effects in tests.
@@ -217,5 +217,71 @@ describe("TimelineConfigPanel metric row picker — custom metrics (Phase 100-03
     // The onChange should have been called with metricId set
     const updatedMetrics = (lastCfg.metrics as typeof initialMetrics);
     expect(updatedMetrics[0]).toMatchObject({ metricId: 7, column: "" });
+  });
+});
+
+// ─── Fetch keying (v1.24 defect) ─────────────────────────────────────────────
+//
+// Every test above SEEDS the store directly, so none of them exercise the effect
+// that actually fetches a table's metrics. That effect keyed on `draft.tableId`
+// while the picker reads `selectedTable?.id` — two values that diverge whenever
+// the widget has not been SAVED with a tableId, because `handleTableChange`
+// writes only `table` into the draft. Result: a freshly-added widget never
+// fetches, and the "Custom metrics" optgroup renders permanently empty.
+
+const TABLE_B_ID = 43;
+const TABLE_B = {
+  id: TABLE_B_ID,
+  name: "fares",
+  schema: "public",
+  columns: { amount: "float", borough: "string" },
+};
+
+describe("ChartConfigPanel metric picker — fetch follows the selected table", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useCustomMetricsStore.getState().reset();
+    vi.spyOn(registry, "getChartType").mockReturnValue(GROUPED_DEF);
+  });
+
+  it("fetches for a widget whose config carries no tableId yet (never saved)", async () => {
+    const { listCustomMetrics } = await import("../../api/client");
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Test"
+        config={{ table: "public.taxi_trips" }}  // no tableId — freshly added widget
+        tables={[TABLE_A, TABLE_B]}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(vi.mocked(listCustomMetrics)).toHaveBeenCalledWith(TABLE_ID);
+    });
+  });
+
+  it("re-fetches for the NEW table when the data source is switched", async () => {
+    const { listCustomMetrics } = await import("../../api/client");
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Test"
+        config={{ table: "public.taxi_trips", tableId: TABLE_ID }}
+        tables={[TABLE_A, TABLE_B]}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(vi.mocked(listCustomMetrics)).toHaveBeenCalledWith(TABLE_ID);
+    });
+
+    const sourceSelect = screen.getAllByRole("combobox")[0];
+    fireEvent.change(sourceSelect, { target: { value: "public.fares" } });
+
+    await waitFor(() => {
+      expect(vi.mocked(listCustomMetrics)).toHaveBeenCalledWith(TABLE_B_ID);
+    });
   });
 });

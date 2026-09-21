@@ -21,6 +21,10 @@ import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
 // composer (CONTEXT.md § D7 — _kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>).
 import { buildDynamicViewName } from "./lib/dynamicViewName";
+// v1.24 Phase 119 (DXIM-V124-01/-02/-08): dashboard export assembler + download filename helper.
+import { buildDashboardExport, exportFileName } from "./lib/dashboardExport";
+// v1.24 Phase 120 (DXIM-V124-03/-10/-11): dashboard import — structural validation then apply.
+import { validateImportFile, applyDashboardImport } from "./lib/dashboardImport";
 // v1.7 Phase 38 (SCHEMA-V17-06): /api/quantile NTILE bucket-MIN query backing Phase 39 Auto-suggest.
 import { buildQuantileSql, parseQuantileResponse } from "./lib/quantileSql";
 import { buildTopValuesSql, parseTopValuesResponse } from "./lib/topValuesSql";
@@ -791,6 +795,52 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(201).json(dashboard);
   });
 
+  // v1.24 Phase 120 (DXIM-V124-03/10/11): dashboard import.
+  //
+  // Gate: dashboards:create AND datasets:manage. Both already exist — designer and admin hold both,
+  // analyst and user_admin hold neither. requirePermission()'s element [0] (requireAuth) is
+  // documented idempotent, which is what makes two back-to-back spreads a genuine AND-gate.
+  // No new PERMISSIONS entry is added; doing so would ripple across four spec files and
+  // permissionGroups wiring for no behavioural gain.
+  //
+  // NOTE: no non-leak 404 here. The per-dashboard GETs collapse "missing" and "denied" into one 404
+  // so export cannot enumerate dashboard ids. Import CREATES — there is no existing id to leak — so
+  // the RBAC 403 is the correct and honest answer. Do not "fix" this into a 404.
+  app.post(
+    "/api/dashboards/import",
+    ...requirePermission(PERMISSIONS.DASHBOARDS_CREATE),
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    (req, res) => {
+      // Tier 1 runs entirely in memory, BEFORE any transaction opens — which is what makes
+      // DXIM-V124-11's "changes nothing" guarantee true by construction rather than by rollback.
+      const result = validateImportFile(req.body);
+      if (!result.ok) {
+        return res.status(400).json({ error: result.rejection.message, code: result.rejection.code });
+      }
+      try {
+        const report = applyDashboardImport(result.file);
+        return res.status(201).json({ data: { ...report, preflightDangling: result.dangling } });
+      } catch (err) {
+        // The ONE place import diverges from this file's "let typed errors bubble to
+        // errorMiddleware" convention: a SQLite constraint error mid-import is not a typed
+        // Kinetica error, so it would become a bare 500 and the operator would not learn the
+        // crucial fact — that the transaction rolled back and nothing was left behind.
+        console.error(
+          JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "error",
+            event: "dashboard_import_failed",
+            message: err instanceof Error ? err.message : String(err),
+          })
+        );
+        return res.status(422).json({
+          error: "Import failed partway through and was rolled back. No dashboard, widgets, layers or table entries were created.",
+          code: "IMPORT_FAILED",
+        });
+      }
+    }
+  );
+
   app.patch("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
     const body = req.body as { filter_display_mode?: unknown };
@@ -878,6 +928,25 @@ export const createApp = async (): Promise<express.Express> => {
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
     return res.json({ data: listWidgets(id) });
+  });
+
+  // v1.24 Phase 119 (DXIM-V124-01): dashboard export.
+  // Auth mirrors the five sibling per-dashboard GETs exactly: 404 for BOTH "no such dashboard"
+  // and "not permitted", so export does not become the one endpoint that reveals which dashboard
+  // ids exist. No additional permission gate is added — dashboards:view has zero enforcement
+  // call sites in this file and canViewDashboard IS the control. No Kinetica-config guard either
+  // — export never touches Kinetica.
+  app.get("/api/dashboards/:id/export", (req, res) => {
+    const id = Number(req.params.id);
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    const payload = buildDashboardExport(id)!;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFileName(payload.dashboard)}"`);
+    // Explicit send of a pre-stringified body: res.json() would re-derive Content-Type and would
+    // minify. Pretty-print is deliberate — the file exists to be reviewed, diffed and attached to
+    // a ticket (CONTEXT.md locked decision 1).
+    return res.send(JSON.stringify(payload, null, 2));
   });
 
   app.post("/api/dashboards/:id/widgets", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
@@ -2896,6 +2965,8 @@ export const createApp = async (): Promise<express.Express> => {
  *   - KineticaAuthError       → 401 + { error, code: "REAUTH_REQUIRED" } + clearSessionCookie
  *   - KineticaPermissionError → 403 + { error }  (NO code field)
  *   - KineticaUpstreamError   → 502 + { error }  (NO code field)
+ *   - body-parser JSON parse failure  → 400 + { error, code } (v1.24 Phase 120, see below)
+ *   - body-parser payload-too-large   → 413 + { error, code } (v1.24 Phase 120, see below)
  *   - Anything else           → 500 + generic error message + console.error
  *
  * NOTE: The middleware does NOT call deleteSession — orphaned rows are GC'd by the
@@ -2918,6 +2989,26 @@ export const errorMiddleware = (
   }
   if (err instanceof KineticaUpstreamError) {
     res.status(502).json({ error: err.message });
+    return;
+  }
+  // v1.24 Phase 120 (DXIM-V124-11): body-parser failures. The global 1 MB JSON body-size limit
+  // (see createApp() near the top of this file) is enforced BEFORE routing, so a route's own
+  // validation never sees these two cases. Without these branches both surface as a bare
+  // 500 "Internal server error", which is the opposite of the clear rejection message
+  // DXIM-V124-11 requires for a truncated or oversized dashboard-import file.
+  const bodyErrType = (err as { type?: unknown } | null)?.type;
+  if (bodyErrType === "entity.parse.failed") {
+    res.status(400).json({
+      error: "Request body is not valid JSON. If this is a dashboard export file, it may be truncated or hand-edited.",
+      code: "MALFORMED_JSON",
+    });
+    return;
+  }
+  if (bodyErrType === "entity.too.large") {
+    res.status(413).json({
+      error: "Request body exceeds the 1 MB limit. A dashboard export of this size is unexpected — check the file.",
+      code: "PAYLOAD_TOO_LARGE",
+    });
     return;
   }
   // Defensive: non-typed error — should not happen once routes are stripped (Plan 03-02).

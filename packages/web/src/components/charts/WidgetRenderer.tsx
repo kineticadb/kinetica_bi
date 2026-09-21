@@ -81,6 +81,11 @@ import { yAxisScaleProps } from "../../lib/yAxisScale";
 import { isMultiColumnBarGroupBy, toBarPivotInput, BAR_SERIES_SEPARATOR } from "../../lib/barGroupedSeries";
 import { isCustomSelection, resolveMetricLabel } from "../../lib/customMetricSql";
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
+// Phase 121 gap closure (DXIM-V124-10): resolve a custom metric's expression at RENDER time.
+// widget.config.sql freezes whatever expression was live when Apply was last pressed, so an
+// imported widget rendered the SOURCE environment's definition and an edited metric kept
+// rendering the OLD one. See .planning/defect-frozen-config-sql-metric-expression.md.
+import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
@@ -400,9 +405,35 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   const [error, setError] = useState<string | null>(null);
 
   const cfg = widget.config ?? {};
-  const sql = cfg.sql as string | undefined;
   // Plan 09-02 persists tableId at widget save time; legacy widgets may have it undefined.
   const tableId = cfg.tableId as number | undefined;
+  const storedSql = cfg.sql as string | undefined;
+  const metricId = cfg.metricId as number | undefined;
+
+  // Phase 121 gap closure (DXIM-V124-10). cfg.sql is a frozen snapshot: ChartConfigPanel resolved
+  // metricId -> expression at Apply time and baked the TEXT in. Re-resolve it here so this renderer
+  // behaves like TimelineRenderer / NumericLineRenderer / CalendarRenderer, which have always
+  // resolved live. Subscribe to configVersion so an expression edit re-runs this memo; hydrate the
+  // store ourselves, because on a plain dashboard open no config panel has loaded it and an
+  // unhydrated store resolves to null (the 4a8c117 failure mode, one layer up).
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  useEffect(() => {
+    if (isCustomSelection(metricId) && tableId !== undefined) {
+      useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricId, tableId]);
+
+  const liveMetric = useMemo(
+    () => applyLiveMetricExpr(storedSql, metricId, tableId),
+    // customMetricsConfigVersion is the reactive trigger — every store mutation bumps it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [storedSql, metricId, tableId, customMetricsConfigVersion],
+  );
+  // While the table's metrics are still loading, SUSPEND rather than fall back to the frozen text —
+  // falling back would flash the stale number on every dashboard open.
+  const metricsPending = liveMetric.kind === "pending";
+  const sql = liveMetric.kind === "ready" ? liveMetric.sql : storedSql;
   // Phase 35 Plan 05 (DV-V16-13): dv-bound widget — points to a dashboard_dynamic_views row.
   // When set, this widget reads viewName from useDynamicViewStore.views[dynamicViewId]
   // instead of useFilterViewStore.views[tableId]. Effect 1 (filter-view materialize trigger)
@@ -532,6 +563,10 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       setData([]);
       return;
     }
+
+    // Phase 121 (DXIM-V124-10): the table's custom metrics are still loading. Firing now would
+    // query the frozen (possibly foreign-environment) expression. Effect re-fires on metricsPending.
+    if (metricsPending) return;
 
     // Phase 91: imperative entry read for table-bound suspend gate (avoids stale closure —
     // mirrors the `shapes` imperative read in Effect 1). comboKey/combinationVersion are the
@@ -672,6 +707,11 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     sql,
+    // Phase 121 (DXIM-V124-10): load-bearing, not cosmetic. The pending -> ready transition for an
+    // orphaned or unparseable custom metric leaves `sql` UNCHANGED (applyLiveMetricExpr falls back
+    // to storedSql), so without this dep in the array that widget would suspend forever — it would
+    // never re-fire the fetch once hydration completes. See mutation probe M4.
+    metricsPending,
     filterVersion,
     comboKey,
     combinationVersion,
@@ -684,6 +724,15 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     return (
       <div className="widget-placeholder">
         <span>Select a table and configure metrics to load data</span>
+      </div>
+    );
+  }
+
+  // Phase 121 (DXIM-V124-10): custom metrics still loading — same placeholder as the dv pending gate.
+  if (metricsPending) {
+    return (
+      <div className="widget-placeholder">
+        <span>Loading...</span>
       </div>
     );
   }

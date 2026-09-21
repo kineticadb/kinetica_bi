@@ -124,3 +124,17 @@ export const selectMetrics = (tableId: number): CustomMetricRow[] =>
   Object.values(useCustomMetricsStore.getState().configs[tableId]?.metrics ?? {}).sort((a, b) =>
     a.label.localeCompare(b.label),
   );
+
+/**
+ * isMetricsHydrated — true once this table's metrics have been LOADED into the cache,
+ * even when the load returned zero rows.
+ *
+ * Exists to split two states that `selectMetrics(tableId).find(...) === undefined` conflates:
+ *   - the table was never fetched (a renderer must SUSPEND, not query a stale expression)
+ *   - the table was fetched and the metric is genuinely DELETED (fall back to last-known-good)
+ *
+ * `setConfig` writes `configs[tableId]` even for an empty rows array, so entry-presence is the
+ * correct predicate — never a row-count check against the flattened selector's result.
+ */
+export const isMetricsHydrated = (tableId: number): boolean =>
+  useCustomMetricsStore.getState().configs[tableId] !== undefined;

@@ -400,6 +400,99 @@ export const listDashboards = async (): Promise<DashboardDto[]> => {
   return json.data as DashboardDto[];
 };
 
+// ─── Dashboard Export / Import (Phase 121) ─────────────────────────────────
+// v1.24 Phase 121 (DXIM-V124-01/-03/-10): dashboard export download + import upload.
+// The server contract is CLOSED (Phases 119/120) — these are thin, faithful mirrors.
+export type TableResolutionDto = { oldId: number; newId: number; schema: string; name: string; tableRef: string };
+export type MetricResolutionDto = { oldId: number; newId: number; tableId: number; tableRef: string; label: string };
+export type MetricConflictDto = MetricResolutionDto & {
+  existingExpression: string;
+  importedExpression: string;
+  /** Operator-facing sentence built at packages/server/src/lib/dashboardImport.ts:443.
+   *  It names both expressions and says which one the imported widgets now use. It is the ONLY
+   *  signal for a risk the operator explicitly accepted — render it VERBATIM, never as a count. */
+  message: string;
+};
+export type StrippedReferenceDto = { from: string; kind: string; id: number };
+export type ImportReportDto = {
+  dashboardId: number;
+  dashboardName: string;
+  widgetsCreated: number;
+  layersCreated: number;
+  dynamicViewsCreated: number;
+  tablesMatched: TableResolutionDto[];
+  tablesCreated: TableResolutionDto[];
+  metricsMatched: MetricResolutionDto[];
+  metricsCreated: MetricResolutionDto[];
+  metricConflicts: MetricConflictDto[];
+  strippedReferences: StrippedReferenceDto[];
+  warnings: string[];
+  /** Added by the route on top of ImportReport (index.ts:820) — Tier-2 validation's own
+   *  recomputed dangling list, never trusted from the file's self-reported count. */
+  preflightDangling: StrippedReferenceDto[];
+};
+
+// The server sets the authoritative filename in its attachment response header (see
+// dashboardExport.ts exportFileName), but that header is invisible to cross-origin client JS:
+// cors() at packages/server/src/index.ts:140-145 sets no `exposedHeaders`, so reading it off
+// `response.headers` returns null in dev (SPA :5173 -> API :4000). Deriving the filename
+// client-side from data already in DashboardDto is origin-agnostic and needs no server change —
+// this is a byte-for-byte mirror of exportFileName's slug rule.
+export const exportFileNameForClient = (dashboard: Pick<DashboardDto, "id" | "name">): string => {
+  const slug = String(dashboard.name ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return `dashboard-${dashboard.id}-${slug || "export"}.json`;
+};
+
+// GET /api/dashboards/:id/export -> blob -> synthetic <a download> click.
+// A `blob:` URL is same-origin to the creating page BY CONSTRUCTION, which is what makes
+// `download` honored in BOTH dev (cross-origin API) and behind nginx (same-origin) with one
+// code path. A plain `<a href="http://localhost:4000/...">` would have `download` IGNORED
+// cross-origin and navigate the SPA away — the exact friction the operator hit in Phase 119.
+export const downloadDashboardExport = async (
+  dashboard: Pick<DashboardDto, "id" | "name">,
+): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboard.id}/export`);
+  if (!response.ok) await throwForStatus(response, "Failed to export dashboard");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = exportFileNameForClient(dashboard);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+// POST /api/dashboards/import — plain JSON body (no multer, no multipart — index.ts:809-842).
+export const importDashboardFile = async (file: File): Promise<ImportReportDto> => {
+  const fileText = await file.text();
+  // Parse-and-discard. The SERVER is the single source of truth for what a valid export file looks
+  // like (Phase 120's validateImportFile) — duplicating its structural checks here would create a
+  // second thing to keep in sync. This parse exists ONLY so a non-JSON file gets an immediate,
+  // unambiguous client-side message instead of a round trip to learn the same from MALFORMED_JSON.
+  try {
+    JSON.parse(fileText);
+  } catch {
+    throw new Error(`"${file.name}" is not valid JSON. Choose a dashboard export file.`);
+  }
+  const response = await apiFetch(`${API_BASE}/api/dashboards/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // The file's bytes ARE already valid JSON (the parse above succeeded), so send them as-is.
+    // JSON.stringify(JSON.parse(text)) would only burn CPU on a 1 MB-capped payload.
+    body: fileText,
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to import dashboard");
+  const json = await response.json();
+  return json.data as ImportReportDto;
+};
+
 export type TableDto = {
   id: number;
   name: string;

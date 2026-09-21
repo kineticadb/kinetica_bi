@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.23
-milestone_name: Zoom-Aware Layer Legend
-status: unknown
-stopped_at: Completed 118-03-PLAN.md — Phase 118 closed
-last_updated: "2026-09-16T20:09:51.813Z"
+milestone: v1.24
+milestone_name: Dashboard Export & Import
+status: milestone-complete
+stopped_at: "v1.24 Dashboard Export & Import SHIPPED 2026-09-21 and archived. 3 phases (119-121), 16 plans, 11/11 DXIM-V124 requirements Complete. Milestone audit graded tech_debt — no blockers. Archived to milestones/v1.24-ROADMAP.md, v1.24-REQUIREMENTS.md and v1.24-MILESTONE-AUDIT.md; ROADMAP.md collapsed to the house one-liner; REQUIREMENTS.md deleted (fresh one comes from /gsd:new-milestone). Tag v1.24.0, three-part per RELEASING.md. NOT pushed — origin is shared with another developer, fetch before pushing. Gates at ship: web tsc clean, vitest 181 files/4100 tests/0 failed, theme-guard 152/152, server tsc clean, server test-gate.mjs GATE PASSED (set-based, 8 documented failing files). THE MILESTONE'S LESSON: four defects shipped past tsc, vitest AND theme-guard, and one operator cross-environment checkpoint found all four — spatialTargets[].tableId missing from the reference inventory, max_records 0 rejected at the import boundary, custom metrics loaded for the wrong table, and the frozen config.sql metric expression. The fourth's signature was the side-by-side comparison PASSING. CARRIED DEBT, highest first: loadConfig(...).catch(() => {}) suspends a widget in Loading... forever on a rejected fetch (pre-existing, project-wide, now reachable from seven more widget types — the one worth scheduling); defect-dv-combination-filter-view.md still OPEN; phases 119/120 never ran gsd-verifier; nginx same-origin path and data-source portability unverified; DXIM-F1-F5 deferred. TOOLING: gsd-tools state/roadmap/phase mutation commands are unusable here — state begin-phase and milestone complete each silently rewrote STATE.md (status to unknown, stopped_at rewound to a stale Phase 120-02 string), and verify key-links cannot parse correctly-nested plan frontmatter. Do all bookkeeping by hand. Next: /gsd:new-milestone."
+last_updated: "2026-09-21T14:50:00.000Z"
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 16
+  completed_plans: 16
 ---
 
 # Project State
@@ -19,12 +19,104 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 118 — Zoom-Aware Layer Legend
+**Current focus:** Phase 121 — UI + Cross-Environment Verification
 
 ## Current Position
 
-Phase: 118 (Zoom-Aware Layer Legend) — COMPLETE
-Plan: 3 of 3 (complete)
+**v1.24 Dashboard Export & Import — SHIPPED 2026-09-21.** Archived. No phase in progress.
+
+Milestone: 3 phases (119-121), 16 plans, 11/11 requirements Complete. Audit: `tech_debt`, no blockers.
+Tag `v1.24.0` created locally and **NOT pushed** — `origin` is shared with another developer, so
+fetch before pushing.
+
+**Next: `/gsd:new-milestone`** — it creates the fresh REQUIREMENTS.md (this milestone's was archived
+to `milestones/v1.24-REQUIREMENTS.md` and the working copy deleted, per the completion workflow).
+
+**Carried debt, highest-value first:** `loadConfig(...).catch(() => {})` silently suspends a widget
+in `Loading...` forever on a rejected fetch — pre-existing and project-wide, but now reachable from
+seven more widget types than a week ago; `defect-dv-combination-filter-view.md` still OPEN; phases
+119/120 never ran through `gsd-verifier`; the nginx same-origin path and data-source portability are
+both unverified; `DXIM-F1`-`F5` deferred.
+
+### Phase 121 Plans 05-07 decisions (2026-09-21)
+
+- **Option (b) targeted swap, NOT option (a) shared SQL builder.** Two code-derived reasons: (1) the
+  renderer has no `tables` prop, so it cannot build the heatmap branch's `columnTypeMap`, and a
+  rebuild would emit an UNBUCKETED heatmap query over the 5000-cell limit until the table list lands
+  — a new visible defect created by the fix; (2) a rebuild changes the whole query string when the
+  defect is one substring, so configs saved by older builder versions would silently start querying
+  something different.
+- **A deleted metric falls back to the frozen `cfg.sql`** — last-known-good, deliberately, so a
+  working widget is not blanked. `isOrphanedMetric` already flags it in the config panel.
+- **An unhydrated store SUSPENDS rather than falling back.** `customMetricsStore` is empty when a
+  dashboard opens with no config panel; falling back during hydration would flash the stale number
+  on every load.
+- **`metricsPending` is in Effect 2's dep array by necessity, not tidiness.** For the orphaned and
+  unparseable outcomes `sql` is UNCHANGED, so without that dep the `pending -> ready` transition
+  would never re-fire and the widget would suspend forever. That is mutation probe M4.
+- **Resolution happens before `fromSwap`**, mirroring the CalendarRenderer ordering lock from v1.13
+  (DATE_TRUNC SQL can contain FROM tokens a first-FROM regex would clobber).
+- **Two mutation-probe FIXTURES were strengthened, never the probes.** M4's fixture pre-seeded the
+  store, so the pending state it targeted never occurred. M6 was structurally incapable of
+  discriminating: this repo's `fromSwap` and the new swap commute, producing byte-identical output
+  in either order, so it was replaced with a spy asserting the structural precondition directly —
+  the pattern CLAUDE.md prescribes for exactly this case.
+
+### Phase 121 Plan 01 decisions (2026-09-17)
+
+- Filename for the export download is derived client-side (`exportFileNameForClient`, a byte-for-byte
+  mirror of the server's `exportFileName` slug rule) — never from `Content-Disposition`, which is
+  invisible to cross-origin client JS because `cors()` at `packages/server/src/index.ts:140-145` sets
+  no `exposedHeaders`. Filed as a FINDING for a future phase, not fixed (out of scope: no CORS change).
+- `importDashboardFile` does a throwaway client-side `JSON.parse` purely to fail fast on a non-JSON
+  file before any network call; the server's `validateImportFile` remains the sole source of truth for
+  structural validation. Sends the file's raw text verbatim as the POST body (not re-stringified).
+- Mutation probe P5's original fixture could not discriminate a wasteful re-serialization from sending
+  the file verbatim (JS string `toBe` is value equality, and `JSON.stringify(JSON.parse(x))` happened
+  to be byte-identical for that specific single-key fixture) — strengthened the fixture, did not weaken
+  the probe. See 121-01-SUMMARY.md for the full 6-row mutation probe table.
+
+### Phase 121 Plan 02 decisions (2026-09-17)
+
+- `ImportDashboardModal` reuses `DashboardAccessModal.tsx`'s chrome byte-for-byte (modal-overlay >
+  modal-content > modal-header + modal-body, datasets-table/ds-row rows) — zero new CSS, zero invented
+  classNames; className-vocabulary guard confirmed every literal resolves to an existing `global.css`
+  selector.
+- Every `MetricConflict.message` and `warnings[]` string renders VERBATIM (no `.length`/`.slice()`
+  summarization) — proven by the load-bearing `IMPRPT-conflict-verbatim` test and mutation probe M2,
+  which simulates the exact DXIM-V124-10 failure mode (a count-summary instead of the message) and
+  correctly reddens the test.
+- Recorded `TD-V123-THEMEGUARD-HOLE` for Plan 04: the reused `.error` class is a pre-existing raw hex
+  in the allowlisted `global.css` (theme-guard never checks absence there), so the metric-conflict rows
+  need a human visual check in both light and dark themes during Plan 04's operator UAT.
+- 5/5 mutation probes fired clean on the first attempt — no fixture strengthening needed this plan
+  (contrast Plan 01's P5). See 121-02-SUMMARY.md for the full probe table.
+
+### Phase 121 Plan 03 decisions (2026-09-17)
+
+- `canImport = canCreate && hasPermission(PERMISSIONS.DATASETS_MANAGE)` is a genuine client-side AND,
+  mirroring the import route's own gate exactly (`index.ts:809-812` spreads
+  `requirePermission(DASHBOARDS_CREATE)` AND `requirePermission(DATASETS_MANAGE)`). Proven by two
+  single-permission negative fixtures (`UIWIRE-import-create-only`, `UIWIRE-import-manage-only`)
+  seeded inline via `useAuthStore.setState` — `seedAuthStore.ts` was NOT edited, per constraint.
+  Mutation probes M1 (drop the `DATASETS_MANAGE` half) and M2 (drop the `canCreate` half) each
+  reddened exactly one of those two fixtures on the first attempt — the exact discrimination gap
+  that Phase 120 Wave 4 previously missed with an analyst-only (neither-permission) fixture.
+- Export is rendered unconditionally per row (no client-side permission gate) — the export route
+  gates on `canViewDashboard` only, and `GET /api/dashboards` already server-filters the list by it,
+  so every visible row has already passed the server's gate. `UIWIRE-export-analyst` pins this
+  deliberate asymmetry with Import; mutation probe M6 (gating Export behind `canEdit`) correctly
+  reddened it, guarding against a plausible future "tidy-up" that would over-restrict analysts.
+- `+ New Dashboard` changed from `btn-primary` to `btn-primary btn-sm` — a DELIBERATE, in-scope
+  consequence of CLAUDE.md's primary-in-an-action-pair rule now that it shares the `ds-actions` row
+  with `Import dashboard`. The only styling change this whole phase authorizes.
+- `onImported={() => refetch()}` (not a local list prepend) — the import report carries only
+  `dashboardId`/`dashboardName`, not a full `DashboardDto`, so a live re-fetch is the only way to get
+  a well-formed row for the new dashboard.
+- 6/6 mutation probes fired clean on the first attempt — no test strengthening needed this plan
+  (contrast Plan 01's P5). See 121-03-SUMMARY.md for the full probe table.
+- No DXIM requirement was marked complete or reopened by this plan — Plan 04 owns the operator
+  round-trip outcome and all DXIM-V124-01/-03/-10 closure decisions.
 
 ### Open tech debt carried forward
 
@@ -466,6 +558,8 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | Phase 118 P01 | 10min | 3 tasks | 4 files |
 | Phase 118 P02 | 12min | 3 tasks | 5 files |
 | Phase 118 P03 | 12min | 3 tasks | 6 files |
+| Phase 119 P01 | 5min | 2 tasks | 2 files |
+| Phase 119 P02 | 6min | 2 tasks | 3 files |
 
 ### Quick Tasks Completed
 
@@ -650,6 +744,136 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 120 Plan 02 Decisions (2026-09-16)
+
+- **Two-tier validation gate implemented exactly as designed:** Tier 1 (structural) runs entirely
+  in memory over the parsed JSON, fails fast on the first problem, and does ZERO DB calls — a
+  rejected file provably writes nothing (DXIM-V124-11), verified by `VALID-nowrite` and by a
+  grep-measured `0` DB-write-call count at the end of Task 1. Tier 2 (referential) never trusts the
+  file's own self-reported `danglingReferences` — recomputed from the file's own id sets via the
+  SAME `collect*` functions Plan 01 established.
+
+- **Metric-label conflict policy (120-CONTEXT.md, operator-locked 2026-09-16) implemented
+  verbatim:** a same-label, different-expression match on the resolved table REUSES the target's
+  existing definition and reports a message naming the metric label, the `schema.name` table, and
+  the substring `DIFFERENT expression` — the operator's accepted cost (the imported widget computes
+  something subtly different from the source) is made visible, not silent.
+
+- **`asId` exported from `dashboardExportRefs.ts`** so the validator reuses the canonical
+  positive-integer predicate rather than defining a second one (the exact drift risk the plan
+  called out).
+
+- **6/6 mutation probes fired; V5 required strengthening its test.** Dropping `resolveTables`' the
+  per-run `seen` map did NOT redden the originally-planned assertions — `getTableBySchemaName` is a
+  live query that independently lands on the same row the mutation's own preceding `createTable`
+  call just committed, so the test proved nothing about the `seen` map specifically. Strengthened
+  with a `vi.spyOn` call-count assertion (exactly 1 target query for a shared key across two file
+  entries), which is the map's actual, provable effect. Documented in `120-02-SUMMARY.md` and the
+  spec file's own header per CLAUDE.md's non-discriminating-criterion rule.
+
+- **No DXIM requirement marked complete** — closure remains Plan 05's job per this plan's explicit
+  scope boundary.
+
+- **Tooling note (repeats every 119/120 wave):** `gsd-tools state advance-plan` /
+  `roadmap update-plan-progress` still cannot parse this project's STATE.md/ROADMAP.md formats —
+  both updated manually in the existing file style again this plan.
+
+### Phase 120 Plan 01 Decisions (2026-09-17)
+
+- **Design A (single shared visitor) held for the whole plan** — no fallback to Design B was
+  needed. `visitWidgetConfigRefs`/`visitFilterSelectionRefs` are now the ONLY enumeration of the
+  eight reference sites; `collectWidgetConfigRefs`/`collectFilterSelectionRefs` drive them with an
+  identity visitor, `remapWidgetConfigRefs`/`remapFilterSelection` (new) drive the SAME functions
+  with a map-or-strip visitor. Both Phase 119 regression specs stayed green with ZERO edits
+  throughout — the refactor changed no observable collect output.
+
+- **All three rewrite traps implemented and probe-verified**: REF-6 empty-array sentinel (never
+  expanded; `layerFilterWidened` surfaces the unfixable all-unmapped case), REF-7
+  `__spatial_draws__` (survives byte-identical), REF-8 legacy singular `options[].action`
+  (rewritten identically to `actions[]`).
+
+- **Unmapped reference = STRIP + report, never a fallback to the old id** (Pitfall 3) —
+  `RemapOutcome.stripped` names every stripped site's kind and OLD id. Verified by mutation probe P9
+  (changing the miss-branch to fall back to the old id reddens 7 of 8 `IMP-STRIP*` tests).
+
+- **`getTableBySchemaName` added with NO schema change** — `ORDER BY id ASC LIMIT 1`
+  (oldest-row-wins), documented as a deliberate limitation, not a fix for the underlying missing
+  unique constraint.
+
+- **No ninth reference kind found.** No DXIM requirement marked complete — DXIM-V124-05/-06 are
+  implemented here but closure remains Plan 05's job per this plan's explicit instruction.
+
+- **10/10 mutation probes fired and reverted**; source confirmed byte-identical to the committed
+  state afterward. See `120-01-SUMMARY.md` for the full probe table.
+
+- **Two doc comments self-tripped their own acceptance-criteria greps** (restating
+  `ORDER BY id ASC LIMIT 1` and `?? site.id` / `|| site.id` literally in prose) — caught by running
+  the greps before committing, per CLAUDE.md's verifiable-acceptance-criteria rule; reworded, no
+  code-logic change.
+
+- **Tooling note (repeats all four 119 waves):** `gsd-tools state advance-plan` /
+  `roadmap update-plan-progress` still cannot parse this project's STATE.md/ROADMAP.md formats —
+  both were updated manually in the existing file style again this plan.
+
+### Phase 119 Plan 04 Decisions (2026-09-16) — Phase 119 CLOSED
+
+- **Operator checkpoint APPROVED.** Exported dashboard id 4 ("Test Dashboard"): 7 widgets, 4 layers,
+  3 tables, `dashboardTableIds: 3`, 0 custom metrics, 0 dynamic views, 0 dangling references. All
+  envelope keys present; filename sensible; file readable. No gap found.
+
+- **Recorded as 5/8 live-verified, 3/8 automated-only — deliberately NOT "8/8 operator-verified".**
+  REF-1 (`tableId`), REF-3 (`sourceMapWidgetId`, via the legend widget), REF-6 (`includedLayerIds`,
+  via the map widget + 4 layers), REF-8 (`options[].actions[].target`, via the radiogroup widget),
+  and the `dashboard_tables` UNION edge were all exercised live on a real, operator-known dashboard.
+  REF-2 (`dynamicViewId`), REF-4 (scalar `metricId`), and REF-5 (`metrics[].metricId`) were NOT
+  exercised — this dashboard has no dynamic view and no custom metric — and remain covered by the
+  automated suite (Plan 01 unit tests + Plan 03 kitchen-sink fixture) only. Phase 120's remapper
+  inherits this inventory, so which kinds have only ever been seen in a fixture is recorded now
+  rather than assumed equivalent to the 5 that were operator-verified.
+
+- **DXIM-V124-01, -02, -08 marked Complete** in `.planning/REQUIREMENTS.md` (both checkbox list and
+  traceability table) — citing this operator export. -08 additionally cites Phase 119-03's
+  exclusion canaries. DXIM-V124-03..07/-09..11 remain Pending — Phase 120/121's work.
+
+- **Phase 119 marked COMPLETE (4/4 plans)** in `.planning/ROADMAP.md` and this file — the export
+  half of v1.24 is done; Phase 120 (Import) has not yet been planned.
+
+- **Process findings recorded in `119-04-SUMMARY.md`:** 20/20 mutation probes fired and reverted
+  across the phase (10 in Plan 01, 10 in Plan 03); the self-tripped-criterion trap (a plan mandating
+  a comment that quotes the exact token its own grep counts) hit all three prior waves and was
+  caught each time by running the acceptance-criteria greps before committing; `gsd-tools state
+  advance-plan` / `roadmap update-plan-progress` still cannot parse this project's STATE.md/
+  ROADMAP.md formats — all four waves of this phase worked around it manually, worth fixing at the
+  source or formally documenting given the repeat cost.
+
+- **Gates re-verified against the current tree** (not reused from Plan 03): server `tsc --noEmit`
+  clean; `node scripts/test-gate.mjs` → `GATE PASSED` (1044/1097, 8 known-failing files, no new
+  regressions); `git diff --numstat 6ccf6d8 -- packages/web` empty.
+
+### Phase 119 Plan 03 Decisions (2026-09-16)
+
+- **One kitchen-sink dashboard fixture exercises all eight widget-config reference kinds plus the sixth-site layer `filter_scope`** — every referenced table/metric/layer/dynamic-view is asserted present by id-SET equality (`toEqual` on a sorted array), not `toContain`, so a stray extra inclusion fails the assertion too.
+- **Three exclusion canaries (access-grant grantee, column-display label, `dashboard_table_views` view name) are seeded as live rows, then asserted absent from `res.text` (raw bytes)**, not `res.body` — proves the exclusion by construction rather than by an empty-table false negative.
+- **The non-leak 404 test compares `denied.body` to `missing.body` directly (response-to-response), not to a literal** — any future divergence (403, a different message shape, a different key) fails it; this is the exact "helpful" 403-split refactor mutation probe M6 confirmed would reintroduce the id-enumeration leak v1.10 closed.
+- **Ten mutation probes were run for real against the committed `dashboardExport.ts`/`index.ts`, each reverted; all ten fired their named assertion on the first attempt** — no test needed strengthening. M9 (filename allow-list -> denylist swap) crashed 26 tests, not just its target one, because Node's http layer throws when a header value contains a raw CR/LF; recorded as a finding in the spec's header comment, not treated as a broken criterion.
+- **No DXIM requirement was marked complete** — all eleven remain `Pending` in REQUIREMENTS.md; Plan 04 owns closure after the operator checkpoint.
+- **Tooling note (repeats 119-01/119-02):** `gsd-tools state advance-plan` / `roadmap update-plan-progress` cannot parse this project's STATE.md/ROADMAP.md formats — both were updated manually in the existing file style.
+
+### Phase 119 Plan 02 Decisions (2026-09-16)
+
+- **Table set is the UNION of `dashboard_tables` membership and walk-derived table refs**; `dashboardTableIds` is kept as a SEPARATE field (associated-only subset) so Phase 120 import can recreate the join-table rows a flat `tables` array cannot express.
+- **Only widget-referenced custom metrics travel** — never the full per-table metric listing — confirmed by a dedicated `EXCL-metric` test asserting a sibling metric on an exported table is absent.
+- **`danglingReferences` is informational, never blocking** — a single `absorb()` pass records any reference pointing off-dashboard (e.g. a Legend's `sourceMapWidgetId` targeting a widget on another dashboard) alongside accumulating the Plan 01 walk's refs, so provenance (`from: widget:<id>`) survives the later merge.
+- **The export route adds NO new permission and NO 403 branch** — `canViewDashboard`'s existing 404-collapse guard is reused verbatim from the five sibling per-dashboard GET routes; `requirePermission` count in `index.ts` stays frozen at 45, `res.status(403)` stays at 4.
+- **Acceptance-criteria comment trap recurred from Plan 01:** explanatory comments that literally quote an excluded table/function name (or the literal string `requirePermission()`) self-trip the corresponding zero-count grep criterion (grep counts LINES). Fixed both instances by paraphrasing before committing — no code-logic change.
+
+### Phase 119 Plan 01 Decisions (2026-09-16)
+
+- **`dashboardExportRefs.ts` is the single chokepoint for id-extraction.** `asId(v)` rejects everything but positive integers, so the `__spatial_draws__` sentinel and any non-integer JSON junk are excluded structurally (never by string-comparison) — this is what makes Plan 02/Phase 120 safe to trust the module's output without re-checking shapes.
+- **`getOptionActionsLike` mirrors `radioGroupConfig.ts`'s `getOptionActions` exactly**: `actions[]` first, legacy singular `action` fallback second — never both. Confirmed by mutation probe P9 (narrowing to `actions[]`-only reddens the legacy-field test).
+- **REF-6 empty-array is a zero-ref case, not "all layers expanded"** — both the source comment and a dedicated test state this explicitly; conflating it with "no `includedLayerIds` field at all" would fabricate references on import.
+- 10/10 mutation probes fired against the real committed module (not simulated); none required strengthening a test. See `.planning/phases/119-export/119-01-SUMMARY.md` for the full probe table.
 
 ### Theming hardening (2026-06-15, tech-debt — recurring theme-drift bugs)
 
@@ -1294,6 +1518,6 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 
 ## Session Continuity
 
-Last session: 2026-09-16T20:09:51.804Z
-Stopped at: Completed 118-03-PLAN.md — Phase 118 closed
+Last session: 2026-09-16T22:59:00Z
+Stopped at: Completed 120-02-PLAN.md — validateImportFile two-tier validation gate + resolveTables/resolveCustomMetrics match-or-create resolution (DXIM-V124-06/-07/-11 implemented; requirement closure deferred to 120-05 per plan instruction). Next: plan/execute 120-03 (applyDashboardImport transaction + route).
 Resume file: None
