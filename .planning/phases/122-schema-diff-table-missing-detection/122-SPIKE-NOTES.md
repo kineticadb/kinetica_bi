@@ -140,3 +140,61 @@ Recorded so nobody rediscovers it and mistakes it for a rename signal.
 4. Existing snapshots store `character(256)` where reality is `char4`. Baseline-before-diff is
    required for correctness, not just tidiness.
 5. No per-column identity exists. Renames stay drop + add.
+
+---
+
+## Addendum — VIEW probe (2026-09-21, run after the plan checker flagged it as an open risk)
+
+The first spike probed only `demo.nyctaxi`, a BASE TABLE. The plan checker correctly flagged that
+`GET /api/kinetica/schemas/:schema/tables` queries `INFORMATION_SCHEMA.TABLES` with **no
+`TABLE_TYPE` filter**, so an operator can register a Kinetica VIEW as a "table" — and if
+`/show/table` returned nothing usable for a view, single-sourcing on it would break for those
+registrations. Probed directly against the live instance.
+
+**This instance holds 17 `BASE TABLE` and 33 `VIEW` entries** — views are not an edge case here.
+
+### `/show/table` on a VIEW works identically — risk CLOSED
+
+`pg_catalog.pg_views`, with `no_error_if_not_exists: "true"`:
+
+```
+HTTP 200  status=OK
+table_names:        ["pg_catalog.pg_views"]
+type_schemas:       present, 4 fields
+properties:         4 keys
+```
+
+Same shape as a base table. Nothing special is needed for views, and the single-source-on-
+`/show/table` decision holds for every registerable entity.
+
+### Two findings the base-table fixture could NOT have surfaced
+
+**1. Nullable columns carry a `"nullable"` property marker.**
+
+```json
+["schemaname", ["data", "char256", "nullable"]]
+["definition", ["data", "nullable"]]
+```
+
+`demo.nyctaxi` has no nullable columns, so this marker never appeared in the original spike. The
+plan's `NON_TYPE_PROPERTIES` exclusion list already contains `nullable` — deliberately, so that
+`SSYNC-F5` (nullability detection) does not ship by accident as a side effect of fingerprinting.
+**That exclusion is now known to be load-bearing rather than theoretical**: without it, making a
+column nullable would report as a type change in v1.25, which is out of scope and was never
+specified.
+
+**2. Nullable columns use Avro UNION types, not plain strings.**
+
+```json
+{"name":"schemaname","type":["string","null"]}
+```
+
+Every column on `demo.nyctaxi` had a plain scalar `"type":"string"`. The union form appears only
+when a column is nullable — so the plan's rule that `base` is "the Avro type with `"null"` filtered
+out of unions" was, until this probe, **untested against any real body carrying a union**. It is
+now confirmed to be required rather than defensive: a fingerprint that did not filter unions would
+render `["string","null"]` as the base type and report a spurious change the moment a column's
+nullability differed between two reads.
+
+**Use `pg_catalog.pg_views` as the union/nullable test fixture** — it is a real body, it exercises
+both the union form and the `nullable` marker, and it is present on any Kinetica instance.
