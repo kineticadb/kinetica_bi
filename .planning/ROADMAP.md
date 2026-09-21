@@ -69,7 +69,11 @@
   3. A column renamed in Kinetica comes back as one removal plus one addition; no pairing, similarity score or guessed rename appears anywhere in the response.
   4. Running a check leaves the database unchanged — a before/after row snapshot of `tables`, `widgets`, `dashboard_layers`, `custom_metrics` and `column_display_config` is identical.
   5. Live column discovery goes through the existing `INFORMATION_SCHEMA` + `/show/table` path; no second query of Kinetica column metadata is introduced.
-**Plans**: TBD
+**Plans**: 4 plans, 3 waves
+- [ ] 122-01-PLAN.md — Pure `/show/table` fingerprint parser (type_schemas base + properties width) + `kineticaShowTable` per-call options (wave 1)
+- [ ] 122-02-PLAN.md — `tables.columns_fingerprint` sibling column + read-only accessor; no writer ships in 122 (wave 1)
+- [ ] 122-03-PLAN.md — Pure diff engine + the `SchemaCheckResult` contract Phases 124/125 read (wave 2)
+- [ ] 122-04-PLAN.md — `GET /api/tables/:id/schema-check` route + four-outcome and byte-identical-DB proof (wave 3)
 
 ### Phase 123: Column Reference Enumeration
 **Goal**: A single pure traversal answers "what in this app refers to column X of table Y", covering every structured site exactly and every free-SQL site heuristically, with each finding carrying which of the two it was.
