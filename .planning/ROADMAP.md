@@ -92,7 +92,12 @@
   3. Free-SQL sites (`widgets.config.sql`, `config.customWhere`, `custom_metrics.expression`, `dashboard_dynamic_views.template_sql`, `dashboard_table_views.filter_clause`) produce findings marked heuristic rather than exact, and the traversal never rewrites free SQL text. **`dashboard_dynamic_views.columns_json[].name` is also enumerated, as a heuristic, TABLE-LESS finding** — added 2026-09-22 after the adversarial data sweep proved the gap it closes: `Taxi Copy` and `mv view` both have `template_sql = "select * from {view}"`, which contains no column text at all, while their `columns_json` holds 19 and 251 real source columns that every dv-bound config panel reads INSTEAD of the source table's. Without it a renamed column reports nothing for those views while silently breaking them. Table-less rather than table-scoped because provenance is mixed and proven so in the data: `FF`/`EQ`'s entries belong to the joined, unregistered `vaipr.vaipr_location_exposure`, and `Avg NYC`'s are computed aliases (`cell`, `avg_passenger_count`) that are columns of nothing.
   4. Findings are table-scoped: a widget bound through `config.dynamicViewId` and a `spatialTargets[]` entry carrying its own `tableId` resolve against the right table, so a same-named column belonging to a different table yields no finding.
   5. `dashboardExportRefs.ts` and the export/import behaviour it drives are unchanged (zero diff to that module), and `columnRefs.ts` carries a comment cross-referencing it so the one-enumeration discipline is visibly inherited rather than re-derived.
-**Plans**: TBD
+**Plans**: 4 plans, 4 sequential waves (all four touch `packages/server/src/lib/columnRefs.ts`, so no parallelism is available)
+Plans:
+- [ ] 123-01-PLAN.md — The ColumnRef contract, the 40-site registry, the free-SQL scanner, the five free-SQL sites and `dynamicView.columns_json[].name` (wave 1)
+- [ ] 123-02-PLAN.md — `resolveWidgetTableId` and the 14 structured widget-config sites, incl. `spatialTargets[]`'s own tableId; widget half of the exclude guard (wave 2)
+- [ ] 123-03-PLAN.md — `resolveLayerTableId` and the 11 layer sites, incl. cb_config/track_config/info_* JSON strings and the malformed-JSON fallback (wave 3)
+- [ ] 123-04-PLAN.md — The 9 `configPatch` + `columnDisplayConfig` sites across both action shapes, the 40/40 coverage guard, and requirement closure (wave 4)
 
 
 ### Phase 124: Impact Report
