@@ -120,7 +120,9 @@ free-SQL site that would ever surface it.
 
 **The complication (why this is not simply "add it to the exact list")**: dv#1/dv#2 prove
 `columns_json` is **not reliably table-scoped to `source_table_id`** — a joined dynamic view's cached
-column list can belong to a completely different, unregistered table. In this dataset none of
+column list can belong to a completely different table — in this dataset a REGISTERED one
+(id 5, `vaipr.vaipr_location_exposure`), not an unregistered one as an earlier draft claimed
+(corrected 2026-09-22 by the plan checker, verified read-only). In this dataset none of
 `cede_db`/`contract_key`/`location_exposure_id`/`GR_ExpLim` happens to collide with any of the other
 563 registered column names, so no false table-scoped claim occurs today — but the mechanism that
 would produce one (a joined-in column sharing a name with a column on some *other* registered table)
@@ -384,7 +386,7 @@ inventing a second traversal library.
 ### Pitfall 1: Treating `columns_json[].name` as automatically table-scoped
 
 **What goes wrong:** A dv-bound structured finding is reported as "column X on table Y" with full
-confidence, but the dv's `template_sql` joins in an unregistered table, so the name actually belongs
+confidence, but the dv's `template_sql` joins in a DIFFERENT REGISTERED table (id 5), so the name actually belongs
 to something else entirely.
 **Why it happens:** `columns_json` looks exactly like other structured, table-scoped fields (a flat
 array of `{name, type}` with a clean `source_table_id` FK) — nothing about its *shape* signals the

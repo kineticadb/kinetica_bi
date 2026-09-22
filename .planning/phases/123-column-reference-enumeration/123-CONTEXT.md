@@ -85,7 +85,7 @@ Verified in the dev DB:
 |---|---|---|
 | `Taxi Copy` (src table 1) | `select * from {view}` | **19 real nyctaxi columns** (`vendor_id`, `pickup_datetime`, …) |
 | `mv view` (src table 6) | `select * from {view}` | **251 real columns** |
-| `FF` / `EQ` (src table 4) | joins `vaipr.vaipr_location_exposure` | columns of that **joined, unregistered** table |
+| `FF` / `EQ` (src table 4) | joins `vaipr.vaipr_location_exposure` | columns of that joined table — **a DIFFERENT REGISTERED table (id 5)**, plus one computed alias |
 | `Avg NYC` (src table 1) | `SELECT H3_XYTOCELL(...)` | computed aliases (`cell`, `avg_passenger_count`) |
 
 The gap it closes: drop `vendor_id` from table 1 and `Taxi Copy`'s `template_sql` — literally
@@ -94,7 +94,12 @@ findings. But `columns_json` lists it, and every dv-bound config panel (`LayersM
 `ChartConfigPanel`, `CalendarConfigPanel`, `RadioGroupConfigPanel`) reads its column list from there
 INSTEAD of the source table's. The report would call that view unaffected while it is broken.
 
-**Table-less, not table-scoped** — forced by the provenance being mixed and proven so above. Same
+**Table-less, not table-scoped** — forced by the provenance being mixed and proven so above.
+**Correction 2026-09-22 (plan-checker catch):** an earlier draft of this document called
+`vaipr.vaipr_location_exposure` *unregistered*. It is not — it is registered as **table id 5**,
+while the dv's `source_table_id` is 4. That makes the table-less decision STRONGER, not weaker:
+attributing `cede_db` to table 4 would be actively wrong, since it is table 5's column. Only
+`GR_ExpLim` is a true computed alias belonging to no table. Same
 treatment as `template_sql`: report the mention, assert no table.
 
 **2. `configPatch.info_columns` and `configPatch.info_template` — enumerate with SYNTHETIC fixtures.**
