@@ -70,6 +70,48 @@ finding (e.g. `metricColumn`) and a heuristic one (its `config.sql`) for the sam
 expected, not a bug. **Phase 124 must group findings by record for display**, or the operator sees
 the same widget listed twice. Note this in 123's SUMMARY so 124 is planned against it.
 
+### TWO SITES ADDED 2026-09-22 after the adversarial data sweep (operator-approved)
+
+The inventory in this document and in ROADMAP criterion 1 was derived by READING CODE. A
+data-driven sweep — walking every JSON blob in both dev databases and flagging every key path whose
+value matches one of the 564 real column names — found two sites that method had missed. This is
+the same miss-class as v1.24's REF-9, which three code-reading sweeps missed for the same reason.
+
+**1. `dashboard_dynamic_views.columns_json[].name` — heuristic, TABLE-LESS.**
+
+Verified in the dev DB:
+
+| dv | `template_sql` | `columns_json` |
+|---|---|---|
+| `Taxi Copy` (src table 1) | `select * from {view}` | **19 real nyctaxi columns** (`vendor_id`, `pickup_datetime`, …) |
+| `mv view` (src table 6) | `select * from {view}` | **251 real columns** |
+| `FF` / `EQ` (src table 4) | joins `vaipr.vaipr_location_exposure` | columns of that **joined, unregistered** table |
+| `Avg NYC` (src table 1) | `SELECT H3_XYTOCELL(...)` | computed aliases (`cell`, `avg_passenger_count`) |
+
+The gap it closes: drop `vendor_id` from table 1 and `Taxi Copy`'s `template_sql` — literally
+`select * from {view}` — contains **no column text at all**, so the five free-SQL sites yield zero
+findings. But `columns_json` lists it, and every dv-bound config panel (`LayersModal`,
+`ChartConfigPanel`, `CalendarConfigPanel`, `RadioGroupConfigPanel`) reads its column list from there
+INSTEAD of the source table's. The report would call that view unaffected while it is broken.
+
+**Table-less, not table-scoped** — forced by the provenance being mixed and proven so above. Same
+treatment as `template_sql`: report the mention, assert no table.
+
+**2. `configPatch.info_columns` and `configPatch.info_template` — enumerate with SYNTHETIC fixtures.**
+
+Structurally identical to the `cb_config`/`track_config` copies this phase already hunts, and the
+newer denylist validator (`applyWidgetAction.ts`'s `validateLayerSnapshot`, Phase 60.1 RE-SCOPE —
+which supersedes the stricter `LAYER_ALLOW_LIST` at `actionAllowList.ts:101-151`) accepts both keys
+today. `info_columns` is a JSON-array-of-strings of column names; `info_template` is HTML carrying
+`{Column}` placeholders.
+
+**Zero instances exist in either database**, so fixtures must be synthetic — and a site with no real
+data is exactly where a bug survives a suite built from real fixtures. Flag that explicitly in the
+plan rather than treating these two like the sites with live rows behind them.
+
+**Both the plural `options[].actions[]` and the legacy singular `options[].action` shapes must be
+walked.** The 12 known `configPatch` copies only reconcile when both are.
+
 ### Confidence — three levels, not two
 
 - **exact** — a structured site. The value IS the column name; no interpretation.
@@ -95,6 +137,18 @@ affordable: a wrong hit on `Date` displays `WHERE Meta_CreatedDate > ...` and is
 glance instead of costing a context switch into the widget.
 
 Include the character offset of the match as well as the line, so Phase 124 can highlight precisely.
+
+### A real cross-table case collision exists — intended consequence, not a bug
+
+Table 7 has columns `MCC`/`MNC`; table 8 has `mcc`/`mnc`. They are different columns on different
+tables. Because free-SQL matching is case-INSENSITIVE (locked above, and required by the operator's
+own `OPERATOR`/`operator` data), a scan for one will legitimately also fire on the other table's
+widgets' `customWhere` text.
+
+This follows directly from two decisions that are each correct on their own — case-insensitive text
+matching, and free-SQL findings asserting no table. Recorded here so it is not "discovered" mid-
+implementation and mistaken for a defect. Structured findings remain exactly table-scoped and are
+unaffected.
 
 ### Free-SQL findings do NOT claim a table
 
