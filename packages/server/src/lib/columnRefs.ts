@@ -543,8 +543,107 @@ const visitColumnRefSites = (
     }
   }
 
-  // TODO(123-02 Task 2): widget.config.groupByColumns[], metrics[].column, filterFields[].column,
-  // spatialTargets[].lonCol/latCol/spatialCol.
+  // --- widget structured sites, Task 2 (Plan 123-02): the six array fields. A SEPARATE loop from
+  // Task 1's scalar/CSV sites above (each task's commit is a pure addition). ---
+  for (const widget of input.widgets) {
+    const cfg = (widget.config ?? {}) as Record<string, unknown>;
+    const resolved = resolveWidgetTableId(cfg, input.dynamicViews);
+    const recordKind: ColumnRefRecordKind = "widget";
+    const recordId = widget.id;
+    const recordLabel = widget.title;
+
+    if (Array.isArray(cfg.groupByColumns)) {
+      const arr = cfg.groupByColumns as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        for (const column of columns) {
+          emitStructured({
+            value: arr[i], column, site: "widget.config.groupByColumns[]",
+            path: `config.groupByColumns[${i}]`, recordKind, recordId, recordLabel, resolved,
+            query, emit,
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(cfg.metrics)) {
+      const arr = cfg.metrics as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        const el = arr[i];
+        if (!isPlainObject(el)) continue;
+        for (const column of columns) {
+          emitStructured({
+            value: el.column, column, site: "widget.config.metrics[].column",
+            path: `config.metrics[${i}].column`, recordKind, recordId, recordLabel, resolved,
+            query, emit,
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(cfg.filterFields)) {
+      const arr = cfg.filterFields as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        const el = arr[i];
+        if (!isPlainObject(el)) continue;
+        for (const column of columns) {
+          // Never read el.kind here: filterFields[].kind holds "multi-select" / "dropdown", a
+          // structural discriminator, not a column — it is in EXCLUDED_LOOKALIKE_KEYS.
+          emitStructured({
+            value: el.column, column, site: "widget.config.filterFields[].column",
+            path: `config.filterFields[${i}].column`, recordKind, recordId, recordLabel, resolved,
+            query, emit,
+          });
+        }
+      }
+    }
+
+    // spatialTargets[] — the REF-9 shape (dashboardExportRefs.ts). Each element is scoped by its
+    // OWN tableId, NEVER by the widget's `resolved` above: a map widget's own config.tableId can
+    // differ from any/all of its spatialTargets[].tableId values, and widget 1 in the dev DB has
+    // NO config.tableId at all while carrying two targets on tables 1 and 3. Inheriting the
+    // parent's table here would produce exactly the silent wrong-table attribution
+    // dashboardExportRefs.ts's REF-9 comment describes — the reference kind three separate audit
+    // sweeps missed in v1.24, and the stated reason this phase is flagged highest-risk.
+    if (Array.isArray(cfg.spatialTargets)) {
+      const arr = cfg.spatialTargets as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        const el = arr[i];
+        if (!isPlainObject(el)) continue;
+        const ownId = asPositiveInt(el.tableId);
+        const own: { tableId: number | null; tableScope: ColumnRefTableScope } =
+          ownId !== undefined
+            ? { tableId: ownId, tableScope: "scoped" }
+            : { tableId: null, tableScope: "unresolved" };
+        for (const column of columns) {
+          // lonCol / latCol / spatialCol are read UNCONDITIONALLY, never gated on the element's
+          // own spatial mode field: that field is a structural discriminator ("latlon"/"wkt"/
+          // "wkb"), collides case-insensitively with the real column WKT, and is in
+          // EXCLUDED_LOOKALIKE_KEYS. Gating on it would make a mode/field mismatch in stored data
+          // silently unreportable. Whichever field is a non-empty string gets tested.
+          emitStructured({
+            value: el.lonCol, column, site: "widget.config.spatialTargets[].lonCol",
+            path: `config.spatialTargets[${i}].lonCol`, recordKind, recordId, recordLabel,
+            resolved: own, query, emit,
+          });
+          emitStructured({
+            value: el.latCol, column, site: "widget.config.spatialTargets[].latCol",
+            path: `config.spatialTargets[${i}].latCol`, recordKind, recordId, recordLabel,
+            resolved: own, query, emit,
+          });
+          // spatialCol: ZERO instances in the dev DB — no wkt-mode targets and no spatialCol
+          // values anywhere in widgets.config (confirmed read-only during PLANNING, not by
+          // 123-RESEARCH.md's own zero-instance table — a NINTH zero-instance site on top of the
+          // eight the research listed). Its test fixture is SYNTHETIC.
+          emitStructured({
+            value: el.spatialCol, column, site: "widget.config.spatialTargets[].spatialCol",
+            path: `config.spatialTargets[${i}].spatialCol`, recordKind, recordId, recordLabel,
+            resolved: own, query, emit,
+          });
+        }
+      }
+    }
+  }
+
   // TODO(123-03): layer.config.latColumn/lonColumn/wktColumn/wkbColumn, layer.cb_config.attr,
   // layer.track_config.trackIdAttr/trackOrderAttr/xCol/yCol, layer.info_columns, layer.info_template.
   // TODO(123-04): widget.config.options[].configPatch.* (metric, cb_config.attr,

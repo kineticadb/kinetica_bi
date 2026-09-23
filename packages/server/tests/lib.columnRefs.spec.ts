@@ -775,3 +775,141 @@ describe("widget table resolution", () => {
     expect(refs.filter((r) => r.site === "widget.config.metricColumn")).toEqual([]);
   });
 });
+
+// -----------------------------------------------------------------------------------------------
+// Widget structured sites — arrays, incl. spatialTargets' own tableId (Plan 123-02, Task 2)
+// -----------------------------------------------------------------------------------------------
+
+describe("widget structured sites — arrays", () => {
+  // widget 1, type "map" — REAL. NOTE: no config.tableId and no dynamicViewId. Two spatialTargets
+  // on DIFFERENT tables (1 = demo.nyctaxi, 3 = demo.track). Load-bearing fixture for BOTH scope
+  // tests below.
+  const widget1Config = {
+    title: "Mapfffafsdf", basemapLight: "osm", basemapDark: "osm",
+    spatialTargets: [
+      { tableId: 1, spatialMode: "latlon", lonCol: "pickup_longitude", latCol: "pickup_latitude" },
+      { tableId: 3, spatialMode: "latlon", lonCol: "X", latCol: "Y" },
+    ],
+    drillDownColumn: "", drillDownColumnType: "null",
+  };
+
+  it("SITE widget.config.groupByColumns[]: widget 60's [emirate, operator] yields one finding per element, each with its own index path", () => {
+    const widget = makeWidget({
+      id: 60, type: "bar",
+      config: { groupByColumns: ["emirate", "operator"], customWhere: "", colorTheme: "", tableId: 8 },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refsEmirate = collectColumnRefs(input, { tableId: 8, columns: ["emirate"] });
+    const hitEmirate = refsEmirate.find((r) => r.site === "widget.config.groupByColumns[]");
+    expect(hitEmirate?.path).toBe("config.groupByColumns[0]");
+    const refsOperator = collectColumnRefs(input, { tableId: 8, columns: ["operator"] });
+    const hitOperator = refsOperator.find((r) => r.site === "widget.config.groupByColumns[]");
+    expect(hitOperator?.path).toBe("config.groupByColumns[1]");
+  });
+
+  it("SITE widget.config.metrics[].column: widget 24's QOS_DownloadThroughput and QOS_SignalStrength each yield a finding", () => {
+    const widget = makeWidget({
+      id: 24, type: "timeline",
+      config: {
+        timeCol: "QOS_Date",
+        metrics: [
+          { column: "QOS_DownloadThroughput", aggregation: "SUM", color: "FF66C2A5", label: "" },
+          { column: "QOS_SignalStrength", aggregation: "SUM", color: "FFFC8D62", label: "" },
+        ],
+        colorTheme: "Set2", tableId: 6,
+      },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs1 = collectColumnRefs(input, { tableId: 6, columns: ["QOS_DownloadThroughput"] });
+    const hit1 = refs1.find((r) => r.site === "widget.config.metrics[].column");
+    expect(hit1?.path).toBe("config.metrics[0].column");
+    const refs2 = collectColumnRefs(input, { tableId: 6, columns: ["QOS_SignalStrength"] });
+    const hit2 = refs2.find((r) => r.site === "widget.config.metrics[].column");
+    expect(hit2?.path).toBe("config.metrics[1].column");
+  });
+
+  it("SITE widget.config.filterFields[].column: widget 25's three filterFields each yield a finding", () => {
+    const widget = makeWidget({
+      id: 25, type: "datafilter",
+      config: {
+        filterFields: [
+          { column: "Connection_Category", kind: "multi-select" },
+          { column: "Location_City", kind: "dropdown" },
+          { column: "Connection_Technology", kind: "multi-select" },
+        ],
+        tableId: 6, tableRef: "telecom.demodata", drillDownColumn: "",
+      },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Connection_Technology"] });
+    const hit = refs.find((r) => r.site === "widget.config.filterFields[].column");
+    expect(hit?.path).toBe("config.filterFields[2].column");
+  });
+
+  it("SITE widget.config.spatialTargets[].lonCol: widget 1's element 0 lonCol pickup_longitude is scoped to table 1", () => {
+    const widget = makeWidget({ id: 1, type: "map", config: widget1Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
+    const hit = refs.find((r) => r.site === "widget.config.spatialTargets[].lonCol");
+    expect(hit?.path).toBe("config.spatialTargets[0].lonCol");
+    expect(hit?.tableId).toBe(1);
+    expect(hit?.tableScope).toBe("scoped");
+  });
+
+  it("SITE widget.config.spatialTargets[].latCol: widget 1's element 0 latCol pickup_latitude is scoped to table 1", () => {
+    const widget = makeWidget({ id: 1, type: "map", config: widget1Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.site === "widget.config.spatialTargets[].latCol");
+    expect(hit?.path).toBe("config.spatialTargets[0].latCol");
+    expect(hit?.tableId).toBe(1);
+  });
+
+  it("SITE widget.config.spatialTargets[].spatialCol: a wkt-mode target's spatialCol is an exact finding (SYNTHETIC — zero wkt-mode targets and zero spatialCol values in either database)", () => {
+    const widget = makeWidget({
+      id: 9005, type: "map",
+      config: { spatialTargets: [{ tableId: 2, spatialMode: "wkt", spatialCol: "WKT" }] },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 2, columns: ["WKT"] });
+    const hit = refs.find((r) => r.site === "widget.config.spatialTargets[].spatialCol");
+    expect(hit?.path).toBe("config.spatialTargets[0].spatialCol");
+    expect(hit?.tableId).toBe(2);
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SCOPE: a spatialTargets element resolves against its OWN tableId, never the widget's", () => {
+    // Table 3 (demo.track) has columns X and Y. Table 1 (demo.nyctaxi) does not.
+    const widget = makeWidget({ id: 1, type: "map", config: widget1Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const forTable3 = collectColumnRefs(input, { tableId: 3, columns: ["X"] });
+    const hit = forTable3.find((r) => r.site === "widget.config.spatialTargets[].lonCol");
+    expect(hit?.path).toBe("config.spatialTargets[1].lonCol");
+    expect(hit?.tableId).toBe(3);
+    expect(hit?.tableScope).toBe("scoped");
+    expect(hit?.confidence).toBe("exact"); // X is short, but the low-confidence tier grades
+                                            // FREE-SQL matches only — never a structured site.
+    // And element 0 must not be dragged along:
+    expect(forTable3.filter((r) => r.path === "config.spatialTargets[0].lonCol")).toEqual([]);
+  });
+
+  it("SCOPE: widget 1 has no config.tableId at all, yet its spatialTargets findings are 'scoped', not 'unresolved'", () => {
+    expect((widget1Config as Record<string, unknown>).tableId).toBeUndefined();
+    const widget = makeWidget({ id: 1, type: "map", config: widget1Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
+    const hit = refs.find((r) => r.site === "widget.config.spatialTargets[].lonCol");
+    expect(hit?.tableScope).toBe("scoped");
+    expect(hit?.tableId).toBe(1);
+  });
+
+  it("an element with a missing or non-string column field yields no finding", () => {
+    const widget = makeWidget({
+      id: 9006, type: "map",
+      config: { spatialTargets: [{ tableId: 1, spatialMode: "latlon" }] },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
+    expect(refs.filter((r) => (r.site as string).startsWith("widget.config.spatialTargets"))).toEqual([]);
+  });
+});
