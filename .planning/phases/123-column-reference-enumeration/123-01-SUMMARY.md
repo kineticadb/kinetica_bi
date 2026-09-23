@@ -286,18 +286,18 @@ This plan implements **only** the 5 free-SQL sites + `columns_json[].name` — n
 | # | Mutation | Named test | Result |
 |---|----------|-----------|--------|
 | P1 | Delete the `widget.config.sql` block | SITE widget.config.sql: ... | ✅ reddened (+1 collateral: the P15-strengthened "BOTH" test, expected — it also reads `config.sql`) |
-| P2 | Delete the `widget.config.customWhere` block | SITE widget.config.customWhere: ... | ✅ reddened (+2 collateral: SCOPE MCC/MNC test and low-confidence test, expected — both use the same widget 59 fixture) |
+| P2 | Delete the `widget.config.customWhere` block | SITE widget.config.customWhere: ... | ✅ reddened (+2 collateral: SCOPE ABC/DEF test and low-confidence test, expected — both use the same widget 59 fixture) |
 | P3 | Delete the `customMetric.expression` block | SITE customMetric.expression: ... | ✅ reddened, no collateral |
 | P4 | Delete the `dynamicView.template_sql` block | SITE dynamicView.template_sql: ... | ✅ reddened, no collateral |
 | P5 | Delete the `tableView.filter_clause` block | SITE tableView.filter_clause: ... (SYNTHETIC) | ✅ reddened, no collateral |
 | P6 | Delete the `dynamicView.columns_json[].name` block | SITE dynamicView.columns_json[].name: Taxi Copy... | ✅ reddened (+4 collateral: the other 4 tests in the same describe block, expected — same block) |
 | P7 | Remove one entry from `COLUMN_REF_SITES` | GOLDEN: the site registry is exactly the 40 inventoried sites, in order | ✅ reddened, no collateral |
-| P8 | Drop the `i` flag from `columnMatchRegex` | matches case-insensitively: OPERATOR IN (...) matches the column operator | ✅ reddened (+1 collateral: the direct `columnMatchRegex` unit test, expected) |
+| P8 | Drop the `i` flag from `columnMatchRegex` | matches case-insensitively: CARRIER IN (...) matches the column carrier | ✅ reddened (+1 collateral: the direct `columnMatchRegex` unit test, expected) |
 | P9 | Drop the lookaround from `columnMatchRegex` (bare substring match) | does not match a substring: X does not match H3_XYTOCELL, X_COORD or max(fare_amount) | ✅ reddened (+1 collateral: the direct `columnMatchRegex` unit test, expected) |
-| P10 | Skip `maskQuotedLiterals` entirely in `scanFreeSql` | skips quoted literals: network in ('2G', '3G', '4G') yields no match for 2G | ✅ reddened, no collateral |
+| P10 | Skip `maskQuotedLiterals` entirely in `scanFreeSql` | skips quoted literals: net in ('n1', 'n2', 'n3') yields no match for n1 | ✅ reddened, no collateral |
 | P11 | Make `maskQuotedLiterals` DELETE literal characters instead of spacing them | matches a whole identifier and reports its line, 1-based line number and 0-based offset within that line | ✅ reddened after strengthening the fixture (see below) — +2 collateral in `maskQuotedLiterals`'s own tests, expected |
 | P12 | On `unterminated`, return no matches instead of scanning raw | fails toward REPORTING: an unterminated literal is scanned raw rather than masked away | ✅ reddened, no collateral |
-| P13 | Suppress low-confidence findings instead of tagging them | a low-confidence column name in free SQL is reported, not suppressed | ✅ reddened (+1 collateral: SCOPE MCC/MNC test, expected — mcc is itself low-confidence) |
+| P13 | Suppress low-confidence findings instead of tagging them | a low-confidence column name in free SQL is reported, not suppressed | ✅ reddened (+1 collateral: SCOPE ABC/DEF test, expected — mcc is itself low-confidence) |
 | P14 | Set `tableId` on free-SQL findings from the record's table | every FREE_SQL_SITES finding has tableScope 'free-sql', tableId null and at least one match | ✅ reddened (+4 collateral: all 4 individual SITE tests that check `tableId`, expected) |
 | P15 | Emit one finding per MATCH instead of one per site | a widget produces BOTH an exact-site finding and a config.sql finding for the same column, with different paths | ✅ reddened after strengthening the test (see below) |
 | P16 | Give `columns_json[].name` findings `confidence: "low-confidence"` when the name is short | columns_json findings carry confidence 'heuristic' and an empty matches array, even for a short name like WKT | ✅ reddened, no collateral |

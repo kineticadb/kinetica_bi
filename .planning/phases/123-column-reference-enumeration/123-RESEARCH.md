@@ -73,7 +73,7 @@ through `metricColumn`, `groupByColumn` AND its `config.sql` returns THREE findi
 | ID | Description | Research Support |
 |----|-------------|-------------------|
 | SSYNC-V125-07 | The report includes map layers affected through their own config (lat/lon/WKT columns, `cb_config.attr`, `track_config`) **and** through the `configPatch` copies embedded in radio-group widget actions | Confirmed exact dev-DB counts for the `configPatch` copies (11 `cb_config` + 1 `track_config` = 12, matching CONTEXT.md exactly — see Finding 3). **New finding**: `configPatch.info_columns` / `configPatch.info_template` are an equally valid, currently-zero-instance third and fourth copy-site of the same kind (Finding 2) — the planner must decide whether SSYNC-V125-07's "and through the configPatch copies" language is meant to cover these too. |
-| SSYNC-V125-08 | The report lists every custom metric, widget `customWhere`, frozen widget `sql` and dynamic-view `template_sql` whose raw SQL may reference an affected column, marked as *possibly* affected | Confirmed the whole-identifier / case-insensitive / literal-skipping design against real `customWhere` text (widget 59/81 `OPERATOR IN (...)`, widget 73 `network in ('2G','3G','4G')`) and proved a genuine cross-table false-positive case is possible under this design (MCC vs. mcc, Finding 6) — expected consequence of the locked "free-SQL asserts no table" rule, not a defect to fix. **New finding**: `dashboard_dynamic_views.columns_json[].name` is the ONLY place two real dynamic views' (`SELECT * FROM {view}`) column references exist at all — their `template_sql` contains zero literal column names to heuristically match (Finding 1). |
+| SSYNC-V125-08 | The report lists every custom metric, widget `customWhere`, frozen widget `sql` and dynamic-view `template_sql` whose raw SQL may reference an affected column, marked as *possibly* affected | Confirmed the whole-identifier / case-insensitive / literal-skipping design against real `customWhere` text (widget 59/81 `CARRIER IN (...)`, widget 73 `network in ('2G','3G','4G')`) and proved a genuine cross-table false-positive case is possible under this design (ABC vs. mcc, Finding 6) — expected consequence of the locked "free-SQL asserts no table" rule, not a defect to fix. **New finding**: `dashboard_dynamic_views.columns_json[].name` is the ONLY place two real dynamic views' (`SELECT * FROM {view}`) column references exist at all — their `template_sql` contains zero literal column names to heuristically match (Finding 1). |
 </phase_requirements>
 
 ## Adversarial Sweep — Data-Driven, Not Code-Read
@@ -213,20 +213,20 @@ need hand-built fixtures with populated values for their per-site tests (see Tes
   (`"layer"`/`"widget"`/`"dynamicView"` and `"multi-select"`/`"dropdown"`), not columns, despite the
   superficially column-ish key name `kind`.
 - **`metrics[].label`, `options[].label`** — operator-typed display labels, not columns.
-- **`widgets.config.table`** (e.g. `"ookla_dash.new_mobile_base_k_vs2"`) — a fully-qualified table
+- **`widgets.config.table`** (e.g. `"analytics.tbl_eight"`) — a fully-qualified table
   NAME string; this is `dashboardExportRefs.ts` territory (a table reference), not a column
   reference — out of this phase's scope entirely.
 - **`custom_metrics.format_spec(parsed).kind` / `.decimals`** — formatting metadata (`kind`,
   integer), not columns.
 
-### Cross-table case-collision, proven live (not hypothetical) — MCC/mcc
+### Cross-table case-collision, proven live (not hypothetical) — ABC/abc
 
-Real registered columns: table 7 (`mobile_time_only_k_vs1`) has `MCC`/`MNC` (uppercase); table 8
-(`new_mobile_base_k_vs2`) has `mcc`/`mnc` (lowercase) — two **distinct, differently-cased** columns
+Real registered columns: table 7 (`mobile_time_only_k_vs1`) has `ABC`/`DEF` (uppercase); table 8
+(`new_mobile_base_k_vs2`) has `abc`/`def` (lowercase) — two **distinct, differently-cased** columns
 on two **different** tables. Widgets 59/81/89/90/91 (all `tableId: 8`) carry `customWhere` text
-containing `mcc = '424'` or `OPERATOR IN (...) and val_upload_kbps > 0 and mcc = '424'` (mixed case
+containing `abc = '424'` or `CARRIER IN (...) and metric_up_rate > 0 and abc = '424'` (mixed case
 across widgets). Under the locked case-insensitive whole-identifier rule, a heuristic scan invoked
-for table 7's column `MCC` **will also fire** on these widgets' text, even though the widgets are
+for table 7's column `ABC` **will also fire** on these widgets' text, even though the widgets are
 bound to table 8, not table 7 — this is not a bug, it is the direct, now-empirically-confirmed
 consequence of the already-locked "free-SQL findings assert no table" decision. **Action for the
 planner**: build a fixture test that exercises exactly this — two differently-cased columns on two
@@ -359,11 +359,11 @@ on genuinely malformed SQL is merely noise, and malformed SQL should not exist i
 Computed against the real 564 column names: length ≤ 3 **OR** case-insensitive stoplist match
 (`date`, `time`, `name`, `type`, `value`, `count`, `key`, `data`, `status`, `code`, `id`, `text`,
 `number`) classifies **26/564 (4.6%)** of real columns as low-confidence:
-`2G, 3G, 4G, Date, MCC, MNC, NAME, Time, WKT, X, Y, alt, date, edt, eta, ete, fix, gs, lob, mcc, mnc,
+`n1, n2, n3, Date, ABC, DEF, NAME, Time, WKT, X, Y, alt, date, edt, eta, ete, fix, gs, lob, mcc, mnc,
 name, nic, reg, sil, type`. This confirms real columns literally named `name`/`NAME`/`type`/`Date`/
 `date`/`Time` exist in this dataset (grounding the stoplist choice in fact, not speculation) and that
 the proportion (well under 5%) feels proportionate — most real columns are specific enough
-(`Connection_ServiceProviderBrandName`, `location_gross_loss_amount`) that they will not spuriously
+(`Attr_LongDescriptiveName`, `location_gross_loss_amount`) that they will not spuriously
 match unrelated text. Note `WKT` lands in the low-confidence tier purely by the length≤3 rule despite
 being a structurally important, frequently-used column (`wktColumn`'s value) — that is expected and
 harmless: the confidence tier only ever applies to **free-SQL** matches; the structured `wktColumn`
@@ -413,15 +413,15 @@ identical JSON.
 **Warning signs:** A field with zero real instances that "seems like it should be excluded because it
 doesn't appear in the allow-list docstring" — that is exactly Finding 2.
 
-### Pitfall 3: Genuinely believing a case-insensitive double-hit (MCC/mcc) is a bug
+### Pitfall 3: Genuinely believing a case-insensitive double-hit (ABC/abc) is a bug
 
-**What goes wrong:** During implementation/testing, a fixture reproducing the MCC/mcc scenario
-produces two heuristic findings for the same SQL text (once when querying table 7's `MCC`, once for
-table 8's `mcc`), and this looks like a duplicate-detection bug.
+**What goes wrong:** During implementation/testing, a fixture reproducing the ABC/abc scenario
+produces two heuristic findings for the same SQL text (once when querying table 7's `ABC`, once for
+table 8's `abc`), and this looks like a duplicate-detection bug.
 **Why it happens:** It is the direct, intended consequence of the locked case-insensitive rule
 combined with "free-SQL findings assert no table" — there is no way to know from text alone which of
 two differently-cased, differently-tabled columns a case-insensitive match "really" means.
-**How to avoid:** Build the MCC/mcc fixture explicitly (Finding 6 above) as a test that asserts BOTH
+**How to avoid:** Build the ABC/abc fixture explicitly (Finding 6 above) as a test that asserts BOTH
 findings occur, so the behavior is documented and expected rather than "discovered" as a surprise
 during a later debugging session.
 
@@ -552,7 +552,7 @@ const persistedDynamicViewId = selectedSource?.kind === "dynamic"
 ## Metadata
 
 **Confidence breakdown:**
-- Adversarial sweep findings (Findings 1, 3, zero-instance list, exclude list, MCC/mcc collision):
+- Adversarial sweep findings (Findings 1, 3, zero-instance list, exclude list, ABC/abc collision):
   HIGH — directly queried from the dev DB, read-only, with exact counts reproduced above.
 - Finding 2 (`configPatch.info_columns`/`.info_template`): MEDIUM — code-verified (the validator
   demonstrably accepts these keys) but zero live instances to confirm the exact persisted shape in

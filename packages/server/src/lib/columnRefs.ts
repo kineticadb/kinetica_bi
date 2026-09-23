@@ -239,11 +239,11 @@ export const isLowConfidenceColumnName = (name: string): boolean =>
 /**
  * Whole-identifier, case-INSENSITIVE match, locked verbatim in 123-CONTEXT.md. Whole identifier,
  * never a bare substring — there are 248 substring pairs among the operator's 564 real columns
- * (`2G` in `2G_Layer`, `Date` in `Meta_CreatedDate`, `Connection_Band` in
- * `Connection_Bandwidth`). Case-INSENSITIVE, DELIBERATELY unlike Phase 122's case-SENSITIVE
+ * (`2G` in `2G_Layer`, `Date` in `Meta_CreatedDate`, `Attr_Band` in
+ * `Attr_Bandwidth`). Case-INSENSITIVE, DELIBERATELY unlike Phase 122's case-SENSITIVE
  * column-identity diff in `schemaDiff.ts`: "is this the same column?" and "does this text mention
  * it?" are two different questions. Widget 59's real `customWhere` reads `OPERATOR IN (...)` while
- * the column is `operator`; a case-sensitive scan would under-report on widgets that exist today.
+ * the column is `carrier`; a case-sensitive scan would under-report on widgets that exist today.
  * Do not unify the two.
  */
 export const columnMatchRegex = (columnName: string): RegExp => {
@@ -717,7 +717,7 @@ const visitColumnRefSites = (
     // widget.config.columns is a COMMA-SEPARATED string, not a single column — split on ",",
     // trim each token, skip empty tokens, compare each token EXACTLY (still case-sensitive). Path
     // stays "config.columns" (the field is the site; de-duplication in collectColumnRefs collapses
-    // a repeated token). Real value in the dev DB: widget 69's columns: "emirate" — a single
+    // a repeated token). Real value in the dev DB: widget 69's columns: "district" — a single
     // token, which is exactly why the multi-token behaviour needs its own explicitly-synthetic
     // test.
     if (typeof cfg.columns === "string" && cfg.columns.trim() !== "") {

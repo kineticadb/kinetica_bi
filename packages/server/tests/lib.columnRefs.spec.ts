@@ -180,8 +180,8 @@ describe("isLowConfidenceColumnName", () => {
   // The 26 real low-confidence names, from 123-RESEARCH.md (computed over the operator's
   // 564 real column names — 26/564 = 4.6%).
   const REAL_LOW_CONFIDENCE = [
-    "2G", "3G", "4G", "Date", "MCC", "MNC", "NAME", "Time", "WKT", "X", "Y", "alt", "date", "edt",
-    "eta", "ete", "fix", "gs", "lob", "mcc", "mnc", "name", "nic", "reg", "sil", "type",
+    "n1", "n2", "n3", "Date", "ABC", "DEF", "NAME", "Time", "WKT", "X", "Y", "alt", "date", "edt",
+    "eta", "ete", "fix", "gs", "lob", "abc", "def", "name", "nic", "reg", "sil", "type",
   ];
 
   it("classifies all 26 real low-confidence column names from the operator's tables as low-confidence", () => {
@@ -190,8 +190,8 @@ describe("isLowConfidenceColumnName", () => {
 
   it("classifies specific real column names as NOT low-confidence", () => {
     for (const n of [
-      "fare_amount", "vendor_id", "passenger_count", "Computed_Alias", "operator",
-      "pickup_latitude", "Connection_ServiceProviderBrandName", "ts_result_date",
+      "fare_amount", "vendor_id", "passenger_count", "Computed_Alias", "carrier",
+      "pickup_latitude", "Attr_LongDescriptiveName", "event_date",
     ]) {
       expect(isLowConfidenceColumnName(n)).toBe(false);
     }
@@ -265,21 +265,21 @@ describe("scanFreeSql", () => {
     expect(scanFreeSql("SELECT X, Y FROM demo.track", "X")).toHaveLength(1);
   });
 
-  it("matches case-insensitively: OPERATOR IN ('Etisalat', 'Du') matches the column operator", () => {
-    const text = "OPERATOR IN ('Etisalat', 'Du') and val_upload_kbps > 0 and mcc = '424'";
-    const matches = scanFreeSql(text, "operator");
+  it("matches case-insensitively: CARRIER IN ('AlphaCo', 'BetaCo') matches the column carrier", () => {
+    const text = "CARRIER IN ('AlphaCo', 'BetaCo') and metric_up_rate > 0 and abc = '424'";
+    const matches = scanFreeSql(text, "carrier");
     expect(matches).toHaveLength(1);
     expect(matches[0].line).toBe(text);
     expect(matches[0].offset).toBe(0);
   });
 
-  it("skips quoted literals: network in ('2G', '3G', '4G') yields no match for 2G", () => {
-    expect(scanFreeSql("network in ('2G', '3G', '4G')", "2G")).toEqual([]);
+  it("skips quoted literals: net in ('n1', 'n2', 'n3') yields no match for n1", () => {
+    expect(scanFreeSql("net in ('n1', 'n2', 'n3')", "n1")).toEqual([]);
   });
 
   it("fails toward REPORTING: an unterminated literal is scanned raw rather than masked away", () => {
-    const text = "WHERE name = 'oops mentions mcc but never closes";
-    const matches = scanFreeSql(text, "mcc");
+    const text = "WHERE name = 'oops mentions abc but never closes";
+    const matches = scanFreeSql(text, "abc");
     expect(matches).toHaveLength(1);
   });
 
@@ -309,12 +309,12 @@ describe("free-SQL sites", () => {
     sql: "SELECT vendor_id, AVG(fare_amount) AS value FROM demo.nyctaxi GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
     tableId: 1, drillDownColumn: "vendor_id", drillDownColumnType: "string",
   };
-  // widget 59 (type "timeline", tableId 8 = ookla_dash.new_mobile_base_k_vs2) — REAL
+  // widget 59 (type "timeline", tableId 8) — SYNTHETIC (shape modelled on a real widget; dataset names neutralised)
   const widget59CustomWhere =
-    "OPERATOR IN  ('Etisalat', 'Du') and val_upload_kbps > 0 and mcc = '424'";
+    "CARRIER IN  ('AlphaCo', 'BetaCo') and metric_up_rate > 0 and abc = '424'";
   // custom_metrics row 1 (table_id 8) — REAL
   const metric1: CustomMetricRow = {
-    id: 1, table_id: 8, label: "avg_ul_speed", expression: "AVG(val_upload_kbps/100)",
+    id: 1, table_id: 8, label: "avg_up_rate", expression: "AVG(metric_up_rate/100)",
     format_spec: null, created_at: "", updated_at: "",
   };
   // SYNTHETIC: a dv template that joins a second table and references its columns.
@@ -346,7 +346,7 @@ describe("free-SQL sites", () => {
       id: 59, title: "Ookla Timeline", type: "timeline", config: { customWhere: widget59CustomWhere },
     });
     const input = { ...emptyInput(), widgets: [widget] };
-    const refs = collectColumnRefs(input, { tableId: 8, columns: ["operator"] });
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["carrier"] });
     const hits = refs.filter((r) => r.site === "widget.config.customWhere");
     expect(hits).toHaveLength(1);
     expect(hits[0].path).toBe("config.customWhere");
@@ -356,16 +356,16 @@ describe("free-SQL sites", () => {
     expect(hits[0].matches[0].line).toBe(widget59CustomWhere);
   });
 
-  it("SITE customMetric.expression: AVG(val_upload_kbps/100) yields a heuristic finding for val_upload_kbps", () => {
+  it("SITE customMetric.expression: AVG(metric_up_rate/100) yields a heuristic finding for metric_up_rate", () => {
     const input = { ...emptyInput(), customMetrics: [metric1] };
-    const refs = collectColumnRefs(input, { tableId: 8, columns: ["val_upload_kbps"] });
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["metric_up_rate"] });
     const hits = refs.filter((r) => r.site === "customMetric.expression");
     expect(hits).toHaveLength(1);
     expect(hits[0]).toMatchObject({
       path: "expression",
       recordKind: "customMetric",
       recordId: 1,
-      recordLabel: "avg_ul_speed",
+      recordLabel: "avg_up_rate",
       confidence: "heuristic",
       tableScope: "free-sql",
       tableId: null,
@@ -406,7 +406,7 @@ describe("free-SQL sites", () => {
       tableViews: [view],
     };
     const refs = collectColumnRefs(input, {
-      tableId: 1, columns: ["vendor_id", "val_upload_kbps", "join_key_id"],
+      tableId: 1, columns: ["vendor_id", "metric_up_rate", "join_key_id"],
     });
     const freeSqlSet = new Set<string>(FREE_SQL_SITES);
     const freeSqlRefs = refs.filter((r) => freeSqlSet.has(r.site));
@@ -453,17 +453,17 @@ describe("free-SQL sites", () => {
     expect(vendorSqlHits[0].matches.length).toBe(2);
   });
 
-  it("SCOPE: the MCC/MNC vs mcc/mnc cross-table collision reports a heuristic finding for BOTH queries, by design", () => {
-    // Table 7 (ookla_dash.mobile_time_only_k_vs1) has MCC/MNC; table 8
-    // (ookla_dash.new_mobile_base_k_vs2) has mcc/mnc. Widget 59 is bound to table 8. This is the
+  it("SCOPE: the ABC/DEF vs abc/def cross-table collision reports a heuristic finding for BOTH queries, by design", () => {
+    // Table 7 (analytics.tbl_seven) has ABC/DEF; table 8
+    // (analytics.tbl_eight) has abc/def. Widget 59 is bound to table 8. This is the
     // direct, intended consequence of two already-locked decisions (case-insensitive matching +
     // free-SQL asserts no table) and is NOT a duplicate-detection bug — 123-RESEARCH.md Pitfall 3.
     const widget = makeWidget({
       id: 59, type: "timeline", config: { customWhere: widget59CustomWhere },
     });
     const input = { ...emptyInput(), widgets: [widget] };
-    const forTable7 = collectColumnRefs(input, { tableId: 7, columns: ["MCC"] });
-    const forTable8 = collectColumnRefs(input, { tableId: 8, columns: ["mcc"] });
+    const forTable7 = collectColumnRefs(input, { tableId: 7, columns: ["ABC"] });
+    const forTable8 = collectColumnRefs(input, { tableId: 8, columns: ["abc"] });
     expect(forTable7.filter((r) => r.site === "widget.config.customWhere")).toHaveLength(1);
     expect(forTable8.filter((r) => r.site === "widget.config.customWhere")).toHaveLength(1);
     // Both are table-less: neither claims widget 59 belongs to the queried table.
@@ -473,7 +473,7 @@ describe("free-SQL sites", () => {
   it("a low-confidence column name in free SQL is reported, not suppressed", () => {
     const widget = makeWidget({ id: 59, config: { customWhere: widget59CustomWhere } });
     const input = { ...emptyInput(), widgets: [widget] };
-    const refs = collectColumnRefs(input, { tableId: 8, columns: ["mcc"] });
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["abc"] });
     const hit = refs.find((r) => r.site === "widget.config.customWhere");
     expect(hit).toBeDefined();
     expect(hit?.confidence).toBe("low-confidence");
@@ -492,7 +492,7 @@ describe("free-SQL sites", () => {
     const widgetB = makeWidget({ id: 59, config: { customWhere: widget59CustomWhere } });
     const inputForward = { ...emptyInput(), widgets: [widgetA, widgetB] };
     const inputReversed = { ...emptyInput(), widgets: [widgetB, widgetA] };
-    const columns = ["fare_amount", "operator", "vendor_id"];
+    const columns = ["fare_amount", "carrier", "vendor_id"];
     const resultForward = collectColumnRefs(inputForward, { tableId: 1, columns });
     const resultReversed = collectColumnRefs(inputReversed, { tableId: 1, columns });
     expect(resultForward).toEqual(resultReversed);
@@ -615,10 +615,10 @@ describe("widget structured sites — scalars", () => {
     metrics: [{ column: "", aggregation: "SUM", color: "FF66C2A5", label: "", metricId: 9 }],
     colorTheme: "Set2", tableId: 1, groupByColumn: "vendor_id",
   };
-  // widget 69, type "table", tableId 8 (ookla_dash.new_mobile_base_k_vs2) — REAL
+  // widget 69, type "table", tableId 8) — SYNTHETIC (shape modelled on a real widget; dataset names neutralised)
   const widget69Config = {
-    columns: "emirate", customWhere: "", sortField: "",
-    table: "ookla_dash.new_mobile_base_k_vs2", metricColumn: "ts_result_month", tableId: 8,
+    columns: "district", customWhere: "", sortField: "",
+    table: "analytics.tbl_eight", metricColumn: "event_month", tableId: 8,
   };
 
   it("SITE widget.config.metricColumn: widget 4's metricColumn fare_amount is an exact, table-1-scoped finding", () => {
@@ -692,22 +692,22 @@ describe("widget structured sites — scalars", () => {
     expect(hit?.path).toBe("config.sortField");
   });
 
-  it("SITE widget.config.columns: widget 69's columns string emirate is an exact finding", () => {
+  it("SITE widget.config.columns: a single-entry columns string is an exact finding", () => {
     const widget = makeWidget({ id: 69, type: "table", config: widget69Config });
     const input = { ...emptyInput(), widgets: [widget] };
-    const refs = collectColumnRefs(input, { tableId: 8, columns: ["emirate"] });
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["district"] });
     const hit = refs.find((r) => r.site === "widget.config.columns");
     expect(hit?.path).toBe("config.columns");
     expect(hit?.tableId).toBe(8);
     expect(hit?.confidence).toBe("exact");
   });
 
-  it("the comma-separated columns string splits and trims: \"emirate, operator ,cluster\" finds all three", () => {
+  it("the comma-separated columns string splits and trims: \"district, carrier ,cluster\" finds all three", () => {
     const widget = makeWidget({
-      id: 70, type: "table", config: { columns: "emirate, operator ,cluster", tableId: 8 },
+      id: 70, type: "table", config: { columns: "district, carrier ,cluster", tableId: 8 },
     });
     const input = { ...emptyInput(), widgets: [widget] };
-    for (const col of ["emirate", "operator", "cluster"]) {
+    for (const col of ["district", "carrier", "cluster"]) {
       const refs = collectColumnRefs(input, { tableId: 8, columns: [col] });
       const hit = refs.find((r) => r.site === "widget.config.columns");
       expect(hit?.column).toBe(col);
@@ -723,10 +723,10 @@ describe("widget structured sites — scalars", () => {
     expect(refs).toEqual([]);
   });
 
-  it("structured matching is case-SENSITIVE: querying MCC does not match a widget whose groupByColumn is mcc", () => {
-    const widget = makeWidget({ id: 72, config: { groupByColumn: "mcc", tableId: 8 } });
+  it("structured matching is case-SENSITIVE: querying ABC does not match a widget whose groupByColumn is abc", () => {
+    const widget = makeWidget({ id: 72, config: { groupByColumn: "abc", tableId: 8 } });
     const input = { ...emptyInput(), widgets: [widget] };
-    const refs = collectColumnRefs(input, { tableId: 8, columns: ["MCC"] });
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["ABC"] });
     expect(refs.filter((r) => r.site === "widget.config.groupByColumn")).toEqual([]);
   });
 
@@ -825,17 +825,17 @@ describe("widget structured sites — arrays", () => {
     drillDownColumn: "", drillDownColumnType: "null",
   };
 
-  it("SITE widget.config.groupByColumns[]: widget 60's [emirate, operator] yields one finding per element, each with its own index path", () => {
+  it("SITE widget.config.groupByColumns[]: widget 60's [district, carrier] yields one finding per element, each with its own index path", () => {
     const widget = makeWidget({
       id: 60, type: "bar",
-      config: { groupByColumns: ["emirate", "operator"], customWhere: "", colorTheme: "", tableId: 8 },
+      config: { groupByColumns: ["district", "carrier"], customWhere: "", colorTheme: "", tableId: 8 },
     });
     const input = { ...emptyInput(), widgets: [widget] };
-    const refsEmirate = collectColumnRefs(input, { tableId: 8, columns: ["emirate"] });
-    const hitEmirate = refsEmirate.find((r) => r.site === "widget.config.groupByColumns[]");
+    const refsDistrict = collectColumnRefs(input, { tableId: 8, columns: ["district"] });
+    const hitEmirate = refsDistrict.find((r) => r.site === "widget.config.groupByColumns[]");
     expect(hitEmirate?.path).toBe("config.groupByColumns[0]");
-    const refsOperator = collectColumnRefs(input, { tableId: 8, columns: ["operator"] });
-    const hitOperator = refsOperator.find((r) => r.site === "widget.config.groupByColumns[]");
+    const refsCarrier = collectColumnRefs(input, { tableId: 8, columns: ["carrier"] });
+    const hitOperator = refsCarrier.find((r) => r.site === "widget.config.groupByColumns[]");
     expect(hitOperator?.path).toBe("config.groupByColumns[1]");
   });
 
@@ -865,15 +865,15 @@ describe("widget structured sites — arrays", () => {
       id: 25, type: "datafilter",
       config: {
         filterFields: [
-          { column: "Connection_Category", kind: "multi-select" },
+          { column: "Attr_Category", kind: "multi-select" },
           { column: "Location_City", kind: "dropdown" },
-          { column: "Connection_Technology", kind: "multi-select" },
+          { column: "Attr_Technology", kind: "multi-select" },
         ],
         tableId: 6, tableRef: "telecom.demodata", drillDownColumn: "",
       },
     });
     const input = { ...emptyInput(), widgets: [widget] };
-    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Connection_Technology"] });
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Attr_Technology"] });
     const hit = refs.find((r) => r.site === "widget.config.filterFields[].column");
     expect(hit?.path).toBe("config.filterFields[2].column");
   });
@@ -1588,42 +1588,42 @@ describe("configPatch.metric and column display config", () => {
     ).toEqual([]);
   });
 
-  it("SITE columnDisplayConfig.column_name: the real row (table 6, Device_Manufacturer) yields an exact finding", () => {
+  it("SITE columnDisplayConfig.column_name: the real row (table 6, Item_Manufacturer) yields an exact finding", () => {
     // REAL — dev DB row.
     const row = {
-      table_id: 6, column_name: "Device_Manufacturer", label: "Device Manufacture Label",
+      table_id: 6, column_name: "Item_Manufacturer", label: "Item Manufacturer Label",
       format_spec: null, created_at: "", updated_at: "",
     };
     const input = makeInput({ columnDisplayConfig: [row] });
-    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Device_Manufacturer"] });
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Item_Manufacturer"] });
     const hit = refs.find((r) => r.site === "columnDisplayConfig.column_name");
     expect(hit?.recordId).toBeNull();
-    expect(hit?.recordLabel).toBe("Device_Manufacturer");
+    expect(hit?.recordLabel).toBe("Item_Manufacturer");
     expect(hit?.tableId).toBe(6);
     expect(hit?.path).toBe("column_name");
   });
 
   it("a columnDisplayConfig finding has recordId null and is identified by (tableId, recordLabel)", () => {
     const row = {
-      table_id: 6, column_name: "Device_Manufacturer", label: null,
+      table_id: 6, column_name: "Item_Manufacturer", label: null,
       format_spec: null, created_at: "", updated_at: "",
     };
     const input = makeInput({ columnDisplayConfig: [row] });
-    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Device_Manufacturer"] });
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Item_Manufacturer"] });
     const hit = refs.find((r) => r.site === "columnDisplayConfig.column_name");
     expect(hit?.recordId).toBeNull();
     expect(hit?.recordKind).toBe("columnDisplayConfig");
     expect(hit?.tableId).toBe(6);
-    expect(hit?.recordLabel).toBe("Device_Manufacturer");
+    expect(hit?.recordLabel).toBe("Item_Manufacturer");
   });
 
   it("a columnDisplayConfig row on a different table yields no finding", () => {
     const row = {
-      table_id: 6, column_name: "Device_Manufacturer", label: "x",
+      table_id: 6, column_name: "Item_Manufacturer", label: "x",
       format_spec: null, created_at: "", updated_at: "",
     };
     const input = makeInput({ columnDisplayConfig: [row] });
-    const refs = collectColumnRefs(input, { tableId: 1, columns: ["Device_Manufacturer"] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["Item_Manufacturer"] });
     expect(refs.filter((r) => r.site === "columnDisplayConfig.column_name")).toEqual([]);
   });
 

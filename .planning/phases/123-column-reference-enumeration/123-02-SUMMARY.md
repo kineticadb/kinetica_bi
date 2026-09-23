@@ -115,7 +115,7 @@ Rules, in order (do not reorder): (1) `config.dynamicViewId` present and resolve
 | `spatialTargets[].lonCol`/`.latCol` | widget 1 (real, tables 1 & 3) | REAL |
 | `deltaField` | synthetic bignumber widget | **SYNTHETIC** — every real bignumber widget has `deltaField: ""` |
 | `sortField` | synthetic records widget | **SYNTHETIC** — every real records widget has `sortField: ""` |
-| `columns` (multi-token split) | synthetic `"emirate, operator ,cluster"` | **SYNTHETIC** — the only real value (widget 69) is a single token |
+| `columns` (multi-token split) | synthetic `"district, carrier ,cluster"` | **SYNTHETIC** — the only real value (widget 69) is a single token |
 | dangling-dv table resolution | synthetic widget, `dynamicViewId: 4242` | **SYNTHETIC** — every real dv reference in the dev DB resolves |
 | `spatialTargets[].spatialCol` | synthetic wkt-mode target | **SYNTHETIC** — zero wkt-mode targets and zero `spatialCol` values in either database |
 
@@ -145,7 +145,7 @@ Each probe was applied to the committed source, the named test confirmed to redd
 | P16 | Make spatialTargets elements inherit the widget's `resolved` instead of their own `tableId` | SCOPE: a spatialTargets element resolves against its OWN tableId, never the widget's | reddened (widget 1 has no `config.tableId` -> inherited `resolved` is `unresolved` -> `tableId: null` where `3` was expected) |
 | P17 | In `resolveWidgetTableId`, check `config.tableId` FIRST | SCOPE: a dv-bound widget resolves through the dynamic view's source_table_id, not config.tableId | reddened (finding vanished for table 4, the dv's true table, because `config.tableId: 1` won instead) |
 | P18 | On a dangling `dynamicViewId`, fall back to `config.tableId` | SCOPE: a widget whose dynamicViewId is dangling is reported with tableScope 'unresolved' ... | reddened (finding became `scoped` to the cached `tableId: 1` and vanished for the queried table 7) |
-| P19 | Make structured matching case-insensitive | structured matching is case-SENSITIVE: querying MCC does not match a widget whose groupByColumn is mcc | reddened (a spurious `scoped`/`exact` finding appeared) |
+| P19 | Make structured matching case-insensitive | structured matching is case-SENSITIVE: querying ABC does not match a widget whose groupByColumn is abc | reddened (a spurious `scoped`/`exact` finding appeared) |
 | P20 | Add a generic fallback comparing every string value in `config` against the queried column | EXCLUDE: a widget config with the queried column name planted under EVERY excluded key yields zero findings | reddened (a spurious finding appeared at a fabricated `config.__generic__` path) |
 
 ## Non-Discriminating Acceptance Criterion (per CLAUDE.md — reported, not gamed)

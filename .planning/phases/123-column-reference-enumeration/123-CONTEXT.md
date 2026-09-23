@@ -36,19 +36,19 @@ Three properties, each forced by real data in the operator's own database:
 
 1. **Whole identifier, never a bare substring.** There are **564 distinct columns across registered
    tables and 248 substring pairs** among them — `2G` ⊂ `2G_Layer`, `Date` ⊂ `Meta_CreatedDate`,
-   `Connection_Band` ⊂ `Connection_Bandwidth`, `Connection_ServiceProvider` ⊂
-   `Connection_ServiceProviderBrandName`. Substring matching would be worse than useless.
+   `Attr_Band` ⊂ `Attr_Bandwidth`, `Attr_ServiceProvider` ⊂
+   `Attr_LongDescriptiveName`. Substring matching would be worse than useless.
    Worked examples for column `X`: matches `SELECT X, Y FROM demo.track`; does NOT match
    `H3_XYTOCELL(...)` (no boundary), `max(fare_amount)` (inside a word), or `X_COORD` (followed by `_`).
 2. **Case-INSENSITIVE — deliberately different from Phase 122's diff.** Phase 122 locked
    case-SENSITIVE exact matching for column identity, and that stands. But the operator's own SQL
    does not match their column case: widget 59's `customWhere` reads
-   `OPERATOR IN ('Etisalat','Du') and val_upload_kbps > 0` while the column is `operator`. A
+   `CARRIER IN ('AlphaCo','BetaCo') and metric_up_rate > 0` while the column is `carrier`. A
    case-sensitive scan would under-report on real widgets that exist today. **These are two
    different questions — "is this the same column?" (sensitive) vs "does this text mention it?"
    (insensitive) — and the plan must not "unify" them.**
 3. **Skip quoted string literals.** Widget 73's `customWhere` is
-   `network in ('2G', '3G', '4G')` — and `2G`, `3G` and `4G` are all real column names. Without
+   `net in ('n1', 'n2', 'n3')` — and `2G`, `3G` and `4G` are all real column names. Without
    literal-skipping that one widget yields three false findings.
 
 ### Free-SQL sites scanned — all five, INCLUDING the generated `config.sql`
@@ -131,12 +131,12 @@ operator to skim. The third tier lets Phase 124 separate or collapse them visual
 stays complete.
 
 Real examples from the operator's tables — short: `X`, `Y`, `gs`, `fix`, `eta`, `alt`, `reg`, `lob`,
-`nic`, `sil`, `MCC`, `MNC`, `2G`, `3G`, `4G`; common-word: `Date`, `date`, `NAME`, `name`, `type`,
+`nic`, `sil`, `ABC`, `DEF`, `2G`, `3G`, `4G`; common-word: `Date`, `date`, `NAME`, `name`, `type`,
 `Time`.
 
 ### Every heuristic finding carries the matched line and a character offset
 
-**Locked.** A finding on `operator` shows `OPERATOR IN ('Etisalat','Du') and val_upload_kbps > 0`,
+**Locked.** A finding on `carrier` shows `CARRIER IN ('AlphaCo','BetaCo') and metric_up_rate > 0`,
 not merely "widget 59's customWhere mentions it". This is what makes the low-confidence tier
 affordable: a wrong hit on `Date` displays `WHERE Meta_CreatedDate > ...` and is dismissed at a
 glance instead of costing a context switch into the widget.
@@ -145,9 +145,9 @@ Include the character offset of the match as well as the line, so Phase 124 can 
 
 ### A real cross-table case collision exists — intended consequence, not a bug
 
-Table 7 has columns `MCC`/`MNC`; table 8 has `mcc`/`mnc`. They are different columns on different
+Table 7 has columns `ABC`/`DEF`; table 8 has `abc`/`def`. They are different columns on different
 tables. Because free-SQL matching is case-INSENSITIVE (locked above, and required by the operator's
-own `OPERATOR`/`operator` data), a scan for one will legitimately also fire on the other table's
+own `OPERATOR`/`carrier` data), a scan for one will legitimately also fire on the other table's
 widgets' `customWhere` text.
 
 This follows directly from two decisions that are each correct on their own — case-insensitive text

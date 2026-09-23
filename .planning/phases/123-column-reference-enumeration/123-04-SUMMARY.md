@@ -310,7 +310,7 @@ All 54 were re-applied (via a scripted apply → run → revert cycle, never tou
 | P5 | Delete `tableView.filter_clause` block | SITE tableView.filter_clause | ✅ |
 | P6 | Delete `dynamicView.columns_json[].name` block | SITE dynamicView.columns_json[].name | ✅ |
 | P7 | Remove one entry from COLUMN_REF_SITES | GOLDEN: registry exactly 40, in order | ✅ (harness fix: disambiguated search anchor, shared text also appears in FREE_SQL_SITES) |
-| P8 | Drop the `i` flag from columnMatchRegex | matches case-insensitively: OPERATOR IN | ✅ |
+| P8 | Drop the `i` flag from columnMatchRegex | matches case-insensitively: CARRIER IN | ✅ |
 | P9 | Drop the lookaround (bare substring match) | does not match a substring: X does not match | ✅ (harness fix: template-literal escaping bug produced a malformed mutation that failed to transform; root-caused via byte-level reproduction, fixed in the runner) |
 | P10 | Skip maskQuotedLiterals entirely | skips quoted literals: network in | ✅ |
 | P11 | Make maskQuotedLiterals DELETE literal chars | matches a whole identifier and reports line/offset | ✅ |
@@ -332,7 +332,7 @@ All 54 were re-applied (via a scripted apply → run → revert cycle, never tou
 | P16 | spatialTargets inherit widget's resolved instead of own tableId | SCOPE: spatialTargets resolves against OWN tableId | ✅ |
 | P17 | resolveWidgetTableId checks config.tableId FIRST | SCOPE: dv-bound resolves through dv's source_table_id | ✅ |
 | P18 | Dangling dynamicViewId falls back to config.tableId | SCOPE: dangling dynamicViewId reported unresolved | ✅ |
-| P19 | Make structured matching case-insensitive | structured matching is case-SENSITIVE (MCC/mcc) | ✅ |
+| P19 | Make structured matching case-insensitive | structured matching is case-SENSITIVE (ABC/abc) | ✅ |
 | P20 | Generic fallback over every config string value | EXCLUDE: widget lookalike-key fixture yields zero | ✅ |
 
 **Plan 123-03 (17 probes) — all fired:**
