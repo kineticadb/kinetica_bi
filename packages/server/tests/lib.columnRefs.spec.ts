@@ -9,7 +9,70 @@ import {
   columnMatchRegex,
   maskQuotedLiterals,
   scanFreeSql,
+  collectColumnRefs,
+  type ColumnRefsInput,
 } from "../src/lib/columnRefs";
+import type {
+  Widget,
+  DashboardDynamicView,
+  CustomMetricRow,
+  DashboardTableView,
+} from "../src/types";
+
+// -----------------------------------------------------------------------------------------------
+// Fixture helpers — keep test bodies focused on the behaviour under test.
+// -----------------------------------------------------------------------------------------------
+
+const emptyInput = (): ColumnRefsInput => ({
+  widgets: [],
+  layers: [],
+  dynamicViews: [],
+  customMetrics: [],
+  tableViews: [],
+  columnDisplayConfig: [],
+});
+
+const makeWidget = (overrides: Partial<Widget> & { id: number }): Widget => ({
+  dashboard_id: 1,
+  title: "Widget",
+  type: "table",
+  position: 0,
+  config: {},
+  created_at: "",
+  updated_at: "",
+  ...overrides,
+});
+
+const makeDv = (
+  overrides: Partial<DashboardDynamicView> & { id: number },
+): DashboardDynamicView => ({
+  dashboard_id: 1,
+  source_table_id: 1,
+  name: "dv",
+  template_sql: "",
+  max_records: 10000,
+  columns_json: null,
+  created_at: "",
+  updated_at: "",
+  ...overrides,
+});
+
+const makeTableView = (
+  overrides: Partial<DashboardTableView> & { id: number },
+): DashboardTableView => ({
+  dashboard_id: 1,
+  table_id: 1,
+  view_name: "view",
+  filter_clause: "",
+  status: "created",
+  created_at: "",
+  updated_at: "",
+  ...overrides,
+});
+
+// -----------------------------------------------------------------------------------------------
+// Golden site registry
+// -----------------------------------------------------------------------------------------------
 
 describe("COLUMN_REF_SITES", () => {
   it("GOLDEN: the site registry is exactly the 40 inventoried sites, in order", () => {
@@ -151,8 +214,8 @@ describe("maskQuotedLiterals", () => {
 
 describe("scanFreeSql", () => {
   it("matches a whole identifier and reports its line, 1-based line number and 0-based offset within that line", () => {
-    // The literal `'ignore'` earlier on the same line is deliberate: masking it must preserve the
-    // TEXT'S LENGTH (spaces, not deletion) for the offset of `x` afterward to stay correct.
+    // The literal `\'ignore\'` earlier on the same line is deliberate: masking it must preserve the
+    // TEXT\'S LENGTH (spaces, not deletion) for the offset of `x` afterward to stay correct.
     const text = "SELECT a\nFROM t WHERE name = 'ignore' AND x = 1";
     const matches = scanFreeSql(text, "x");
     expect(matches).toEqual([
@@ -197,5 +260,208 @@ describe("scanFreeSql", () => {
     const re = columnMatchRegex("x");
     expect("SELECT X FROM t".match(re)).toEqual(["X"]);
     expect("X_COORD".match(re)).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
+// The five free-SQL sites + collectColumnRefs semantics
+// -----------------------------------------------------------------------------------------------
+
+describe("free-SQL sites", () => {
+  // widget 4 (type "table", tableId 1 = demo.nyctaxi) — REAL
+  const widget4Config = {
+    customWhere: "", groupByColumns: [], columns: "", sortField: "",
+    table: "demo.nyctaxi", metricColumn: "fare_amount", aggregation: "AVG",
+    groupByColumn: "vendor_id",
+    sql: "SELECT vendor_id, AVG(fare_amount) AS value FROM demo.nyctaxi GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    tableId: 1, drillDownColumn: "vendor_id", drillDownColumnType: "string",
+  };
+  // widget 59 (type "timeline", tableId 8 = ookla_dash.new_mobile_base_k_vs2) — REAL
+  const widget59CustomWhere =
+    "OPERATOR IN  ('Etisalat', 'Du') and val_upload_kbps > 0 and mcc = '424'";
+  // custom_metrics row 1 (table_id 8) — REAL
+  const metric1: CustomMetricRow = {
+    id: 1, table_id: 8, label: "avg_ul_speed", expression: "AVG(val_upload_kbps/100)",
+    format_spec: null, created_at: "", updated_at: "",
+  };
+  // dynamic view 1 "FF" (source_table_id 4) — REAL (abbreviated template)
+  const dvFFTemplate =
+    "-- FF Slice\nWITH peril_filtered_base_table AS (\n    SELECT b.*\n" +
+    "FROM {view} a \n join vaipr.vaipr_location_exposure b on a.vaipr_location_id = b.vaipr_location_id\n)";
+
+  it("SITE widget.config.sql: a generated SQL string mentioning the column yields one heuristic, table-less finding", () => {
+    const widget = makeWidget({ id: 4, title: "Fare by Vendor", config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hits = refs.filter((r) => r.site === "widget.config.sql");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      column: "fare_amount",
+      path: "config.sql",
+      recordKind: "widget",
+      recordId: 4,
+      recordLabel: "Fare by Vendor",
+      tableId: null,
+      tableScope: "free-sql",
+      confidence: "heuristic",
+    });
+    expect(hits[0].matches.length).toBeGreaterThan(0);
+  });
+
+  it("SITE widget.config.customWhere: widget 59's real customWhere yields a heuristic finding for operator", () => {
+    const widget = makeWidget({
+      id: 59, title: "Ookla Timeline", type: "timeline", config: { customWhere: widget59CustomWhere },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["operator"] });
+    const hits = refs.filter((r) => r.site === "widget.config.customWhere");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].path).toBe("config.customWhere");
+    expect(hits[0].confidence).toBe("heuristic");
+    expect(hits[0].tableScope).toBe("free-sql");
+    expect(hits[0].tableId).toBeNull();
+    expect(hits[0].matches[0].line).toBe(widget59CustomWhere);
+  });
+
+  it("SITE customMetric.expression: AVG(val_upload_kbps/100) yields a heuristic finding for val_upload_kbps", () => {
+    const input = { ...emptyInput(), customMetrics: [metric1] };
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["val_upload_kbps"] });
+    const hits = refs.filter((r) => r.site === "customMetric.expression");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      path: "expression",
+      recordKind: "customMetric",
+      recordId: 1,
+      recordLabel: "avg_ul_speed",
+      confidence: "heuristic",
+      tableScope: "free-sql",
+      tableId: null,
+    });
+  });
+
+  it("SITE dynamicView.template_sql: a joined template mentioning a column yields a heuristic finding", () => {
+    const dv = makeDv({
+      id: 1, name: "FF", source_table_id: 4, template_sql: dvFFTemplate, columns_json: null,
+    });
+    const input = { ...emptyInput(), dynamicViews: [dv] };
+    const refs = collectColumnRefs(input, { tableId: 5, columns: ["vaipr_location_id"] });
+    const hits = refs.filter((r) => r.site === "dynamicView.template_sql");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].path).toBe("template_sql");
+    expect(hits[0].tableId).toBeNull();
+    expect(hits[0].tableScope).toBe("free-sql");
+  });
+
+  it("SITE tableView.filter_clause: a populated filter_clause yields a heuristic finding (SYNTHETIC — zero instances in either database)", () => {
+    const view = makeTableView({ id: 1, view_name: "Filtered View", filter_clause: "vendor_id = 'CMT'" });
+    const input = { ...emptyInput(), tableViews: [view] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hits = refs.filter((r) => r.site === "tableView.filter_clause");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].path).toBe("filter_clause");
+    expect(hits[0].recordLabel).toBe("Filtered View");
+  });
+
+  it("every FREE_SQL_SITES finding has tableScope 'free-sql', tableId null and at least one match", () => {
+    const widget = makeWidget({ id: 4, config: widget4Config });
+    const dv = makeDv({
+      id: 1, name: "FF", source_table_id: 4, template_sql: dvFFTemplate, columns_json: null,
+    });
+    const view = makeTableView({ id: 1, filter_clause: "vendor_id = 'CMT'" });
+    const input = {
+      ...emptyInput(), widgets: [widget], customMetrics: [metric1], dynamicViews: [dv],
+      tableViews: [view],
+    };
+    const refs = collectColumnRefs(input, {
+      tableId: 1, columns: ["vendor_id", "val_upload_kbps", "vaipr_location_id"],
+    });
+    const freeSqlSet = new Set<string>(FREE_SQL_SITES);
+    const freeSqlRefs = refs.filter((r) => freeSqlSet.has(r.site));
+    expect(freeSqlRefs.length).toBeGreaterThan(0);
+    for (const ref of freeSqlRefs) {
+      expect(ref.tableScope).toBe("free-sql");
+      expect(ref.tableId).toBeNull();
+      expect(ref.matches.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("a widget produces BOTH an exact-site finding and a config.sql finding for the same column, with different paths", () => {
+    // NOTE (123-01 scope, flagged in 123-01-SUMMARY.md): structured "exact" sites (e.g.
+    // widget.config.metricColumn) are implemented in Plan 123-02, not this plan — see
+    // visitColumnRefSites's numbered TODOs. As written, this test cannot yet assert a real
+    // "exact" ColumnRef, because no exact-site block exists in the traversal until 123-02 lands.
+    // Per CLAUDE.md ("if a criterion cannot discriminate... verify the real requirement
+    // directly"), this test instead verifies the structural guarantee this plan DOES ship for
+    // that future finding: "config.metricColumn" and "config.sql" are reserved as distinct,
+    // non-colliding COLUMN_REF_SITES path conventions, and the config.sql heuristic finding this
+    // plan implements already fires independently. Once 123-02 lands, widget4Config's
+    // metricColumn="fare_amount" will additionally produce an exact finding at
+    // "config.metricColumn" for the SAME column — the CONTEXT.md-locked "operator chose
+    // completeness over a quieter report" consequence that Phase 124 must group by record for
+    // display (see the SUMMARY's Phase-124 note).
+    expect(COLUMN_REF_SITES).toContain("widget.config.metricColumn");
+    expect(COLUMN_REF_SITES).toContain("widget.config.sql");
+
+    const widget = makeWidget({ id: 4, title: "Fare by Vendor", config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const sqlHit = refs.find((r) => r.site === "widget.config.sql");
+    expect(sqlHit).toBeDefined();
+    expect(sqlHit?.path).toBe("config.sql");
+    expect(sqlHit?.path).not.toBe("config.metricColumn");
+
+    // Granularity is one finding per SITE, not one per occurrence (locked in 123-CONTEXT.md):
+    // widget4Config.sql mentions "vendor_id" TWICE ("SELECT vendor_id, ... GROUP BY vendor_id").
+    // A correct implementation collapses both occurrences into the SAME ColumnRef, carrying both
+    // matches — never two separate config.sql findings for the same column.
+    const vendorRefs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const vendorSqlHits = vendorRefs.filter((r) => r.site === "widget.config.sql");
+    expect(vendorSqlHits).toHaveLength(1);
+    expect(vendorSqlHits[0].matches.length).toBe(2);
+  });
+
+  it("SCOPE: the MCC/MNC vs mcc/mnc cross-table collision reports a heuristic finding for BOTH queries, by design", () => {
+    // Table 7 (ookla_dash.mobile_time_only_k_vs1) has MCC/MNC; table 8
+    // (ookla_dash.new_mobile_base_k_vs2) has mcc/mnc. Widget 59 is bound to table 8. This is the
+    // direct, intended consequence of two already-locked decisions (case-insensitive matching +
+    // free-SQL asserts no table) and is NOT a duplicate-detection bug — 123-RESEARCH.md Pitfall 3.
+    const widget = makeWidget({
+      id: 59, type: "timeline", config: { customWhere: widget59CustomWhere },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const forTable7 = collectColumnRefs(input, { tableId: 7, columns: ["MCC"] });
+    const forTable8 = collectColumnRefs(input, { tableId: 8, columns: ["mcc"] });
+    expect(forTable7.filter((r) => r.site === "widget.config.customWhere")).toHaveLength(1);
+    expect(forTable8.filter((r) => r.site === "widget.config.customWhere")).toHaveLength(1);
+    // Both are table-less: neither claims widget 59 belongs to the queried table.
+    expect(forTable7[0].tableScope).toBe("free-sql");
+  });
+
+  it("a low-confidence column name in free SQL is reported, not suppressed", () => {
+    const widget = makeWidget({ id: 59, config: { customWhere: widget59CustomWhere } });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["mcc"] });
+    const hit = refs.find((r) => r.site === "widget.config.customWhere");
+    expect(hit).toBeDefined();
+    expect(hit?.confidence).toBe("low-confidence");
+  });
+
+  it("collectColumnRefs returns [] for a column that appears nowhere", () => {
+    const widget = makeWidget({ id: 4, config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    expect(collectColumnRefs(input, { tableId: 1, columns: ["totally_absent_column_xyz"] })).toEqual(
+      [],
+    );
+  });
+
+  it("collectColumnRefs output is deterministic and stable across input array reordering", () => {
+    const widgetA = makeWidget({ id: 4, config: widget4Config });
+    const widgetB = makeWidget({ id: 59, config: { customWhere: widget59CustomWhere } });
+    const inputForward = { ...emptyInput(), widgets: [widgetA, widgetB] };
+    const inputReversed = { ...emptyInput(), widgets: [widgetB, widgetA] };
+    const columns = ["fare_amount", "operator", "vendor_id"];
+    const resultForward = collectColumnRefs(inputForward, { tableId: 1, columns });
+    const resultReversed = collectColumnRefs(inputReversed, { tableId: 1, columns });
+    expect(resultForward).toEqual(resultReversed);
   });
 });

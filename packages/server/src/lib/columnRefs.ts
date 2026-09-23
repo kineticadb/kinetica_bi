@@ -305,3 +305,218 @@ export const scanFreeSql = (text: string, columnName: string): ColumnRefMatch[] 
   return matches;
 };
 
+// -------------------------------------------------------------------------------------------
+// collectColumnRefs / visitColumnRefSites — Task 2 (five free-SQL sites). Task 3 (this same plan)
+// adds a sixth block, dynamicView.columns_json[].name, right after these. The remaining 34 sites
+// arrive in Plans 123-02/03/04 — each is a numbered TODO below naming the plan that owns it.
+// Adding a site means adding exactly one
+// block inside `visitColumnRefSites` plus one entry in `COLUMN_REF_SITES` above — there is no
+// second list to forget, mirroring `dashboardExportRefs.ts`'s REF-1..REF-9 discipline (that module
+// is inherited-from conceptually, never imported — see the header comment).
+// -------------------------------------------------------------------------------------------
+
+const RECORD_KIND_ORDER: readonly ColumnRefRecordKind[] = [
+  "widget", "layer", "customMetric", "dynamicView", "tableView", "columnDisplayConfig",
+];
+
+/**
+ * Shared free-SQL emitter, used by all five FREE_SQL_SITES blocks below.
+ * - Skips when `text` is null/undefined/empty or when `column` is empty.
+ * - Emits EXACTLY ONE ColumnRef carrying ALL matches — one finding per reference SITE (locked),
+ *   never one per occurrence.
+ * - `tableId: null`, `tableScope: "free-sql"` — ALWAYS. A free-SQL finding never claims a table.
+ *   Forced by real data: dynamic-view templates join tables the app never registered through the
+ *   view's own bound table, through aliases (`FROM {view} a join vaipr.vaipr_location_exposure b
+ *   on ...` — a DIFFERENT REGISTERED table, id 5, not the dv's own source_table_id 4), so
+ *   attributing a match there to the view's own bound table would often simply be wrong.
+ * - `confidence`: `low-confidence` when `isLowConfidenceColumnName(column)`, else `heuristic`.
+ */
+const emitFreeSql = (args: {
+  text: string | null | undefined;
+  site: ColumnRefSite;
+  path: string;
+  recordKind: ColumnRefRecordKind;
+  recordId: number | null;
+  recordLabel: string;
+  column: string;
+  emit: (ref: ColumnRef) => void;
+}): void => {
+  const { text, site, path, recordKind, recordId, recordLabel, column, emit } = args;
+  if (!text || !column) return;
+  const matches = scanFreeSql(text, column);
+  if (matches.length === 0) return;
+  emit({
+    column,
+    site,
+    path,
+    recordKind,
+    recordId,
+    recordLabel,
+    tableId: null,
+    tableScope: "free-sql",
+    confidence: isLowConfidenceColumnName(column) ? "low-confidence" : "heuristic",
+    matches,
+  });
+};
+
+/**
+ * Walk every record in `input` once, testing every queried column (`query.columns`, empty entries
+ * skipped) at each site this plan implements, and call `emit` per site hit. This is the ONLY place
+ * these sites are enumerated; `collectColumnRefs` drives it with a collecting visitor.
+ */
+const visitColumnRefSites = (
+  input: ColumnRefsInput,
+  query: ColumnQuery,
+  emit: (ref: ColumnRef) => void,
+): void => {
+  const columns = query.columns.filter((c) => c.length > 0);
+  if (columns.length === 0) return;
+
+  // TODO(123-02): widget.config.metricColumn, groupByColumn, groupByColumns[], drillDownColumn,
+  // timeCol, xField, deltaField, sortField, columns, metrics[].column, filterFields[].column,
+  // spatialTargets[].lonCol/latCol/spatialCol.
+  // TODO(123-03): layer.config.latColumn/lonColumn/wktColumn/wkbColumn, layer.cb_config.attr,
+  // layer.track_config.trackIdAttr/trackOrderAttr/xCol/yCol, layer.info_columns, layer.info_template.
+  // TODO(123-04): widget.config.options[].configPatch.* (metric, cb_config.attr,
+  // track_config.trackIdAttr/trackOrderAttr/xCol/yCol, info_columns, info_template),
+  // columnDisplayConfig.column_name.
+
+  // --- The five FREE_SQL_SITES (this plan). All emitted REGARDLESS of query.tableId: they are
+  // table-less, so there is nothing to filter on — this is why widget.config.sql for a widget on
+  // a different table still appears; the operator chose completeness over a quieter report,
+  // knowing it duplicates exact findings elsewhere. ---
+
+  for (const widget of input.widgets) {
+    const cfg = widget.config as Record<string, unknown> | null | undefined;
+    const sql = typeof cfg?.sql === "string" ? cfg.sql : undefined;
+    const customWhere = typeof cfg?.customWhere === "string" ? cfg.customWhere : undefined;
+    for (const column of columns) {
+      emitFreeSql({
+        text: sql,
+        site: "widget.config.sql",
+        path: "config.sql",
+        recordKind: "widget",
+        recordId: widget.id,
+        recordLabel: widget.title,
+        column,
+        emit,
+      });
+      emitFreeSql({
+        text: customWhere,
+        site: "widget.config.customWhere",
+        path: "config.customWhere",
+        recordKind: "widget",
+        recordId: widget.id,
+        recordLabel: widget.title,
+        column,
+        emit,
+      });
+    }
+  }
+
+  for (const metric of input.customMetrics) {
+    for (const column of columns) {
+      emitFreeSql({
+        text: metric.expression,
+        site: "customMetric.expression",
+        path: "expression",
+        recordKind: "customMetric",
+        recordId: metric.id,
+        recordLabel: metric.label,
+        column,
+        emit,
+      });
+    }
+  }
+
+  for (const dv of input.dynamicViews) {
+    for (const column of columns) {
+      emitFreeSql({
+        text: dv.template_sql,
+        site: "dynamicView.template_sql",
+        path: "template_sql",
+        recordKind: "dynamicView",
+        recordId: dv.id,
+        recordLabel: dv.name,
+        column,
+        emit,
+      });
+    }
+  }
+
+  // `tableView.filter_clause` — ZERO populated instances in either packages/server/data/kinetica.db
+  // (0 of 12 rows) or env-b.db (0 rows), so its test fixture is SYNTHETIC. A site with no real data
+  // behind it is exactly where a bug survives a suite built from real fixtures — flagged here, not
+  // only in the SUMMARY.
+  for (const view of input.tableViews) {
+    for (const column of columns) {
+      emitFreeSql({
+        text: view.filter_clause,
+        site: "tableView.filter_clause",
+        path: "filter_clause",
+        recordKind: "tableView",
+        recordId: view.id,
+        recordLabel: view.view_name,
+        column,
+        emit,
+      });
+    }
+  }
+
+};
+
+/**
+ * Byte-stable ascending sort, same rationale as `schemaDiff.ts`'s `byColumnAscending`: Phase 125
+ * persists these arrays, and a locale-dependent order would produce spurious history churn between
+ * machines. Sort key, in order: recordKind (by RECORD_KIND_ORDER index), recordId ascending with
+ * null last, site (by COLUMN_REF_SITES index), path (byte-ascending), column (byte-ascending).
+ */
+const byteAscending = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+const sortColumnRefs = (refs: ColumnRef[]): ColumnRef[] =>
+  [...refs].sort((a, b) => {
+    const kindDiff =
+      RECORD_KIND_ORDER.indexOf(a.recordKind) - RECORD_KIND_ORDER.indexOf(b.recordKind);
+    if (kindDiff !== 0) return kindDiff;
+
+    if (a.recordId !== b.recordId) {
+      if (a.recordId === null) return 1;
+      if (b.recordId === null) return -1;
+      return a.recordId - b.recordId;
+    }
+
+    const siteDiff = COLUMN_REF_SITES.indexOf(a.site) - COLUMN_REF_SITES.indexOf(b.site);
+    if (siteDiff !== 0) return siteDiff;
+
+    const pathDiff = byteAscending(a.path, b.path);
+    if (pathDiff !== 0) return pathDiff;
+
+    return byteAscending(a.column, b.column);
+  });
+
+/**
+ * De-duplicate at most one finding per (recordKind, recordId, site, path, column) tuple. Two
+ * identical tuples can only arise from a traversal bug; collapsing them silently would hide it, so
+ * de-duplication happens at the END, here, not inside the emitter.
+ */
+const dedupeColumnRefs = (refs: ColumnRef[]): ColumnRef[] => {
+  const seen = new Set<string>();
+  const out: ColumnRef[] = [];
+  for (const ref of refs) {
+    const key = `${ref.recordKind}|${ref.recordId}|${ref.site}|${ref.path}|${ref.column}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+};
+
+/**
+ * Entry point. Collects every ColumnRef finding across `input` for the queried table's columns
+ * (`query.columns`), sorted deterministically and de-duplicated.
+ */
+export function collectColumnRefs(input: ColumnRefsInput, query: ColumnQuery): ColumnRef[] {
+  const out: ColumnRef[] = [];
+  visitColumnRefSites(input, query, (ref) => out.push(ref));
+  return sortColumnRefs(dedupeColumnRefs(out));
+}
