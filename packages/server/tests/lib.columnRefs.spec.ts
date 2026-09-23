@@ -1313,3 +1313,228 @@ describe("excluded look-alike keys", () => {
     expect(refs[0].site).toBe("widget.config.metricColumn");
   });
 });
+
+// -----------------------------------------------------------------------------------------------
+// Radio-group configPatch copies (Plan 123-04, Task 1) — both action shapes, target-scoped.
+// -----------------------------------------------------------------------------------------------
+
+describe("radio-group configPatch copies", () => {
+  // layer 4 (real, table_id 1) — carries its OWN cb_config.attr = passenger_count, independent of
+  // any configPatch copy. widget 6's own config.tableId is a deliberately UNRELATED value (99) so
+  // the SCOPE test below can prove a configPatch finding is scoped to the TARGET's table, never
+  // the host radio-group widget's own (nonsensical, for a radiogroup) table.
+  const layer4 = makeLayer({
+    id: 4, table_id: 1,
+    cb_config: "{\"attr\":\"passenger_count\",\"valsType\":\"numeric\",\"breaks\":[]}",
+  });
+  // layer 9 (real, table_id 1) — widget 11's plural-shape target. Its own cb_config is null so a
+  // hit can never be mistaken for "the layer's own record" leaking through into the SITE test.
+  const layer9 = makeLayer({ id: 9, table_id: 1, cb_config: null });
+
+  // widget 6, type "radiogroup" — REAL, LEGACY SINGULAR `action` shape. Targets layer 4.
+  const widget6 = makeWidget({
+    id: 6, type: "radiogroup", title: "", config: {
+      tableId: 99,
+      orientation: "vertical",
+      options: [{
+        id: "f35a3396-a088-45e2-8edb-1888fe0ece30", label: "hhh",
+        action: { target: { kind: "layer", id: 4 }, configPatch: {
+          renderMode: "heatmap", visible: true,
+          track_config:
+            "{\"trackIdAttr\":\"TRACKID\",\"trackOrderAttr\":\"TIMESTAMP\",\"headColor\":\"FFFF0000\"," +
+            "\"trailColor\":\"FF0000FF\",\"headSize\":8,\"trailSize\":2,\"headShape\":\"circle\"," +
+            "\"enabled\":true}",
+          cb_config: "{\"attr\":\"passenger_count\",\"valsType\":\"numeric\",\"breaks\":[]}",
+        } },
+      }],
+      drillDownColumn: "", drillDownColumnType: "null",
+    },
+  });
+
+  // widget 11, type "radiogroup" — REAL, PLURAL `actions[]` shape. Targets layer 9.
+  const widget11 = makeWidget({
+    id: 11, type: "radiogroup", title: "", config: {
+      orientation: "vertical",
+      options: [{
+        id: "50673528-76d9-4996-90af-ec2a64f964f2", label: "Heatmap",
+        actions: [{ target: { kind: "layer", id: 9 }, configPatch: {
+          renderMode: "heatmap", colormap: "inferno", pointColor: "FF3B82F6",
+          pointShape: "circle", shapeFillColor: "FFFF3838", visible: true,
+          name: "Main NYC taxi",
+          cb_config: "{\"attr\":\"passenger_count\",\"valsType\":\"numeric\",\"breaks\":[]}",
+        } }],
+      }],
+    },
+  });
+
+  it("SITE widget.config.options[].configPatch.cb_config.attr: widget 11's plural actions[] patch yields a finding for passenger_count", () => {
+    const input = makeInput({ widgets: [widget11], layers: [layer9] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.cb_config.attr");
+    expect(hit).toMatchObject({
+      column: "passenger_count",
+      path: "config.options[0].actions[0].configPatch.cb_config.attr",
+      recordKind: "widget", recordId: 11,
+      tableId: 1, tableScope: "scoped", confidence: "exact", matches: [],
+    });
+  });
+
+  it("SITE widget.config.options[].configPatch.track_config.trackIdAttr: widget 6's legacy singular action patch yields a finding for TRACKID", () => {
+    const input = makeInput({ widgets: [widget6], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["TRACKID"] });
+    const hit = refs.find(
+      (r) => r.site === "widget.config.options[].configPatch.track_config.trackIdAttr",
+    );
+    expect(hit?.path).toBe("config.options[0].action.configPatch.track_config.trackIdAttr");
+    expect(hit?.recordId).toBe(6);
+    expect(hit?.tableId).toBe(1);
+  });
+
+  it("SITE widget.config.options[].configPatch.track_config.trackOrderAttr: widget 6's legacy patch yields a finding for TIMESTAMP", () => {
+    const input = makeInput({ widgets: [widget6], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["TIMESTAMP"] });
+    const hit = refs.find(
+      (r) => r.site === "widget.config.options[].configPatch.track_config.trackOrderAttr",
+    );
+    expect(hit?.path).toBe("config.options[0].action.configPatch.track_config.trackOrderAttr");
+  });
+
+  it("SITE widget.config.options[].configPatch.track_config.xCol: a patched xCol yields a finding (SYNTHETIC — zero instances in either database)", () => {
+    const widget = makeWidget({
+      id: 9401, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "x", action: { target: { kind: "layer", id: 4 },
+          configPatch: { track_config: "{\"enabled\":true,\"xCol\":\"pickup_longitude\"}" } } }],
+      },
+    });
+    const input = makeInput({ widgets: [widget], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.track_config.xCol");
+    expect(hit?.path).toBe("config.options[0].action.configPatch.track_config.xCol");
+  });
+
+  it("SITE widget.config.options[].configPatch.track_config.yCol: a patched yCol yields a finding (SYNTHETIC — see xCol)", () => {
+    const widget = makeWidget({
+      id: 9402, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "y", action: { target: { kind: "layer", id: 4 },
+          configPatch: { track_config: "{\"enabled\":true,\"yCol\":\"pickup_latitude\"}" } } }],
+      },
+    });
+    const input = makeInput({ widgets: [widget], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.track_config.yCol");
+    expect(hit?.path).toBe("config.options[0].action.configPatch.track_config.yCol");
+  });
+
+  it("SITE widget.config.options[].configPatch.info_columns: a patched info_columns yields a finding (SYNTHETIC — ZERO instances in either database; included because validateLayerSnapshot accepts the key today)", () => {
+    const widget = makeWidget({
+      id: 9403, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "info", action: { target: { kind: "layer", id: 4 },
+          configPatch: { info_columns: "[\"pickup_longitude\",\"pickup_latitude\"]" } } }],
+      },
+    });
+    const input = makeInput({ widgets: [widget], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.info_columns");
+    expect(hit?.path).toBe("config.options[0].action.configPatch.info_columns[1]");
+  });
+
+  it("SITE widget.config.options[].configPatch.info_template: a patched info_template placeholder yields a finding (SYNTHETIC — see info_columns)", () => {
+    const widget = makeWidget({
+      id: 9404, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "tmpl", action: { target: { kind: "layer", id: 4 },
+          configPatch: { info_template: "<div>{fare_amount}</div>" } } }],
+      },
+    });
+    const input = makeInput({ widgets: [widget], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.info_template");
+    expect(hit?.path).toBe("config.options[0].action.configPatch.info_template");
+    expect(hit?.matches.length).toBeGreaterThan(0);
+  });
+
+  it("BOTH SHAPES: the plural actions[] and the legacy singular action are both walked", () => {
+    const input = makeInput({ widgets: [widget6, widget11], layers: [layer4, layer9] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const sites = refs.filter((r) => r.site.startsWith("widget.config.options[].configPatch"));
+    expect(sites.some((r) => r.path.includes(".actions[0]."))).toBe(true);
+    expect(sites.some((r) => r.path.includes(".action."))).toBe(true);
+  });
+
+  it("a configPatch finding is DISTINCT from the layer it patches: same column, two findings, different recordKind", () => {
+    const input = makeInput({ widgets: [widget6], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const layerHit = refs.find((r) => r.site === "layer.cb_config.attr" && r.recordId === 4);
+    const patchHit = refs.find(
+      (r) => r.site === "widget.config.options[].configPatch.cb_config.attr" && r.recordId === 6,
+    );
+    expect(layerHit).toBeDefined();
+    expect(patchHit).toBeDefined();
+    expect(patchHit!.recordKind).toBe("widget"); // the RADIOGROUP owns the copy, not the layer
+    expect(patchHit!.tableId).toBe(1); // but it is scoped to the TARGET layer's table
+    expect(patchHit!.path).toBe("config.options[0].action.configPatch.cb_config.attr");
+  });
+
+  it("SCOPE: a configPatch is scoped to the TARGET layer's table, not the host widget's", () => {
+    // widget 6's own config.tableId is 99 (meaningless for a radiogroup, but deliberately set to
+    // an unrelated value); target layer 4 is table 1. A finding must be scoped to 1, never 99.
+    const input = makeInput({ widgets: [widget6], layers: [layer4] });
+    const refsForTable1 = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const hit = refsForTable1.find(
+      (r) => r.site === "widget.config.options[].configPatch.cb_config.attr",
+    );
+    expect(hit?.tableId).toBe(1);
+    const refsForTable99 = collectColumnRefs(input, { tableId: 99, columns: ["passenger_count"] });
+    expect(
+      refsForTable99.filter((r) => r.site === "widget.config.options[].configPatch.cb_config.attr"),
+    ).toEqual([]);
+  });
+
+  it("SCOPE: a configPatch whose target layer is absent is reported with tableScope 'unresolved'", () => {
+    // SYNTHETIC: every real configPatch target layer in the dev DB resolves.
+    const widget = makeWidget({
+      id: 9405, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "dangling", action: { target: { kind: "layer", id: 4242 },
+          configPatch: { cb_config: "{\"attr\":\"passenger_count\",\"breaks\":[]}" } } }],
+      },
+    });
+    const input = makeInput({ widgets: [widget] });
+    const refs = collectColumnRefs(input, { tableId: 7, columns: ["passenger_count"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.cb_config.attr");
+    expect(hit).toBeDefined();
+    expect(hit?.tableScope).toBe("unresolved");
+    expect(hit?.tableId).toBeNull();
+  });
+
+  it("a dynamicView-target configPatch yields no finding, because its allow-list holds only `enabled`", () => {
+    const widget = makeWidget({
+      id: 9406, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "dv", action: { target: { kind: "dynamicView", id: 1 },
+          configPatch: { cb_config: "{\"attr\":\"passenger_count\",\"breaks\":[]}" } } }],
+      },
+    });
+    const dv = makeDv({ id: 1, source_table_id: 1 });
+    const input = makeInput({ widgets: [widget], dynamicViews: [dv] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    expect(
+      refs.filter((r) => r.site === "widget.config.options[].configPatch.cb_config.attr"),
+    ).toEqual([]);
+  });
+
+  it("configPatch malformed JSON still reports: a truncated cb_config string yields a heuristic finding rather than silence", () => {
+    const widget = makeWidget({
+      id: 9407, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "broken", action: { target: { kind: "layer", id: 4 },
+          configPatch: { cb_config: "{\"attr\":\"passenger_count\"" } } }],
+      },
+    });
+    const input = makeInput({ widgets: [widget], layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const hit = refs.find(
+      (r) => r.recordId === 9407 && r.site === "widget.config.options[].configPatch.cb_config.attr",
+    );
+    expect(hit).toBeDefined();
+    expect(hit?.confidence).toBe("heuristic");
+    expect(hit?.tableId).toBe(1);
+    expect(hit?.matches.length).toBeGreaterThan(0);
+  });
+});

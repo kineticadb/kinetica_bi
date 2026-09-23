@@ -412,6 +412,79 @@ export const resolveLayerTableId = (
 };
 
 /**
+ * Local shape for a radio-group option's `action`/`actions[]` entry — deliberately loose (`unknown`
+ * fields) because a `configPatch` is untrusted, arbitrary JSON.
+ */
+type PatchActionLike = { target?: unknown; configPatch?: unknown };
+
+/**
+ * Walk a radio-group option's action(s), returning BOTH the action object and a path fragment
+ * naming which shape it came from — Plan 123-04. This MIRRORS `dashboardExportRefs.ts`'s
+ * `getOptionActionsLike` helper of the same name, deliberately copied rather than imported (zero
+ * diff to that module is a phase success criterion; that module's own version returns a different
+ * shape because it answers a different question — table/widget references, not column
+ * references). Reading only the plural `actions[]` would silently drop every legacy-shaped
+ * option's patch: the dev DB's 12 known `configPatch` copies split 11 plural / 1 legacy, and they
+ * only reconcile when both shapes are walked.
+ */
+const getOptionActionsLike = (
+  option: Record<string, unknown>,
+): { action: PatchActionLike; pathFragment: string }[] => {
+  if (Array.isArray(option.actions)) {
+    return (option.actions as PatchActionLike[]).map((action, j) => ({
+      action, pathFragment: `actions[${j}]`,
+    }));
+  }
+  if (option.action && typeof option.action === "object") {
+    return [{ action: option.action as PatchActionLike, pathFragment: "action" }];
+  }
+  return [];
+};
+
+/**
+ * Resolve which table a radio-group option's `configPatch` action TARGETS (Plan 123-04) — as
+ * opposed to the table the host widget itself belongs to. A `configPatch` finding is owned by the
+ * radio-group widget (`recordKind: "widget"`) but must be SCOPED to whatever the action's `target`
+ * points at, never the host's own table.
+ *
+ * Rules, in order:
+ * 1. `target.kind === "layer"` and `target.id` resolves to a real layer in `input.layers` ->
+ *    delegate to `resolveLayerTableId` for THAT layer.
+ * 2. `target.kind === "widget"` and `target.id` resolves to a real widget in `input.widgets` ->
+ *    delegate to `resolveWidgetTableId` for THAT widget's config.
+ * 3. Anything else — including `kind: "dynamicView"`, an unknown kind, a non-positive id, or a
+ *    target that resolves to nothing — -> `{ tableId: null, tableScope: "unresolved" }`.
+ *
+ * `dynamicView` targets are deliberately included in the "anything else" bucket here (the function
+ * always returns a well-defined result for them) even though the CALLER in `visitColumnRefSites`
+ * skips dv-target configPatches entirely before ever reaching this function: `DYNAMIC_VIEW_ALLOW_LIST`
+ * in `actionAllowList.ts` holds exactly one field, `enabled: z.boolean()` — no column can ever
+ * reach a dv-target configPatch, so the caller treats that case as "nothing to walk," not merely
+ * "resolved to nothing."
+ */
+export const resolveConfigPatchTableId = (
+  target: unknown,
+  input: ColumnRefsInput,
+): { tableId: number | null; tableScope: ColumnRefTableScope } => {
+  if (!isPlainObject(target)) return { tableId: null, tableScope: "unresolved" };
+  const kind = target.kind;
+  const id = asPositiveInt(target.id);
+  if (kind === "layer" && id !== undefined) {
+    const layer = input.layers.find((l) => l.id === id);
+    if (layer) return resolveLayerTableId(layer, input.dynamicViews);
+    return { tableId: null, tableScope: "unresolved" };
+  }
+  if (kind === "widget" && id !== undefined) {
+    const widget = input.widgets.find((w) => w.id === id);
+    if (widget) {
+      return resolveWidgetTableId((widget.config ?? {}) as Record<string, unknown>, input.dynamicViews);
+    }
+    return { tableId: null, tableScope: "unresolved" };
+  }
+  return { tableId: null, tableScope: "unresolved" };
+};
+
+/**
  * Shared structured-site emitter (Plan 123-02), used by every `widget.config.*` exact site below
  * and, in Plans 123-03/04, by the layer and `configPatch` sites too. Rules, all load-bearing:
  * - Skip unless `value` is a non-empty (post-trim) string and `column` is non-empty.
@@ -941,9 +1014,202 @@ const visitColumnRefSites = (
     }
   }
 
-  // TODO(123-04): widget.config.options[].configPatch.* (metric, cb_config.attr,
-  // track_config.trackIdAttr/trackOrderAttr/xCol/yCol, info_columns, info_template),
-  // columnDisplayConfig.column_name.
+  // --- radio-group configPatch copies (Plan 123-04, Tasks 1-2): the eight
+  // widget.config.options[].configPatch.* sites, walked across BOTH the plural
+  // options[].actions[] shape and the legacy singular options[].action shape via
+  // getOptionActionsLike (below) — a file-local MIRROR of dashboardExportRefs.ts's helper of the
+  // same name, deliberately copied rather than imported (zero diff to that module is a phase
+  // success criterion). The dev DB's 12 known copies split 11 plural / 1 legacy; they only
+  // reconcile when both shapes are walked.
+  //
+  // Each finding is OWNED by the radio-group WIDGET (recordKind: "widget", recordId: the
+  // widget's own id — the copy lives in ITS config, not the record it patches) but SCOPED to the
+  // TARGET record's table via resolveConfigPatchTableId, below — distinct from the layer's (or
+  // widget's) own matching site, which is a SEPARATE finding with its own recordKind/recordId.
+  //
+  // A dynamicView-target configPatch is skipped ENTIRELY, never reported even as 'unresolved':
+  // DYNAMIC_VIEW_ALLOW_LIST in actionAllowList.ts holds exactly one field, `enabled: z.boolean()`
+  // — no column can ever reach a dv-target configPatch, so treating it as unresolved-but-reported
+  // would be pure noise.
+  for (const widget of input.widgets) {
+    const cfg = (widget.config ?? {}) as Record<string, unknown>;
+    if (!Array.isArray(cfg.options)) continue;
+    const recordKind: ColumnRefRecordKind = "widget";
+    const recordId = widget.id;
+    const recordLabel = widget.title;
+    const options = cfg.options as unknown[];
+
+    for (let i = 0; i < options.length; i++) {
+      const option = options[i];
+      if (!isPlainObject(option)) continue;
+      const actionsLike = getOptionActionsLike(option);
+
+      for (const { action, pathFragment } of actionsLike) {
+        if (!isPlainObject(action)) continue;
+        const patch = action.configPatch;
+        if (!isPlainObject(patch)) continue;
+
+        const target = action.target;
+        const targetKind = isPlainObject(target) ? target.kind : undefined;
+        if (targetKind === "dynamicView") continue;
+
+        const resolved = resolveConfigPatchTableId(target, input);
+        const pathPrefix = `config.options[${i}].${pathFragment}.configPatch`;
+
+        // cb_config.attr — a JSON-string TOP-LEVEL configPatch field (same shape as the layer's
+        // own cb_config, read via the SAME readJsonString/emitMalformedJsonFallback helpers Plan
+        // 123-03 wrote — these are the same payload in a different location, not a second
+        // implementation of the same idea).
+        const cbConfigResult = readJsonString(
+          typeof patch.cb_config === "string" ? patch.cb_config : null,
+        );
+        if (cbConfigResult.malformed && typeof patch.cb_config === "string") {
+          for (const column of columns) {
+            emitMalformedJsonFallback({
+              raw: patch.cb_config, site: "widget.config.options[].configPatch.cb_config.attr",
+              path: `${pathPrefix}.cb_config.attr`, recordKind, recordId, recordLabel, resolved,
+              column, emit,
+            });
+          }
+        } else if (isPlainObject(cbConfigResult.parsed)) {
+          const cbConfig = cbConfigResult.parsed;
+          for (const column of columns) {
+            emitStructured({
+              value: cbConfig.attr, column,
+              site: "widget.config.options[].configPatch.cb_config.attr",
+              path: `${pathPrefix}.cb_config.attr`, recordKind, recordId, recordLabel, resolved,
+              query, emit,
+            });
+          }
+        }
+
+        // track_config.{trackIdAttr,trackOrderAttr,xCol,yCol} — same JSON-string treatment.
+        // xCol/yCol are SYNTHETIC (zero instances anywhere — see layer.track_config.xCol/yCol
+        // above; the same real TrackConfig fields, one layer deeper).
+        const trackConfigResult = readJsonString(
+          typeof patch.track_config === "string" ? patch.track_config : null,
+        );
+        if (trackConfigResult.malformed && typeof patch.track_config === "string") {
+          for (const column of columns) {
+            emitMalformedJsonFallback({
+              raw: patch.track_config,
+              site: "widget.config.options[].configPatch.track_config.trackIdAttr",
+              path: `${pathPrefix}.track_config.trackIdAttr`, recordKind, recordId, recordLabel,
+              resolved, column, emit,
+            });
+          }
+        } else if (isPlainObject(trackConfigResult.parsed)) {
+          const trackConfig = trackConfigResult.parsed;
+          for (const column of columns) {
+            emitStructured({
+              value: trackConfig.trackIdAttr, column,
+              site: "widget.config.options[].configPatch.track_config.trackIdAttr",
+              path: `${pathPrefix}.track_config.trackIdAttr`, recordKind, recordId, recordLabel,
+              resolved, query, emit,
+            });
+            emitStructured({
+              value: trackConfig.trackOrderAttr, column,
+              site: "widget.config.options[].configPatch.track_config.trackOrderAttr",
+              path: `${pathPrefix}.track_config.trackOrderAttr`, recordKind, recordId, recordLabel,
+              resolved, query, emit,
+            });
+            emitStructured({
+              value: trackConfig.xCol, column,
+              site: "widget.config.options[].configPatch.track_config.xCol",
+              path: `${pathPrefix}.track_config.xCol`, recordKind, recordId, recordLabel,
+              resolved, query, emit,
+            });
+            emitStructured({
+              value: trackConfig.yCol, column,
+              site: "widget.config.options[].configPatch.track_config.yCol",
+              path: `${pathPrefix}.track_config.yCol`, recordKind, recordId, recordLabel,
+              resolved, query, emit,
+            });
+          }
+        }
+
+        // info_columns — a JSON-array-of-strings TOP-LEVEL configPatch field. SYNTHETIC: ZERO
+        // instances in either database. Enumerated because the CURRENT layer-target validator
+        // (validateLayerSnapshot, actionAllowList.ts, Phase 60.1 RE-SCOPE — a DENYLIST that
+        // supersedes the stricter LAYER_ALLOW_LIST for layer targets) accepts this key today,
+        // making it structurally identical to cb_config/track_config the moment an operator
+        // configures a per-option info-popup override.
+        const infoColumnsResult = readJsonString(
+          typeof patch.info_columns === "string" ? patch.info_columns : null,
+        );
+        if (infoColumnsResult.malformed && typeof patch.info_columns === "string") {
+          for (const column of columns) {
+            emitMalformedJsonFallback({
+              raw: patch.info_columns, site: "widget.config.options[].configPatch.info_columns",
+              path: `${pathPrefix}.info_columns`, recordKind, recordId, recordLabel, resolved,
+              column, emit,
+            });
+          }
+        } else if (Array.isArray(infoColumnsResult.parsed)) {
+          const arr = infoColumnsResult.parsed as unknown[];
+          for (let j = 0; j < arr.length; j++) {
+            for (const column of columns) {
+              emitStructured({
+                value: arr[j], column, site: "widget.config.options[].configPatch.info_columns",
+                path: `${pathPrefix}.info_columns[${j}]`, recordKind, recordId, recordLabel,
+                resolved, query, emit,
+              });
+            }
+          }
+        }
+
+        // info_template — raw HTML carrying {ColumnName} placeholders. Same dedicated placeholder
+        // regex as layer.info_template above (never scanFreeSql — this is not SQL). SYNTHETIC:
+        // ZERO instances in either database, same "no operator has ever configured this" caveat.
+        if (typeof patch.info_template === "string" && patch.info_template !== "") {
+          const template = patch.info_template;
+          const templateLines = template.split("\n");
+          const lineStarts: number[] = [0];
+          for (const l of templateLines.slice(0, -1)) {
+            lineStarts.push(lineStarts[lineStarts.length - 1] + l.length + 1);
+          }
+          for (const column of columns) {
+            const templateMatches: ColumnRefMatch[] = [];
+            const placeholderRegex = /\{([^{}]*)\}/g;
+            let placeholderMatch: RegExpExecArray | null;
+            while ((placeholderMatch = placeholderRegex.exec(template)) !== null) {
+              const rawBody = placeholderMatch[1];
+              const trimmedBody = rawBody.trim();
+              if (trimmedBody !== column) continue;
+              const leadingWhitespace = rawBody.length - rawBody.trimStart().length;
+              const absoluteIndex = placeholderMatch.index + 1 + leadingWhitespace;
+              let lineIdx = 0;
+              for (let k = 0; k < lineStarts.length; k++) {
+                if (lineStarts[k] <= absoluteIndex) lineIdx = k;
+                else break;
+              }
+              templateMatches.push({
+                line: templateLines[lineIdx],
+                lineNumber: lineIdx + 1,
+                offset: absoluteIndex - lineStarts[lineIdx],
+              });
+            }
+            if (templateMatches.length === 0) continue;
+            if (resolved.tableScope !== "unresolved" && resolved.tableId !== query.tableId) continue;
+            emit({
+              column,
+              site: "widget.config.options[].configPatch.info_template",
+              path: `${pathPrefix}.info_template`,
+              recordKind,
+              recordId,
+              recordLabel,
+              tableId: resolved.tableId,
+              tableScope: resolved.tableScope,
+              confidence: "exact",
+              matches: templateMatches,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // TODO(123-04 Task 2): widget.config.options[].configPatch.metric, columnDisplayConfig.column_name.
 
   // --- The five FREE_SQL_SITES (this plan). All emitted REGARDLESS of query.tableId: they are
   // table-less, so there is nothing to filter on — this is why widget.config.sql for a widget on
