@@ -306,10 +306,9 @@ export const scanFreeSql = (text: string, columnName: string): ColumnRefMatch[] 
 };
 
 // -------------------------------------------------------------------------------------------
-// collectColumnRefs / visitColumnRefSites — Task 2 (five free-SQL sites). Task 3 (this same plan)
-// adds a sixth block, dynamicView.columns_json[].name, right after these. The remaining 34 sites
-// arrive in Plans 123-02/03/04 — each is a numbered TODO below naming the plan that owns it.
-// Adding a site means adding exactly one
+// collectColumnRefs / visitColumnRefSites — Task 2 (five free-SQL sites) and Task 3
+// (dynamicView.columns_json[].name). The remaining 34 sites arrive in Plans 123-02/03/04 — each
+// is a numbered TODO below naming the plan that owns it. Adding a site means adding exactly one
 // block inside `visitColumnRefSites` plus one entry in `COLUMN_REF_SITES` above — there is no
 // second list to forget, mirroring `dashboardExportRefs.ts`'s REF-1..REF-9 discipline (that module
 // is inherited-from conceptually, never imported — see the header comment).
@@ -463,6 +462,62 @@ const visitColumnRefSites = (
     }
   }
 
+  // --- dynamicView.columns_json[].name (this plan, Task 3) — the site three code-reading sweeps
+  // would have missed. See 123-RESEARCH.md Finding 1 / Pitfall 1, 123-CONTEXT.md's "TWO SITES
+  // ADDED 2026-09-22" section, item 1.
+  //
+  // Why it exists at all: `Taxi Copy` (source table 1) and `mv view` (source table 6) both have
+  // `template_sql = "select * from {view}"` — literally no column text — while their
+  // `columns_json` holds 19 and 251 real source columns respectively. Every dv-bound config panel
+  // (`LayersModal`, `ChartConfigPanel`, `CalendarConfigPanel`, `RadioGroupConfigPanel`) reads its
+  // column picker from `dv.columns_json`, NOT from the source table. Without this block, dropping
+  // `vendor_id` from table 1 reports nothing for those views while they silently go stale.
+  //
+  // Why TABLE-LESS rather than scoped to `source_table_id`: the provenance is mixed and proven so
+  // in the operator's own data. `FF` and `EQ` (source table 4, `vaipr.vaipr_location`) hold
+  // columns of the joined table `vaipr.vaipr_location_exposure` — REGISTERED as table id 5,
+  // distinct from the dv's own source_table_id 4 (verified read-only against the dev DB
+  // 2026-09-22; an earlier draft of this comment called that table "unregistered" — it is not,
+  // which makes the table-less decision STRONGER, not weaker: attributing `cede_db` to table 4
+  // would be ACTIVELY WRONG, since it is table 5's column, not merely imprecise). `Avg NYC`
+  // (source table 1) holds computed aliases (`cell`, `WKT`, `avg_passenger_count`) that are
+  // columns of nothing at all. Scoping these to `source_table_id` would attribute a name to a
+  // table it does not belong to. Detecting "this template has no join" from `template_sql` text
+  // is exactly the kind of heuristic the free-SQL rules exist to avoid trusting.
+  //
+  // Why `heuristic` and not `exact`: `exact` in this module means "the value IS this table's
+  // column". Here the value is a cached output-shape name whose table is unknown. Reporting it as
+  // `exact` would be a stronger claim than the data supports.
+  //
+  // Match rule: EXACT string equality, case-SENSITIVE — comparing a stored column name to a
+  // stored column name is the same identity question `schemaDiff.ts` answers case-sensitively; it
+  // is NOT a text scan, so the case-insensitive free-SQL rule does not apply, and neither does the
+  // low-confidence tier (which grades TEXT-match noise; a stored-name equality carries none).
+  //
+  // Note for Phase 124: `columns_json[].type` is frozen at Preview time exactly like
+  // `drillDownColumnType`, so it is a second stale-type cache. Enumerating type staleness is NOT
+  // this module's job (it enumerates NAME references); flagging its existence is.
+  for (const dv of input.dynamicViews) {
+    if (!dv.columns_json) continue;
+    for (let i = 0; i < dv.columns_json.length; i++) {
+      const entry = dv.columns_json[i];
+      for (const column of columns) {
+        if (entry.name !== column) continue;
+        emit({
+          column,
+          site: "dynamicView.columns_json[].name",
+          path: `columns_json[${i}].name`,
+          recordKind: "dynamicView",
+          recordId: dv.id,
+          recordLabel: dv.name,
+          tableId: null,
+          tableScope: "free-sql",
+          confidence: "heuristic",
+          matches: [],
+        });
+      }
+    }
+  }
 };
 
 /**

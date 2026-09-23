@@ -465,3 +465,92 @@ describe("free-SQL sites", () => {
     expect(resultForward).toEqual(resultReversed);
   });
 });
+
+// -----------------------------------------------------------------------------------------------
+// dynamicView.columns_json[].name — the site three code-reading sweeps would have missed
+// -----------------------------------------------------------------------------------------------
+
+describe("dynamicView.columns_json[].name", () => {
+  // dv 3 "Taxi Copy": source_table_id 1 (demo.nyctaxi, 19 cols), template_sql has NO column text.
+  const dvTaxiCopy = makeDv({
+    id: 3, dashboard_id: 1, source_table_id: 1, name: "Taxi Copy",
+    template_sql: "select * from {view}", max_records: 10000,
+    columns_json: [
+      { name: "vendor_id", type: "char4" },
+      { name: "pickup_datetime", type: "timestamp" },
+      { name: "dropoff_datetime", type: "timestamp" },
+    ],
+  });
+  // dv 6 "Avg NYC": source_table_id 1, but every columns_json entry is a COMPUTED ALIAS —
+  // `cell`, `WKT` and `avg_passenger_count` are columns of nothing.
+  const dvAvgNyc = makeDv({
+    id: 6, source_table_id: 1, name: "Avg NYC",
+    template_sql: "SELECT H3_XYTOCELL(pickup_longitude, pickup_latitude, 11) cell, WKT_MIN_MAX(geom) WKT, AVG(passenger_count) avg_passenger_count FROM demo.nyctaxi",
+    columns_json: [
+      { name: "cell", type: "ulong" },
+      { name: "WKT", type: "geometry" },
+      { name: "avg_passenger_count", type: "double" },
+    ],
+  });
+  // dv 1 "FF": source_table_id 4 (vaipr.vaipr_location), but 3 of its 4 columns_json entries
+  // (cede_db, contract_key, location_exposure_id) belong to a DIFFERENT REGISTERED table —
+  // id 5, vaipr.vaipr_location_exposure, joined by the template. The 4th, GR_ExpLim, is a
+  // computed alias from the template's own CASE expression and is a column of no table at all.
+  // Verified read-only against the dev DB 2026-09-22. This is WHY columns_json is table-less:
+  // attributing cede_db to table 4 would be ACTIVELY WRONG, not merely imprecise.
+  const dvFF = makeDv({
+    id: 1, source_table_id: 4, name: "FF",
+    template_sql:
+      "-- FF Slice\nWITH peril_filtered_base_table AS (\n    SELECT b.*\n" +
+      "FROM {view} a \n join vaipr.vaipr_location_exposure b on a.vaipr_location_id = b.vaipr_location_id\n)",
+    columns_json: [
+      { name: "cede_db", type: "char64" },
+      { name: "contract_key", type: "char64" },
+      { name: "location_exposure_id", type: "char64" },
+      { name: "GR_ExpLim", type: "double" },
+    ],
+  });
+
+  it("SITE dynamicView.columns_json[].name: Taxi Copy's cached column list reports vendor_id even though its template_sql is `select * from {view}`", () => {
+    const input = { ...emptyInput(), dynamicViews: [dvTaxiCopy] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hit = refs.find((r) => r.site === "dynamicView.columns_json[].name");
+    expect(hit).toBeDefined();
+    expect(hit?.recordId).toBe(3);
+    expect(hit?.recordLabel).toBe("Taxi Copy");
+    expect(hit?.path).toBe("columns_json[0].name");
+  });
+
+  it("the finding is table-less: tableScope is 'free-sql' and tableId is null even for a dv whose columns_json matches its source table 19/19", () => {
+    const input = { ...emptyInput(), dynamicViews: [dvTaxiCopy] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hit = refs.find((r) => r.site === "dynamicView.columns_json[].name");
+    expect(hit?.tableScope).toBe("free-sql");
+    expect(hit?.tableId).toBeNull();
+  });
+
+  it("a joined dv (FF) reports GR_ExpLim from columns_json without claiming vaipr_location", () => {
+    const input = { ...emptyInput(), dynamicViews: [dvFF] };
+    const refs = collectColumnRefs(input, { tableId: 4, columns: ["GR_ExpLim"] });
+    const hit = refs.find((r) => r.site === "dynamicView.columns_json[].name");
+    expect(hit).toBeDefined();
+    expect(hit?.tableId).toBeNull();
+    expect(hit?.tableScope).toBe("free-sql");
+  });
+
+  it("columns_json findings carry confidence 'heuristic' and an empty matches array, even for a short name like WKT", () => {
+    const refs = collectColumnRefs({ ...emptyInput(), dynamicViews: [dvAvgNyc] }, {
+      tableId: 1, columns: ["WKT"],
+    });
+    const hit = refs.find((r) => r.site === "dynamicView.columns_json[].name");
+    expect(hit?.confidence).toBe("heuristic"); // NOT "low-confidence" — this is value equality
+    expect(hit?.matches).toEqual([]);
+  });
+
+  it("the path names the array index: columns_json[0].name", () => {
+    const input = { ...emptyInput(), dynamicViews: [dvTaxiCopy] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hit = refs.find((r) => r.site === "dynamicView.columns_json[].name");
+    expect(hit?.path).toBe("columns_json[0].name");
+  });
+});
