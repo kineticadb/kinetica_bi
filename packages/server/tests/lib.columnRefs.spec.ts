@@ -1049,6 +1049,115 @@ describe("layer config column bindings", () => {
 });
 
 // -----------------------------------------------------------------------------------------------
+// Layer JSON-string sites (Plan 123-03, Task 2) — cb_config.attr, the four track_config fields,
+// and the malformed-JSON fallback.
+// -----------------------------------------------------------------------------------------------
+
+describe("layer JSON-string sites", () => {
+  // layer 4: table_id 1 (demo.nyctaxi) — REAL cb_config.attr / track_config values.
+  const layer4 = makeLayer({
+    id: 4, table_id: 1,
+    config: { latColumn: "pickup_latitude", lonColumn: "pickup_longitude" },
+    cb_config: "{\"attr\":\"passenger_count\",\"valsType\":\"numeric\",\"breaks\":[]}",
+    track_config:
+      "{\"trackIdAttr\":\"TRACKID\",\"trackOrderAttr\":\"TIMESTAMP\",\"headColor\":\"FFFF0000\"," +
+      "\"trailColor\":\"FF0000FF\",\"headSize\":8,\"trailSize\":2,\"headShape\":\"circle\"," +
+      "\"enabled\":true}",
+  });
+
+  it("SITE layer.cb_config.attr: layer 4's cb_config attr passenger_count is an exact finding", () => {
+    const input = makeInput({ layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const hit = refs.find((r) => r.site === "layer.cb_config.attr");
+    expect(hit).toMatchObject({
+      column: "passenger_count", path: "cb_config.attr", recordKind: "layer", recordId: 4,
+      tableId: 1, tableScope: "scoped", confidence: "exact", matches: [],
+    });
+  });
+
+  it("SITE layer.track_config.trackIdAttr: layer 4's trackIdAttr TRACKID is an exact finding", () => {
+    // NOTE: table 1 (demo.nyctaxi) has no column named TRACKID — the traversal reports what the
+    // record REFERENCES, it does not validate that the reference resolves. That is Phase 124's
+    // report to render, not this module's judgement to make.
+    const input = makeInput({ layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["TRACKID"] });
+    const hit = refs.find((r) => r.site === "layer.track_config.trackIdAttr");
+    expect(hit?.path).toBe("track_config.trackIdAttr");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE layer.track_config.trackOrderAttr: layer 4's trackOrderAttr TIMESTAMP is an exact finding", () => {
+    const input = makeInput({ layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["TIMESTAMP"] });
+    const hit = refs.find((r) => r.site === "layer.track_config.trackOrderAttr");
+    expect(hit?.path).toBe("track_config.trackOrderAttr");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE layer.track_config.xCol: a populated xCol is an exact finding (SYNTHETIC — no stored track_config in either database sets xCol or yCol)", () => {
+    const layer = makeLayer({
+      id: 4101, table_id: 1,
+      track_config: "{\"enabled\":true,\"xCol\":\"pickup_longitude\"}",
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
+    const hit = refs.find((r) => r.site === "layer.track_config.xCol");
+    expect(hit?.path).toBe("track_config.xCol");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE layer.track_config.yCol: a populated yCol is an exact finding (SYNTHETIC — see xCol)", () => {
+    const layer = makeLayer({
+      id: 4102, table_id: 1,
+      track_config: "{\"enabled\":true,\"yCol\":\"pickup_latitude\"}",
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.site === "layer.track_config.yCol");
+    expect(hit?.path).toBe("track_config.yCol");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("cb_config styling fields are never findings: a break's shapeFillColor holding a column name yields nothing", () => {
+    const layer = makeLayer({
+      id: 4103, table_id: 1,
+      cb_config: JSON.stringify({
+        attr: "vendor_id", valsType: "categorical",
+        breaks: [{ value: "CMT", color: "FF000000", shapeFillColor: "pickup_latitude" }],
+      }),
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    expect(refs.filter((r) => r.site === "layer.cb_config.attr")).toEqual([]);
+  });
+
+  it("a null cb_config or track_config yields no finding and does not throw", () => {
+    const layer = makeLayer({ id: 4104, table_id: 1, cb_config: null, track_config: null });
+    const input = makeInput({ layers: [layer] });
+    expect(() =>
+      collectColumnRefs(input, { tableId: 1, columns: ["passenger_count", "TRACKID"] }),
+    ).not.toThrow();
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count", "TRACKID"] });
+    expect(
+      refs.filter((r) => r.site === "layer.cb_config.attr" || r.site === "layer.track_config.trackIdAttr"),
+    ).toEqual([]);
+  });
+
+  it("malformed JSON still reports: a truncated cb_config string yields a heuristic finding rather than silence", () => {
+    const broken = makeLayer({
+      id: 9201, table_id: 1, cb_config: "{\"attr\":\"passenger_count\"",
+    });
+    const input = makeInput({ layers: [broken] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const hit = refs.find((r) => r.recordId === 9201 && r.site === "layer.cb_config.attr");
+    expect(hit).toBeDefined();                 // NOT silence
+    expect(hit?.confidence).toBe("heuristic"); // downgraded, because the path could not be proven
+    expect(hit?.tableId).toBe(1);              // still table-scoped: the RECORD's table is known
+    expect(hit?.matches.length).toBeGreaterThan(0);
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
 // Excluded look-alike keys — the widget half of the guard (Plan 123-02, Task 3). Proves the
 // traversal is path-driven, not value-driven: planting the queried column name under every
 // EXCLUDED_LOOKALIKE_KEYS path yields zero findings, paired with a companion assertion proving the

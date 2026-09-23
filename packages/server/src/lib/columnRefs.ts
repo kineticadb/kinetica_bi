@@ -93,9 +93,11 @@ export type ColumnRef = {
   tableId: number | null;
   tableScope: ColumnRefTableScope;
   confidence: RefConfidence;
-  /** One entry per occurrence, ascending. Non-empty for every FREE_SQL_SITES finding and for
-   *  layer/configPatch info_template placeholder findings. EMPTY for value-equality sites
-   *  (including dynamicView.columns_json[].name, which is table-less but not text-scanned). */
+  /** One entry per occurrence, ascending. Non-empty for every FREE_SQL_SITES finding, for
+   *  layer/configPatch info_template placeholder findings, and for a JSON-string site whose
+   *  stored JSON failed to parse (malformed-JSON fallback, Plan 123-03). EMPTY for
+   *  value-equality sites (including dynamicView.columns_json[].name, which is table-less but
+   *  not text-scanned). */
   matches: ColumnRefMatch[];
 };
 
@@ -496,6 +498,72 @@ const emitFreeSql = (args: {
 };
 
 /**
+ * Shared JSON-string reader (Plan 123-03) — `cb_config`, `track_config` and `info_columns` are all
+ * TEXT columns holding JSON. `null` or an all-whitespace string is "not configured", never
+ * malformed. A `JSON.parse` failure is reported as `malformed: true` rather than thrown or
+ * swallowed — the caller decides what to do with that signal (see `emitMalformedJsonFallback`
+ * below).
+ */
+const readJsonString = (raw: string | null): { parsed: unknown; malformed: boolean } => {
+  if (raw === null || raw.trim() === "") return { parsed: undefined, malformed: false };
+  try {
+    return { parsed: JSON.parse(raw), malformed: false };
+  } catch {
+    return { parsed: undefined, malformed: true };
+  }
+};
+
+/**
+ * The malformed-JSON fallback (Plan 123-03) — the rule that keeps a corrupt stored blob from
+ * silently erasing a reference. Invoked when a layer's `cb_config` / `track_config` /
+ * `info_columns` TEXT column fails to `JSON.parse`. Runs `scanFreeSql` over the RAW stored string
+ * and emits (at most) ONE finding at the site that owns the record's primary column-bearing
+ * field, with:
+ * - `confidence`: downgraded via the SAME `isLowConfidenceColumnName` rule free-SQL sites use —
+ *   the exact path could not be proven, so the claim is no stronger than a text match.
+ * - `tableId` / `tableScope`: taken from the RECORD's own `resolved` (NOT `null`/`"free-sql"`) —
+ *   the record's table is still known; only the exact path inside its corrupt blob could not be.
+ * - `matches`: from `scanFreeSql`, so Phase 124 can show the operator the corrupt text. If
+ *   `scanFreeSql` finds nothing (the column genuinely is not mentioned in the corrupt text), no
+ *   finding is emitted — this fallback reports what the raw text actually contains, it does not
+ *   manufacture a finding out of nothing.
+ *
+ * Rationale, load-bearing: `coalesceTrackConfig` in `packages/web/src/lib/trackConfig.ts` returns
+ * `{ enabled: false }` on a parse failure — it SWALLOWS the error, which is correct for a renderer
+ * (better a plain layer than a crash) and catastrophically wrong for an impact report. A malformed
+ * blob that silently reports zero references is precisely the confidently-incomplete outcome this
+ * phase exists to prevent. 123-CONTEXT.md's discretion clause is explicit: fail toward REPORTING
+ * a match; a missed finding is the expensive failure and a false positive is merely noise.
+ */
+const emitMalformedJsonFallback = (args: {
+  raw: string;
+  site: ColumnRefSite;
+  path: string;
+  recordKind: ColumnRefRecordKind;
+  recordId: number | null;
+  recordLabel: string;
+  resolved: { tableId: number | null; tableScope: ColumnRefTableScope };
+  column: string;
+  emit: (ref: ColumnRef) => void;
+}): void => {
+  const { raw, site, path, recordKind, recordId, recordLabel, resolved, column, emit } = args;
+  const matches = scanFreeSql(raw, column);
+  if (matches.length === 0) return;
+  emit({
+    column,
+    site,
+    path,
+    recordKind,
+    recordId,
+    recordLabel,
+    tableId: resolved.tableId,
+    tableScope: resolved.tableScope,
+    confidence: isLowConfidenceColumnName(column) ? "low-confidence" : "heuristic",
+    matches,
+  });
+};
+
+/**
  * Walk every record in `input` once, testing every queried column (`query.columns`, empty entries
  * skipped) at each site this plan implements, and call `emit` per site hit. This is the ONLY place
  * these sites are enumerated; `collectColumnRefs` drives it with a collecting visitor.
@@ -724,6 +792,69 @@ const visitColumnRefSites = (
         value: cfg.wkbColumn, column, site: "layer.config.wkbColumn",
         path: "config.wkbColumn", recordKind, recordId, recordLabel, resolved, query, emit,
       });
+    }
+
+    // cb_config / track_config — Task 2 (Plan 123-03). Each TEXT column is parsed ONCE per layer
+    // (not once per site) and read by NAMED KEY ONLY — the parsed object's own key set is never
+    // enumerated generically — so `cb_config.breaks[]`'s styling siblings (color, label,
+    // pointShape, shapeLineColor, shapeFillColor) and `track_config`'s styling siblings
+    // (headColor, trailColor, headShape, markerColor, markerShape) can never false-positive under
+    // a generic walk.
+    const cbConfigResult = readJsonString(layer.cb_config);
+    if (cbConfigResult.malformed && layer.cb_config) {
+      for (const column of columns) {
+        emitMalformedJsonFallback({
+          raw: layer.cb_config, site: "layer.cb_config.attr", path: "cb_config.attr",
+          recordKind, recordId, recordLabel, resolved, column, emit,
+        });
+      }
+    } else if (isPlainObject(cbConfigResult.parsed)) {
+      const cbConfig = cbConfigResult.parsed;
+      for (const column of columns) {
+        emitStructured({
+          value: cbConfig.attr, column, site: "layer.cb_config.attr",
+          path: "cb_config.attr", recordKind, recordId, recordLabel, resolved, query, emit,
+        });
+      }
+    }
+
+    const trackConfigResult = readJsonString(layer.track_config);
+    if (trackConfigResult.malformed && layer.track_config) {
+      for (const column of columns) {
+        emitMalformedJsonFallback({
+          raw: layer.track_config, site: "layer.track_config.trackIdAttr",
+          path: "track_config.trackIdAttr", recordKind, recordId, recordLabel, resolved, column,
+          emit,
+        });
+      }
+    } else if (isPlainObject(trackConfigResult.parsed)) {
+      const trackConfig = trackConfigResult.parsed;
+      for (const column of columns) {
+        emitStructured({
+          value: trackConfig.trackIdAttr, column, site: "layer.track_config.trackIdAttr",
+          path: "track_config.trackIdAttr", recordKind, recordId, recordLabel, resolved, query,
+          emit,
+        });
+        emitStructured({
+          value: trackConfig.trackOrderAttr, column, site: "layer.track_config.trackOrderAttr",
+          path: "track_config.trackOrderAttr", recordKind, recordId, recordLabel, resolved, query,
+          emit,
+        });
+        // xCol / yCol: real TrackConfig fields (Phase 52, x/longitude and y/latitude for track
+        // points, packages/web/src/lib/trackConfig.ts) that ZERO stored rows in either database
+        // set — every real track_config uses only trackIdAttr/trackOrderAttr plus styling.
+        // SYNTHETIC fixtures. Unrelated: packages/web/src/lib/trackDetect.ts has its own
+        // xCol/yCol identifiers — a RUNTIME column-shape detector over live query results, not a
+        // persisted field; do not conflate the two.
+        emitStructured({
+          value: trackConfig.xCol, column, site: "layer.track_config.xCol",
+          path: "track_config.xCol", recordKind, recordId, recordLabel, resolved, query, emit,
+        });
+        emitStructured({
+          value: trackConfig.yCol, column, site: "layer.track_config.yCol",
+          path: "track_config.yCol", recordKind, recordId, recordLabel, resolved, query, emit,
+        });
+      }
     }
   }
 
