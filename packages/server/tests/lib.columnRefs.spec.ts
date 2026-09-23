@@ -1121,8 +1121,12 @@ describe("layer JSON-string sites", () => {
   it("cb_config styling fields are never findings: a break's shapeFillColor holding a column name yields nothing", () => {
     const layer = makeLayer({
       id: 4103, table_id: 1,
+      // valsType (a TOP-LEVEL cb_config key) is planted with the queried column name so this test
+      // also discriminates a shallow "iterate the parsed object's own keys" mutation, not only a
+      // hypothetical deep/recursive one — a generic key walk at either level would false-positive
+      // on this fixture; reading `attr` by name alone does not.
       cb_config: JSON.stringify({
-        attr: "vendor_id", valsType: "categorical",
+        attr: "vendor_id", valsType: "pickup_latitude",
         breaks: [{ value: "CMT", color: "FF000000", shapeFillColor: "pickup_latitude" }],
       }),
     });
