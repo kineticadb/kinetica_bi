@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.25
 milestone_name: Schema Sync
-status: context-gathered
-stopped_at: "Phase 122 (Schema Diff & Table-Missing Detection) COMPLETE 2026-09-21 — 4/4 plans, verification passed 6/6 must-haves. SSYNC-V125-02/-03/-04/-05 Complete; v1.25 stands at 4/19. SHIPPED: lib/schemaFingerprint.ts (per-column fingerprint combining type_schemas base type + properties refinements), lib/schemaDiff.ts (diffColumnFingerprints + the SchemaCheckResult union that Phases 124/125 are planned against), tables.columns_fingerprint sibling column with a READ-ONLY accessor, kineticaShowTable showOptions passthrough, and GET /api/tables/:id/schema-check. Gates: server tsc clean, test-gate.mjs GATE PASSED (set-based, same 8 KNOWN_FAILING, not grown); web tsc clean, 181 files/4100 tests/0 failed, theme-guard 152/152 — web ZERO diff, server-only phase. 33/33 mutation probes fired. GROUNDED IN A LIVE SPIKE: 122-SPIKE-NOTES.md holds real bodies proving char width lives in properties and base types in type_schemas (neither alone suffices), that INFORMATION_SCHEMA.DATA_TYPE reports character(256) for every char width alike (actively wrong, not just lossy), that no_error_if_not_exists returns HTTP 200 + empty table_names (a signal a connection failure cannot imitate), and that no stable per-column id exists. A follow-up probe closed the views risk (/show/table behaves identically for a VIEW; 17 base tables vs 33 views on this instance) and surfaced the nullable marker + Avro union form the base-table fixture lacked. PHASE 122 WRITES NOTHING — no writer for columns_fingerprint exists anywhere; Phase 125 adds the first. CARRIED: the parallel-wave git index race (ed4fc16 holds 122-02's test file; attribution only, content correct; fix is worktree isolation — see the section below); three non-discriminating acceptance criteria found and reported rather than coded around; two mutation probes needed the TEST strengthened, never the probe. PHASE 123 CONTEXT GATHERED 2026-09-22 (.planning/phases/123-column-reference-enumeration/123-CONTEXT.md). Locked: free-SQL matching is WHOLE-IDENTIFIER ((?<![A-Za-z0-9_])NAME(?![A-Za-z0-9_])), CASE-INSENSITIVE, and SKIPS QUOTED LITERALS — each forced by real data (564 distinct columns with 248 substring pairs like 2G/2G_Layer; the operator's own customWhere writes OPERATOR where the column is operator; widget 73 filters network in ('2G','3G','4G') where all three are real column names). NOTE the deliberate asymmetry: Phase 122's column IDENTITY comparison stays CASE-SENSITIVE; only the does-this-text-mention-it scan is insensitive — do not unify them. All five free-SQL sites scanned INCLUDING the generated config.sql: the redundancy trade-off was put to the operator explicitly and they chose completeness over a quieter report, so one widget will routinely yield BOTH an exact and a heuristic finding for the same column and PHASE 124 MUST GROUP BY RECORD for display. Three confidence levels: exact / heuristic / low-confidence (short or common names like X, Y, gs, Date, name, type) — low-confidence is REPORTED, never suppressed, because a dropped X referenced only in a customWhere must not vanish. Every heuristic finding carries the MATCHED LINE plus a character offset, which is what makes the low-confidence tier affordable to skim. Free-SQL findings do NOT claim a table (dv templates join unregistered tables through aliases); structured findings stay exactly table-scoped. Granularity: ONE FINDING PER REFERENCE SITE, not per record. Next: /gsd:plan-phase 123."
-last_updated: "2026-09-22T09:40:00.000Z"
+status: phase-complete
+stopped_at: "Phase 123 (Column Reference Enumeration) COMPLETE 2026-09-23 — 4/4 plans, verification passed 8/8. SSYNC-V125-07/-08 Complete; v1.25 stands at 6/19 requirements, 2/5 phases. SHIPPED: packages/server/src/lib/columnRefs.ts — ONE pure traversal enumerating 40/40 column-reference sites with 40 named SITE tests; spec 107/107; 72/72 mutation probes fired. Gates: server tsc clean, test-gate.mjs GATE PASSED (set-based, same 8 KNOWN_FAILING); web tsc clean, 181 files/4100 tests, theme-guard 152/152 — web ZERO diff, server-only phase. dashboardExportRefs.ts sha256 unchanged and referenced in COMMENTS ONLY, never imported (criterion 5). THE GUARD WAS PROVEN, NOT ASSERTED: deleting widget.config.metricColumn reddens 9 tests (its SITE test + both COVERAGE tests) — done by the executor AND independently re-performed by the verifier, which also recomputed all 40 sentinels (zero collisions) and confirmed the coverage test asserts set EQUALITY not containment. WHY 40 AND NOT 38: the adversarial sweep enumerated from DATA (every JSON key path in both dev DBs vs the 564 real column names) rather than from CODE, and found two sites four code-reading passes missed — the REF-9 miss-class. Load-bearing one: Taxi Copy and mv view have template_sql = 'select * from {view}' with NO column text, while columns_json holds 19 and 251 real source columns that dv-bound config panels read INSTEAD of the source table. CARRIED: 12 of 40 sites are synthetic-only (no rows in either DB — where a bug survives a fixture-built suite; labelled in the module header); a factual error (vaipr_location_exposure called 'unregistered' — it is registered as table id 5) propagated from the ORCHESTRATOR through researcher and planner and was one execution away from a permanent code comment, caught by the plan checker querying the DB instead of reading prose; four non-discriminating acceptance criteria found and reported, none gamed; three probes needed their TEST strengthened, never the probe; configPatch.metric is one site beyond ROADMAP criterion 2's literal wording, kept on the merits and flagged in-code. NEXT: /gsd:discuss-phase 124 (Impact Report) — and it MUST group findings by record for display, because a widget routinely yields BOTH an exact finding and a heuristic one (its config.sql) for the same column, by the operator's explicit choice of completeness over a quieter report. Also for 124: tableScope 'unresolved' needs an honest rendering; recordId is null for columnDisplayConfig (composite PK); dynamicView.columns_json[].type is a SECOND frozen type cache alongside drillDownColumnType."
+last_updated: "2026-09-23T11:30:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -23,21 +23,20 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 ## Current Position
 
-**v1.25 Schema Sync — Phase 122 COMPLETE (2026-09-21).** Next: **Phase 123**.
+**v1.25 Schema Sync — Phase 123 COMPLETE (2026-09-23).** Next: **Phase 124 (Impact Report)**.
 
-Progress: 1/5 phases, 4/19 requirements Complete (SSYNC-V125-02/-03/-04/-05).
+Progress: 2/5 phases, 6/19 requirements Complete (SSYNC-V125-02/-03/-04/-05/-07/-08).
 
-Phase 123 (Column Reference Enumeration, `lib/columnRefs.ts`) is the milestone's **highest-risk**
-phase and sits ahead of any UI on purpose: it is the one traversal answering "what refers to column
-X of table Y", and it is where v1.24's REF-9 miss-class would recur. Its plan criteria require a
-per-site inventory where **each site has a test that fails if that site is deleted from the
-traversal**, one criterion targeting the 12 `configPatch`-embedded `cb_config`/`track_config`
-copies by name, and a **zero diff** to `dashboardExportRefs.ts` so the export/import path stays
-undisturbed.
-
-**The `SchemaCheckResult` contract shipped by Phase 122 is what Phases 124 and 125 get planned
-against** — it is reproduced verbatim in `122-03-SUMMARY.md`. Three outcomes; `table_missing`
-omits the diff-group keys entirely rather than emptying them.
+**The `ColumnRef` contract shipped by Phase 123 is what Phase 124 renders and Phase 125 persists** —
+reproduced verbatim in `123-01-SUMMARY.md` and `123-04-SUMMARY.md`. Four things 124 must handle,
+recorded at 123's closeout rather than rediscovered:
+- **Group findings by RECORD for display.** A widget routinely yields BOTH an exact finding
+  (`metricColumn`) and a heuristic one (its `config.sql`) for the same column — the operator chose
+  completeness over a quieter report, knowing it duplicates. Ungrouped, the same widget appears twice.
+- `tableScope: "unresolved"` needs an honest rendering (dangling `dynamicViewId`, no `tableId`).
+- `recordId` is `null` for `columnDisplayConfig` — composite PK. Do not assume it is a number.
+- `dynamicView.columns_json[].type` is a SECOND frozen type cache alongside `drillDownColumnType` —
+  out of scope for 123, relevant to 124's severity classification.
 
 **Carried debt, highest-value first:** `loadConfig(...).catch(() => {})` silently suspends a widget
 in `Loading...` forever on a rejected fetch — pre-existing and project-wide, now reachable from
