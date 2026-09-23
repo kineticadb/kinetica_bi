@@ -319,6 +319,100 @@ const RECORD_KIND_ORDER: readonly ColumnRefRecordKind[] = [
 ];
 
 /**
+ * Local positive-integer predicate — the same SHAPE as `dashboardExportRefs.ts`'s `asId` (a
+ * positive integer, never `Number()`/`parseInt`), but declared LOCALLY: importing from that module
+ * is forbidden by the phase's zero-diff success criterion, and re-implementing a four-line
+ * predicate is cheaper than adding a cross-module dependency for it.
+ */
+const asPositiveInt = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isInteger(v) && v > 0 ? v : undefined;
+
+/** Same predicate `dashboardExportRefs.ts` uses to guard property reads on unknown JSON. */
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Resolve which table a widget's structured column fields belong to (Plan 123-02). Exported
+ * because Plan 123-04's `configPatch` blocks and Plan 123-03's layer resolution mirror this exact
+ * rule, and there must be exactly one implementation of it project-wide.
+ *
+ * Rules, in order — do NOT reorder:
+ * 1. `config.dynamicViewId` is a positive integer -> look it up in `dynamicViews` by `id`.
+ *    Found -> `{ tableId: dv.source_table_id, tableScope: "scoped" }`.
+ *    NOT found -> `{ tableId: null, tableScope: "unresolved" }` — do NOT fall back to
+ *    `config.tableId`; a dangling dv reference makes the table genuinely undeterminable, and a
+ *    missed finding is the expensive failure this module exists to avoid.
+ * 2. Else `config.tableId` is a positive integer -> `{ tableId, tableScope: "scoped" }`.
+ * 3. Else -> `{ tableId: null, tableScope: "unresolved" }`.
+ *
+ * WHY step 1 looks redundant but isn't: `ChartConfigPanel.tsx:1071-1084` dual-writes BOTH
+ * `config.tableId` (= `dv.source_table_id`) AND `config.dynamicViewId` on a dv-bound widget, so the
+ * two agree in every row of the dev DB today. But that equality is a save-time convention enforced
+ * by ONE call site, not a schema-level guarantee — the dv is the authority and `config.tableId` is
+ * merely a cache of it, so the dv is checked FIRST.
+ */
+export const resolveWidgetTableId = (
+  config: Record<string, unknown>,
+  dynamicViews: DashboardDynamicView[],
+): { tableId: number | null; tableScope: ColumnRefTableScope } => {
+  const dvId = asPositiveInt(config.dynamicViewId);
+  if (dvId !== undefined) {
+    const dv = dynamicViews.find((d) => d.id === dvId);
+    if (dv) return { tableId: dv.source_table_id, tableScope: "scoped" };
+    return { tableId: null, tableScope: "unresolved" };
+  }
+  const tableId = asPositiveInt(config.tableId);
+  if (tableId !== undefined) return { tableId, tableScope: "scoped" };
+  return { tableId: null, tableScope: "unresolved" };
+};
+
+/**
+ * Shared structured-site emitter (Plan 123-02), used by every `widget.config.*` exact site below
+ * and, in Plans 123-03/04, by the layer and `configPatch` sites too. Rules, all load-bearing:
+ * - Skip unless `value` is a non-empty (post-trim) string and `column` is non-empty.
+ * - Match is EXACT, case-SENSITIVE string equality against the RAW value — the same identity
+ *   question `schemaDiff.ts` answers case-sensitively. The case-INSENSITIVE rule belongs to
+ *   free-SQL text scanning ONLY (`scanFreeSql` above); unifying the two is explicitly forbidden by
+ *   123-CONTEXT.md.
+ * - Emit only when `resolved.tableScope === "unresolved"` OR `resolved.tableId === query.tableId`.
+ *   An `unresolved` record is ALWAYS reported regardless of the queried table — fail toward
+ *   reporting, per the locked rule that a missed finding is the expensive failure and a surplus
+ *   one is merely noise.
+ * - `confidence: "exact"`, `matches: []` — always, for a structured site.
+ */
+const emitStructured = (args: {
+  value: unknown;
+  column: string;
+  site: ColumnRefSite;
+  path: string;
+  recordKind: ColumnRefRecordKind;
+  recordId: number | null;
+  recordLabel: string;
+  resolved: { tableId: number | null; tableScope: ColumnRefTableScope };
+  query: ColumnQuery;
+  emit: (ref: ColumnRef) => void;
+}): void => {
+  const {
+    value, column, site, path, recordKind, recordId, recordLabel, resolved, query, emit,
+  } = args;
+  if (typeof value !== "string" || value.trim() === "" || column === "") return;
+  if (value !== column) return;
+  if (resolved.tableScope !== "unresolved" && resolved.tableId !== query.tableId) return;
+  emit({
+    column,
+    site,
+    path,
+    recordKind,
+    recordId,
+    recordLabel,
+    tableId: resolved.tableId,
+    tableScope: resolved.tableScope,
+    confidence: "exact",
+    matches: [],
+  });
+};
+
+/**
  * Shared free-SQL emitter, used by all five FREE_SQL_SITES blocks below.
  * - Skips when `text` is null/undefined/empty or when `column` is empty.
  * - Emits EXACTLY ONE ColumnRef carrying ALL matches — one finding per reference SITE (locked),
@@ -371,8 +465,85 @@ const visitColumnRefSites = (
   const columns = query.columns.filter((c) => c.length > 0);
   if (columns.length === 0) return;
 
-  // TODO(123-02): widget.config.metricColumn, groupByColumn, groupByColumns[], drillDownColumn,
-  // timeCol, xField, deltaField, sortField, columns, metrics[].column, filterFields[].column,
+  // --- widget structured sites, Task 1 (Plan 123-02): the eight scalar / CSV fields on
+  // widget.config. Each widget's table is resolved ONCE via resolveWidgetTableId — this is what
+  // makes a same-named column on a different table yield no finding (phase success criterion 4).
+  // The six array sites (groupByColumns[], metrics[].column, filterFields[].column,
+  // spatialTargets[].*) are a SEPARATE loop below (Task 2) so each task's commit is a pure
+  // addition, never an edit to a block a previous commit's own tests already cover. ---
+  for (const widget of input.widgets) {
+    const cfg = (widget.config ?? {}) as Record<string, unknown>;
+    const resolved = resolveWidgetTableId(cfg, input.dynamicViews);
+    const recordKind: ColumnRefRecordKind = "widget";
+    const recordId = widget.id;
+    const recordLabel = widget.title;
+
+    for (const column of columns) {
+      emitStructured({
+        value: cfg.metricColumn, column, site: "widget.config.metricColumn",
+        path: "config.metricColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.groupByColumn, column, site: "widget.config.groupByColumn",
+        path: "config.groupByColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.drillDownColumn, column, site: "widget.config.drillDownColumn",
+        path: "config.drillDownColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.timeCol, column, site: "widget.config.timeCol",
+        path: "config.timeCol", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.xField, column, site: "widget.config.xField",
+        path: "config.xField", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      // deltaField / sortField: the KEY is present on every real bignumber / records widget, but
+      // its value is ALWAYS "" in both kinetica.db and env-b.db — their tests use SYNTHETIC
+      // fixtures. A site with no real data behind it is where a bug survives a suite built from
+      // real fixtures — said at the site, not only in the SUMMARY.
+      emitStructured({
+        value: cfg.deltaField, column, site: "widget.config.deltaField",
+        path: "config.deltaField", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.sortField, column, site: "widget.config.sortField",
+        path: "config.sortField", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+    }
+
+    // widget.config.columns is a COMMA-SEPARATED string, not a single column — split on ",",
+    // trim each token, skip empty tokens, compare each token EXACTLY (still case-sensitive). Path
+    // stays "config.columns" (the field is the site; de-duplication in collectColumnRefs collapses
+    // a repeated token). Real value in the dev DB: widget 69's columns: "emirate" — a single
+    // token, which is exactly why the multi-token behaviour needs its own explicitly-synthetic
+    // test.
+    if (typeof cfg.columns === "string" && cfg.columns.trim() !== "") {
+      const tokens = cfg.columns
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t !== "");
+      for (const column of columns) {
+        if (!tokens.includes(column)) continue;
+        if (resolved.tableScope !== "unresolved" && resolved.tableId !== query.tableId) continue;
+        emit({
+          column,
+          site: "widget.config.columns",
+          path: "config.columns",
+          recordKind,
+          recordId,
+          recordLabel,
+          tableId: resolved.tableId,
+          tableScope: resolved.tableScope,
+          confidence: "exact",
+          matches: [],
+        });
+      }
+    }
+  }
+
+  // TODO(123-02 Task 2): widget.config.groupByColumns[], metrics[].column, filterFields[].column,
   // spatialTargets[].lonCol/latCol/spatialCol.
   // TODO(123-03): layer.config.latColumn/lonColumn/wktColumn/wkbColumn, layer.cb_config.attr,
   // layer.track_config.trackIdAttr/trackOrderAttr/xCol/yCol, layer.info_columns, layer.info_template.

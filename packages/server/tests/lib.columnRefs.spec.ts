@@ -554,3 +554,224 @@ describe("dynamicView.columns_json[].name", () => {
     expect(hit?.path).toBe("columns_json[0].name");
   });
 });
+
+// -----------------------------------------------------------------------------------------------
+// Widget structured sites — scalars / CSV (Plan 123-02, Task 1)
+// -----------------------------------------------------------------------------------------------
+
+describe("widget structured sites — scalars", () => {
+  // widget 4, type "table", tableId 1 (demo.nyctaxi) — REAL
+  const widget4Config = {
+    customWhere: "", groupByColumns: [], columns: "", sortField: "", sortDirection: "asc",
+    table: "demo.nyctaxi", metricColumn: "fare_amount", aggregation: "AVG",
+    groupByColumn: "vendor_id",
+    sql: "SELECT vendor_id, AVG(fare_amount) AS value FROM demo.nyctaxi GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    tableId: 1, drillDownColumn: "vendor_id", drillDownColumnType: "string",
+  };
+  // widget 24, type "timeline", tableId 6 (telecom.demodata) — REAL
+  const widget24Config = {
+    timeCol: "QOS_Date",
+    metrics: [
+      { column: "QOS_DownloadThroughput", aggregation: "SUM", color: "FF66C2A5", label: "" },
+      { column: "QOS_SignalStrength", aggregation: "SUM", color: "FFFC8D62", label: "" },
+    ],
+    colorTheme: "Set2", tableId: 6,
+  };
+  // widget 104, type "numericline", tableId 1 — REAL
+  const widget104Config = {
+    xField: "passenger_count",
+    metrics: [{ column: "", aggregation: "SUM", color: "FF66C2A5", label: "", metricId: 9 }],
+    colorTheme: "Set2", tableId: 1, groupByColumn: "vendor_id",
+  };
+  // widget 69, type "table", tableId 8 (ookla_dash.new_mobile_base_k_vs2) — REAL
+  const widget69Config = {
+    columns: "emirate", customWhere: "", sortField: "",
+    table: "ookla_dash.new_mobile_base_k_vs2", metricColumn: "ts_result_month", tableId: 8,
+  };
+
+  it("SITE widget.config.metricColumn: widget 4's metricColumn fare_amount is an exact, table-1-scoped finding", () => {
+    const widget = makeWidget({ id: 4, title: "Fare by Vendor", type: "table", config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.metricColumn");
+    expect(hit).toMatchObject({
+      column: "fare_amount", path: "config.metricColumn", recordKind: "widget",
+      recordId: 4, recordLabel: "Fare by Vendor", tableId: 1, tableScope: "scoped",
+      confidence: "exact", matches: [],
+    });
+  });
+
+  it("SITE widget.config.groupByColumn: widget 4's groupByColumn vendor_id is an exact finding", () => {
+    const widget = makeWidget({ id: 4, config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hit = refs.find((r) => r.site === "widget.config.groupByColumn");
+    expect(hit?.column).toBe("vendor_id");
+    expect(hit?.path).toBe("config.groupByColumn");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE widget.config.drillDownColumn: widget 4's drillDownColumn vendor_id is an exact finding with its own path", () => {
+    const widget = makeWidget({ id: 4, config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hit = refs.find((r) => r.site === "widget.config.drillDownColumn");
+    expect(hit?.path).toBe("config.drillDownColumn");
+    expect(hit?.column).toBe("vendor_id");
+  });
+
+  it("SITE widget.config.timeCol: widget 24's timeCol QOS_Date is an exact finding", () => {
+    const widget = makeWidget({ id: 24, type: "timeline", config: widget24Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["QOS_Date"] });
+    const hit = refs.find((r) => r.site === "widget.config.timeCol");
+    expect(hit?.path).toBe("config.timeCol");
+    expect(hit?.tableId).toBe(6);
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE widget.config.xField: widget 104's xField passenger_count is an exact finding", () => {
+    const widget = makeWidget({ id: 104, type: "numericline", config: widget104Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["passenger_count"] });
+    const hit = refs.find((r) => r.site === "widget.config.xField");
+    expect(hit?.path).toBe("config.xField");
+    expect(hit?.tableId).toBe(1);
+  });
+
+  it("SITE widget.config.deltaField: a populated deltaField is an exact finding (SYNTHETIC — every real bignumber widget has deltaField \"\")", () => {
+    const widget = makeWidget({
+      id: 9001, type: "bignumber", config: { deltaField: "fare_amount", tableId: 1 },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.deltaField");
+    expect(hit?.path).toBe("config.deltaField");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE widget.config.sortField: a populated sortField is an exact finding (SYNTHETIC — every real records widget has sortField \"\")", () => {
+    const widget = makeWidget({
+      id: 9002, type: "records", config: { sortField: "fare_amount", tableId: 1 },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.sortField");
+    expect(hit?.path).toBe("config.sortField");
+  });
+
+  it("SITE widget.config.columns: widget 69's columns string emirate is an exact finding", () => {
+    const widget = makeWidget({ id: 69, type: "table", config: widget69Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["emirate"] });
+    const hit = refs.find((r) => r.site === "widget.config.columns");
+    expect(hit?.path).toBe("config.columns");
+    expect(hit?.tableId).toBe(8);
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("the comma-separated columns string splits and trims: \"emirate, operator ,cluster\" finds all three", () => {
+    const widget = makeWidget({
+      id: 70, type: "table", config: { columns: "emirate, operator ,cluster", tableId: 8 },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    for (const col of ["emirate", "operator", "cluster"]) {
+      const refs = collectColumnRefs(input, { tableId: 8, columns: [col] });
+      const hit = refs.find((r) => r.site === "widget.config.columns");
+      expect(hit?.column).toBe(col);
+    }
+  });
+
+  it("an empty-string field yields no finding", () => {
+    const widget = makeWidget({
+      id: 71, config: { metricColumn: "", groupByColumn: "", tableId: 1 },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    expect(refs).toEqual([]);
+  });
+
+  it("structured matching is case-SENSITIVE: querying MCC does not match a widget whose groupByColumn is mcc", () => {
+    const widget = makeWidget({ id: 72, config: { groupByColumn: "mcc", tableId: 8 } });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 8, columns: ["MCC"] });
+    expect(refs.filter((r) => r.site === "widget.config.groupByColumn")).toEqual([]);
+  });
+
+  it("every structured finding has confidence 'exact' and an empty matches array", () => {
+    const widget = makeWidget({ id: 4, config: widget4Config });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount", "vendor_id"] });
+    const freeSqlSet = new Set<string>(FREE_SQL_SITES);
+    const structuredRefs = refs.filter((r) => !freeSqlSet.has(r.site));
+    expect(structuredRefs.length).toBeGreaterThan(0);
+    for (const ref of structuredRefs) {
+      expect(ref.confidence).toBe("exact");
+      expect(ref.matches).toEqual([]);
+    }
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
+// Widget table resolution — resolveWidgetTableId (Plan 123-02, Task 1)
+// -----------------------------------------------------------------------------------------------
+
+describe("widget table resolution", () => {
+  it("SCOPE: a dv-bound widget resolves through the dynamic view's source_table_id, not config.tableId", () => {
+    // SYNTHETIC (both halves): every real dv-bound widget's config.tableId already equals
+    // dv.source_table_id (a save-time convention, not a schema guarantee) — this fixture
+    // DISAGREES on purpose (tableId: 1, but dv 1's source_table_id: 4) to prove the dv wins.
+    const dv = makeDv({ id: 1, source_table_id: 4 });
+    const widget = makeWidget({
+      id: 80, config: { tableId: 1, dynamicViewId: 1, metricColumn: "fare_amount" },
+    });
+    const input = { ...emptyInput(), widgets: [widget], dynamicViews: [dv] };
+    const refsForTable4 = collectColumnRefs(input, { tableId: 4, columns: ["fare_amount"] });
+    const hit = refsForTable4.find((r) => r.site === "widget.config.metricColumn");
+    expect(hit).toBeDefined();
+    expect(hit?.tableId).toBe(4);
+    expect(hit?.tableScope).toBe("scoped");
+    // NOT scoped to the cached config.tableId (1):
+    const refsForTable1 = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    expect(refsForTable1.filter((r) => r.site === "widget.config.metricColumn")).toEqual([]);
+  });
+
+  it("SCOPE: a non-dv-bound widget resolves through config.tableId", () => {
+    const widget = makeWidget({ id: 81, config: { tableId: 1, metricColumn: "fare_amount" } });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.metricColumn");
+    expect(hit?.tableId).toBe(1);
+    expect(hit?.tableScope).toBe("scoped");
+  });
+
+  it("SCOPE: a widget whose dynamicViewId is dangling is reported with tableScope 'unresolved' regardless of the queried table", () => {
+    // SYNTHETIC: every real dv reference in the dev DB resolves. This fixture's dynamicViewId
+    // (4242) has no matching row in input.dynamicViews.
+    const widget = makeWidget({
+      id: 9003, config: { tableId: 1, dynamicViewId: 4242, metricColumn: "fare_amount" },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 7, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.metricColumn");
+    expect(hit).toBeDefined();
+    expect(hit?.tableScope).toBe("unresolved");
+    expect(hit?.tableId).toBeNull();
+  });
+
+  it("SCOPE: a widget with neither dynamicViewId nor tableId is reported with tableScope 'unresolved'", () => {
+    const widget = makeWidget({ id: 9004, config: { metricColumn: "fare_amount" } });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.metricColumn");
+    expect(hit?.tableScope).toBe("unresolved");
+    expect(hit?.tableId).toBeNull();
+  });
+
+  it("a widget bound to a different table yields no structured finding for a same-named column", () => {
+    const widget = makeWidget({ id: 82, config: { tableId: 1, metricColumn: "fare_amount" } });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const refs = collectColumnRefs(input, { tableId: 2, columns: ["fare_amount"] });
+    expect(refs.filter((r) => r.site === "widget.config.metricColumn")).toEqual([]);
+  });
+});
