@@ -1158,6 +1158,100 @@ describe("layer JSON-string sites", () => {
 });
 
 // -----------------------------------------------------------------------------------------------
+// Layer info popup sites (Plan 123-03, Task 3) — info_columns, info_template placeholders.
+// -----------------------------------------------------------------------------------------------
+
+describe("layer info popup sites", () => {
+  // SYNTHETIC — 0/10 (kinetica.db) and 0/8 (env-b.db) layers populate either field; no operator
+  // has ever configured an info-popup override in either environment.
+  const layer9301 = makeLayer({
+    id: 9301, table_id: 1,
+    info_columns: "[\"pickup_longitude\", \"pickup_latitude\", \"fare_amount\"]",
+    info_template:
+      "<table><tr><td>Fare</td><td>{fare_amount}</td></tr>\n" +
+      "<tr><td>Vendor</td><td>{vendor_id}</td></tr></table>",
+  });
+
+  it("SITE layer.info_columns: a populated info_columns array yields one finding per matching entry (SYNTHETIC — 0/10 and 0/8 layers populated)", () => {
+    const input = makeInput({ layers: [layer9301] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.site === "layer.info_columns");
+    expect(hit).toMatchObject({
+      column: "pickup_latitude", path: "info_columns[1]", recordKind: "layer", recordId: 9301,
+      tableId: 1, tableScope: "scoped", confidence: "exact", matches: [],
+    });
+  });
+
+  it("SITE layer.info_template: a {Column} placeholder yields a finding carrying its line and offset (SYNTHETIC — 0/10 and 0/8 layers populated)", () => {
+    const input = makeInput({ layers: [layer9301] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] });
+    const hit = refs.find((r) => r.site === "layer.info_template");
+    expect(hit).toBeDefined();
+    expect(hit?.matches[0].lineNumber).toBe(2); // vendor_id is on the second line
+    expect(hit?.matches[0].line).toContain("{vendor_id}");
+    expect(hit?.matches[0].offset).toBe(hit!.matches[0].line.indexOf("vendor_id"));
+  });
+
+  it("info_template placeholder matching is case-SENSITIVE and ignores surrounding HTML", () => {
+    // Template says {Fare_Amount}; the column is fare_amount. Placeholders are generated from the
+    // column name verbatim, so a case mismatch is a genuinely different reference.
+    const layer = makeLayer({
+      id: 9302, table_id: 1,
+      info_template: "<div class=\"card\">{Fare_Amount}</div>",
+    });
+    const input = makeInput({ layers: [layer] });
+    expect(
+      collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] })
+        .filter((r) => r.site === "layer.info_template"),
+    ).toEqual([]);
+  });
+
+  it("an info_template with no placeholders yields no finding", () => {
+    const layer = makeLayer({
+      id: 9303, table_id: 1, info_template: "<table><tr><td>Fare</td></tr></table>",
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    expect(refs.filter((r) => r.site === "layer.info_template")).toEqual([]);
+  });
+
+  it("a null info_columns means ALL COLUMNS and yields no finding, because it names nothing", () => {
+    const layer = makeLayer({ id: 9304, table_id: 1, info_columns: null });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    expect(refs.filter((r) => r.site === "layer.info_columns")).toEqual([]);
+  });
+
+  it("EXCLUDE: a layer config with the queried column name planted under EVERY excluded key yields zero findings", () => {
+    // vendor_id is a REAL column of table 1 (demo.nyctaxi); the other excluded keys collide
+    // case-insensitively/structurally with other real columns — exactly why a generic
+    // "does this string equal a known column" walker would be wrong.
+    const planted: Record<string, unknown> = {};
+    for (const key of EXCLUDED_LOOKALIKE_KEYS) planted[key] = "vendor_id";
+    const layer = makeLayer({ id: 7101, table_id: 1, config: planted });
+    const input = makeInput({ layers: [layer] });
+    expect(collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] })).toEqual([]);
+  });
+
+  it("EXCLUDE: the layer exclude fixture DOES yield a finding once latColumn is set, proving the fixture reaches the traversal", () => {
+    const planted: Record<string, unknown> = {};
+    for (const key of EXCLUDED_LOOKALIKE_KEYS) planted[key] = "vendor_id";
+    const withoutSite = makeInput({
+      layers: [makeLayer({ id: 7101, table_id: 1, config: planted })],
+    });
+    expect(collectColumnRefs(withoutSite, { tableId: 1, columns: ["vendor_id"] })).toEqual([]);
+
+    const plantedWithSite = { ...planted, latColumn: "vendor_id" };
+    const withSite = makeInput({
+      layers: [makeLayer({ id: 7101, table_id: 1, config: plantedWithSite })],
+    });
+    const refs = collectColumnRefs(withSite, { tableId: 1, columns: ["vendor_id"] });
+    expect(refs).toHaveLength(1);
+    expect(refs[0].site).toBe("layer.config.latColumn");
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
 // Excluded look-alike keys — the widget half of the guard (Plan 123-02, Task 3). Proves the
 // traversal is path-driven, not value-driven: planting the queried column name under every
 // EXCLUDED_LOOKALIKE_KEYS path yields zero findings, paired with a companion assertion proving the

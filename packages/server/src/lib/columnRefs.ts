@@ -856,6 +856,89 @@ const visitColumnRefSites = (
         });
       }
     }
+
+    // info_columns — Task 3 (Plan 123-03): a JSON-array-of-strings TEXT column
+    // (`'["lon","lat"]'`, packages/server/src/types.ts). `null` (or empty) means ALL COLUMNS and
+    // therefore names nothing — emitting a finding for "all columns" here would flood the report
+    // with a hit for every layer on every query, so a null/empty value is deliberately skipped,
+    // never defaulted to "everything matches". ZERO populated instances in either database (0/10
+    // kinetica.db, 0/8 env-b.db) — no operator has ever configured an info-popup override in
+    // either environment, so this fixture is SYNTHETIC, inferred from the writer
+    // (KineticaWmsLayerForm.tsx) and the type, not observed.
+    const infoColumnsResult = readJsonString(layer.info_columns);
+    if (infoColumnsResult.malformed && layer.info_columns) {
+      for (const column of columns) {
+        emitMalformedJsonFallback({
+          raw: layer.info_columns, site: "layer.info_columns", path: "info_columns",
+          recordKind, recordId, recordLabel, resolved, column, emit,
+        });
+      }
+    } else if (Array.isArray(infoColumnsResult.parsed)) {
+      const arr = infoColumnsResult.parsed as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        for (const column of columns) {
+          emitStructured({
+            value: arr[i], column, site: "layer.info_columns",
+            path: `info_columns[${i}]`, recordKind, recordId, recordLabel, resolved, query, emit,
+          });
+        }
+      }
+    }
+
+    // info_template — Task 3: raw HTML carrying `{ColumnName}` placeholders, emitted verbatim by
+    // KineticaWmsLayerForm.tsx's `` `{${col}}` `` (braces, no spaces, no case change). Does NOT
+    // use `scanFreeSql` — this is not SQL and the whole-identifier lookaround is the wrong tool.
+    // Matching is EXACT and case-SENSITIVE against the trimmed placeholder body: a case mismatch
+    // is a genuinely different reference, not a formatting variation. ZERO populated instances in
+    // either database — SYNTHETIC fixture only, same "no operator has ever configured this"
+    // caveat as info_columns above.
+    if (typeof layer.info_template === "string" && layer.info_template !== "") {
+      const template = layer.info_template;
+      const templateLines = template.split("\n");
+      const lineStarts: number[] = [0];
+      for (const l of templateLines.slice(0, -1)) {
+        lineStarts.push(lineStarts[lineStarts.length - 1] + l.length + 1); // +1 for the "\n"
+      }
+      for (const column of columns) {
+        const templateMatches: ColumnRefMatch[] = [];
+        const placeholderRegex = /\{([^{}]*)\}/g;
+        let placeholderMatch: RegExpExecArray | null;
+        while ((placeholderMatch = placeholderRegex.exec(template)) !== null) {
+          const rawBody = placeholderMatch[1];
+          const trimmedBody = rawBody.trim();
+          if (trimmedBody !== column) continue;
+          const leadingWhitespace = rawBody.length - rawBody.trimStart().length;
+          // +1 skips the opening "{"; the column name's offset is measured from the FIRST
+          // non-whitespace character of the placeholder body, not from the brace — Phase 124
+          // highlights the name, not the delimiter.
+          const absoluteIndex = placeholderMatch.index + 1 + leadingWhitespace;
+          let lineIdx = 0;
+          for (let i = 0; i < lineStarts.length; i++) {
+            if (lineStarts[i] <= absoluteIndex) lineIdx = i;
+            else break;
+          }
+          templateMatches.push({
+            line: templateLines[lineIdx],
+            lineNumber: lineIdx + 1,
+            offset: absoluteIndex - lineStarts[lineIdx],
+          });
+        }
+        if (templateMatches.length === 0) continue;
+        if (resolved.tableScope !== "unresolved" && resolved.tableId !== query.tableId) continue;
+        emit({
+          column,
+          site: "layer.info_template",
+          path: "info_template",
+          recordKind,
+          recordId,
+          recordLabel,
+          tableId: resolved.tableId,
+          tableScope: resolved.tableScope,
+          confidence: "exact",
+          matches: templateMatches,
+        });
+      }
+    }
   }
 
   // TODO(123-04): widget.config.options[].configPatch.* (metric, cb_config.attr,
