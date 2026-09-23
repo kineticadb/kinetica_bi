@@ -1056,6 +1056,24 @@ const visitColumnRefSites = (
         const resolved = resolveConfigPatchTableId(target, input);
         const pathPrefix = `config.options[${i}].${pathFragment}.configPatch`;
 
+        // widget.config.options[].configPatch.metric (Task 2) — a PLAIN string, not JSON. Its
+        // sibling `aggregation` key is never read: it is one of CHART_AGGREGATIONS
+        // (sum/avg/min/max/count/count_distinct), an enum, not a column.
+        //
+        // PLANNER NOTE: this is the ONE site in COLUMN_REF_SITES that ROADMAP success criterion 2
+        // does not name. It is included because 123-CONTEXT.md's canonical_refs section states
+        // plainly that `chart.metric` in the configPatch allow-list IS a column name, and because
+        // it costs one block inside a traversal that already visits every configPatch. It has
+        // ZERO instances in either database. Striking it (if the operator wants the inventory held
+        // to exactly criterion 2's literal wording) means removing this block, its registry entry,
+        // its named test and its master-fixture entry — flagged for the operator in the SUMMARY.
+        for (const column of columns) {
+          emitStructured({
+            value: patch.metric, column, site: "widget.config.options[].configPatch.metric",
+            path: `${pathPrefix}.metric`, recordKind, recordId, recordLabel, resolved, query, emit,
+          });
+        }
+
         // cb_config.attr — a JSON-string TOP-LEVEL configPatch field (same shape as the layer's
         // own cb_config, read via the SAME readJsonString/emitMalformedJsonFallback helpers Plan
         // 123-03 wrote — these are the same payload in a different location, not a second
@@ -1209,7 +1227,29 @@ const visitColumnRefSites = (
     }
   }
 
-  // TODO(123-04 Task 2): widget.config.options[].configPatch.metric, columnDisplayConfig.column_name.
+  // --- columnDisplayConfig.column_name (Plan 123-04, Task 2): global per-table column display
+  // config. ColumnDisplayConfigRow has a COMPOSITE primary key (table_id, column_name) and no
+  // surrogate id — recordId is ALWAYS null; identify a finding as (tableId, recordLabel). A
+  // deliberate divergence from custom_metrics, which took an opaque autoincrement id so Phase 100
+  // widget references could survive label edits. Phase 124 must not assume recordId is a number.
+  for (const row of input.columnDisplayConfig) {
+    for (const column of columns) {
+      if (row.column_name !== column) continue;
+      if (row.table_id !== query.tableId) continue;
+      emit({
+        column,
+        site: "columnDisplayConfig.column_name",
+        path: "column_name",
+        recordKind: "columnDisplayConfig",
+        recordId: null,
+        recordLabel: row.column_name,
+        tableId: row.table_id,
+        tableScope: "scoped",
+        confidence: "exact",
+        matches: [],
+      });
+    }
+  }
 
   // --- The five FREE_SQL_SITES (this plan). All emitted REGARDLESS of query.tableId: they are
   // table-less, so there is nothing to filter on — this is why widget.config.sql for a widget on

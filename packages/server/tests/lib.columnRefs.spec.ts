@@ -1538,3 +1538,143 @@ describe("radio-group configPatch copies", () => {
     expect(hit?.matches.length).toBeGreaterThan(0);
   });
 });
+
+// -----------------------------------------------------------------------------------------------
+// configPatch.metric and columnDisplayConfig.column_name (Plan 123-04, Task 2)
+// -----------------------------------------------------------------------------------------------
+
+describe("configPatch.metric and column display config", () => {
+  it("SITE widget.config.options[].configPatch.metric: a widget-target patch naming a metric column yields a finding (SYNTHETIC — ZERO widget-target configPatches exist in either database)", () => {
+    // REAL — target widget 4, tableId 1. SYNTHETIC — no widget-target configPatch exists in
+    // either database; this fixture targets a real row so the scope assertion has something real
+    // to resolve against.
+    const targetWidget = makeWidget({ id: 4, title: "Fare by Vendor", config: { tableId: 1 } });
+    const radioWidget = makeWidget({
+      id: 9401, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "Fare", actions: [{
+          target: { kind: "widget", id: 4 },
+          configPatch: { metric: "fare_amount", aggregation: "SUM" },
+        }] }],
+      },
+    });
+    const input = makeInput({ widgets: [radioWidget, targetWidget] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    const hit = refs.find((r) => r.site === "widget.config.options[].configPatch.metric");
+    expect(hit).toMatchObject({
+      column: "fare_amount", path: "config.options[0].actions[0].configPatch.metric",
+      recordKind: "widget", recordId: 9401,
+      tableId: 1, tableScope: "scoped", confidence: "exact", matches: [],
+    });
+  });
+
+  it("SCOPE: a configPatch.metric is scoped to the TARGET widget's resolved table", () => {
+    const targetWidget = makeWidget({ id: 4, config: { tableId: 1 } });
+    const radioWidget = makeWidget({
+      id: 9401, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "Fare", actions: [{
+          target: { kind: "widget", id: 4 },
+          configPatch: { metric: "fare_amount" },
+        }] }],
+      },
+    });
+    const input = makeInput({ widgets: [radioWidget, targetWidget] });
+    const refsForTable1 = collectColumnRefs(input, { tableId: 1, columns: ["fare_amount"] });
+    expect(
+      refsForTable1.find((r) => r.site === "widget.config.options[].configPatch.metric"),
+    ).toBeDefined();
+    const refsForTable2 = collectColumnRefs(input, { tableId: 2, columns: ["fare_amount"] });
+    expect(
+      refsForTable2.filter((r) => r.site === "widget.config.options[].configPatch.metric"),
+    ).toEqual([]);
+  });
+
+  it("SITE columnDisplayConfig.column_name: the real row (table 6, Device_Manufacturer) yields an exact finding", () => {
+    // REAL — dev DB row.
+    const row = {
+      table_id: 6, column_name: "Device_Manufacturer", label: "Device Manufacture Label",
+      format_spec: null, created_at: "", updated_at: "",
+    };
+    const input = makeInput({ columnDisplayConfig: [row] });
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Device_Manufacturer"] });
+    const hit = refs.find((r) => r.site === "columnDisplayConfig.column_name");
+    expect(hit?.recordId).toBeNull();
+    expect(hit?.recordLabel).toBe("Device_Manufacturer");
+    expect(hit?.tableId).toBe(6);
+    expect(hit?.path).toBe("column_name");
+  });
+
+  it("a columnDisplayConfig finding has recordId null and is identified by (tableId, recordLabel)", () => {
+    const row = {
+      table_id: 6, column_name: "Device_Manufacturer", label: null,
+      format_spec: null, created_at: "", updated_at: "",
+    };
+    const input = makeInput({ columnDisplayConfig: [row] });
+    const refs = collectColumnRefs(input, { tableId: 6, columns: ["Device_Manufacturer"] });
+    const hit = refs.find((r) => r.site === "columnDisplayConfig.column_name");
+    expect(hit?.recordId).toBeNull();
+    expect(hit?.recordKind).toBe("columnDisplayConfig");
+    expect(hit?.tableId).toBe(6);
+    expect(hit?.recordLabel).toBe("Device_Manufacturer");
+  });
+
+  it("a columnDisplayConfig row on a different table yields no finding", () => {
+    const row = {
+      table_id: 6, column_name: "Device_Manufacturer", label: "x",
+      format_spec: null, created_at: "", updated_at: "",
+    };
+    const input = makeInput({ columnDisplayConfig: [row] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["Device_Manufacturer"] });
+    expect(refs.filter((r) => r.site === "columnDisplayConfig.column_name")).toEqual([]);
+  });
+
+  it("EXCLUDE: a configPatch with the queried column name planted under EVERY excluded key yields zero findings", () => {
+    // vendor_id is a REAL column of table 1; the other excluded keys collide case-insensitively/
+    // structurally with other real columns elsewhere — including `name`, load-bearing here since
+    // 8 of the 12 real dev-DB patches carry a `name: "Main NYC taxi"`-style layer display name.
+    const planted: Record<string, unknown> = {};
+    for (const key of EXCLUDED_LOOKALIKE_KEYS) planted[key] = "vendor_id";
+    const layer4 = makeLayer({ id: 4, table_id: 1 });
+    const widget = makeWidget({
+      id: 7201, type: "radiogroup", config: {
+        options: [{ id: "o1", label: "lookalikes", actions: [{
+          target: { kind: "layer", id: 4 }, configPatch: planted,
+        }] }],
+      },
+    });
+    const input = makeInput({ widgets: [widget], layers: [layer4] });
+    expect(collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] })).toEqual([]);
+  });
+
+  it("EXCLUDE: the configPatch exclude fixture DOES yield a finding once cb_config is set, proving the fixture reaches the traversal", () => {
+    const planted: Record<string, unknown> = {};
+    for (const key of EXCLUDED_LOOKALIKE_KEYS) planted[key] = "vendor_id";
+    const layer4 = makeLayer({ id: 4, table_id: 1 });
+
+    const withoutSite = makeInput({
+      widgets: [makeWidget({
+        id: 7201, type: "radiogroup", config: {
+          options: [{ id: "o1", label: "lookalikes", actions: [{
+            target: { kind: "layer", id: 4 }, configPatch: planted,
+          }] }],
+        },
+      })],
+      layers: [layer4],
+    });
+    expect(collectColumnRefs(withoutSite, { tableId: 1, columns: ["vendor_id"] })).toEqual([]);
+
+    const plantedWithSite = { ...planted, cb_config: "{\"attr\":\"vendor_id\",\"breaks\":[]}" };
+    const withSite = makeInput({
+      widgets: [makeWidget({
+        id: 7201, type: "radiogroup", config: {
+          options: [{ id: "o1", label: "lookalikes", actions: [{
+            target: { kind: "layer", id: 4 }, configPatch: plantedWithSite,
+          }] }],
+        },
+      })],
+      layers: [layer4],
+    });
+    const refs = collectColumnRefs(withSite, { tableId: 1, columns: ["vendor_id"] });
+    expect(refs).toHaveLength(1);
+    expect(refs[0].site).toBe("widget.config.options[].configPatch.cb_config.attr");
+  });
+});
