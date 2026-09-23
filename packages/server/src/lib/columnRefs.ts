@@ -375,6 +375,41 @@ export const resolveWidgetTableId = (
 };
 
 /**
+ * Resolve which table a layer's own structured column fields belong to (Plan 123-03) — the SAME
+ * three-step rule as `resolveWidgetTableId` immediately above, applied to a `DashboardLayer`
+ * instead of a widget's `config`. Exported and kept side by side with `resolveWidgetTableId` so a
+ * reader sees at a glance that this is not a second, independently-invented rule.
+ *
+ * Rules, in order — do NOT reorder:
+ * 1. `layer.dynamic_view_id` is a positive integer -> look it up in `dynamicViews` by `id`.
+ *    Found -> `{ tableId: dv.source_table_id, tableScope: "scoped" }`.
+ *    NOT found -> `{ tableId: null, tableScope: "unresolved" }` — do NOT fall back to
+ *    `layer.table_id`; a dangling dv reference makes the table genuinely undeterminable.
+ * 2. Else `layer.table_id` is a positive integer -> `{ tableId, tableScope: "scoped" }`.
+ * 3. Else -> `{ tableId: null, tableScope: "unresolved" }`.
+ *
+ * WHY step 1 looks redundant but isn't: `table_id` on `dashboard_layers` is NOT NULL even when
+ * `dynamic_view_id` is set — when dv-bound, `table_id` is written as `dv.source_table_id` by the
+ * LayersModal/ChartConfigPanel picker (`packages/server/src/types.ts` documents this at the
+ * `dynamic_view_id` field), so the same cache-vs-authority argument as `resolveWidgetTableId`
+ * applies and the dv wins even where today's data always agrees with the cache.
+ */
+export const resolveLayerTableId = (
+  layer: DashboardLayer,
+  dynamicViews: DashboardDynamicView[],
+): { tableId: number | null; tableScope: ColumnRefTableScope } => {
+  const dvId = asPositiveInt(layer.dynamic_view_id);
+  if (dvId !== undefined) {
+    const dv = dynamicViews.find((d) => d.id === dvId);
+    if (dv) return { tableId: dv.source_table_id, tableScope: "scoped" };
+    return { tableId: null, tableScope: "unresolved" };
+  }
+  const tableId = asPositiveInt(layer.table_id);
+  if (tableId !== undefined) return { tableId, tableScope: "scoped" };
+  return { tableId: null, tableScope: "unresolved" };
+};
+
+/**
  * Shared structured-site emitter (Plan 123-02), used by every `widget.config.*` exact site below
  * and, in Plans 123-03/04, by the layer and `configPatch` sites too. Rules, all load-bearing:
  * - Skip unless `value` is a non-empty (post-trim) string and `column` is non-empty.
@@ -652,8 +687,46 @@ const visitColumnRefSites = (
     }
   }
 
-  // TODO(123-03): layer.config.latColumn/lonColumn/wktColumn/wkbColumn, layer.cb_config.attr,
-  // layer.track_config.trackIdAttr/trackOrderAttr/xCol/yCol, layer.info_columns, layer.info_template.
+  // --- layer structured sites, Task 1 (Plan 123-03): the four layer.config.* spatial column
+  // bindings. Each layer's table is resolved ONCE via resolveLayerTableId, mirroring the widget
+  // loop above. Task 2 extends this SAME loop with the cb_config/track_config JSON-string sites
+  // and Task 3 extends it further with info_columns/info_template — one loop, not three, because
+  // each TEXT column must be parsed once per layer, not once per site. ---
+  for (const layer of input.layers) {
+    const cfg = (layer.config ?? {}) as Record<string, unknown>;
+    const resolved = resolveLayerTableId(layer, input.dynamicViews);
+    const recordKind: ColumnRefRecordKind = "layer";
+    const recordId = layer.id;
+    // config.name is a DISPLAY NAME, not a column — it is in EXCLUDED_LOOKALIKE_KEYS precisely
+    // because it can look column-ish. Reading it here as a LABEL is correct; reading it as a
+    // VALUE (comparing it against a queried column, the way the four sites below do) would not
+    // be — exactly the confusion the exclude list exists to prevent.
+    const recordLabel = typeof cfg.name === "string" ? cfg.name : "";
+
+    for (const column of columns) {
+      emitStructured({
+        value: cfg.latColumn, column, site: "layer.config.latColumn",
+        path: "config.latColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.lonColumn, column, site: "layer.config.lonColumn",
+        path: "config.lonColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      emitStructured({
+        value: cfg.wktColumn, column, site: "layer.config.wktColumn",
+        path: "config.wktColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+      // wkbColumn: ZERO instances in kinetica.db or env-b.db — only wktColumn is ever populated
+      // (1 row and 4 rows respectively). Its test fixture is SYNTHETIC. Related:
+      // TD-V14-WKB-SPIKE means WKB is gated at 501 throughout the app, so this field has never
+      // had a reason to be filled — a sleeper, not a dead field.
+      emitStructured({
+        value: cfg.wkbColumn, column, site: "layer.config.wkbColumn",
+        path: "config.wkbColumn", recordKind, recordId, recordLabel, resolved, query, emit,
+      });
+    }
+  }
+
   // TODO(123-04): widget.config.options[].configPatch.* (metric, cb_config.attr,
   // track_config.trackIdAttr/trackOrderAttr/xCol/yCol, info_columns, info_template),
   // columnDisplayConfig.column_name.

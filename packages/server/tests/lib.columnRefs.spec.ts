@@ -14,6 +14,7 @@ import {
 } from "../src/lib/columnRefs";
 import type {
   Widget,
+  DashboardLayer,
   DashboardDynamicView,
   CustomMetricRow,
   DashboardTableView,
@@ -64,6 +65,26 @@ const makeDv = (
   template_sql: "",
   max_records: 10000,
   columns_json: null,
+  created_at: "",
+  updated_at: "",
+  ...overrides,
+});
+
+const makeLayer = (
+  overrides: Partial<DashboardLayer> & { id: number },
+): DashboardLayer => ({
+  dashboard_id: 1,
+  table_id: 1,
+  layer_type: "KineticaWms",
+  position: 0,
+  config: {},
+  info_enabled: 1,
+  info_columns: null,
+  info_template: null,
+  dynamic_view_id: null,
+  cb_config: null,
+  track_config: null,
+  filter_scope: null,
   created_at: "",
   updated_at: "",
   ...overrides,
@@ -923,6 +944,107 @@ describe("widget structured sites — arrays", () => {
     const input = { ...emptyInput(), widgets: [widget] };
     const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
     expect(refs.filter((r) => (r.site as string).startsWith("widget.config.spatialTargets"))).toEqual([]);
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
+// Layer config column bindings (Plan 123-03, Task 1) — resolveLayerTableId + the four
+// layer.config.* spatial column sites.
+// -----------------------------------------------------------------------------------------------
+
+describe("layer config column bindings", () => {
+  // layer 4: table_id 1 (demo.nyctaxi), dynamic_view_id null — REAL
+  const layer4Config = {
+    renderMode: "heatmap", spatialMode: "latlon", colormap: "plasma",
+    pointColor: "FF3B82F6", pointShape: "circle", shapeFillColor: "FFFF3838",
+    visible: true, latColumn: "pickup_latitude", lonColumn: "pickup_longitude",
+    wktColumn: "", wkbColumn: "",
+  };
+  const layer4 = makeLayer({
+    id: 4, dashboard_id: 1, table_id: 1, config: layer4Config,
+    info_enabled: 1, info_columns: null, info_template: null, dynamic_view_id: null,
+    cb_config: "{\"attr\":\"passenger_count\",\"valsType\":\"numeric\",\"breaks\":[]}",
+    track_config:
+      "{\"trackIdAttr\":\"TRACKID\",\"trackOrderAttr\":\"TIMESTAMP\",\"headColor\":\"FFFF0000\"," +
+      "\"trailColor\":\"FF0000FF\",\"headSize\":8,\"trailSize\":2,\"headShape\":\"circle\"," +
+      "\"enabled\":true}",
+  });
+
+  it("SITE layer.config.latColumn: layer 4's latColumn pickup_latitude is an exact, table-1-scoped finding", () => {
+    const input = makeInput({ layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.site === "layer.config.latColumn");
+    expect(hit).toMatchObject({
+      column: "pickup_latitude", path: "config.latColumn", recordKind: "layer",
+      recordId: 4, tableId: 1, tableScope: "scoped", confidence: "exact", matches: [],
+    });
+  });
+
+  it("SITE layer.config.lonColumn: layer 4's lonColumn pickup_longitude is an exact finding", () => {
+    const input = makeInput({ layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
+    const hit = refs.find((r) => r.site === "layer.config.lonColumn");
+    expect(hit?.path).toBe("config.lonColumn");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE layer.config.wktColumn: a populated wktColumn is an exact finding", () => {
+    // REAL shape (1 row in kinetica.db, 4 in env-b.db); layer 4's own wktColumn is "" (unset), so
+    // this fixture sets a real value on a copy to exercise the site.
+    const layer = makeLayer({
+      id: 4001, table_id: 1, config: { ...layer4Config, wktColumn: "geom_wkt" },
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["geom_wkt"] });
+    const hit = refs.find((r) => r.site === "layer.config.wktColumn");
+    expect(hit?.path).toBe("config.wktColumn");
+    expect(hit?.tableId).toBe(1);
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SITE layer.config.wkbColumn: a populated wkbColumn is an exact finding (SYNTHETIC — zero instances in either database; only wktColumn is ever populated)", () => {
+    const layer = makeLayer({
+      id: 4002, table_id: 1, config: { ...layer4Config, wkbColumn: "geom_wkb" },
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 1, columns: ["geom_wkb"] });
+    const hit = refs.find((r) => r.site === "layer.config.wkbColumn");
+    expect(hit?.path).toBe("config.wkbColumn");
+    expect(hit?.confidence).toBe("exact");
+  });
+
+  it("SCOPE: a layer bound through dynamic_view_id resolves through the dynamic view's source_table_id", () => {
+    // SYNTHETIC (both halves): every real dv-bound layer's table_id already equals
+    // dv.source_table_id (a save-time convention, not a schema guarantee) — this fixture
+    // DISAGREES on purpose (table_id: 1, but dv 1's source_table_id: 4) to prove the dv wins.
+    const dv = makeDv({ id: 1, source_table_id: 4 });
+    const layer = makeLayer({
+      id: 9101, table_id: 1, dynamic_view_id: 1, config: { latColumn: "pickup_latitude" },
+    });
+    const input = makeInput({ layers: [layer], dynamicViews: [dv] });
+    const refsForTable4 = collectColumnRefs(input, { tableId: 4, columns: ["pickup_latitude"] });
+    expect(refsForTable4.some((r) => r.recordId === 9101)).toBe(true);
+    const refsForTable1 = collectColumnRefs(input, { tableId: 1, columns: ["pickup_latitude"] });
+    expect(refsForTable1.some((r) => r.recordId === 9101)).toBe(false);
+  });
+
+  it("SCOPE: a layer with a dangling dynamic_view_id is reported with tableScope 'unresolved'", () => {
+    // SYNTHETIC: every real dv reference in the dev DB resolves.
+    const layer = makeLayer({
+      id: 9102, table_id: 1, dynamic_view_id: 4242, config: { latColumn: "pickup_latitude" },
+    });
+    const input = makeInput({ layers: [layer] });
+    const refs = collectColumnRefs(input, { tableId: 7, columns: ["pickup_latitude"] });
+    const hit = refs.find((r) => r.recordId === 9102 && r.site === "layer.config.latColumn");
+    expect(hit).toBeDefined();
+    expect(hit?.tableScope).toBe("unresolved");
+    expect(hit?.tableId).toBeNull();
+  });
+
+  it("a layer bound to a different table yields no finding for a same-named column", () => {
+    const input = makeInput({ layers: [layer4] });
+    const refs = collectColumnRefs(input, { tableId: 2, columns: ["pickup_latitude"] });
+    expect(refs.filter((r) => r.site === "layer.config.latColumn")).toEqual([]);
   });
 });
 
