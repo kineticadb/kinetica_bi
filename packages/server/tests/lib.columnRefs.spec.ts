@@ -32,6 +32,18 @@ const emptyInput = (): ColumnRefsInput => ({
   columnDisplayConfig: [],
 });
 
+/**
+ * Same fully-populated-defaults shape as emptyInput, but accepting overrides — used by the
+ * exclude-list guard below (Plan 123-02, Task 3). Plan 123-03 EXTENDS this same helper with a
+ * `layers` fixture and Plan 123-04 with a `configPatch` fixture, because each extension only
+ * becomes discriminating once its own traversal exists — an exclude assertion written before the
+ * traversal it guards is a check that cannot fail.
+ */
+const makeInput = (over: Partial<ColumnRefsInput> = {}): ColumnRefsInput => ({
+  widgets: [], layers: [], dynamicViews: [], customMetrics: [],
+  tableViews: [], columnDisplayConfig: [], ...over,
+});
+
 const makeWidget = (overrides: Partial<Widget> & { id: number }): Widget => ({
   dashboard_id: 1,
   title: "Widget",
@@ -911,5 +923,64 @@ describe("widget structured sites — arrays", () => {
     const input = { ...emptyInput(), widgets: [widget] };
     const refs = collectColumnRefs(input, { tableId: 1, columns: ["pickup_longitude"] });
     expect(refs.filter((r) => (r.site as string).startsWith("widget.config.spatialTargets"))).toEqual([]);
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
+// Excluded look-alike keys — the widget half of the guard (Plan 123-02, Task 3). Proves the
+// traversal is path-driven, not value-driven: planting the queried column name under every
+// EXCLUDED_LOOKALIKE_KEYS path yields zero findings, paired with a companion assertion proving the
+// same fixture DOES fire once a real site is added (an exclude test that only asserts `[]` passes
+// just as well against a traversal that walks nothing).
+// -----------------------------------------------------------------------------------------------
+
+describe("excluded look-alike keys", () => {
+  it("EXCLUDE: a widget config with the queried column name planted under EVERY excluded key yields zero findings", () => {
+    // vendor_id is a REAL column of table 1 (demo.nyctaxi); name, type, Date and WKT are all real
+    // column names elsewhere in the operator's tables — exactly why a generic "does this string
+    // equal a known column" walker would be wrong.
+    const planted: Record<string, unknown> = { tableId: 1 };
+    for (const key of EXCLUDED_LOOKALIKE_KEYS) planted[key] = "vendor_id";
+    const input = makeInput({
+      widgets: [makeWidget({ id: 7001, title: "lookalikes", type: "map", config: planted })],
+    });
+    expect(collectColumnRefs(input, { tableId: 1, columns: ["vendor_id"] })).toEqual([]);
+  });
+
+  it("EXCLUDE: config.table holding a fully-qualified table name is never a column finding", () => {
+    const widget = makeWidget({ id: 7002, config: { table: "demo.nyctaxi", tableId: 1 } });
+    const input = makeInput({ widgets: [widget] });
+    expect(
+      collectColumnRefs(input, { tableId: 1, columns: ["demo.nyctaxi", "nyctaxi"] }),
+    ).toEqual([]);
+  });
+
+  it("EXCLUDE: a wkt-mode spatialTargets element yields a finding for spatialCol but NOT for spatialMode", () => {
+    const widget = makeWidget({
+      id: 7003, type: "map",
+      config: { spatialTargets: [{ tableId: 2, spatialMode: "wkt", spatialCol: "WKT" }] },
+    });
+    const input = makeInput({ widgets: [widget] });
+    const refs = collectColumnRefs(input, { tableId: 2, columns: ["WKT"] });
+    // A value-equality walker would ALSO fire on spatialMode:"wkt" (case-insensitively) — that is
+    // the collision 123-RESEARCH.md names, and the reason identification is path-driven.
+    expect(refs.map((r) => r.site)).toEqual(["widget.config.spatialTargets[].spatialCol"]);
+  });
+
+  it("EXCLUDE: the exclude fixture DOES yield findings once a real column site is added, proving the fixture reaches the traversal", () => {
+    const planted: Record<string, unknown> = { tableId: 1 };
+    for (const key of EXCLUDED_LOOKALIKE_KEYS) planted[key] = "vendor_id";
+    const withoutSite = makeInput({
+      widgets: [makeWidget({ id: 7001, title: "lookalikes", type: "map", config: planted })],
+    });
+    expect(collectColumnRefs(withoutSite, { tableId: 1, columns: ["vendor_id"] })).toEqual([]);
+
+    const plantedWithSite = { ...planted, metricColumn: "vendor_id" };
+    const withSite = makeInput({
+      widgets: [makeWidget({ id: 7001, title: "lookalikes", type: "map", config: plantedWithSite })],
+    });
+    const refs = collectColumnRefs(withSite, { tableId: 1, columns: ["vendor_id"] });
+    expect(refs).toHaveLength(1);
+    expect(refs[0].site).toBe("widget.config.metricColumn");
   });
 });

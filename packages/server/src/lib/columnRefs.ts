@@ -23,6 +23,14 @@
  *
  * Whether a given reference matters, and how much, is Phase 124's job, not this module's. This
  * module reports that a reference exists and how confidently — nothing about its consequence.
+ *
+ * The traversal reads ONLY the paths named in `COLUMN_REF_SITES` (via `visitColumnRefSites`'s
+ * fixed, per-site field reads) and never compares an arbitrary config value against a column
+ * name — see the header comment above for why a generic value-equality walker would be wrong here.
+ * `EXCLUDED_LOOKALIKE_KEYS` plus its "excluded look-alike keys" test suite (Plan 123-02, Task 3)
+ * are what keep that true: planting a real column name under every excluded key must yield zero
+ * findings, paired with a companion assertion proving the same fixture DOES fire once a real site
+ * is added, so the guard can actually fail if this property is ever violated.
  */
 
 import type {
