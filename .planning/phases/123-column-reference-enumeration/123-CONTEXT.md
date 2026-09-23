@@ -85,7 +85,7 @@ Verified in the dev DB:
 |---|---|---|
 | `Taxi Copy` (src table 1) | `select * from {view}` | **19 real nyctaxi columns** (`vendor_id`, `pickup_datetime`, …) |
 | `mv view` (src table 6) | `select * from {view}` | **251 real columns** |
-| `FF` / `EQ` (src table 4) | joins `vaipr.vaipr_location_exposure` | columns of that joined table — **a DIFFERENT REGISTERED table (id 5)**, plus one computed alias |
+| the two joined dvs (src table 4) | joins a second, joined table | columns of that joined table — **a DIFFERENT REGISTERED table (id 5)**, plus one computed alias |
 | `Avg NYC` (src table 1) | `SELECT H3_XYTOCELL(...)` | computed aliases (`cell`, `avg_passenger_count`) |
 
 The gap it closes: drop `vendor_id` from table 1 and `Taxi Copy`'s `template_sql` — literally
@@ -96,10 +96,10 @@ INSTEAD of the source table's. The report would call that view unaffected while 
 
 **Table-less, not table-scoped** — forced by the provenance being mixed and proven so above.
 **Correction 2026-09-22 (plan-checker catch):** an earlier draft of this document called
-`vaipr.vaipr_location_exposure` *unregistered*. It is not — it is registered as **table id 5**,
+a second, joined table *unregistered*. It is not — it is registered as **table id 5**,
 while the dv's `source_table_id` is 4. That makes the table-less decision STRONGER, not weaker:
-attributing `cede_db` to table 4 would be actively wrong, since it is table 5's column. Only
-`GR_ExpLim` is a true computed alias belonging to no table. Same
+attributing `joined_col_a` to table 4 would be actively wrong, since it is table 5's column. Only
+`Computed_Alias` is a true computed alias belonging to no table. Same
 treatment as `template_sql`: report the mention, assert no table.
 
 **2. `configPatch.info_columns` and `configPatch.info_template` — enumerate with SYNTHETIC fixtures.**
@@ -160,7 +160,7 @@ unaffected.
 **Locked.** A heuristic finding says "this SQL text mentions the name you asked about" and asserts
 nothing about which table the column belongs to. Forced by the data: dynamic-view templates join
 tables the app has never registered, through aliases —
-`FROM {view} a join vaipr.vaipr_location_exposure b on a.vaipr_location_id = b.vaipr_location_id`.
+`FROM {view} a join a second, joined table b on a.join_key_id = b.join_key_id`.
 Attributing a match there to the view's own bound table would often be simply wrong.
 
 **Structured findings remain exactly table-scoped** (success criterion 4): a widget bound through

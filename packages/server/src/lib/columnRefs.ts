@@ -554,7 +554,7 @@ const emitStructured = (args: {
  *   never one per occurrence.
  * - `tableId: null`, `tableScope: "free-sql"` — ALWAYS. A free-SQL finding never claims a table.
  *   Forced by real data: dynamic-view templates join tables the app never registered through the
- *   view's own bound table, through aliases (`FROM {view} a join vaipr.vaipr_location_exposure b
+ *   view's own bound table, through aliases (`FROM {view} a join other_schema.other_tbl b
  *   on ...` — a DIFFERENT REGISTERED table, id 5, not the dv's own source_table_id 4), so
  *   attributing a match there to the view's own bound table would often simply be wrong.
  * - `confidence`: `low-confidence` when `isLowConfidenceColumnName(column)`, else `heuristic`.
@@ -1361,16 +1361,13 @@ const visitColumnRefSites = (
   // column picker from `dv.columns_json`, NOT from the source table. Without this block, dropping
   // `vendor_id` from table 1 reports nothing for those views while they silently go stale.
   //
-  // Why TABLE-LESS rather than scoped to `source_table_id`: the provenance is mixed and proven so
-  // in the operator's own data. `FF` and `EQ` (source table 4, `vaipr.vaipr_location`) hold
-  // columns of the joined table `vaipr.vaipr_location_exposure` — REGISTERED as table id 5,
-  // distinct from the dv's own source_table_id 4 (verified read-only against the dev DB
-  // 2026-09-22; an earlier draft of this comment called that table "unregistered" — it is not,
-  // which makes the table-less decision STRONGER, not weaker: attributing `cede_db` to table 4
-  // would be ACTIVELY WRONG, since it is table 5's column, not merely imprecise). `Avg NYC`
-  // (source table 1) holds computed aliases (`cell`, `WKT`, `avg_passenger_count`) that are
-  // columns of nothing at all. Scoping these to `source_table_id` would attribute a name to a
-  // table it does not belong to. Detecting "this template has no join" from `template_sql` text
+  // Why TABLE-LESS rather than scoped to `source_table_id`: the provenance is mixed, and observed
+  // to be so. A dv whose `template_sql` JOINS a second table caches that joined table's columns in
+  // `columns_json` — so entries there can belong to a table OTHER than the dv's own
+  // `source_table_id`. A dv that aggregates caches computed aliases (`cell`, `WKT`,
+  // `avg_passenger_count` on `Avg NYC`, source table 1) that are columns of nothing at all.
+  // Scoping these to `source_table_id` would attribute a name to a table it does not belong to —
+  // actively wrong, not merely imprecise. Detecting "this template has no join" from `template_sql` text
   // is exactly the kind of heuristic the free-SQL rules exist to avoid trusting.
   //
   // Why `heuristic` and not `exact`: `exact` in this module means "the value IS this table's

@@ -101,8 +101,8 @@ This is this phase's own REF-9. Evidence, queried directly:
 | 3 | "Taxi Copy" | 1 → `nyctaxi` (19 cols) | `select * from {view}` | 19 | **19/19 match exactly** |
 | 4 | "mv view" | 6 → `demodata` (251 cols) | `select * from {view}` | 251 | **251/251 match exactly** |
 | 6 | "Avg NYC" | 1 → `nyctaxi` | `SELECT H3_XYTOCELL(...) cell, ... AVG(fare_amount) avg_fare_amount ...` | 7 | 0/7 (all are computed aliases: `cell`, `WKT`, `avg_passenger_count`, ...) |
-| 1 | "FF" | 4 → `vaipr_location` (36 cols) | `... FROM {view} a JOIN vaipr.vaipr_location_exposure b ON ... SELECT b.*` | 4 | 0/4 against `vaipr_location`; the 4 names (`cede_db`, `contract_key`, `location_exposure_id`, `GR_ExpLim`) belong to the **joined, unregistered** table `vaipr.vaipr_location_exposure` |
-| 2 | "EQ" | 4 → `vaipr_location` | same join pattern, different `WHERE` | 4 | same as dv#1 |
+| 1 | "FF" | 4 → the source table (36 cols) | `... FROM {view} a JOIN a second, joined table b ON ... SELECT b.*` | 4 | 0/4 against the source table; the 4 names (`joined_col_a`, `joined_col_b`, `joined_col_c`, `Computed_Alias`) belong to the **joined, unregistered** table a second, joined table |
+| 2 | "EQ" | 4 → the source table | same join pattern, different `WHERE` | 4 | same as dv#1 |
 
 **Why this matters, concretely**: dv#3 and dv#4 are plain `SELECT * FROM {view}` pass-throughs. Their
 `template_sql` — one of the five locked free-SQL sites — contains **zero literal column-name text**.
@@ -121,9 +121,9 @@ free-SQL site that would ever surface it.
 **The complication (why this is not simply "add it to the exact list")**: dv#1/dv#2 prove
 `columns_json` is **not reliably table-scoped to `source_table_id`** — a joined dynamic view's cached
 column list can belong to a completely different table — in this dataset a REGISTERED one
-(id 5, `vaipr.vaipr_location_exposure`), not an unregistered one as an earlier draft claimed
+(id 5, a second, joined table), not an unregistered one as an earlier draft claimed
 (corrected 2026-09-22 by the plan checker, verified read-only). In this dataset none of
-`cede_db`/`contract_key`/`location_exposure_id`/`GR_ExpLim` happens to collide with any of the other
+`joined_col_a`/`joined_col_b`/`joined_col_c`/`Computed_Alias` happens to collide with any of the other
 563 registered column names, so no false table-scoped claim occurs today — but the mechanism that
 would produce one (a joined-in column sharing a name with a column on some *other* registered table)
 is real and only avoided here by chance of naming. **Recommendation for the planner**: either (a)

@@ -31,7 +31,7 @@ key-files:
 
 key-decisions:
   - "COLUMN_REF_SITES ships as a frozen 40-entry registry with only 6 sites implemented; golden test prevents later plans from shrinking the inventory"
-  - "dynamicView.columns_json[].name is heuristic and table-less (value-equality, not text-scanned) — corrected WHY-comment: vaipr.vaipr_location_exposure is REGISTERED as table id 5, not unregistered as an earlier draft said, which makes table-less STRONGER not weaker"
+  - "dynamicView.columns_json[].name is heuristic and table-less (value-equality, not text-scanned) — corrected WHY-comment: a second, joined table is REGISTERED as table id 5, not unregistered as an earlier draft said, which makes table-less STRONGER not weaker"
   - "Adapted one Task-2 test to plan's actual scope (no 'exact' structured sites exist until 123-02) per CLAUDE.md's non-discriminating-criterion guidance, rather than fabricating behavior"
   - "Strengthened the mutation-probe-target test for P15 (emit-per-match vs emit-per-site) after the originally planned assertions failed to discriminate"
 
@@ -222,11 +222,11 @@ export const FREE_SQL_SITES: readonly ColumnRefSite[] = [
 
 ## Corrected Comment (per the task instructions — a fact-correction that had to land in code)
 
-Plan 123-01 Task 3's action text (and 123-CONTEXT.md's own "TWO SITES ADDED" section, and 123-RESEARCH.md's Pitfall 1) each still contained residual "UNREGISTERED" phrasing about `vaipr.vaipr_location_exposure`, even after a 2026-09-22 plan-checker correction had already established it is **registered as table id 5** (distinct from dv "FF"/"EQ"'s own `source_table_id` 4). The permanent code comment in `columnRefs.ts` (at the `dynamicView.columns_json[].name` block) drops "unregistered" entirely and states:
+Plan 123-01 Task 3's action text (and 123-CONTEXT.md's own "TWO SITES ADDED" section, and 123-RESEARCH.md's Pitfall 1) each still contained residual "UNREGISTERED" phrasing about a second, joined table, even after a 2026-09-22 plan-checker correction had already established it is **registered as table id 5** (distinct from dv the two joined dvs's own `source_table_id` 4). The permanent code comment in `columnRefs.ts` (at the `dynamicView.columns_json[].name` block) drops "unregistered" entirely and states:
 
-> `FF` and `EQ` (source table 4, `vaipr.vaipr_location`) hold columns of the joined table `vaipr.vaipr_location_exposure` — REGISTERED as table id 5, distinct from the dv's own source_table_id 4 (verified read-only against the dev DB 2026-09-22; an earlier draft of this comment called that table "unregistered" — it is not, which makes the table-less decision STRONGER, not weaker: attributing `cede_db` to table 4 would be ACTIVELY WRONG, since it is table 5's column, not merely imprecise).
+> the two joined dvs (source table 4, its own source table) hold columns of the joined table a second, joined table — REGISTERED as table id 5, distinct from the dv's own source_table_id 4 (verified read-only against the dev DB 2026-09-22; an earlier draft of this comment called that table "unregistered" — it is not, which makes the table-less decision STRONGER, not weaker: attributing `joined_col_a` to table 4 would be ACTIVELY WRONG, since it is table 5's column, not merely imprecise).
 
-No other "unregistered" phrasing about `vaipr_location_exposure` was found in the files this plan touched.
+No other "unregistered" phrasing about the joined table was found in the files this plan touched.
 
 ## Decisions Made
 

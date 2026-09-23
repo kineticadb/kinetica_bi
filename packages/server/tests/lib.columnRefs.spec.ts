@@ -190,7 +190,7 @@ describe("isLowConfidenceColumnName", () => {
 
   it("classifies specific real column names as NOT low-confidence", () => {
     for (const n of [
-      "fare_amount", "vendor_id", "passenger_count", "GR_ExpLim", "operator",
+      "fare_amount", "vendor_id", "passenger_count", "Computed_Alias", "operator",
       "pickup_latitude", "Connection_ServiceProviderBrandName", "ts_result_date",
     ]) {
       expect(isLowConfidenceColumnName(n)).toBe(false);
@@ -317,10 +317,10 @@ describe("free-SQL sites", () => {
     id: 1, table_id: 8, label: "avg_ul_speed", expression: "AVG(val_upload_kbps/100)",
     format_spec: null, created_at: "", updated_at: "",
   };
-  // dynamic view 1 "FF" (source_table_id 4) — REAL (abbreviated template)
-  const dvFFTemplate =
-    "-- FF Slice\nWITH peril_filtered_base_table AS (\n    SELECT b.*\n" +
-    "FROM {view} a \n join vaipr.vaipr_location_exposure b on a.vaipr_location_id = b.vaipr_location_id\n)";
+  // SYNTHETIC: a dv template that joins a second table and references its columns.
+  const dvJoinedTemplate =
+    "-- joined slice\nWITH filtered_base AS (\n    SELECT b.*\n" +
+    "FROM {view} a \n join syn.joined_tbl b on a.join_key_id = b.join_key_id\n)";
 
   it("SITE widget.config.sql: a generated SQL string mentioning the column yields one heuristic, table-less finding", () => {
     const widget = makeWidget({ id: 4, title: "Fare by Vendor", config: widget4Config });
@@ -374,10 +374,10 @@ describe("free-SQL sites", () => {
 
   it("SITE dynamicView.template_sql: a joined template mentioning a column yields a heuristic finding", () => {
     const dv = makeDv({
-      id: 1, name: "FF", source_table_id: 4, template_sql: dvFFTemplate, columns_json: null,
+      id: 1, name: "Joined DV", source_table_id: 4, template_sql: dvJoinedTemplate, columns_json: null,
     });
     const input = { ...emptyInput(), dynamicViews: [dv] };
-    const refs = collectColumnRefs(input, { tableId: 5, columns: ["vaipr_location_id"] });
+    const refs = collectColumnRefs(input, { tableId: 5, columns: ["join_key_id"] });
     const hits = refs.filter((r) => r.site === "dynamicView.template_sql");
     expect(hits).toHaveLength(1);
     expect(hits[0].path).toBe("template_sql");
@@ -398,7 +398,7 @@ describe("free-SQL sites", () => {
   it("every FREE_SQL_SITES finding has tableScope 'free-sql', tableId null and at least one match", () => {
     const widget = makeWidget({ id: 4, config: widget4Config });
     const dv = makeDv({
-      id: 1, name: "FF", source_table_id: 4, template_sql: dvFFTemplate, columns_json: null,
+      id: 1, name: "Joined DV", source_table_id: 4, template_sql: dvJoinedTemplate, columns_json: null,
     });
     const view = makeTableView({ id: 1, filter_clause: "vendor_id = 'CMT'" });
     const input = {
@@ -406,7 +406,7 @@ describe("free-SQL sites", () => {
       tableViews: [view],
     };
     const refs = collectColumnRefs(input, {
-      tableId: 1, columns: ["vendor_id", "val_upload_kbps", "vaipr_location_id"],
+      tableId: 1, columns: ["vendor_id", "val_upload_kbps", "join_key_id"],
     });
     const freeSqlSet = new Set<string>(FREE_SQL_SITES);
     const freeSqlRefs = refs.filter((r) => freeSqlSet.has(r.site));
@@ -525,22 +525,21 @@ describe("dynamicView.columns_json[].name", () => {
       { name: "avg_passenger_count", type: "double" },
     ],
   });
-  // dv 1 "FF": source_table_id 4 (vaipr.vaipr_location), but 3 of its 4 columns_json entries
-  // (cede_db, contract_key, location_exposure_id) belong to a DIFFERENT REGISTERED table —
-  // id 5, vaipr.vaipr_location_exposure, joined by the template. The 4th, GR_ExpLim, is a
-  // computed alias from the template's own CASE expression and is a column of no table at all.
-  // Verified read-only against the dev DB 2026-09-22. This is WHY columns_json is table-less:
-  // attributing cede_db to table 4 would be ACTIVELY WRONG, not merely imprecise.
-  const dvFF = makeDv({
-    id: 1, source_table_id: 4, name: "FF",
+  // SYNTHETIC: a dv whose cached columns_json does NOT describe its own source table.
+  // source_table_id is 4, but three of the four cached columns belong to the DIFFERENT table
+  // the template joins (id 5), and the fourth is a computed alias that is a column of no table
+  // at all. This shape is WHY columns_json findings are table-less: attributing a joined
+  // table's column to the dv's own source table would be ACTIVELY WRONG, not merely imprecise.
+  const dvJoined = makeDv({
+    id: 1, source_table_id: 4, name: "Joined DV",
     template_sql:
-      "-- FF Slice\nWITH peril_filtered_base_table AS (\n    SELECT b.*\n" +
-      "FROM {view} a \n join vaipr.vaipr_location_exposure b on a.vaipr_location_id = b.vaipr_location_id\n)",
+      "-- joined slice\nWITH filtered_base AS (\n    SELECT b.*\n" +
+      "FROM {view} a \n join syn.joined_tbl b on a.join_key_id = b.join_key_id\n)",
     columns_json: [
-      { name: "cede_db", type: "char64" },
-      { name: "contract_key", type: "char64" },
-      { name: "location_exposure_id", type: "char64" },
-      { name: "GR_ExpLim", type: "double" },
+      { name: "joined_col_a", type: "char64" },
+      { name: "joined_col_b", type: "char64" },
+      { name: "joined_col_c", type: "char64" },
+      { name: "Computed_Alias", type: "double" },
     ],
   });
 
@@ -562,9 +561,9 @@ describe("dynamicView.columns_json[].name", () => {
     expect(hit?.tableId).toBeNull();
   });
 
-  it("a joined dv (FF) reports GR_ExpLim from columns_json without claiming vaipr_location", () => {
-    const input = { ...emptyInput(), dynamicViews: [dvFF] };
-    const refs = collectColumnRefs(input, { tableId: 4, columns: ["GR_ExpLim"] });
+  it("a joined dv reports a computed alias from columns_json without claiming its source table", () => {
+    const input = { ...emptyInput(), dynamicViews: [dvJoined] };
+    const refs = collectColumnRefs(input, { tableId: 4, columns: ["Computed_Alias"] });
     const hit = refs.find((r) => r.site === "dynamicView.columns_json[].name");
     expect(hit).toBeDefined();
     expect(hit?.tableId).toBeNull();
