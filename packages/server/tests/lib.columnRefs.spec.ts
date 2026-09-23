@@ -1328,7 +1328,8 @@ describe("radio-group configPatch copies", () => {
     cb_config: "{\"attr\":\"passenger_count\",\"valsType\":\"numeric\",\"breaks\":[]}",
   });
   // layer 9 (real, table_id 1) — widget 11's plural-shape target. Its own cb_config is null so a
-  // hit can never be mistaken for "the layer's own record" leaking through into the SITE test.
+  // hit can never be mistaken for "the layer's own record" leaking through into the per-site test
+  // below.
   const layer9 = makeLayer({ id: 9, table_id: 1, cb_config: null });
 
   // widget 6, type "radiogroup" — REAL, LEGACY SINGULAR `action` shape. Targets layer 4.
@@ -1676,5 +1677,161 @@ describe("configPatch.metric and column display config", () => {
     const refs = collectColumnRefs(withSite, { tableId: 1, columns: ["vendor_id"] });
     expect(refs).toHaveLength(1);
     expect(refs[0].site).toBe("widget.config.options[].configPatch.cb_config.attr");
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
+// Site coverage — criterion 1 (Plan 123-04, Task 3). Paired with Plan 123-01's own
+// "GOLDEN: the site registry is exactly the 40 inventoried sites, in order" test: together, a site
+// cannot be removed from the REGISTRY (golden reddens) nor from the TRAVERSAL (coverage below
+// reddens) without a NAMED test failing — criterion 1's literal demand, made structural.
+// -----------------------------------------------------------------------------------------------
+
+describe("site coverage — criterion 1", () => {
+  // One sentinel per site, derived from the site id, so a typo cannot silently alias two sites —
+  // the plan checker computed all 40 and confirmed ZERO collisions before this plan was executed.
+  const sentinel = (site: string) => "zz_" + site.replace(/[^A-Za-z0-9]+/g, "_");
+
+  // ONE widget, carrying every widget-structured field, every array field, AND a configPatch all
+  // at once — no site block gates on widget.type, so `type` is inert for this module (confirmed
+  // by the plan checker reading every site-emitting block). config.tableId: 1 resolves the widget
+  // itself to table 1; the configPatch's own target (layer 90002, below) is resolved independently.
+  const masterWidget = makeWidget({
+    id: 90001, type: "map", title: "Master Fixture Widget",
+    config: {
+      tableId: 1,
+      metricColumn: sentinel("widget.config.metricColumn"),
+      groupByColumn: sentinel("widget.config.groupByColumn"),
+      groupByColumns: [sentinel("widget.config.groupByColumns[]")],
+      drillDownColumn: sentinel("widget.config.drillDownColumn"),
+      timeCol: sentinel("widget.config.timeCol"),
+      xField: sentinel("widget.config.xField"),
+      deltaField: sentinel("widget.config.deltaField"),
+      sortField: sentinel("widget.config.sortField"),
+      columns: sentinel("widget.config.columns"),
+      metrics: [{ column: sentinel("widget.config.metrics[].column") }],
+      filterFields: [{ column: sentinel("widget.config.filterFields[].column") }],
+      spatialTargets: [{
+        tableId: 1,
+        lonCol: sentinel("widget.config.spatialTargets[].lonCol"),
+        latCol: sentinel("widget.config.spatialTargets[].latCol"),
+        spatialCol: sentinel("widget.config.spatialTargets[].spatialCol"),
+      }],
+      options: [{
+        id: "o1", label: "opt",
+        actions: [{
+          target: { kind: "layer", id: 90002 },
+          configPatch: {
+            metric: sentinel("widget.config.options[].configPatch.metric"),
+            cb_config: JSON.stringify({
+              attr: sentinel("widget.config.options[].configPatch.cb_config.attr"),
+            }),
+            track_config: JSON.stringify({
+              trackIdAttr: sentinel("widget.config.options[].configPatch.track_config.trackIdAttr"),
+              trackOrderAttr:
+                sentinel("widget.config.options[].configPatch.track_config.trackOrderAttr"),
+              xCol: sentinel("widget.config.options[].configPatch.track_config.xCol"),
+              yCol: sentinel("widget.config.options[].configPatch.track_config.yCol"),
+            }),
+            info_columns: JSON.stringify([
+              sentinel("widget.config.options[].configPatch.info_columns"),
+            ]),
+            info_template: `{${sentinel("widget.config.options[].configPatch.info_template")}}`,
+          },
+        }],
+      }],
+      sql: `SELECT ${sentinel("widget.config.sql")} FROM t`,
+      customWhere: `${sentinel("widget.config.customWhere")} = 1`,
+    },
+  });
+
+  // ONE layer, carrying every layer-structured field and every JSON-string field at once.
+  const masterLayer = makeLayer({
+    id: 90002, table_id: 1,
+    config: {
+      latColumn: sentinel("layer.config.latColumn"),
+      lonColumn: sentinel("layer.config.lonColumn"),
+      wktColumn: sentinel("layer.config.wktColumn"),
+      wkbColumn: sentinel("layer.config.wkbColumn"),
+    },
+    cb_config: JSON.stringify({ attr: sentinel("layer.cb_config.attr") }),
+    track_config: JSON.stringify({
+      trackIdAttr: sentinel("layer.track_config.trackIdAttr"),
+      trackOrderAttr: sentinel("layer.track_config.trackOrderAttr"),
+      xCol: sentinel("layer.track_config.xCol"),
+      yCol: sentinel("layer.track_config.yCol"),
+    }),
+    info_columns: JSON.stringify([sentinel("layer.info_columns")]),
+    info_template: `{${sentinel("layer.info_template")}}`,
+  });
+
+  // ONE column_display_config row.
+  const masterColumnDisplayConfig = {
+    table_id: 1, column_name: sentinel("columnDisplayConfig.column_name"), label: "x",
+    format_spec: null, created_at: "", updated_at: "",
+  };
+
+  // ONE custom metric.
+  const masterMetric: CustomMetricRow = {
+    id: 90003, table_id: 1, label: "Master Metric",
+    expression: `SUM(${sentinel("customMetric.expression")})`,
+    format_spec: null, created_at: "", updated_at: "",
+  };
+
+  // ONE dynamic view, carrying both the free-SQL template_sql site and the cached columns_json
+  // site.
+  const masterDv = makeDv({
+    id: 90004, source_table_id: 1, name: "Master DV",
+    template_sql: `SELECT ${sentinel("dynamicView.template_sql")} FROM {view}`,
+    columns_json: [{ name: sentinel("dynamicView.columns_json[].name"), type: "string" }],
+  });
+
+  // ONE table view.
+  const masterTableView = makeTableView({
+    id: 90005, table_id: 1, view_name: "Master View",
+    filter_clause: `${sentinel("tableView.filter_clause")} = 1`,
+  });
+
+  const masterInput = makeInput({
+    widgets: [masterWidget],
+    layers: [masterLayer],
+    dynamicViews: [masterDv],
+    customMetrics: [masterMetric],
+    tableViews: [masterTableView],
+    columnDisplayConfig: [masterColumnDisplayConfig],
+  });
+
+  it("COVERAGE: every site in COLUMN_REF_SITES produces at least one finding from the master fixture", () => {
+    const refs = collectColumnRefs(masterInput, {
+      tableId: 1,
+      columns: COLUMN_REF_SITES.map(sentinel),
+    });
+    const seen = new Set(refs.map((r) => r.site));
+    for (const site of COLUMN_REF_SITES) {
+      expect(seen, `no finding for site ${site}`).toContain(site);
+    }
+  });
+
+  it("COVERAGE: the master fixture's finding sites are EXACTLY the registry, with nothing extra", () => {
+    const refs = collectColumnRefs(masterInput, {
+      tableId: 1,
+      columns: COLUMN_REF_SITES.map(sentinel),
+    });
+    const seen = new Set(refs.map((r) => r.site));
+    expect([...seen].sort()).toEqual([...COLUMN_REF_SITES].sort());
+  });
+
+  it("COVERAGE: removing any single site from the traversal is detectable — each site's sentinel column is unique to it", () => {
+    const refs = collectColumnRefs(masterInput, {
+      tableId: 1,
+      columns: COLUMN_REF_SITES.map(sentinel),
+    });
+    for (const site of COLUMN_REF_SITES) {
+      const forThis = refs.filter((r) => r.column === sentinel(site));
+      expect(
+        new Set(forThis.map((r) => r.site)),
+        `sentinel for ${site} leaked`,
+      ).toEqual(new Set([site]));
+    }
   });
 });

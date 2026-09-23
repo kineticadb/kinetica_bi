@@ -28,8 +28,8 @@ deliberately deferred until the reporting half is proven in the operator's hands
 ### Impact report
 
 - [ ] **SSYNC-V125-06**: Before applying, the operator sees every widget that references a removed or retyped column through a structured config field, named by widget title and dashboard
-- [ ] **SSYNC-V125-07**: The report includes map layers affected through their own config (lat/lon/WKT columns, `cb_config.attr`, `track_config`) **and** through the `configPatch` copies embedded in radio-group widget actions, which are separate records that override the layer at click time
-- [ ] **SSYNC-V125-08**: The report lists every custom metric, widget `customWhere`, frozen widget `sql` and dynamic-view `template_sql` whose raw SQL may reference an affected column, marked as *possibly* affected rather than confirmed
+- [x] **SSYNC-V125-07**: The report includes map layers affected through their own config (lat/lon/WKT columns, `cb_config.attr`, `track_config`) **and** through the `configPatch` copies embedded in radio-group widget actions, which are separate records that override the layer at click time — automated 2026-09-23 (Phase 123). `resolveConfigPatchTableId` walks both the plural `options[].actions[]` and legacy singular `options[].action` shapes; each `configPatch` finding is owned by the radio-group widget but scoped to the TARGET record's table, distinct from the layer's own matching finding. All 12 real dev-DB copies (11 `cb_config` + 1 `track_config`) reconcile. Proven by the 40/40 coverage guard (`packages/server/tests/lib.columnRefs.spec.ts`, "site coverage — criterion 1") and a deliberate-deletion probe.
+- [x] **SSYNC-V125-08**: The report lists every custom metric, widget `customWhere`, frozen widget `sql` and dynamic-view `template_sql` whose raw SQL may reference an affected column, marked as *possibly* affected rather than confirmed — automated 2026-09-23 (Phase 123). All five `FREE_SQL_SITES` are scanned with the locked whole-identifier, case-insensitive, literal-skipping regex, each carrying `confidence: "heuristic"` or `"low-confidence"` and `tableScope: "free-sql"` (never a table claim). Proven by `packages/server/src/lib/columnRefs.ts`'s `scanFreeSql`/`emitFreeSql` and their dedicated tests.
 - [ ] **SSYNC-V125-09**: The report distinguishes references the app resolved exactly (structured fields) from references it matched heuristically in free SQL, so the operator knows which findings are certain
 - [ ] **SSYNC-V125-10**: The report lists every column-formatting rule (`column_display_config`) bound to a removed or renamed column — the case that today degrades silently, with no error anywhere
 - [ ] **SSYNC-V125-11**: Added columns are presented separately from breaking changes, since they break nothing and only need to become selectable in config panels
@@ -84,8 +84,8 @@ Deferred. Tracked, not in this roadmap.
 | SSYNC-V125-04 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
 | SSYNC-V125-05 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
 | SSYNC-V125-06 | Phase 124 — Impact Report | Pending |
-| SSYNC-V125-07 | Phase 123 — Column Reference Enumeration | Pending |
-| SSYNC-V125-08 | Phase 123 — Column Reference Enumeration | Pending |
+| SSYNC-V125-07 | Phase 123 — Column Reference Enumeration | Complete |
+| SSYNC-V125-08 | Phase 123 — Column Reference Enumeration | Complete |
 | SSYNC-V125-09 | Phase 124 — Impact Report | Pending |
 | SSYNC-V125-10 | Phase 124 — Impact Report | Pending |
 | SSYNC-V125-11 | Phase 124 — Impact Report | Pending |

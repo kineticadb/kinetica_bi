@@ -31,6 +31,23 @@
  * are what keep that true: planting a real column name under every excluded key must yield zero
  * findings, paired with a companion assertion proving the same fixture DOES fire once a real site
  * is added, so the guard can actually fail if this property is ever violated.
+ *
+ * The traversal covers all 40 inventoried sites as of Phase 123 (Plans 123-01 through 123-04).
+ * Adding a 41st site means adding exactly FOUR things: one entry in `COLUMN_REF_SITES`, one block
+ * inside `visitColumnRefSites`, one `SITE ` test, and one fixture entry in the master coverage
+ * fixture (`tests/lib.columnRefs.spec.ts`, "site coverage — criterion 1"). The coverage test will
+ * redden until all four exist — deliberately proven by Plan 123-04 Task 3, which deleted the
+ * `widget.config.metricColumn` block, observed BOTH the coverage test and that site's own `SITE `
+ * test redden, then restored it. A guard that has never been seen to fail is not a guard.
+ *
+ * Twelve of the forty sites have NO real row behind them in either dev database and are therefore
+ * the first place to look if production data ever contradicts these tests: `widget.config.
+ * deltaField`, `widget.config.sortField`, `widget.config.spatialTargets[].spatialCol`,
+ * `layer.config.wkbColumn`, `layer.track_config.xCol`, `layer.track_config.yCol`,
+ * `layer.info_columns`, `layer.info_template`, `tableView.filter_clause`,
+ * `widget.config.options[].configPatch.info_columns`,
+ * `widget.config.options[].configPatch.info_template`, and
+ * `widget.config.options[].configPatch.metric`.
  */
 
 import type {
