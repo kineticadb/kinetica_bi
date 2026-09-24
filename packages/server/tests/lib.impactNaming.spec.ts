@@ -152,6 +152,11 @@ describe("resolveRecordName", () => {
     const ctx = buildNamingContext(input, OPERATIONS);
     const x = resolveRecordName({ recordKind: "widget", recordId: 60, recordLabel: "" }, ctx);
     expect(x.advisories.map((a) => a.kind)).toEqual(["unnamed-record"]);
+    // Also probe buildNamingContext directly: an empty name must NEVER be counted toward a
+    // collision, independent of resolveRecordName's own empty-name-first check order (which would
+    // otherwise mask a broken collision count for this exact case).
+    expect(ctx.ambiguous.has(namingKey("widget", 60))).toBe(false);
+    expect(ctx.ambiguous.has(namingKey("widget", 61))).toBe(false);
   });
 
   it("NAMING: a layer is named from config.name, and a layer with no config.name falls back to its id", () => {
@@ -159,6 +164,13 @@ describe("resolveRecordName", () => {
       layers: [
         makeLayer({ id: 70, dashboard_id: 1, config: { name: "Main layer" } }),
         makeLayer({ id: 71, dashboard_id: 1, config: {} }),
+        // Two more layers sharing a config.name on one dashboard: the ONLY way
+        // buildNamingContext's collision scan (which reads config.name, not a
+        // non-existent `layer.name` column) can be proven to source the right field is by
+        // observing it actually detect a layer collision — reading recordLabel back from the
+        // caller (as the two assertions above do) never exercises that source at all.
+        makeLayer({ id: 72, dashboard_id: 1, config: { name: "Dup layer" } }),
+        makeLayer({ id: 73, dashboard_id: 1, config: { name: "Dup layer" } }),
       ],
     });
     const ctx = buildNamingContext(input, OPERATIONS);
@@ -167,6 +179,8 @@ describe("resolveRecordName", () => {
     expect(named.displayLabel).toBe('map layer "Main layer" on dashboard "Operations"');
     expect(unnamed.displayLabel).toBe('map layer 71 (no name) on dashboard "Operations"');
     expect(unnamed.advisories[0].kind).toBe("unnamed-record");
+    expect(ctx.ambiguous.has(namingKey("layer", 72))).toBe(true);
+    expect(ctx.ambiguous.has(namingKey("layer", 73))).toBe(true);
   });
 
   it("NAMING: a custom metric is named by label alone — it has no dashboard", () => {
