@@ -113,7 +113,7 @@ Plans:
 **Goal**: A check returns a report the operator can act on — every affected widget, layer, metric and format rule named in their own terms, breaking changes separated from harmless ones, and certainty stated rather than implied.
 **Depends on**: Phases 122 and 123
 **Requirements**: SSYNC-V125-06, SSYNC-V125-09, SSYNC-V125-10, SSYNC-V125-11, SSYNC-V125-12
-**Canonical refs**: `packages/web/src/components/ChartConfigPanel.tsx:1063-1065` (where `drillDownColumnType` is frozen at save time, 69 widget configs), `packages/web/src/stores/columnDisplayConfigStore.ts:151-161` (the silent formatting fallback)
+**Canonical refs**: `packages/web/src/components/charts/ChartConfigPanel.tsx:1063-1065` (where `drillDownColumnType` is frozen at save time, 69 widget configs), `packages/web/src/store/columnDisplayConfigStore.ts:151-161` (the silent formatting fallback)
 **Success Criteria** (what must be TRUE):
   1. A check on a table with a removed or retyped column returns each affected widget identified by its title and its dashboard's name — not by id — alongside the affected map layers.
   2. Every `column_display_config` rule bound to an affected column appears in the report; the case that today degrades with no error anywhere is now stated explicitly.
