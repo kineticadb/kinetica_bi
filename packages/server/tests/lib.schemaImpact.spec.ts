@@ -366,3 +366,145 @@ describe("COLUMNS_JSON_TYPE_GAP", () => {
     expect(COLUMNS_JSON_TYPE_GAP).toContain("second frozen type cache");
   });
 });
+
+describe("buildImpactReport — frozen drill-down type", () => {
+  // REAL-SHAPE: config.drillDownColumn / config.drillDownColumnType are real widget.config keys
+  // (packages/server/data/kinetica.db: widget 4's config carries drillDownColumn: "vendor_id",
+  // drillDownColumnType: "string" — the value observed here is neutral/synthetic, the KEYS and
+  // their shape are real).
+  const breakingRetype = () =>
+    makeCheck({
+      retyped: [
+        {
+          column: "col_dd",
+          stored: fp("string", []),
+          storedType: "string",
+          live: fp("long", ["timestamp"]),
+          liveType: "long(timestamp)",
+        },
+      ],
+    });
+
+  it("STALE: a breaking retype flags a widget carrying a frozen drillDownColumnType for that column", () => {
+    const widget = makeWidget({
+      id: 1,
+      config: { drillDownColumn: "col_dd", drillDownColumnType: "string" },
+    });
+    const report = buildImpactReport(
+      makeArgs({ check: breakingRetype(), refsInput: makeRefsInput({ widgets: [widget] }) }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_dd")!;
+    const rec = col.records[0];
+    expect(rec.staleDrillDownType).toEqual({
+      frozenType: "string",
+      message:
+        'This widget\'s drill-down is frozen at type "string", but the column is now ' +
+        "datetime. It keeps filtering with the stale type until someone reopens its config " +
+        "and re-picks the column — nothing errors in the meantime.",
+    });
+  });
+
+  it("STALE: the flag names the frozen type and says the widget keeps filtering with the stale type", () => {
+    const widget = makeWidget({
+      id: 1,
+      config: { drillDownColumn: "col_dd", drillDownColumnType: "string" },
+    });
+    const report = buildImpactReport(
+      makeArgs({ check: breakingRetype(), refsInput: makeRefsInput({ widgets: [widget] }) }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_dd")!;
+    const rec = col.records[0];
+    expect(rec.staleDrillDownType?.frozenType).toBe("string");
+    expect(rec.staleDrillDownType?.message).toContain("keeps filtering with the stale type");
+  });
+
+  it("STALE: a CHANGED retype does not flag the frozen type, because the class still holds", () => {
+    const widget = makeWidget({
+      id: 1,
+      config: { drillDownColumn: "col_num", drillDownColumnType: "int" },
+    });
+    const report = buildImpactReport(
+      makeArgs({
+        check: makeCheck({
+          retyped: [
+            { column: "col_num", stored: fp("int", []), storedType: "int", live: fp("double", []), liveType: "double" },
+          ],
+        }),
+        refsInput: makeRefsInput({ widgets: [widget] }),
+      }),
+    );
+    const changedRec = report.sections[1].columns.find((c) => c.column === "col_num")!.records[0];
+    expect(changedRec.staleDrillDownType).toBeUndefined();
+  });
+
+  it("STALE: a widget with no drillDownColumnType is not flagged even under a breaking retype", () => {
+    const widget = makeWidget({ id: 1, config: { drillDownColumn: "col_dd" } });
+    const report = buildImpactReport(
+      makeArgs({ check: breakingRetype(), refsInput: makeRefsInput({ widgets: [widget] }) }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_dd")!;
+    const noFrozenRec = col.records[0];
+    expect(noFrozenRec.staleDrillDownType).toBeUndefined();
+  });
+
+  it("STALE: the frozen type for a DIFFERENT column does not flag this column's finding", () => {
+    const widget = makeWidget({
+      id: 1,
+      config: {
+        metricColumn: "col_dd",
+        drillDownColumn: "other_col",
+        drillDownColumnType: "string",
+      },
+    });
+    const report = buildImpactReport(
+      makeArgs({ check: breakingRetype(), refsInput: makeRefsInput({ widgets: [widget] }) }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_dd")!;
+    expect(col.records[0].staleDrillDownType).toBeUndefined();
+  });
+
+  it("STALE: a non-widget record is never flagged", () => {
+    const cdc = makeCdc({ table_id: 1, column_name: "col_dd" });
+    const report = buildImpactReport(
+      makeArgs({ check: breakingRetype(), refsInput: makeRefsInput({ columnDisplayConfig: [cdc] }) }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_dd")!;
+    const cdcRec = col.records.find((r) => r.recordKind === "columnDisplayConfig")!;
+    expect(cdcRec.staleDrillDownType).toBeUndefined();
+  });
+});
+
+describe("buildImpactReport — column display config", () => {
+  it("GROUPING: a column-format rule bound to a REMOVED column appears in the breaking section", () => {
+    const cdc = makeCdc({ table_id: 1, column_name: "col_cdc" });
+    const report = buildImpactReport(
+      makeArgs({
+        check: makeCheck({
+          removed: [{ column: "col_cdc", stored: fp("string", []), storedType: "string" }],
+        }),
+        refsInput: makeRefsInput({ columnDisplayConfig: [cdc] }),
+      }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_cdc")!;
+    expect(col).toBeDefined();
+    const cdcRecord = col.records.find((r) => r.recordKind === "columnDisplayConfig")!;
+    expect(cdcRecord).toBeDefined();
+  });
+
+  it("GROUPING: a column-format rule record carries recordId null and a label naming its column", () => {
+    const cdc = makeCdc({ table_id: 1, column_name: "col_cdc" });
+    const report = buildImpactReport(
+      makeArgs({
+        check: makeCheck({
+          removed: [{ column: "col_cdc", stored: fp("string", []), storedType: "string" }],
+        }),
+        refsInput: makeRefsInput({ columnDisplayConfig: [cdc] }),
+      }),
+    );
+    const col = report.sections[0].columns.find((c) => c.column === "col_cdc")!;
+    const cdcRecord = col.records.find((r) => r.recordKind === "columnDisplayConfig")!;
+    expect(cdcRecord.recordKind).toBe("columnDisplayConfig");
+    expect(cdcRecord.recordId).toBeNull();
+    expect(cdcRecord.displayLabel).toContain("col_cdc");
+  });
+});
