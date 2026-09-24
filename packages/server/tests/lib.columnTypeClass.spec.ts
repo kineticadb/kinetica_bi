@@ -1,0 +1,108 @@
+import { describe, it, expect } from "vitest";
+import {
+  NUMERIC_TYPES,
+  BOOLEAN_TYPES,
+  DATETIME_TYPES,
+  normalizeType,
+  classifyFingerprint,
+} from "../src/lib/columnTypeClass";
+import type { ColumnFingerprint } from "../src/lib/schemaFingerprint";
+
+// Small fingerprint-construction helper, mirroring tests/lib.schemaDiff.spec.ts.
+const fp = (base: string, refinements: string[] = []): ColumnFingerprint => ({ base, refinements });
+
+describe("the mirrored type sets", () => {
+  it("MIRROR-PARITY: NUMERIC_TYPES is exactly the 17 members of the web original", () => {
+    // Independently hardcoded from packages/web/src/lib/columnTypes.ts:42-46. If
+    // either side is edited without the other, this reddens. Sorted
+    // byte-ascending on BOTH sides so the assertion does not depend on Set
+    // insertion order.
+    const WEB_NUMERIC_TYPES = [
+      "int", "integer", "int8", "int16", "int32", "int64",
+      "long", "float", "double", "double precision", "decimal", "numeric",
+      "smallint", "bigint", "real", "number", "tinyint",
+    ];
+    expect([...NUMERIC_TYPES].sort()).toEqual([...WEB_NUMERIC_TYPES].sort());
+    expect(NUMERIC_TYPES.size).toBe(17);
+  });
+
+  it("MIRROR-PARITY: BOOLEAN_TYPES and DATETIME_TYPES are exactly the web originals", () => {
+    // Independently hardcoded from packages/web/src/lib/columnTypes.ts:64-65.
+    expect([...BOOLEAN_TYPES].sort()).toEqual(["bool", "boolean"]);
+    expect([...DATETIME_TYPES].sort()).toEqual(["date", "datetime", "time", "timestamp"]);
+  });
+
+  it("MIRROR-PARITY: normalizeType lowercases, strips a parenthesised suffix, and trims", () => {
+    expect(normalizeType("DECIMAL(18,4)")).toBe("decimal");
+    expect(normalizeType("  Character(256) ")).toBe("character");
+    expect(normalizeType("BIGINT")).toBe("bigint");
+  });
+});
+
+describe("classifyFingerprint", () => {
+  it("CLASS: LIVE-VERIFIED — a TIMESTAMP (base long, refinements [timestamp]) is datetime, NOT number", () => {
+    // THE decisive case. LIVE-VERIFIED against the deployed instance
+    // (124-RESEARCH ADDENDUM).
+    expect(classifyFingerprint(fp("long", ["timestamp"]))).toBe("datetime");
+    // The base-only trap this rule exists to avoid:
+    expect(NUMERIC_TYPES.has("long")).toBe(true);
+  });
+
+  it("CLASS: LIVE-VERIFIED — numeric(p,s) arrives as base double with no refinement and is number", () => {
+    // LIVE-VERIFIED (ADDENDUM) — corrects the research body's docs-derived
+    // decimal claim (which said decimal sits on base `string`).
+    expect(classifyFingerprint(fp("double", []))).toBe("number");
+  });
+
+  it("CLASS: LIVE-VERIFIED — char1 / char4 / char16 / char256 on base string are string", () => {
+    expect(classifyFingerprint(fp("string", ["char1"]))).toBe("string");
+    expect(classifyFingerprint(fp("string", ["char4"]))).toBe("string");
+    expect(classifyFingerprint(fp("string", ["char16"]))).toBe("string");
+    expect(classifyFingerprint(fp("string", ["char256"]))).toBe("string");
+  });
+
+  it("CLASS: LIVE-VERIFIED — int8 / int16 on base int, and a bare float, are number", () => {
+    expect(classifyFingerprint(fp("int", ["int8"]))).toBe("number");
+    expect(classifyFingerprint(fp("int", ["int16"]))).toBe("number");
+    expect(classifyFingerprint(fp("float", []))).toBe("number");
+  });
+
+  it("CLASS: UNVERIFIED — a boolean marker is boolean on EITHER an int or a string base", () => {
+    // UNVERIFIED — documentation-derived. Every registered table carrying
+    // boolean/date/time/datetime has been DROPPED from Kinetica, so no live
+    // /show/table body exists for them. Asserted on BOTH candidate bases
+    // precisely because the base is the thing in doubt.
+    expect(classifyFingerprint(fp("int", ["boolean"]))).toBe("boolean");
+    expect(classifyFingerprint(fp("string", ["boolean"]))).toBe("boolean");
+  });
+
+  it("CLASS: UNVERIFIED — date / time / datetime markers are datetime on EITHER a string or a long base", () => {
+    expect(classifyFingerprint(fp("string", ["date"]))).toBe("datetime");
+    expect(classifyFingerprint(fp("long", ["date"]))).toBe("datetime");
+    expect(classifyFingerprint(fp("string", ["time"]))).toBe("datetime");
+    expect(classifyFingerprint(fp("string", ["datetime"]))).toBe("datetime");
+    expect(classifyFingerprint(fp("long", ["datetime"]))).toBe("datetime");
+  });
+
+  it("CLASS: UNVERIFIED — a decimal(p,s) refinement is number even though the base is string", () => {
+    expect(classifyFingerprint(fp("string", ["decimal(18,4)"]))).toBe("number");
+  });
+
+  it("CLASS: a refinement marker beats the base, including when the base is the unknown sentinel", () => {
+    // The marker beats the base, even the failure sentinel.
+    expect(classifyFingerprint(fp("unknown", ["timestamp"]))).toBe("datetime");
+  });
+
+  it("CLASS: the unknown sentinel with no class-determining refinement stays unknown", () => {
+    expect(classifyFingerprint(fp("unknown", []))).toBe("unknown");
+    expect(classifyFingerprint(fp("", []))).toBe("unknown");
+  });
+
+  it("CLASS: wkt and bytes carry no class marker and fall through to string", () => {
+    // No live fingerprint of a geometry column has ever been captured (LOW
+    // confidence). Consistent with today's legacy behaviour, where
+    // inferDataTypeFromColumn("geometry") falls through to "string".
+    expect(classifyFingerprint(fp("string", ["wkt"]))).toBe("string");
+    expect(classifyFingerprint(fp("bytes", []))).toBe("string");
+  });
+});
