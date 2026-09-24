@@ -32,6 +32,7 @@ import {
   createCustomMetric,
 } from "../src/db";
 import { createSession } from "../src/sessionStore";
+import { PERMISSIONS } from "../src/lib/permissions";
 import jwt from "jsonwebtoken";
 
 const AUTH_SECRET = process.env.AUTH_SECRET!;
@@ -44,6 +45,26 @@ const KINETICA_URL = process.env.KINETICA_URL!;
  */
 const seedAnalystSession = (username: string): { cookie: string } => {
   const sid = createSession({ username, secret: "analyst-pw", kineticaUrl: KINETICA_URL });
+  const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
+  return { cookie: `kbi_session=${token}` };
+};
+
+/**
+ * v1.25 Phase 124 route-gate amendment (2026-09-24): seeds a session for a user holding EXACTLY
+ * datasets:manage -- no built-in role holds datasets:manage without also holding
+ * dashboards:manage_access (designer and admin hold both; analyst and user_admin hold neither),
+ * so this custom role is the only fixture that can discriminate the SECOND half of the route's
+ * new AND-gate. Mirrors seedManageOnlySession from routes.dashboard-import.spec.ts.
+ */
+const seedDatasetsManageOnlySession = (username: string): { cookie: string } => {
+  db.prepare("INSERT INTO roles (name, description, built_in) VALUES ('datasets_manage_only', '', 0)").run();
+  const role = db.prepare("SELECT id FROM roles WHERE name = 'datasets_manage_only'").get() as { id: number };
+  db.prepare("INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)").run(
+    role.id,
+    PERMISSIONS.DATASETS_MANAGE
+  );
+  db.prepare("INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (lower(?), ?)").run(username, role.id);
+  const sid = createSession({ username, secret: "datasets-manage-only-pw", kineticaUrl: KINETICA_URL });
   const token = jwt.sign({ sub: username, sid, v: 1 }, AUTH_SECRET, { expiresIn: "8h" });
   return { cookie: `kbi_session=${token}` };
 };
@@ -454,5 +475,130 @@ describe("GET /api/tables/:id/schema-check", () => {
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("PERMISSION_DENIED");
+  });
+
+  it("ROUTE-403: a session holding only datasets:manage is still denied (dashboards:manage_access is required too)", async () => {
+    // v1.25 Phase 124 route-gate amendment: the report names widgets and dashboards across
+    // EVERY dashboard, so the route now requires BOTH datasets:manage AND
+    // dashboards:manage_access. This is the discriminating check -- a session holding exactly
+    // ONE of the two permissions did not exist before this test, so it could not pass early.
+    const table = createTable({ name: "demo_table", schema: "demo" });
+    setStoredFingerprint(table.id, STABLE_MAP);
+    vi.stubGlobal("fetch", mockShowTableOk(STABLE_LIVE_BODY));
+
+    const { cookie } = seedDatasetsManageOnlySession("schema-check-manage-only");
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("PERMISSION_DENIED");
+    expect(res.body.permission).toBe(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS);
+  });
+});
+
+// ─── Impact report (Plan 124-04) ───────────────────────────────────────────────
+//
+// Neutral synthetic fixtures throughout -- an "impact_table" with TWO columns: col_a, present in
+// the stored baseline and absent live (a REMOVED column), and col_b, unchanged on both sides so
+// the live response is never empty (an all-columns-removed live body 502s as "no readable column
+// types" -- a degraded-response guard, not a diff). The simplest shape that reaches the impact
+// report's breaking section and exercises the all-dashboards loader.
+describe("GET /api/tables/:id/schema-check — impact report", () => {
+  const IMPACT_STORED = {
+    col_a: { base: "string", refinements: ["char8"] as string[] },
+    col_b: { base: "string", refinements: ["char8"] as string[] },
+  };
+
+  const IMPACT_LIVE_BODY = {
+    table_names: ["demo.impact_table"],
+    type_schemas: [
+      JSON.stringify({
+        type: "record",
+        name: "type_name",
+        fields: [{ name: "col_b", type: "string" }],
+      }),
+    ],
+    properties: [
+      {
+        col_b: ["data", "char8"],
+      },
+    ],
+  };
+
+  it("IMPACT: a widget on a SECOND dashboard referencing the removed column still appears in the report", async () => {
+    const table = createTable({ name: "impact_table", schema: "demo" });
+    setStoredFingerprint(table.id, IMPACT_STORED);
+
+    createDashboard("First Dashboard", "");
+    const secondDashboard = createDashboard("Second Dashboard", "");
+    // The referencing widget lives ONLY on the second dashboard -- a loader scoped to one
+    // dashboard (e.g. WHERE dashboard_id = <first dashboard's id>) would never see it.
+    createWidget(secondDashboard.id, {
+      title: "Second Dashboard Widget",
+      type: "chart",
+      position: 0,
+      config: { tableId: table.id, metricColumn: "col_a" },
+    });
+
+    vi.stubGlobal("fetch", mockShowTableOk(IMPACT_LIVE_BODY));
+
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("diff");
+    const breaking = res.body.impact.sections.find(
+      (s: { severity: string }) => s.severity === "breaking"
+    );
+    const col = breaking.columns.find((c: { column: string }) => c.column === "col_a");
+    const recordNames = col.records.map((r: { name: string }) => r.name);
+    expect(recordNames).toContain("Second Dashboard Widget");
+  });
+
+  it("IMPACT: a check with the impact report attached still leaves the five app config tables byte-identical", async () => {
+    const table = createTable({ name: "impact_table_2", schema: "demo" });
+    setStoredFingerprint(table.id, IMPACT_STORED);
+    const dashboard = createDashboard("Impact Byte Dashboard", "");
+    createWidget(dashboard.id, {
+      title: "Impact Widget",
+      type: "chart",
+      position: 0,
+      config: { tableId: table.id, metricColumn: "col_a" },
+    });
+    createDashboardLayer(dashboard.id, { table_id: table.id });
+    createCustomMetric(table.id, "Impact Metric", "SUM(x)", null);
+    upsertColumnDisplayConfig(table.id, "col_a", "Column A", null);
+
+    const SNAPSHOT_TABLES = [
+      "tables",
+      "widgets",
+      "dashboard_layers",
+      "custom_metrics",
+      "column_display_config",
+    ];
+    const snapshot = () => {
+      const out: Record<string, unknown[]> = {};
+      for (const t of SNAPSHOT_TABLES) {
+        out[t] = db.prepare(`SELECT * FROM ${t}`).all();
+      }
+      return out;
+    };
+
+    const before = snapshot();
+    for (const t of SNAPSHOT_TABLES) {
+      expect(before[t].length).toBeGreaterThan(0);
+    }
+
+    vi.stubGlobal("fetch", mockShowTableOk(IMPACT_LIVE_BODY));
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.impact).toBeDefined();
+
+    const after = snapshot();
+    expect(after).toEqual(before);
   });
 });

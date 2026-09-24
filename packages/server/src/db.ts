@@ -3,6 +3,9 @@ import path from "path";
 import fs from "fs";
 import { ColumnDisplayConfigRow, CustomMetricRow, Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
 import { seedRbac } from "./lib/rbacSeed";
+// v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): type-only import for loadColumnRefsInput's
+// return shape. No value import from this module — db.ts stays the SELECT-only data layer.
+import type { ColumnRefsInput } from "./lib/columnRefs";
 
 const ensureDir = (dbPath: string) => {
   // Skip directory creation for in-memory databases used in tests.
@@ -1048,6 +1051,40 @@ export const listCustomMetrics = (tableId: number): CustomMetricRow[] =>
   db.prepare("SELECT * FROM custom_metrics WHERE table_id = ? ORDER BY label ASC")
     .all(tableId)
     .map(mapCustomMetric);
+
+/**
+ * v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): assemble the ColumnRefsInput the impact report
+ * walks. SELECT-only — this function writes NOTHING, matching the schema-check route's own
+ * no-write guarantee (proven by that route's "byte-identical config tables" spec).
+ *
+ * Four TABLE-WIDE selects, not a per-dashboard loop: a column reference from ANY dashboard is
+ * relevant to the table that changed, and the existing listWidgets/listDashboardLayers/
+ * listDashboardDynamicViews/listViews accessors are all dashboard-scoped. `ORDER BY id ASC` on
+ * each makes the input deterministic, which the report's byte-stability depends on.
+ *
+ * Custom metrics and column-display-config rows ARE table-scoped (their tables carry table_id),
+ * so those two reuse the existing accessors unchanged.
+ *
+ * Visibility note: this deliberately reads EVERY dashboard's rows regardless of per-dashboard view
+ * grants. The schema-check route is gated on datasets:manage AND dashboards:manage_access — an
+ * administrative operation whose whole purpose is "show me everything this change breaks".
+ * Filtering by the caller's dashboard grants would under-report, which is the failure mode this
+ * milestone exists to prevent.
+ */
+export const loadColumnRefsInput = (tableId: number): ColumnRefsInput => ({
+  widgets: db.prepare("SELECT * FROM widgets ORDER BY id ASC").all().map(mapWidget),
+  layers: db.prepare("SELECT * FROM dashboard_layers ORDER BY id ASC").all().map(mapDashboardLayer),
+  dynamicViews: db
+    .prepare("SELECT * FROM dashboard_dynamic_views ORDER BY id ASC")
+    .all()
+    .map(mapDashboardDynamicView),
+  tableViews: db
+    .prepare("SELECT * FROM dashboard_table_views ORDER BY id ASC")
+    .all()
+    .map(mapView),
+  customMetrics: listCustomMetrics(tableId),
+  columnDisplayConfig: listColumnDisplayConfig(tableId),
+});
 
 export const getCustomMetric = (id: number): CustomMetricRow | undefined => {
   const row = db.prepare("SELECT * FROM custom_metrics WHERE id = ?").get(id);

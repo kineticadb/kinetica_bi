@@ -2473,10 +2473,18 @@ export const createApp = async (): Promise<express.Express> => {
   // report every temporal column as retyped timestamp -> bigint from an intermittent upstream
   // failure. Here a thrown typed error IS the "could not reach Kinetica" outcome, and
   // errorMiddleware turns it into 401/403/502 — structurally incapable of being a 200 finding.
+  // v1.25 Phase 124 route-gate amendment (SSYNC-V125-06/-09/-10/-11/-12, operator decision
+  // 2026-09-24): the impact report (wired below) names widgets and dashboards across EVERY
+  // dashboard, deliberately -- a report scoped to what the caller can already see would
+  // under-report. datasets:manage alone does not govern cross-dashboard visibility
+  // (canViewDashboard bypasses on dashboards:manage_access, lib/dashboardAccessDb.ts:11, a
+  // DIFFERENT permission), so this route now requires BOTH -- the same AND-gate spread form as
+  // the v1.24 dashboard-import route (:817-818). Adds NO new permission to the catalog.
   app.get(
     "/api/tables/:id/schema-check",
     requireConfig,
     ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
     asyncHandler(async (req, res) => {
       const id = Number(req.params.id);
       const table = getTable(id);
