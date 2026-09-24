@@ -27,13 +27,13 @@ deliberately deferred until the reporting half is proven in the operator's hands
 
 ### Impact report
 
-- [ ] **SSYNC-V125-06**: Before applying, the operator sees every widget that references a removed or retyped column through a structured config field, named by widget title and dashboard
+- [x] **SSYNC-V125-06**: Before applying, the operator sees every widget that references a removed or retyped column through a structured config field, named by widget title and dashboard — automated 2026-09-24 (Phase 124 Plan 04). `GET /api/tables/:id/schema-check` attaches `buildImpactReport`'s output to the `"diff"` outcome, reading `loadColumnRefsInput`'s four table-wide, all-dashboards SELECTs. Proven end-to-end by `routes.schema-check.spec.ts`'s `"IMPACT: a widget on a SECOND dashboard referencing the removed column still appears in the report"` (a per-dashboard loader would fail it) and `"IMPACT: a removed column returns a breaking section naming the affected widget by title and dashboard"` (asserts the actual dashboard name, not the id-fallback phrasing).
 - [x] **SSYNC-V125-07**: The report includes map layers affected through their own config (lat/lon/WKT columns, `cb_config.attr`, `track_config`) **and** through the `configPatch` copies embedded in radio-group widget actions, which are separate records that override the layer at click time — automated 2026-09-23 (Phase 123). `resolveConfigPatchTableId` walks both the plural `options[].actions[]` and legacy singular `options[].action` shapes; each `configPatch` finding is owned by the radio-group widget but scoped to the TARGET record's table, distinct from the layer's own matching finding. All 12 real dev-DB copies (11 `cb_config` + 1 `track_config`) reconcile. Proven by the 40/40 coverage guard (`packages/server/tests/lib.columnRefs.spec.ts`, "site coverage — criterion 1") and a deliberate-deletion probe.
 - [x] **SSYNC-V125-08**: The report lists every custom metric, widget `customWhere`, frozen widget `sql` and dynamic-view `template_sql` whose raw SQL may reference an affected column, marked as *possibly* affected rather than confirmed — automated 2026-09-23 (Phase 123). All five `FREE_SQL_SITES` are scanned with the locked whole-identifier, case-insensitive, literal-skipping regex, each carrying `confidence: "heuristic"` or `"low-confidence"` and `tableScope: "free-sql"` (never a table claim). Proven by `packages/server/src/lib/columnRefs.ts`'s `scanFreeSql`/`emitFreeSql` and their dedicated tests.
-- [ ] **SSYNC-V125-09**: The report distinguishes references the app resolved exactly (structured fields) from references it matched heuristically in free SQL, so the operator knows which findings are certain
-- [ ] **SSYNC-V125-10**: The report lists every column-formatting rule (`column_display_config`) bound to a removed or renamed column — the case that today degrades silently, with no error anywhere
-- [ ] **SSYNC-V125-11**: Added columns are presented separately from breaking changes, since they break nothing and only need to become selectable in config panels
-- [ ] **SSYNC-V125-12**: A retyped column's report states the old and new type and flags that widgets carrying a frozen `drillDownColumnType` will keep filtering with the stale type until reconfigured
+- [x] **SSYNC-V125-09**: The report distinguishes references the app resolved exactly (structured fields) from references it matched heuristically in free SQL, so the operator knows which findings are certain — automated 2026-09-24 (Phase 124 Plan 03, wired live by Plan 04). `certaintyProse` renders "confirmed" only for `exact` confidence and "possibly affected" for `heuristic`/`low-confidence`, verbatim in the wire response.
+- [x] **SSYNC-V125-10**: The report lists every column-formatting rule (`column_display_config`) bound to a removed or renamed column — the case that today degrades silently, with no error anywhere — automated 2026-09-24 (Phase 124 Plan 03, wired live by Plan 04). Closed by an EXISTING Phase 123 site (`columnDisplayConfig.column_name`, one of the 40 sites `collectColumnRefs` already enumerated) plus new tests — no new traversal was written. `loadColumnRefsInput` reuses the existing `listColumnDisplayConfig` accessor unchanged.
+- [x] **SSYNC-V125-11**: Added columns are presented separately from breaking changes, since they break nothing and only need to become selectable in config panels — automated 2026-09-24 (Phase 124 Plan 03, wired live by Plan 04). Added columns are never ref-walked (`walkedColumns` excludes `check.added`), always land in the `harmless` section with `records: []`, and are proven absent from `breaking`/`changed` by `"IMPACT: an added column appears only in the harmless section"`.
+- [x] **SSYNC-V125-12**: A retyped column's report states the old and new type and flags that widgets carrying a frozen `drillDownColumnType` will keep filtering with the stale type until reconfigured — automated 2026-09-24 (Phase 124 Plan 03, wired live by Plan 04). `ImpactColumn.storedType`/`.liveType` carry both rendered types; `staleDrillDownFor` flags a widget's frozen `drillDownColumnType` only under a BREAKING retype, proven live by `"IMPACT: a retyped column's entry states the stored type and the live type"`.
 
 ### Applying
 
@@ -83,13 +83,13 @@ Deferred. Tracked, not in this roadmap.
 | SSYNC-V125-03 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
 | SSYNC-V125-04 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
 | SSYNC-V125-05 | Phase 122 — Schema Diff & Table-Missing Detection | Complete (automated 2026-09-21) |
-| SSYNC-V125-06 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-06 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
 | SSYNC-V125-07 | Phase 123 — Column Reference Enumeration | Complete |
 | SSYNC-V125-08 | Phase 123 — Column Reference Enumeration | Complete |
-| SSYNC-V125-09 | Phase 124 — Impact Report | Pending |
-| SSYNC-V125-10 | Phase 124 — Impact Report | Pending |
-| SSYNC-V125-11 | Phase 124 — Impact Report | Pending |
-| SSYNC-V125-12 | Phase 124 — Impact Report | Pending |
+| SSYNC-V125-09 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
+| SSYNC-V125-10 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
+| SSYNC-V125-11 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
+| SSYNC-V125-12 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
 | SSYNC-V125-13 | Phase 125 — Apply & Sync History | Pending |
 | SSYNC-V125-14 | Phase 125 — Apply & Sync History | Pending |
 | SSYNC-V125-15 | Phase 125 — Apply & Sync History | Pending |
@@ -102,7 +102,7 @@ Deferred. Tracked, not in this roadmap.
 - v1.25 requirements: 19 total
 - Mapped to phases: 19 ✓
 - Unmapped: 0
-- **Complete: 4** (SSYNC-V125-02/-03/-04/-05, Phase 122, 2026-09-21)
+- **Complete: 11** (SSYNC-V125-02/-03/-04/-05, Phase 122, 2026-09-21; SSYNC-V125-07/-08, Phase 123, 2026-09-23; SSYNC-V125-06/-09/-10/-11/-12, Phase 124, 2026-09-24)
 - Every requirement maps to exactly one phase; no requirement appears in two phases.
 
 **Per-phase counts:** Phase 122 → 4 (`-02`, `-03`, `-04`, `-05`) · Phase 123 → 2 (`-07`, `-08`) · Phase 124 → 5 (`-06`, `-09`, `-10`, `-11`, `-12`) · Phase 125 → 5 (`-13`, `-14`, `-15`, `-16`, `-17`) · Phase 126 → 3 (`-01`, `-18`, `-19`). 4+2+5+5+3 = 19.

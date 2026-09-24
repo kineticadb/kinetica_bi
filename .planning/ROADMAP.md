@@ -123,10 +123,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 124-01-PLAN.md — fingerprint type-class classifier and the three-level severity rule
-- [ ] 124-02-PLAN.md — record naming, collision disambiguation and the naming advisories
-- [ ] 124-03-PLAN.md — the ImpactReport contract and the report assembler
-- [ ] 124-04-PLAN.md — route wiring, the all-dashboards loader, and requirement closure
+- [x] 124-01-PLAN.md — fingerprint type-class classifier and the three-level severity rule
+- [x] 124-02-PLAN.md — record naming, collision disambiguation and the naming advisories
+- [x] 124-03-PLAN.md — the ImpactReport contract and the report assembler
+- [x] 124-04-PLAN.md — route wiring, the all-dashboards loader, and requirement closure
 
 ### Phase 125: Apply & Sync History
 **Goal**: On explicit confirmation the stored snapshot is replaced with the live Kinetica column set and nothing else is touched, and the changeset plus the report survive as a durable per-table worklist.

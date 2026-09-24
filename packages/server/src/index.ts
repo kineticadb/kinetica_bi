@@ -20,6 +20,9 @@ import { parseTemporalColumns } from "./lib/showTableTypes";
 // diff contract for the on-demand schema-check route.
 import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
 import { diffResult, baselineRequiredResult, tableMissingResult } from "./lib/schemaDiff";
+// v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): the operator-facing impact report.
+import { buildImpactReport } from "./lib/schemaImpact";
+import type { SchemaCheckResponse } from "./lib/schemaImpact";
 import { buildFilterViewName } from "./lib/viewNaming";
 import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
@@ -103,6 +106,9 @@ import {
   deleteCustomMetric,
   // v1.25 Phase 122 (SSYNC-V125-05): SELECT-only stored-baseline accessor for the schema-check route.
   getTableColumnsFingerprint,
+  // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): SELECT-only all-dashboards loader for the
+  // impact report's ColumnRefsInput.
+  loadColumnRefsInput,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -2520,7 +2526,19 @@ export const createApp = async (): Promise<express.Express> => {
       const stored = parseFingerprintSnapshot(getTableColumnsFingerprint(id));
       if (!stored) return res.json(baselineRequiredResult(qualified, live));
 
-      return res.json(diffResult(qualified, stored, live));
+      const diff = diffResult(qualified, stored, live);
+      // The impact report is attached ONLY to the "diff" outcome. Its ABSENCE is what tells
+      // Phase 126 "not yet run / not applicable" — a baseline_required or table_missing response
+      // carries no `impact` key at all, and an empty report would be indistinguishable from one.
+      if (diff.outcome !== "diff") return res.json(diff); // unreachable; narrows the union
+      const impact = buildImpactReport({
+        check: diff,
+        tableId: id,
+        refsInput: loadColumnRefsInput(id),
+        dashboards: listDashboards().map((d) => ({ id: d.id, name: d.name })),
+      });
+      const response: SchemaCheckResponse = { ...diff, impact };
+      return res.json(response);
     })
   );
 

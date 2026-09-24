@@ -601,4 +601,120 @@ describe("GET /api/tables/:id/schema-check — impact report", () => {
     const after = snapshot();
     expect(after).toEqual(before);
   });
+
+  it("IMPACT: a removed column returns a breaking section naming the affected widget by title and dashboard", async () => {
+    const table = createTable({ name: "impact_table_3", schema: "demo" });
+    setStoredFingerprint(table.id, IMPACT_STORED);
+    const dashboard = createDashboard("Impact Naming Dashboard", "");
+    createWidget(dashboard.id, {
+      title: "Widget One",
+      type: "chart",
+      position: 0,
+      config: { tableId: table.id, metricColumn: "col_a" },
+    });
+
+    vi.stubGlobal("fetch", mockShowTableOk(IMPACT_LIVE_BODY));
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.impact.v).toBe(1);
+    expect(res.body.impact.sections.map((s: { severity: string }) => s.severity)).toEqual([
+      "breaking", "changed", "harmless",
+    ]);
+    const record = res.body.impact.sections[0].columns[0].records[0];
+    expect(record.displayLabel).toContain("on dashboard");
+    // Strengthened per mutation probe P5 (an empty `dashboards` input still produces the literal
+    // words "on dashboard" via the id-fallback phrasing, `on dashboard ${id}` -- see
+    // impactNaming.ts's dashboardName fallback -- so the bare-substring check above cannot tell a
+    // real dashboard name from a dropped `dashboards` input on its own). Asserting the actual
+    // dashboard's name is present, quoted, is what an empty-dashboards mutation reddens.
+    expect(record.displayLabel).toContain('on dashboard "Impact Naming Dashboard"');
+    expect(record.dashboardName).toBe("Impact Naming Dashboard");
+  });
+
+  it("IMPACT: a retyped column's entry states the stored type and the live type", async () => {
+    // Reuses the top-level CHANGED_STORED/CHANGED_LIVE_BODY fixture -- vendor_id widens from
+    // string(char4) to string(char32), the operator's own varchar8 -> varchar32 case.
+    const table = createTable({ name: "impact_table_4", schema: "demo" });
+    setStoredFingerprint(table.id, CHANGED_STORED);
+    vi.stubGlobal("fetch", mockShowTableOk(CHANGED_LIVE_BODY));
+
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    const allColumns = res.body.impact.sections.flatMap((s: { columns: unknown[] }) => s.columns);
+    const vendorEntry = allColumns.find((c: { column: string }) => c.column === "vendor_id");
+    expect(vendorEntry.storedType).toBe("string(char4)");
+    expect(vendorEntry.liveType).toBe("string(char32)");
+  });
+
+  it("IMPACT: an added column appears only in the harmless section", async () => {
+    // Reuses the top-level CHANGED_STORED/CHANGED_LIVE_BODY fixture -- surcharge is the added
+    // column (present live, absent stored).
+    const table = createTable({ name: "impact_table_5", schema: "demo" });
+    setStoredFingerprint(table.id, CHANGED_STORED);
+    vi.stubGlobal("fetch", mockShowTableOk(CHANGED_LIVE_BODY));
+
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    const sections = res.body.impact.sections as {
+      severity: string;
+      columns: { column: string }[];
+    }[];
+    const harmless = sections.find((s) => s.severity === "harmless")!;
+    const breaking = sections.find((s) => s.severity === "breaking")!;
+    const changed = sections.find((s) => s.severity === "changed")!;
+    expect(harmless.columns.map((c) => c.column)).toContain("surcharge");
+    expect(breaking.columns.map((c) => c.column)).not.toContain("surcharge");
+    expect(changed.columns.map((c) => c.column)).not.toContain("surcharge");
+  });
+
+  it("IMPACT: an unchanged table returns an impact report with outcome no_changes", async () => {
+    const table = createTable({ name: "impact_table_6", schema: "demo" });
+    setStoredFingerprint(table.id, STABLE_MAP);
+    vi.stubGlobal("fetch", mockShowTableOk(STABLE_LIVE_BODY));
+
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.impact.outcome).toBe("no_changes");
+  });
+
+  it("IMPACT: a baseline_required response carries NO impact key", async () => {
+    // NEVER call setStoredFingerprint -- columns_fingerprint stays NULL.
+    const table = createTable({ name: "impact_table_7", schema: "demo" });
+    vi.stubGlobal("fetch", mockShowTableOk(STABLE_LIVE_BODY));
+
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("baseline_required");
+    // The presence rule that lets Phase 126 tell "not yet run" from "nothing affected".
+    expect(res.body).not.toHaveProperty("impact");
+  });
+
+  it("IMPACT: a table_missing response carries NO impact key", async () => {
+    const table = createTable({ name: "impact_table_8", schema: "demo" });
+    setStoredFingerprint(table.id, STABLE_MAP);
+    vi.stubGlobal("fetch", mockShowTableOk(MISSING_BODY));
+
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/schema-check`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("table_missing");
+    expect(res.body).not.toHaveProperty("impact");
+  });
 });
