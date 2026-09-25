@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.25
 milestone_name: Schema Sync
-status: context-gathered
-stopped_at: "Phase 124 (Impact Report) COMPLETE 2026-09-24 — 4/4 plans, verification passed 9/9. SSYNC-V125-06/-09/-10/-11/-12 Complete; v1.25 stands at 11/19 requirements, 3/5 phases. SHIPPED: lib/columnTypeClass.ts (mirrored type sets + classifyFingerprint, refinement-FIRST + severityForRetype), lib/impactNaming.ts (resolveRecordName + summariseAdvisories), lib/schemaImpact.ts (the ImpactReport contract + buildImpactReport), and the report wired into GET /api/tables/:id/schema-check. 83/83 tests, 32/32 probes, server tsc clean, test-gate GATE PASSED (same 8 KNOWN_FAILING), web ZERO diff. THE TRAP: a Kinetica TIMESTAMP is {base:long, refinements:[timestamp]} and long is in NUMERIC_TYPES, so a base-only rule grades a timestamp->bigint retype HARMLESS. classifyFingerprint checks refinements first; the spec asserts NUMERIC_TYPES.has('long') alongside the TIMESTAMP case so the trap is visible in a test. ACCESS GATE WIDENED by operator decision: the route now requires datasets:manage AND dashboards:manage_access, because the report names records across every dashboard by design while canViewDashboard bypasses on a DIFFERENT permission — no new permission added, permissions.ts/rbacDb.ts zero diff, precedent at index.ts:817-818. PROSE APPROVED by the operator 2026-09-24 with no changes; all eight strings pinned verbatim in 124-04-SUMMARY.md and independently confirmed to match the shipped source — Phase 126 renders them verbatim. CARRIED: FOUR toothless acceptance criteria, all the same mechanism (a plan mandates doc-comment text then greps a token that text contains) — all reported, none gamed; the orchestrator warned about this exact pattern before planning and it recurred four times, so the fix is STRUCTURAL: anchor prohibition greps to ADDED or CODE lines, never whole files. Three probes needed their TEST strengthened, never the probe. The type mapping is HALF live-verified (timestamp and numeric(p,s) confirmed against the deployed instance, numeric correcting a docs claim; boolean/date/time/datetime documentation-derived and unprobeable because every table carrying them is dropped from Kinetica). An executor caught itself FABRICATING an incident in its own SUMMARY draft and corrected it pre-commit. PHASE 125 CONTEXT GATHERED 2026-09-24 (.planning/phases/125-apply-sync-history/125-CONTEXT.md). Locked: APPLY RE-READS LIVE AND REFUSES if reality moved since the report was built — the operator never applies something they did not see, and a history entry never records a report that fails to describe what was written; costs one extra Kinetica call and an occasional re-run message. History is CAPPED at 20 entries per table and a drop is SAID OUT LOUD (the milestone-level decision was 'kept until cleared', so the cap is in tension with it — the operator chose bounded growth plus visible dropping, matching how the impact report states its own gaps rather than hiding them; note nothing in this codebase has EVER pruned an audit log — rbac_audit is unbounded since v1.8 — and each entry stores a full impact report). A BASELINE apply IS recorded (it explains why earlier checks could not diff types); a NO-OP apply is NOT. Each entry records WHO applied it, matching rbac_audit's actor. Next: /gsd:plan-phase 125. Original note retained — it is the FIRST WRITER of tables.columns_fingerprint (Phase 122 deliberately shipped none) and it persists the ImpactReport, so the contract in 124-03-SUMMARY.md is what it must store. Also: 5 of 9 registered tables are dropped from Kinetica, so live checks mostly return table_missing — expected, not a defect."
-last_updated: "2026-09-24T17:15:00.000Z"
+status: executing
+stopped_at: "Phase 125 Plan 03 (applySchemaSync — THE WRITE) COMPLETE 2026-09-25. Next: Plan 125-04 (routes + shared-doc bookkeeping; it alone owns ROADMAP.md and REQUIREMENTS.md). SHIPPED: SchemaApplyResult + applySchemaSync in lib/schemaApply.ts — one db.transaction wrapping setTableSchemaSnapshot + insertTableSyncHistoryEntry, four outcomes (applied baseline|diff / no_changes / stale / table_missing), four operator-facing messages pinned verbatim in 125-03-SUMMARY.md for Phase 126. 12/12 tests, 11/11 probes, tsc clean, GATE PASSED x3, web ZERO diff. ROADMAP criteria 1-4 met. THE FINDING: probe P10 (stray UPDATE widgets inside the transaction) did NOT fire against a correct full-ROW snapshot, because datetime(now) has one-second resolution and the stray UPDATE wrote back a byte-identical value — and dashboard_layers has NO timestamp column at all, making any stray write to it invisible to content comparison forever. Fixed by strengthening the TEST twice (ageSeededRows + expectRowWriteBudget on SQLite total_changes(), budget 2 for an apply / 0 for a no-op or stale). Reuse total_changes() as a row-write budget for any nothing-else-was-touched claim. TWO MORE BROKEN CRITERIA reported not gamed: 2.10 (demands two gate runs produce the same result set — unsatisfiable, the contamination set rotates by design) and 2.6 (counts SQL literals, not assertion sites). Two stated before-values in the plan were also measured wrong. No gsd-tools mutation command was run; ROADMAP.md and REQUIREMENTS.md untouched."
+last_updated: "2026-09-25T11:05:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -58,6 +58,52 @@ THREE FACTS 125-03 MUST NOT REDISCOVER:
   both from the FRESHLY RE-READ map, never the echoed one.
 - **Neither primitive refuses an empty body.** `isStaleAgainst({},{})` is `false` and
   `renderColumnsMap({})` is `{}`, by design — the ROUTE must reject an empty map first.
+
+**Phase 125 Plan 03 COMPLETE (2026-09-25)** — THE WRITE. SHIPPED in
+`packages/server/src/lib/schemaApply.ts`: `SchemaApplyResult` (the four outcomes:
+`applied` with `kind: baseline|diff` / `no_changes` / `stale` / `table_missing`),
+`SCHEMA_APPLY_BASELINE_MESSAGE` / `_NO_CHANGES_MESSAGE` / `_TABLE_MISSING_MESSAGE` /
+`schemaApplyDiffMessage`, and `applySchemaSync` — the whole write in ONE `db.transaction`.
+12/12 tests in `tests/lib.schemaApply.transaction.spec.ts` (4 ONLYTABLES-, 2 BASELINE-,
+2 ROLLBACK-, 1 each DIFF-/NOOP-/STALE-/MISSING-), 11/11 probes fired (10 planned + 1 bonus),
+tsc clean, test-gate GATE PASSED on THREE runs (same 8 KNOWN_FAILING every time), web ZERO diff.
+All declarations pinned VERBATIM in `125-03-SUMMARY.md` — Phase 126 renders all four messages
+verbatim and is planned against that text. ROADMAP criteria 1-4 are met.
+
+PROBE P10 DID NOT FIRE ON THE FIRST SWEEP — the most important finding of this plan.
+P10 plants a stray `UPDATE widgets SET updated_at = datetime('now')` inside the apply
+transaction and reddened NOTHING. The snapshot was not vacuous and not count-based; it was
+faithfully comparing full rows. The problem: `datetime('now')` has ONE-SECOND resolution and the
+fixture created the widget in that same second, so the stray UPDATE wrote back a BYTE-IDENTICAL
+value. **A row comparison cannot detect a write that stores the value already there.**
+Investigating surfaced a worse hole: **`dashboard_layers` carries NO timestamp column at all**, so
+a stray write to it is invisible to ANY content comparison, forever — one quarter of ROADMAP
+criterion 2's named tables was structurally unprovable by the technique the plan specified.
+Fixed by strengthening the TEST, never the probe (commit `305c45d`), two ways:
+`ageSeededRows()` pushes every seeded row's timestamps to a fixed past instant so any
+`datetime('now')` rewrite is visible; and `expectRowWriteBudget()` asserts the delta in SQLite's
+own `total_changes()` — measured at exactly **2** for an apply (the `tables` UPDATE + the history
+INSERT) and **0** for a no-op or a stale refusal. That second guard is content-INDEPENDENT, so it
+catches a value-identical write and covers the timestamp-less `dashboard_layers`. P10 now reddens
+`ONLYTABLES-diff`; a bonus probe P10b (value-identical write to `dashboard_layers`) reddens it too.
+**Reuse `total_changes()` as a row-write budget wherever a "nothing else was touched" claim needs
+proving — it is strictly stronger than any row or count snapshot.**
+
+TWO MORE BROKEN ACCEPTANCE CRITERIA from 125-03, reported not gamed:
+- **Criterion 2.10 is UNSATISFIABLE**: it demands two gate runs "produce the same result set",
+  but the gate is SET-BASED precisely because the extra non-`KNOWN_FAILING` set ROTATES
+  (TD-V16-TEST-ISOLATION). Three runs flagged `routes.dashboard-import.refs.spec.ts`, then
+  nothing, then `routes.management.spec.ts`. The real requirement ("no trigger leaked") was
+  verified directly: `lib.dashboardImport.apply.spec.ts` was absent from all three failing sets.
+  Correct form: name the file that must be absent, never "the result set is identical".
+- **Criterion 2.6 is weakly discriminating**: `grep -c "COUNT(*) c FROM table_sync_history" >= 2`
+  counts SQL LITERALS, not assertion sites — factoring the query into a helper (better practice)
+  collapses it to 1 regardless of how many tests assert on it. Verified directly instead.
+- Two stated "before" values in the plan were also wrong: `\bforce\b` reads **3** under
+  `packages/server/src` (all `force callers to`/`force-bad`, none an override flag), not 0; and
+  `applySchemaSync` already occurred **2** times, in `schemaApply.ts`'s own header comment. Both
+  criteria were still sound in their ANCHORED form; only the prose was stale. **Measure the
+  before-value, do not assert it from memory.**
 
 ONE BROKEN ACCEPTANCE CRITERION, reported not gamed: 125-02's criterion 1.7
 (`git diff … | grep -c '^-'` = 0) is UNSATISFIABLE, because a unified diff always opens with
@@ -831,6 +877,33 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 125 Plan 03 Decisions (2026-09-25)
+
+- **`table_missing` is checked FIRST, before anything else.** `insertTableSyncHistoryEntry` THROWS
+  `FOREIGN KEY constraint failed` on an unknown `tableId` (better-sqlite3 enforces FKs by default);
+  it does not return falsy. `applySchemaSync` calls `getTable` first and returns the
+  `table_missing` arm, so the route does NOT need its own pre-flight 404 — just map the outcome.
+- **Staleness is checked before anything is computed and long before the transaction opens**, so a
+  stale apply provably performs zero writes rather than relying on a rollback to undo them. Probe
+  P2 (moving the check after the write) reddens `STALE-refuses`.
+- **The `ImpactReport` is rebuilt server-side from the freshly re-read live map, never accepted
+  from the client.** The caller echoes back only the fingerprint map its report was built FROM, so
+  the staleness comparison can run. This is what makes the locked guarantee hold — a history entry
+  can never record a report that fails to describe what was written — and it keeps a client from
+  persisting arbitrary text into an audit record.
+- **SSYNC-V125-15 is enforced by SHAPE, not by a branch.** There is no force/override parameter, no
+  refusal outcome for "this change is breaking", and no findings-acknowledgement step. The absence
+  is a property of `applySchemaSync`'s input type and of `SchemaApplyResult`'s union, which `tsc`
+  enforces; criterion 1.6 is a live diff-anchored guard against reintroducing the word in code.
+- **Criterion 2 is proven by full ROWS plus a `total_changes()` budget, not by rows alone.** Row
+  content cannot see a value-identical write, and `dashboard_layers` has no timestamp column for a
+  row comparison to catch at all. See the P10 finding in Current Position.
+- **`schemaApply.ts` is now a deliberate purity exception.** Everything above the Plan 125-03
+  banner is pure and independently testable; `applySchemaSync` below it value-imports `db` the way
+  `dashboardImport.ts` does, because a transaction cannot be expressed otherwise. The WRITE still
+  lives in a lib so the route stays thin — the lib is simply no longer pure, and the module header
+  now says so (the shipped 125-02 header claimed "PURE. No `db`…", which this plan made false).
 
 ### Phase 125 Plan 02 Decisions (2026-09-25)
 
