@@ -58,6 +58,7 @@ import {
 } from "../src/db";
 import { applySchemaSync } from "../src/lib/schemaApply";
 import { SCHEMA_APPLY_STALE_MESSAGE } from "../src/lib/schemaApply";
+import type { SchemaApplyResult } from "../src/lib/schemaApply";
 import { serializeFingerprintSnapshot } from "../src/lib/schemaFingerprint";
 import type { ColumnFingerprintMap } from "../src/lib/schemaFingerprint";
 
@@ -147,11 +148,70 @@ const seedConfigRows = (tableId: number) => {
   return { dashboard, widget, layer, metric, cdc };
 };
 
+/**
+ * Pushes every seeded row's timestamps into the PAST.
+ *
+ * WHY THIS EXISTS — mutation probe P10, which did NOT fire without it. P10 plants a stray
+ * `UPDATE widgets SET updated_at = datetime('now')` inside the apply transaction, and the
+ * full-row snapshot stayed equal anyway: `datetime('now')` has ONE-SECOND resolution, the
+ * fixture had just created the widget in that same second, so the stray UPDATE wrote back a
+ * byte-identical value. The snapshot was faithfully comparing full rows and there was
+ * genuinely nothing different to see.
+ *
+ * Ageing the rows to a fixed past instant makes any `datetime('now')` rewrite a VISIBLE
+ * change, which is also the realistic case: in production nothing applies a schema sync in
+ * the same second a widget was created.
+ *
+ * Raw SQL on purpose — no accessor can set a timestamp backwards, and the fixture must be
+ * able to construct a state the code under test cannot produce.
+ */
+const AGED_TS = "2020-01-01 00:00:00";
+const ageSeededRows = () => {
+  db.prepare("UPDATE tables SET created_at = ?, updated_at = ?").run(AGED_TS, AGED_TS);
+  db.prepare("UPDATE dashboards SET created_at = ?, updated_at = ?").run(AGED_TS, AGED_TS);
+  db.prepare("UPDATE widgets SET created_at = ?, updated_at = ?").run(AGED_TS, AGED_TS);
+  db.prepare("UPDATE custom_metrics SET created_at = ?, updated_at = ?").run(AGED_TS, AGED_TS);
+  db.prepare("UPDATE column_display_config SET created_at = ?, updated_at = ?").run(
+    AGED_TS,
+    AGED_TS
+  );
+  // `dashboard_layers` carries NO timestamp columns at all — confirmed against the DDL. No
+  // value on a layer row changes with time, so a stray write to it is invisible to ANY
+  // content comparison. That is precisely the hole `expectRowWriteBudget` below closes.
+};
+
 /** Registers the synthetic table and seeds the four config tables around it. */
 const seedTable = (): number => {
   const table = createTable({ name: "demo_table", schema: "demo_schema" });
   seedConfigRows(table.id);
+  ageSeededRows();
   return table.id;
+};
+
+/**
+ * SQLite's own count of rows modified on this connection since it was opened. A
+ * content-independent counterpart to `snapshotConfigTables()`: it sees a write that stores
+ * the value already there, and it sees a write to `dashboard_layers`, which has no
+ * timestamp column for a row comparison to catch.
+ */
+const totalRowWrites = (): number =>
+  (db.prepare("SELECT total_changes() AS c").get() as { c: number }).c;
+
+/**
+ * Asserts an apply modifies EXACTLY the rows it is allowed to modify, and no others.
+ *
+ * The budget for a successful apply is 2: one `tables` UPDATE and one `table_sync_history`
+ * INSERT (the cap sweep's DELETE matches nothing until a table has 20 entries, and the meta
+ * upsert only runs when something was actually dropped — both measured). For a no-op or a
+ * stale refusal it is 0.
+ *
+ * This is the guard probe P10 needed. A stray `UPDATE widgets` inside the transaction takes
+ * the budget to 3 whether or not the value it writes differs from the value already stored.
+ */
+const expectRowWriteBudget = (expected: number, fn: () => void) => {
+  const before = totalRowWrites();
+  fn();
+  expect(totalRowWrites() - before).toBe(expected);
 };
 
 const historyCount = (tableId: number): number =>
@@ -301,12 +361,16 @@ describe("applySchemaSync — no-op (NOOP-)", () => {
     const beforeFingerprint = getTableColumnsFingerprint(tableId);
     const beforeHistory = historyCount(tableId);
 
-    const result = applySchemaSync({
-      tableId,
-      table: TABLE_NAME,
-      live: STORED,
-      reportedLive: STORED,
-      actor: ACTOR,
+    // Zero rows may be written — not even an `updated_at` bump.
+    let result!: SchemaApplyResult;
+    expectRowWriteBudget(0, () => {
+      result = applySchemaSync({
+        tableId,
+        table: TABLE_NAME,
+        live: STORED,
+        reportedLive: STORED,
+        actor: ACTOR,
+      });
     });
 
     expect(result.outcome).toBe("no_changes");
@@ -331,12 +395,16 @@ describe("applySchemaSync — staleness (STALE-)", () => {
     const beforeFingerprint = getTableColumnsFingerprint(tableId);
     const beforeHistory = historyCount(tableId);
 
-    const result = applySchemaSync({
-      tableId,
-      table: TABLE_NAME,
-      live: LIVE_MOVED_AGAIN,
-      reportedLive: LIVE,
-      actor: ACTOR,
+    // Zero rows may be written — the refusal happens before the transaction ever opens.
+    let result!: SchemaApplyResult;
+    expectRowWriteBudget(0, () => {
+      result = applySchemaSync({
+        tableId,
+        table: TABLE_NAME,
+        live: LIVE_MOVED_AGAIN,
+        reportedLive: LIVE,
+        actor: ACTOR,
+      });
     });
 
     expect(result.outcome).toBe("stale");
@@ -425,12 +493,18 @@ describe("applySchemaSync — only the tables row changed (ONLYTABLES-)", () => 
     expectNonVacuous(before);
     const beforeTablesRow = tablesRow(tableId);
 
-    const result = applySchemaSync({
-      tableId,
-      table: TABLE_NAME,
-      live: LIVE,
-      reportedLive: LIVE,
-      actor: ACTOR,
+    // Exactly two rows may be written: the `tables` row and the history entry. A stray
+    // `UPDATE widgets` inside the transaction breaks this even when it writes back the value
+    // already stored — which is exactly what probe P10 does.
+    let result!: SchemaApplyResult;
+    expectRowWriteBudget(2, () => {
+      result = applySchemaSync({
+        tableId,
+        table: TABLE_NAME,
+        live: LIVE,
+        reportedLive: LIVE,
+        actor: ACTOR,
+      });
     });
     expect(result.outcome).toBe("applied");
     if (result.outcome !== "applied") throw new Error("unreachable");
@@ -444,6 +518,10 @@ describe("applySchemaSync — only the tables row changed (ONLYTABLES-)", () => 
     const afterTablesRow = tablesRow(tableId);
     expect(afterTablesRow.columns).not.toEqual(beforeTablesRow.columns);
     expect(afterTablesRow.columns_fingerprint).not.toEqual(beforeTablesRow.columns_fingerprint);
+    // `ageSeededRows` put the row's timestamps at AGED_TS, so this is a real comparison
+    // rather than one that `datetime('now')`'s one-second resolution would make vacuous.
+    expect(beforeTablesRow.updated_at).toBe(AGED_TS);
+    expect(afterTablesRow.updated_at).not.toBe(AGED_TS);
     expect(getTableColumnsFingerprint(tableId)).toBe(serializeFingerprintSnapshot(LIVE));
 
     // The written `tables.columns` keeps the TYPE CLASS, rather than flattening the
@@ -466,12 +544,15 @@ describe("applySchemaSync — only the tables row changed (ONLYTABLES-)", () => 
     expectNonVacuous(before);
     const beforeTablesRow = tablesRow(tableId);
 
-    const result = applySchemaSync({
-      tableId,
-      table: TABLE_NAME,
-      live: LIVE,
-      reportedLive: LIVE,
-      actor: ACTOR,
+    let result!: SchemaApplyResult;
+    expectRowWriteBudget(2, () => {
+      result = applySchemaSync({
+        tableId,
+        table: TABLE_NAME,
+        live: LIVE,
+        reportedLive: LIVE,
+        actor: ACTOR,
+      });
     });
     expect(result.outcome).toBe("applied");
     if (result.outcome !== "applied") throw new Error("unreachable");
@@ -497,12 +578,15 @@ describe("applySchemaSync — only the tables row changed (ONLYTABLES-)", () => 
     // second argument to pass, no `{ force: true }` to omit, and no findings-acknowledgement
     // call to skip. The refusal that does not exist cannot be exercised -- its absence is a
     // property of applySchemaSync's input type, which `npx tsc --noEmit` enforces.
-    const result = applySchemaSync({
-      tableId,
-      table: TABLE_NAME,
-      live: LIVE,
-      reportedLive: LIVE,
-      actor: ACTOR,
+    let result!: SchemaApplyResult;
+    expectRowWriteBudget(2, () => {
+      result = applySchemaSync({
+        tableId,
+        table: TABLE_NAME,
+        live: LIVE,
+        reportedLive: LIVE,
+        actor: ACTOR,
+      });
     });
 
     expect(result.outcome).toBe("applied");
