@@ -297,6 +297,57 @@ const SCHEMA_DDL = `
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by  TEXT
   );
+
+  -- v1.25 Phase 125 (SSYNC-V125-16/-17): per-table sync history. Shape copied from
+  -- rbac_audit (autoincrement id, ts defaulting to datetime('now'), an actor column,
+  -- JSON payload columns, an index on what is actually queried).
+  --
+  -- 'kind' is 'baseline' or 'diff'. A BASELINE apply establishes the first precise
+  -- fingerprint on an old-format snapshot and carries no changeset and no report, so
+  -- both JSON columns are NULL for it -- it is recorded because it explains why earlier
+  -- checks could not diff types (Phase 122's baseline-before-diff rule). A NO-OP apply
+  -- is never recorded at all and therefore has no 'kind' value here.
+  --
+  -- report_json stores JSON.stringify(ImpactReport) VERBATIM. Phase 124 built that type
+  -- JSON-serialisable with a byte-stable sort precisely so it could land here unchanged;
+  -- nothing in this layer re-sorts, re-formats or re-keys it.
+  --
+  -- The index is (table_id, id DESC) because every read is "this table's entries, newest
+  -- first" and every cap sweep is "this table's ids, newest first". Ordering is by 'id',
+  -- NOT by 'ts': datetime('now') has one-second resolution, so two applies inside the same
+  -- second tie on ts, and AUTOINCREMENT id is the only stable tiebreaker.
+  --
+  -- NO PRAGMA-guarded ALTER accompanies these two: they are NEW tables, so
+  -- CREATE TABLE IF NOT EXISTS alone covers fresh installs AND existing deployments
+  -- (the brand_config precedent above). Do not go looking for a missing migration.
+  CREATE TABLE IF NOT EXISTS table_sync_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_id INTEGER NOT NULL REFERENCES tables(id) ON DELETE CASCADE,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    actor TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('baseline','diff')),
+    changeset_json TEXT,
+    report_json TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_table_sync_history_table_id ON table_sync_history (table_id, id DESC);
+
+  -- The "older entries were dropped" fact, per table. It lives in its OWN table rather
+  -- than on a history row for one reason that decides it: ROADMAP criterion 5 lets the
+  -- operator delete ANY single entry, so a counter carried on an entry (even the newest)
+  -- would vanish the moment that entry was deleted, and the operator would silently go
+  -- back to believing they are seeing everything. It is also deliberately NOT a column on
+  -- 'tables': keeping it out of that row leaves the 'Table' type, 'mapTable' and the
+  -- dashboard-export payload at zero diff, the same discipline Phase 122 used for
+  -- columns_fingerprint.
+  --
+  -- dropped_count is CUMULATIVE and monotonic. It is never decremented, including when
+  -- the operator deletes entries by hand -- it records what the CAP removed, which is a
+  -- different fact from how many entries are present now.
+  CREATE TABLE IF NOT EXISTS table_sync_history_meta (
+    table_id INTEGER PRIMARY KEY REFERENCES tables(id) ON DELETE CASCADE,
+    dropped_count INTEGER NOT NULL DEFAULT 0,
+    last_dropped_ts TEXT
+  );
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -640,6 +691,39 @@ export const getTableColumnsFingerprint = (id: number): string | null => {
   return row?.columns_fingerprint ?? null;
 };
 
+/** Maximum sync-history entries kept per table. Locked at 20 in 125-CONTEXT.md. */
+export const SYNC_HISTORY_CAP = 20;
+
+/**
+ * setTableSchemaSnapshot — v1.25 Phase 125 (SSYNC-V125-13/-14).
+ *
+ * THE FIRST WRITER for `tables.columns_fingerprint`. Phase 122 shipped the read-only
+ * accessor above and deliberately no setter anywhere in the tree; this is it.
+ *
+ * Writes BOTH halves of the snapshot in one statement:
+ *   - `columns`             -- the Record<string,string> the config panels read
+ *   - `columns_fingerprint` -- the precise {"v":1,"columns":{...}} payload the diff reads
+ * Writing only one of the two would leave the table describing itself two different ways.
+ *
+ * Touches the `tables` row and NOTHING else. ROADMAP criterion 2 requires that widgets,
+ * dashboard_layers, custom_metrics and column_display_config are byte-identical after an
+ * apply -- this function is the only reason that is easy to guarantee.
+ *
+ * Returns false for an unknown id, having written nothing.
+ */
+export const setTableSchemaSnapshot = (
+  id: number,
+  columns: Record<string, string>,
+  fingerprintJson: string
+): boolean => {
+  const result = db
+    .prepare(
+      "UPDATE tables SET columns = ?, columns_fingerprint = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .run(JSON.stringify(columns), fingerprintJson, id);
+  return result.changes > 0;
+};
+
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
   const stmt = db.prepare("INSERT INTO tables (name, schema, description, columns) VALUES (?, ?, ?, ?)");
   const result = stmt.run(input.name, input.schema, input.description ?? null, JSON.stringify(input.columns ?? {}));
@@ -665,6 +749,12 @@ export const updateTable = (
 };
 
 export const deleteTable = (id: number): boolean => {
+  // Explicit sync-history cleanup before the table row goes. The foreign_keys PRAGMA is
+  // not globally ON in this app (only WAL is set), so the ON DELETE CASCADE declared on
+  // table_sync_history / table_sync_history_meta does NOT fire on its own -- same reason
+  // deleteDashboard deletes dashboard_access_grants by hand (ACCESS-V110-02).
+  db.prepare("DELETE FROM table_sync_history WHERE table_id = ?").run(id);
+  db.prepare("DELETE FROM table_sync_history_meta WHERE table_id = ?").run(id);
   const result = db.prepare("DELETE FROM tables WHERE id = ?").run(id);
   return result.changes > 0;
 };
