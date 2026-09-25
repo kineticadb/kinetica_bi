@@ -205,6 +205,42 @@ describe("sync history storage (Phase 125 SSYNC-V125-16/-17)", () => {
       .get(kept.id) as { n: number };
     expect(keptHist.n).toBe(1);
     expect(keptMeta.n).toBe(1);
+
+    // SECOND SCENARIO, and the load-bearing one: with foreign_keys OFF the declared
+    // ON DELETE CASCADE cannot fire, so only deleteTable's own DELETE statements can
+    // clear the rows. better-sqlite3 turns foreign_keys ON by default, which means the
+    // scenario above passes even with the explicit cleanup deleted -- it proves the
+    // driver, not this code. This one proves this code.
+    const before = (db.pragma("foreign_keys") as Array<{ foreign_keys: number }>)[0].foreign_keys;
+    db.pragma("foreign_keys = OFF");
+    try {
+      const doomed2 = createTable({ name: "demo_table", schema: "demo_schema" });
+      db.prepare("INSERT INTO table_sync_history (table_id, actor, kind, changeset_json, report_json) VALUES (?, ?, ?, ?, ?)").run(
+        doomed2.id,
+        "tester",
+        "baseline",
+        null,
+        null
+      );
+      db.prepare("INSERT INTO table_sync_history_meta (table_id, dropped_count, last_dropped_ts) VALUES (?, ?, ?)").run(
+        doomed2.id,
+        7,
+        "2026-01-01 00:00:00"
+      );
+
+      expect(deleteTable(doomed2.id)).toBe(true);
+
+      const orphanHist = db
+        .prepare("SELECT COUNT(*) AS n FROM table_sync_history WHERE table_id = ?")
+        .get(doomed2.id) as { n: number };
+      const orphanMeta = db
+        .prepare("SELECT COUNT(*) AS n FROM table_sync_history_meta WHERE table_id = ?")
+        .get(doomed2.id) as { n: number };
+      expect(orphanHist.n).toBe(0);
+      expect(orphanMeta.n).toBe(0);
+    } finally {
+      db.pragma(`foreign_keys = ${before === 1 ? "ON" : "OFF"}`);
+    }
   });
   // ---------------------------------------------------------------------------------------
   // CAP-* : the per-table cap, enforced inside the insert transaction.
@@ -253,6 +289,39 @@ describe("sync history storage (Phase 125 SSYNC-V125-16/-17)", () => {
     expect(present).not.toContain(ids[0]);
     // Every other original id, plus the new one, survived -- newest first.
     expect(present).toEqual([overflow.id, ...ids.slice(1)].sort((a, b) => b - a));
+
+    // SECOND SCENARIO: ts DELIBERATELY inverted against id. Without this, every entry in
+    // the run above shares one datetime('now') second and an `ORDER BY ts DESC` sweep
+    // happens to evict the same row an `ORDER BY id DESC` sweep would -- the cap sweep's
+    // ordering claim would be untested. Here the OLDEST id carries the LATEST ts, so a
+    // ts-ordered sweep keeps the oldest entry and evicts a newer one instead.
+    const t2 = createTable({ name: "other_table", schema: "demo_schema" });
+    const ids2: number[] = [];
+    for (let i = 0; i < SYNC_HISTORY_CAP; i++) {
+      ids2.push(
+        insertTableSyncHistoryEntry({ tableId: t2.id, actor: "tester", kind: "diff", changeset: CHANGESET, report: null }).id
+      );
+    }
+    ids2.forEach((entryId, i) => {
+      // i = 0 (oldest id) gets 2026-12-20; each later id gets an EARLIER day.
+      const day = String(20 - i).padStart(2, "0");
+      db.prepare("UPDATE table_sync_history SET ts = ? WHERE id = ?").run(`2026-12-${day} 00:00:00`, entryId);
+    });
+
+    const overflow2 = insertTableSyncHistoryEntry({
+      tableId: t2.id,
+      actor: "tester",
+      kind: "diff",
+      changeset: CHANGESET,
+      report: null,
+    });
+    expect(overflow2.dropped).toBe(1);
+
+    const present2 = listTableSyncHistory(t2.id).entries.map((e) => e.id);
+    expect(present2).toHaveLength(SYNC_HISTORY_CAP);
+    // The OLDEST id goes, despite carrying the LATEST ts.
+    expect(present2).not.toContain(ids2[0]);
+    expect(present2).toEqual([overflow2.id, ...ids2.slice(1)].sort((a, b) => b - a));
   });
 
   it("CAP-scoped: filling table A to the cap drops none of table B's entries", () => {
@@ -332,6 +401,20 @@ describe("sync history storage (Phase 125 SSYNC-V125-16/-17)", () => {
     // And the whole tied block is in descending id order, not sorter-arbitrary order.
     const tied = entries.filter((e) => e.ts === a.ts).map((e) => e.id);
     expect(tied).toEqual([...tied].sort((x, y) => y - x));
+
+    // SECOND SCENARIO: ts inverted against id. Tied timestamps alone are not enough --
+    // SQLite's sorter leaves tied rows in the order the (table_id, id DESC) index fed
+    // them, so an `ORDER BY ts DESC` read still looks correct. With the OLDEST id given
+    // the LATEST ts, only an id-ordered read returns newest-first.
+    const t2 = createTable({ name: "other_table", schema: "demo_schema" });
+    const ids2 = [0, 1, 2].map(
+      () => insertTableSyncHistoryEntry({ tableId: t2.id, actor: "tester", kind: "baseline", changeset: null, report: null }).id
+    );
+    ids2.forEach((entryId, i) => {
+      const day = String(20 - i).padStart(2, "0");
+      db.prepare("UPDATE table_sync_history SET ts = ? WHERE id = ?").run(`2026-12-${day} 00:00:00`, entryId);
+    });
+    expect(listTableSyncHistory(t2.id).entries.map((e) => e.id)).toEqual([...ids2].sort((x, y) => y - x));
   });
 
   it("HIST-roundtrip: report_json is byte-identical to JSON.stringify(report), in the column and back out", () => {

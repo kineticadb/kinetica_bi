@@ -899,10 +899,16 @@ export const updateTable = (
 };
 
 export const deleteTable = (id: number): boolean => {
-  // Explicit sync-history cleanup before the table row goes. The foreign_keys PRAGMA is
-  // not globally ON in this app (only WAL is set), so the ON DELETE CASCADE declared on
-  // table_sync_history / table_sync_history_meta does NOT fire on its own -- same reason
-  // deleteDashboard deletes dashboard_access_grants by hand (ACCESS-V110-02).
+  // Explicit sync-history cleanup before the table row goes, mirroring deleteDashboard's
+  // hand-written dashboard_access_grants cleanup (ACCESS-V110-02).
+  //
+  // MEASURED, not assumed: better-sqlite3 opens connections with `PRAGMA foreign_keys = ON`
+  // by DEFAULT (verified 2026-09-25), so the ON DELETE CASCADE declared on
+  // table_sync_history / table_sync_history_meta DOES fire here today -- the long-standing
+  // comment on deleteDashboard claiming the PRAGMA is off is stale for this driver. These
+  // two statements are therefore belt-and-braces, and deliberately kept: the cleanup must
+  // hold if the PRAGMA is ever turned off (a raw `new Database()` elsewhere, a future
+  // connection-level change), and HIST-cascade asserts it with foreign_keys = OFF.
   db.prepare("DELETE FROM table_sync_history WHERE table_id = ?").run(id);
   db.prepare("DELETE FROM table_sync_history_meta WHERE table_id = ?").run(id);
   const result = db.prepare("DELETE FROM tables WHERE id = ?").run(id);
