@@ -252,3 +252,39 @@ export function serializeFingerprintSnapshot(columns: ColumnFingerprintMap): str
   const snapshot: FingerprintSnapshot = { v: 1, columns };
   return JSON.stringify(snapshot);
 }
+
+/**
+ * Canonical, ORDER-INDEPENDENT byte form of a ColumnFingerprintMap.
+ *
+ * WHY THIS IS NOT serializeFingerprintSnapshot.
+ * ---------------------------------------------
+ * `serializeFingerprintSnapshot` is the STORAGE form and preserves insertion order, which
+ * for a freshly parsed map is Kinetica's own ordinal column order. Phase 125's apply
+ * compares the fingerprint the operator's report was built from against a fresh re-read,
+ * and refuses the apply if they differ. If that comparison used the storage form, a pure
+ * column REORDER in Kinetica -- which changes no column, no type, and produces an empty
+ * diff, so the report the operator read is still completely accurate -- would refuse the
+ * apply and tell them to re-run a check that will keep saying the same thing.
+ *
+ * So: keys sorted byte-ascending (`<`/`>` on the raw string, NEVER localeCompare -- a
+ * locale-dependent order would make the comparison machine-dependent), and each value
+ * emitted with a fixed key order. `refinements` is NOT re-sorted: parseColumnFingerprints
+ * already lowercases and sorts it, and re-sorting here would quietly create a second,
+ * inconsistent notion of fingerprint identity right next to schemaDiff.ts's deliberately
+ * index-wise comparison.
+ *
+ * Used ONLY for equality. Never stored -- the stored form stays the Phase 122 one.
+ */
+export function canonicalFingerprintJson(columns: ColumnFingerprintMap): string {
+  const names = Object.keys(columns).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const parts = names.map(
+    (n) =>
+      JSON.stringify(n) +
+      ":{\"base\":" +
+      JSON.stringify(columns[n].base) +
+      ",\"refinements\":" +
+      JSON.stringify(columns[n].refinements) +
+      "}"
+  );
+  return "{" + parts.join(",") + "}";
+}
