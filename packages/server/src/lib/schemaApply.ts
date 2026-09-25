@@ -23,7 +23,12 @@
  * PURE. No `db`, no `express`, no `fetch`. Routes stay thin; this computes.
  */
 
-import { canonicalFingerprintJson, type ColumnFingerprintMap } from "./schemaFingerprint";
+import {
+  canonicalFingerprintJson,
+  formatFingerprint,
+  type ColumnFingerprint,
+  type ColumnFingerprintMap,
+} from "./schemaFingerprint";
 
 /**
  * The operator-facing refusal. Rendered VERBATIM by Phase 126.
@@ -67,4 +72,78 @@ export function isStaleAgainst(
   live: ColumnFingerprintMap
 ): boolean {
   return canonicalFingerprintJson(reportedLive) !== canonicalFingerprintJson(live);
+}
+
+/**
+ * Property markers that NAME the column's type outright, in precedence order (most
+ * specific first). When one is present it is emitted BARE, replacing the base entirely.
+ *
+ * Everything else -- char/int widths and anything unrecognised -- goes through
+ * formatFingerprint, which produces `base(marker,...)`. That is safe because the web's
+ * normalizeType strips the parenthetical: `string(char4)` -> `string`, `int(int8)` -> `int`,
+ * both of which land in the same class the old INFORMATION_SCHEMA value did, while the
+ * width itself is now PRESERVED in the stored map instead of being destroyed the way
+ * `character(256)` destroyed it for char1, char4 and char16 alike.
+ */
+const TYPE_NAMING_REFINEMENTS: readonly string[] = [
+  // Temporal, from DATETIME_TYPES. Emitted bare because normalizeType would strip the
+  // parenthetical off `long(timestamp)` and leave `long`, which is a member of
+  // NUMERIC_TYPES -- so the config panels would classify a TIMESTAMP column as a NUMBER.
+  // That is precisely the flattening showTableTypes.ts exists to undo, and precisely the
+  // trap classifyFingerprint was written to avoid one layer up (124-01). Reintroducing it
+  // here would put it in the WRITE path, where it is durable rather than transient.
+  "timestamp",
+  "datetime",
+  "date",
+  "time",
+  // Boolean, from BOOLEAN_TYPES.
+  "boolean",
+  "bool",
+  // Spatial. Emitted bare for the OTHER web branch: isColumnDrillDownSafe excludes
+  // {wkt, wkb, bytes, blob, text, point, geometry, geography} by normalized name (PITFALL
+  // D-01). `string(wkt)` normalizes to `string`, which is NOT excluded -- so rendering a
+  // geometry column through formatFingerprint would silently admit it to the drill-down
+  // picker, where equality filters on geometry are exactly what D-01 exists to prevent.
+  "wkt",
+  "wkb",
+];
+
+/**
+ * KNOWN GAP, carried deliberately rather than papered over.
+ *
+ * Kinetica's /show/table exposes no marker for an unrestricted-length string column. Such a
+ * column fingerprints as {base:"string", refinements:[]} and therefore renders "string",
+ * where INFORMATION_SCHEMA reported "text" -- a member of the web's
+ * EXCLUDED_DRILLDOWN_TYPES. So after an apply, a column that INFORMATION_SCHEMA called
+ * `text` becomes selectable in the drill-down picker, where it was excluded before.
+ *
+ * This is over-inclusion, which columnTypes.ts's own D-01 comment already names as the
+ * acceptable direction ("conservative pass-through for unknown types ... over-exclusion
+ * would hide valid columns"). It is stated here, and in this phase's SUMMARY, rather than
+ * discovered later. `text` appears in the dev database's current tables.columns vocabulary,
+ * so this is a real case, not a hypothetical one.
+ */
+export const SCHEMA_APPLY_TEXT_WIDTH_GAP =
+  "Kinetica's /show/table carries no marker for an unrestricted-length string column, so " +
+  "a column INFORMATION_SCHEMA reported as `text` is stored as `string` after an apply and " +
+  "becomes selectable in the drill-down picker. This report does NOT detect that case.";
+
+/** Render ONE fingerprint into the tables.columns vocabulary. */
+export function renderColumnType(fp: ColumnFingerprint): string {
+  const markers = new Set(fp.refinements.map((r) => r.toLowerCase()));
+  for (const named of TYPE_NAMING_REFINEMENTS) {
+    if (markers.has(named)) return named;
+  }
+  return formatFingerprint(fp);
+}
+
+/**
+ * Render a whole live fingerprint map into the Record<string,string> that `tables.columns`
+ * stores and every config panel reads. Key order follows the input map (Kinetica's ordinal
+ * order), which is what the panels already present.
+ */
+export function renderColumnsMap(live: ColumnFingerprintMap): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of Object.keys(live)) out[name] = renderColumnType(live[name]);
+  return out;
 }
