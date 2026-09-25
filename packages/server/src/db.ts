@@ -6,6 +6,9 @@ import { seedRbac } from "./lib/rbacSeed";
 // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): type-only import for loadColumnRefsInput's
 // return shape. No value import from this module — db.ts stays the SELECT-only data layer.
 import type { ColumnRefsInput } from "./lib/columnRefs";
+// v1.25 Phase 125 (SSYNC-V125-16/-17): type-only import for the stored report shape.
+// No value import — db.ts must not start depending on the impact composer.
+import type { ImpactReport } from "./lib/schemaImpact";
 
 const ensureDir = (dbPath: string) => {
   // Skip directory creation for in-memory databases used in tests.
@@ -721,6 +724,153 @@ export const setTableSchemaSnapshot = (
       "UPDATE tables SET columns = ?, columns_fingerprint = ?, updated_at = datetime('now') WHERE id = ?"
     )
     .run(JSON.stringify(columns), fingerprintJson, id);
+  return result.changes > 0;
+};
+
+/** The changeset persisted with a 'diff' entry. Mirrors SchemaDiff's three groups, versioned
+ *  so a later shape change is detectable rather than silently misread. */
+export type SyncChangeset = {
+  v: 1;
+  added: { column: string; liveType: string }[];
+  removed: { column: string; storedType: string }[];
+  retyped: { column: string; storedType: string; liveType: string }[];
+};
+
+/** One sync-history entry, JSON columns already parsed. */
+export type TableSyncHistoryEntry = {
+  id: number;
+  table_id: number;
+  ts: string;
+  actor: string;
+  kind: "baseline" | "diff";
+  /** null for a baseline entry -- establishing a first fingerprint has no changeset. */
+  changeset: SyncChangeset | null;
+  /** null for a baseline entry. Otherwise the ImpactReport exactly as it was built. */
+  report: ImpactReport | null;
+};
+
+/** A table's whole history, plus the two facts the operator must not be left guessing at. */
+export type TableSyncHistory = {
+  /** Newest first, ordered by id DESC. At most SYNC_HISTORY_CAP long. */
+  entries: TableSyncHistoryEntry[];
+  /** How many entries the CAP has removed for this table, ever. 0 means nothing was lost.
+   *  Phase 126 renders a "older entries were dropped" line when this is > 0 -- an operator
+   *  returning to a worklist must never believe they are seeing everything when they are not. */
+  droppedCount: number;
+  /** When the most recent cap-drop happened, or null when none ever has. */
+  lastDroppedTs: string | null;
+  /** Echoed so the UI never hardcodes the number. */
+  cap: number;
+};
+
+/** Parse one stored history row. A corrupt JSON payload degrades to null rather than taking
+ *  the whole list down -- an unreadable entry is still evidence that an apply happened. */
+const mapSyncHistoryRow = (row: any): TableSyncHistoryEntry => {
+  const parse = <T>(raw: string | null): T | null => {
+    if (raw === null || raw === undefined) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    id: row.id,
+    table_id: row.table_id,
+    ts: row.ts,
+    actor: row.actor,
+    kind: row.kind,
+    changeset: parse<SyncChangeset>(row.changeset_json),
+    report: parse<ImpactReport>(row.report_json),
+  };
+};
+
+/**
+ * insertTableSyncHistoryEntry — append one entry and enforce the per-table cap in ONE
+ * transaction, so a crash can never leave an over-cap history or a dropped_count that
+ * disagrees with what was actually removed.
+ *
+ * Cap enforcement is DELETE-ON-INSERT rather than a trigger or a sweep: it runs exactly
+ * when the only thing that can breach the cap happens, it is visible in this function
+ * rather than hidden in schema metadata, and it gives the caller the drop count directly.
+ *
+ * The sweep orders by `id DESC`, never by `ts`. datetime('now') has one-second resolution,
+ * so two applies inside the same second tie on ts and an ORDER BY ts sweep would delete an
+ * arbitrary one of them.
+ *
+ * Returns the new entry id and how many entries this insert dropped.
+ */
+export const insertTableSyncHistoryEntry = (input: {
+  tableId: number;
+  actor: string;
+  kind: "baseline" | "diff";
+  changeset: SyncChangeset | null;
+  report: ImpactReport | null;
+}): { id: number; dropped: number } => {
+  const txn = db.transaction((i: typeof input) => {
+    const res = db
+      .prepare(
+        "INSERT INTO table_sync_history (table_id, actor, kind, changeset_json, report_json) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(
+        i.tableId,
+        i.actor,
+        i.kind,
+        i.changeset === null ? null : JSON.stringify(i.changeset),
+        i.report === null ? null : JSON.stringify(i.report)
+      );
+    const newId = Number(res.lastInsertRowid);
+
+    const pruned = db
+      .prepare(
+        "DELETE FROM table_sync_history WHERE table_id = ? AND id NOT IN " +
+          "(SELECT id FROM table_sync_history WHERE table_id = ? ORDER BY id DESC LIMIT ?)"
+      )
+      .run(i.tableId, i.tableId, SYNC_HISTORY_CAP);
+    const dropped = pruned.changes;
+
+    if (dropped > 0) {
+      db.prepare(
+        "INSERT INTO table_sync_history_meta (table_id, dropped_count, last_dropped_ts) " +
+          "VALUES (?, ?, datetime('now')) " +
+          "ON CONFLICT(table_id) DO UPDATE SET " +
+          "dropped_count = dropped_count + excluded.dropped_count, " +
+          "last_dropped_ts = excluded.last_dropped_ts"
+      ).run(i.tableId, dropped);
+    }
+    return { id: newId, dropped };
+  });
+  return txn(input);
+};
+
+/** A table's history, newest first, with the cap facts. Never throws on malformed stored
+ *  JSON -- a corrupt payload reads back as null rather than taking the whole list down. */
+export const listTableSyncHistory = (tableId: number): TableSyncHistory => {
+  const rows = db
+    .prepare("SELECT * FROM table_sync_history WHERE table_id = ? ORDER BY id DESC")
+    .all(tableId);
+  const meta = db
+    .prepare("SELECT dropped_count, last_dropped_ts FROM table_sync_history_meta WHERE table_id = ?")
+    .get(tableId) as { dropped_count: number; last_dropped_ts: string | null } | undefined;
+  return {
+    entries: rows.map(mapSyncHistoryRow),
+    droppedCount: meta?.dropped_count ?? 0,
+    lastDroppedTs: meta?.last_dropped_ts ?? null,
+    cap: SYNC_HISTORY_CAP,
+  };
+};
+
+/** One entry by id, or undefined. Used by the delete route to 404 before deleting. */
+export const getTableSyncHistoryEntry = (id: number): TableSyncHistoryEntry | undefined => {
+  const row = db.prepare("SELECT * FROM table_sync_history WHERE id = ?").get(id);
+  return row ? mapSyncHistoryRow(row) : undefined;
+};
+
+/** Delete ONE entry. Touches no other entry and no `tables` row (ROADMAP criterion 5).
+ *  dropped_count is deliberately NOT decremented: it records what the CAP removed, which is
+ *  a different fact from how many entries are present now. */
+export const deleteTableSyncHistoryEntry = (id: number): boolean => {
+  const result = db.prepare("DELETE FROM table_sync_history WHERE id = ?").run(id);
   return result.changes > 0;
 };
 
