@@ -32,6 +32,7 @@ import {
   createDashboard,
   createWidget,
   listTableSyncHistory,
+  SYNC_HISTORY_CAP,
 } from "../src/db";
 import { createSession } from "../src/sessionStore";
 import { PERMISSIONS } from "../src/lib/permissions";
@@ -488,3 +489,200 @@ describe("POST /api/tables/:id/schema-apply", () => {
   });
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("GET /api/tables/:id/sync-history", () => {
+  it("READ-empty: a table with no history returns the zeroed cap facts, not an error", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/${table.id}/sync-history`).set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      entries: [],
+      droppedCount: 0,
+      lastDroppedTs: null,
+      cap: SYNC_HISTORY_CAP,
+    });
+  });
+
+  it("READ-after-apply: after one apply the history carries one entry with its kind, actor, ts, changeset and report", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    setStoredFingerprint(table.id, APPLY_STORED);
+    const dashboard = createDashboard("Demo Dashboard", "");
+    createWidget(dashboard.id, {
+      title: "Demo Widget",
+      type: "chart",
+      position: 0,
+      config: { tableId: table.id, metricColumn: "col_gone" },
+    });
+    vi.stubGlobal("fetch", mockShowTableOk(APPLY_LIVE_BODY));
+
+    const { cookie } = seedSchemaSyncSession("demo_operator");
+    const app = await buildTestApp();
+    const applied = await app
+      .post(`/api/tables/${table.id}/schema-apply`)
+      .set("Cookie", cookie)
+      .send({ live: APPLY_REPORTED_LIVE });
+    expect(applied.status).toBe(200);
+
+    const res = await app.get(`/api/tables/${table.id}/sync-history`).set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.entries).toHaveLength(1);
+    const entry = res.body.entries[0];
+    expect(entry.kind).toBe("diff");
+    expect(entry.actor).toBe("demo_operator");
+    expect(typeof entry.ts).toBe("string");
+    expect(entry.changeset.removed.map((r: { column: string }) => r.column)).toEqual(["col_gone"]);
+    expect(entry.report.sections.map((s: { severity: string }) => s.severity)).toEqual([
+      "breaking",
+      "changed",
+      "harmless",
+    ]);
+    expect(res.body.cap).toBe(SYNC_HISTORY_CAP);
+    expect(res.body.droppedCount).toBe(0);
+  });
+
+  it("READ-404: an unknown table id is a 404", async () => {
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.get(`/api/tables/999999/sync-history`).set("Cookie", cookie);
+    expect(res.status).toBe(404);
+  });
+
+  it("READ-gate: an analyst is refused, and so is a session holding only datasets:manage", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    const app = await buildTestApp();
+
+    const analyst = seedAnalystSession("demo_analyst");
+    const analystRes = await app.get(`/api/tables/${table.id}/sync-history`).set("Cookie", analyst.cookie);
+    expect(analystRes.status).toBe(403);
+
+    // The entries embed the impact report, which names widgets and dashboards across EVERY
+    // dashboard -- so the read is gated exactly as strictly as the write that produced it.
+    const manageOnly = seedDatasetsManageOnlySession("demo_manage_only");
+    const manageOnlyRes = await app
+      .get(`/api/tables/${table.id}/sync-history`)
+      .set("Cookie", manageOnly.cookie);
+    expect(manageOnlyRes.status).toBe(403);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("DELETE /api/tables/:id/sync-history/:entryId", () => {
+  /** Applies twice against one table, returning its two history entry ids (newest first). */
+  const applyTwice = async (
+    app: Awaited<ReturnType<typeof buildTestApp>>,
+    cookie: string,
+    tableId: number
+  ): Promise<number[]> => {
+    // First apply: the stored baseline is absent -> a `baseline` entry.
+    const first = await app
+      .post(`/api/tables/${tableId}/schema-apply`)
+      .set("Cookie", cookie)
+      .send({ live: APPLY_REPORTED_LIVE });
+    expect(first.status).toBe(200);
+    // Second apply: re-point the stored baseline at the OLD map so there is a real diff again.
+    setStoredFingerprint(tableId, APPLY_STORED);
+    const second = await app
+      .post(`/api/tables/${tableId}/schema-apply`)
+      .set("Cookie", cookie)
+      .send({ live: APPLY_REPORTED_LIVE });
+    expect(second.status).toBe(200);
+    return listTableSyncHistory(tableId).entries.map((e) => e.id);
+  };
+
+  it("DELETE-one: deleting one entry is a 204 and leaves the table's other entries and its stored schema untouched", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    vi.stubGlobal("fetch", mockShowTableOk(APPLY_LIVE_BODY));
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const ids = await applyTwice(app, cookie, table.id);
+    expect(ids).toHaveLength(2);
+
+    const schemaBefore = tablesRow(table.id);
+    const res = await app
+      .delete(`/api/tables/${table.id}/sync-history/${ids[0]}`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(204);
+    const remaining = listTableSyncHistory(table.id).entries.map((e) => e.id);
+    expect(remaining).toEqual([ids[1]]);
+    expect(tablesRow(table.id)).toEqual(schemaBefore);
+  });
+
+  it("DELETE-missing: an unknown entry id is a 404", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const res = await app.delete(`/api/tables/${table.id}/sync-history/999999`).set("Cookie", cookie);
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE-wrong-table: an entry belonging to a DIFFERENT table is a 404 and deletes nothing", async () => {
+    const tableA = createTable({ name: "demo_table", schema: "demo_schema" });
+    const tableB = createTable({ name: "other_table", schema: "demo_schema" });
+    vi.stubGlobal("fetch", mockShowTableOk(APPLY_LIVE_BODY));
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+
+    const idsA = await applyTwice(app, cookie, tableA.id);
+    const idsB = await applyTwice(app, cookie, tableB.id);
+    expect(idsA).toHaveLength(2);
+    expect(idsB).toHaveLength(2);
+
+    // Table A's entry, addressed through table B's path. The :id is authoritative, not
+    // decorative -- an entry id alone would let a caller reach another table's history.
+    const res = await app
+      .delete(`/api/tables/${tableB.id}/sync-history/${idsA[0]}`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+    expect(listTableSyncHistory(tableA.id).entries.map((e) => e.id)).toEqual(idsA);
+    expect(listTableSyncHistory(tableB.id).entries.map((e) => e.id)).toEqual(idsB);
+  });
+
+  it("DELETE-keeps-dropped: deleting an entry does not reset droppedCount", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    vi.stubGlobal("fetch", mockShowTableOk(APPLY_LIVE_BODY));
+    const { cookie } = createAdminSession();
+    const app = await buildTestApp();
+    const ids = await applyTwice(app, cookie, table.id);
+
+    // Fabricate the dropped fact directly: driving the 20-entry cap through the route would
+    // take 21 applies and prove nothing extra about THIS route, which must simply not touch
+    // the meta row. droppedCount records what the CAP removed -- a different fact from how
+    // many entries remain.
+    db.prepare(
+      "INSERT INTO table_sync_history_meta (table_id, dropped_count, last_dropped_ts) VALUES (?, 3, '2020-01-01 00:00:00')"
+    ).run(table.id);
+
+    const res = await app
+      .delete(`/api/tables/${table.id}/sync-history/${ids[0]}`)
+      .set("Cookie", cookie);
+    expect(res.status).toBe(204);
+
+    const after = await app.get(`/api/tables/${table.id}/sync-history`).set("Cookie", cookie);
+    expect(after.status).toBe(200);
+    expect(after.body.droppedCount).toBe(3);
+    expect(after.body.lastDroppedTs).toBe("2020-01-01 00:00:00");
+    expect(after.body.entries).toHaveLength(1);
+  });
+
+  it("DELETE-gate: a session holding only datasets:manage cannot delete a history entry", async () => {
+    const table = createTable({ name: "demo_table", schema: "demo_schema" });
+    vi.stubGlobal("fetch", mockShowTableOk(APPLY_LIVE_BODY));
+    const admin = createAdminSession();
+    const app = await buildTestApp();
+    const ids = await applyTwice(app, admin.cookie, table.id);
+
+    const manageOnly = seedDatasetsManageOnlySession("demo_manage_only");
+    const res = await app
+      .delete(`/api/tables/${table.id}/sync-history/${ids[0]}`)
+      .set("Cookie", manageOnly.cookie);
+
+    expect(res.status).toBe(403);
+    expect(listTableSyncHistory(table.id).entries.map((e) => e.id)).toEqual(ids);
+  });
+});
