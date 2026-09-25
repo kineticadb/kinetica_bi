@@ -31,7 +31,7 @@ decisions:
   - "staleness is checked before anything is computed, so a stale apply provably writes zero rows rather than relying on a rollback"
   - "the ImpactReport is rebuilt server-side from the re-read live map, never accepted from the client"
   - "SSYNC-V125-15 is enforced by the SHAPE of the input type and the result union — there is no refusal branch to disable"
-  - "criterion 2 is proven by full rows PLUS a total_changes() budget, because row content alone cannot see a value-identical write or any write to the timestamp-less dashboard_layers"
+  - "criterion 2 is proven by full rows PLUS a total_changes() budget, because row content alone cannot see a value-identical write, and no trigger bumps updated_at so a no-op UPDATE leaves every column byte-identical"
 metrics:
   tasks: 2
   tests_added: 12
@@ -166,7 +166,7 @@ packages/server/src/lib/schemaApply.ts` confirmed clean after every single one.
 | P8 | write `tables.columns` but pass `""` for the fingerprint | `BASELINE-then-diff` | **FIRED** — +4 |
 | P9 | build the report from `diffResult(table, live, stored)` | `DIFF-report-describes-write` | **FIRED** — + `ONLYTABLES-breaking` |
 | P10 | stray `UPDATE widgets SET updated_at = datetime('now')` in the transaction | `ONLYTABLES-diff` | **FIRED after strengthening** — see below |
-| P10b (bonus) | stray `UPDATE dashboard_layers SET position = position` — a VALUE-IDENTICAL write to the timestamp-less table | anything | **FIRED** — `ONLYTABLES-diff` / `-baseline` / `-breaking` |
+| P10b (bonus) | stray `UPDATE dashboard_layers SET position = position` — a VALUE-IDENTICAL write no content comparison can see | anything | **FIRED** — `ONLYTABLES-diff` / `-baseline` / `-breaking` |
 
 P7's target existed because the plan pre-authorised it: `ONLYTABLES-diff` asserts the written
 map's temporal column reads `"timestamp"` (and `col_b` reads `"string(char16)"`), written up
@@ -185,12 +185,23 @@ The problem was that there was genuinely nothing different to see. `datetime('no
 UPDATE wrote back a **byte-identical value**. A row comparison cannot detect a write that
 stores the value already there.
 
-Investigating that surfaced a second, worse hole: **`dashboard_layers` carries no timestamp
-column at all** (confirmed against the DDL — `id`, `dashboard_id`, `table_id`, `layer_type`,
-`position`, `config`, `info_*`, `dynamic_view_id`, …). Nothing on a layer row changes with
-time, so a stray write to `dashboard_layers` is invisible to *any* content comparison, forever,
-no matter how the snapshot is written. One quarter of ROADMAP criterion 2's named tables was
-structurally unprovable by the technique the plan specified.
+Investigating that surfaced a second, worse hole, though NOT the one first recorded here.
+
+CORRECTION (orchestrator, verified against source): the original text of this section claimed
+`dashboard_layers` "carries no timestamp column at all". **That is false.** `dashboard_layers`
+declares both `created_at` and `updated_at` at `packages/server/src/db.ts:124-125`.
+
+The real mechanism is different and broader. `db.ts` defines **zero** `CREATE TRIGGER`
+statements, so nothing auto-bumps `updated_at` on an UPDATE. A stray
+`UPDATE dashboard_layers SET position = position` therefore leaves every column byte-identical,
+and no content comparison of any kind can see it. The same is true of `widgets`: P10 was
+invisible not because a column was missing but because `datetime('now')`'s one-second
+resolution rewrote the value already there.
+
+So the hole was real and the remedy below is correct and strictly stronger than what the plan
+specified — but it generalises further than the original diagnosis suggested: content
+comparison cannot prove "nothing else was written" for ANY table in this schema, because no
+table has an update trigger.
 
 Two strengthenings:
 
@@ -211,7 +222,7 @@ Two strengthenings:
    `ONLYTABLES-breaking`, `NOOP-nothing` and `STALE-refuses`.
 
 After strengthening, **P10 reddens `ONLYTABLES-diff`** (plus `-baseline` and `-breaking`).
-Bonus probe **P10b** — a value-identical write to the timestamp-less `dashboard_layers` —
+Bonus probe **P10b** — a value-identical write to `dashboard_layers` —
 reddens the same three, which neither the row snapshot nor the timestamp ageing could ever have
 caught on its own. Criterion 2 is now proven against strictly more than the plan asked for.
 
@@ -297,8 +308,9 @@ All other criteria read 0 (or failed) before the work and pass now.
 2 for one of the four tables it names.**
 - **Found during:** mutation probe P10, which did not fire.
 - **Issue:** A full-row snapshot cannot see a write that stores the value already present. With
-  `datetime('now')`'s one-second resolution that made P10 invisible; with `dashboard_layers`
-  having no timestamp column at all, it made *every* stray layer write permanently invisible.
+  `datetime('now')`'s one-second resolution that made P10 invisible; and because `db.ts`
+  declares no update triggers at all, a value-identical UPDATE to any table is invisible to
+  content comparison permanently, not just within the same second.
 - **Fix:** `ageSeededRows()` plus `expectRowWriteBudget()` (SQLite `total_changes()`), described
   in full above. Both are additions; no assertion was removed or relaxed.
 - **Commit:** `305c45d`
@@ -319,9 +331,9 @@ All other criteria read 0 (or failed) before the work and pass now.
   test list omitted it, so it would have shipped with no named test.
 - `ONLYTABLES-seeded` — named per-table `toHaveLength(1)` assertions on top of
   `expectNonVacuous`, so a helper that silently stopped checking one table is still caught.
-- Probe **P10b** — a bonus probe (value-identical write to the timestamp-less
-  `dashboard_layers`) run to confirm the new budget guard closes the hole P10 exposed, rather
-  than only the narrower timestamp case.
+- Probe **P10b** — a bonus probe (value-identical write to `dashboard_layers`, which no
+  content comparison can see because `db.ts` declares no update triggers) run to confirm the
+  new budget guard closes the hole P10 exposed, rather than only the narrower timestamp case.
 
 ## Verification
 
