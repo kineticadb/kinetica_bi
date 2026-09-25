@@ -113,6 +113,10 @@ import {
   // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): SELECT-only all-dashboards loader for the
   // impact report's ColumnRefsInput.
   loadColumnRefsInput,
+  // v1.25 Phase 125 (SSYNC-V125-16/-17): the sync-history read + per-entry delete accessors.
+  listTableSyncHistory,
+  getTableSyncHistoryEntry,
+  deleteTableSyncHistoryEntry,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -2642,6 +2646,51 @@ export const createApp = async (): Promise<express.Express> => {
       }
       return res.json(result);
     })
+  );
+
+  // v1.25 Phase 125 (SSYNC-V125-16/-17): read one table's sync history. Gated identically to
+  // the apply that writes it -- entries embed the impact report, which names widgets and
+  // dashboards across EVERY dashboard, so a looser gate here would leak exactly what the
+  // check route's Phase 124 widening exists to contain.
+  //
+  // No requireConfig on this route or the delete below: neither touches a Kinetica connection,
+  // matching the column-display-config and custom-metrics routes, which are permission-gated
+  // but not config-gated.
+  //
+  // Phase 126 renders this. `cap` and `droppedCount` are returned so the UI can state "older
+  // entries were dropped" from server-side fact rather than inferring it from entries.length.
+  app.get(
+    "/api/tables/:id/sync-history",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    (req, res) => {
+      const id = Number(req.params.id);
+      if (!getTable(id)) return res.status(404).json({ error: "Table not found." });
+      return res.json(listTableSyncHistory(id));
+    }
+  );
+
+  // Delete ONE entry (ROADMAP criterion 5). The table id in the path is checked against the
+  // entry's own table_id -- an entry id alone would let a caller delete another table's
+  // history through a path that claims otherwise.
+  //
+  // droppedCount is deliberately NOT decremented: it records what the CAP removed, which is a
+  // different fact from how many entries remain. Resetting it here would let the operator
+  // clear one entry and silently stop being told that older ones were lost.
+  app.delete(
+    "/api/tables/:id/sync-history/:entryId",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    (req, res) => {
+      const id = Number(req.params.id);
+      const entryId = Number(req.params.entryId);
+      const entry = getTableSyncHistoryEntry(entryId);
+      if (!entry || entry.table_id !== id) {
+        return res.status(404).json({ error: "Sync history entry not found." });
+      }
+      deleteTableSyncHistoryEntry(entryId);
+      return res.status(204).send();
+    }
   );
 
   // v1.15 Phase 75 (COLCFG-V115-01): global per-table column display config.
