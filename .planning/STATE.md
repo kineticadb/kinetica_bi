@@ -28,6 +28,24 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 Progress: 3/5 phases, 11/19 requirements Complete
 (SSYNC-V125-02/-03/-04/-05/-06/-07/-08/-09/-10/-11/-12).
 
+**Phase 125 Plan 01 COMPLETE (2026-09-25)** — the storage layer, and the milestone's first writer.
+SHIPPED in `packages/server/src/db.ts`: `table_sync_history` + `table_sync_history_meta` DDL,
+`SYNC_HISTORY_CAP = 20`, `setTableSchemaSnapshot` (FIRST writer for `tables.columns` +
+`tables.columns_fingerprint`), `insertTableSyncHistoryEntry` / `listTableSyncHistory` /
+`getTableSyncHistoryEntry` / `deleteTableSyncHistoryEntry`, and explicit history cleanup in
+`deleteTable`. 18/18 tests in `tests/db.syncHistory.spec.ts`, 9/9 probes fired, tsc clean,
+test-gate GATE PASSED (same 8 KNOWN_FAILING), web ZERO diff.
+Accessor shapes are pinned VERBATIM in `125-01-SUMMARY.md` — Phase 126 is planned against that text.
+
+TWO FACTS 125-02/-03 MUST NOT REDISCOVER:
+- **better-sqlite3 opens connections with `PRAGMA foreign_keys = ON` by DEFAULT** (measured). The
+  long-standing `deleteDashboard` comment claiming otherwise is stale for this driver. Consequence:
+  `insertTableSyncHistoryEntry` THROWS `FOREIGN KEY constraint failed` on an unknown `tableId` — it
+  does not return falsy. The apply route must 404 before inserting.
+- **Same-second `ts` ties are NOT enough to prove id-ordering.** SQLite's sorter leaves tied rows in
+  `(table_id, id DESC)` index order, so `ORDER BY ts DESC` looked correct and two probes did not
+  fire. `CAP-over` / `HIST-order` now invert `ts` against `id` deliberately. Reuse that idiom.
+
 **Phase 125 is the first phase in this milestone that WRITES.** Phases 122-124 all deliberately
 ship no writer — `tables.columns_fingerprint` has a read-only accessor and no setter anywhere in the
 tree. 125 adds the first one, and it also persists the `ImpactReport`, so the contract reproduced
