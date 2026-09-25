@@ -37,7 +37,37 @@ SHIPPED in `packages/server/src/db.ts`: `table_sync_history` + `table_sync_histo
 test-gate GATE PASSED (same 8 KNOWN_FAILING), web ZERO diff.
 Accessor shapes are pinned VERBATIM in `125-01-SUMMARY.md` — Phase 126 is planned against that text.
 
-TWO FACTS 125-02/-03 MUST NOT REDISCOVER:
+**Phase 125 Plan 02 COMPLETE (2026-09-25)** — the two pure apply primitives.
+SHIPPED: `canonicalFingerprintJson` (pure append to `lib/schemaFingerprint.ts`; 36 added / 0
+deleted, byte-prefix verified) and a new `lib/schemaApply.ts` carrying `isStaleAgainst`,
+`SCHEMA_APPLY_STALE_MESSAGE`, `TYPE_NAMING_REFINEMENTS`, `renderColumnType`, `renderColumnsMap` and
+`SCHEMA_APPLY_TEXT_WIDTH_GAP`. 22/22 tests in `tests/lib.schemaApply.spec.ts` (9 STALE-, 10 RENDER-,
+3 PARITY-), 8/8 probes fired with NO test needing strengthening, tsc clean, test-gate GATE PASSED
+(same 8 KNOWN_FAILING), web ZERO diff. All declarations pinned VERBATIM in `125-02-SUMMARY.md` —
+Phase 126 renders `SCHEMA_APPLY_STALE_MESSAGE` verbatim.
+
+THREE FACTS 125-03 MUST NOT REDISCOVER:
+- **`formatFingerprint` must NEVER be written straight into `tables.columns`.**
+  `{base:"long",refinements:["timestamp"]}` formats as `long(timestamp)`; the web's `normalizeType`
+  strips the parenthetical (`columnTypes.ts:69`) leaving `long`, which is in `NUMERIC_TYPES` — so
+  every TIMESTAMP column would classify as a NUMBER in every config panel after the first apply, and
+  `string(wkt)` → `string` would admit geometry to the drill-down picker. Use `renderColumnsMap`.
+- **The two serialisers are NOT interchangeable.** `canonicalFingerprintJson` is for EQUALITY ONLY
+  and must never be stored; the stored form stays `serializeFingerprintSnapshot`. Feed
+  `setTableSchemaSnapshot` with `renderColumnsMap(live)` + `serializeFingerprintSnapshot(live)`,
+  both from the FRESHLY RE-READ map, never the echoed one.
+- **Neither primitive refuses an empty body.** `isStaleAgainst({},{})` is `false` and
+  `renderColumnsMap({})` is `{}`, by design — the ROUTE must reject an empty map first.
+
+ONE BROKEN ACCEPTANCE CRITERION, reported not gamed: 125-02's criterion 1.7
+(`git diff … | grep -c '^-'` = 0) is UNSATISFIABLE, because a unified diff always opens with
+`--- a/<path>`, which `^-` matches. It reads ≥1 for any change whatsoever. The real requirement
+(pure append) was verified directly three ways instead. Correct form for future plans:
+`grep -c '^-[^-]'`, or `git diff --numstat`'s deletions column. This is the same family as Phase
+124's four toothless criteria — a grep anchor that matches its own scaffolding.
+
+
+TWO FACTS FROM 125-01 THAT 125-03 MUST NOT REDISCOVER:
 - **better-sqlite3 opens connections with `PRAGMA foreign_keys = ON` by DEFAULT** (measured). The
   long-standing `deleteDashboard` comment claiming otherwise is stale for this driver. Consequence:
   `insertTableSyncHistoryEntry` THROWS `FOREIGN KEY constraint failed` on an unknown `tableId` — it
@@ -801,6 +831,40 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 125 Plan 02 Decisions (2026-09-25)
+
+- **Echo the whole fingerprint map rather than mint a digest** for the staleness check. The client
+  already holds `live: ColumnFingerprintMap` verbatim on both the `diff` and `baseline_required`
+  check outcomes, so echoing adds no response field, no second implementation in `packages/web` to
+  drift, and no collision surface. Cost is a larger request body only (~20 KB for the widest dev
+  table, against express.json's 1 MB limit). Recorded in the shipped source with its trade-off.
+- **Canonical key order is byte-ascending, never `localeCompare`** — a locale-dependent order would
+  make the comparison machine-dependent. `refinements` is deliberately NOT re-sorted:
+  `parseColumnFingerprints` already lowercases and sorts it, and a second sort would create a rival
+  notion of fingerprint identity beside `schemaDiff.ts`'s index-wise comparison.
+- **A pure column REORDER never refuses an apply**; any change to the column set, a base or a
+  refinement does. Proven by `STALE-reorder` (with a non-vacuity precondition on `Object.keys`
+  order) and `STALE-reorder-case` (byte order and locale order made to disagree).
+- **Type-NAMING markers are emitted BARE, width markers keep their parenthetical.**
+  `TYPE_NAMING_REFINEMENTS` = temporal (`timestamp`,`datetime`,`date`,`time`) → boolean
+  (`boolean`,`bool`) → spatial (`wkt`,`wkb`), consulted in DECLARED precedence, never in the
+  refinements array's own (byte-sorted) order. Widths fall through to `formatFingerprint`, where
+  `string(char4)` → `string` and `int(int8)` → `int` land in the same class the old
+  INFORMATION_SCHEMA value did while the width itself is finally PRESERVED — `character(256)`
+  destroyed it for char1, char4 and char16 alike.
+- **`PARITY-class` asserts against the SHIPPED `classifyFingerprint`**, never a table of hardcoded
+  expected classes, and is backed by `PARITY-class-naive` — a counter-proof asserting the naive
+  `formatFingerprint` renderer DOES disagree on at least one fixture (`col_ts`). That makes the
+  plan's central claim falsifiable inside the suite instead of resting on planning-time analysis.
+- **Three gaps carried deliberately, not papered over:** (1) `text` → `string` drill-down
+  over-inclusion, named in code as `SCHEMA_APPLY_TEXT_WIDTH_GAP` and pinned by `RENDER-text-gap`;
+  (2) the Kinetica BOOLEAN marker was NOT live-probed — both spellings are carried defensively, and
+  `classifyFingerprint` shares the same assumption so `PARITY-class` would not catch a third
+  spelling; (3) a theoretical precedence-order divergence between `renderColumnType` (temporal →
+  boolean → spatial) and `classifyFingerprint` (datetime → boolean → NUMERIC → base), which agree
+  over every live and documented Kinetica shape only because a numeric-literal refinement never
+  co-occurs with a temporal/boolean/spatial marker. Stated, not fixed speculatively.
 
 ### Phase 120 Plan 02 Decisions (2026-09-16)
 
