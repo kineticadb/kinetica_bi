@@ -20,6 +20,10 @@ import { parseTemporalColumns } from "./lib/showTableTypes";
 // diff contract for the on-demand schema-check route.
 import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
 import { diffResult, baselineRequiredResult, tableMissingResult } from "./lib/schemaDiff";
+// v1.25 Phase 125 (SSYNC-V125-13/-14/-15/-16/-17): the apply transaction -- the milestone's
+// only write path. The route below it stays thin; the write lives in the lib.
+import { applySchemaSync } from "./lib/schemaApply";
+import type { ColumnFingerprintMap } from "./lib/schemaFingerprint";
 // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): the operator-facing impact report.
 import { buildImpactReport } from "./lib/schemaImpact";
 import type { SchemaCheckResponse } from "./lib/schemaImpact";
@@ -2539,6 +2543,104 @@ export const createApp = async (): Promise<express.Express> => {
       });
       const response: SchemaCheckResponse = { ...diff, impact };
       return res.json(response);
+    })
+  );
+
+  // v1.25 Phase 125 (SSYNC-V125-13/-14/-15/-16/-17): apply the refreshed schema. THE FIRST
+  // WRITE ROUTE of this milestone -- 122-124 all carried criteria proving they wrote nothing.
+  //
+  // Gated on datasets:manage AND dashboards:manage_access, the same AND-gate spread as the
+  // check above. A write route must be at least as strict as the read it follows, and the
+  // history entry this creates PERSISTS the impact report, which names widgets and dashboards
+  // across every dashboard -- so the stricter of the two gates is the floor, not a ceiling.
+  //
+  // ONE Kinetica call, /show/table with no_error_if_not_exists, exactly as the check makes.
+  // The re-read is the whole point: the client posts back the fingerprint map its report was
+  // built from, and if Kinetica has moved since, this route REFUSES rather than storing a
+  // snapshot the operator never saw. A history entry must never record a report that fails to
+  // describe what was written.
+  //
+  // NO try/catch, for the same reason the check has none: a thrown typed Kinetica error IS the
+  // "could not reach Kinetica" outcome and errorMiddleware turns it into 401/403/502. A write
+  // route swallowing that would be strictly worse than a read one doing it.
+  //
+  // A breaking change NEVER blocks this route (SSYNC-V125-15). There is no force flag, no
+  // acknowledgement step, and no branch that inspects severity -- the operator decides with
+  // the report in front of them. `stale` and `table_missing` are the only refusals.
+  app.post(
+    "/api/tables/:id/schema-apply",
+    requireConfig,
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    asyncHandler(async (req, res) => {
+      const id = Number(req.params.id);
+      const table = getTable(id);
+      if (!table) return res.status(404).json({ error: "Table not found." });
+
+      // THE most dangerous edge in this phase, and the reason this check precedes the Kinetica
+      // call rather than following it. `isStaleAgainst({}, {})` is false and
+      // `renderColumnsMap({})` is {} -- by design, per 125-02 -- so an empty map reaching
+      // applySchemaSync would be applied happily and would WIPE tables.columns. The lib
+      // deliberately does not defend against it; this route is where that defence lives.
+      const { live: reportedLive } = req.body as { live?: unknown };
+      if (
+        !reportedLive ||
+        typeof reportedLive !== "object" ||
+        Array.isArray(reportedLive) ||
+        Object.keys(reportedLive as object).length === 0
+      ) {
+        return res.status(400).json({
+          error:
+            "Body must include `live`: the column fingerprint map the schema check returned. " +
+            "Re-run the check and apply the result it gave you.",
+        });
+      }
+
+      const qualified = `${table.schema}.${table.name}`;
+      const body = await kineticaShowTable(req as AuthedRequest, qualified, {
+        route: "POST /api/tables/:id/schema-apply",
+        op: "DISCOVERY",
+        showOptions: { no_error_if_not_exists: "true" },
+      });
+
+      const presence = tablePresence(body);
+      if (presence === "unreadable") {
+        throw new KineticaUpstreamError(
+          "Kinetica returned an unreadable /show/table response; nothing was applied."
+        );
+      }
+      if (presence === "missing") {
+        // The message is SPREAD from the check's own tableMissingResult rather than retyped,
+        // so the check and the apply cannot drift into describing the same situation
+        // differently. 409 rather than the check's 200: for a read, "the table is gone" is a
+        // finding; for a write, it is a conflict with current reality that stopped the write.
+        // Note this is NOT applySchemaSync's table_missing arm, which covers an unknown table
+        // ROW -- that one is unreachable here because of the 404 above.
+        return res.status(409).json({ ...tableMissingResult(qualified), tableId: id });
+      }
+
+      const live = parseColumnFingerprints(body, qualified);
+      if (Object.keys(live).length === 0) {
+        throw new KineticaUpstreamError(
+          "Kinetica reported the table exists but returned no readable column types; nothing was applied."
+        );
+      }
+
+      const result = applySchemaSync({
+        tableId: id,
+        table: qualified,
+        live,
+        reportedLive: reportedLive as ColumnFingerprintMap,
+        actor: (req as AuthedRequest).user!.creds.username,
+      });
+
+      // 409 for the two refusals, 200 for applied and no_changes. A refusal is a CONFLICT with
+      // current reality, not a malformed request -- 400 would tell the operator they did
+      // something wrong when they did not.
+      if (result.outcome === "stale" || result.outcome === "table_missing") {
+        return res.status(409).json(result);
+      }
+      return res.json(result);
     })
   );
 
