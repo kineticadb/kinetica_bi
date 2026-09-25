@@ -145,7 +145,12 @@ Plans:
   3. An apply carrying removals or retypes succeeds; no code path refuses it, demands a force flag, or requires the operator to resolve findings first.
   4. Applying records a history entry for that table holding when it ran, the added/removed/retyped changeset, and the impact report as it stood at that moment; the entry is still readable after a server restart.
   5. A history entry can be deleted on its own, leaving the table's other entries and its stored schema untouched.
-**Plans**: TBD
+
+Plans:
+- [x] 125-01-PLAN.md — sync-history storage: the two tables, the 20-entry cap with a visible drop count, and the first writer for `tables.columns_fingerprint`
+- [x] 125-02-PLAN.md — the apply primitives: order-independent staleness comparison and the `tables.columns` renderer
+- [x] 125-03-PLAN.md — `applySchemaSync`: the whole write in one `db.transaction`, proven to touch only the `tables` row
+- [x] 125-04-PLAN.md — route wiring (apply, history read, per-entry delete) and requirement closure
 
 ### Phase 126: Datasets UI, Access Gating & Operator Verification
 **Goal**: The operator drives check, report, apply and history from the Datasets page, only with the permission that already governs dataset management, and confirms against a real Kinetica table that the report tells the truth.

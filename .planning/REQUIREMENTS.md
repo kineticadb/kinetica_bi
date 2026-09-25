@@ -37,14 +37,14 @@ deliberately deferred until the reporting half is proven in the operator's hands
 
 ### Applying
 
-- [ ] **SSYNC-V125-13**: The operator can apply the refreshed schema, after which config panels offer the current Kinetica columns
-- [ ] **SSYNC-V125-14**: Applying updates only the table's stored schema — no widget, layer, custom metric or formatting rule is rewritten
-- [ ] **SSYNC-V125-15**: Applying is never blocked by a breaking change; the operator decides with the report in front of them
+- [x] **SSYNC-V125-13**: The operator can apply the refreshed schema, after which config panels offer the current Kinetica columns — automated 2026-09-25 (Phase 125 Plan 04). `POST /api/tables/:id/schema-apply` re-reads Kinetica once and calls `applySchemaSync`, which replaces `tables.columns` and `tables.columns_fingerprint` in one `db.transaction`. `renderColumnsMap` writes the `tables.columns` vocabulary the config panels classify with (a temporal column stores as `timestamp`, not `long(timestamp)`), so the panels offer the live columns rather than flattening every temporal column to a number. Proven end-to-end by `routes.schema-apply.spec.ts`'s `PERSIST-diff`, which applies and then re-runs `GET /api/tables/:id/schema-check` on the SAME live body through the app's own read path and asserts `hasChanges: false`.
+- [x] **SSYNC-V125-14**: Applying updates only the table's stored schema — no widget, layer, custom metric or formatting rule is rewritten — automated 2026-09-25 (Phase 125 Plan 03, wired live by Plan 04). Proven by `lib.schemaApply.transaction.spec.ts`'s `ONLYTABLES-` tests: a full-ROW snapshot of `widgets`, `dashboard_layers`, `custom_metrics` and `column_display_config`, each asserted non-empty first, PLUS a SQLite `total_changes()` budget of exactly 2 (one `tables` UPDATE, one history INSERT). The budget is what catches a VALUE-IDENTICAL stray write, which no content comparison can see because `db.ts` declares no update triggers.
+- [x] **SSYNC-V125-15**: Applying is never blocked by a breaking change; the operator decides with the report in front of them — automated 2026-09-25 (Phase 125 Plans 03 and 04). Enforced by SHAPE, not by a test alone: `applySchemaSync`'s input type has no force/override parameter and its result union has no refusal arm to disable, so there is nothing to pass. `stale` and `table_missing` are the only refusals. Proven by `PERSIST-breaking`, which applies a changeset carrying an addition, a removal AND a retype through the route and gets 200 `applied`, and guarded by a diff-anchored `\bforce\b` criterion on added non-comment lines.
 
 ### Sync history
 
-- [ ] **SSYNC-V125-16**: Each applied sync is recorded per table and remains available afterwards, so the operator has a durable worklist while fixing dashboards instead of a modal they must screenshot
-- [ ] **SSYNC-V125-17**: A history entry records when the sync ran, what changed, and what the impact report said at that time
+- [x] **SSYNC-V125-16**: Each applied sync is recorded per table and remains available afterwards, so the operator has a durable worklist while fixing dashboards instead of a modal they must screenshot — automated 2026-09-25 (Phase 125 Plans 01 and 04). `table_sync_history` (capped at 20 per table, with the drop count kept in its own `table_sync_history_meta` row so a per-entry delete cannot erase it) reads back through `GET /api/tables/:id/sync-history`, and a single entry deletes through `DELETE /api/tables/:id/sync-history/:entryId`. Both are gated as strictly as the apply. `DELETE-wrong-table` proves the table id in the path is load-bearing, not decorative.
+- [x] **SSYNC-V125-17**: A history entry records when the sync ran, what changed, and what the impact report said at that time — automated 2026-09-25 (Phase 125 Plans 01, 03 and 04). Each entry carries `ts`, `actor` (the authenticated username, `rbac_audit`'s precedent), `kind`, the `SyncChangeset` and the `ImpactReport` exactly as it was built — rebuilt server-side from the re-read live map, never accepted from the client. `READ-after-apply` round-trips all five through the route; `PERSIST-actor` proves the actor is the session's own username and not a constant.
 - [ ] **SSYNC-V125-18**: An operator can view a table's sync history from Datasets and clear entries they have finished acting on
 
 ### Access
@@ -90,11 +90,11 @@ Deferred. Tracked, not in this roadmap.
 | SSYNC-V125-10 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
 | SSYNC-V125-11 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
 | SSYNC-V125-12 | Phase 124 — Impact Report | Complete (automated 2026-09-24) |
-| SSYNC-V125-13 | Phase 125 — Apply & Sync History | Pending |
-| SSYNC-V125-14 | Phase 125 — Apply & Sync History | Pending |
-| SSYNC-V125-15 | Phase 125 — Apply & Sync History | Pending |
-| SSYNC-V125-16 | Phase 125 — Apply & Sync History | Pending |
-| SSYNC-V125-17 | Phase 125 — Apply & Sync History | Pending |
+| SSYNC-V125-13 | Phase 125 — Apply & Sync History | Complete |
+| SSYNC-V125-14 | Phase 125 — Apply & Sync History | Complete |
+| SSYNC-V125-15 | Phase 125 — Apply & Sync History | Complete |
+| SSYNC-V125-16 | Phase 125 — Apply & Sync History | Complete |
+| SSYNC-V125-17 | Phase 125 — Apply & Sync History | Complete |
 | SSYNC-V125-18 | Phase 126 — Datasets UI, Access Gating & Operator Verification | Pending |
 | SSYNC-V125-19 | Phase 126 — Datasets UI, Access Gating & Operator Verification | Pending |
 
