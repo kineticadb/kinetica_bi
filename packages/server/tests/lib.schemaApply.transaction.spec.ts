@@ -372,3 +372,230 @@ describe("applySchemaSync — unknown table (MISSING-)", () => {
     ).toBe(0);
   });
 });
+
+// ─── Criterion 2: only the `tables` row changed (ONLYTABLES-) ─────────────────────────
+
+/**
+ * Full-ROW snapshot of the four tables ROADMAP criterion 2 names. Rows, not counts: a count
+ * snapshot passes when a row is silently rewritten in place, which is precisely the failure
+ * mode "no widget, layer, metric or format rule is ever rewritten" forbids. The precedent
+ * this upgrades past -- `lib.dashboardImport.apply.spec.ts`'s `countRows()` -- is
+ * count-based, and was adequate there because that spec proves rows were never CREATED.
+ */
+const snapshotConfigTables = () => ({
+  widgets: db.prepare("SELECT * FROM widgets ORDER BY id").all(),
+  layers: db.prepare("SELECT * FROM dashboard_layers ORDER BY id").all(),
+  metrics: db.prepare("SELECT * FROM custom_metrics ORDER BY id").all(),
+  columnDisplayConfig: db
+    .prepare("SELECT * FROM column_display_config ORDER BY table_id, column_name")
+    .all(),
+});
+
+/**
+ * Guards the snapshot against vacuity. A snapshot of four empty arrays compares equal to
+ * itself no matter what the code under test did -- Phase 124's plan checker caught exactly
+ * that test, and it would have passed forever. Called before EVERY `toEqual` below.
+ */
+const expectNonVacuous = (s: ReturnType<typeof snapshotConfigTables>) => {
+  expect(s.widgets.length).toBeGreaterThan(0);
+  expect(s.layers.length).toBeGreaterThan(0);
+  expect(s.metrics.length).toBeGreaterThan(0);
+  expect(s.columnDisplayConfig.length).toBeGreaterThan(0);
+};
+
+describe("applySchemaSync — only the tables row changed (ONLYTABLES-)", () => {
+  it("ONLYTABLES-seeded: the fixture puts real rows in all four tables criterion 2 names", () => {
+    const tableId = seedTable();
+    const snap = snapshotConfigTables();
+    expectNonVacuous(snap);
+    // Named explicitly as well, so a helper that silently stopped checking one table would
+    // still be caught here.
+    expect(snap.widgets).toHaveLength(1);
+    expect(snap.layers).toHaveLength(1);
+    expect(snap.metrics).toHaveLength(1);
+    expect(snap.columnDisplayConfig).toHaveLength(1);
+    expect(tableId).toBeGreaterThan(0);
+  });
+
+  it("ONLYTABLES-diff: a diff apply leaves all four config tables byte-identical and changes only the tables row", () => {
+    const tableId = seedTable();
+    setStoredFingerprint(tableId, STORED);
+
+    const before = snapshotConfigTables();
+    expectNonVacuous(before);
+    const beforeTablesRow = tablesRow(tableId);
+
+    const result = applySchemaSync({
+      tableId,
+      table: TABLE_NAME,
+      live: LIVE,
+      reportedLive: LIVE,
+      actor: ACTOR,
+    });
+    expect(result.outcome).toBe("applied");
+    if (result.outcome !== "applied") throw new Error("unreachable");
+    expect(result.kind).toBe("diff");
+
+    const after = snapshotConfigTables();
+    expect(after).toEqual(before);
+
+    // ...and the `tables` row DID change, in both snapshot halves. Without this the test
+    // above would also pass against a function that did nothing whatsoever.
+    const afterTablesRow = tablesRow(tableId);
+    expect(afterTablesRow.columns).not.toEqual(beforeTablesRow.columns);
+    expect(afterTablesRow.columns_fingerprint).not.toEqual(beforeTablesRow.columns_fingerprint);
+    expect(getTableColumnsFingerprint(tableId)).toBe(serializeFingerprintSnapshot(LIVE));
+
+    // The written `tables.columns` keeps the TYPE CLASS, rather than flattening the
+    // temporal column back into the number it was before v1.25's renderer existed. A
+    // base-only renderer would write "long" here.
+    expect(result.columns.col_ts).toBe("timestamp");
+    expect(result.columns.col_b).toBe("string(char16)");
+    expect(getTable(tableId)!.columns).toEqual({
+      col_a: "long",
+      col_b: "string(char16)",
+      col_ts: "timestamp",
+    });
+  });
+
+  it("ONLYTABLES-baseline: a baseline apply leaves all four config tables byte-identical too", () => {
+    const tableId = seedTable();
+    expect(getTableColumnsFingerprint(tableId)).toBeNull();
+
+    const before = snapshotConfigTables();
+    expectNonVacuous(before);
+    const beforeTablesRow = tablesRow(tableId);
+
+    const result = applySchemaSync({
+      tableId,
+      table: TABLE_NAME,
+      live: LIVE,
+      reportedLive: LIVE,
+      actor: ACTOR,
+    });
+    expect(result.outcome).toBe("applied");
+    if (result.outcome !== "applied") throw new Error("unreachable");
+    expect(result.kind).toBe("baseline");
+
+    const after = snapshotConfigTables();
+    expect(after).toEqual(before);
+
+    const afterTablesRow = tablesRow(tableId);
+    expect(afterTablesRow.columns).not.toEqual(beforeTablesRow.columns);
+    expect(afterTablesRow.columns_fingerprint).not.toEqual(beforeTablesRow.columns_fingerprint);
+    expect(afterTablesRow.columns_fingerprint).toBe(serializeFingerprintSnapshot(LIVE));
+  });
+
+  it("ONLYTABLES-breaking: an apply carrying BOTH removals and retypes is applied, not refused", () => {
+    const tableId = seedTable();
+    setStoredFingerprint(tableId, STORED);
+
+    const before = snapshotConfigTables();
+    expectNonVacuous(before);
+
+    // SSYNC-V125-15. Note what this test CANNOT do, and what that absence means: there is no
+    // second argument to pass, no `{ force: true }` to omit, and no findings-acknowledgement
+    // call to skip. The refusal that does not exist cannot be exercised -- its absence is a
+    // property of applySchemaSync's input type, which `npx tsc --noEmit` enforces.
+    const result = applySchemaSync({
+      tableId,
+      table: TABLE_NAME,
+      live: LIVE,
+      reportedLive: LIVE,
+      actor: ACTOR,
+    });
+
+    expect(result.outcome).toBe("applied");
+    if (result.outcome !== "applied") throw new Error("unreachable");
+    expect(result.changeset!.removed.length).toBeGreaterThan(0);
+    expect(result.changeset!.retyped.length).toBeGreaterThan(0);
+    expect(result.recorded).toBe(true);
+
+    // The removal is BREAKING and the seeded widget depends on it -- so this is a genuinely
+    // destructive apply that went through, not a cosmetic one.
+    const report = listTableSyncHistory(tableId).entries[0].report!;
+    const breaking = report.sections.find((s) => s.severity === "breaking")!;
+    expect(breaking.columns.map((c) => c.column)).toContain("col_gone");
+
+    expect(snapshotConfigTables()).toEqual(before);
+  });
+});
+
+// ─── Atomicity (ROLLBACK-) ────────────────────────────────────────────────────────────
+
+/**
+ * Installs a `RAISE(ABORT)` trigger on `table` for the duration of `fn`, then ALWAYS drops
+ * it -- even if `fn` throws (which it is expected to, in every caller here). A leaked
+ * trigger would silently redden every OTHER spec file that inserts into the same table days
+ * later, and `test-gate.mjs`'s set-based re-run would misattribute it to
+ * TD-V16-TEST-ISOLATION instead of surfacing the real regression. The `finally` here plus
+ * the module-level `beforeEach` drop (above) are the two lines this file's own acceptance
+ * criteria count.
+ *
+ * The trigger NAME is deliberately distinct from `lib.dashboardImport.apply.spec.ts`'s
+ * `kbi_test_abort`: under parallel scheduling the two spec files must never be able to fight
+ * over one name.
+ */
+const withAbortTriggerOn = (table: string, fn: () => void) => {
+  db.exec("DROP TRIGGER IF EXISTS kbi_test_abort_sync;");
+  db.exec(
+    `CREATE TRIGGER kbi_test_abort_sync BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'induced apply failure'); END;`
+  );
+  try {
+    fn();
+  } finally {
+    db.exec("DROP TRIGGER IF EXISTS kbi_test_abort_sync;");
+  }
+};
+
+describe("applySchemaSync — atomicity (ROLLBACK-)", () => {
+  it("ROLLBACK-history: an aborted history insert rolls the snapshot update back with it", () => {
+    const tableId = seedTable();
+    setStoredFingerprint(tableId, STORED);
+
+    const beforeRow = tablesRow(tableId);
+    const beforeFingerprint = getTableColumnsFingerprint(tableId);
+    const beforeConfig = snapshotConfigTables();
+
+    withAbortTriggerOn("table_sync_history", () => {
+      expect(() =>
+        applySchemaSync({
+          tableId,
+          table: TABLE_NAME,
+          live: LIVE,
+          reportedLive: LIVE,
+          actor: ACTOR,
+        })
+      ).toThrow();
+    });
+
+    // The `tables` row is byte-identical: the snapshot UPDATE ran first, inside the same
+    // transaction, and must have been rolled back by the aborted insert that followed it.
+    expect(tablesRow(tableId)).toEqual(beforeRow);
+    expect(getTableColumnsFingerprint(tableId)).toBe(beforeFingerprint);
+    expect(historyCount(tableId)).toBe(0);
+    expect(snapshotConfigTables()).toEqual(beforeConfig);
+  });
+
+  it("ROLLBACK-clean: with no trigger installed the SAME fixture applies successfully", () => {
+    const tableId = seedTable();
+    setStoredFingerprint(tableId, STORED);
+
+    // The control run. Without it, ROLLBACK-history would also pass against a fixture that
+    // could never apply in the first place -- and against a trigger leaked from a previous
+    // test, which is the exact failure `withAbortTriggerOn`'s `finally` exists to prevent.
+    const result = applySchemaSync({
+      tableId,
+      table: TABLE_NAME,
+      live: LIVE,
+      reportedLive: LIVE,
+      actor: ACTOR,
+    });
+
+    expect(result.outcome).toBe("applied");
+    if (result.outcome !== "applied") throw new Error("unreachable");
+    expect(result.kind).toBe("diff");
+    expect(historyCount(tableId)).toBe(1);
+    expect(getTableColumnsFingerprint(tableId)).toBe(serializeFingerprintSnapshot(LIVE));
+  });
+});
