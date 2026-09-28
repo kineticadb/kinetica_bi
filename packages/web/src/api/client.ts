@@ -1765,3 +1765,189 @@ export const deleteCustomMetric = async (tableId: number, id: number): Promise<v
   });
   if (!response.ok) await throwForStatus(response, "Failed to delete custom metric");
 };
+
+// --- Schema Sync (v1.25 Phase 126 — SSYNC-V125-01/-18/-19) ---
+
+// These DTOs mirror the server's own shapes. This repo has no cross-package imports, so they
+// are re-declared here exactly as `TableDto`, `ImportReportDto` and
+// `MaterializeDynamicViewResponse` already are.
+
+export type ColumnFingerprint = { base: string; refinements: string[] };
+export type ColumnFingerprintMap = Record<string, ColumnFingerprint>;
+
+export type AddedColumn = { column: string; live: ColumnFingerprint; liveType: string };
+export type RemovedColumn = { column: string; stored: ColumnFingerprint; storedType: string };
+export type RetypedColumn = {
+  column: string;
+  stored: ColumnFingerprint;
+  storedType: string;
+  live: ColumnFingerprint;
+  liveType: string;
+};
+
+export type ImpactAdvisoryKind = "unnamed-record" | "ambiguous-name";
+export type ImpactAdvisory = { kind: ImpactAdvisoryKind; message: string };
+
+export type RefConfidence = "exact" | "heuristic" | "low-confidence";
+export type ColumnRefTableScope = "scoped" | "free-sql" | "unresolved";
+export type ColumnRefRecordKind =
+  | "widget"
+  | "layer"
+  | "customMetric"
+  | "dynamicView"
+  | "tableView"
+  | "columnDisplayConfig";
+export type ColumnRefMatch = { line: string; lineNumber: number; offset: number };
+// Deliberately `string`, not the server's 40-member ColumnRefSite union: it is display-only on
+// the client, and a server-side site rename must not become a web compile error.
+export type ColumnRefSite = string;
+
+export type ImpactSeverity = "breaking" | "changed" | "harmless";
+export type ImpactChangeKind = "removed" | "retyped" | "added";
+
+export type ImpactReference = {
+  site: ColumnRefSite;
+  path: string;
+  confidence: RefConfidence;
+  tableScope: ColumnRefTableScope;
+  certainty: string;
+  matches: ColumnRefMatch[];
+};
+
+export type ImpactRecord = {
+  recordKind: ColumnRefRecordKind;
+  recordId: number | null;
+  name: string;
+  dashboardName: string | null;
+  displayLabel: string;
+  advisories: ImpactAdvisory[];
+  references: ImpactReference[];
+  staleDrillDownType?: { frozenType: string; message: string };
+};
+
+export type ImpactColumn = {
+  column: string;
+  changeKind: ImpactChangeKind;
+  storedType: string | null;
+  liveType: string | null;
+  // storedClass/liveClass are `string | null`, not the server's ColumnTypeClass union: that
+  // union is server-internal and the UI renders neither value directly.
+  storedClass: string | null;
+  liveClass: string | null;
+  summary: string;
+  records: ImpactRecord[];
+};
+
+// `sections` is ALWAYS 3 entries, ALWAYS breaking / changed / harmless, in that order.
+export type ImpactSection = { severity: ImpactSeverity; columns: ImpactColumn[] };
+
+export type ImpactReport = {
+  v: 1;
+  table: string;
+  tableId: number;
+  outcome: "changes" | "no_changes";
+  sections: ImpactSection[];
+  advisorySummary: ImpactAdvisory[];
+  knownGaps: string[];
+};
+
+export type SchemaCheckResult =
+  | {
+      outcome: "diff";
+      table: string;
+      hasChanges: boolean;
+      added: AddedColumn[];
+      removed: RemovedColumn[];
+      retyped: RetypedColumn[];
+      live: ColumnFingerprintMap;
+    }
+  | { outcome: "baseline_required"; table: string; message: string; live: ColumnFingerprintMap }
+  | { outcome: "table_missing"; table: string; message: string };
+
+// `impact` is OPTIONAL by design: its PRESENCE (not an empty array) is what distinguishes
+// "no findings" from "the report was not run". Never default it.
+export type SchemaCheckResponse = SchemaCheckResult & { impact?: ImpactReport };
+
+export type SyncChangeset = {
+  v: 1;
+  added: { column: string; liveType: string }[];
+  removed: { column: string; storedType: string }[];
+  retyped: { column: string; storedType: string; liveType: string }[];
+};
+
+export type TableSyncHistoryEntry = {
+  id: number;
+  table_id: number;
+  ts: string;
+  actor: string;
+  kind: "baseline" | "diff";
+  changeset: SyncChangeset | null;
+  report: ImpactReport | null;
+};
+
+export type TableSyncHistory = {
+  entries: TableSyncHistoryEntry[];
+  droppedCount: number;
+  lastDroppedTs: string | null;
+  cap: number;
+};
+
+export type SchemaApplyResult =
+  | {
+      outcome: "applied";
+      kind: "baseline" | "diff";
+      table: string;
+      tableId: number;
+      recorded: true;
+      historyId: number;
+      droppedThisApply: number;
+      columns: Record<string, string>;
+      changeset: SyncChangeset | null;
+      message: string;
+    }
+  | { outcome: "no_changes"; table: string; tableId: number; message: string }
+  | { outcome: "stale"; table: string; tableId: number; message: string }
+  | { outcome: "table_missing"; table: string; tableId: number; message: string };
+
+export const checkTableSchema = async (tableId: number): Promise<SchemaCheckResponse> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/schema-check`);
+  if (!response.ok) await throwForStatus(response, "Failed to check the table schema");
+  return (await response.json()) as SchemaCheckResponse;
+};
+
+export const applyTableSchema = async (
+  tableId: number,
+  live: ColumnFingerprintMap,
+): Promise<SchemaApplyResult> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/schema-apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ live }),
+  });
+  // A 409 here is the server's REFUSAL, not a failure. `stale` and `table_missing` are modelled
+  // outcomes carrying operator-facing text that throwForStatus() would DESTROY: it reads only an
+  // `{ error }` key (client.ts:97-118) and a 409 body has none, so the approved refusal message
+  // would be replaced by the generic fallback below. Parsed as a result, not an error, so the
+  // whole apply surface is one discriminated union on `outcome` — the shape the server already
+  // models. 401/403/502 keep their existing error classes; 400/404 still throw.
+  if (response.status === 409) return (await response.json()) as SchemaApplyResult;
+  if (!response.ok) await throwForStatus(response, "Failed to apply the schema");
+  return (await response.json()) as SchemaApplyResult;
+};
+
+export const listTableSyncHistory = async (tableId: number): Promise<TableSyncHistory> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/sync-history`);
+  if (!response.ok) await throwForStatus(response, "Failed to load sync history");
+  return (await response.json()) as TableSyncHistory;
+};
+
+export const deleteTableSyncHistoryEntry = async (
+  tableId: number,
+  entryId: number,
+): Promise<void> => {
+  const response = await apiFetch(
+    `${API_BASE}/api/tables/${tableId}/sync-history/${entryId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) await throwForStatus(response, "Failed to delete the sync history entry");
+};
