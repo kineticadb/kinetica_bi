@@ -49,7 +49,7 @@ deliberately deferred until the reporting half is proven in the operator's hands
 
 ### Access
 
-- [ ] **SSYNC-V125-19**: Checking, applying and clearing history require the same permission that governs dataset management today; a user without it cannot reach them in the UI or through the API
+- [ ] **SSYNC-V125-19**: Checking, applying and clearing history require BOTH `datasets:manage` AND `dashboards:manage_access`; a user missing either cannot reach them in the UI or through the API. **AMENDED 2026-09-28 (Phase 126).** As originally written this named ONE permission — the one that governs dataset management — and that stopped being accurate in Phase 124, which added `dashboards:manage_access` to all four schema-sync routes on purpose (`packages/server/src/index.ts:2500-2501`, `:2577-2578`, `:2664-2665`, `:2682-2683`). The reason is structural: the impact report names widgets and dashboards across EVERY dashboard, and `datasets:manage` alone does not govern cross-dashboard visibility — `canViewDashboard` bypasses on `dashboards:manage_access`, a DIFFERENT permission (`packages/server/src/lib/dashboardAccessDb.ts:11`). Phase 126's UI gate mirrors the server's AND exactly, because gating on `datasets:manage` alone would show controls to a user the server then refuses with a 403 — the precise UI/API disagreement ROADMAP criterion 4 exists to prevent. Relaxing the server gate so the original single-permission wording would hold was considered and REJECTED (`126-CONTEXT.md` § Deferred); it reopens the RBAC exposure Phase 124's plan checker found.
 
 ## Future Requirements
 
