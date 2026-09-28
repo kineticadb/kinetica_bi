@@ -21,6 +21,14 @@
  *   NOAPPLY-    `table_missing` offers no Apply (there is no `live` map to echo back).
  *   CAVEAT-     the text-width caveat shows after a REAL apply and only then.
  *   CLASSNAME-  every className literal resolves to a real rule in global.css.
+ *   HIST-       the sync-history tab: a DURABLE WORKLIST, readable without a check
+ *               having run, one-click delete, and a cap notice that states the
+ *               SERVER's cap. `NOPOLL-no-history-on-mount` is the history twin of
+ *               `NOPOLL-no-check-on-mount` — without it a mount-effect history fetch
+ *               would break ROADMAP criterion 2's spirit with nothing to catch it.
+ *   TABS-       the tab selection lives OUTSIDE the Stage union, so reading history
+ *               and coming back leaves the impact report intact. Folding `history`
+ *               into `Stage` would destroy the report on every tab click.
  *
  * ── CLASSNAME-RESOLVES: STATED COVERAGE BOUNDARY ──────────────────────────────────────
  * The guard has two passes. Pass A reads className ATTRIBUTE VALUES. Pass B reads any
@@ -64,6 +72,9 @@ import type {
   ImpactSeverity,
   SchemaApplyResult,
   SchemaCheckResponse,
+  SyncChangeset,
+  TableSyncHistory,
+  TableSyncHistoryEntry,
 } from "../api/client";
 
 // ---------------------------------------------------------------------------
@@ -75,12 +86,16 @@ vi.mock("../api/client", async () => {
     ...actual,
     checkTableSchema: vi.fn(),
     applyTableSchema: vi.fn(),
+    listTableSyncHistory: vi.fn(),
+    deleteTableSyncHistoryEntry: vi.fn(),
   };
 });
 
 const mockedClient = clientModule as unknown as {
   checkTableSchema: ReturnType<typeof vi.fn>;
   applyTableSchema: ReturnType<typeof vi.fn>;
+  listTableSyncHistory: ReturnType<typeof vi.fn>;
+  deleteTableSyncHistoryEntry: ReturnType<typeof vi.fn>;
 };
 
 // ---------------------------------------------------------------------------
@@ -238,6 +253,61 @@ const applyMissingResult: SchemaApplyResult = {
 };
 
 // ---------------------------------------------------------------------------
+// Sync-history fixtures — neutral synthetic names only
+// ---------------------------------------------------------------------------
+const HIST_TS = "2026-09-28T14:02:00Z";
+const HIST_TS_LATER = "2026-09-28T15:30:00Z";
+const HIST_ACTOR = "opuser";
+
+const makeChangeset = (over?: Partial<SyncChangeset>): SyncChangeset => ({
+  v: 1,
+  added: [{ column: "col_delta", liveType: "string" }],
+  removed: [
+    { column: "col_beta", storedType: "int" },
+    { column: "col_gamma", storedType: "float" },
+  ],
+  retyped: [{ column: "col_alpha", storedType: "int", liveType: "string" }],
+  ...over,
+});
+
+/**
+ * The entry's stored report names col_epsilon and NOTHING else. col_epsilon appears
+ * nowhere in the row summary and nowhere in the changeset, so HIST-expand structurally
+ * cannot pass on the collapsed render.
+ */
+const REPORT_ONLY_COLUMN = "col_epsilon";
+
+const historyReport: ImpactReport = makeReport({
+  sections: [
+    makeSection("breaking", [makeColumn(REPORT_ONLY_COLUMN)]),
+    makeSection("changed", []),
+    makeSection("harmless", []),
+  ],
+});
+
+const makeEntry = (over?: Partial<TableSyncHistoryEntry>): TableSyncHistoryEntry => ({
+  id: 41,
+  table_id: 7,
+  ts: HIST_TS,
+  actor: HIST_ACTOR,
+  kind: "diff",
+  changeset: makeChangeset(),
+  report: historyReport,
+  ...over,
+});
+
+const makeHistory = (over?: Partial<TableSyncHistory>): TableSyncHistory => ({
+  entries: [makeEntry()],
+  droppedCount: 0,
+  lastDroppedTs: null,
+  cap: 20,
+  ...over,
+});
+
+const BASELINE_DETAIL = "This was a baseline entry, so there was no changeset to record.";
+const EMPTY_HISTORY_LINE = "No syncs recorded for this table yet.";
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function renderModal() {
@@ -249,8 +319,17 @@ function renderModal() {
 const checkButton = () => screen.findByRole("button", { name: /check for changes/i });
 const applyButton = () => screen.findByRole("button", { name: /^apply$/i });
 
+const historyTab = () => screen.findByRole("button", { name: /^sync history$/i });
+const checkTab = () => screen.findByRole("button", { name: /^schema check$/i });
+const detailsButton = () => screen.findByRole("button", { name: /^details$/i });
+const deleteButton = () => screen.findByRole("button", { name: /^delete$/i });
+
 async function runCheck() {
   fireEvent.click(await checkButton());
+}
+
+async function openHistory() {
+  fireEvent.click(await historyTab());
 }
 
 // ---------------------------------------------------------------------------
@@ -259,8 +338,12 @@ async function runCheck() {
 beforeEach(() => {
   mockedClient.checkTableSchema.mockReset();
   mockedClient.applyTableSchema.mockReset();
+  mockedClient.listTableSyncHistory.mockReset();
+  mockedClient.deleteTableSyncHistoryEntry.mockReset();
   mockedClient.checkTableSchema.mockResolvedValue(makeDiffCheck());
   mockedClient.applyTableSchema.mockResolvedValue(appliedResult);
+  mockedClient.listTableSyncHistory.mockResolvedValue(makeHistory());
+  mockedClient.deleteTableSyncHistoryEntry.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -430,6 +513,180 @@ describe("SchemaSyncModal — check / report / apply", () => {
     fireEvent.click(await applyButton());
     expect(await screen.findByText(APPLY_MISSING_MESSAGE)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^apply$/i })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sync history — the durable worklist (SSYNC-V125-18)
+// ---------------------------------------------------------------------------
+describe("SchemaSyncModal — sync history", () => {
+  it("NOPOLL-no-history-on-mount: rendering the modal issues no sync-history request", async () => {
+    renderModal();
+    // Awaiting a control proves the render completed — this cannot pass on an empty DOM.
+    await checkButton();
+    expect(mockedClient.listTableSyncHistory).toHaveBeenCalledTimes(0);
+  });
+
+  it("HIST-loads-without-check: history renders without a check ever having run", async () => {
+    renderModal();
+    await openHistory();
+    expect(await screen.findByText(HIST_ACTOR)).toBeInTheDocument();
+    expect(mockedClient.listTableSyncHistory).toHaveBeenCalledTimes(1);
+    expect(mockedClient.listTableSyncHistory).toHaveBeenCalledWith(TABLE.id);
+    // The durable-worklist property: the operator opens this to work entries off, and
+    // must not be forced through a check first.
+    expect(mockedClient.checkTableSchema).toHaveBeenCalledTimes(0);
+  });
+
+  it("HIST-row-summary: a diff row states its timestamp, actor and 1/2/1 counts", async () => {
+    renderModal();
+    await openHistory();
+    expect(await screen.findByText(HIST_TS)).toBeInTheDocument();
+    expect(screen.getByText(HIST_ACTOR)).toBeInTheDocument();
+    expect(screen.getByText("1 added, 2 removed, 1 retyped")).toBeInTheDocument();
+  });
+
+  it("HIST-expand: the changeset and the stored report appear ONLY after expanding", async () => {
+    renderModal();
+    await openHistory();
+    await screen.findByText(HIST_ACTOR);
+    // col_epsilon exists only inside entry.report; col_delta only inside the changeset.
+    expect(screen.queryByText(REPORT_ONLY_COLUMN)).toBeNull();
+    expect(screen.queryByText("col_delta")).toBeNull();
+
+    fireEvent.click(await detailsButton());
+
+    expect(await screen.findByText(REPORT_ONLY_COLUMN)).toBeInTheDocument();
+    expect(screen.getByText("col_delta")).toBeInTheDocument();
+    expect(screen.getByText("col_gamma")).toBeInTheDocument();
+  });
+
+  it("HIST-expand-baseline: a baseline entry (null changeset, null report) expands cleanly", async () => {
+    mockedClient.listTableSyncHistory.mockResolvedValue(
+      makeHistory({
+        entries: [makeEntry({ kind: "baseline", changeset: null, report: null })],
+      }),
+    );
+    renderModal();
+    await openHistory();
+    expect(await screen.findByText("Baseline established")).toBeInTheDocument();
+
+    fireEvent.click(await detailsButton());
+
+    expect(await screen.findByText(BASELINE_DETAIL)).toBeInTheDocument();
+    // The row survived the expansion rather than blowing the subtree away.
+    expect(screen.getByText(HIST_ACTOR)).toBeInTheDocument();
+  });
+
+  it("HIST-cap-notice: the notice states the SERVER's cap, never a hardcoded 20", async () => {
+    // cap is deliberately 5. A hardcoded 20 renders "Showing the 20 most recent" and fails.
+    mockedClient.listTableSyncHistory.mockResolvedValue(
+      makeHistory({ droppedCount: 3, cap: 5 }),
+    );
+    renderModal();
+    await openHistory();
+    const notice = await screen.findByTestId("schema-sync-cap-notice");
+    expect(notice.textContent).toBe("Showing the 5 most recent. 3 older entries were dropped.");
+  });
+
+  it("HIST-cap-notice-absent: droppedCount 0 renders no cap notice at all", async () => {
+    mockedClient.listTableSyncHistory.mockResolvedValue(
+      makeHistory({ droppedCount: 0, cap: 5 }),
+    );
+    renderModal();
+    await openHistory();
+    // The entries ARE present, so the render reached the point the notice would occupy.
+    expect(await screen.findByText(HIST_ACTOR)).toBeInTheDocument();
+    expect(screen.queryByTestId("schema-sync-cap-notice")).toBeNull();
+  });
+
+  it("HIST-delete: Delete passes BOTH the table id and the entry id, and the row goes", async () => {
+    renderModal();
+    await openHistory();
+    expect(await screen.findByText(HIST_TS)).toBeInTheDocument();
+
+    fireEvent.click(await deleteButton());
+
+    await waitFor(() => expect(screen.queryByText(HIST_TS)).toBeNull());
+    expect(mockedClient.deleteTableSyncHistoryEntry).toHaveBeenCalledTimes(1);
+    // The table id in the path is load-bearing: the server 404s an entry that belongs
+    // to a different table (index.ts:2691-2695).
+    expect(mockedClient.deleteTableSyncHistoryEntry.mock.calls[0][0]).toBe(TABLE.id);
+    expect(mockedClient.deleteTableSyncHistoryEntry.mock.calls[0][1]).toBe(41);
+  });
+
+  it("HIST-delete-no-confirm: one click deletes — no confirm dialog stands in the way", async () => {
+    // A confirm() returning false would suppress the delete. This fails the moment one
+    // is added: an entry is an audit note being ticked off, not data being destroyed.
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      renderModal();
+      await openHistory();
+      expect(await screen.findByText(HIST_TS)).toBeInTheDocument();
+
+      fireEvent.click(await deleteButton());
+
+      await waitFor(() =>
+        expect(mockedClient.deleteTableSyncHistoryEntry).toHaveBeenCalledTimes(1),
+      );
+      expect(confirmSpy).toHaveBeenCalledTimes(0);
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("HIST-refetch-after-apply: a successful apply refreshes history without reopening the modal", async () => {
+    mockedClient.listTableSyncHistory
+      .mockResolvedValueOnce(makeHistory())
+      .mockResolvedValue(
+        makeHistory({ entries: [makeEntry({ id: 42, ts: HIST_TS_LATER }), makeEntry()] }),
+      );
+
+    renderModal();
+    await openHistory();
+    expect(await screen.findByText(HIST_TS)).toBeInTheDocument();
+    expect(screen.queryByText(HIST_TS_LATER)).toBeNull();
+    expect(mockedClient.listTableSyncHistory).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(await checkTab());
+    await runCheck();
+    fireEvent.click(await applyButton());
+    expect(await screen.findByText(APPLIED_MESSAGE)).toBeInTheDocument();
+
+    // No tab click has happened since — the second call came from the apply path itself.
+    await waitFor(() => expect(mockedClient.listTableSyncHistory).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(await historyTab());
+    expect(await screen.findByText(HIST_TS_LATER)).toBeInTheDocument();
+  });
+
+  it("HIST-empty: a table with no syncs renders a neutral line and no cap notice", async () => {
+    mockedClient.listTableSyncHistory.mockResolvedValue({
+      entries: [],
+      droppedCount: 0,
+      lastDroppedTs: null,
+      cap: 20,
+    });
+    renderModal();
+    await openHistory();
+    expect(await screen.findByText(EMPTY_HISTORY_LINE)).toBeInTheDocument();
+    expect(screen.queryByTestId("schema-sync-cap-notice")).toBeNull();
+  });
+
+  it("TABS-report-survives-switch: reading history and returning leaves the report intact", async () => {
+    // The tab lives OUTSIDE the Stage union. Folding `history` into Stage would drop the
+    // operator back to idle here, and a re-check would be needed to see the report again.
+    renderModal();
+    await runCheck();
+    expect(await screen.findByText("col_alpha")).toBeInTheDocument();
+
+    fireEvent.click(await historyTab());
+    expect(await screen.findByText(HIST_ACTOR)).toBeInTheDocument();
+    expect(screen.queryByText("col_alpha")).toBeNull();
+
+    fireEvent.click(await checkTab());
+    expect(await screen.findByText("col_alpha")).toBeInTheDocument();
+    expect(mockedClient.checkTableSchema).toHaveBeenCalledTimes(1);
   });
 });
 
