@@ -174,7 +174,14 @@ Expect `table_missing` on most registered tables: five of the nine have been dro
 
 ### Precedents to mirror
 - `packages/web/src/components/ColumnFormatEditorModal.tsx` + `CustomMetricsEditorModal.tsx` — the
-  per-table modal shape Datasets already opens; neither has its own CSS file (both use `global.css`)
+  per-table modal shape Datasets already opens.
+  **CORRECTED 2026-09-28:** the earlier claim here that "neither has its own CSS file" was WRONG.
+  `CustomMetricsEditorModal.css` exists (111 lines) and is imported at
+  `CustomMetricsEditorModal.tsx:13`. Only `ColumnFormatEditorModal` is CSS-file-free — its
+  `col-format-*` rules live in `global.css:4896+`.
+  **Consequence: do NOT create a `SchemaSyncModal.css`.** New component styles go in `global.css`.
+  A new component `.css` file would push theme-guard from 152 to **156**, not 154, because the
+  spec's two describe blocks each scan component files.
 - `packages/web/src/components/DashboardsPage.tsx:130-132` — the client-side AND-gate precedent
 - `packages/web/src/components/RolesPage.tsx` / `RolesPage.css` — closest settings-page component
 
@@ -197,6 +204,11 @@ Expect `table_missing` on most registered tables: five of the nine have been dro
 - `PERMISSIONS.DATASETS_MANAGE` and `DASHBOARDS_MANAGE_ACCESS` in `packages/web/src/lib/permissions.ts`.
 
 ### Established Patterns
+- **Component `className`s must be plain double-quoted literals.** Both modal precedents use
+  `className={`...`}` template literals (`CustomMetricsEditorModal.tsx:293`,
+  `ColumnFormatEditorModal.tsx:285`) — a static className guard CANNOT see the token inside a
+  template literal, nor one returned from a helper function. If such a guard is used, the
+  convention it depends on must itself be enforced.
 - **No design-system component library.** Plain elements with `global.css` utility classes, and
   **no build check that a className resolves to real CSS** — an invented class silently renders
   unstyled and still passes tsc, vitest AND theme-guard. Grep `global.css` before naming anything.
