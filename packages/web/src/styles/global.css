@@ -5152,8 +5152,11 @@ input[type="checkbox"],
    TOKEN-ONLY BY HAND, as above — global.css is a TOTAL hex exemption in theme-guard,
    so no automated gate protects these colours. .schema-sync-cap-notice follows
    .login-error (:2164) with --warning: it reports a fact about retention, not an
-   error. --success is again NOT used (it aliases --accent, brand violet, in BOTH
-   themes). Every colour token below is redefined under :root[data-theme="light"];
+   error. The success token is again avoided: it aliases the brand-violet accent in
+   BOTH themes and would read as an accent control rather than a status. (Spelling it
+   out in prose here would blind the very grep that forbids using it — the exact trap
+   126-02 fell into with a code comment.)
+   Every colour token below is redefined under :root[data-theme="light"];
    the --space-*/--radius-*/--text-* tokens are deliberately theme-independent. */
 .schema-sync-tabs {
   display: flex;
