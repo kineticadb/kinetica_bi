@@ -258,6 +258,7 @@ const applyMissingResult: SchemaApplyResult = {
 const HIST_TS = "2026-09-28T14:02:00Z";
 const HIST_TS_LATER = "2026-09-28T15:30:00Z";
 const HIST_TS_EARLY = "2026-09-20T08:00:00Z";
+const HIST_TS_MID = "2026-09-24T11:45:00Z";
 /** Anchored at BOTH ends so it matches the timestamp span and not its parent row. */
 const TS_EXACT = /^2026-09-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const HIST_ACTOR = "opuser";
@@ -552,22 +553,30 @@ describe("SchemaSyncModal — sync history", () => {
   it("HIST-order-as-given: rows render in the ARRAY order the server sent, not by ts", async () => {
     // Added in task 2 as the STRENGTHENING for probe P8, which was written expecting not
     // to fire and did not: no existing test rendered more than one entry, so a
-    // client-side `.sort((a, b) => a.ts.localeCompare(b.ts))` passed unnoticed. The server
-    // returns newest first (id DESC); the ts ordering below deliberately DISAGREES with
-    // the array order, so any client re-sort reverses the DOM and fails here.
+    // client-side `.sort((a, b) => a.ts.localeCompare(b.ts))` passed unnoticed.
+    //
+    // The array order below is MID, LATE, EARLY — deliberately not monotonic in ts, so
+    // NEITHER an ascending NOR a descending client re-sort can reproduce it. Two entries
+    // were not enough: any two-element array is already sorted in one of the two
+    // directions, which is exactly why the first version of this test still let P8 pass.
     mockedClient.listTableSyncHistory.mockResolvedValue(
       makeHistory({
         entries: [
-          makeEntry({ id: 41, ts: HIST_TS_EARLY }),
+          makeEntry({ id: 43, ts: HIST_TS_MID }),
           makeEntry({ id: 42, ts: HIST_TS_LATER }),
+          makeEntry({ id: 41, ts: HIST_TS_EARLY }),
         ],
       }),
     );
     renderModal();
     await openHistory();
     const stamps = await screen.findAllByText(TS_EXACT);
-    expect(stamps).toHaveLength(2);
-    expect(stamps.map((stamp) => stamp.textContent)).toEqual([HIST_TS_EARLY, HIST_TS_LATER]);
+    expect(stamps).toHaveLength(3);
+    expect(stamps.map((stamp) => stamp.textContent)).toEqual([
+      HIST_TS_MID,
+      HIST_TS_LATER,
+      HIST_TS_EARLY,
+    ]);
   });
 
   it("HIST-expand: the changeset and the stored report appear ONLY after expanding", async () => {
