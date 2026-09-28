@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.25
 milestone_name: Schema Sync
 status: executing
-stopped_at: "Phase 126 context gathered 2026-09-28 — resume file .planning/phases/126-datasets-ui-access-gating/126-CONTEXT.md. Phase 125 COMPLETE (verification `passed`, 5/5). Phase 126 is the LAST phase of v1.25 and the first with UI work; packages/web has been at ZERO diff all milestone and this is where that budget is spent. LOCKED: UI gates on datasets:manage AND dashboards:manage_access (matching all four server routes) — SSYNC-V125-19's single-permission wording is to be AMENDED in its own commit, not reinterpreted; one staged per-table modal mirroring ColumnFormatEditorModal; full report list, breaking first; single always-enabled Apply button; 409 stale renders the message verbatim plus a Re-check button; history rows show ts/actor/counts, expand for detail, delete with no confirm; cap notice only when droppedCount > 0, reading cap from the response. SCHEMA_APPLY_TABLE_MISSING_MESSAGE gets NO UI branch (unreachable over HTTP). SCHEMA_APPLY_TEXT_WIDTH_GAP renders after every apply (new ROADMAP criterion 6). Operator checkpoint covers ALL FOUR column drift cases plus table drop, post-apply config-panel verification, and restart durability. Next: /gsd:plan-phase 126."
-last_updated: "2026-09-28T11:15:00.000Z"
+stopped_at: "Phase 126 Plan 01 COMPLETE 2026-09-28 (the api/client.ts schema-sync layer; 6/6 probes fired). Next: plan 126-02. Phase 126 context gathered 2026-09-28 — resume file .planning/phases/126-datasets-ui-access-gating/126-CONTEXT.md. Phase 125 COMPLETE (verification `passed`, 5/5). Phase 126 is the LAST phase of v1.25 and the first with UI work; packages/web has been at ZERO diff all milestone and this is where that budget is spent. LOCKED: UI gates on datasets:manage AND dashboards:manage_access (matching all four server routes) — SSYNC-V125-19's single-permission wording is to be AMENDED in its own commit, not reinterpreted; one staged per-table modal mirroring ColumnFormatEditorModal; full report list, breaking first; single always-enabled Apply button; 409 stale renders the message verbatim plus a Re-check button; history rows show ts/actor/counts, expand for detail, delete with no confirm; cap notice only when droppedCount > 0, reading cap from the response. SCHEMA_APPLY_TABLE_MISSING_MESSAGE gets NO UI branch (unreachable over HTTP). SCHEMA_APPLY_TEXT_WIDTH_GAP renders after every apply (new ROADMAP criterion 6). Operator checkpoint covers ALL FOUR column drift cases plus table drop, post-apply config-panel verification, and restart durability. Next: /gsd:plan-phase 126."
+last_updated: "2026-09-28T15:00:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 20
-  completed_plans: 20
+  total_plans: 25
+  completed_plans: 21
 ---
 
 # Project State
@@ -35,6 +35,40 @@ unconditionally. Phase 125 exported and tested that constant but attached it to 
 the `text` → `string` drill-down over-inclusion it names is currently invisible to operators.
 The conditional variant was offered and declined — the server does not track the pre-apply
 vocabulary.
+
+**Phase 126 Plan 01 COMPLETE (2026-09-28)** — the web API layer, and the first `packages/web`
+diff of the whole v1.25 milestone. SHIPPED as one appended `// --- Schema Sync ---` section in
+`packages/web/src/api/client.ts` (1767 → 1953 lines, pure append): 22 mirrored DTO types plus
+`checkTableSchema` / `applyTableSchema` / `listTableSyncHistory` / `deleteTableSyncHistoryEntry`.
+11/11 `CLIENT-` tests, 6/6 probes fired on the FIRST attempt with no test needing strengthening,
+tsc clean, web suite 182 files / 4111 tests green, theme-guard **152** (unchanged — no component
+file added), `packages/server` ZERO diff. All signatures pinned VERBATIM in `126-01-SUMMARY.md`;
+plans 126-02..04 are planned against that text.
+
+THREE FACTS 126-02 MUST NOT REDISCOVER:
+- **`applyTableSchema` NEVER throws on 409.** The 409 is checked BEFORE `throwForStatus` and the
+  server's `stale` / `table_missing` body is returned as a VALUE with its operator-facing `message`
+  byte-intact. `throwForStatus` (`client.ts:97-118`) special-cases only 401/403/502 and reads only
+  an `{ error }` key, which a 409 body does not have — routed through it the approved
+  `SCHEMA_APPLY_STALE_MESSAGE` becomes "Failed to apply the schema". Branch on `outcome`; there is
+  no `ConflictError` to catch. No fourth error class was added and `useApiQuery` was NOT touched
+  (it is mount-scoped, wrong for a button-triggered mutation).
+- **`SchemaCheckResponse.impact` is optional and its ABSENCE is load-bearing.** The caller does not
+  default it: `"impact" in result === false` means "not yet run"; empty sections mean "no findings".
+  Probe P6 (defaulting a missing `impact`) exists solely to keep that true and reddens
+  `CLIENT-check-impact-absent`.
+- **`cap` and `droppedCount` come off the response.** `CLIENT-history-shape` deliberately uses
+  `cap: 5`, never the server's default 20, so a hardcoded 20 downstream is mechanically detectable.
+
+NO BROKEN ACCEPTANCE CRITERION THIS PLAN — the first in this milestone. All ten stated before-values
+were re-measured and all ten genuinely read 0, because every anchor is a symbol or test-id the plan
+introduces. Recorded caveat for future planners: criteria 9 and 10 (the ZERO-server-diff and
+untouched-`useApiQuery` absence checks) read 0 both before AND after by construction, so they cannot
+fail-before. They are worth keeping as the milestone's only mechanical diff-budget guard, but they
+prove "nothing broke", not "something was built" — do not count them as discriminating criteria.
+The prohibition criterion was correctly anchored to ADDED lines
+(`git diff --unified=0 … | grep '^+[^+]'`), which is what makes it meaningful against a 1767-line
+pre-existing file; a whole-file grep there would have been toothless.
 
 **Phase 125 Plan 01 COMPLETE (2026-09-25)** — the storage layer, and the milestone's first writer.
 SHIPPED in `packages/server/src/db.ts`: `table_sync_history` + `table_sync_history_meta` DDL,
