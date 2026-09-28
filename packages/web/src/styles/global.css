@@ -5005,3 +5005,143 @@ input[type="checkbox"],
   padding-top: var(--space-5);
   border-top: 1px solid var(--border);
 }
+
+/* ── Schema sync modal (v1.25 Phase 126 Plan 02 — SSYNC-V125-01) ─────────────────
+   TOKEN-ONLY BY HAND, NOT BY GATE. global.css is a TOTAL hex exemption in
+   theme-guard (an allowlisted file asserts hex IS present and returns), so nothing
+   automated protects the colours below. They follow .login-error (:2164) — a
+   color-mix tint over the semantic token — which re-skins with both themes AND with
+   a re-branded palette. Deliberately NOT copied: .view-status-* and
+   .layer-row-badge.error, both of which carry unthemed hex.
+   Severity colour comes from the pre-existing .text-danger / .text-warning /
+   .text-muted co-classes. --success is NOT used: it aliases --accent (brand violet)
+   in BOTH themes and would read as an accent control rather than a severity. */
+.schema-sync-modal {
+  max-width: 900px;
+}
+
+.schema-sync-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.schema-sync-message {
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-refusal {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-caveat {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.impact-severity {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.impact-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-3);
+}
+
+.impact-column-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: var(--font-weight-semibold);
+}
+
+.impact-column-name {
+  color: var(--text);
+  font-size: var(--text-base);
+}
+
+.impact-column-kind {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-normal);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.impact-column-types {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-normal);
+}
+
+.impact-column-summary {
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.impact-record {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  padding: var(--space-1) 0;
+}
+
+.impact-record-label {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.impact-advisory {
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
+.impact-reference {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.impact-reference-path {
+  color: var(--text);
+}
+
+.impact-reference-certainty {
+  color: var(--muted);
+}
+
+.impact-gaps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
