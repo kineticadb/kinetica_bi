@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.25
 milestone_name: Schema Sync
 status: executing
-stopped_at: "Phase 125 Plan 03 (applySchemaSync — THE WRITE) COMPLETE 2026-09-25. Next: Plan 125-04 (routes + shared-doc bookkeeping; it alone owns ROADMAP.md and REQUIREMENTS.md). SHIPPED: SchemaApplyResult + applySchemaSync in lib/schemaApply.ts — one db.transaction wrapping setTableSchemaSnapshot + insertTableSyncHistoryEntry, four outcomes (applied baseline|diff / no_changes / stale / table_missing), four operator-facing messages pinned verbatim in 125-03-SUMMARY.md for Phase 126. 12/12 tests, 11/11 probes, tsc clean, GATE PASSED x3, web ZERO diff. ROADMAP criteria 1-4 met. THE FINDING: probe P10 (stray UPDATE widgets inside the transaction) did NOT fire against a correct full-ROW snapshot, because datetime(now) has one-second resolution and the stray UPDATE wrote back a byte-identical value — and dashboard_layers has NO timestamp column at all, making any stray write to it invisible to content comparison forever. Fixed by strengthening the TEST twice (ageSeededRows + expectRowWriteBudget on SQLite total_changes(), budget 2 for an apply / 0 for a no-op or stale). Reuse total_changes() as a row-write budget for any nothing-else-was-touched claim. TWO MORE BROKEN CRITERIA reported not gamed: 2.10 (demands two gate runs produce the same result set — unsatisfiable, the contamination set rotates by design) and 2.6 (counts SQL literals, not assertion sites). Two stated before-values in the plan were also measured wrong. No gsd-tools mutation command was run; ROADMAP.md and REQUIREMENTS.md untouched."
-last_updated: "2026-09-25T11:05:00.000Z"
+stopped_at: "Phase 125 (Apply & Sync History) COMPLETE 2026-09-28 — verification `passed`, 5/5 success criteria, all 4 plans executed. Next: Phase 126 (Datasets UI, Access Gating & Operator Verification) — SSYNC-V125-01, -18, -19, plus NEW criterion 6 added by operator decision: the UI must render SCHEMA_APPLY_TEXT_WIDTH_GAP after an apply. SHIPPED this phase: two history tables + SYNC_HISTORY_CAP=20 + the first writer for tables.columns/columns_fingerprint (125-01); canonicalFingerprintJson + renderColumnsMap (125-02); applySchemaSync, one db.transaction, four outcomes (125-03); three double-gated routes — apply, history read, per-entry delete (125-04). Six operator-facing strings APPROVED verbatim at the blocking checkpoint; Phase 126 renders them. THE FINDING: probe P10 did NOT fire against a correct, non-vacuous full-ROW snapshot, because datetime('now') has one-second resolution and the stray UPDATE wrote back a byte-identical value. db.ts declares ZERO update triggers, so a value-identical write is invisible to content comparison in EVERY table here. (An earlier note claiming dashboard_layers has no timestamp column was FALSE — it has created_at and updated_at at db.ts:124-125 — corrected in 52a8c0f.) Fixed by strengthening the TEST twice: ageSeededRows + expectRowWriteBudget on SQLite total_changes(), budget 2 for an apply / 0 for a no-op or stale. The verifier reproduced it independently: disabling ONLY the budget assertion turned all 12 tests green again with a stray write in place. Reuse total_changes() for any nothing-else-was-touched claim. FOUR non-discriminating criteria this phase (6 across v1.25), including a NEW shape — two were UNSATISFIABLE: grep -c '^-' on a diff matches the diff's own --- a/path header, and 'two gate runs produce the same failing set' contradicts a set-based gate. All reported, none gamed. No gsd-tools mutation command was run; all bookkeeping by hand."
+last_updated: "2026-09-28T10:30:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 16
-  completed_plans: 16
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 20
+  completed_plans: 20
 ---
 
 # Project State
@@ -19,14 +19,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 121 — UI + Cross-Environment Verification
+**Current focus:** Phase 126 — Datasets UI, Access Gating & Operator Verification
 
 ## Current Position
 
-**v1.25 Schema Sync — Phase 124 COMPLETE (2026-09-24).** Next: **Phase 125 (Apply & Sync History)**.
+**v1.25 Schema Sync — Phase 125 COMPLETE (2026-09-28), verification `passed` 5/5.**
+Next: **Phase 126 (Datasets UI, Access Gating & Operator Verification)** — the last phase of v1.25.
 
-Progress: 3/5 phases, 11/19 requirements Complete
-(SSYNC-V125-02/-03/-04/-05/-06/-07/-08/-09/-10/-11/-12).
+Progress: 4/5 phases, 16/19 requirements Complete
+(SSYNC-V125-02..-17). Remaining: SSYNC-V125-01, -18, -19, all owned by Phase 126.
+
+**Phase 126 carries a NEW success criterion 6**, added 2026-09-28 by operator decision at Phase
+125's blocking checkpoint: the UI must render `SCHEMA_APPLY_TEXT_WIDTH_GAP` after an apply,
+unconditionally. Phase 125 exported and tested that constant but attached it to no response, so
+the `text` → `string` drill-down over-inclusion it names is currently invisible to operators.
+The conditional variant was offered and declined — the server does not track the pre-apply
+vocabulary.
 
 **Phase 125 Plan 01 COMPLETE (2026-09-25)** — the storage layer, and the milestone's first writer.
 SHIPPED in `packages/server/src/db.ts`: `table_sync_history` + `table_sync_history_meta` DDL,
