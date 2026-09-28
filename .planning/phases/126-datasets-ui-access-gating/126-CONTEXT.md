@@ -60,7 +60,14 @@ narrowed explicit requirement wording; it surfaced only at live UAT.)
 - **Full list, breaking findings first.** No progressive disclosure, no summary-counts-first view.
 - Ordering is already locked from Phase 124: by severity, then by column. Do not re-sort by
   dashboard — that was considered and rejected here because it conflicts with the shipped ordering.
-- The cap is 20 findings and the report says so when it truncates; render that verbatim.
+- **CORRECTED 2026-09-28: there is NO cap on the impact report and no truncation message.**
+  The earlier text here claimed "the cap is 20 findings"; that was wrong and is withdrawn.
+  `buildImpactReport` (`packages/server/src/lib/schemaImpact.ts:424-431`) returns
+  `{v, table, tableId, outcome, sections, advisorySummary, knownGaps}` — no cap field, no flag,
+  no message — and section assembly pushes EVERY column into its bucket, dropping nothing.
+  The real 20 is `SYNC_HISTORY_CAP` (`packages/server/src/db.ts:698`), which caps sync-history
+  ENTRIES, not findings. Render the full list however long it is; the sync-history cap notice
+  below is a separate, real thing and is unaffected.
 
 ### Apply confirmation
 
@@ -97,9 +104,18 @@ Two have special handling:
   `applySchemaSync` runs. **Do NOT build a UI branch for it** — nothing can produce it. Operator
   decision: it stays as a library contract only.
 - **`SCHEMA_APPLY_TEXT_WIDTH_GAP` must be rendered after an apply** (ROADMAP Phase 126 success
-  criterion 6, added by operator decision at the same checkpoint). Unconditional — NOT gated on
-  whether the table actually had a `text` column, because the server does not track the pre-apply
-  vocabulary and building that detection was offered and declined.
+  criterion 6, added by operator decision at the same checkpoint). Not gated on whether the table
+  actually had a `text` column — the server does not track the pre-apply vocabulary and building
+  that detection was offered and declined.
+  **CORRECTED 2026-09-28 — "the UI imports the constant" is not literally achievable.** The
+  constant exists in exactly two files tree-wide (`schemaApply.ts:146` and its server spec), reaches
+  NO response body (`grep` in `index.ts` = 0), and this repo has no cross-package imports. So the
+  web must MIRROR the string, guarded by a spec that reads `../server/src/lib/schemaApply.ts` and
+  compares — the static-source-read technique already used by theme-guard, WidgetFilterBadge,
+  LayersLegendPanel and WidgetRenderer. The guard MUST assert the segment count as well as the
+  value; the string is a 3-segment `+`-concatenation, and a regex that matches nothing would
+  otherwise compare `""` to `""` and pass. **Do NOT "fix" this by adding the constant to the apply
+  response — that is a `packages/server` change, and nothing else in this phase needs one.**
 
 ### Operator verification checkpoint (criterion 5) — all four cases selected
 
