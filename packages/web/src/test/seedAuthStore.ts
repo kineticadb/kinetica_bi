@@ -94,3 +94,17 @@ export function seedUserAdminStore(): void {
     },
   });
 }
+
+/**
+ * Seeds useAuthStore with an arbitrary permission SET — for gate tests that need to probe one
+ * permission at a time rather than a named role. Promoted from
+ * DashboardsPage.exportimport.spec.tsx (Phase 121), where it was spec-local, so Phase 126's
+ * schema-sync AND-gate tests share one definition instead of copy-pasting a second.
+ * Same ordering rule as the helpers above: call INSIDE beforeEach.
+ */
+export function seedPermissionsStore(permissions: string[]): void {
+  useAuthStore.setState({
+    status: "authenticated",
+    user: { username: "testcustom", roles: ["custom"], permissions },
+  });
+}
