@@ -33,13 +33,14 @@ decisions:
   - "A Kinetica-dropped table is 409 from the apply but 200 from the check: for a read it is a finding, for a write it is a conflict that stopped the write"
   - "table_missing reuses tableMissingResult's message by object spread so the check and the apply cannot drift"
   - "The sync-history routes carry no requireConfig — neither touches a Kinetica connection (column-display-config / custom-metrics precedent)"
-  - "SCHEMA_APPLY_TABLE_MISSING_MESSAGE is UNREACHABLE through the HTTP surface — surfaced at the checkpoint rather than quietly left in place"
+  - "SCHEMA_APPLY_TABLE_MISSING_MESSAGE is UNREACHABLE through the HTTP surface — surfaced at the checkpoint rather than quietly left in place; operator kept it as a library contract 2026-09-28"
+  - "SCHEMA_APPLY_TEXT_WIDTH_GAP had no emitter — operator decided 2026-09-28 that Phase 126 renders it after an apply, recorded as Phase 126 success criterion 6"
 metrics:
-  tasks: 2 of 3 (Task 3 is a BLOCKING checkpoint, not yet answered)
+  tasks: 3 of 3 (Task 3 checkpoint APPROVED 2026-09-28)
   tests_added: 21
   probes: 9
   duration: ~70m
-  completed: pending checkpoint
+  completed: 2026-09-28
 ---
 
 # Phase 125 Plan 04: Route Wiring & Requirement Closure Summary
@@ -498,15 +499,33 @@ accommodate either; the real requirements were verified directly by probes P1, P
 | 4 | the entry holds ts, changeset and report, readable afterwards | `READ-after-apply` round-trips all five fields through the route; `PERSIST-actor` proves provenance |
 | 5 | an entry deletes on its own, leaving the others and the schema untouched | `DELETE-one` (204, other entry present, `tables` row byte-identical), `DELETE-wrong-table` (probe P6), `DELETE-keeps-dropped` |
 
-## Checkpoint (Task 3) — NOT YET ANSWERED
+## Checkpoint (Task 3) — ANSWERED 2026-09-28: APPROVED
 
 **Type:** `checkpoint:human-verify`, gate `blocking`.
 **Automated precondition:** the six-constant grep prints **6** — verified.
-**Status as of 2026-09-25: awaiting the operator.** The six strings are pinned above exactly as
-they appear in the tree, with their line numbers, and `schemaApplyDiffMessage` is rendered for a
-real 1/2/1 changeset rather than shown as a template. On an answer, the approved text (or the
-replacement wording, with the constant edited and the three specs re-run) replaces § "The six
-operator-facing strings" above, and the outcome and date are recorded here.
+**Outcome:** the operator approved all six strings **as written**. No constant was edited, so no
+spec was re-run on account of the checkpoint. The six strings pinned above are the shipped text,
+and Phase 126 renders them verbatim.
+
+Two findings were put to the operator with the wording, each independently verified by the
+orchestrator against source before being presented (`grep` in `src/index.ts` returned 0 for both
+constants):
+
+1. **`SCHEMA_APPLY_TABLE_MISSING_MESSAGE` is unreachable through the HTTP surface.** The route
+   404s on an unknown table id before `applySchemaSync` runs, and the Kinetica-dropped case
+   returns `tableMissingResult`'s wording instead. **Decision: KEEP as a library contract.** The
+   arm is correct for direct callers even though no route emits it. It is NOT to be wired into a
+   Phase 126 UI branch — nothing can produce it.
+
+2. **`SCHEMA_APPLY_TEXT_WIDTH_GAP` had no emitter.** Exported and tested, attached to no
+   response, so the `text` → `string` drill-down over-inclusion was invisible to the operator.
+   **Decision: Phase 126 RENDERS it after an apply.** Recorded as Phase 126 success criterion 6
+   in `.planning/ROADMAP.md`. Explicitly NOT conditional on the table having had a text column —
+   the server does not track the pre-apply vocabulary, and building that detection was offered
+   and declined.
+
+The 20-entry cap with a visible `droppedCount` + `cap` was not re-litigated; it stands as
+decided during phase discussion.
 
 ## Self-Check: PASSED
 
