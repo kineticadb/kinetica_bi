@@ -283,6 +283,23 @@ const WEB_EXCLUDED_DRILLDOWN_TYPES: ReadonlySet<string> = new Set([
   "geography",
 ]);
 
+describe("WEB_EXCLUDED_DRILLDOWN_TYPES mirror", () => {
+  it("MIRROR-PARITY: the drill-down exclusion set is exactly the 8 members of the web original", () => {
+    // Without this, the mirror above is unguarded: the only other assertions on it are two
+    // membership spot-checks (`has("text")`, `has("string")`), so the web adding a NINTH
+    // excluded type would redden nothing here and PARITY-drilldown would keep passing while
+    // silently checking a stale taxonomy. Sorted byte-ascending on both sides so the
+    // assertion does not depend on Set insertion order -- the same technique
+    // lib.columnTypeClass.spec.ts uses for NUMERIC_TYPES/BOOLEAN_TYPES/DATETIME_TYPES.
+    // Independently hardcoded from packages/web/src/lib/columnTypes.ts:29-38.
+    const WEB_ORIGINAL = [
+      "wkt", "wkb", "bytes", "blob", "text", "point", "geometry", "geography",
+    ];
+    expect([...WEB_EXCLUDED_DRILLDOWN_TYPES].sort()).toEqual([...WEB_ORIGINAL].sort());
+    expect(WEB_EXCLUDED_DRILLDOWN_TYPES.size).toBe(8);
+  });
+});
+
 /**
  * Local re-implementation of packages/web/src/lib/columnTypes.ts's
  * inferDataTypeFromColumn branch order, built from the sets exported by

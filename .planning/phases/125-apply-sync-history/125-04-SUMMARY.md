@@ -49,9 +49,9 @@ The three routes that make everything Plans 125-01..03 built reachable: the mile
 write route, the history read Phase 126 will render, and the per-entry delete that closes
 ROADMAP criterion 5. Plus the closure of the phase's five requirements.
 
-**Status: Tasks 1 and 2 are complete and committed. Task 3 — the blocking checkpoint on the six
-operator-facing strings — is UNANSWERED.** Nothing in this document should be read as operator
-approval of any wording.
+**Status: all three tasks complete. Task 3 — the blocking checkpoint on the six operator-facing
+strings — was ANSWERED 2026-09-28: the operator approved all six as written.** See
+§ "Checkpoint (Task 3)" for the outcome and the two findings decided alongside it.
 
 ## What shipped
 
@@ -60,7 +60,7 @@ approval of any wording.
 | 1 | `POST /api/tables/:id/schema-apply` | `093382b` (RED), `4612526` (GREEN) |
 | 2 | `GET /sync-history`, `DELETE /sync-history/:entryId` | `24f7c65` (RED), `7565d1d` (GREEN) |
 | 2 | SSYNC-V125-13..-17 closed; ROADMAP `Plans: TBD` replaced | `5a2a303` |
-| 3 | **BLOCKING checkpoint — awaiting the operator** | — |
+| 3 | **BLOCKING checkpoint — APPROVED 2026-09-28, six strings shipped as written** | `3d86f2b` |
 
 21 tests in `packages/server/tests/routes.schema-apply.spec.ts`, all green: 3 `GATE-`,
 2 `ONECALL-`, 4 `REFUSE-`, 3 `PERSIST-`, 4 `READ-`, 5 `DELETE-`. All fixtures synthetic
