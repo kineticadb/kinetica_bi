@@ -5145,3 +5145,58 @@ input[type="checkbox"],
   color: var(--muted);
   font-size: var(--text-sm);
 }
+
+/* ── Schema sync — the sync-history tab (Phase 126 Plan 03, SSYNC-V125-18) ──────────
+   Appended AFTER .schema-sync-modal on purpose: that rule's max-width:900px beats
+   .modal-content's 600px by source order, and nothing below may land before it.
+   TOKEN-ONLY BY HAND, as above — global.css is a TOTAL hex exemption in theme-guard,
+   so no automated gate protects these colours. .schema-sync-cap-notice follows
+   .login-error (:2164) with --warning: it reports a fact about retention, not an
+   error. --success is again NOT used (it aliases --accent, brand violet, in BOTH
+   themes). Every colour token below is redefined under :root[data-theme="light"];
+   the --space-*/--radius-*/--text-* tokens are deliberately theme-independent. */
+.schema-sync-tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-2);
+}
+
+.schema-sync-tab-active {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.schema-sync-cap-notice {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-history-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.schema-sync-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.schema-sync-history-detail {
+  padding-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

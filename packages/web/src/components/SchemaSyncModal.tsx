@@ -1,14 +1,25 @@
 /**
  * SchemaSyncModal — Phase 126 Plan 02 (SSYNC-V125-01)
  *
- * The check → report → apply half of the per-table schema-sync modal. Sync history is
- * added to this same file by plan 03; the entry point that mounts it (and the permission
- * gate in front of it) is plan 04's.
+ * The check → report → apply stages AND the sync-history tab of the per-table
+ * schema-sync modal. The entry point that mounts it (and the permission gate in front
+ * of it) is plan 04's.
+ *
+ * The tab selection is a SIBLING useState, deliberately NOT a Stage arm: every Stage arm
+ * carries a check/apply payload and a history tab carries none. Keeping it outside is
+ * also what makes the impact report survive a tab switch (TABS-report-survives-switch) —
+ * the operator reads the history, comes back, and the report is still there.
+ *
+ * The history is a DURABLE WORKLIST, not a modal artefact. Hence: it loads without a
+ * check having run, a row expands in place rather than linking away, and Delete takes one
+ * click with no confirm — an entry is an audit note being ticked off.
  *
  * Three rules this file obeys, each with a reason:
  *
- * 1. NO fetch on mount, no interval, no polling. `checkTableSchema` and `applyTableSchema`
- *    are called from click handlers and from nowhere else (ROADMAP Phase 126 criterion 2).
+ * 1. NO fetch on mount, no interval, no polling. `checkTableSchema`, `applyTableSchema`
+ *    and `listTableSyncHistory` are called from click handlers (and, for the history, from
+ *    the apply handler once an apply has actually landed) and from nowhere else
+ *    (ROADMAP Phase 126 criterion 2).
  *
  * 2. Server prose is rendered VERBATIM and never re-derived. `record.displayLabel` already
  *    carries its own noun; `column.summary`, `reference.certainty`, `advisory.message`,
@@ -34,13 +45,18 @@ import React, { useState } from "react";
 import {
   applyTableSchema,
   checkTableSchema,
+  deleteTableSyncHistoryEntry,
+  listTableSyncHistory,
   type ImpactColumn,
   type ImpactRecord,
   type ImpactReport,
   type ImpactSeverity,
   type SchemaApplyResult,
   type SchemaCheckResponse,
+  type SyncChangeset,
   type TableDto,
+  type TableSyncHistory,
+  type TableSyncHistoryEntry,
 } from "../api/client";
 import { SCHEMA_APPLY_TEXT_WIDTH_GAP } from "../lib/schemaSyncStrings";
 
@@ -146,6 +162,68 @@ const ImpactReportView = ({ report }: { report: ImpactReport }) => (
 );
 
 // ---------------------------------------------------------------------------
+// Sync-history rendering
+// ---------------------------------------------------------------------------
+type ChangesetRow = { column: string; types: string };
+
+const ChangesetGroup = ({ label, rows }: { label: string; rows: ChangesetRow[] }) => (
+  <div className="schema-sync-section">
+    <div className="modal-section-title">{label}</div>
+    {rows.length === 0 ? (
+      <div className="muted">None.</div>
+    ) : (
+      <table className="data-table">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.column}>
+              <td>{row.column}</td>
+              <td>{row.types}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+  </div>
+);
+
+const ChangesetView = ({ changeset }: { changeset: SyncChangeset }) => (
+  <>
+    <ChangesetGroup
+      label="Added"
+      rows={changeset.added.map((c) => ({ column: c.column, types: c.liveType }))}
+    />
+    <ChangesetGroup
+      label="Removed"
+      rows={changeset.removed.map((c) => ({ column: c.column, types: c.storedType }))}
+    />
+    <ChangesetGroup
+      label="Retyped"
+      rows={changeset.retyped.map((c) => ({
+        column: c.column,
+        types: c.storedType + " to " + c.liveType,
+      }))}
+    />
+  </>
+);
+
+/**
+ * A `baseline` entry carries `changeset: null`. The counts line is derived from the
+ * changeset the server stored — never recomputed from anything else.
+ */
+const entryCounts = (entry: TableSyncHistoryEntry): string => {
+  const c = entry.changeset;
+  if (c === null) return "Baseline established";
+  return (
+    String(c.added.length) +
+    " added, " +
+    String(c.removed.length) +
+    " removed, " +
+    String(c.retyped.length) +
+    " retyped"
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Modal
 // ---------------------------------------------------------------------------
 export default function SchemaSyncModal({
@@ -156,6 +234,11 @@ export default function SchemaSyncModal({
   onClose: () => void;
 }) {
   const [stage, setStage] = useState<Stage>({ k: "idle" });
+  // Sibling state, NOT a Stage arm — see the file header. Stage survives a tab switch.
+  const [tab, setTab] = useState<"check" | "history">("check");
+  const [history, setHistory] = useState<TableSyncHistory | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const toMessage = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
@@ -171,6 +254,34 @@ export default function SchemaSyncModal({
     }
   };
 
+  // Tab-click handler and post-apply handler ONLY. Never an effect, never a timer:
+  // NOPOLL-no-history-on-mount is the test that keeps that true.
+  const loadHistory = async () => {
+    setHistoryError(null);
+    try {
+      setHistory(await listTableSyncHistory(table.id));
+    } catch (err) {
+      setHistoryError(toMessage(err));
+    }
+  };
+
+  // One click, no confirm, no undo: an entry is an audit note, not data (CONTEXT).
+  // droppedCount is deliberately NOT recomputed here — the server does not decrement it
+  // on a per-entry delete (index.ts:2674-2677) because it records what the CAP removed,
+  // which is a different fact from how many entries remain.
+  const removeEntry = async (entryId: number) => {
+    try {
+      await deleteTableSyncHistoryEntry(table.id, entryId);
+      setHistory((prev) =>
+        prev === null
+          ? prev
+          : { ...prev, entries: prev.entries.filter((entry) => entry.id !== entryId) },
+      );
+    } catch (err) {
+      setHistoryError(toMessage(err));
+    }
+  };
+
   // Click handler ONLY. `table_missing` has no `live` map, so there is nothing to echo
   // back and no Apply control is rendered for it in the first place.
   const runApply = async (check: SchemaCheckResponse) => {
@@ -179,6 +290,9 @@ export default function SchemaSyncModal({
     try {
       const result = await applyTableSchema(table.id, check.live);
       setStage({ k: "result", check, result });
+      // An apply that actually landed wrote a history entry. Refresh so it is visible
+      // without the operator reopening the modal.
+      if (result.outcome === "applied") await loadHistory();
     } catch (err) {
       setStage({ k: "error", message: toMessage(err) });
     }
@@ -224,6 +338,77 @@ export default function SchemaSyncModal({
     );
   };
 
+  const historyRow = (entry: TableSyncHistoryEntry) => (
+    <div className="schema-sync-history-row" key={entry.id}>
+      <div className="schema-sync-history-meta">
+        <span>{entry.ts}</span>
+        <span>{entry.actor}</span>
+        <span>{entryCounts(entry)}</span>
+      </div>
+      <div className="ds-actions">
+        <button
+          className="ghost-sm"
+          onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
+        >
+          {expanded === entry.id ? "Hide" : "Details"}
+        </button>
+        <button className="ghost-sm ghost-danger" onClick={() => void removeEntry(entry.id)}>
+          Delete
+        </button>
+      </div>
+      {expanded === entry.id && (
+        <div className="schema-sync-history-detail">
+          {entry.changeset === null && entry.report === null ? (
+            <div className="muted">
+              This was a baseline entry, so there was no changeset to record.
+            </div>
+          ) : (
+            <>
+              {entry.changeset !== null && <ChangesetView changeset={entry.changeset} />}
+              {/* The report as it stood at that moment, through the SAME renderer the
+                  live check uses. A second report renderer would be a second, divergable
+                  implementation. */}
+              {entry.report !== null && <ImpactReportView report={entry.report} />}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const historyBody = () => {
+    if (historyError !== null) {
+      return <div className="schema-sync-refusal">{historyError}</div>;
+    }
+    if (history === null) {
+      return <div className="muted">Loading sync history&hellip;</div>;
+    }
+    // `cap` is interpolated from the response. The server echoes it precisely so the UI
+    // never hardcodes the number (db.ts:753-762); HIST-cap-notice sends cap: 5.
+    const capNotice =
+      "Showing the " +
+      String(history.cap) +
+      " most recent. " +
+      String(history.droppedCount) +
+      " older entries were dropped.";
+    return (
+      <>
+        {history.droppedCount > 0 && (
+          <div className="schema-sync-cap-notice" data-testid="schema-sync-cap-notice">
+            {capNotice}
+          </div>
+        )}
+        {history.entries.length === 0 ? (
+          <div className="muted">No syncs recorded for this table yet.</div>
+        ) : (
+          // In the order given. The server returns newest first (id DESC); re-sorting
+          // here would be a second ordering implementation.
+          history.entries.map((entry) => historyRow(entry))
+        )}
+      </>
+    );
+  };
+
   const resultBody = (result: SchemaApplyResult) => (
     <>
       {result.outcome === "stale" || result.outcome === "table_missing" ? (
@@ -256,7 +441,27 @@ export default function SchemaSyncModal({
           </button>
         </div>
         <div className="modal-body schema-sync-body">
-          {stage.k === "idle" && (
+          <div className="schema-sync-tabs">
+            <button
+              className={tab === "check" ? "ghost-sm schema-sync-tab-active" : "ghost-sm"}
+              onClick={() => setTab("check")}
+            >
+              Schema check
+            </button>
+            <button
+              className={tab === "history" ? "ghost-sm schema-sync-tab-active" : "ghost-sm"}
+              onClick={() => {
+                setTab("history");
+                void loadHistory();
+              }}
+            >
+              Sync history
+            </button>
+          </div>
+
+          {tab === "history" && historyBody()}
+
+          {tab === "check" && stage.k === "idle" && (
             <>
               <div className="muted">
                 A check compares this table&rsquo;s stored columns against the live table and
@@ -270,7 +475,7 @@ export default function SchemaSyncModal({
             </>
           )}
 
-          {stage.k === "checking" && (
+          {tab === "check" && stage.k === "checking" && (
             <>
               <div className="muted">Checking&hellip;</div>
               <div className="ds-actions">
@@ -281,18 +486,20 @@ export default function SchemaSyncModal({
             </>
           )}
 
-          {stage.k === "report" && reportBody(stage.check, false)}
+          {tab === "check" && stage.k === "report" && reportBody(stage.check, false)}
 
-          {stage.k === "applying" && (
+          {tab === "check" && stage.k === "applying" && (
             <>
               <div className="muted">Applying&hellip;</div>
               {reportBody(stage.check, true)}
             </>
           )}
 
-          {stage.k === "result" && resultBody(stage.result)}
+          {tab === "check" && stage.k === "result" && resultBody(stage.result)}
 
-          {stage.k === "error" && <div className="schema-sync-refusal">{stage.message}</div>}
+          {tab === "check" && stage.k === "error" && (
+            <div className="schema-sync-refusal">{stage.message}</div>
+          )}
         </div>
       </div>
     </div>
