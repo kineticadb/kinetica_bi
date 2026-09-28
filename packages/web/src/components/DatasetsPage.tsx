@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { useAuthStore } from "../store/auth";
+import { PERMISSIONS } from "../lib/permissions";
 import {
   openTableUrl, clearTableUrl, setTableMode, leaveTableUrl,
   readTableIdFromSearch, type TableMode,
@@ -18,6 +19,7 @@ import {
 import ChartCard from "./ChartCard";
 import ColumnFormatEditorModal from "./ColumnFormatEditorModal";
 import CustomMetricsEditorModal from "./CustomMetricsEditorModal";
+import SchemaSyncModal from "./SchemaSyncModal";
 
 type View =
   | { mode: "list" }
@@ -215,6 +217,20 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
   const columns = Object.entries(table.columns);
   const [showFormatEditor, setShowFormatEditor] = useState(false);
   const [showMetricsEditor, setShowMetricsEditor] = useState(false);
+  const [showSchemaSync, setShowSchemaSync] = useState(false);
+
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  // v1.25 Phase 126 (SSYNC-V125-19): mirrors all four schema-sync routes' OWN gate exactly —
+  // index.ts:2500-2501, :2577-2578, :2664-2665, :2682-2683 each spread
+  // requirePermission(DATASETS_MANAGE) AND requirePermission(DASHBOARDS_MANAGE_ACCESS). An AND,
+  // so the control is HIDDEN rather than offered to someone the server will refuse with a 403.
+  // The second permission is deliberate (Phase 124 RBAC widening), not an accident to paper over.
+  // ABSENT, not disabled: a disabled button still tells an unauthorised user the feature exists.
+  // Nothing else on this page is gated — the reactive "Permission denied" render from a server
+  // 403 stays as the backstop for the pre-existing controls.
+  const canSchemaSync =
+    hasPermission(PERMISSIONS.DATASETS_MANAGE) &&
+    hasPermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS);
 
   return (
     <div className="dashboard-list">
@@ -229,6 +245,11 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
             <button className="ghost-sm" onClick={() => setShowMetricsEditor(true)}>
               Custom metrics
             </button>
+            {canSchemaSync && (
+              <button className="ghost-sm" onClick={() => setShowSchemaSync(true)}>
+                Schema sync
+              </button>
+            )}
             <button className="ghost-sm" onClick={onBack}>
               Back
             </button>
@@ -285,6 +306,12 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
         <CustomMetricsEditorModal
           table={table}
           onClose={() => setShowMetricsEditor(false)}
+        />
+      )}
+      {showSchemaSync && (
+        <SchemaSyncModal
+          table={table}
+          onClose={() => setShowSchemaSync(false)}
         />
       )}
     </div>
