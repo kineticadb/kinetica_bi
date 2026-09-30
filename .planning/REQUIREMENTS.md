@@ -102,7 +102,7 @@ Deferred. Tracked, not in this roadmap.
 - v1.25 requirements: 19 total
 - Mapped to phases: 19 ✓
 - Unmapped: 0
-- **Complete: 16** (SSYNC-V125-02/-03/-04/-05, Phase 122, 2026-09-21; SSYNC-V125-07/-08, Phase 123, 2026-09-23; SSYNC-V125-06/-09/-10/-11/-12, Phase 124, 2026-09-24; SSYNC-V125-13/-14/-15/-16/-17, Phase 125, 2026-09-25)
+- **Complete: 19** (SSYNC-V125-02/-03/-04/-05, Phase 122, 2026-09-21; SSYNC-V125-07/-08, Phase 123, 2026-09-23; SSYNC-V125-06/-09/-10/-11/-12, Phase 124, 2026-09-24; SSYNC-V125-13/-14/-15/-16/-17, Phase 125, 2026-09-25; SSYNC-V125-01/-18/-19, Phase 126, 2026-09-30)
 - Every requirement maps to exactly one phase; no requirement appears in two phases.
 
 **Per-phase counts:** Phase 122 → 4 (`-02`, `-03`, `-04`, `-05`) · Phase 123 → 2 (`-07`, `-08`) · Phase 124 → 5 (`-06`, `-09`, `-10`, `-11`, `-12`) · Phase 125 → 5 (`-13`, `-14`, `-15`, `-16`, `-17`) · Phase 126 → 3 (`-01`, `-18`, `-19`). 4+2+5+5+3 = 19.
