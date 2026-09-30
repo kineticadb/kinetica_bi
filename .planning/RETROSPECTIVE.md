@@ -711,6 +711,76 @@ Both directions drive from the app UI. 11/11 requirements. First milestone since
   Phase 121's original four plans did, because the defect was already root-caused in writing before
   planning started. Front-loading the diagnosis into a defect document paid for itself.
 
+## Milestone: v1.25 — Schema Sync
+
+**Shipped:** 2026-09-30
+**Phases:** 5 (122-126) | **Plans:** 21 | **Commits:** 130 (33 `feat`) | **Timeline:** 10 days (2026-09-21 → 2026-09-30)
+
+### What Was Built
+
+A per-table, on-demand schema check against live Kinetica from Datasets: a diff that keeps
+parameterised types and writes nothing, a 40-site column-reference registry plus heuristic free-SQL
+scanning, an impact report (breaking / changed / harmless, confirmed vs possibly-affected), an apply
+that writes only the snapshot inside a proven row-write budget, and a durable sync-history worklist.
+Gated on two permissions. Detect and report only. 19/19 requirements. Four server-only phases, then
+the milestone's only `packages/web` diff in Phase 126.
+
+### What Worked
+
+- **Sequential phases, each consuming the last.** Diff → references → report → apply → UI. No phase
+  had to be reopened for a design error upstream of it.
+- **A data-driven adversarial sweep before building the registry** (123). It found the nested
+  `cb_config.attr` shape — the miss-class that dominated v1.24 — before code existed, and the
+  operator's live drop test hit exactly that site.
+- **Prose approved at checkpoints before the UI rendered it** (124, 125). Phase 126 rendered 14
+  strings verbatim with zero rewording round trips.
+- **`total_changes()` as the "nothing else was touched" proof** (125). Content snapshots cannot see
+  a value-identical write in a schema with no update triggers; a probe proved it, and the budget
+  closed it.
+- **The operator checkpoint, again.** Three defects past every automated gate, all found by looking.
+
+### What Was Inefficient
+
+- **A guard was recorded as closed when it could not fail.** Phase 125's verifier flagged an
+  unguarded web mirror; the fix compared a literal to a literal. It took the milestone audit's
+  integration checker to notice, and the same flaw sat in three more mirrors the verifier had called
+  guarded. The fix itself was mutation-probed — but only on the SERVER side, which is exactly the
+  side the defect could not see.
+- **Phase 126 reached the audit without a VERIFICATION.md**, and 125/126 SUMMARYs dropped
+  `requirements-completed` frontmatter. Same process gap as v1.24's phases 119/120.
+- **The UAT script checked the screen the requirement named, not the screen the operator was on.**
+  G6 verified the Dashboards config panels after apply; the Datasets detail view underneath the
+  modal stayed stale and nobody was asked to look at it.
+- **Bookkeeping lines outside the anchors drift.** The REQUIREMENTS.md coverage rollup went stale
+  for the third time — task anchors covered the checklist and the table, never the rollup.
+
+### Patterns Established
+
+- **Mirror guards read the other package's source** (`tests/helpers/webColumnTypes.ts`,
+  `schemaSyncStrings.spec.ts`) and throw on a missing declaration rather than matching `[]`.
+- **A mirror guard's probe must mutate the MIRRORED side**, and a control run of the old guard
+  against that mutation shows whether the old guard was ever live.
+- **An absence gate needs a way back in.** Hiding a control removes the 403 that used to re-sync
+  permissions; a hidden-control feature must re-sync on mount.
+- **Probe runs that did not land are non-results, not passes** — check the mutation is on disk,
+  and an anchor that matches twice refuses rather than guesses.
+
+### Key Lessons
+
+1. **"Closed" needs the same evidence as "open".** A finding marked fixed in a roadmap line was
+   believed for a phase and a half. Re-verify a claimed fix by mutating the side it protects.
+2. **Operator UAT should include "look at the screen you're on"**, not only the screen the
+   requirement names — staleness is a property of the page left behind.
+3. **Hiding things changes the feedback loops that depended on them being visible.**
+
+### Cost Observations
+
+- Sessions: many; the final day covered UAT close-out, two defect fixes, phase completion, the
+  audit, its remediation and milestone close in one session.
+- Notable: the audit's integration checker paid for itself — it found both remaining real issues.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -723,6 +793,7 @@ Both directions drive from the app UI. 11/11 requirements. First milestone since
 | v1.3 | 5 | 14+3 gap-closure | Spike-first approach before all code; gap-closure numbering within verification phase (17-02/03/04); module-source grep as spec assertion for architectural locks; `tech_debt` carry-over registry pattern |
 | v1.4 | 7 | 20+3 gap-closure | Hot-fix-as-follow-up-commit pattern (GAP-24-06-A); `mountedRef` cleanup-gate joins `materializeAbortRef` as canonical async-guard primitive; Session-Fix labeling for small in-session fixes; `overall_status` three-state lifecycle (`tech_debt` → `human_needed` → `passed`); pure-consumer relaxation documented inline at Phase 23 |
 | v1.20 | 8 (incl. 2 inserted) | 12 | Mid-milestone phase insertion when a config UI was found to be inert (109.1/109.2); gate evidence RE-RUN at attestation time rather than trusted from capture; one shared read-path resolver returning every caller's needs so duplication can be retired |
+| v1.25 | 5 | 21 | Registry built from an adversarial sweep of real data; approved-prose checkpoints before UI; `total_changes()` row-write budgets; cross-package mirror guards read the other package's source; milestone audit remediated in-session |
 
 *Rows for v1.5–v1.19 were never backfilled into this table; see each milestone's section above.*
 
@@ -737,6 +808,7 @@ Both directions drive from the app UI. 11/11 requirements. First milestone since
 | v1.4 | 523/523 frontend (across 34 test files; +176 new specs incl. 16 GAP-cycle regressions) | ~17.5k (frontend; +23,669/-245 across 113 files in v1.4 range) | pragmatic_close/passed (19/20; 1 Deferred → TD-V14-WKB-SPIKE → v1.5; 4 UAT gaps closed inline) |
 | v1.5 | 775/775 frontend + 50/50 server materialize specs (104 pre-existing red carry from v1.3: TD-V11-04, TD-V13-01) | ~18.5k (frontend; +104 commits, 16 plans across 7 phases) | pragmatic_close/source-only (live UAT skipped; 5 inline gap closures; 3 carry-overs incl. TD-V14-WKB-SPIKE, map-only-trigger, TD-V15-LIVE-UAT) |
 | v1.20 | 3439/3439 frontend (154 files) + server SET-BASED ⊆ TD-V16-TEST-ISOLATION | +6358/−491 across 56 files in `packages/` (71 commits) | passed (SC1–SC4 attested; operator UAT 8/8 PASS, zero gaps; 19/19 requirements) |
+| v1.25 | 4162/4162 frontend (185 files) + server 1490/1543, GATE PASSED (8 documented failing files) | +13,138/−21 across 39 files in `packages/` (130 commits) | tech_debt (19/19; no blockers; F1/F2/PG-3 fixed same day; operator UAT 14/14) |
 
 *Rows for v1.6–v1.19 were never backfilled into this table; see each milestone's section above.*
 

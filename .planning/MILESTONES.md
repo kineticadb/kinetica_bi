@@ -1,5 +1,32 @@
 # Milestones
 
+## v1.25 Schema Sync (Shipped: 2026-09-30)
+
+**Phases completed:** 5 phases (122, 123, 124, 125, 126), 21 plans
+
+**Delivered:** An operator can check one registered table against live Kinetica on demand, read a report naming every widget, map layer, custom metric and column-format rule the change breaks — structured references as confirmed, free SQL as *possibly* affected — and only then choose to apply the refreshed snapshot, which is recorded as a durable per-table sync-history worklist. The whole flow runs from Datasets behind `datasets:manage` AND `dashboards:manage_access`. Detect and report only: nothing is ever rewritten. 19/19 SSYNC-V125 requirements. Operator-verified against a real Kinetica instance, 14/14 checks. Tag `v1.25.0` (three-part per RELEASING.md). 130 commits (33 `feat`), 10 days, 39 package files, +13,138 / −21.
+
+**Key accomplishments:**
+
+- **Schema diff that changes nothing** (122) — a column fingerprint (`schemaFingerprint.ts`) keeps the parameterised type (`string(decimal(10,2))`, `int(boolean)`) instead of flattening it; `diffColumnFingerprints` reports added / removed / retyped, a rename is one removal plus one addition and never a guess, and a vanished table is reported distinctly as "dropped or renamed — indistinguishable from outside". A check has no writer at all.
+- **One column-reference registry, found by sweeping real data** (123) — `columnRefs.ts` enumerates 40 structured sites across widgets, map layers, `configPatch` JSON-in-JSON actions, custom metrics and column-format rules, plus five free-SQL sites scanned heuristically. The data-driven adversarial sweep put nested fields like `cb_config.attr` in the registry — the same shape of reference v1.24 missed entirely — and the operator's live drop test named all four reference kinds for one column.
+- **An impact report an operator can act on** (124) — breaking / changed / harmless, references named by title and dashboard rather than id, a certainty tier that separates confirmed from text-matched, retypes stating both types, and stale frozen `drillDownColumnType` values flagged. All eight operator-facing strings were approved verbatim at a checkpoint before Phase 126 rendered them.
+- **Apply that writes exactly what it says** (125) — `applySchemaSync` replaces only `tables.columns` + `columns_fingerprint` in one transaction, refuses a stale snapshot with a 409 rather than applying what the operator never saw, and proves "nothing else was touched" with SQLite's `total_changes()` budget (2 for an apply, 0 for a no-op or refusal) — because a value-identical stray write is invisible to content comparison in a schema with no update triggers.
+- **The first `packages/web` diff of the milestone, verified live** (126) — `SchemaSyncModal` (check → report → apply, plus a history tab), a four-combination absence gate, and a blocking operator checkpoint that drove every drift case, a whole-table drop, apply-then-config-panels, a stale refusal and restart durability against real Kinetica.
+
+**Known gaps and standing costs — recorded here deliberately, not smoothed over:**
+
+- **Three defects shipped past `tsc`, `vitest` AND `theme-guard`, and the operator checkpoint found all three.** (1) The permission gate sealed itself shut: client permissions refresh only on a 403, a hidden button can never produce one, so a mid-session grant never revealed Schema sync. The absence gate this milestone introduced is what turned a dormant design limit into a live defect. Fixed with one `/me` re-sync on Datasets mount. (2)/(3) The history detail's font was wrong twice — the shared `.data-table` at 14px, then `.modal-section-title` labels and bare `.muted` placeholders inheriting `body`'s 16px. jsdom applies no CSS and `global.css` is a total theme-guard exemption, so nothing automated can see either.
+- **A guard recorded as closed could not fail.** Phase 125's verifier found `WEB_EXCLUDED_DRILLDOWN_TYPES` unguarded; the "fix" compared it to a second hardcoded literal. The milestone audit found the three other type-Set mirrors had the same defect — they reddened on a server edit, never a web one. Now parsed from the web source; a control run of the old spec against a web mutation passed 23/23, proving the old guard was inert. Same "a guard that cannot fail manufactures confidence" class CLAUDE.md names.
+- **Same-screen staleness after apply shipped past the operator checkpoint** (audit F1). The Datasets detail view held the TableDto snapshot taken at `View`, so its column list, Format columns and the list row's count stayed pre-apply. The UAT only checked the Dashboards config panels, which remount. Fixed and probed 4/4, **not yet re-verified live**.
+- **Phase 126 reached the audit without a VERIFICATION.md**, and no 125/126 SUMMARY carries `requirements-completed` frontmatter. The verifier was run during the audit (passed 6/6) and the eight requirements were cross-checked by hand.
+- **Six non-discriminating acceptance criteria across Phases 124-125** (two outright unsatisfiable), all reported rather than satisfied by bending code; Phase 126 added a seventh shape — a plan's suggested prose quoting the very wording its own grep required to be absent.
+- **Out of scope, fixed on request:** a pre-existing RolesPage stale closure re-checked a permission the operator had just unchecked (`2af200a`).
+
+**Open tech debt carried to the backlog:** `SSYNC-F1`-`F6` deferred — auto-repair structured references on a declared rename, rename-pairing UI, check all tables at once, a staleness indicator on affected dashboards, nullability (never queried), and a server-side column-existence gate on `POST /api/filter/materialize` (currently interpolates client column names unchecked); removing persisted `config.sql` is the named v1.26 candidate (shrinks this feature's warn-only surface from ~70 sites to ~28); `renderColumnType` / `classifyFingerprint` marker order agrees only over a fixture; `DatasetsPage.spec.tsx`'s absence-only test; carried from earlier and untouched here: `loadConfig(...).catch(() => {})`, `defect-dv-combination-filter-view.md`, the theme-guard `global.css` exemption, `TD-V16-TEST-ISOLATION`, and OIDC still never browser-verified — six milestones running.
+
+---
+
 ## v1.24 Dashboard Export & Import (Shipped: 2026-09-21)
 
 **Phases completed:** 3 phases (119, 120, 121), 16 plans

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.25
 milestone_name: Schema Sync
-status: phase-complete
-stopped_at: "Phase 126 COMPLETE 2026-09-30 — operator verification approved 14/14, SSYNC-V125-01/-18/-19 closed. v1.25 all phases complete. Next: /gsd:audit-milestone (Phase 126 has no VERIFICATION.md yet), then /gsd:complete-milestone."
-last_updated: "2026-09-30T16:00:00.000Z"
+status: milestone-complete
+stopped_at: "v1.25 Schema Sync SHIPPED 2026-09-30 and archived. 5 phases (122-126), 21 plans, 19/19 SSYNC-V125 requirements Complete. Audit tech_debt, no blockers; F1/F2/PG-3 fixed same day. Archived to milestones/v1.25-ROADMAP.md, -REQUIREMENTS.md, -MILESTONE-AUDIT.md; REQUIREMENTS.md deleted. Tag v1.25.0 local, NOT pushed. Next: /gsd:new-milestone."
+last_updated: "2026-09-30T17:30:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 5
-  total_plans: 25
-  completed_plans: 25
+  total_plans: 21
+  completed_plans: 21
 ---
 
 # Project State
@@ -19,16 +19,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 126 — Datasets UI, Access Gating & Operator Verification
+**Current focus:** Planning next milestone (v1.26 candidate: remove persisted `config.sql`)
 
 ## Current Position
 
-**v1.25 Schema Sync — Phase 126 COMPLETE (2026-09-30). ALL 5 phases, 19/19 requirements Complete.**
-Operator verification against real Kinetica APPROVED — 14/14 checks PASS (`126-UAT.md`); G8
-reversed (caveat after `no_changes` too), G9 kept (entry point in `TableDetail`). Three defects
-found only by the operator were fixed (`c6bd957`, `49a0410`), plus an out-of-scope RolesPage fix
-(`2af200a`). Next: `/gsd:audit-milestone` then `/gsd:complete-milestone` for v1.25. Phase 126 has
-no VERIFICATION.md yet — `gsd-verifier` was not run.
+**v1.25 Schema Sync — SHIPPED 2026-09-30.** Archived. No phase in progress.
+
+Milestone: 5 phases (122-126), 21 plans, 19/19 requirements Complete. Audit: `tech_debt`, no
+blockers, its three actionable findings (F1 same-screen staleness, F2 inert mirror guards, PG-3
+rollup) fixed the same day. Tag `v1.25.0` created locally and **NOT pushed** — `origin` is shared
+with another developer, so fetch before pushing. Branch `feat/schema-sync` is 100+ commits ahead of
+its remote and not yet merged to master.
+
+**Next: `/gsd:new-milestone`** — it creates the fresh REQUIREMENTS.md (this milestone's was archived
+to `milestones/v1.25-REQUIREMENTS.md` and the working copy deleted). Branch the next milestone off
+master AFTER `feat/schema-sync` is merged.
+
+**One live check still owed:** the F1 fix (Datasets detail view refreshes after an apply,
+`edd648b`) is probed 4/4 but not re-verified against real Kinetica.
+
+**Carried debt, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize` interpolates
+client-supplied column names into SQL unchecked; removing persisted `config.sql` (v1.26 candidate);
+`loadConfig(...).catch(() => {})`; `defect-dv-combination-filter-view.md` still OPEN; the theme-guard
+`global.css` exemption; `TD-V16-TEST-ISOLATION`; OIDC never browser-verified.
 
 **Earlier position notes (historical):**
 
