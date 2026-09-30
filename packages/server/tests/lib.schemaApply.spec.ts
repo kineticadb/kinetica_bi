@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readWebTypeSet } from "./helpers/webColumnTypes";
 import {
   canonicalFingerprintJson,
   formatFingerprint,
@@ -284,19 +285,17 @@ const WEB_EXCLUDED_DRILLDOWN_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 describe("WEB_EXCLUDED_DRILLDOWN_TYPES mirror", () => {
-  it("MIRROR-PARITY: the drill-down exclusion set is exactly the 8 members of the web original", () => {
+  it("MIRROR-PARITY: the drill-down exclusion set equals the web's EXCLUDED_DRILLDOWN_TYPES, read from source", () => {
     // Without this, the mirror above is unguarded: the only other assertions on it are two
     // membership spot-checks (`has("text")`, `has("string")`), so the web adding a NINTH
     // excluded type would redden nothing here and PARITY-drilldown would keep passing while
-    // silently checking a stale taxonomy. Sorted byte-ascending on both sides so the
-    // assertion does not depend on Set insertion order -- the same technique
-    // lib.columnTypeClass.spec.ts uses for NUMERIC_TYPES/BOOLEAN_TYPES/DATETIME_TYPES.
-    // Independently hardcoded from packages/web/src/lib/columnTypes.ts:29-38.
-    const WEB_ORIGINAL = [
-      "wkt", "wkb", "bytes", "blob", "text", "point", "geometry", "geography",
-    ];
-    expect([...WEB_EXCLUDED_DRILLDOWN_TYPES].sort()).toEqual([...WEB_ORIGINAL].sort());
-    expect(WEB_EXCLUDED_DRILLDOWN_TYPES.size).toBe(8);
+    // silently checking a stale taxonomy. v1.25 audit F2: this used to compare the mirror
+    // against a SECOND hardcoded literal, which cannot fail when the web changes. The right
+    // side is now parsed out of packages/web/src/lib/columnTypes.ts itself. Sorted on both
+    // sides so the assertion does not depend on Set insertion order.
+    expect([...WEB_EXCLUDED_DRILLDOWN_TYPES].sort()).toEqual(
+      readWebTypeSet("EXCLUDED_DRILLDOWN_TYPES").sort(),
+    );
   });
 });
 

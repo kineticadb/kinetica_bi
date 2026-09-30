@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readWebTypeSet } from "./helpers/webColumnTypes";
 import {
   NUMERIC_TYPES,
   BOOLEAN_TYPES,
@@ -15,24 +16,17 @@ import type { ColumnFingerprint } from "../src/lib/schemaFingerprint";
 const fp = (base: string, refinements: string[] = []): ColumnFingerprint => ({ base, refinements });
 
 describe("the mirrored type sets", () => {
-  it("MIRROR-PARITY: NUMERIC_TYPES is exactly the 17 members of the web original", () => {
-    // Independently hardcoded from packages/web/src/lib/columnTypes.ts:42-46. If
-    // either side is edited without the other, this reddens. Sorted
-    // byte-ascending on BOTH sides so the assertion does not depend on Set
-    // insertion order.
-    const WEB_NUMERIC_TYPES = [
-      "int", "integer", "int8", "int16", "int32", "int64",
-      "long", "float", "double", "double precision", "decimal", "numeric",
-      "smallint", "bigint", "real", "number", "tinyint",
-    ];
-    expect([...NUMERIC_TYPES].sort()).toEqual([...WEB_NUMERIC_TYPES].sort());
-    expect(NUMERIC_TYPES.size).toBe(17);
+  // v1.25 audit F2: these compared the server Sets against hardcoded copies of the web's,
+  // which reddens on a SERVER edit but never on a WEB one. The right side is now parsed out
+  // of packages/web/src/lib/columnTypes.ts, so an edit to either side reddens. Sorted on
+  // both sides so the assertion does not depend on Set insertion order.
+  it("MIRROR-PARITY: NUMERIC_TYPES equals the web's NUMERIC_TYPES, read from source", () => {
+    expect([...NUMERIC_TYPES].sort()).toEqual(readWebTypeSet("NUMERIC_TYPES").sort());
   });
 
-  it("MIRROR-PARITY: BOOLEAN_TYPES and DATETIME_TYPES are exactly the web originals", () => {
-    // Independently hardcoded from packages/web/src/lib/columnTypes.ts:64-65.
-    expect([...BOOLEAN_TYPES].sort()).toEqual(["bool", "boolean"]);
-    expect([...DATETIME_TYPES].sort()).toEqual(["date", "datetime", "time", "timestamp"]);
+  it("MIRROR-PARITY: BOOLEAN_TYPES and DATETIME_TYPES equal the web's, read from source", () => {
+    expect([...BOOLEAN_TYPES].sort()).toEqual(readWebTypeSet("BOOLEAN_TYPES").sort());
+    expect([...DATETIME_TYPES].sort()).toEqual(readWebTypeSet("DATETIME_TYPES").sort());
   });
 
   it("MIRROR-PARITY: normalizeType lowercases, strips a parenthesised suffix, and trims", () => {
