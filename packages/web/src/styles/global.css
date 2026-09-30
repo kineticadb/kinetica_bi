@@ -5219,3 +5219,10 @@ input[type="checkbox"],
 .schema-sync-section .data-table td {
   padding: var(--space-1) var(--space-2);
 }
+
+/* G11 follow-up: the "None." placeholders inherited body's --text-xl (16px), and the
+   history's Added/Removed/Retyped labels used .modal-section-title (--text-lg). The labels
+   now reuse .impact-severity; the placeholder is pinned to the report's --text-sm here. */
+.schema-sync-section > .muted {
+  font-size: var(--text-sm);
+}

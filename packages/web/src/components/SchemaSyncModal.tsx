@@ -168,7 +168,7 @@ type ChangesetRow = { column: string; types: string };
 
 const ChangesetGroup = ({ label, rows }: { label: string; rows: ChangesetRow[] }) => (
   <div className="schema-sync-section">
-    <div className="modal-section-title">{label}</div>
+    <div className="impact-severity text-muted">{label}</div>
     {rows.length === 0 ? (
       <div className="muted">None.</div>
     ) : (
@@ -423,9 +423,10 @@ export default function SchemaSyncModal({
           </button>
         </div>
       )}
-      {/* Only on `applied`: the caveat describes a column being STORED, which a
-          `no_changes` apply never did. See plan 02 <planner_decisions> A. */}
-      {result.outcome === "applied" && (
+      {/* After EVERY successful apply, `no_changes` included — operator ruling at the
+          Phase 126 checkpoint (UAT-126-G8), reversing plan 02 <planner_decisions> A.
+          ROADMAP criterion 6 says "after an apply" unconditionally. */}
+      {(result.outcome === "applied" || result.outcome === "no_changes") && (
         <div className="schema-sync-caveat">{SCHEMA_APPLY_TEXT_WIDTH_GAP}</div>
       )}
     </>

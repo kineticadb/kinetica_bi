@@ -470,13 +470,22 @@ describe("SchemaSyncModal — check / report / apply", () => {
     expect(await screen.findByText(SCHEMA_APPLY_TEXT_WIDTH_GAP)).toBeInTheDocument();
   });
 
-  it("CAVEAT-applied-only: a no_changes apply renders its message WITHOUT the caveat", async () => {
+  it("CAVEAT-no-changes: a no_changes apply renders its message AND the caveat (UAT-126-G8)", async () => {
     mockedClient.applyTableSchema.mockResolvedValue(noChangesResult);
     renderModal();
     await runCheck();
     fireEvent.click(await applyButton());
-    // The no_changes message must be present, so this cannot pass by rendering nothing.
     expect(await screen.findByText(NO_CHANGES_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByText(SCHEMA_APPLY_TEXT_WIDTH_GAP)).toBeInTheDocument();
+  });
+
+  it("CAVEAT-not-on-stale: a stale refusal wrote nothing and shows no caveat", async () => {
+    mockedClient.applyTableSchema.mockResolvedValue(staleResult);
+    renderModal();
+    await runCheck();
+    fireEvent.click(await applyButton());
+    // The Re-check button proves the stale body rendered, so this cannot pass by rendering nothing.
+    expect(await screen.findByRole("button", { name: "Re-check" })).toBeInTheDocument();
     expect(screen.queryByText(SCHEMA_APPLY_TEXT_WIDTH_GAP)).toBeNull();
   });
 
