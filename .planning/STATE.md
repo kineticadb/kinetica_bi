@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.25
 milestone_name: Schema Sync
-status: executing
-stopped_at: "Phase 126 Plan 01 COMPLETE 2026-09-28 (the api/client.ts schema-sync layer; 6/6 probes fired). Next: plan 126-02. Phase 126 context gathered 2026-09-28 — resume file .planning/phases/126-datasets-ui-access-gating/126-CONTEXT.md. Phase 125 COMPLETE (verification `passed`, 5/5). Phase 126 is the LAST phase of v1.25 and the first with UI work; packages/web has been at ZERO diff all milestone and this is where that budget is spent. LOCKED: UI gates on datasets:manage AND dashboards:manage_access (matching all four server routes) — SSYNC-V125-19's single-permission wording is to be AMENDED in its own commit, not reinterpreted; one staged per-table modal mirroring ColumnFormatEditorModal; full report list, breaking first; single always-enabled Apply button; 409 stale renders the message verbatim plus a Re-check button; history rows show ts/actor/counts, expand for detail, delete with no confirm; cap notice only when droppedCount > 0, reading cap from the response. SCHEMA_APPLY_TABLE_MISSING_MESSAGE gets NO UI branch (unreachable over HTTP). SCHEMA_APPLY_TEXT_WIDTH_GAP renders after every apply (new ROADMAP criterion 6). Operator checkpoint covers ALL FOUR column drift cases plus table drop, post-apply config-panel verification, and restart durability. Next: /gsd:plan-phase 126."
-last_updated: "2026-09-28T15:00:00.000Z"
+status: phase-complete
+stopped_at: "Phase 126 COMPLETE 2026-09-30 — operator verification approved 14/14, SSYNC-V125-01/-18/-19 closed. v1.25 all phases complete. Next: /gsd:audit-milestone (Phase 126 has no VERIFICATION.md yet), then /gsd:complete-milestone."
+last_updated: "2026-09-30T16:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 25
-  completed_plans: 21
+  completed_plans: 25
 ---
 
 # Project State
@@ -22,6 +22,15 @@ See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
 **Current focus:** Phase 126 — Datasets UI, Access Gating & Operator Verification
 
 ## Current Position
+
+**v1.25 Schema Sync — Phase 126 COMPLETE (2026-09-30). ALL 5 phases, 19/19 requirements Complete.**
+Operator verification against real Kinetica APPROVED — 14/14 checks PASS (`126-UAT.md`); G8
+reversed (caveat after `no_changes` too), G9 kept (entry point in `TableDetail`). Three defects
+found only by the operator were fixed (`c6bd957`, `49a0410`), plus an out-of-scope RolesPage fix
+(`2af200a`). Next: `/gsd:audit-milestone` then `/gsd:complete-milestone` for v1.25. Phase 126 has
+no VERIFICATION.md yet — `gsd-verifier` was not run.
+
+**Earlier position notes (historical):**
 
 **v1.25 Schema Sync — Phase 125 COMPLETE (2026-09-28), verification `passed` 5/5.**
 Next: **Phase 126 (Datasets UI, Access Gating & Operator Verification)** — the last phase of v1.25.
