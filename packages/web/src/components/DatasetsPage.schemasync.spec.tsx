@@ -76,6 +76,9 @@ vi.mock("../api/client", async (importOriginal) => {
     createTableEntry: vi.fn(() => Promise.resolve({})),
     checkTableSchema: vi.fn(() => Promise.resolve({})),
     listTableSyncHistory: vi.fn(() => Promise.resolve({})),
+    // Default: /me reports the SAME permissions the store was seeded with, so the mount re-sync
+    // is a no-op for every other test in this file. RESYNC-* overrides it per test.
+    fetchMe: vi.fn(() => Promise.resolve(null)),
   };
 });
 
@@ -94,7 +97,7 @@ vi.mock("../store/columnDisplayConfigStore", () => ({
 }));
 
 import DatasetsPage from "./DatasetsPage";
-import { checkTableSchema, listTableSyncHistory } from "../api/client";
+import { checkTableSchema, listTableSyncHistory, fetchMe } from "../api/client";
 
 const SCHEMA_SYNC = { name: /schema sync/i } as const;
 const FORMAT_COLUMNS = { name: /format columns/i } as const;
@@ -186,6 +189,64 @@ describe("DatasetsPage — schema-sync entry point and its AND-gate (Phase 126 P
     await waitFor(() => {
       expect(screen.queryByTestId("schema-sync-modal-stub")).toBeNull();
     });
+  });
+
+  // Operator finding at Phase 126's verification checkpoint, and the reason this block exists.
+  //
+  // Client permissions are set at login and refreshed in exactly ONE other place: App.tsx's
+  // PERMISSION_DENIED_EVENT listener, dispatched only from api/client.ts's 403 handler. The
+  // client therefore learns about a permission LOSS but never about a mid-session GRANT.
+  //
+  // Before this phase that was invisible, because Datasets gated nothing client-side: a control
+  // rendered, the user clicked, the server said 403, the event fired, /me re-synced. The
+  // reactive path worked BECAUSE nothing was hidden. `Schema sync` is hidden, so it can never
+  // be clicked, can never produce a 403, and the gate seals itself shut — an operator granted
+  // both permissions mid-session saw nothing until re-login. No automated gate caught this;
+  // a human looking at the screen did.
+  it("RESYNC-grant: a mid-session GRANT reaches the gate without a re-login", async () => {
+    // The store is STALE: it holds only datasets:manage, as it would after logging in before
+    // the role was edited. The server now reports BOTH.
+    seedPermissionsStore([PERMISSIONS.DATASETS_MANAGE]);
+    (fetchMe as Mock).mockResolvedValueOnce({
+      user: { username: "u_alpha", roles: ["role_alpha"], permissions: [PERMISSIONS.DATASETS_MANAGE, PERMISSIONS.DASHBOARDS_MANAGE_ACCESS] },
+      authMode: "password",
+      ttlKeepaliveLeadMinutes: 1,
+      maxCombinationViewsPerTable: 10,
+      dvFilterScopeDisabled: false,
+      maxBarGroupBySeriesCap: 10,
+    });
+    await navigateToDetail();
+    // Appears WITHOUT a re-login. Before the fix this was null.
+    expect(await screen.findByRole("button", SCHEMA_SYNC)).toBeInTheDocument();
+  });
+
+  it("RESYNC-revoke: a mid-session REVOKE also reaches the gate, and the sibling stays", async () => {
+    // The inverse, so the re-sync cannot be a one-way "always grant" that happens to pass the
+    // test above. Store says both; the server says the access permission is gone.
+    seedPermissionsStore([PERMISSIONS.DATASETS_MANAGE, PERMISSIONS.DASHBOARDS_MANAGE_ACCESS]);
+    (fetchMe as Mock).mockResolvedValueOnce({
+      user: { username: "u_alpha", roles: ["role_alpha"], permissions: [PERMISSIONS.DATASETS_MANAGE] },
+      authMode: "password",
+      ttlKeepaliveLeadMinutes: 1,
+      maxCombinationViewsPerTable: 10,
+      dvFilterScopeDisabled: false,
+      maxBarGroupBySeriesCap: 10,
+    });
+    await navigateToDetail();
+    await waitFor(() => expect(screen.queryByRole("button", SCHEMA_SYNC)).toBeNull());
+    // Ungated sibling still present — proves the render reached the actions bar rather than
+    // the whole detail view having failed, which would make the null assertion meaningless.
+    expect(screen.getByRole("button", FORMAT_COLUMNS)).toBeInTheDocument();
+  });
+
+  it("RESYNC-failure-is-silent: a failing /me leaves the page and the existing gate intact", async () => {
+    // A failed /me must never blank the Datasets page or revoke the control the store already
+    // knows about. Mirrors App.tsx's own .catch(() => {}).
+    seedPermissionsStore([PERMISSIONS.DATASETS_MANAGE, PERMISSIONS.DASHBOARDS_MANAGE_ACCESS]);
+    (fetchMe as Mock).mockRejectedValueOnce(new Error("network down"));
+    await navigateToDetail();
+    expect(await screen.findByRole("button", SCHEMA_SYNC)).toBeInTheDocument();
+    expect(screen.getByRole("button", FORMAT_COLUMNS)).toBeInTheDocument();
   });
 
   it("NOPOLL-datasets-page: opening Datasets and a table's detail issues ZERO schema-check requests", async () => {

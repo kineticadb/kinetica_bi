@@ -5203,3 +5203,19 @@ input[type="checkbox"],
   flex-direction: column;
   gap: var(--space-2);
 }
+
+/* Operator finding at the Phase 126 verification checkpoint (G11): the expanded history
+   detail rendered noticeably larger than everything around it. Cause: the shared
+   `.data-table` sets `font-size: var(--text-lg)` (14px) at :571, while this panel's report
+   text is `--text-sm` (11px) -- correct for `.data-table`'s original dense-grid context,
+   wrong inside a compact modal detail view.
+   `.data-table` is ALSO used by DatasetsPage (x2) and DataTable.tsx, so it is NOT changed
+   globally; the override is scoped to this modal's sections only. Padding is tightened for
+   the same reason -- `--space-3` row padding suits a full-width grid, not a nested detail. */
+.schema-sync-section .data-table {
+  font-size: var(--text-sm);
+}
+
+.schema-sync-section .data-table td {
+  padding: var(--space-1) var(--space-2);
+}

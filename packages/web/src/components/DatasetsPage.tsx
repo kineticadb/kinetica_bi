@@ -7,6 +7,7 @@ import {
   fetchKineticaSchemas,
   fetchKineticaTables,
   fetchKineticaColumns,
+  fetchMe,
   TableDto
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
@@ -47,6 +48,32 @@ const DatasetsPage = ({ initialOpenTable }: {
       ? { mode: initialOpenTable.mode, table: initialOpenTable.table }
       : { mode: "list" },
   );
+
+  // Phase 126 (SSYNC-V125-19): re-sync /me once when Datasets mounts.
+  //
+  // WHY THIS EXISTS. Client permissions are set at login and refreshed in exactly one other
+  // place: App.tsx's PERMISSION_DENIED_EVENT listener, which fires only from api/client.ts's
+  // 403 handler. So the client picks up a permission LOSS but never a mid-session GRANT.
+  //
+  // That was harmless while this page gated nothing client-side: every control rendered, the
+  // user clicked, the server returned 403, the event fired and /me re-synced. The reactive
+  // path worked BECAUSE nothing was hidden.
+  //
+  // `Schema sync` is hidden behind `canSchemaSync`. A hidden button cannot be clicked, so it
+  // cannot produce a 403, so the refresh never fires — the gate seals itself shut and an
+  // operator who was just granted both permissions sees nothing until they re-login. Found by
+  // the operator at Phase 126's verification checkpoint, not by any automated gate.
+  //
+  // One call on mount, not a poll, and not a Kinetica round-trip — ROADMAP criterion 2 forbids
+  // polling and extra Kinetica traffic on DASHBOARD load; this is neither. Errors are swallowed
+  // exactly as App.tsx does: a failed /me must never blank the Datasets page.
+  useEffect(() => {
+    fetchMe()
+      .then((me) => {
+        if (me) useAuthStore.getState().setPermissions(me.user.roles, me.user.permissions);
+      })
+      .catch(() => {});
+  }, []);
 
   // Sync tables from query data; local state used for delete mutations
   useEffect(() => {
