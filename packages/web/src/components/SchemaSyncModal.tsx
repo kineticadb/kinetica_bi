@@ -229,9 +229,14 @@ const entryCounts = (entry: TableSyncHistoryEntry): string => {
 export default function SchemaSyncModal({
   table,
   onClose,
+  onApplied,
 }: {
   table: TableDto;
   onClose: () => void;
+  /** Called only on an `applied` outcome, with the column map the server just STORED
+   *  (`renderColumnsMap`'s output). The opener holds a TableDto snapshot and must refresh it,
+   *  or its own column list stays pre-apply until the operator leaves the page. */
+  onApplied?: (columns: Record<string, string>) => void;
 }) {
   const [stage, setStage] = useState<Stage>({ k: "idle" });
   // Sibling state, NOT a Stage arm — see the file header. Stage survives a tab switch.
@@ -292,7 +297,10 @@ export default function SchemaSyncModal({
       setStage({ k: "result", check, result });
       // An apply that actually landed wrote a history entry. Refresh so it is visible
       // without the operator reopening the modal.
-      if (result.outcome === "applied") await loadHistory();
+      if (result.outcome === "applied") {
+        onApplied?.(result.columns);
+        await loadHistory();
+      }
     } catch (err) {
       setStage({ k: "error", message: toMessage(err) });
     }

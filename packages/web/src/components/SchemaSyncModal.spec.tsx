@@ -316,8 +316,9 @@ const EMPTY_HISTORY_LINE = "No syncs recorded for this table yet.";
 // ---------------------------------------------------------------------------
 function renderModal() {
   const onClose = vi.fn();
-  const utils = render(<SchemaSyncModal table={TABLE} onClose={onClose} />);
-  return { ...utils, onClose };
+  const onApplied = vi.fn();
+  const utils = render(<SchemaSyncModal table={TABLE} onClose={onClose} onApplied={onApplied} />);
+  return { ...utils, onClose, onApplied };
 }
 
 const checkButton = () => screen.findByRole("button", { name: /check for changes/i });
@@ -477,6 +478,35 @@ describe("SchemaSyncModal — check / report / apply", () => {
     fireEvent.click(await applyButton());
     expect(await screen.findByText(NO_CHANGES_MESSAGE)).toBeInTheDocument();
     expect(screen.getByText(SCHEMA_APPLY_TEXT_WIDTH_GAP)).toBeInTheDocument();
+  });
+
+  // v1.25 audit F1: the opener holds a TableDto snapshot, so it must hear about a stored apply.
+  it("ONAPPLIED-applied: an applied outcome hands the opener the column map the server stored", async () => {
+    const { onApplied } = renderModal();
+    await runCheck();
+    fireEvent.click(await applyButton());
+    await screen.findByText(APPLIED_MESSAGE);
+    expect(onApplied).toHaveBeenCalledTimes(1);
+    expect(onApplied).toHaveBeenCalledWith(appliedResult.columns);
+  });
+
+  it("ONAPPLIED-not-on-no-changes: nothing was stored, so the opener is not told to refresh", async () => {
+    mockedClient.applyTableSchema.mockResolvedValue(noChangesResult);
+    const { onApplied } = renderModal();
+    await runCheck();
+    fireEvent.click(await applyButton());
+    // Render-reached proof: the no_changes body is on screen, so this cannot pass by never applying.
+    expect(await screen.findByText(NO_CHANGES_MESSAGE)).toBeInTheDocument();
+    expect(onApplied).not.toHaveBeenCalled();
+  });
+
+  it("ONAPPLIED-not-on-stale: a refusal wrote nothing, so the opener is not told to refresh", async () => {
+    mockedClient.applyTableSchema.mockResolvedValue(staleResult);
+    const { onApplied } = renderModal();
+    await runCheck();
+    fireEvent.click(await applyButton());
+    expect(await screen.findByRole("button", { name: "Re-check" })).toBeInTheDocument();
+    expect(onApplied).not.toHaveBeenCalled();
   });
 
   it("CAVEAT-not-on-stale: a stale refusal wrote nothing and shows no caveat", async () => {

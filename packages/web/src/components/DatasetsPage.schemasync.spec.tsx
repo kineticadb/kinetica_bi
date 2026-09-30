@@ -75,6 +75,7 @@ vi.mock("../api/client", async (importOriginal) => {
     deleteTableEntry: vi.fn(() => Promise.resolve()),
     createTableEntry: vi.fn(() => Promise.resolve({})),
     checkTableSchema: vi.fn(() => Promise.resolve({})),
+    getTableById: vi.fn(() => Promise.resolve(TABLE_DTO)),
     listTableSyncHistory: vi.fn(() => Promise.resolve({})),
     // Default: /me reports the SAME permissions the store was seeded with, so the mount re-sync
     // is a no-op for every other test in this file. RESYNC-* overrides it per test.
@@ -97,7 +98,7 @@ vi.mock("../store/columnDisplayConfigStore", () => ({
 }));
 
 import DatasetsPage from "./DatasetsPage";
-import { checkTableSchema, listTableSyncHistory, fetchMe } from "../api/client";
+import { checkTableSchema, listTableSyncHistory, fetchMe, getTableById } from "../api/client";
 
 const SCHEMA_SYNC = { name: /schema sync/i } as const;
 const FORMAT_COLUMNS = { name: /format columns/i } as const;
@@ -175,6 +176,63 @@ describe("DatasetsPage — schema-sync entry point and its AND-gate (Phase 126 P
     expect(props.table.id).toBe(TABLE_DTO.id);
     expect(props.table.name).toBe(TABLE_DTO.name);
     expect(typeof props.onClose).toBe("function");
+  });
+
+  // v1.25 audit F1: TableDetail renders the TableDto snapshot taken at `View`. Before the fix an
+  // apply left its column list, Format columns and the list row's count PRE-apply until the
+  // operator left the page. col_gamma exists only in the post-apply row, so seeing it proves the
+  // refresh landed; col_beta's absence proves the old snapshot was replaced, not merged.
+  const APPLIED_COLUMNS = { col_alpha: "int", col_gamma: "string" };
+  const openModalAndApply = async (): Promise<void> => {
+    await navigateToDetail();
+    expect(screen.getByText("col_beta")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", SCHEMA_SYNC));
+    await screen.findByTestId("schema-sync-modal-stub");
+    const props = (
+      globalThis as unknown as {
+        __lastSchemaSyncProps: { onApplied: (c: Record<string, string>) => void };
+      }
+    ).__lastSchemaSyncProps;
+    await waitFor(() => props.onApplied(APPLIED_COLUMNS));
+  };
+
+  it("REFRESH-after-apply: TableDetail re-reads the row and shows the stored columns", async () => {
+    seedPermissionsStore([PERMISSIONS.DATASETS_MANAGE, PERMISSIONS.DASHBOARDS_MANAGE_ACCESS]);
+    (getTableById as Mock).mockResolvedValueOnce({ ...TABLE_DTO, columns: APPLIED_COLUMNS });
+    await openModalAndApply();
+    expect(await screen.findByText("col_gamma")).toBeInTheDocument();
+    expect(screen.queryByText("col_beta")).toBeNull();
+    expect(getTableById).toHaveBeenCalledWith(TABLE_DTO.id);
+    // The modal stays open across the refresh — the operator is still reading its result.
+    expect(screen.getByTestId("schema-sync-modal-stub")).toBeInTheDocument();
+  });
+
+  it("REFRESH-fallback: a failed re-read still swaps in the column map the apply stored", async () => {
+    seedPermissionsStore([PERMISSIONS.DATASETS_MANAGE, PERMISSIONS.DASHBOARDS_MANAGE_ACCESS]);
+    (getTableById as Mock).mockRejectedValueOnce(new Error("network"));
+    await openModalAndApply();
+    expect(await screen.findByText("col_gamma")).toBeInTheDocument();
+    expect(screen.queryByText("col_beta")).toBeNull();
+  });
+
+  it("REFRESH-list-count: after an apply, Back shows the list row with the new column count", async () => {
+    seedPermissionsStore([PERMISSIONS.DATASETS_MANAGE, PERMISSIONS.DASHBOARDS_MANAGE_ACCESS]);
+    const threeColumns = { ...TABLE_DTO.columns, col_gamma: "string" };
+    (getTableById as Mock).mockResolvedValueOnce({ ...TABLE_DTO, columns: threeColumns });
+    await navigateToDetail();
+    await userEvent.click(await screen.findByRole("button", SCHEMA_SYNC));
+    await screen.findByTestId("schema-sync-modal-stub");
+    const props = (
+      globalThis as unknown as {
+        __lastSchemaSyncProps: { onApplied: (c: Record<string, string>) => void };
+      }
+    ).__lastSchemaSyncProps;
+    await waitFor(() => props.onApplied(threeColumns));
+    await screen.findByText("col_gamma");
+    await userEvent.click(screen.getByRole("button", { name: /^back$/i }));
+    await screen.findByRole("button", { name: "View" });
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.queryByText("2")).toBeNull();
   });
 
   it("ENTRY-closes: invoking the captured onClose removes the modal", async () => {

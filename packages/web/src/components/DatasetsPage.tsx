@@ -8,6 +8,7 @@ import {
   fetchKineticaTables,
   fetchKineticaColumns,
   fetchMe,
+  getTableById,
   TableDto
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
@@ -163,6 +164,10 @@ const DatasetsPage = ({ initialOpenTable }: {
     return (
       <TableDetail
         table={view.table}
+        onTableUpdated={(updated) => {
+          setView({ mode: "view", table: updated });
+          setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        }}
         onBack={() => { leaveTableUrl(); setView({ mode: "list" }); }}
       />
     );
@@ -240,7 +245,11 @@ const DatasetsPage = ({ initialOpenTable }: {
   );
 };
 
-const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void }) => {
+const TableDetail = ({ table, onTableUpdated, onBack }: {
+  table: TableDto;
+  onTableUpdated: (table: TableDto) => void;
+  onBack: () => void;
+}) => {
   const columns = Object.entries(table.columns);
   const [showFormatEditor, setShowFormatEditor] = useState(false);
   const [showMetricsEditor, setShowMetricsEditor] = useState(false);
@@ -339,6 +348,15 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
         <SchemaSyncModal
           table={table}
           onClose={() => setShowSchemaSync(false)}
+          // v1.25 audit F1: `table` is the snapshot taken at `View`. Without this, the column
+          // list below, Format columns and the list row's count all stay PRE-apply until the
+          // operator leaves the page. Re-read the row (updated_at moved too); if that fails,
+          // patch in the column map the server just stored rather than keep the stale one.
+          onApplied={(columns) => {
+            getTableById(table.id)
+              .then(onTableUpdated)
+              .catch(() => onTableUpdated({ ...table, columns }));
+          }}
         />
       )}
     </div>
