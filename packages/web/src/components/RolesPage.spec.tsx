@@ -193,6 +193,87 @@ describe("RolesPage", () => {
     confirmSpy.mockRestore();
   });
 
+  // ── Operator-found regression, 2026-09-30 ────────────────────────────────────
+  //
+  // Unchecking a permission and saving re-CHECKED the box, while the server had saved
+  // correctly (a page refresh showed it unchecked). Cause: handleSave did
+  //   await fetchRoles(); const refreshed = roles.find(...)
+  // `fetchRoles` only calls setRoles; `roles` inside the async handler is the value captured
+  // when that render ran, i.e. the PRE-save list. The draft was therefore re-seeded from the
+  // OLD permission set.
+  //
+  // This test makes the post-save refetch return the UPDATED role, exactly as a real server
+  // would. Reading the stale `roles` yields the old set and the box re-checks; reading the
+  // value `fetchRoles` RETURNS yields the new set and it stays unchecked. That difference is
+  // the whole discrimination, so this test fails on the unfixed code and passes on the fixed.
+  it("SAVE-no-revert: unchecking a permission and saving leaves it unchecked, not re-checked", async () => {
+    seedAdminStore();
+    const AFTER_SAVE = {
+      ...MOCK_CUSTOM_ROLE_FREE,
+      permissions: [PERMISSIONS.DASHBOARDS_VIEW], // dashboards:create removed by the save
+    };
+    // First load returns the role WITH dashboards:create; the post-save refetch returns it WITHOUT.
+    vi.mocked(listRoles)
+      .mockResolvedValueOnce(MOCK_ROLES)
+      .mockResolvedValue(MOCK_ROLES.map((r) => (r.id === MOCK_CUSTOM_ROLE_FREE.id ? AFTER_SAVE : r)));
+
+    render(<RolesPage />);
+    await selectRole("my_custom");
+
+    const createBox = await screen.findByRole("checkbox", { name: /dashboards:create/ });
+    expect(createBox).toBeChecked();
+    fireEvent.click(createBox);
+    await waitFor(() => expect(createBox).not.toBeChecked());
+
+    const saveBtn = await screen.findByRole("button", { name: /Save/ });
+    await waitFor(() => expect(saveBtn).not.toBeDisabled());
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => expect(updateRolePermissions).toHaveBeenCalledTimes(1));
+    // The save sent the permission set WITHOUT dashboards:create ...
+    const [, calledPerms] = vi.mocked(updateRolePermissions).mock.calls[0];
+    expect(calledPerms).not.toContain(PERMISSIONS.DASHBOARDS_CREATE);
+    // ... and the box must STAY unchecked afterwards. Before the fix it re-checked itself here.
+    await waitFor(() => expect(listRoles).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByRole("checkbox", { name: /dashboards:create/ }),
+    ).not.toBeChecked();
+  });
+
+  it("SAVE-refetch-fails: the save still lands, and the failure is surfaced rather than silent", async () => {
+    // HONEST SCOPE. The code guarantee is that a failed refetch leaves the draft alone (it
+    // already equals what the server accepted) rather than falling back to the stale `roles`,
+    // which would reintroduce SAVE-no-revert's bug. That guarantee is NOT observable through
+    // the UI here: RolesPage.tsx:249 replaces the WHOLE page with the error, so no checkbox
+    // exists to assert on. This test therefore asserts what IS observable -- the save was sent
+    // with the correct set, and the refetch failure is surfaced rather than swallowed -- and
+    // does not pretend to prove the unobservable half.
+    //
+    // Pre-existing UX wrinkle worth knowing, not introduced here and not fixed here: a save
+    // that SUCCEEDS followed by a refetch that fails blanks the page with "Failed to load
+    // roles.", which reads as though the save failed. It did not.
+    seedAdminStore();
+    vi.mocked(listRoles)
+      .mockResolvedValueOnce(MOCK_ROLES)
+      .mockRejectedValue(new Error("network down"));
+
+    render(<RolesPage />);
+    await selectRole("my_custom");
+
+    const createBox = await screen.findByRole("checkbox", { name: /dashboards:create/ });
+    fireEvent.click(createBox);
+    await waitFor(() => expect(createBox).not.toBeChecked());
+
+    const saveBtn = await screen.findByRole("button", { name: /Save/ });
+    await waitFor(() => expect(saveBtn).not.toBeDisabled());
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => expect(updateRolePermissions).toHaveBeenCalledTimes(1));
+    const [, calledPerms] = vi.mocked(updateRolePermissions).mock.calls[0];
+    expect(calledPerms).not.toContain(PERMISSIONS.DASHBOARDS_CREATE);
+    expect(await screen.findByText("Failed to load roles.")).toBeInTheDocument();
+  });
+
   // ── Test 3: ROLES-V18-02 — built-in Save triggers window.confirm ──────────────
 
   it("saving a built-in role calls window.confirm before updateRolePermissions", async () => {
