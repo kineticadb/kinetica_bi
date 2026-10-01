@@ -34,6 +34,108 @@
 
 - ✅ **v1.25 Schema Sync** — Phases 122-126 (shipped 2026-09-30) — see `milestones/v1.25-ROADMAP.md`
 
+- 🚧 **v1.26 Large Exports & Fixes** — Phases 127-132 (in progress)
+
+---
+
+## 🚧 v1.26 Large Exports & Fixes (In Progress)
+
+**Milestone Goal:** A user can download every row a records table shows — a million rows if that is what the filters select — without the browser holding it in memory, without losing it to a dropped connection, and without being silently cut off at 1,000 rows. Alongside it, the line chart gets the multi-series Group By the bar chart already has.
+
+**The bugs that started this.** `kineticaSql` hardcodes `limit: 1000` in every `/execute/sql` body (`packages/server/src/kinetica.ts:186`), so Kinetica returns at most 1,000 rows whatever the SQL `LIMIT` says — the records-table CSV download's export loop reads the short page as "view exhausted" and stops well short of the configured row cap. The same hardcoded ceiling silently truncates a heatmap's Result Limit above 1,000, and its own truncation-detection check compares against the *requested* limit rather than the real returned count, so the warning never fires. A pre-existing CSV-formula-injection gap (`=`/`+`/`-`/`@`-prefixed cells executing as formulas on open) exists on the client download today and must be closed on both paths. The line chart has only a single Group By column where the bar chart already has an N-column builder; a Recharts default silently drops colliding x-axis labels and the legend reads `value` instead of the metric's name.
+
+**Open pagination decision — settled by a live spike, not here.** Two research sources disagree on how the export job should page a stable, large result set: Kinetica's documented `options.paging_table`/`paging_table_ttl` mechanism (query once, cache server-side, `has_more_records` as the exhaustion signal) vs. a job-private materialized-view snapshot + OFFSET + a deterministic composite `ORDER BY`. Phase 128 begins with a live spike against the real Kinetica instance that settles this, confirms `max_get_records_size`, and confirms `has_more_records` — before the batch runner is built.
+
+**No new npm dependency, no job-queue library, no worker process.** Node builtins (`stream.pipeline`, `zlib`) and Express's existing `res.download`/`res.sendFile` (Range-capable) cover streaming, gzip and resumable download; the export runs in-process on the requesting user's own live Kinetica session (which cannot be persisted into a detached worker), mirroring the existing `sessionStore.ts` `.unref()`-sweep precedent rather than introducing BullMQ/Bull/Agenda or `worker_threads`.
+
+**Sequential by design, with one deliberate file-collision sequencing.** The row-limit fix must land first — it's a correctness precondition for everything downstream and fixes the heatmap bug as a side effect. The export job is built core-first (pure/novel pieces), then routes, then durability, then client UI, mirroring the research's suggested build order. The line chart work is logically independent of the export job but shares `packages/web/src/components/charts/WidgetRenderer.tsx` with the export client UI phase — sequenced after it, not run in parallel, per this repo's own recorded "parallel executors clobber shared files" lesson.
+
+## Phases
+
+- [ ] **Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix** - Every app query that asks for more than 1,000 rows gets them, with no caller silently relying on the old cap, and a truly truncated heatmap always shows its warning
+- [ ] **Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel** - A verified pagination mechanism, a batch-loop runner that snapshots a widget's exact view, a working cancel, session-bound credentials, and formula-injection-safe CSV writing
+- [ ] **Phase 129: Export Routes — Resumable Download, History & Privacy** - A finished export downloads resumably over HTTP Range, only the owning user can reach any route for it, and no new RBAC permission is introduced
+- [ ] **Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps** - Exports and files expire on schedule, a restart leaves nothing stuck or orphaned, and an admin can cap rows/size/concurrency via env config
+- [ ] **Phase 131: Client Export UI — Trigger Dialog, Progress & History** - The user can name, choose raw/formatted, tick gzip, watch progress, and manage a history list — verified live against a real Kinetica instance
+- [ ] **Phase 132: Line Chart Multi-Series Group By** - The line chart gets the bar chart's Group By Columns builder, every x-axis label shown, the legend named after the metric, and multi-series drill-down
+
+## Phase Details
+
+### Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix
+**Goal**: Every app query that asks Kinetica for more than 1,000 rows actually gets them — audited caller by caller rather than assumed safe by a single default bump — and a heatmap whose result really is truncated always shows the truncation warning.
+**Depends on**: Nothing (first phase)
+**Requirements**: EXPRT-V126-01, EXPRT-V126-02, EXPRT-V126-03
+**Canonical refs**: `packages/server/src/kinetica.ts:186` (hardcoded `limit: 1000`, and the `options.extra` override mechanism already proven by three existing call sites), `packages/web/src/components/charts/WidgetRenderer.tsx` `handleDownloadCsv` ~1939-2030 (export loop reading a short page as exhaustion), `packages/web/src/components/charts/HeatmapRenderer.tsx:285-306` (truncation check comparing returned rows against the *requested* limit instead of the real server cap)
+**Success Criteria** (what must be TRUE):
+  1. A records-table CSV download of a dataset with more matching rows than 1,000 (e.g. 2,500) downloads all of them up to the widget's configured CSV row cap, not 1,000.
+  2. A written, reviewable classification of every `runSql`/`kineticaSqlHelper`/`kineticaSql` call site exists (has-own-SQL-LIMIT / already-pins-`extra.limit` / needed-explicit-limit), and every site classified "needed" is fixed in this phase — no caller starts silently returning unbounded results it never asked for.
+  3. A heatmap configured with Result Limit 5,000 that genuinely has 5,000 matching cells draws the full grid, not a grid silently capped at 1,000.
+  4. A heatmap whose real result IS truncated (the real server-side cap, not the UI's requested limit) shows the truncation warning — today this is silently suppressed for any Result Limit choice above 1,000.
+**Plans**: TBD
+
+### Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel
+**Goal**: The one open architectural question (how the export job pages a stable, large result set) is settled against the real Kinetica instance, and the resulting batch-loop runner produces an exact, filter-snapshotted, formula-injection-safe export file with a working cancel and session-bound credentials.
+**Depends on**: Phase 127 (the export job must never rely on the shared default this phase fixes/audits — it always passes its own explicit `extra.limit`)
+**Requirements**: EXPRT-V126-04, EXPRT-V126-05, EXPRT-V126-07, EXPRT-V126-16
+**Canonical refs**: `packages/server/src/kinetica.ts` (`kineticaSql`'s `options.extra` override), `packages/server/src/lib/materializedView.ts` (`createOrReplaceMaterialized`), `packages/server/src/db.ts` (`table_sync_history` CRUD precedent for the new `export_jobs` table), `packages/server/src/sessionStore.ts` (`getSession`, per-request credential model, `.unref()` sweep precedent), `packages/web/src/lib/csvExport.ts` (`escapeCsvField`/`rowsToCsv` to port server-side), `packages/web/src/components/charts/WidgetRenderer.tsx` `handleDownloadCsv` ~1939-2030 (the columns/order/sort/`customWhere` SQL assembly the export must reproduce)
+**Success Criteria** (what must be TRUE):
+  1. Before the batch-loop runner is built, a written spike decision records: the chosen pagination mechanism (Kinetica `options.paging_table`/`paging_table_ttl` vs. a job-private snapshot view + OFFSET + composite `ORDER BY`) verified live against the real Kinetica instance, the confirmed `max_get_records_size`, and confirmation that `has_more_records` is the real exhaustion signal.
+  2. Triggering an export for a widget under active filters produces a CSV file containing exactly the rows, columns, column order and sort the records table showed at the moment it started — correct even if the underlying table changes while the job runs (snapshot semantics).
+  3. A cell value beginning `=`, `+`, `-` or `@` in the exported data is written to the file as literal, non-executing text — the same rule applied identically to the existing client-side download path.
+  4. Calling the job's cancel primitive on a running export stops its batch loop, deletes its partial file, and leaves the job's SQLite row in a terminal cancelled status.
+  5. Expiring or revoking the triggering user's session mid-export causes the next batch's per-batch credential re-derivation to fail closed — the job transitions to a clear failed status rather than hanging or completing a batch on stale credentials.
+**Plans**: TBD
+
+### Phase 129: Export Routes — Resumable Download, History & Privacy
+**Goal**: A finished export is only ever served as a complete, closed file over a Range-resumable download, every route checks ownership against an unguessable id, and triggering/downloading an export requires no new RBAC permission beyond the dashboard's existing view gate.
+**Depends on**: Phase 128 (wires routes over the runner/job registry)
+**Requirements**: EXPRT-V126-11, EXPRT-V126-13, EXPRT-V126-17
+**Canonical refs**: Express `res.download`/`res.sendFile` (native `Range`/`Accept-Ranges`/`206 Partial Content`, already 4.19.2), `packages/server/src/lib/dashboardExport.ts` (RFC-5987-aware `Content-Disposition` precedent), `packages/server/src/lib/permissions.ts` (existing dashboard-view-style gate to reuse — no new permission constant)
+**Success Criteria** (what must be TRUE):
+  1. A download request against a completed export carrying an HTTP Range header receives a `206 Partial Content` response and resumes from the requested byte offset rather than restarting; a Range request against a still-running job is refused rather than served a partial or corrupt file.
+  2. A download, cancel, delete or status request for an export id made by any user other than the one who started it is rejected on every one of those routes, and export ids are opaque (UUID), not sequential or guessable.
+  3. A user who can already view the dashboard can trigger and download its export using only their existing session — no new permission constant exists anywhere in `packages/server/src/lib/permissions.ts` or `rbacDb.ts` for this feature.
+  4. Only a job whose status is "complete" is ever served by the download route — a request against any other status is refused rather than streaming a partial or still-open file.
+**Plans**: TBD
+
+### Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps
+**Goal**: The whole export subsystem is durable across restarts and over time — nothing is ever stuck "running," nothing is orphaned on disk, and an admin can cap rows/file size/concurrency through env config alone.
+**Depends on**: Phase 128 (job registry), Phase 129 (routes to be capped and whose files the sweep must not race)
+**Requirements**: EXPRT-V126-14, EXPRT-V126-15
+**Canonical refs**: `packages/server/src/sessionStore.ts` (`.unref()`'d sweep interval precedent), `packages/server/src/index.ts` (`wipeSessionsOnModeChange`'s before-`app.listen()` boot-reconciliation pattern), `packages/server/src/env.ts` (`readPositiveIntEnv` idiom for new `EXPORT_*` knobs)
+**Success Criteria** (what must be TRUE):
+  1. An export job and its file are deleted automatically once the deploy-configured expiry passes, and restarting the server leaves no job stuck in a non-terminal "running" status.
+  2. Restarting the server leaves no orphaned export file on disk — every temp file without a corresponding non-terminal job row is removed during boot reconciliation.
+  3. `checkpoint:human-verify` — the cleanup sweep never deletes a file an active download currently holds open; this is a live timing race between a download in progress and a sweep tick, not provable by a fast unit test alone — verify with a deliberately slow/held-open download spanning a forced sweep.
+  4. An admin-configured row cap, file-size cap, or per-user concurrent-export cap (env vars only, no settings UI) stops an export that would exceed it, and the user is told why in the resulting failure message.
+**Plans**: TBD
+
+### Phase 131: Client Export UI — Trigger Dialog, Progress & History
+**Goal**: From the records table, the user can start, name, configure, watch, and manage background exports end to end — verified against a real Kinetica instance, not only green automated gates.
+**Depends on**: Phase 129 (routes to call), Phase 130 (cap messaging the UI must surface)
+**Requirements**: EXPRT-V126-06, EXPRT-V126-08, EXPRT-V126-09, EXPRT-V126-10, EXPRT-V126-12
+**Canonical refs**: `packages/web/src/components/charts/WidgetRenderer.tsx` `handleDownloadCsv` ~1939-2030 (existing small in-browser export this dialog supplements), `packages/web/src/styles/global.css` (`btn-primary btn-sm` / `ghost-sm` inside `ds-actions`, `ds-field`/`ds-select`, `config-group` — canonical classes per CLAUDE.md)
+**Success Criteria** (what must be TRUE):
+  1. When a download would exceed the in-browser row cap, the user is offered a dialog to start a background export instead, pre-filled with a default name (widget title + timestamp); any name they type is accepted, made filesystem/header-safe, and a non-ASCII name downloads successfully.
+  2. The dialog lets the user choose raw values or formatted (display-labelled) values before starting, and ticking "Compress (.csv.gz)" — off by default — is available.
+  3. While an export runs, the user sees a rows-written progress readout that updates without a page reload.
+  4. The user can see a list of their recent exports (name, status, rows, size, expiry), re-download any of them until it expires, and delete one.
+  5. `checkpoint:human-verify` — operator verification against a real Kinetica instance: a ≥1M-row export completes and downloads correctly, a cancelled export's partial file is confirmed gone, a download resumes after a killed connection instead of restarting, logout mid-export leaves the job in a clear failed state, a server restart mid-export leaves no orphaned file or stuck "running" row, and the dialog/progress/history render correctly in both light and dark themes using only existing `global.css` classes.
+**Plans**: TBD
+
+### Phase 132: Line Chart Multi-Series Group By
+**Goal**: The line chart gets the bar chart's existing multi-column Group By builder, draws one line per series value, never silently drops an x-axis label, names its legend after the metric, and drills down the same way the bar chart does.
+**Depends on**: Phase 131 (logically independent, but shares `packages/web/src/components/charts/WidgetRenderer.tsx` with the export client UI — sequenced after it to avoid a same-file collision, not a logical dependency)
+**Requirements**: LINE-V126-01, LINE-V126-02, LINE-V126-03, LINE-V126-04
+**Canonical refs**: `packages/web/src/components/charts/ChartConfigPanel.tsx` Group By Columns builder ~824-890 (the bar chart's existing builder to port), `packages/web/src/lib/barGroupedSeries.ts` / `groupedSeries.ts` (`toBarPivotInput`/`selectTopSeries`/`pivotSeriesRows` — already chart-type-agnostic, reused not rewritten), `packages/web/src/components/charts/WidgetRenderer.tsx` (`BarRenderer`'s per-series `dataKey` render loop and truncation banner to port into `LineRenderer`, `usesMultiColumnGroupBy` gate)
+**Success Criteria** (what must be TRUE):
+  1. Configuring a line chart with a second Group By column (e.g. `payment_type`) draws one line per distinct value, using the same N-column builder UI the bar chart already has.
+  2. Every x-axis category label appears on the chart — none is silently dropped by Recharts' default tick interval.
+  3. The chart's legend shows the metric's name, never the literal string `value`.
+  4. Clicking a point on a multi-series line chart triggers the same drill-down behavior the multi-series bar chart does for the equivalent click.
+  5. `checkpoint:human-verify` — a deliberately sparse multi-series dataset (some x/series combinations missing) renders with an explicit, deliberate gap-vs-zero choice rather than an unexamined Recharts default, confirmed visually correct in both light and dark themes.
+**Plans**: TBD
+
 ---
 
 ## v1.25 Schema Sync — SHIPPED 2026-09-30

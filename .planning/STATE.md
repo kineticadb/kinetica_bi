@@ -1,47 +1,56 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.25
-milestone_name: Schema Sync
-status: milestone-complete
-stopped_at: "v1.25 Schema Sync SHIPPED 2026-09-30 and archived. 5 phases (122-126), 21 plans, 19/19 SSYNC-V125 requirements Complete. Audit tech_debt, no blockers; F1/F2/PG-3 fixed same day. Archived to milestones/v1.25-ROADMAP.md, -REQUIREMENTS.md, -MILESTONE-AUDIT.md; REQUIREMENTS.md deleted. Tag v1.25.0 local, NOT pushed. Next: /gsd:new-milestone."
-last_updated: "2026-09-30T17:30:00.000Z"
+milestone: v1.26
+milestone_name: Large Exports & Fixes
+status: planning
+stopped_at: "v1.26 Large Exports & Fixes roadmap created (Phases 127-132), REQUIREMENTS.md traceability filled 21/21. Next: /gsd:discuss-phase 127 or /gsd:plan-phase 127."
+last_updated: "2026-10-01T00:00:00.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 21
-  completed_plans: 21
+  total_phases: 6
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
+See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Planning next milestone (v1.26 candidate: remove persisted `config.sql`)
+**Current focus:** v1.26 Large Exports & Fixes — Phase 127 (Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix) not started
 
 ## Current Position
 
-**v1.25 Schema Sync — SHIPPED 2026-09-30.** Archived. No phase in progress.
+**v1.26 Large Exports & Fixes — Phase 127 not started.** Roadmap created 2026-10-01: 6 phases
+(127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
+and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
+repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).
 
-Milestone: 5 phases (122-126), 21 plans, 19/19 requirements Complete. Audit: `tech_debt`, no
-blockers, its three actionable findings (F1 same-screen staleness, F2 inert mirror guards, PG-3
-rollup) fixed the same day. Tag `v1.25.0` created locally and **NOT pushed** — `origin` is shared
-with another developer, so fetch before pushing. Branch `feat/schema-sync` is 100+ commits ahead of
-its remote and not yet merged to master.
+Phase order: 127 (row-limit fix, no dependency) → 128 (export job core — live spike, runner,
+snapshot, cancel, session-bound credentials, depends on 127) → 129 (routes — resumable download,
+history, privacy, depends on 128) → 130 (TTL cleanup, boot reconciliation, admin env caps, depends
+on 128/129) → 131 (client export UI — dialog, progress, history list; operator checkpoint against
+real Kinetica; depends on 129/130) → 132 (line chart multi-series Group By; depends on 131 only to
+avoid a `WidgetRenderer.tsx` file collision with the export UI phase, not a logical dependency).
 
-**Next: `/gsd:new-milestone`** — it creates the fresh REQUIREMENTS.md (this milestone's was archived
-to `milestones/v1.25-REQUIREMENTS.md` and the working copy deleted). Branch the next milestone off
-master AFTER `feat/schema-sync` is merged.
+**Open architectural question, deliberately NOT settled in planning.** Phase 128 begins with a live
+spike against the real Kinetica instance to choose between `options.paging_table` and a job-private
+snapshot view + OFFSET + composite `ORDER BY` for the export job's pagination — both research
+sources proposed different mechanisms and neither was verified live.
 
-**One live check still owed:** the F1 fix (Datasets detail view refreshes after an apply,
+**Next:** `/gsd:discuss-phase 127` or `/gsd:plan-phase 127`.
+
+**Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
+interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;
+`defect-dv-combination-filter-view.md` still OPEN; the theme-guard `global.css` exemption;
+`TD-V16-TEST-ISOLATION`; OIDC never browser-verified. (Removing persisted `config.sql` was the
+previously-named v1.26 candidate — moved out at this milestone's open; see `REQUIREMENTS.md`
+v2 `CFGSQL-F1`.)
+
+**One v1.25 live check still owed:** the F1 fix (Datasets detail view refreshes after an apply,
 `edd648b`) is probed 4/4 but not re-verified against real Kinetica.
-
-**Carried debt, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize` interpolates
-client-supplied column names into SQL unchecked; removing persisted `config.sql` (v1.26 candidate);
-`loadConfig(...).catch(() => {})`; `defect-dv-combination-filter-view.md` still OPEN; the theme-guard
-`global.css` exemption; `TD-V16-TEST-ISOLATION`; OIDC never browser-verified.
 
 **Earlier position notes (historical):**
 
