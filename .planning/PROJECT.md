@@ -8,6 +8,35 @@ A business intelligence dashboard application for data engineers and business an
 
 Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
 
+## Current Milestone: v1.26 Large Exports & Fixes
+
+**Goal:** A user can download every row a records table shows — a million rows if that is what the filters select — without the browser holding it in memory, without losing it to a dropped connection, and without being silently cut off at 1,000 rows. Alongside it, the line chart gets the multi-series Group By the bar chart already has.
+
+**The bugs that started this (found by reading the code, 2026-10-01):**
+- **CSV download stops at 1,000 rows.** `kineticaSql` hardcodes `limit: 1000` in every `/execute/sql` body (`packages/server/src/lib/kinetica.ts:186`), so Kinetica returns at most 1,000 rows whatever the SQL `LIMIT` says. The client's export loop (`WidgetRenderer.tsx:1987-1999`) asks for pages of 5,000, receives 1,000, reads the short page as "view exhausted", and stops. The configured `csvDownloadRowCap` (default 100,000) is never reached. **Every other caller that expects more than 1,000 rows from `/api/sql` shares the ceiling** — that blast radius must be audited, not assumed.
+- **The line chart cannot draw one line per category.** It has a single Group By (x-axis only). The bar chart has the N-column "Group By Columns" builder (`ChartConfigPanel.tsx:824-890`) where extra columns become coloured series; the line chart was never given it. An operator who picks `payment_type` gets one line across five categories, not five lines. Separately, Recharts' default tick interval silently drops a colliding x-axis label, and the legend reads `value` rather than the metric name.
+
+**Target features:**
+- Fix the 1,000-row ceiling on the existing client-side CSV download
+- A server-side export job: batched reads from Kinetica (20,000 rows per batch), streamed to a temp file, never held whole in memory
+- Progress while it runs, and cancel (which deletes the partial file)
+- A resumable download (HTTP Range), so a dropped connection resumes instead of restarting
+- Optional gzip (`.csv.gz`)
+- An operator-chosen file name
+- An export history list — re-download a recent export until it expires
+- A deploy-time admin cap on rows / file size per export (env config, not a settings UI — the operator's standing preference)
+- Temp files are private to the requesting user and deleted after a TTL
+- Line chart: the multi-column Group By builder, one line per series value; every category label shown; legend named after the metric
+
+**Known hazards going in:**
+- **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.
+- **OFFSET paging needs a stable order.** Without a unique sort key, pages can repeat or skip rows when the underlying data changes.
+- **The export must reproduce exactly what the widget shows** — the same filter combination, dynamic view, `customWhere`, column order and sort as `handleDownloadCsv` assembles today (`WidgetRenderer.tsx:1957-1980`).
+- **Disk and concurrency** — a per-user concurrent-job limit and a cleanup sweep are required, not optional.
+- **Per-user Kinetica credentials** — the export runs as the requesting user; a background job must not outlive or escape that user's authorization.
+
+**Deferred from this milestone:** removing persisted `config.sql` (previously named as the v1.26 candidate) moves to a later milestone.
+
 ## Shipped Milestone: v1.25 Schema Sync (2026-09-30)
 
 **Goal delivered:** An operator can check a registered table against live Kinetica on demand from Datasets, see exactly which widgets, map layers, custom metrics and column-format rules the change breaks before deciding anything, and apply the refreshed snapshot on confirmation — recorded as a durable per-table sync-history worklist. Gated on `datasets:manage` AND `dashboards:manage_access`, in the UI and on all four routes. Before this, `tables.columns` was written once at registration and never again.
@@ -515,7 +544,10 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 
 ### Active
 
-<!-- No next milestone defined yet — v1.22 requirements moved to Validated below -->
+<!-- v1.26 Large Exports & Fixes — scoped requirements live in REQUIREMENTS.md once defined -->
+- [ ] Records-table CSV download is not capped at 1,000 rows
+- [ ] Server-side background export job for very large result sets (progress, cancel, resumable download, gzip, naming, history, admin cap, TTL cleanup)
+- [ ] Line chart supports multi-series via the multi-column Group By builder
 
 <!-- Open tech-debt carry-overs -->
 - [x] TD-V122-TEST-FLAKE — RESOLVED in v1.23: root-caused to TWO one-line async-query defects (RTL's unconfigured 1000ms `asyncUtilTimeout` vs vitest's 5000ms `testTimeout`; one sync-`getBy*`-after-`await findBy*` site), NOT cross-mode contamination as first assumed — bisection proved no contaminating file exists. Fixed in `cde63ae`. Before: 0/4 clean full-suite runs; after: 4/4. Full trail (incl. four wrong diagnoses) in `.planning/v123-flake-investigation-notes.md`. ~105 other sync-after-async sites remain across 12 spec files — fix opportunistically, not a sweep. Casts doubt on `TD-V16-TEST-ISOLATION`'s identical "contamination" attribution, never tested this way.
