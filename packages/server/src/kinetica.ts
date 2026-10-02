@@ -237,6 +237,14 @@ export const kineticaSql = async (
         : dataStr?.json_encoded_response;
 
     emitAudit({ ...baseAudit, outcome: "success", status: 200, duration_ms: Date.now() - start });
+    if (encoded && typeof encoded === "object" && !Array.isArray(encoded)) {
+      const out: Record<string, unknown> = { ...encoded };
+      if (typeof dataStr?.has_more_records === "boolean") out.has_more_records = dataStr.has_more_records;
+      if (typeof dataStr?.total_number_of_records === "number") {
+        out.total_number_of_records = dataStr.total_number_of_records;
+      }
+      return out;
+    }
     return encoded ?? body;
   } catch (error) {
     // Re-throw typed errors immediately (they've already emitted audit + console.error)

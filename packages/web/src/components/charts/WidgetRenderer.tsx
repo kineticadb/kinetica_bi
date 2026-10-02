@@ -266,7 +266,8 @@ function parseKineticaResponse(payload: Record<string, unknown>): Row[] {
 
     // Extract the real column names from column_headers (always present in
     // Kinetica responses). Metadata-only keys are excluded from data iteration.
-    const METADATA_KEYS = new Set(["column_headers", "column_datatypes"]);
+    // Phase 127: /api/sql now carries Kinetica's has_more_records / total_number_of_records beside the columns; they are not data columns.
+    const METADATA_KEYS = new Set(["column_headers", "column_datatypes", "has_more_records", "total_number_of_records"]);
     const columnHeaders = Array.isArray(columnar.column_headers)
       ? (columnar.column_headers as string[])
       : null;

@@ -4323,4 +4323,30 @@ describe("WidgetRenderer — heatmap rides the shared aggregated path", () => {
     // Exactly `data` + `config`: no widgetId/tableId/drillDownColumn/dashboardId.
     expect(screen.getByTestId("heatmap-renderer").getAttribute("data-extra-props")).toBe("");
   });
+
+  it("RLMETA-1: has_more_records/total_number_of_records FIRST in the payload do not zero the row count", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      has_more_records: false,
+      total_number_of_records: 3,
+      ...heatmapResponse,
+    });
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("3");
+  });
+
+  it("RLMETA-2: has_more_records true LAST in the payload is ignored as a data column", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...heatmapResponse,
+      total_number_of_records: 3,
+      has_more_records: true,
+    });
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("3");
+  });
 });
