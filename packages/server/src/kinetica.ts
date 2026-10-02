@@ -184,17 +184,62 @@ export const getRowLimitConfig = (): RowLimitConfig => ({
 
 export const __resetRowLimitWarningsForTest = (): void => {
   warnedRowLimitEnv.clear();
+  warnedBatchExceedsServerMax = false;
 };
 
 const isPositiveInt = (v: unknown): v is number =>
   typeof v === "number" && Number.isInteger(v) && v > 0;
 
+let warnedBatchExceedsServerMax = false;
+
+const warnBatchExceedsServerMaxOnce = (maxRecordsPerCall: number, callLimit: number, n: number): void => {
+  if (warnedBatchExceedsServerMax) return;
+  warnedBatchExceedsServerMax = true;
+  console.warn(
+    `[kinetica] KINETICA_MAX_RECORDS_PER_CALL=${maxRecordsPerCall} exceeds this Kinetica server's max_get_records_size (a call asking for ${callLimit} rows returned ${n} with has_more_records=true); continuing to page. Lower KINETICA_MAX_RECORDS_PER_CALL to match the server.`
+  );
+};
+
+const NON_DATA_KEYS = new Set(["column_headers", "column_datatypes"]);
+
+const rowCount = (encoded: unknown): number => {
+  if (!encoded || typeof encoded !== "object" || Array.isArray(encoded)) return 0;
+  for (const [k, v] of Object.entries(encoded as Record<string, unknown>)) {
+    if (!NON_DATA_KEYS.has(k) && Array.isArray(v)) return v.length;
+  }
+  return 0;
+};
+
+const mergeChunks = (acc: unknown, chunk: unknown): unknown => {
+  if (acc === undefined) return chunk;
+  if (!acc || typeof acc !== "object" || !chunk || typeof chunk !== "object") return acc;
+  const out = { ...(acc as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(chunk as Record<string, unknown>)) {
+    if (NON_DATA_KEYS.has(k)) continue;
+    if (Array.isArray(v) && Array.isArray(out[k])) out[k] = [...(out[k] as unknown[]), ...v];
+  }
+  return out;
+};
+
+type SqlPage = {
+  encoded: unknown;
+  hasMore: boolean | undefined;
+  total: number | undefined;
+  body: unknown;
+};
+
 /**
  * kineticaSql — POST /execute/sql with per-user credentials.
  *
- * Returns the parsed `encoded` shape (json_encoded_response → JSON.parse),
+ * Returns the parsed `encoded` shape (json_encoded_response -> JSON.parse),
  * same contract as the existing index.ts:333-365 kineticaSql helper.
  * Throws on any failure.
+ *
+ * Phase 127: the envelope limit is the deploy-time per-query max
+ * (KINETICA_MAX_ROWS_PER_QUERY, default 20,000), every caller's extra.limit is clamped to
+ * it, and no single call asks for more than KINETICA_MAX_RECORDS_PER_CALL rows — a larger
+ * limit is served by several ordered calls (offset advances) whose columns are concatenated.
+ * has_more_records (never a short page) is the continuation signal.
  */
 export const kineticaSql = async (
   req: AuthedRequest,
@@ -222,7 +267,7 @@ export const kineticaSql = async (
   const baseOffset =
     typeof reqOffset === "number" && Number.isInteger(reqOffset) && reqOffset >= 0 ? reqOffset : 0;
 
-  try {
+  const postPage = async (offset: number, limit: number): Promise<SqlPage> => {
     const response = await fetch(`${kineticaUrl.replace(/\/$/, "")}/execute/sql`, {
       method: "POST",
       headers: {
@@ -236,8 +281,8 @@ export const kineticaSql = async (
         data: [],
         options: {},
         ...restExtra,
-        offset: baseOffset,
-        limit: Math.min(effectiveLimit, maxRecordsPerCall),
+        offset,
+        limit,
       }),
     });
 
@@ -283,17 +328,48 @@ export const kineticaSql = async (
       typeof dataStr?.json_encoded_response === "string"
         ? JSON.parse(dataStr.json_encoded_response)
         : dataStr?.json_encoded_response;
+    return {
+      encoded,
+      hasMore: typeof dataStr?.has_more_records === "boolean" ? dataStr.has_more_records : undefined,
+      total:
+        typeof dataStr?.total_number_of_records === "number"
+          ? dataStr.total_number_of_records
+          : undefined,
+      body,
+    };
+  };
+
+  try {
+    // Row-order stability across split calls without a unique ORDER BY is not documented by
+    // Kinetica — verified live at the Phase 127 checkpoint / Phase 128 spike.
+    let fetched = 0;
+    let merged: unknown = undefined;
+    let first: SqlPage | undefined;
+    let lastHasMore: boolean | undefined;
+    let lastTotal: number | undefined;
+    while (fetched < effectiveLimit) {
+      const callLimit = Math.min(maxRecordsPerCall, effectiveLimit - fetched);
+      const r = await postPage(baseOffset + fetched, callLimit);
+      first ??= r;
+      const n = rowCount(r.encoded);
+      merged = mergeChunks(merged, r.encoded);
+      fetched += n;
+      lastHasMore = r.hasMore;
+      lastTotal = r.total ?? lastTotal;
+      if (r.hasMore !== true || n === 0) break;
+      // D-11: a short page flagged has_more_records is NOT the end; keep paging.
+      if (n < callLimit) warnBatchExceedsServerMaxOnce(maxRecordsPerCall, callLimit, n);
+    }
 
     emitAudit({ ...baseAudit, outcome: "success", status: 200, duration_ms: Date.now() - start });
-    if (encoded && typeof encoded === "object" && !Array.isArray(encoded)) {
-      const out: Record<string, unknown> = { ...encoded };
-      if (typeof dataStr?.has_more_records === "boolean") out.has_more_records = dataStr.has_more_records;
-      if (typeof dataStr?.total_number_of_records === "number") {
-        out.total_number_of_records = dataStr.total_number_of_records;
-      }
-      return out;
+    if (merged && typeof merged === "object" && !Array.isArray(merged)) {
+      return {
+        ...(merged as Record<string, unknown>),
+        ...(typeof lastHasMore === "boolean" ? { has_more_records: lastHasMore } : {}),
+        ...(typeof lastTotal === "number" ? { total_number_of_records: lastTotal } : {}),
+      };
     }
-    return encoded ?? body;
+    return (first?.encoded as unknown) ?? first?.body;
   } catch (error) {
     // Re-throw typed errors immediately (they've already emitted audit + console.error)
     if (

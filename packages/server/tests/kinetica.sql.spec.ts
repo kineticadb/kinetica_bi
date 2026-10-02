@@ -316,7 +316,8 @@ describe("kineticaSql ROWLIM response metadata", () => {
         total_number_of_records: 5,
       }),
     });
-    const result = await kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL" });
+    // limit 2 == rows returned, so the page is full and the loop ends after one call.
+    const result = await kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL", extra: { limit: 2 } });
     expect(result).toEqual({ column_1: [1, 2], has_more_records: true, total_number_of_records: 5 });
   });
 
