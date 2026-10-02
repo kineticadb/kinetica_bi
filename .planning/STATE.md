@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: planning
-stopped_at: "v1.26 Large Exports & Fixes roadmap created (Phases 127-132), REQUIREMENTS.md traceability filled 21/21. Next: /gsd:discuss-phase 127 or /gsd:plan-phase 127."
+stopped_at: "Phase 127 context gathered 2026-10-02 — resume file .planning/phases/127-row-limit-ceiling-caller-audit-heatmap-truncation-fix/127-CONTEXT.md. Next: /gsd:plan-phase 127."
 last_updated: "2026-10-01T00:00:00.000Z"
 progress:
   total_phases: 6
