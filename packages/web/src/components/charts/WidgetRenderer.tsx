@@ -90,6 +90,7 @@ import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
+import { readHasMore, DEPLOYMENT_MAX_HINT } from "../../lib/rowTruncation";
 
 // "FF66C2A5" → "#66c2a5" for Recharts fill prop (recharts SVG needs #hex; sanctioned exception —
 // same pattern as TimelineRenderer.tsx toCssColor).
@@ -1939,8 +1940,16 @@ const RecordsTableRenderer = ({ widget }: Props) => {
 
   // FK4: CSV export state
   const enableCsvDownload = cfg.enableCsvDownload !== false;
-  const csvDownloadRowCap = Math.max(1, Math.floor(Number(cfg.csvDownloadRowCap) || 100000));
+  // Phase 127 D-07: the admin CSV_INBROWSER_MAX_ROWS ceiling wins over the per-widget cap
+  // (mirrors ChartConfigPanel's maxBarGroupBySeriesCap clamp).
+  const csvInBrowserMaxRows = useAuthStore((s) => s.csvInBrowserMaxRows);
+  const csvDownloadRowCap = Math.min(
+    Math.max(1, Math.floor(Number(cfg.csvDownloadRowCap) || 100000)),
+    csvInBrowserMaxRows,
+  );
   const [exporting, setExporting] = useState(false);
+  const [exportedRows, setExportedRows] = useState(0);
+  const [pageLimitedTo, setPageLimitedTo] = useState<number | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
 
   // FK4: abort in-flight export on unmount
@@ -1980,10 +1989,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         : "";
 
     setExporting(true);
+    setExportedRows(0);
     const PAGE = 5000;
     const all: Row[] = [];
     let offset = 0;
-    let capped = false;
     try {
       while (all.length < csvDownloadRowCap) {
         const remaining = csvDownloadRowCap - all.length;
@@ -1991,13 +2000,15 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         const sql = `SELECT ${colsClause} FROM ${fromSourceCsv}${cw}${orderBy} LIMIT ${limit} OFFSET ${offset}`;
         const res = await runSql<Record<string, unknown>>(sql, undefined, controller.signal);
         const rows = parseKineticaResponse(res);
+        const hasMore = readHasMore(res);
         all.push(...rows);
         offset += rows.length;
-        if (rows.length < limit) break; // exhausted the view
-        if (all.length >= csvDownloadRowCap && rows.length === limit) {
-          capped = true;
-          break;
-        }
+        setExportedRows(all.length);
+        if (rows.length === 0) break; // never spin
+        // has_more_records=true on a SHORT page means the server cut the page (old 1,000
+        // envelope / lowered KINETICA_MAX_ROWS_PER_QUERY) — keep paging. A bare
+        // `rows.length < limit` break is what produced the silent 1,000-row file.
+        if (hasMore !== true && rows.length < limit) break;
       }
 
       const finalCols = exportCols.length > 0 ? exportCols : Object.keys(all[0] ?? {});
@@ -2020,8 +2031,15 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         URL.revokeObjectURL(url);
       }
 
-      if (capped) {
-        useToastStore.getState().showToast(`Capped at ${csvDownloadRowCap.toLocaleString()} rows`, "info");
+      const reachedCap = all.length >= csvDownloadRowCap;
+      const leftOut = totalCount !== null ? totalCount > all.length : reachedCap;
+      if (reachedCap && leftOut) {
+        useToastStore.getState().showToast(
+          totalCount !== null
+            ? `Downloaded the first ${all.length.toLocaleString()} of ${totalCount.toLocaleString()} rows`
+            : `Downloaded the first ${all.length.toLocaleString()} rows (row cap reached)`,
+          "info",
+        );
       }
     } catch (err) {
       if ((err as Error)?.name === "AbortError") return;
@@ -2117,11 +2135,12 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       .then((res) => {
         const rows = parseKineticaResponse(res);
         setData(rows);
+        setPageLimitedTo(readHasMore(res) === true ? rows.length : null);
         // Lock in column order from effectiveColumns (preferred) or response keys
         const firstRowKeys = Object.keys(rows[0] ?? {});
         setColumnOrder(effectiveColumns.length > 0 ? effectiveColumns : firstRowKeys);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => { setError(err.message); setPageLimitedTo(null); })
       .finally(() => setLoading(false));
     // Phase 96-01: recordsComboKey + recordsCombinationVersion replace legacy filterViewStore deps.
     // dynamicViewId + recordsDvStatus + recordsDvViewName still drive dv re-fires.
@@ -2186,7 +2205,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       ? (comboEntry?.viewName || recordsDvViewName)
       : (comboEntry?.viewName ?? "");
     const fromSource = effectiveViewName || table;
-    runSql<Record<string, unknown>>(`SELECT COUNT(*) AS total FROM ${fromSource}`)
+    runSql<Record<string, unknown>>(`SELECT COUNT(*) AS total FROM ${fromSource}${cw}`)
       .then((res) => {
         const rows = parseKineticaResponse(res);
         const v = rows[0]?.total;
@@ -2202,6 +2221,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     dynamicViewId,
     recordsDvStatus,
     recordsDvViewName,
+    cw,
   ]);
 
   const handleHeaderClick = (col: string) => {
@@ -2371,8 +2391,18 @@ const RecordsTableRenderer = ({ widget }: Props) => {
             disabled={exporting}
             onClick={handleDownloadCsv}
           >
-            {exporting ? "Exporting…" : "Download"}
+            {exporting ? `Exporting… ${exportedRows.toLocaleString()} rows` : "Download"}
           </button>
+        )}
+        {pageLimitedTo !== null && (
+          <span
+            className="config-hint"
+            data-testid="records-limited-note"
+            title={`This page asked for ${pageSize.toLocaleString()} rows but this deployment's per-query maximum returned only ${pageLimitedTo.toLocaleString()}, so some rows on this page are not shown. Lower the page size, or ${DEPLOYMENT_MAX_HINT.charAt(0).toLowerCase()}${DEPLOYMENT_MAX_HINT.slice(1)}`}
+            style={{ margin: 0, whiteSpace: "nowrap" }}
+          >
+            Limited to {pageLimitedTo.toLocaleString()} rows
+          </span>
         )}
         <span className="widget-records-count">
           {totalCount !== null

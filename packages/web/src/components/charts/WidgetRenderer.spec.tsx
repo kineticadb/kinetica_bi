@@ -22,6 +22,7 @@ import { render, waitFor, act, screen, fireEvent } from "@testing-library/react"
 import WidgetRenderer, { resolveAggregatedDrillTarget } from "./WidgetRenderer";
 import { useFilterStore } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
+import { useAuthStore } from "../../store/auth";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
 // Phase 35 Plan 05 (DV-V16-13/14): dynamic-view store + Retry context wiring tests
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
@@ -2627,34 +2628,122 @@ describe("RecordsTableRenderer CSV download", () => {
     expect(exportSql).toMatch(/SELECT region, amount FROM sales/);
   });
 
-  it("cap behavior + toast: csvDownloadRowCap=2 with full page triggers 'Capped at 2 rows' toast", async () => {
+  // ---- Phase 127-04 RLCSV tests ----
+  const cntResp = (n: number) => ({ column_headers: ["total"], column_datatypes: ["long"], column_1: [n] });
+  const rowsN = (n: number, hasMore?: boolean) => ({
+    ...buildCsvResponse(["region", "amount"], Array.from({ length: n }, (_, i) => [`R${i}`, i])),
+    ...(hasMore === undefined ? {} : { has_more_records: hasMore }),
+  });
+  const rlcsvSetup = async (cap: number, count: number, exports: unknown[], extraCfg: Record<string, unknown> = {}) => {
     const showToastMock = vi.fn();
     const { useToastStore: toastStore } = await import("../../store/toast");
     toastStore.setState({ showToast: showToastMock } as Parameters<typeof toastStore.setState>[0]);
-
-    // Page fetch returns 2 rows, count fetch
-    (clientModule.runSql as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100], ["WEST", 200]])) // page fetch
-      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }) // count (10 total → more exist)
-      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100], ["WEST", 200]])); // CSV export - returns full 2 rows
-
+    const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+    m.mockResolvedValueOnce(rowsN(2)).mockResolvedValueOnce(cntResp(count));
+    for (const e of exports) m.mockResolvedValueOnce(e);
     const widget = makeCsvRecordsWidget({
-      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: 2 },
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: cap, ...extraCfg },
     });
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
-
     await act(async () => {
       fireEvent.click(screen.getByText("Download"));
       await new Promise((r) => setTimeout(r, 100));
     });
+    const exportCalls = m.mock.calls.slice(2).map((c) => c[0] as string);
+    return { showToastMock, exportCalls, m };
+  };
 
-    // Toast should be called with cap message
-    const capToastCall = showToastMock.mock.calls.find(
-      (args: unknown[]) => args[0] === "Capped at 2 rows",
-    );
-    expect(capToastCall).toBeDefined();
-    expect(capToastCall![1]).toBe("info");
+  afterEach(() => {
+    useAuthStore.setState({ csvInBrowserMaxRows: 100000 });
+  });
+
+  it("RLCSV-continue-on-has-more: short page flagged has_more keeps paging from offset", async () => {
+    const { exportCalls, showToastMock } = await rlcsvSetup(10, 10, [rowsN(4, true), rowsN(6, false)]);
+    expect(exportCalls).toHaveLength(2);
+    expect(exportCalls[1]).toContain("OFFSET 4");
+    expect(showToastMock.mock.calls.find((a: unknown[]) => a[1] === "info")).toBeUndefined();
+  });
+
+  it("RLCSV-stop-when-exhausted: short page with has_more false stops", async () => {
+    const { exportCalls } = await rlcsvSetup(10, 10, [rowsN(3, false)]);
+    expect(exportCalls).toHaveLength(1);
+  });
+
+  it("RLCSV-legacy-short-page: no has_more field falls back to short-page stop", async () => {
+    const { exportCalls } = await rlcsvSetup(10, 10, [rowsN(3)]);
+    expect(exportCalls).toHaveLength(1);
+  });
+
+  it("RLCSV-ceiling-clamp: csvInBrowserMaxRows clamps a larger widget cap", async () => {
+    useAuthStore.setState({ csvInBrowserMaxRows: 3 });
+    const { exportCalls, showToastMock } = await rlcsvSetup(1000000, 10, [rowsN(3, false)]);
+    expect(exportCalls[0]).toContain("LIMIT 3 OFFSET 0");
+    expect(showToastMock).toHaveBeenCalledWith("Downloaded the first 3 of 10 rows", "info");
+  });
+
+  it("RLCSV-cap-message: cap reached with rows left out reports N of M", async () => {
+    const { showToastMock } = await rlcsvSetup(2, 10, [rowsN(2, false)]);
+    expect(showToastMock).toHaveBeenCalledWith("Downloaded the first 2 of 10 rows", "info");
+    expect(showToastMock.mock.calls.some((a: unknown[]) => String(a[0]).includes("Capped at"))).toBe(false);
+  });
+
+  it("RLCSV-no-false-cap: exactly-full download is not reported as truncated", async () => {
+    const { showToastMock } = await rlcsvSetup(2, 2, [rowsN(2, false)]);
+    expect(showToastMock.mock.calls.find((a: unknown[]) => a[1] === "info")).toBeUndefined();
+  });
+
+  it("RLCSV-progress: button shows rows exported so far", async () => {
+    const showToastMock = vi.fn();
+    const { useToastStore: toastStore } = await import("../../store/toast");
+    toastStore.setState({ showToast: showToastMock } as Parameters<typeof toastStore.setState>[0]);
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(rowsN(2))
+      .mockResolvedValueOnce(cntResp(10))
+      .mockResolvedValueOnce(rowsN(4, true))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const widget = makeCsvRecordsWidget({
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: 10 },
+    });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download"));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.getByText("Exporting… 4 rows")).toBeTruthy();
+  });
+
+  it("RLCSV-count-cw: total-count query applies customWhere", async () => {
+    const { m } = await rlcsvSetup(10, 10, [rowsN(1, false)], { customWhere: "amount > 5" });
+    const countSql = m.mock.calls.map((c) => c[0] as string).find((q) => q.includes("COUNT(*)"));
+    expect(countSql).toContain("amount > 5");
+  });
+
+  const rlrecRender = async (page: unknown) => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [50] });
+    render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
+    await waitFor(() => screen.getByText(/Showing/));
+  };
+
+  it("RLREC-limited: page cut short by the server shows a Limited-to note", async () => {
+    await rlrecRender({ ...buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2]]), has_more_records: true });
+    const note = await screen.findByTestId("records-limited-note");
+    expect(note.textContent).toBe("Limited to 2 rows");
+    expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+    expect(note.getAttribute("title")).toContain("page size");
+  });
+
+  it("RLREC-not-limited: has_more false shows no note", async () => {
+    await rlrecRender({ ...buildCsvResponse(["region", "amount"], [["E", 1]]), has_more_records: false });
+    expect(screen.queryByTestId("records-limited-note")).toBeNull();
+  });
+
+  it("RLREC-legacy: no has_more field shows no note", async () => {
+    await rlrecRender(buildCsvResponse(["region", "amount"], [["E", 1]]));
+    expect(screen.queryByTestId("records-limited-note")).toBeNull();
   });
 
   it("abort-on-unmount: AbortController signal aborts when component unmounts during export", async () => {
