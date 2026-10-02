@@ -38,6 +38,9 @@ NOT in this phase: the server-side background export job, resumable download, gz
 - **D-14 — Warn only when more cells really exist.** Today `truncated = data.length >= cellLimit` (`:306`) warns falsely on a grid with exactly 5,000 real cells. Use the server's "more rows exist" signal (D-10/D-12) or fetch limit+1. An exactly-full grid must not show the banner.
 - **D-15 — The tooltip names WHICH limit was hit**, because the fixes differ: the user's Result limit ("raise Result limit, narrow the query, or pick lower-cardinality axes") vs the deployment's per-query max ("ask an admin to raise `KINETICA_MAX_ROWS_PER_QUERY`").
 
+### Calendar and grouped Timeline/Numeric Line (added 2026-10-02 after phase research)
+- **D-16 — The same truncation-warning rule as the heatmap applies to Calendar and grouped Timeline/Numeric Line, in this phase.** Phase research found both are silently cut at 1,000 today and can still be cut silently at their OWN limits after the ceiling fix: Calendar `CELL_LIMIT = 10000` (`calendarBin.ts:110`, zero truncation UI today), grouped Timeline/NumericLine up to `maxIntervals × MAX_SERIES` = 12,000 (`buildTimelineSql.ts:95-131`). Each gets a compact notice shown ONLY when more rows really exist (D-14 rule), naming which limit was hit (D-15 rule), reusing existing classes. Operator decision, 2026-10-02.
+
 ### Claude's Discretion
 - Exact env var names (suggested above) and their validation (positive integers; how a batch > max or a max < 1 is handled at boot).
 - Where batch splitting lives (inside `kineticaSql` vs a wrapper) and how the "more rows exist" flag is surfaced on `/api/sql` responses without breaking existing consumers of `parseKineticaResponse`.
