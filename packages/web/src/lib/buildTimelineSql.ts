@@ -47,7 +47,20 @@ export type BuildTimelineSqlArgs = {
    * The custom metric id itself lives on metric.metricId.
    */
   tableId?: number;
+  /**
+   * Phase 127 D-14/D-16: overflowProbe asks one extra row so the renderer can tell
+   * 'exactly full' from 'more exist'; has_more_records cannot, because it only
+   * reflects the server envelope. Grouped path only; ungrouped output is untouched.
+   */
+  overflowProbe?: boolean;
 };
+
+/** Row limit of the grouped query (maxIntervals x series). Shared with the renderer's slice. */
+export function groupedTimelineLimit(args: { maxIntervals: number; seriesIn?: (string | number)[] }): number {
+  const { maxIntervals, seriesIn } = args;
+  const hasSeriesIn = Array.isArray(seriesIn) && seriesIn.length > 0;
+  return hasSeriesIn ? maxIntervals * seriesIn!.length : maxIntervals * MAX_SERIES;
+}
 
 /** Format a seriesIn value for SQL: numbers verbatim, strings single-quoted with internal quotes doubled. */
 function formatSeriesInValue(v: string | number): string {
@@ -92,7 +105,7 @@ function aggExpr(metric: TimelineMetric): string {
  * where row data keys are `{ bucket: string; value: number | null }`.
  */
 export function buildTimelineSql(args: BuildTimelineSqlArgs): string {
-  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn, customWhere, tableId } = args;
+  const { schema, table, timeCol, metric, interval, maxIntervals, groupByColumn, seriesIn, customWhere, tableId, overflowProbe } = args;
   // Phase 44 follow-up: empty schema means the table arg is a bare unprefixed
   // identifier (e.g. a dynamic view's materialized view name).
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
@@ -121,13 +134,13 @@ export function buildTimelineSql(args: BuildTimelineSqlArgs): string {
   const inClause = hasSeriesIn
     ? ` AND ${groupByColumn} IN (${seriesIn!.map(formatSeriesInValue).join(", ")})`
     : "";
-  const limit = hasSeriesIn ? maxIntervals * seriesIn!.length : maxIntervals * MAX_SERIES;
+  const limit = groupedTimelineLimit({ maxIntervals, seriesIn });
   return (
     `SELECT ${bucket} AS bucket, ${groupByColumn} AS series, ${agg} AS value ` +
     `FROM ${fromTarget} ` +
     `WHERE ${timeCol} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause}${cw} ` +
     `GROUP BY bucket, series ` +
     `ORDER BY bucket ASC ` +
-    `LIMIT ${limit}`
+    `LIMIT ${overflowProbe ? limit + 1 : limit}`
   );
 }

@@ -53,7 +53,8 @@ import {
   type TimelineInterval,
   type TimelineMetric,
 } from "../../lib/timelineBin";
-import { buildTimelineSql } from "../../lib/buildTimelineSql";
+import { buildTimelineSql, groupedTimelineLimit } from "../../lib/buildTimelineSql";
+import { detectTruncation, readHasMore, DEPLOYMENT_MAX_HINT, type TruncationInfo } from "../../lib/rowTruncation";
 import { andCustomWhere } from "../../lib/customWhere";
 import { MAX_SERIES, selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { useChartAxisColors } from "../../lib/chartColors";
@@ -263,6 +264,9 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   const [seriesValues, setSeriesValues] = useState<string[]>([]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [seriesInfo, setSeriesInfo] = useState<{ truncated: boolean; total: number }>({ truncated: false, total: 0 });
+  // Phase 127 D-16: ROW truncation (distinct from the series-count note above).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [rowLimit, setRowLimit] = useState<TruncationInfo | null>(null);
 
   // Fetch on mount + when relevant config / filterVersion changes (re-bin on filter)
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -358,8 +362,17 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
             customWhere,
             // Phase 100 (METRIC-V119-04): thread tableId so resolveMetricExpr resolves live.
             tableId,
+            overflowProbe: true,
           });
-          const groupedRows = decodeSqlResponse(await runSql(mainSql, undefined, ctrl.signal));
+          const mainRes = await runSql(mainSql, undefined, ctrl.signal);
+          const allRows = decodeSqlResponse(mainRes);
+          const ownLimit = groupedTimelineLimit({ maxIntervals, seriesIn: top.series });
+          const limitInfo = detectTruncation({
+            fetched: allRows.length,
+            ownLimit,
+            serverHasMore: readHasMore(mainRes),
+          });
+          const groupedRows = allRows.slice(0, ownLimit);
           const pivoted = pivotSeriesRows(
             groupedRows.map((r) => {
               const v = r.value;
@@ -376,6 +389,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
             setData(pivoted);
             setSeriesValues(top.series);
             setSeriesInfo({ truncated: top.truncated, total: top.total });
+            setRowLimit(limitInfo);
             setIntervalState(chosen);
             setLoading(false);
           }
@@ -396,17 +410,19 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
               // Phase 100 (METRIC-V119-04): thread tableId so resolveMetricExpr resolves live.
               tableId,
             });
-            return runSql(sql, undefined, ctrl.signal).then(decodeSqlResponse);
+            return runSql(sql, undefined, ctrl.signal).then((res) => ({ rows: decodeSqlResponse(res), hasMore: readHasMore(res) }));
           }),
         );
 
         // Step 4: merge by bucket; missing values → null (gap)
+        const anyHasMore = metricResults.some((r) => r.hasMore === true);
+        const maxShown = metricResults.reduce((mx, r) => Math.max(mx, r.rows.length), 0);
         const bucketSet = new Set<string>();
-        metricResults.forEach((rows) => rows.forEach((r) => bucketSet.add(String(r.bucket))));
+        metricResults.forEach(({ rows }) => rows.forEach((r) => bucketSet.add(String(r.bucket))));
         const sortedBuckets = Array.from(bucketSet).sort();
         const merged = sortedBuckets.map((b) => {
           const row: Record<string, number | string | null> = { bucket: b };
-          metricResults.forEach((rows, idx) => {
+          metricResults.forEach(({ rows }, idx) => {
             const found = rows.find((r) => String(r.bucket) === b);
             const v = found?.value;
             row[`metric_${idx}`] = typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -418,6 +434,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
           setData(merged);
           setSeriesValues([]);
           setSeriesInfo({ truncated: false, total: 0 });
+          setRowLimit(anyHasMore ? { shown: maxShown, reason: "deployment-max" } : null);
           setIntervalState(chosen);
           setLoading(false);
         }
@@ -540,6 +557,18 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
           style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px" }}
         >
           Showing top {MAX_SERIES} of {top.total} series
+        </div>
+      )}
+      {rowLimit && (
+        <div
+          className="config-hint"
+          data-testid="timeline-limited-note"
+          title={rowLimit.reason === "result-limit"
+            ? `The grouped query reached its ${rowLimit.shown.toLocaleString()}-row limit (Max intervals × series), so later buckets are not shown. Raise "Max intervals", pick a coarser interval, or narrow the time range.`
+            : `This deployment's per-query maximum returned only ${rowLimit.shown.toLocaleString()} rows, so later buckets are not shown. ${DEPLOYMENT_MAX_HINT}`}
+          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+        >
+          Limited to {rowLimit.shown.toLocaleString()} rows
         </div>
       )}
       <ResponsiveContainer width="100%" height="100%">
