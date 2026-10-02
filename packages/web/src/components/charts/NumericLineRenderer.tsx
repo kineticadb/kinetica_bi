@@ -519,7 +519,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
         <div
           className="config-hint"
           data-testid="numericline-truncated-note"
-          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px" }}
+          style={{ color: "var(--muted)", fontSize: 11, padding: "2px 6px" }}
         >
           Showing top {MAX_SERIES} of {top.total} series
         </div>
@@ -531,7 +531,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
           title={rowLimit.reason === "result-limit"
             ? `The grouped query reached its ${rowLimit.shown.toLocaleString()}-row limit (Max buckets × series), so higher buckets are not shown. Raise "Max buckets", widen the bin width, or narrow the range.`
             : `This deployment's per-query maximum returned only ${rowLimit.shown.toLocaleString()} rows, so higher buckets are not shown. ${DEPLOYMENT_MAX_HINT}`}
-          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          style={{ color: "var(--muted)", fontSize: 11, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
         >
           Limited to {rowLimit.shown.toLocaleString()} rows
         </div>

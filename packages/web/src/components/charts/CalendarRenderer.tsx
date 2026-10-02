@@ -622,7 +622,7 @@ export default function CalendarRenderer({
           title={rowLimit.reason === "result-limit"
             ? `The calendar reached its ${CELL_LIMIT.toLocaleString()}-cell limit, so later periods are not shown. Choose a coarser subdomain or a narrower time range.`
             : `This deployment's per-query maximum returned only ${rowLimit.shown.toLocaleString()} cells, so later periods are not shown. ${DEPLOYMENT_MAX_HINT}`}
-          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px", flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          style={{ color: "var(--muted)", fontSize: 11, padding: "2px 6px", flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
         >
           Limited to {rowLimit.shown.toLocaleString()} cells
         </div>

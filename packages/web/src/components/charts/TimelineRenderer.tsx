@@ -554,7 +554,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
         <div
           className="config-hint"
           data-testid="timeline-truncated-note"
-          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px" }}
+          style={{ color: "var(--muted)", fontSize: 11, padding: "2px 6px" }}
         >
           Showing top {MAX_SERIES} of {top.total} series
         </div>
@@ -566,7 +566,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
           title={rowLimit.reason === "result-limit"
             ? `The grouped query reached its ${rowLimit.shown.toLocaleString()}-row limit (Max intervals × series), so later buckets are not shown. Raise "Max intervals", pick a coarser interval, or narrow the time range.`
             : `This deployment's per-query maximum returned only ${rowLimit.shown.toLocaleString()} rows, so later buckets are not shown. ${DEPLOYMENT_MAX_HINT}`}
-          style={{ color: "var(--text-muted)", fontSize: 11, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          style={{ color: "var(--muted)", fontSize: 11, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
         >
           Limited to {rowLimit.shown.toLocaleString()} rows
         </div>
