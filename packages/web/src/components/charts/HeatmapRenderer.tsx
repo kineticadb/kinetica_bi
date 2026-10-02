@@ -39,12 +39,12 @@ import { formatBucketTick, isCyclicalBucket } from "../../lib/heatmapBucket";
 import {
   buildHeatmapGrid,
   cellKey,
-  HEATMAP_CELL_LIMIT,
   resolveHeatmapColumns,
   sliceDomain,
   type AxisOrder,
   type NormalizeMode,
 } from "../../lib/heatmapGrid";
+import { DEPLOYMENT_MAX_HINT, type TruncationInfo } from "../../lib/rowTruncation";
 
 type Row = Record<string, unknown>;
 
@@ -68,9 +68,12 @@ const isTruthy = (v: unknown, dflt: boolean): boolean =>
 const HeatmapRenderer = ({
   data,
   config,
+  truncation,
 }: {
   data: Row[];
   config: Record<string, unknown>;
+  /** Decided by AggregatedWidgetRenderer (limit+1 probe / has_more_records). */
+  truncation?: TruncationInfo | null;
 }) => {
   const { axis, emptyCell } = useChartAxisColors();
   const [hover, setHover] = useState<{ x: string; y: string; value: number; px: number; py: number } | null>(null);
@@ -282,17 +285,9 @@ const HeatmapRenderer = ({
   const svgW = yGutter + plotW + PAD;
   const svgH = PAD + plotH + xGutter;
 
-  // Threshold is the limit the QUERY actually used, not the cap. The operator can
-  // lower "Result limit" below HEATMAP_CELL_LIMIT, and a grid truncated at 1000
-  // must warn just as loudly as one truncated at 5000 — comparing against the
-  // constant would leave every lowered limit silently holed, which is precisely
-  // what this notice exists to prevent. Clamped to the cap because the panel
-  // never emits a larger LIMIT.
-  const rawLimit = Number(config.limit);
-  const cellLimit =
-    Number.isFinite(rawLimit) && rawLimit > 0
-      ? Math.min(rawLimit, HEATMAP_CELL_LIMIT)
-      : HEATMAP_CELL_LIMIT;
+  // The truncation banner is decided by AggregatedWidgetRenderer from a LIMIT+1
+  // probe and the server's has_more_records (Phase 127 D-13/14/15): this
+  // component alone cannot tell "exactly full" from "more cells exist".
   // Auto-thin the tick labels. Drawing one label per value overlaps them into an
   // unreadable smear as soon as the cell is thinner than the text — a 250-value
   // timestamp axis in a short widget is the case that exposed this. The operator's
@@ -302,8 +297,6 @@ const HeatmapRenderer = ({
     extent > 0 && count > 0 ? Math.max(1, Math.ceil(need / (extent / count))) : 1;
   const xStep = Math.max(xInterval, autoStep(plotW, xValues.length, TICK_FONT + 3));
   const yStep = Math.max(yInterval, autoStep(plotH, yValues.length, TICK_FONT + 3));
-
-  const truncated = data.length >= cellLimit;
 
   /** Estimated tooltip height: 4 lines @ 11px + padding + border, rounded up. */
   const TIP_EST_H = 80;
@@ -319,14 +312,18 @@ const HeatmapRenderer = ({
       data-testid="heatmap-renderer"
       style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", position: "relative" }}
     >
-      {truncated && (
+      {truncation && (
         <div
           className="config-hint"
           data-testid="heatmap-truncated"
           // Compact by design: this sits above the plot, so a wrapped
           // three-line paragraph stole grid height in exactly the dense case
           // that triggers it. Guidance moves to the native title tooltip.
-          title={`The result reached the ${cellLimit.toLocaleString()}-cell Result limit, so lower-value cells are not shown. Raise "Result limit", narrow the query, or pick lower-cardinality axes.`}
+          title={
+            truncation.reason === "deployment-max"
+              ? `This deployment's per-query maximum returned only ${truncation.shown.toLocaleString()} cells, so lower-value cells are not shown. ${DEPLOYMENT_MAX_HINT}`
+              : `The result reached the ${truncation.shown.toLocaleString()}-cell Result limit, so lower-value cells are not shown. Raise "Result limit", narrow the query, or pick lower-cardinality axes.`
+          }
           style={{
             fontSize: 10,
             padding: "1px 2px",
@@ -337,7 +334,7 @@ const HeatmapRenderer = ({
             flexShrink: 0,
           }}
         >
-          Truncated to the top {cellLimit.toLocaleString()} cells
+          Truncated to the top {truncation.shown.toLocaleString()} cells
         </div>
       )}
 

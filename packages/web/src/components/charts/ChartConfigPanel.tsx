@@ -432,9 +432,9 @@ const ChartConfigPanel = ({
       // A heatmap needs one row per (x,y) INTERSECTION, so it validates the
       // operator's choice against its OWN ladder (which defaults to the cap)
       // rather than the shared group ladder. ORDER BY value DESC is retained so
-      // an over-cap grid keeps its hottest cells; HeatmapRenderer reads the same
-      // config.limit to decide when to show its truncation notice, so the two
-      // must stay in agreement.
+      // an over-cap grid keeps its hottest cells; AggregatedWidgetRenderer bumps this
+      // trailing LIMIT by one at fetch time to detect real truncation (Phase 127),
+      // so it must stay the LAST clause.
       const heatmapLimit = HEATMAP_LIMITS.includes(rawLimitM)
         ? rawLimitM
         : HEATMAP_CELL_LIMIT;

@@ -222,14 +222,14 @@ describe("HeatmapRenderer", () => {
     expect(thinned).toHaveLength(2); // indices 0 and 3
   });
 
-  it("warns when the result reaches the shared cell cap, so a holed grid is not silent", () => {
+  it("RLHM-exact-full: an exactly-full grid with no truncation signal shows no banner (D-14)", () => {
     const capped = Array.from({ length: HEATMAP_CELL_LIMIT }, (_, i) => ({
       day_name: `d${i % 70}`,
       hour_of_day: Math.floor(i / 70),
       value: i,
     }));
-    render(<HeatmapRenderer data={capped} config={baseConfig} />);
-    expect(screen.getByTestId("heatmap-truncated")).toBeTruthy();
+    render(<HeatmapRenderer data={capped} config={baseConfig} truncation={null} />);
+    expect(screen.queryByTestId("heatmap-truncated")).toBeNull();
   });
 
   it("does not warn for a result below the cap", () => {
@@ -662,10 +662,7 @@ describe("HeatmapRenderer", () => {
     });
   });
 
-  describe("truncation notice tracks the EFFECTIVE limit (live UAT regression)", () => {
-    // The operator can lower "Result limit" below HEATMAP_CELL_LIMIT, so
-    // comparing row count against the constant left every lowered limit
-    // silently truncated — the exact failure the notice exists to prevent.
+  describe("truncation banner is driven by the truncation prop (Phase 127)", () => {
     const gridOf = (n: number) =>
       Array.from({ length: n }, (_, i) => ({
         day_name: `d${i}`,
@@ -673,55 +670,57 @@ describe("HeatmapRenderer", () => {
         value: i + 1,
       }));
 
-    it("warns when the row count reaches a LOWERED limit, not just the cap", () => {
-      render(<HeatmapRenderer data={gridOf(250)} config={{ ...baseConfig, limit: 250 }} />);
-      const notice = screen.getByTestId("heatmap-truncated");
-      expect(notice.textContent).toContain("250");
-      // Must not quote the cap the operator did not ask for.
-      expect(notice.textContent).not.toContain("5,000");
-    });
-
-    it("does not warn just below a lowered limit", () => {
-      render(<HeatmapRenderer data={gridOf(249)} config={{ ...baseConfig, limit: 250 }} />);
-      expect(screen.queryByTestId("heatmap-truncated")).toBeNull();
-    });
-
-    it("falls back to the cap when no limit is configured", () => {
-      render(<HeatmapRenderer data={gridOf(250)} config={baseConfig} />);
-      expect(screen.queryByTestId("heatmap-truncated")).toBeNull();
-    });
-
-    it("clamps a limit above the cap — the panel never emits a larger LIMIT", () => {
+    it("RLHM-result-limit: names the cells shown and the Result limit", () => {
       render(
         <HeatmapRenderer
-          data={gridOf(HEATMAP_CELL_LIMIT)}
-          config={{ ...baseConfig, limit: 999999 }}
+          data={gridOf(250)}
+          config={{ ...baseConfig, limit: 250 }}
+          truncation={{ shown: 250, reason: "result-limit" }}
         />,
       );
       const notice = screen.getByTestId("heatmap-truncated");
-      expect(notice.textContent).toContain(HEATMAP_CELL_LIMIT.toLocaleString());
-    });
-
-    it("keeps the notice to one compact line, with the guidance in its title", () => {
-      // It sits ABOVE the plot, so a wrapped three-line paragraph stole grid
-      // height in exactly the dense case that triggers it.
-      render(<HeatmapRenderer data={gridOf(250)} config={{ ...baseConfig, limit: 250 }} />);
-      const notice = screen.getByTestId("heatmap-truncated");
-      expect(notice.style.whiteSpace).toBe("nowrap");
-      expect(notice.textContent!.trim().length).toBeLessThan(45);
-      // The detail is still reachable rather than dropped.
+      expect(notice.textContent).toContain("250");
+      expect(notice.textContent).not.toContain("5,000");
       expect(notice.getAttribute("title")).toMatch(/Result limit/);
       expect(notice.getAttribute("title")).toContain("250");
     });
 
-    it("ignores a garbage limit rather than hiding the notice", () => {
+    it("RLHM-deploy-max: states cells actually shown and names KINETICA_MAX_ROWS_PER_QUERY", () => {
+      render(
+        <HeatmapRenderer
+          data={gridOf(1000)}
+          config={{ ...baseConfig, limit: 2500 }}
+          truncation={{ shown: 1000, reason: "deployment-max" }}
+        />,
+      );
+      const notice = screen.getByTestId("heatmap-truncated");
+      expect(notice.textContent).toContain("Truncated to the top 1,000 cells");
+      expect(notice.textContent).not.toContain("2,500");
+      expect(notice.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+      expect(notice.getAttribute("title")).not.toMatch(/Raise "Result limit"/);
+    });
+
+    it("RLHM-compact: one compact line, guidance in the title", () => {
+      render(
+        <HeatmapRenderer
+          data={gridOf(250)}
+          config={{ ...baseConfig, limit: 250 }}
+          truncation={{ shown: 250, reason: "result-limit" }}
+        />,
+      );
+      const notice = screen.getByTestId("heatmap-truncated");
+      expect(notice.style.whiteSpace).toBe("nowrap");
+      expect(notice.textContent!.trim().length).toBeLessThan(45);
+    });
+
+    it("RLHM-no-prop: no banner when the prop is omitted, whatever the data or limit", () => {
       render(
         <HeatmapRenderer
           data={gridOf(HEATMAP_CELL_LIMIT)}
           config={{ ...baseConfig, limit: "not-a-number" }}
         />,
       );
-      expect(screen.getByTestId("heatmap-truncated")).toBeTruthy();
+      expect(screen.queryByTestId("heatmap-truncated")).toBeNull();
     });
   });
 
