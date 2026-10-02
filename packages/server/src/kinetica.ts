@@ -150,6 +150,45 @@ const classifyHttpError = async (response: Response): Promise<never> => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// Phase 127 — row-limit ceiling. Read per call (kinetica.ts has no boot hook).
+// ---------------------------------------------------------------------------
+export const DEFAULT_MAX_ROWS_PER_QUERY = 20_000;
+// Kinetica's max_get_records_size default; no single call may exceed it.
+export const DEFAULT_MAX_RECORDS_PER_CALL = 20_000;
+export type RowLimitConfig = { maxRowsPerQuery: number; maxRecordsPerCall: number };
+
+const warnedRowLimitEnv = new Set<string>();
+
+const readRowLimitEnv = (name: string, def: number): number => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return def;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    const key = `${name}=${raw}`;
+    if (!warnedRowLimitEnv.has(key)) {
+      warnedRowLimitEnv.add(key);
+      console.warn(
+        `[kinetica] ${name} must be a positive integer (got: ${JSON.stringify(raw)}); falling back to default ${def}`
+      );
+    }
+    return def;
+  }
+  return n;
+};
+
+export const getRowLimitConfig = (): RowLimitConfig => ({
+  maxRowsPerQuery: readRowLimitEnv("KINETICA_MAX_ROWS_PER_QUERY", DEFAULT_MAX_ROWS_PER_QUERY),
+  maxRecordsPerCall: readRowLimitEnv("KINETICA_MAX_RECORDS_PER_CALL", DEFAULT_MAX_RECORDS_PER_CALL),
+});
+
+export const __resetRowLimitWarningsForTest = (): void => {
+  warnedRowLimitEnv.clear();
+};
+
+const isPositiveInt = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v > 0;
+
 /**
  * kineticaSql — POST /execute/sql with per-user credentials.
  *
@@ -173,6 +212,15 @@ export const kineticaSql = async (
     auth_mode: req.user!.credentialType,
   };
   const kineticaUrl = process.env.KINETICA_URL!;
+  const { maxRowsPerQuery, maxRecordsPerCall } = getRowLimitConfig();
+  // Clamp inside kineticaSql so every caller (untrusted /api/sql options AND internal pins) is bound (D-04/D-05).
+  const { limit: reqLimit, offset: reqOffset, ...restExtra } = (options.extra ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const effectiveLimit = isPositiveInt(reqLimit) ? Math.min(reqLimit, maxRowsPerQuery) : maxRowsPerQuery;
+  const baseOffset =
+    typeof reqOffset === "number" && Number.isInteger(reqOffset) && reqOffset >= 0 ? reqOffset : 0;
 
   try {
     const response = await fetch(`${kineticaUrl.replace(/\/$/, "")}/execute/sql`, {
@@ -183,13 +231,13 @@ export const kineticaSql = async (
       },
       body: JSON.stringify({
         statement: sql,
-        offset: 0,
-        limit: 1000,
         encoding: "json",
         request_schema_str: "",
         data: [],
         options: {},
-        ...(options.extra ?? {}),
+        ...restExtra,
+        offset: baseOffset,
+        limit: Math.min(effectiveLimit, maxRecordsPerCall),
       }),
     });
 

@@ -19,6 +19,12 @@ process.env.DB_PATH = process.env.DB_PATH || ":memory:";
 // AUTH_SECRET for jwt signing.
 process.env.AUTH_SECRET = process.env.AUTH_SECRET || "test-auth-secret-at-least-16-chars";
 
+// Row-limit envs: env.ts dotenv.config loads packages/server/.env (dev overrides) but does NOT
+// overwrite keys already present in process.env, so an empty string pins the code default.
+process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
+process.env.KINETICA_MAX_RECORDS_PER_CALL = "";
+process.env.CSV_INBROWSER_MAX_ROWS = "";
+
 beforeEach(() => {
   // Clear any global fetch stub between tests.
   vi.restoreAllMocks();
