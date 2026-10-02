@@ -20,6 +20,8 @@ type AuthState = {
   dvFilterScopeDisabled: boolean;
   // Phase 102 (BARGRP-V119-03): deploy-time bar group-by series cap; set from /api/me on bootstrap. Default 12.
   maxBarGroupBySeriesCap: number;
+  // Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV hard ceiling from /me (default 100000).
+  csvInBrowserMaxRows: number;
   bootstrap: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -38,6 +40,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   maxCombinationViewsPerTable: 10,
   dvFilterScopeDisabled: false,
   maxBarGroupBySeriesCap: 12,
+  csvInBrowserMaxRows: 100000,
   bootstrap: async () => {
     // Step 1: pre-auth config read. Failure → silent fallback (LoginPage falls back to password form).
     // CONTEXT.md / PITFALL I-03/I-04: must NOT throw out of bootstrap.
@@ -52,7 +55,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const me = await fetchMe();
       if (me) {
         // /me carries authMode now; latest-write-wins (more authoritative than /config's pre-auth read).
-        set({ status: "authenticated", user: me.user, authMode: me.authMode, ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes, maxCombinationViewsPerTable: me.maxCombinationViewsPerTable, dvFilterScopeDisabled: me.dvFilterScopeDisabled, maxBarGroupBySeriesCap: me.maxBarGroupBySeriesCap, error: null, reason: null });
+        set({ status: "authenticated", user: me.user, authMode: me.authMode, ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes, maxCombinationViewsPerTable: me.maxCombinationViewsPerTable, dvFilterScopeDisabled: me.dvFilterScopeDisabled, maxBarGroupBySeriesCap: me.maxBarGroupBySeriesCap, csvInBrowserMaxRows: me.csvInBrowserMaxRows, error: null, reason: null });
       } else {
         // bootstrap-driven 401: honest "not logged in", NOT mid-session expiry — reason stays null
         set({ status: "unauthenticated", user: null, reason: null });

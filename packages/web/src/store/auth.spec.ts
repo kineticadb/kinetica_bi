@@ -94,6 +94,24 @@ describe("bootstrap() — latest-write-wins authMode", () => {
     expect(useAuthStore.getState().maxCombinationViewsPerTable).toBe(5);
     expect(useAuthStore.getState().status).toBe("authenticated");
   });
+
+  // Phase 127 (EXPRT-V126-01, D-07)
+  it("RLME-store-default: csvInBrowserMaxRows defaults to 100000 pre-bootstrap", () => {
+    expect(useAuthStore.getState().csvInBrowserMaxRows).toBe(100000);
+  });
+
+  it("RLME-store-bootstrap: bootstrap sets csvInBrowserMaxRows from /me", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      ttlKeepaliveLeadMinutes: 1,
+      maxCombinationViewsPerTable: 10,
+      csvInBrowserMaxRows: 250000,
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().csvInBrowserMaxRows).toBe(250000);
+  });
 });
 
 describe("bootstrap() — fetchAuthConfig failure resilience (PITFALL I-03)", () => {

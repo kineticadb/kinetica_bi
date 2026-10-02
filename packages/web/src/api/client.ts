@@ -249,7 +249,8 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 90 (COMBO-V118-03): /api/me returns the per-table combination ceiling (default 10).
 // Phase 94 (FSCOPE-V118-03): /api/me returns the dv filter-scope disable flag (default false = enabled).
 // Phase 102 (BARGRP-V119-03): /api/me returns the deploy-time bar group-by series cap (default 12).
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number };
+// Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV ceiling (default 100000).
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -293,6 +294,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     dvFilterScopeDisabled: json.dvFilterScopeDisabled === true,
     // Phase 102 (BARGRP-V119-03): coalesce to 12 — an older server build that omits the field must never yield undefined.
     maxBarGroupBySeriesCap: typeof json.maxBarGroupBySeriesCap === "number" ? json.maxBarGroupBySeriesCap : 12,
+    // Phase 127 (D-07): coalesce to 100000 — an older server build that omits the field must never yield undefined.
+    csvInBrowserMaxRows: typeof json.csvInBrowserMaxRows === "number" ? json.csvInBrowserMaxRows : 100000,
   };
 };
 
