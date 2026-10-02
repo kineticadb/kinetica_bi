@@ -1442,4 +1442,46 @@ describe("CalendarRenderer — customWhere injection (Phase 98, VIZSQL-V119-02/0
     expect(src).not.toMatch(/andCustomWhere\s*\(/);
     expect(src).not.toMatch(/whereCustomWhere\s*\(/);
   });
+
+  describe("Cell-limit notice (Phase 127 D-16)", () => {
+    const FIRST = CANNED_ROWS[0];
+    const fill = (n: number) => Array.from({ length: n }, () => FIRST);
+
+    it("RLD16-cal-probe: calendar SQL asks CELL_LIMIT + 1 rows", async () => {
+      render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("calendar-renderer")).toBeTruthy());
+      const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(sql).toMatch(/LIMIT 10001$/);
+    });
+
+    it("RLD16-cal-own-limit: limit+1 rows shows 'Limited to 10,000 cells' and drops the extra row", async () => {
+      const extra = { domain_bucket: "2026-02-01 00:00:00", subdomain_bucket: "2026-02-10 00:00:00", value: 7777 };
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeCalendarResponse([...fill(10000), extra]),
+      );
+      const { container } = render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+      const note = await screen.findByTestId("calendar-limited-note");
+      expect(note).toHaveTextContent("Limited to 10,000 cells");
+      expect(note.getAttribute("title")).toContain("10,000-cell limit");
+      expect(container.innerHTML).not.toMatch(/7,?777/);
+    });
+
+    it("RLD16-cal-exact: exactly CELL_LIMIT rows shows no note", async () => {
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeCalendarResponse(fill(10000)));
+      render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("calendar-renderer")).toBeTruthy());
+      expect(screen.queryByTestId("calendar-limited-note")).toBeNull();
+    });
+
+    it("RLD16-cal-deploy-max: server has_more names the deployment max", async () => {
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...makeCalendarResponse(fill(1000)),
+        has_more_records: true,
+      });
+      render(<CalendarRenderer widget={makeWidget()} tables={TABLES} />);
+      const note = await screen.findByTestId("calendar-limited-note");
+      expect(note).toHaveTextContent("Limited to 1,000 cells");
+      expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+    });
+  });
 });
