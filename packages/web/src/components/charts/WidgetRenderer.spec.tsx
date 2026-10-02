@@ -4328,6 +4328,7 @@ vi.mock("./HeatmapRenderer", () => ({
     <div
       data-testid="heatmap-renderer"
       data-row-count={String(((props.data as unknown[]) ?? []).length)}
+      data-truncation={JSON.stringify(props.truncation ?? null)}
       data-group-by={String(
         (((props.config as Record<string, unknown>)?.groupByColumns as string[]) ?? []).join(","),
       )}
@@ -4409,8 +4410,8 @@ describe("WidgetRenderer — heatmap rides the shared aggregated path", () => {
     render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
 
     await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
-    // Exactly `data` + `config`: no widgetId/tableId/drillDownColumn/dashboardId.
-    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-extra-props")).toBe("");
+    // Exactly `data` + `config` + the Phase 127 `truncation` banner prop: no widgetId/tableId/drillDownColumn/dashboardId.
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-extra-props")).toBe("truncation");
   });
 
   it("RLMETA-1: has_more_records/total_number_of_records FIRST in the payload do not zero the row count", async () => {
@@ -4437,5 +4438,108 @@ describe("WidgetRenderer — heatmap rides the shared aggregated path", () => {
 
     await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
     expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("3");
+  });
+
+  // ── Phase 127 plan 06: real-signal truncation ─────────────────────────────
+  const gridRes = (n: number, extra: Record<string, unknown> = {}) => ({
+    column_headers: ["day_name", "hour_of_day", "value"],
+    column_1: Array.from({ length: n }, (_, i) => `d${i}`),
+    column_2: Array.from({ length: n }, () => 0),
+    column_3: Array.from({ length: n }, (_, i) => i),
+    ...extra,
+  });
+  const lastSql = () => {
+    const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    return calls[calls.length - 1][0] as string;
+  };
+
+  it("RLHM-wire-bump: heatmap SQL LIMIT 5000 is sent as LIMIT 5001", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(heatmapResponse);
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(lastSql()).toMatch(/LIMIT 5001$/);
+  });
+
+  it("RLHM-wire-full-5000: exactly 5,000 rows draw whole with no banner", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(gridRes(5000));
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("5000"));
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-truncation")).toBe("null");
+  });
+
+  it("RLHM-wire-over: 5,001 rows -> 5,000 shown + result-limit truncation", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(gridRes(5001));
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("5000"));
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-truncation")).toBe(
+      '{"shown":5000,"reason":"result-limit"}',
+    );
+  });
+
+  it("RLHM-wire-server-cut: LIMIT 2500 cut to 1,000 by the server -> deployment-max", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(
+      gridRes(1000, { has_more_records: true }),
+    );
+    const w = makeHeatmapWidget({
+      config: { ...makeHeatmapWidget().config, sql: HEATMAP_SQL.replace("LIMIT 5000", "LIMIT 2500") },
+    });
+    render(wrap(<WidgetRenderer widget={w} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("1000"));
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-truncation")).toBe(
+      '{"shown":1000,"reason":"deployment-max"}',
+    );
+  });
+
+  it("RLHM-wire-retry: the view-not-found retry path also sends the bumped SQL", async () => {
+    const comboHash = 'table:42:day_name|eq|"A"';
+    mockVizToHash["w:77"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_combo_c_stale", expiresAt: Date.now() + 60000, materializing: false };
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: vi.fn(),
+    });
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockReset();
+    spy.mockImplementation((sql: string) =>
+      sql.includes("_kbi_combo_c_stale")
+        ? Promise.reject(new Error("SqlEngine: Object '_kbi_combo_c_stale' not found (S/SDc:1513)"))
+        : Promise.resolve(heatmapResponse),
+    );
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const [first, second] = spy.mock.calls.map((c) => c[0] as string);
+    expect(first).toMatch(/_kbi_combo_c_stale.*LIMIT 5001$/);
+    expect(second).not.toContain("_kbi_combo_c_stale");
+    expect(second).toMatch(/LIMIT 5001$/);
+  });
+
+  it("RLCHART-limited: a server-cut bar chart shows 'Limited to N rows'", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      column_headers: ["g", "value"], column_1: ["A", "B"], column_2: [1, 2], has_more_records: true,
+    });
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+    const note = await screen.findByTestId("chart-limited-note");
+    expect(note.textContent).toBe("Limited to 2 rows");
+    expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+  });
+
+  it("RLCHART-not-limited: no note when the server did not cut the result", async () => {
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockResolvedValue({ column_headers: ["g", "value"], column_1: ["A"], column_2: [1], has_more_records: false });
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId("chart-limited-note")).toBeNull();
+  });
+
+  it("RLCHART-bar-sql-untouched: a non-heatmap widget's SQL is sent unmodified", async () => {
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockResolvedValue({ column_headers: ["g", "value"], column_1: ["A"], column_2: [1] });
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(lastSql()).toMatch(/LIMIT 100$/);
   });
 });

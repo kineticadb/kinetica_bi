@@ -90,7 +90,13 @@ import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
-import { readHasMore, DEPLOYMENT_MAX_HINT } from "../../lib/rowTruncation";
+import {
+  readHasMore,
+  DEPLOYMENT_MAX_HINT,
+  bumpTrailingLimit,
+  detectTruncation,
+  type TruncationInfo,
+} from "../../lib/rowTruncation";
 
 // "FF66C2A5" → "#66c2a5" for Recharts fill prop (recharts SVG needs #hex; sanctioned exception —
 // same pattern as TimelineRenderer.tsx toCssColor).
@@ -403,6 +409,10 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
 
 const AggregatedWidgetRenderer = ({ widget }: Props) => {
   const [data, setData] = useState<Row[]>([]);
+  // Phase 127: heatmap banner (own-LIMIT+1 probe / has_more_records) and the
+  // generic "Limited to N rows" notice for every other aggregated chart.
+  const [heatmapTruncation, setHeatmapTruncation] = useState<TruncationInfo | null>(null);
+  const [chartLimitedRows, setChartLimitedRows] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -563,6 +573,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   useEffect(() => {
     if (!sql?.trim()) {
       setData([]);
+      setHeatmapTruncation(null);
+      setChartLimitedRows(null);
       return;
     }
 
@@ -633,6 +645,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       const dvSource = dvComboEntry?.viewName || dvViewName;
       if (!dvSource) {
         setData([]);
+        setHeatmapTruncation(null);
+        setChartLimitedRows(null);
         setLoading(false);
         setError("Internal error: materialized dynamic view has no viewName");
         return;
@@ -656,8 +670,25 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
 
     const runChartQuery = async (sqlToRun: string): Promise<void> => {
       try {
-        const res = await runSql<Record<string, unknown>>(sqlToRun, undefined, controller.signal);
-        setData(parseKineticaResponse(res));
+        // Phase 127: a heatmap asks for its own LIMIT n+1 so "exactly n cells" is
+        // distinguishable from "more than n exist". Bumped HERE so the view-not-found
+        // retry paths (which re-enter runChartQuery) get it too.
+        const bump = widget.type === "heatmap" ? bumpTrailingLimit(sqlToRun) : null;
+        const res = await runSql<Record<string, unknown>>(bump ? bump.sql : sqlToRun, undefined, controller.signal);
+        const rows = parseKineticaResponse(res);
+        const serverHasMore = readHasMore(res);
+        if (widget.type === "heatmap") {
+          setHeatmapTruncation(
+            detectTruncation({ fetched: rows.length, ownLimit: bump ? bump.limit : null, serverHasMore }),
+          );
+          // ORDER BY value keeps the top n; the dropped row is the n+1th probe row.
+          setData(bump && rows.length > bump.limit ? rows.slice(0, bump.limit) : rows);
+          setChartLimitedRows(null);
+        } else {
+          setData(rows);
+          setChartLimitedRows(serverHasMore === true ? rows.length : null);
+          setHeatmapTruncation(null);
+        }
       } catch (err) {
         // AbortError is expected control flow on filter change — never route to setError
         // (would flash red error UI on every filter mutation).
@@ -835,7 +866,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     drillDownColumnType,
   };
 
-  switch (widget.type) {
+  const chart = (() => { switch (widget.type) {
     case "bar":
       return <BarRenderer data={data} config={cfg} {...drillProps} />;
     case "line":
@@ -853,7 +884,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       // AS value), so `data` already carries one row per (x,y) intersection and no
       // drill props are threaded — supportsDrillDown is false because a single-column
       // drill cannot express a 2-dimension cell.
-      return <HeatmapRenderer data={data} config={cfg} />;
+      return <HeatmapRenderer data={data} config={cfg} truncation={heatmapTruncation} />;
     case "map":
       // Phase 12: MapChartRenderer reads layers from useDashboardLayersStore. Each layer carries
       // its own table_id; the renderer resolves table_id → schema.name for the WMS LAYERS param.
@@ -866,7 +897,30 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
           <span>Renderer not available for "{widget.type}"</span>
         </div>
       );
-  }
+  } })();
+
+  if (chartLimitedRows === null || widget.type === "heatmap") return chart;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
+      <div
+        className="config-hint"
+        data-testid="chart-limited-note"
+        title={`This query returned more rows than this deployment's per-query maximum, so only the first ${chartLimitedRows.toLocaleString()} are shown. ${DEPLOYMENT_MAX_HINT}`}
+        style={{
+          fontSize: 10,
+          padding: "1px 2px",
+          margin: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          flexShrink: 0,
+        }}
+      >
+        Limited to {chartLimitedRows.toLocaleString()} rows
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>{chart}</div>
+    </div>
+  );
 };
 
 /* ------------------------------------------------------------------ */
