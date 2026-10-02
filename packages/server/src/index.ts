@@ -208,6 +208,12 @@ export const createApp = async (): Promise<express.Express> => {
   // Default 12 matches the web MAX_SERIES timeline cap + auth-store default.
   const MAX_BAR_GROUP_BY_SERIES = readPositiveIntEnv("MAX_BAR_GROUP_BY_SERIES", 12);
 
+  // ---- Phase 127 (EXPRT-V126-01, D-07): admin hard ceiling on the in-browser CSV download. Read ONCE at boot, fallback+warn. Default 100,000 = the per-widget csvDownloadRowCap default and the Phase 131 hand-off point to the background export.
+  const CSV_INBROWSER_MAX_ROWS = readPositiveIntEnv("CSV_INBROWSER_MAX_ROWS", 100000);
+
+  // Phase 127 caller audit: INFORMATION_SCHEMA lists feed un-paginated dropdowns; pin an explicit limit so they never inherit an admin-raised KINETICA_MAX_ROWS_PER_QUERY (and are still clamped by it if lowered).
+  const DISCOVERY_ROW_LIMIT = 20_000;
+
   // ---- Phase 94 (FSCOPE-V118-03): deploy-time disable switch for the dv filter-scope UI ----
   // Boolean — absent or anything but "true" → enabled (default, UI shown). "true" → UI hidden for dv-bound vizs.
   // Unlike the TTL/ceiling ints, this is boolean — simple string compare, NOT readPositiveIntEnv.
@@ -446,7 +452,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
@@ -2809,8 +2815,9 @@ export const createApp = async (): Promise<express.Express> => {
     const result = (await kineticaSqlHelper(
       req as AuthedRequest,
       "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('SYSTEM', 'information_schema', 'ki_catalog', 'pg_catalog') ORDER BY SCHEMA_NAME ASC",
-      { route: "GET /api/kinetica/schemas", op: "DISCOVERY" }
+      { route: "GET /api/kinetica/schemas", op: "DISCOVERY", extra: { limit: DISCOVERY_ROW_LIMIT } }
     )) as { column_1?: string[] };
+    if ((result as { has_more_records?: unknown })?.has_more_records === true) console.warn(`[discovery] GET /api/kinetica/schemas result truncated at ${DISCOVERY_ROW_LIMIT} rows`);
     const schemas: string[] = result?.column_1 || [];
     return res.json({ data: schemas });
   }));
@@ -2820,8 +2827,9 @@ export const createApp = async (): Promise<express.Express> => {
     const result = (await kineticaSqlHelper(
       req as AuthedRequest,
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}' ORDER BY TABLE_NAME ASC`,
-      { route: "GET /api/kinetica/schemas/:schema/tables", op: "DISCOVERY" }
+      { route: "GET /api/kinetica/schemas/:schema/tables", op: "DISCOVERY", extra: { limit: DISCOVERY_ROW_LIMIT } }
     )) as { column_1?: string[] };
+    if ((result as { has_more_records?: unknown })?.has_more_records === true) console.warn(`[discovery] GET /api/kinetica/schemas/:schema/tables result truncated at ${DISCOVERY_ROW_LIMIT} rows`);
     const tables: string[] = result?.column_1 || [];
     return res.json({ data: tables });
   }));
@@ -2832,8 +2840,9 @@ export const createApp = async (): Promise<express.Express> => {
     const result = (await kineticaSqlHelper(
       req as AuthedRequest,
       `SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}' AND TABLE_NAME = '${table.replace(/'/g, "''")}' ORDER BY ORDINAL_POSITION ASC`,
-      { route: "GET /api/kinetica/schemas/:schema/tables/:table/columns", op: "DISCOVERY" }
+      { route: "GET /api/kinetica/schemas/:schema/tables/:table/columns", op: "DISCOVERY", extra: { limit: DISCOVERY_ROW_LIMIT } }
     )) as { column_1?: string[]; column_2?: string[] };
+    if ((result as { has_more_records?: unknown })?.has_more_records === true) console.warn(`[discovery] GET /api/kinetica/schemas/:schema/tables/:table/columns result truncated at ${DISCOVERY_ROW_LIMIT} rows`);
     const names: string[] = result?.column_1 || [];
     const types: string[] = result?.column_2 || [];
     const columns: Record<string, string> = {};
