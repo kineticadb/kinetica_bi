@@ -48,6 +48,12 @@ export type BuildNumericLineSqlArgs = {
    * The custom metric id itself lives on metric.metricId.
    */
   tableId?: number;
+  /**
+   * Phase 127 D-14/D-16: overflowProbe asks one extra row so the renderer can tell
+   * 'exactly full' from 'more exist'; has_more_records cannot, because it only
+   * reflects the server envelope. Grouped path only; ungrouped output is untouched.
+   */
+  overflowProbe?: boolean;
 };
 
 /** COUNT_DISTINCT is not a Kinetica function — emit COUNT(DISTINCT col). */
@@ -90,8 +96,15 @@ function formatSeriesInValue(v: string | number): string {
  * the right edge of the chart. The grouped LIMIT scales that bucket bound by the series
  * cap (or the seriesIn count) so no series is clipped mid-range.
  */
+/** Row limit of the grouped query ((maxBuckets + 1) x series). Shared with the renderer's slice. */
+export function groupedNumericLineLimit(args: { maxBuckets: number; seriesIn?: (string | number)[] }): number {
+  const bucketBound = args.maxBuckets + 1;
+  const hasSeriesIn = Array.isArray(args.seriesIn) && args.seriesIn.length > 0;
+  return hasSeriesIn ? bucketBound * args.seriesIn!.length : bucketBound * MAX_SERIES;
+}
+
 export function buildNumericLineSql(args: BuildNumericLineSqlArgs): string {
-  const { schema, table, xField, binWidth, metric, maxBuckets, groupByColumn, seriesIn, customWhere, tableId } = args;
+  const { schema, table, xField, binWidth, metric, maxBuckets, groupByColumn, seriesIn, customWhere, tableId, overflowProbe } = args;
   const fromTarget = schema === "" ? table : `${schema}.${table}`;
   const bucket = `FLOOR(${xField} / ${binWidth}) * ${binWidth}`;
   const realAgg = aggExpr(metric);
@@ -114,18 +127,17 @@ export function buildNumericLineSql(args: BuildNumericLineSqlArgs): string {
   }
 
   // Grouped path (Phase 72): one series per distinct groupByColumn value.
-  const bucketBound = maxBuckets + 1;
   const hasSeriesIn = Array.isArray(seriesIn) && seriesIn.length > 0;
   const inClause = hasSeriesIn
     ? ` AND ${groupByColumn} IN (${seriesIn!.map(formatSeriesInValue).join(", ")})`
     : "";
-  const limit = hasSeriesIn ? bucketBound * seriesIn!.length : bucketBound * MAX_SERIES;
+  const limit = groupedNumericLineLimit({ maxBuckets, seriesIn });
   return (
     `SELECT ${bucket} AS bucket, ${groupByColumn} AS series, ${agg} AS value ` +
     `FROM ${fromTarget} ` +
     `WHERE ${xField} IS NOT NULL AND ${groupByColumn} IS NOT NULL${inClause}${cw} ` +
     `GROUP BY bucket, series ` +
     `ORDER BY bucket ASC ` +
-    `LIMIT ${limit}`
+    `LIMIT ${overflowProbe ? limit + 1 : limit}`
   );
 }

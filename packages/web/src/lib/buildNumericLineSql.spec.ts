@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNumericLineSql } from "./buildNumericLineSql";
+import { buildNumericLineSql, groupedNumericLineLimit } from "./buildNumericLineSql";
 import type { NumericMetric } from "./numericBin";
 import { MAX_SERIES } from "./groupedSeries";
 
@@ -241,5 +241,25 @@ describe("buildNumericLineSql — customWhere (Phase 98-01)", () => {
       customWhere: "status = 'active'",
     });
     expect(sql).toContain("AND vendor IS NOT NULL AND (status = 'active') GROUP BY bucket, series");
+  });
+});
+
+describe("buildNumericLineSql — overflowProbe (Phase 127 D-16)", () => {
+  const base = { schema: "demo", table: "t", xField: "x", binWidth: 5, metric: metric(), maxBuckets: 10 };
+
+  it("RLD16-nl-limit: groupedNumericLineLimit = (maxBuckets+1) x series", () => {
+    expect(groupedNumericLineLimit({ maxBuckets: 10, seriesIn: ["a", "b"] })).toBe(22);
+    expect(groupedNumericLineLimit({ maxBuckets: 10 })).toBe(11 * MAX_SERIES);
+  });
+
+  it("RLD16-nl-probe: grouped overflowProbe adds one row; absent flag unchanged", () => {
+    const g = { ...base, groupByColumn: "v", seriesIn: ["a", "b"] };
+    expect(buildNumericLineSql({ ...g, overflowProbe: true })).toMatch(/LIMIT 23$/);
+    expect(buildNumericLineSql(g)).toMatch(/LIMIT 22$/);
+  });
+
+  it("RLD16-nl-ungrouped-locked: ungrouped output ignores overflowProbe", () => {
+    expect(buildNumericLineSql({ ...base, overflowProbe: true })).toBe(buildNumericLineSql(base));
+    expect(buildNumericLineSql(base)).toMatch(/LIMIT 11$/);
   });
 });
