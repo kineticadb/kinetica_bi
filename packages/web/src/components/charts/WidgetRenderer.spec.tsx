@@ -2736,6 +2736,31 @@ describe("RecordsTableRenderer CSV download", () => {
     expect(note.getAttribute("title")).toContain("page size");
   });
 
+  it("RLREC-page-clamp: page size clamps to the deploy max so Next does not skip rows", async () => {
+    useAuthStore.setState({ maxRowsPerQuery: 3 });
+    try {
+      const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+      m.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes("COUNT(*)")
+            ? { column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }
+            : buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2], ["N", 3]]),
+        ),
+      );
+      render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
+      await waitFor(() => screen.getByText(/Showing 1–3 of 10/));
+      expect(screen.getByText(/Page 1 of 4/)).toBeTruthy();
+      expect(screen.getByTestId("records-limited-note").textContent).toBe("Limited to 3 rows per page");
+      await act(async () => { fireEvent.click(screen.getByText("Next")); });
+      await waitFor(() => screen.getByText(/Showing 4–6 of 10/));
+      const pageSqls = m.mock.calls.map((c) => c[0] as string).filter((q) => !q.includes("COUNT(*)"));
+      expect(pageSqls.some((q) => q.includes("LIMIT 3 OFFSET 3"))).toBe(true);
+      expect(pageSqls.some((q) => q.includes("OFFSET 25"))).toBe(false);
+    } finally {
+      useAuthStore.setState({ maxRowsPerQuery: 20000 });
+    }
+  });
+
   it("RLREC-not-limited: has_more false shows no note", async () => {
     await rlrecRender({ ...buildCsvResponse(["region", "amount"], [["E", 1]]), has_more_records: false });
     expect(screen.queryByTestId("records-limited-note")).toBeNull();

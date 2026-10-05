@@ -250,7 +250,7 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 94 (FSCOPE-V118-03): /api/me returns the dv filter-scope disable flag (default false = enabled).
 // Phase 102 (BARGRP-V119-03): /api/me returns the deploy-time bar group-by series cap (default 12).
 // Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV ceiling (default 100000).
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number };
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number; maxRowsPerQuery: number };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -296,6 +296,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     maxBarGroupBySeriesCap: typeof json.maxBarGroupBySeriesCap === "number" ? json.maxBarGroupBySeriesCap : 12,
     // Phase 127 (D-07): coalesce to 100000 — an older server build that omits the field must never yield undefined.
     csvInBrowserMaxRows: typeof json.csvInBrowserMaxRows === "number" ? json.csvInBrowserMaxRows : 100000,
+    // Phase 127 (D-12): coalesce to 20000 (server KINETICA_MAX_ROWS_PER_QUERY default) for an older server build.
+    maxRowsPerQuery: typeof json.maxRowsPerQuery === "number" ? json.maxRowsPerQuery : 20000,
   };
 };
 

@@ -34,3 +34,18 @@ describe("GET /api/auth/me csvInBrowserMaxRows", () => {
     expect((await getMe()).csvInBrowserMaxRows).toBe(100000);
   });
 });
+
+describe("GET /api/auth/me maxRowsPerQuery", () => {
+  const prevMax = process.env.KINETICA_MAX_ROWS_PER_QUERY;
+  afterEach(() => {
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = prevMax ?? "";
+  });
+  it("RLME-maxrows-default: empty env -> 20000", async () => {
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
+    expect((await getMe()).maxRowsPerQuery).toBe(20000);
+  });
+  it("RLME-maxrows-env: 3 -> 3 (records table clamps its page size to it)", async () => {
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = "3";
+    expect((await getMe()).maxRowsPerQuery).toBe(3);
+  });
+});

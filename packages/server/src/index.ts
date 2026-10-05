@@ -14,7 +14,7 @@ import {
   verifyKineticaCredentials,
   type AuthedRequest,
 } from "./auth";
-import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable } from "./kinetica";
+import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
 // v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
 // diff contract for the on-demand schema-check route.
@@ -210,6 +210,8 @@ export const createApp = async (): Promise<express.Express> => {
 
   // ---- Phase 127 (EXPRT-V126-01, D-07): admin hard ceiling on the in-browser CSV download. Read ONCE at boot, fallback+warn. Default 100,000 = the per-widget csvDownloadRowCap default and the Phase 131 hand-off point to the background export.
   const CSV_INBROWSER_MAX_ROWS = readPositiveIntEnv("CSV_INBROWSER_MAX_ROWS", 100000);
+  // Phase 127 (D-12): per-query max on /me so the records table clamps its page size and paging never skips rows.
+  const MAX_ROWS_PER_QUERY = getRowLimitConfig().maxRowsPerQuery;
 
   // Phase 127 caller audit: INFORMATION_SCHEMA lists feed un-paginated dropdowns; pin an explicit limit so they never inherit an admin-raised KINETICA_MAX_ROWS_PER_QUERY (and are still clamped by it if lowered).
   const DISCOVERY_ROW_LIMIT = 20_000;
@@ -452,7 +454,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
