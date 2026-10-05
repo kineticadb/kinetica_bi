@@ -2723,7 +2723,8 @@ describe("RecordsTableRenderer CSV download", () => {
   const rlrecRender = async (page: unknown) => {
     (clientModule.runSql as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(page)
-      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [50] });
+      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [50] })
+      .mockResolvedValueOnce(page); // re-fetch at the learned page cap (RLREC-limited)
     render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
     await waitFor(() => screen.getByText(/Showing/));
   };
@@ -2731,7 +2732,7 @@ describe("RecordsTableRenderer CSV download", () => {
   it("RLREC-limited: page cut short by the server shows a Limited-to note", async () => {
     await rlrecRender({ ...buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2]]), has_more_records: true });
     const note = await screen.findByTestId("records-limited-note");
-    expect(note.textContent).toBe("Limited to 2 rows");
+    expect(note.textContent).toBe("Limited to 2 rows per page");
     expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
     expect(note.getAttribute("title")).toContain("page size");
   });
@@ -2759,6 +2760,27 @@ describe("RecordsTableRenderer CSV download", () => {
     } finally {
       useAuthStore.setState({ maxRowsPerQuery: 20000 });
     }
+  });
+
+  it("RLREC-learned-cap: stale /me max still pages contiguously once the server cuts a page", async () => {
+    // Store still holds the default (e.g. tab open across an admin restart that lowered the max).
+    useAuthStore.setState({ maxRowsPerQuery: 20000 });
+    const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+    m.mockImplementation((sql: string) =>
+      Promise.resolve(
+        sql.includes("COUNT(*)")
+          ? { column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }
+          : { ...buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2], ["N", 3]]), has_more_records: true },
+      ),
+    );
+    render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
+    await waitFor(() => screen.getByText(/Page 1 of 4/));
+    expect(screen.getByTestId("records-limited-note").textContent).toBe("Limited to 3 rows per page");
+    await act(async () => { fireEvent.click(screen.getByText("Next")); });
+    await waitFor(() => screen.getByText(/Showing 4–6 of 10/));
+    const pageSqls = m.mock.calls.map((c) => c[0] as string).filter((q) => !q.includes("COUNT(*)"));
+    expect(pageSqls.some((q) => q.includes("LIMIT 3 OFFSET 3"))).toBe(true);
+    expect(pageSqls.some((q) => q.includes("OFFSET 25"))).toBe(false);
   });
 
   it("RLREC-not-limited: has_more false shows no note", async () => {

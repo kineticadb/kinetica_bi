@@ -1919,7 +1919,11 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   // Phase 127 (D-12): a page larger than the deploy per-query max would be cut by the server while
   // OFFSET still advanced by the configured size, skipping rows. Clamp so paging stays contiguous.
   const maxRowsPerQuery = useAuthStore((s) => s.maxRowsPerQuery);
-  const pageSize = Math.min(configuredPageSize, maxRowsPerQuery);
+  // /me is read once at bootstrap, so a tab open across an admin restart holds a stale max. A page
+  // the server cut short (has_more_records + fewer rows than asked) teaches the real cap.
+  const [learnedPageCap, setLearnedPageCap] = useState<number | null>(null);
+  useEffect(() => { setLearnedPageCap(null); }, [configuredPageSize, maxRowsPerQuery]);
+  const pageSize = Math.min(configuredPageSize, maxRowsPerQuery, learnedPageCap ?? Infinity);
   const pageClamped = pageSize < configuredPageSize;
   const compact = cfg.compact !== false; // default compact to match the compact theme
   const striped = cfg.striped !== false;
@@ -2008,7 +2012,6 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   );
   const [exporting, setExporting] = useState(false);
   const [exportedRows, setExportedRows] = useState(0);
-  const [pageLimitedTo, setPageLimitedTo] = useState<number | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
 
   // FK4: abort in-flight export on unmount
@@ -2194,12 +2197,12 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       .then((res) => {
         const rows = parseKineticaResponse(res);
         setData(rows);
-        setPageLimitedTo(readHasMore(res) === true ? rows.length : null);
+        if (readHasMore(res) === true && rows.length > 0 && rows.length < pageSize) setLearnedPageCap(rows.length);
         // Lock in column order from effectiveColumns (preferred) or response keys
         const firstRowKeys = Object.keys(rows[0] ?? {});
         setColumnOrder(effectiveColumns.length > 0 ? effectiveColumns : firstRowKeys);
       })
-      .catch((err) => { setError(err.message); setPageLimitedTo(null); })
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
     // Phase 96-01: recordsComboKey + recordsCombinationVersion replace legacy filterViewStore deps.
     // dynamicViewId + recordsDvStatus + recordsDvViewName still drive dv re-fires.
@@ -2453,7 +2456,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
             {exporting ? `Exporting… ${exportedRows.toLocaleString()} rows` : "Download"}
           </button>
         )}
-        {pageClamped ? (
+        {pageClamped && (
           <span
             className="config-hint"
             data-testid="records-limited-note"
@@ -2461,15 +2464,6 @@ const RecordsTableRenderer = ({ widget }: Props) => {
             style={{ margin: 0, whiteSpace: "nowrap" }}
           >
             Limited to {pageSize.toLocaleString()} rows per page
-          </span>
-        ) : pageLimitedTo !== null && (
-          <span
-            className="config-hint"
-            data-testid="records-limited-note"
-            title={`This page asked for ${pageSize.toLocaleString()} rows but this deployment's per-query maximum returned only ${pageLimitedTo.toLocaleString()}, so some rows on this page are not shown. Lower the page size, or ${DEPLOYMENT_MAX_HINT.charAt(0).toLowerCase()}${DEPLOYMENT_MAX_HINT.slice(1)}`}
-            style={{ margin: 0, whiteSpace: "nowrap" }}
-          >
-            Limited to {pageLimitedTo.toLocaleString()} rows
           </span>
         )}
         <span className="widget-records-count">
