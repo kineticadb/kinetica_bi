@@ -28,6 +28,13 @@ Click-through data exploration — users drill into chart elements and the entir
 - Temp files are private to the requesting user and deleted after a TTL
 - Line chart: the multi-column Group By builder, one line per series value; every category label shown; legend named after the metric
 
+**Progress:** Phase 127 complete (2026-10-05) — EXPRT-V126-01/02/03 validated. `kineticaSql`'s
+hardcoded 1,000 is replaced by `KINETICA_MAX_ROWS_PER_QUERY` (default 20,000) with batched calls
+(`KINETICA_MAX_RECORDS_PER_CALL`); the in-browser CSV pages on `has_more_records` up to its cap,
+clamped by `CSV_INBROWSER_MAX_ROWS`; heatmap/Calendar/grouped Timeline/Numeric Line/records/bar
+show truncation notices only when more rows really exist; caller audit in `127-CALLER-AUDIT.md`.
+Open for Phase 128: row-order stability across split calls without a unique ORDER BY.
+
 **Known hazards going in:**
 - **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.
 - **OFFSET paging needs a stable order.** Without a unique sort key, pages can repeat or skip rows when the underlying data changes.
