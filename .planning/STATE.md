@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: planning
-stopped_at: "Phase 127 context gathered 2026-10-02 — resume file .planning/phases/127-row-limit-ceiling-caller-audit-heatmap-truncation-fix/127-CONTEXT.md. Next: /gsd:plan-phase 127."
-last_updated: "2026-10-01T00:00:00.000Z"
+status: ready_for_next_phase
+stopped_at: "Completed 127-07-PLAN.md — Phase 127 complete (2026-10-05). Next: Phase 128 (discuss/plan)."
+last_updated: "2026-10-05T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.26 Large Exports & Fixes — Phase 127 (Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix) not started
+**Current focus:** v1.26 Large Exports & Fixes — Phase 127 complete; Phase 128 (Export Job Core) next
 
 ## Current Position
 
-**v1.26 Large Exports & Fixes — Phase 127 not started.** Roadmap created 2026-10-01: 6 phases
+**v1.26 Large Exports & Fixes — Phase 127 COMPLETE (2026-10-05); next Phase 128.** Roadmap created 2026-10-01: 6 phases
 (127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
 and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
 repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).
@@ -40,7 +40,16 @@ spike against the real Kinetica instance to choose between `options.paging_table
 snapshot view + OFFSET + composite `ORDER BY` for the export job's pagination — both research
 sources proposed different mechanisms and neither was verified live.
 
-**Next:** `/gsd:discuss-phase 127` or `/gsd:plan-phase 127`.
+**Phase 127 outcome (2026-10-05):** 7/7 plans, EXPRT-V126-01/02/03 Complete. Operator live check
+APPROVED (CSV >1,000 rows, CSV cap + CSV_INBROWSER_MAX_ROWS, heatmap banner, notices light+dark).
+Decision: `/api/auth/me` now also carries `maxRowsPerQuery` (Phase 128+ can reuse it); records table also
+learns the page cap from a server-cut page (stale-tab safe).
+**Carried into Phase 128's live spike (OPEN, UNVERIFIED):** row-order stability across split
+`kineticaSql` calls without a unique ORDER BY (live step skipped by operator). Also not verified live:
+D-11 (`KINETICA_MAX_RECORDS_PER_CALL` above server `max_get_records_size`; unit tests only) and grouped
+Numeric Line notice (shares the Timeline code path, which passed).
+
+**Next:** Phase 128 — `/gsd:discuss-phase 128` or `/gsd:plan-phase 128`.
 
 **Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
 interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;

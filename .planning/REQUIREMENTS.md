@@ -9,9 +9,9 @@
 
 ### Row limit & CSV safety
 
-- [ ] **EXPRT-V126-01**: A records-table CSV download contains every matching row up to the widget's CSV row cap (default 100,000), not 1,000. Root cause: `kineticaSql` hardcodes `limit: 1000` (`packages/server/src/kinetica.ts:186`) and the client loop reads the short page as exhaustion.
-- [ ] **EXPRT-V126-02**: Every app query that asks for more than 1,000 rows gets them — e.g. a heatmap with Result limit 5,000 draws the full grid — audited caller by caller; no caller that relied on the 1,000 cap as an implicit safety net starts returning unbounded results.
-- [ ] **EXPRT-V126-03**: When a heatmap's result really is truncated, the truncation warning appears. Today it compares returned rows to the REQUESTED limit, so any Result limit above 1,000 is silently short with no warning (`HeatmapRenderer.tsx:285-306`).
+- [x] **EXPRT-V126-01**: A records-table CSV download contains every matching row up to the widget's CSV row cap (default 100,000), not 1,000. Root cause: `kineticaSql` hardcodes `limit: 1000` (`packages/server/src/kinetica.ts:186`) and the client loop reads the short page as exhaustion.
+- [x] **EXPRT-V126-02**: Every app query that asks for more than 1,000 rows gets them — e.g. a heatmap with Result limit 5,000 draws the full grid — audited caller by caller; no caller that relied on the 1,000 cap as an implicit safety net starts returning unbounded results.
+- [x] **EXPRT-V126-03**: When a heatmap's result really is truncated, the truncation warning appears. Today it compares returned rows to the REQUESTED limit, so any Result limit above 1,000 is silently short with no warning (`HeatmapRenderer.tsx:285-306`).
 - [ ] **EXPRT-V126-04**: A cell beginning with `=`, `+`, `-` or `@` cannot execute as a formula when the CSV is opened in a spreadsheet, on BOTH download paths. Pre-existing gap: `escapeCsvField` (`packages/web/src/lib/csvExport.ts`) quotes only on `"`, `,`, CR, LF.
 
 ### Background export
@@ -63,9 +63,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| EXPRT-V126-01 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Pending |
-| EXPRT-V126-02 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Pending |
-| EXPRT-V126-03 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Pending |
+| EXPRT-V126-01 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
+| EXPRT-V126-02 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
+| EXPRT-V126-03 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-04 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Pending |
 | EXPRT-V126-05 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Pending |
 | EXPRT-V126-06 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |

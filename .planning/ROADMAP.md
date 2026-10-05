@@ -52,7 +52,7 @@
 
 ## Phases
 
-- [ ] **Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix** - Every app query that asks for more than 1,000 rows gets them, with no caller silently relying on the old cap, and a truly truncated heatmap always shows its warning
+- [x] **Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix** - Every app query that asks for more than 1,000 rows gets them, with no caller silently relying on the old cap, and a truly truncated heatmap always shows its warning
 - [ ] **Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel** - A verified pagination mechanism, a batch-loop runner that snapshots a widget's exact view, a working cancel, session-bound credentials, and formula-injection-safe CSV writing
 - [ ] **Phase 129: Export Routes — Resumable Download, History & Privacy** - A finished export downloads resumably over HTTP Range, only the owning user can reach any route for it, and no new RBAC permission is introduced
 - [ ] **Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps** - Exports and files expire on schedule, a restart leaves nothing stuck or orphaned, and an admin can cap rows/size/concurrency via env config
@@ -71,7 +71,14 @@
   2. A written, reviewable classification of every `runSql`/`kineticaSqlHelper`/`kineticaSql` call site exists (has-own-SQL-LIMIT / already-pins-`extra.limit` / needed-explicit-limit), and every site classified "needed" is fixed in this phase — no caller starts silently returning unbounded results it never asked for.
   3. A heatmap configured with Result Limit 5,000 that genuinely has 5,000 matching cells draws the full grid, not a grid silently capped at 1,000.
   4. A heatmap whose real result IS truncated (the real server-side cap, not the UI's requested limit) shows the truncation warning — today this is silently suppressed for any Result Limit choice above 1,000.
-**Plans**: TBD
+**Plans**: 7 plans
+- [x] 127-01-PLAN.md — kineticaSql ceiling, batch split, has_more surfacing, METADATA_KEYS
+- [x] 127-02-PLAN.md — CSV ceiling on /api/auth/me + discovery limit pin
+- [x] 127-03-PLAN.md — row truncation helpers
+- [x] 127-04-PLAN.md — records CSV export fix (has_more-driven loop, count, page clamp)
+- [x] 127-05-PLAN.md — Calendar / grouped Timeline / grouped Numeric Line truncation notices
+- [x] 127-06-PLAN.md — heatmap truncation banner + generic chart limited note
+- [x] 127-07-PLAN.md — caller audit + live verification
 
 ### Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel
 **Goal**: The one open architectural question (how the export job pages a stable, large result set) is settled against the real Kinetica instance, and the resulting batch-loop runner produces an exact, filter-snapshotted, formula-injection-safe export file with a working cancel and session-bound credentials.
