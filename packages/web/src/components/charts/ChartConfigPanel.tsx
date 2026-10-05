@@ -960,7 +960,7 @@ const ChartConfigPanel = ({
                     </select>
                     <span className="config-hint">
                       {isHeatmap
-                        ? "Maximum number of cells (x × y intersections) to return. The grid warns when a result reaches this limit."
+                        ? "Maximum number of cells (x × y intersections) to return. The grid warns when more cells exist than this limit."
                         : "Maximum number of groups to return"}
                     </span>
                   </label>
