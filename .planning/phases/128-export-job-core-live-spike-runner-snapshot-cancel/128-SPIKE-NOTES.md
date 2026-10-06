@@ -104,3 +104,16 @@ All objects created by evidence run `f4bbfc2b`, each dropped in the script's `fi
 | `_kbi_exp_spike_f4bbfc2b_small` | dropped | gone |
 
 Run `a90db3f4` created no objects (aborted during Q0). No base tables were modified.
+
+## Operator decisions
+
+**Approved:** yes — 2026-10-06
+
+- **Q-A / Q-B (mechanism + runner design):** "Approve offset + MV". The operator approves `**Chosen mechanism:** offset`: a job-private snapshot MV, `total_rows = COUNT(*)` on the MV, then paging the MV with request-level OFFSET + `ORDER BY <user sort>, <remaining exported columns>`.
+- **Q-C (hidden columns):** "Yes, configured columns". There is no hidden-column setting. The export contains exactly the widget's configured columns (`cfg.columns`, IDENT_RE-filtered) in order, or all columns in schema order when none are configured.
+- **Q-D (widget-action overrides):** "Phase 131 follow-up". Not reflected in the Phase 128 export, which is acceptable here. Follow-up: decide when the Phase 131 trigger UI is built (e.g. the client could send validated overrides alongside filters).
+- D-04a/b came out verified, so there are no Phase 127 follow-up fixes.
+
+### Noted risks (accepted, not blocking)
+1. Per-page time grows with the full-column composite sort repeated on each call (516 -> 713 -> 815 ms first/mid/last over 25 x 20k pages). Very large exports (e.g. 10M rows, about 500 pages) may run long. Phase 130/131 may want to surface progress/ETA or revisit this.
+2. The spike ran as `admin`. The offset path requires the exporting user's credentials to CREATE MATERIALIZED VIEW. Users without that permission would fail at snapshot creation; the runner should classify that as a clear failure (`kinetica_error` with a readable message). Not tested as a non-admin user.
