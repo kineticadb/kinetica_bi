@@ -14,6 +14,7 @@
     "cb-track-spike": "tsx src/spikes/cbTrackSpike.ts",
     "schema-fingerprint-spike": "tsx src/spikes/schemaFingerprintSpike.ts",
     "export-paging-spike": "tsx src/spikes/exportPagingSpike.ts",
+    "export-runner-smoke": "tsx src/spikes/exportRunnerSmoke.ts",
     "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
