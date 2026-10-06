@@ -24,6 +24,9 @@ process.env.AUTH_SECRET = process.env.AUTH_SECRET || "test-auth-secret-at-least-
 process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
 process.env.KINETICA_MAX_RECORDS_PER_CALL = "";
 process.env.CSV_INBROWSER_MAX_ROWS = "";
+// Export runner envs: same dev .env leak guard (specs set EXPORT_DIR to a mkdtemp dir themselves).
+process.env.EXPORT_DIR = "";
+process.env.EXPORT_VIEW_TTL_MINUTES = "";
 
 beforeEach(() => {
   // Clear any global fetch stub between tests.
