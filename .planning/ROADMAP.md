@@ -91,7 +91,14 @@
   3. A cell value beginning `=`, `+`, `-` or `@` in the exported data is written to the file as literal, non-executing text — the same rule applied identically to the existing client-side download path.
   4. Calling the job's cancel primitive on a running export stops its batch loop, deletes its partial file, and leaves the job's SQLite row in a terminal cancelled status.
   5. Expiring or revoking the triggering user's session mid-export causes the next batch's per-batch credential re-derivation to fail closed — the job transitions to a clear failed status rather than hanging or completing a batch on stale credentials.
-**Plans**: TBD
+**Plans**: 7 plans
+- [ ] 128-01-PLAN.md — formula-injection guard, client + server port + parity spec (wave 1)
+- [ ] 128-02-PLAN.md — live paging spike, 128-SPIKE-NOTES.md, operator checkpoint (wave 1)
+- [ ] 128-03-PLAN.md — export_jobs registry + KineticaPrincipal type widening (wave 1)
+- [ ] 128-04-PLAN.md — lib/exportSql: snapshot/count/batch SQL for the approved mechanism (wave 2)
+- [ ] 128-05-PLAN.md — lib/exportRunner: streaming writer, run loop, file lifecycle (wave 3)
+- [ ] 128-06-PLAN.md — cancel + session fail-closed proofs (wave 4)
+- [ ] 128-07-PLAN.md — live runner smoke, gates, ROADMAP/REQUIREMENTS/STATE (wave 5)
 
 ### Phase 129: Export Routes — Resumable Download, History & Privacy
 **Goal**: A finished export is only ever served as a complete, closed file over a Range-resumable download, every route checks ownership against an unguessable id, and triggering/downloading an export requires no new RBAC permission beyond the dashboard's existing view gate.
