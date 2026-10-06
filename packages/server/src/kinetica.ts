@@ -20,6 +20,13 @@
 
 import { randomUUID } from "node:crypto";
 import type { AuthedRequest } from "./auth";
+
+/**
+ * The only parts of a request kineticaSql reads. A background export job (Phase 128) has no Express req: it
+ * builds one of these from sessionStore.getSession(sid) immediately before EACH Kinetica call and discards it
+ * (EXPRT-V126-16 - never cached, never persisted). An AuthedRequest satisfies this type unchanged.
+ */
+export type KineticaPrincipal = Pick<AuthedRequest, "user" | "requestId">;
 import {
   KineticaAuthError,
   KineticaPermissionError,
@@ -70,7 +77,7 @@ type AuditOutcome = "success" | "auth-fail" | "permission-denied" | "upstream-er
 // Build Authorization header from per-request session creds — never from env vars.
 // Credential-type-aware: OIDC sessions send Bearer <access_token>; password sessions send Basic.
 // PITFALLS I-01: discriminant is credentialType (string-literal union), NOT the truthiness of creds.password.
-const buildAuthHeader = (req: AuthedRequest): string => {
+const buildAuthHeader = (req: KineticaPrincipal): string => {
   const { credentialType, creds } = req.user!;
   if (credentialType === "oidc") {
     return `Bearer ${creds.token}`;
@@ -242,7 +249,7 @@ type SqlPage = {
  * has_more_records (never a short page) is the continuation signal.
  */
 export const kineticaSql = async (
-  req: AuthedRequest,
+  req: KineticaPrincipal,
   sql: string,
   options: KineticaSqlOptions
 ): Promise<unknown> => {
