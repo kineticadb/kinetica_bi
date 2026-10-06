@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: phase_128_executed_pending_verification
-stopped_at: "Phase 128 plans 7/7 executed (2026-10-06) — pending phase verification; then /gsd:plan-phase 129"
+status: phase_128_complete
+stopped_at: "Phase 128 complete + verified (2026-10-06); next /gsd:plan-phase 129"
 last_updated: "2026-10-06T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 14
   completed_plans: 14
 ---
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.26 Large Exports & Fixes — Phase 127 complete; Phase 128 (Export Job Core) next
+**Current focus:** v1.26 Large Exports & Fixes — Phases 127-128 complete; Phase 129 (Export Routes) next
 
 ## Current Position
 
-**v1.26 Large Exports & Fixes — Phase 128 plans COMPLETE 7/7 (2026-10-06), pending phase verification; next Phase 129.** (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
+**v1.26 Large Exports & Fixes — Phase 128 COMPLETE (2026-10-06, verified: 128-VERIFICATION.md); next Phase 129.** (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
 (127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
 and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
 repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).
@@ -48,7 +48,7 @@ learns the page cap from a server-cut page (stale-tab safe).
 
 **Phase 128 context gathered (2026-10-06):** `128-CONTEXT.md` — executor-run live spike (prefer `paging_table` if it holds; also verifies the 127 carry-overs) gated by an operator checkpoint; COUNT(*) self-check fails on mismatch; OWASP `'` formula prefix with numeric exemption on both paths; partial file deleted on any non-complete end; statuses include `session_expired`.
 
-**Phase 128 outcome (2026-10-06):** 7/7 plans; EXPRT-V126-04/05/07/16 Complete (phase checkbox left for the orchestrator after verification). Spike (`128-SPIKE-NOTES.md`, operator Approved 2026-10-06): **Chosen mechanism: offset** (job-private snapshot MV `_kbi_exp_<id8>` + request-level OFFSET + `ORDER BY <user sort>, <remaining exported columns>`); `paging_table` could not be shown to create any table on this instance. Confirmed `max_get_records_size` = 20000 (empirical; the SHOW SYSTEM PROPERTIES probe is empty for this user). `has_more_records` is the exhaustion signal; `total_rows` comes from `COUNT(*)` on the MV and the runner fails on mismatch. Live runner smoke vs `demo.nyctaxi` (500k): complete (500000 = COUNT, header ok, snapshot dropped, ~49k rows/s), cancel (no file), session-end (`session_expired`, no file, no further Kinetica call); all `_kbi_exp_*` objects dropped. Source-table changes mid-job NOT tested live (read-only, D-02): guaranteed structurally by reading only the job-private MV (REFRESH OFF).
+**Phase 128 outcome (2026-10-06):** 7/7 plans, verified (`128-VERIFICATION.md`). EXPRT-V126-04/16 Complete; EXPRT-V126-05/07 re-opened by the operator at verification — engine delivered in 128, user-facing completion in Phase 131 (they say "the user can…", and there are no routes/UI yet). Snapshot isolation under a changing source table deferred to Phase 131 UAT (added to its criterion 5). Spike (`128-SPIKE-NOTES.md`, operator Approved 2026-10-06): **Chosen mechanism: offset** (job-private snapshot MV `_kbi_exp_<id8>` + request-level OFFSET + `ORDER BY <user sort>, <remaining exported columns>`); `paging_table` could not be shown to create any table on this instance. Confirmed `max_get_records_size` = 20000 (empirical; the SHOW SYSTEM PROPERTIES probe is empty for this user). `has_more_records` is the exhaustion signal; `total_rows` comes from `COUNT(*)` on the MV and the runner fails on mismatch. Live runner smoke vs `demo.nyctaxi` (500k): complete (500000 = COUNT, header ok, snapshot dropped, ~49k rows/s), cancel (no file), session-end (`session_expired`, no file, no further Kinetica call); all `_kbi_exp_*` objects dropped. Source-table changes mid-job NOT tested live (read-only, D-02): guaranteed structurally by reading only the job-private MV (REFRESH OFF).
 Operator decisions: Q-A/Q-B approve offset + MV in both paths; Q-C export = exactly the configured columns (IDENT_RE-filtered, in order; all columns if none configured), no hidden-column concept; Q-D widget-action overrides (`widgetOverrides`) are NOT reflected in the export, a **Phase 131 follow-up** (e.g. client sends validated overrides).
 Accepted noted risks: (1) per-page sort cost grows with offset (516 -> 815 ms/20k page at 500k rows; ~500 pages at 10M rows), consider progress/ETA in 130/131; (2) the offset path needs CREATE MATERIALIZED VIEW for the exporting user, untested as a non-admin (runner classifies as `kinetica_error` with a readable message).
 Primitives for Phase 129: `startExport`, `cancelExport`, `getExportJob`, `listExportJobsForUser`, `EXPORT_DIR`, `EXPORT_VIEW_TTL_MINUTES`; object prefix `_kbi_exp_` for Phase 130's orphan sweep (a session-ended job cannot drop its snapshot; TTL, default 60 min, is the backstop). Smoke: `npm run export-runner-smoke`.

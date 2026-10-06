@@ -33,7 +33,12 @@ hardcoded 1,000 is replaced by `KINETICA_MAX_ROWS_PER_QUERY` (default 20,000) wi
 (`KINETICA_MAX_RECORDS_PER_CALL`); the in-browser CSV pages on `has_more_records` up to its cap,
 clamped by `CSV_INBROWSER_MAX_ROWS`; heatmap/Calendar/grouped Timeline/Numeric Line/records/bar
 show truncation notices only when more rows really exist; caller audit in `127-CALLER-AUDIT.md`.
-Open for Phase 128: row-order stability across split calls without a unique ORDER BY.
+Phase 128 complete (2026-10-06) — EXPRT-V126-04/16 validated (formula-injection guard on both CSV
+paths; session-bound per-batch credentials that fail closed). Export job engine built (no routes/UI yet):
+live spike chose a job-private snapshot MV + OFFSET + composite ORDER BY (`paging_table` never
+materialised on this instance; `max_get_records_size` 20000); `export_jobs` registry, streaming runner
+with a COUNT self-check, cancel. EXPRT-V126-05/07 engine delivered, user-facing completion in Phase 131.
+Split-call row-order stability (from 127) verified live — no follow-up.
 
 **Known hazards going in:**
 - **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.

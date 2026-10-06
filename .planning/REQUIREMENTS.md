@@ -16,9 +16,9 @@
 
 ### Background export
 
-- [x] **EXPRT-V126-05**: When a download exceeds the in-browser row cap, the user can start a background export instead. It contains exactly the rows, columns, column order and sort the records table shows, with filters fixed at the moment it starts (snapshot semantics).
+- [ ] **EXPRT-V126-05**: When a download exceeds the in-browser row cap, the user can start a background export instead. It contains exactly the rows, columns, column order and sort the records table shows, with filters fixed at the moment it starts (snapshot semantics).
 - [ ] **EXPRT-V126-06**: While an export runs, the user sees its progress (rows written).
-- [x] **EXPRT-V126-07**: The user can cancel a running export; its partial file is deleted.
+- [ ] **EXPRT-V126-07**: The user can cancel a running export; its partial file is deleted.
 - [ ] **EXPRT-V126-08**: The user can name the file before starting (default: widget title + timestamp); any name is made safe for the filesystem and the `Content-Disposition` header, and a non-ASCII name survives.
 - [ ] **EXPRT-V126-09**: The user chooses raw values (real column names, unformatted values) or formatted values (display labels and number formats from Format columns).
 - [ ] **EXPRT-V126-10**: The user can tick "Compress (.csv.gz)"; it is off by default.
@@ -67,9 +67,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXPRT-V126-02 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-03 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-04 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
-| EXPRT-V126-05 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
+| EXPRT-V126-05 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine delivered in 128; completes in Phase 131 |
 | EXPRT-V126-06 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-07 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
+| EXPRT-V126-07 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine delivered in 128; completes in Phase 131 |
 | EXPRT-V126-08 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
 | EXPRT-V126-09 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
 | EXPRT-V126-10 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |

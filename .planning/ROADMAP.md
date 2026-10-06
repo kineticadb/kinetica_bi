@@ -53,7 +53,7 @@
 ## Phases
 
 - [x] **Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix** - Every app query that asks for more than 1,000 rows gets them, with no caller silently relying on the old cap, and a truly truncated heatmap always shows its warning
-- [ ] **Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel** - A verified pagination mechanism, a batch-loop runner that snapshots a widget's exact view, a working cancel, session-bound credentials, and formula-injection-safe CSV writing
+- [x] **Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel** - A verified pagination mechanism, a batch-loop runner that snapshots a widget's exact view, a working cancel, session-bound credentials, and formula-injection-safe CSV writing (completed 2026-10-06)
 - [ ] **Phase 129: Export Routes — Resumable Download, History & Privacy** - A finished export downloads resumably over HTTP Range, only the owning user can reach any route for it, and no new RBAC permission is introduced
 - [ ] **Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps** - Exports and files expire on schedule, a restart leaves nothing stuck or orphaned, and an admin can cap rows/size/concurrency via env config
 - [ ] **Phase 131: Client Export UI — Trigger Dialog, Progress & History** - The user can name, choose raw/formatted, tick gzip, watch progress, and manage a history list — verified live against a real Kinetica instance
@@ -127,14 +127,14 @@
 ### Phase 131: Client Export UI — Trigger Dialog, Progress & History
 **Goal**: From the records table, the user can start, name, configure, watch, and manage background exports end to end — verified against a real Kinetica instance, not only green automated gates.
 **Depends on**: Phase 129 (routes to call), Phase 130 (cap messaging the UI must surface)
-**Requirements**: EXPRT-V126-06, EXPRT-V126-08, EXPRT-V126-09, EXPRT-V126-10, EXPRT-V126-12
+**Requirements**: EXPRT-V126-06, EXPRT-V126-08, EXPRT-V126-09, EXPRT-V126-10, EXPRT-V126-12 (also completes the user-facing half of EXPRT-V126-05 and EXPRT-V126-07, whose engine shipped in Phase 128)
 **Canonical refs**: `packages/web/src/components/charts/WidgetRenderer.tsx` `handleDownloadCsv` ~1939-2030 (existing small in-browser export this dialog supplements), `packages/web/src/styles/global.css` (`btn-primary btn-sm` / `ghost-sm` inside `ds-actions`, `ds-field`/`ds-select`, `config-group` — canonical classes per CLAUDE.md)
 **Success Criteria** (what must be TRUE):
   1. When a download would exceed the in-browser row cap, the user is offered a dialog to start a background export instead, pre-filled with a default name (widget title + timestamp); any name they type is accepted, made filesystem/header-safe, and a non-ASCII name downloads successfully.
   2. The dialog lets the user choose raw values or formatted (display-labelled) values before starting, and ticking "Compress (.csv.gz)" — off by default — is available.
   3. While an export runs, the user sees a rows-written progress readout that updates without a page reload.
   4. The user can see a list of their recent exports (name, status, rows, size, expiry), re-download any of them until it expires, and delete one.
-  5. `checkpoint:human-verify` — operator verification against a real Kinetica instance: a ≥1M-row export completes and downloads correctly, a cancelled export's partial file is confirmed gone, a download resumes after a killed connection instead of restarting, logout mid-export leaves the job in a clear failed state, a server restart mid-export leaves no orphaned file or stuck "running" row, and the dialog/progress/history render correctly in both light and dark themes using only existing `global.css` classes.
+  5. `checkpoint:human-verify` — operator verification against a real Kinetica instance: a ≥1M-row export completes and downloads correctly, a cancelled export's partial file is confirmed gone, a download resumes after a killed connection instead of restarting, logout mid-export leaves the job in a clear failed state, a server restart mid-export leaves no orphaned file or stuck "running" row, and the dialog/progress/history render correctly in both light and dark themes using only existing `global.css` classes. Also (deferred from Phase 128 verification): start an export against a writable table, insert/delete source rows mid-run, and confirm the CSV equals the state at start (`rows_written` == COUNT of the job snapshot MV).
 **Plans**: TBD
 
 ### Phase 132: Line Chart Multi-Series Group By
