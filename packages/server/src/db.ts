@@ -351,6 +351,32 @@ const SCHEMA_DDL = `
     dropped_count INTEGER NOT NULL DEFAULT 0,
     last_dropped_ts TEXT
   );
+
+  -- v1.26 Phase 128: export job registry. NEW table, so CREATE TABLE IF NOT EXISTS alone
+  -- covers fresh and existing installs. No FK on dashboard_id/widget_id so deleting a widget
+  -- never cascades away history. sid is the session lookup key ONLY -- credentials are never
+  -- stored (D-17). Terminal writes are guarded (see finalizeExportJob).
+  CREATE TABLE IF NOT EXISTS export_jobs (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    sid TEXT NOT NULL,
+    dashboard_id INTEGER,
+    widget_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'queued'
+      CHECK(status IN ('queued','running','complete','failed','cancelled','session_expired')),
+    error_code TEXT,
+    error_message TEXT,
+    total_rows INTEGER,
+    rows_written INTEGER NOT NULL DEFAULT 0,
+    file_path TEXT,
+    file_bytes INTEGER,
+    spec_json TEXT NOT NULL,
+    options_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at TEXT,
+    finished_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_export_jobs_user ON export_jobs (username, created_at DESC);
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -872,6 +898,101 @@ export const getTableSyncHistoryEntry = (id: number): TableSyncHistoryEntry | un
 export const deleteTableSyncHistoryEntry = (id: number): boolean => {
   const result = db.prepare("DELETE FROM table_sync_history WHERE id = ?").run(id);
   return result.changes > 0;
+};
+
+// --- Export jobs (v1.26 Phase 128) ---
+
+export type ExportJobStatus = "queued" | "running" | "complete" | "failed" | "cancelled" | "session_expired";
+export type ExportJobTerminalStatus = Exclude<ExportJobStatus, "queued" | "running">;
+export type ExportJob = {
+  id: string; username: string; sid: string; dashboardId: number | null; widgetId: number | null;
+  status: ExportJobStatus; errorCode: string | null; errorMessage: string | null;
+  totalRows: number | null; rowsWritten: number; filePath: string | null; fileBytes: number | null;
+  specJson: string; optionsJson: string | null; createdAt: string; startedAt: string | null; finishedAt: string | null;
+};
+
+const mapExportJob = (row: any): ExportJob => ({
+  id: row.id,
+  username: row.username,
+  sid: row.sid,
+  dashboardId: row.dashboard_id,
+  widgetId: row.widget_id,
+  status: row.status,
+  errorCode: row.error_code,
+  errorMessage: row.error_message,
+  totalRows: row.total_rows,
+  rowsWritten: row.rows_written,
+  filePath: row.file_path,
+  fileBytes: row.file_bytes,
+  specJson: row.spec_json,
+  optionsJson: row.options_json,
+  createdAt: row.created_at,
+  startedAt: row.started_at,
+  finishedAt: row.finished_at,
+});
+
+export const getExportJob = (id: string): ExportJob | undefined => {
+  const row = db.prepare("SELECT * FROM export_jobs WHERE id = ?").get(id);
+  return row ? mapExportJob(row) : undefined;
+};
+
+export const insertExportJob = (input: {
+  id: string; username: string; sid: string; dashboardId: number | null;
+  widgetId: number | null; specJson: string; optionsJson: string | null;
+}): ExportJob => {
+  db.prepare(
+    "INSERT INTO export_jobs (id, username, sid, dashboard_id, widget_id, spec_json, options_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(input.id, input.username, input.sid, input.dashboardId, input.widgetId, input.specJson, input.optionsJson);
+  return getExportJob(input.id) as ExportJob;
+};
+
+/** Newest first. datetime('now') has 1-second resolution, so rowid is the tiebreak. */
+export const listExportJobsForUser = (username: string): ExportJob[] =>
+  db
+    .prepare("SELECT * FROM export_jobs WHERE username = ? ORDER BY created_at DESC, rowid DESC")
+    .all(username)
+    .map(mapExportJob);
+
+export const markExportJobRunning = (id: string): boolean => {
+  const r = db
+    .prepare("UPDATE export_jobs SET status = 'running', started_at = datetime('now') WHERE id = ? AND status = 'queued'")
+    .run(id);
+  return r.changes === 1;
+};
+
+export const setExportJobTotalRows = (id: string, totalRows: number): void => {
+  db.prepare("UPDATE export_jobs SET total_rows = ? WHERE id = ? AND status = 'running'").run(totalRows, id);
+};
+
+export const updateExportJobProgress = (id: string, rowsWritten: number): void => {
+  db.prepare("UPDATE export_jobs SET rows_written = ? WHERE id = ? AND status = 'running'").run(rowsWritten, id);
+};
+
+/** Write-once terminal transition: only a queued/running job can be finalized. Returns false if refused. */
+export const finalizeExportJob = (
+  id: string,
+  status: ExportJobTerminalStatus,
+  fields: {
+    rowsWritten?: number; errorCode?: string | null; errorMessage?: string | null;
+    filePath?: string | null; fileBytes?: number | null;
+  },
+): boolean => {
+  const r = db
+    .prepare(
+      `UPDATE export_jobs SET status = ?, rows_written = COALESCE(?, rows_written), error_code = ?, error_message = ?,
+         file_path = ?, file_bytes = ?, finished_at = datetime('now')
+       WHERE id = ? AND status IN ('queued','running')`,
+    )
+    .run(
+      status,
+      fields.rowsWritten ?? null,
+      fields.errorCode ?? null,
+      fields.errorMessage ?? null,
+      fields.filePath ?? null,
+      fields.fileBytes ?? null,
+      id,
+    );
+  return r.changes === 1;
 };
 
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
