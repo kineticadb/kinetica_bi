@@ -12,8 +12,28 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { csvLine } from "./csvExport";
-import { getRowLimitConfig, type KineticaPrincipal } from "../kinetica";
+import { getRowLimitConfig, kineticaSql, type KineticaPrincipal } from "../kinetica";
 import { getSession, deleteSession } from "../sessionStore";
+import { KineticaAuthError, KineticaPermissionError, KineticaUpstreamError } from "../kineticaErrors";
+import { createOrReplaceMaterialized } from "./materializedView";
+import {
+  buildExportPlan,
+  buildHeaderProbeSql,
+  buildBatchRequest,
+  type ExportPlan,
+  type ExportSpec,
+} from "./exportSql";
+import {
+  getWidget,
+  getTable,
+  getDashboardDynamicView,
+  insertExportJob,
+  getExportJob,
+  markExportJobRunning,
+  setExportJobTotalRows,
+  updateExportJobProgress,
+  finalizeExportJob,
+} from "../db";
 
 /**
  * Phase 131 seam: "formatted" plugs in as a row mapper applied before csvLine.
@@ -107,3 +127,225 @@ export const principalForSession = (sid: string): KineticaPrincipal => {
     requestId: randomUUID(),
   } as KineticaPrincipal;
 };
+
+// ---- Run loop ----
+
+class RowMismatchError extends Error {
+  constructor(
+    public written: number,
+    public total: number,
+  ) {
+    super(`row mismatch ${written}/${total}`);
+  }
+}
+
+/** Snapshot (CREATE MATERIALIZED VIEW) failed for a non-auth reason, e.g. missing DDL permission. */
+class SnapshotError extends Error {
+  constructor(cause: Error) {
+    super(
+      `Could not create the export snapshot: ${cause.message}. ` +
+        "Your Kinetica account may not be allowed to create materialized views.",
+    );
+    this.name = "SnapshotError";
+  }
+}
+
+const abortError = (): Error => {
+  const e = new Error("The operation was aborted");
+  e.name = "AbortError";
+  return e;
+};
+
+const controllers = new Map<string, AbortController>();
+const runs = new Map<string, Promise<void>>();
+
+const transpose = (r: unknown): unknown[][] => {
+  const o = (r ?? {}) as Record<string, unknown>;
+  const headers = Array.isArray(o.column_headers) ? (o.column_headers as unknown[]) : [];
+  const cols = headers.map((_, j) => (Array.isArray(o[`column_${j + 1}`]) ? (o[`column_${j + 1}`] as unknown[]) : []));
+  const n = cols.length ? cols[0].length : 0;
+  const rows: unknown[][] = [];
+  for (let i = 0; i < n; i++) rows.push(cols.map((c) => c[i]));
+  return rows;
+};
+
+const filePaths = (jobId: string): string[] => {
+  const base = path.join(getExportDir(), jobId);
+  return [`${base}.csv`, `${base}.csv.gz`, `${base}.csv.part`, `${base}.csv.gz.part`];
+};
+
+export function startExport(args: {
+  spec: ExportSpec;
+  sid: string;
+  username: string;
+  options?: ExportOptions;
+}): { jobId: string } {
+  const { spec, sid, username } = args;
+  const options = args.options ?? {};
+  const jobId = randomUUID();
+  const plan = buildExportPlan({
+    spec,
+    widget: getWidget(spec.widgetId),
+    username,
+    jobId,
+    getTable,
+    getDashboardDynamicView,
+  });
+  insertExportJob({
+    id: jobId,
+    username,
+    sid,
+    dashboardId: plan.dashboardId,
+    widgetId: plan.widgetId,
+    specJson: JSON.stringify(spec),
+    optionsJson: JSON.stringify(options),
+  });
+  const ac = new AbortController();
+  controllers.set(jobId, ac);
+  const p = run(jobId, plan, sid, options, ac.signal)
+    .catch((e) => console.error("[export] unexpected", jobId, e))
+    .finally(() => {
+      controllers.delete(jobId);
+      runs.delete(jobId);
+    });
+  runs.set(jobId, p);
+  return { jobId };
+}
+
+export function cancelExport(jobId: string): boolean {
+  const ac = controllers.get(jobId);
+  if (ac) {
+    ac.abort();
+    return true;
+  }
+  const job = getExportJob(jobId);
+  if (job && (job.status === "queued" || job.status === "running")) {
+    // No live run (e.g. after a restart): finalize directly and clear any partial file.
+    finalizeExportJob(jobId, "cancelled", { errorMessage: "Export cancelled." });
+    for (const f of filePaths(jobId)) fs.rmSync(f, { force: true });
+    return true;
+  }
+  return false;
+}
+
+/** Test hook: resolves when the job's run (including cleanup) has finished. */
+export const __exportRunForTest = (jobId: string): Promise<void> | undefined => runs.get(jobId);
+
+async function run(
+  jobId: string,
+  plan: ExportPlan,
+  sid: string,
+  options: ExportOptions,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!markExportJobRunning(jobId)) return; // cancelled before start
+  const dir = getExportDir();
+  const finalPath = path.join(dir, jobId + (options.gzip ? ".csv.gz" : ".csv"));
+  const partPath = finalPath + ".part";
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // Principal is built inside each call and not stored anywhere (EXPRT-V126-16).
+    const sql = (statement: string, extra?: Record<string, unknown>, op: "SQL" | "MATERIALIZE" = "SQL") => {
+      if (signal.aborted) throw abortError();
+      return kineticaSql(principalForSession(sid), statement, { route: EXPORT_ROUTE, op, extra });
+    };
+
+    if (signal.aborted) throw abortError();
+    try {
+      await createOrReplaceMaterialized({
+        req: principalForSession(sid),
+        view: plan.snapshotView,
+        sqlBody: plan.snapshotBody,
+        ttl: getExportViewTtlMinutes(),
+        route: EXPORT_ROUTE,
+        op: "MATERIALIZE",
+      });
+    } catch (e) {
+      // Missing CREATE MATERIALIZED VIEW permission etc.: surface as a readable kinetica_error, never a hang.
+      if (e instanceof KineticaPermissionError || e instanceof KineticaUpstreamError) throw new SnapshotError(e);
+      throw e;
+    }
+
+    const countRes = (await sql(plan.countSql)) as Record<string, unknown>;
+    const total = Number((countRes.column_1 as unknown[] | undefined)?.[0]);
+    if (!Number.isFinite(total)) throw new KineticaUpstreamError("Kinetica returned no row count for the snapshot");
+    setExportJobTotalRows(jobId, total);
+
+    let header: string[] = plan.columns;
+    if (!header.length) {
+      const probe = (await sql(buildHeaderProbeSql(plan), { limit: 1 })) as Record<string, unknown>;
+      header = Array.isArray(probe.column_headers) ? (probe.column_headers as string[]) : [];
+    }
+
+    async function* batches(): AsyncGenerator<unknown[][]> {
+      let offset = 0;
+      for (;;) {
+        if (signal.aborted) throw abortError();
+        const { sql: s, extra } = buildBatchRequest(plan, header, offset, getExportBatchSize(), getExportViewTtlMinutes());
+        const r = (await sql(s, extra)) as Record<string, unknown>;
+        const rows = transpose(r);
+        offset += rows.length; // advance by rows RECEIVED, never the requested limit
+        yield rows;
+        if (r.has_more_records !== true || rows.length === 0) break; // a short page alone never ends the loop
+      }
+    }
+
+    const written = await writeCsv(batches(), header, fs.createWriteStream(partPath, { mode: 0o600 }), {
+      signal,
+      gzip: options.gzip,
+      onBatch: (n) => updateExportJobProgress(jobId, n),
+    });
+    if (written !== total) throw new RowMismatchError(written, total);
+    if (signal.aborted) throw abortError();
+    fs.renameSync(partPath, finalPath);
+    const bytes = fs.statSync(finalPath).size;
+    if (!finalizeExportJob(jobId, "complete", { rowsWritten: written, filePath: finalPath, fileBytes: bytes })) {
+      fs.rmSync(finalPath, { force: true });
+    }
+  } catch (err) {
+    fs.rmSync(partPath, { force: true });
+    fs.rmSync(finalPath, { force: true });
+    const rowsWritten = getExportJob(jobId)?.rowsWritten ?? 0;
+    const e = err as Error;
+    if (signal.aborted || e?.name === "AbortError") {
+      finalizeExportJob(jobId, "cancelled", { rowsWritten, errorMessage: "Export cancelled." });
+    } else if (err instanceof SessionEndedError || err instanceof KineticaAuthError) {
+      finalizeExportJob(jobId, "session_expired", {
+        rowsWritten,
+        errorCode: "session_expired",
+        errorMessage: EXPORT_SESSION_ENDED_MESSAGE,
+      });
+    } else if (err instanceof RowMismatchError) {
+      finalizeExportJob(jobId, "failed", {
+        rowsWritten,
+        errorCode: "row_mismatch",
+        errorMessage: `Export wrote ${err.written} rows but the snapshot has ${err.total}; the file was discarded.`,
+      });
+    } else if (
+      err instanceof SnapshotError ||
+      err instanceof KineticaPermissionError ||
+      err instanceof KineticaUpstreamError
+    ) {
+      finalizeExportJob(jobId, "failed", { rowsWritten, errorCode: "kinetica_error", errorMessage: e.message });
+    } else {
+      console.error("[export] internal error", jobId, err);
+      finalizeExportJob(jobId, "failed", {
+        rowsWritten,
+        errorCode: "internal_error",
+        errorMessage: "Export failed unexpectedly.",
+      });
+    }
+  } finally {
+    // Best-effort Kinetica cleanup; the snapshot TTL is the crash backstop. Skipped on a dead session.
+    for (const name of [plan.pagingTable, plan.snapshotView].filter((n): n is string => Boolean(n))) {
+      try {
+        await kineticaSql(principalForSession(sid), `DROP TABLE IF EXISTS ${name}`, {
+          route: EXPORT_ROUTE,
+          op: "MATERIALIZE",
+        });
+      } catch (e) {
+        console.warn(`[export] cleanup of ${name} skipped (${(e as Error).name}); its TTL will expire it`);
+      }
+    }
+  }
+}
