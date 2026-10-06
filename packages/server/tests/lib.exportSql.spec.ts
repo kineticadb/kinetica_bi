@@ -2,8 +2,13 @@
  * lib.exportSql.spec.ts — Phase 128 Plan 04 (EXPRT-V126-05). Pure module, no DB.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   buildExportPlan,
+  buildBatchRequest,
+  buildHeaderProbeSql,
+  EXPORT_PAGING_MECHANISM,
   ExportSpecError,
   type BuildExportPlanInput,
   type ExportSpec,
@@ -161,5 +166,62 @@ describe("buildExportPlan", () => {
     const p = plan(widget());
     expect(p.snapshotView).toBe("_kbi_exp_abcdef12");
     expect(p.countSql).toBe("SELECT COUNT(*) AS total FROM _kbi_exp_abcdef12");
+  });
+});
+
+describe("paging mechanism and batch requests", () => {
+  const pg = (cfg: Record<string, unknown> = {}, spec: Partial<ExportSpec> = {}) =>
+    plan(widget(cfg), spec, { mechanism: "paging_table" });
+  const off = (cfg: Record<string, unknown> = {}, spec: Partial<ExportSpec> = {}) =>
+    plan(widget(cfg), spec, { mechanism: "offset" });
+
+  it("EXPSQL-mechanism-matches-spike: EXPORT_PAGING_MECHANISM equals the approved decision", () => {
+    const notes = readFileSync(
+      resolve(
+        __dirname,
+        "../../../.planning/phases/128-export-job-core-live-spike-runner-snapshot-cancel/128-SPIKE-NOTES.md",
+      ),
+      "utf8",
+    );
+    const m = /\*\*Chosen mechanism:\*\* (paging_table|offset)/.exec(notes);
+    expect(m).not.toBeNull();
+    expect(EXPORT_PAGING_MECHANISM).toBe(m![1]);
+  });
+  it("EXPSQL-probe: header probe is SELECT * FROM <snapshotView>", () => {
+    expect(buildHeaderProbeSql(off())).toBe("SELECT * FROM _kbi_exp_abcdef12");
+  });
+  it("EXPSQL-paging-batch: paging_table path uses sort + paging_table options", () => {
+    const p = pg({ columns: "a,b", sortField: "a", sortDirection: "desc" });
+    const r = buildBatchRequest(p, [], 40000, 20000, 30);
+    expect(r.sql).toBe("SELECT a, b FROM _kbi_exp_abcdef12 ORDER BY a DESC");
+    expect(r.extra).toEqual({
+      offset: 40000,
+      limit: 20000,
+      options: { paging_table: "_kbi_exp_abcdef12_pg", paging_table_ttl: "30" },
+    });
+  });
+  it("EXPSQL-paging-no-sort: paging_table path with no sort has no ORDER BY", () => {
+    expect(buildBatchRequest(pg({ columns: "a" }), [], 0, 10, 30).sql).not.toContain("ORDER BY");
+  });
+  it("EXPSQL-offset-tiebreak: offset path appends every other exported column", () => {
+    const p = off({ columns: "a,f,b" }, { sortField: "f", sortDir: "desc" });
+    const r = buildBatchRequest(p, [], 20000, 20000, 30);
+    expect(r.sql).toBe("SELECT a, f, b FROM _kbi_exp_abcdef12 ORDER BY f DESC, a, b");
+    expect(r.extra).toEqual({ offset: 20000, limit: 20000 });
+    expect("options" in r.extra).toBe(false);
+  });
+  it("EXPSQL-offset-no-sort: offset path with no sort -> ORDER BY every exported column in order", () => {
+    const r = buildBatchRequest(off({ columns: "c,a,b" }), [], 0, 5, 30);
+    expect(r.sql).toBe("SELECT c, a, b FROM _kbi_exp_abcdef12 ORDER BY c, a, b");
+  });
+  it("EXPSQL-offset-select-star: empty columns -> SELECT * and tiebreak uses probed IDENT_RE headers", () => {
+    const r = buildBatchRequest(off({}, { sortField: "b" }), ["a", "b", "weird col", "c"], 0, 5, 30);
+    expect(r.sql).toBe("SELECT * FROM _kbi_exp_abcdef12 ORDER BY b ASC, a, c");
+  });
+  it("EXPSQL-no-sql-limit: the batch SQL never contains LIMIT or OFFSET", () => {
+    for (const p of [pg({ columns: "a" }), off({ columns: "a" }), off()]) {
+      const sql = buildBatchRequest(p, ["a"], 100, 50, 30).sql;
+      expect(sql).not.toMatch(/\b(LIMIT|OFFSET)\b/i);
+    }
   });
 });

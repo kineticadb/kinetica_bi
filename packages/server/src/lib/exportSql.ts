@@ -187,3 +187,47 @@ export function buildExportPlan(input: BuildExportPlanInput): ExportPlan {
     sortDir,
   };
 }
+
+/** Header probe: the runner sends it with extra {limit: 1} to learn the column names. */
+export function buildHeaderProbeSql(plan: ExportPlan): string {
+  return `SELECT * FROM ${plan.snapshotView}`;
+}
+
+/**
+ * Per-batch request. Paging is request-level (extra.offset/limit) — the SQL
+ * itself never carries LIMIT/OFFSET.
+ */
+export function buildBatchRequest(
+  plan: ExportPlan,
+  headerColumns: string[],
+  offset: number,
+  limit: number,
+  pagingTtlMinutes: number,
+): { sql: string; extra: Record<string, unknown> } {
+  const selectList = plan.columns.length ? plan.columns.join(", ") : "*";
+  const base = `SELECT ${selectList} FROM ${plan.snapshotView}`;
+  if (plan.mechanism === "paging_table") {
+    const orderBy = plan.sortField ? ` ORDER BY ${plan.sortField} ${plan.sortDir}` : "";
+    return {
+      sql: base + orderBy,
+      extra: {
+        offset,
+        limit,
+        // 128-SPIKE-NOTES.md: paging_table_ttl accepted as string minutes ("30"/"1").
+        options: { paging_table: plan.pagingTable, paging_table_ttl: String(pagingTtlMinutes) },
+      },
+    };
+  }
+  // offset: tiebreak on every other exported column so paging is deterministic (D-05/D-06).
+  const keys = plan.columns.length ? plan.columns : headerColumns.filter((c) => EXPORT_IDENT_RE.test(c));
+  const orderBy = plan.sortField
+    ? ` ORDER BY ${plan.sortField} ${plan.sortDir}` +
+      keys
+        .filter((k) => k !== plan.sortField)
+        .map((k) => `, ${k}`)
+        .join("")
+    : keys.length
+      ? ` ORDER BY ${keys.join(", ")}`
+      : "";
+  return { sql: base + orderBy, extra: { offset, limit } };
+}
