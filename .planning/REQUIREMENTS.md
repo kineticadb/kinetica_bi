@@ -12,13 +12,13 @@
 - [x] **EXPRT-V126-01**: A records-table CSV download contains every matching row up to the widget's CSV row cap (default 100,000), not 1,000. Root cause: `kineticaSql` hardcodes `limit: 1000` (`packages/server/src/kinetica.ts:186`) and the client loop reads the short page as exhaustion.
 - [x] **EXPRT-V126-02**: Every app query that asks for more than 1,000 rows gets them — e.g. a heatmap with Result limit 5,000 draws the full grid — audited caller by caller; no caller that relied on the 1,000 cap as an implicit safety net starts returning unbounded results.
 - [x] **EXPRT-V126-03**: When a heatmap's result really is truncated, the truncation warning appears. Today it compares returned rows to the REQUESTED limit, so any Result limit above 1,000 is silently short with no warning (`HeatmapRenderer.tsx:285-306`).
-- [ ] **EXPRT-V126-04**: A cell beginning with `=`, `+`, `-` or `@` cannot execute as a formula when the CSV is opened in a spreadsheet, on BOTH download paths. Pre-existing gap: `escapeCsvField` (`packages/web/src/lib/csvExport.ts`) quotes only on `"`, `,`, CR, LF.
+- [x] **EXPRT-V126-04**: A cell beginning with `=`, `+`, `-` or `@` cannot execute as a formula when the CSV is opened in a spreadsheet, on BOTH download paths. Pre-existing gap: `escapeCsvField` (`packages/web/src/lib/csvExport.ts`) quotes only on `"`, `,`, CR, LF.
 
 ### Background export
 
-- [ ] **EXPRT-V126-05**: When a download exceeds the in-browser row cap, the user can start a background export instead. It contains exactly the rows, columns, column order and sort the records table shows, with filters fixed at the moment it starts (snapshot semantics).
+- [x] **EXPRT-V126-05**: When a download exceeds the in-browser row cap, the user can start a background export instead. It contains exactly the rows, columns, column order and sort the records table shows, with filters fixed at the moment it starts (snapshot semantics).
 - [ ] **EXPRT-V126-06**: While an export runs, the user sees its progress (rows written).
-- [ ] **EXPRT-V126-07**: The user can cancel a running export; its partial file is deleted.
+- [x] **EXPRT-V126-07**: The user can cancel a running export; its partial file is deleted.
 - [ ] **EXPRT-V126-08**: The user can name the file before starting (default: widget title + timestamp); any name is made safe for the filesystem and the `Content-Disposition` header, and a non-ASCII name survives.
 - [ ] **EXPRT-V126-09**: The user chooses raw values (real column names, unformatted values) or formatted values (display labels and number formats from Format columns).
 - [ ] **EXPRT-V126-10**: The user can tick "Compress (.csv.gz)"; it is off by default.
@@ -27,7 +27,7 @@
 - [ ] **EXPRT-V126-13**: Only the user who started an export can see, download, cancel or delete it; export ids are unguessable and every route checks ownership.
 - [ ] **EXPRT-V126-14**: Exports and their files are deleted after a deploy-configured expiry; a server restart leaves no export stuck "running" and no orphaned files; cleanup never deletes a file mid-download.
 - [ ] **EXPRT-V126-15**: An admin can cap rows per export, file size, and concurrent exports per user through env config (not a settings UI); the user is told when a cap stops their export.
-- [ ] **EXPRT-V126-16**: If the user's session ends (logout or expiry), a running export stops with a clear failure state rather than hanging, and never runs on stale credentials.
+- [x] **EXPRT-V126-16**: If the user's session ends (logout or expiry), a running export stops with a clear failure state rather than hanging, and never runs on stale credentials.
 - [ ] **EXPRT-V126-17**: Anyone who can view the dashboard can export, wherever the widget's CSV toggle is enabled — no new RBAC permission.
 
 ### Line chart
@@ -66,10 +66,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXPRT-V126-01 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-02 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-03 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
-| EXPRT-V126-04 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Pending |
-| EXPRT-V126-05 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Pending |
+| EXPRT-V126-04 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
+| EXPRT-V126-05 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
 | EXPRT-V126-06 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-07 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Pending |
+| EXPRT-V126-07 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
 | EXPRT-V126-08 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
 | EXPRT-V126-09 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
 | EXPRT-V126-10 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
@@ -78,7 +78,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXPRT-V126-13 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Pending |
 | EXPRT-V126-14 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Pending |
 | EXPRT-V126-15 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Pending |
-| EXPRT-V126-16 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Pending |
+| EXPRT-V126-16 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
 | EXPRT-V126-17 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Pending |
 | LINE-V126-01 | Phase 132 — Line Chart Multi-Series Group By | Pending |
 | LINE-V126-02 | Phase 132 — Line Chart Multi-Series Group By | Pending |
