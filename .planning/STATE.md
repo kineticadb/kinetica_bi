@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: ready_for_next_phase
-stopped_at: "Completed 127-07-PLAN.md — Phase 127 complete (2026-10-05). Next: Phase 128 (discuss/plan)."
-last_updated: "2026-10-05T00:00:00.000Z"
+stopped_at: "Phase 128 context gathered (2026-10-06) — 128-CONTEXT.md. Next: /gsd:plan-phase 128."
+last_updated: "2026-10-06T00:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -49,7 +49,9 @@ learns the page cap from a server-cut page (stale-tab safe).
 D-11 (`KINETICA_MAX_RECORDS_PER_CALL` above server `max_get_records_size`; unit tests only) and grouped
 Numeric Line notice (shares the Timeline code path, which passed).
 
-**Next:** Phase 128 — `/gsd:discuss-phase 128` or `/gsd:plan-phase 128`.
+**Phase 128 context gathered (2026-10-06):** `128-CONTEXT.md` — executor-run live spike (prefer `paging_table` if it holds; also verifies the 127 carry-overs) gated by an operator checkpoint; COUNT(*) self-check fails on mismatch; OWASP `'` formula prefix with numeric exemption on both paths; partial file deleted on any non-complete end; statuses include `session_expired`.
+
+**Next:** `/gsd:plan-phase 128`.
 
 **Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
 interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;
