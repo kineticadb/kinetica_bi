@@ -15,6 +15,7 @@
     "schema-fingerprint-spike": "tsx src/spikes/schemaFingerprintSpike.ts",
     "export-paging-spike": "tsx src/spikes/exportPagingSpike.ts",
     "export-runner-smoke": "tsx src/spikes/exportRunnerSmoke.ts",
+    "export-routes-smoke": "tsx src/spikes/exportRoutesSmoke.ts",
     "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
