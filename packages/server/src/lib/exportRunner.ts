@@ -232,6 +232,9 @@ export function cancelExport(jobId: string): boolean {
 /** Test hook: resolves when the job's run (including cleanup) has finished. */
 export const __exportRunForTest = (jobId: string): Promise<void> | undefined => runs.get(jobId);
 
+/** Phase 130: true while this process is running the job (boot reconcile must never fail a live run). */
+export const isExportRunLive = (jobId: string): boolean => controllers.has(jobId) || runs.has(jobId);
+
 async function run(
   jobId: string,
   plan: ExportPlan,

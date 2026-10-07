@@ -1003,6 +1003,21 @@ export const finalizeExportJob = (
 export const deleteExportJob = (id: string): boolean =>
   db.prepare("DELETE FROM export_jobs WHERE id = ?").run(id).changes === 1;
 
+// Phase 130: per-user concurrency cap (D-09) - case-insensitive like listExportJobsForUser.
+export const countActiveExportJobsForUser = (username: string): number =>
+  (db.prepare("SELECT COUNT(*) AS n FROM export_jobs WHERE lower(username) = lower(?) AND status IN ('queued','running')").get(username) as { n: number }).n;
+// Phase 130: boot reconciliation (D-05).
+export const listActiveExportJobs = (): ExportJob[] =>
+  db.prepare("SELECT * FROM export_jobs WHERE status IN ('queued','running')").all().map(mapExportJob);
+// Phase 130: expiry sweep (D-02/D-03). One clock for all terminal rows: finished_at + ttlHours. Both sides are SQLite UTC strings.
+export const listExpiredExportJobs = (ttlHours: number): ExportJob[] => {
+  if (!Number.isSafeInteger(ttlHours) || ttlHours <= 0) throw new Error(`listExpiredExportJobs: ttlHours must be a positive integer (got ${ttlHours})`);
+  return db.prepare("SELECT * FROM export_jobs WHERE status NOT IN ('queued','running') AND finished_at IS NOT NULL AND finished_at <= datetime('now', ?)").all(`-${ttlHours} hours`).map(mapExportJob);
+};
+// Phase 130: boot orphan rule (D-07) - a file is kept only if a complete row names it.
+export const listCompleteExportFilePaths = (): { id: string; filePath: string }[] =>
+  (db.prepare("SELECT id, file_path FROM export_jobs WHERE status = 'complete' AND file_path IS NOT NULL").all() as { id: string; file_path: string }[]).map((r) => ({ id: r.id, filePath: r.file_path }));
+
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
   const stmt = db.prepare("INSERT INTO tables (name, schema, description, columns) VALUES (?, ?, ?, ?)");
   const result = stmt.run(input.name, input.schema, input.description ?? null, JSON.stringify(input.columns ?? {}));

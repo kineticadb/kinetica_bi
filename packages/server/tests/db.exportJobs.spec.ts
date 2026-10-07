@@ -7,12 +7,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  countActiveExportJobsForUser,
   createDb,
   db,
   deleteExportJob,
   finalizeExportJob,
   getExportJob,
   insertExportJob,
+  listActiveExportJobs,
+  listCompleteExportFilePaths,
+  listExpiredExportJobs,
   listExportJobsForUser,
   markExportJobRunning,
   setExportJobTotalRows,
@@ -186,5 +190,80 @@ describe("Phase 129 additions", () => {
       process.env.EXPORT_DIR = prev ?? "";
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Phase 130 export job queries", () => {
+  const backdate = (id: string, mod: string) =>
+    db.prepare("UPDATE export_jobs SET finished_at = datetime('now', ?) WHERE id = ?").run(mod, id);
+
+  it("EXPDB130-count-active: queued+running only, case-insensitive, per user", () => {
+    const u = `cnt-${Math.random().toString(36).slice(2, 8)}`;
+    const q = mk(u);
+    const r = mk(u);
+    markExportJobRunning(r.id);
+    const c = mk(u);
+    finalizeExportJob(c.id, "complete", { filePath: "x.csv", fileBytes: 1 });
+    const f = mk(u);
+    finalizeExportJob(f.id, "failed", { errorCode: "x" });
+    const other = mk(`${u}-other`);
+    expect(countActiveExportJobsForUser(u)).toBe(2);
+    expect(countActiveExportJobsForUser(u.toUpperCase())).toBe(2);
+    expect(countActiveExportJobsForUser(`${u}-other`)).toBe(1);
+    expect(q.id).not.toBe(other.id);
+  });
+
+  it("EXPDB130-list-active: exactly the queued + running rows", () => {
+    const u = `act-${Math.random().toString(36).slice(2, 8)}`;
+    const q = mk(u);
+    const r = mk(`${u}-b`);
+    markExportJobRunning(r.id);
+    const c = mk(u);
+    finalizeExportJob(c.id, "complete", { filePath: "x.csv", fileBytes: 1 });
+    const ids = listActiveExportJobs().map((j) => j.id);
+    expect(ids).toContain(q.id);
+    expect(ids).toContain(r.id);
+    expect(ids).not.toContain(c.id);
+    for (const j of listActiveExportJobs()) expect(["queued", "running"]).toContain(j.status);
+  });
+
+  it("EXPDB130-expired: every terminal status past the TTL, never fresh or running", () => {
+    const u = `exp-${Math.random().toString(36).slice(2, 8)}`;
+    const statuses = ["complete", "failed", "cancelled", "session_expired"] as const;
+    const old = statuses.map((s) => {
+      const j = mk(u);
+      finalizeExportJob(j.id, s, {});
+      backdate(j.id, "-25 hours");
+      return j.id;
+    });
+    const fresh = mk(u);
+    finalizeExportJob(fresh.id, "failed", {});
+    backdate(fresh.id, "-23 hours");
+    const running = mk(u);
+    markExportJobRunning(running.id);
+    const ids = listExpiredExportJobs(24).map((j) => j.id);
+    for (const id of old) expect(ids).toContain(id);
+    expect(ids).not.toContain(fresh.id);
+    expect(ids).not.toContain(running.id);
+  });
+
+  it("EXPDB130-expired-bad-ttl: non positive-integer ttl throws", () => {
+    expect(() => listExpiredExportJobs(0)).toThrow();
+    expect(() => listExpiredExportJobs(1.5)).toThrow();
+  });
+
+  it("EXPDB130-complete-files: only complete rows with a file path", () => {
+    const u = `fil-${Math.random().toString(36).slice(2, 8)}`;
+    const c = mk(u);
+    finalizeExportJob(c.id, "complete", { filePath: `${c.id}.csv`, fileBytes: 3 });
+    const c2 = mk(u);
+    finalizeExportJob(c2.id, "complete", {});
+    const f = mk(u);
+    finalizeExportJob(f.id, "failed", { filePath: "stale.csv" });
+    const q = mk(u);
+    const res = listCompleteExportFilePaths();
+    expect(res).toContainEqual({ id: c.id, filePath: `${c.id}.csv` });
+    const ids = res.map((r) => r.id);
+    for (const id of [c2.id, f.id, q.id]) expect(ids).not.toContain(id);
   });
 });
