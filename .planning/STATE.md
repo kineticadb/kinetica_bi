@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: phase_129_complete
-stopped_at: "Phase 130 context gathered (2026-10-07); next /gsd:plan-phase 130"
+status: phase_130_complete
+stopped_at: "Phase 130 executed (2026-10-07); next verify Phase 130 then /gsd:plan-phase 131"
 last_updated: "2026-10-07T00:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 24
+  completed_plans: 24
 ---
 
 # Project State
@@ -56,10 +56,12 @@ Carried items: Phase 131 Q-D follow-up; Phase 127 follow-ups = none (D-04a/b ver
 
 **Phase 129 outcome (2026-10-07):** 4/4 plans. Six routes under /api/exports: POST / (202 start; 404 no-leak on no view/CSV disabled; 400 validation), GET / (200 own history), GET /:id (200; 404 non-owner), POST /:id/cancel (202; 409 already terminal; 404), DELETE /:id (204; 404), GET /:id/download (200/206 native Range + If-Range; 404 non-owner; 409 not complete; 410/416 per spec). Operator decisions O-1..O-7 applied. EXPRT-V126-11/13/17 Complete; EXPRT-V126-05/07 still in progress (routes delivered, complete in Phase 131). Live smoke vs demo.nyctaxi (500k, real socket) R1-R7 all PASS, incl. R4 interrupted download resumed from byte 1048576 -> 206 with matching sha256; cleanup verified. Probes: 129-01 five mutations red, 129-02 seven (P7 strengthened), 129-03 six (D3 equivalent mutation and D6 ENOENT race honestly not discriminated). Gates: server tsc clean, test:gate PASSED (8 known files), 4 phase specs 60/60, packages/web unchanged since ba8af45.
 **Open verification debt (Phase 129 Task 2):** proxy-path `curl -C -` resume was NOT exercised. Operator reply: "not exercised: proxy not running". Nginx config reviewed statically only (gzip_types excludes text/csv; plain proxy_pass, no Range override; default buffering), so Range/If-Range should pass through. Closes at Phase 131 UAT (success criterion 5) or an earlier curl run against the deployed :8080 origin with `-H 'Accept-Encoding: gzip'` on the 206 step.
-**Do not ship the milestone between Phase 129 and Phase 130:** there is no per-user concurrency/row/size cap yet (operator O-6); any dashboard viewer can start unbounded concurrent exports until Phase 130's env caps land.
-**For Phase 130:** the TTL sweep must remove files and rows via `exportFilePaths` + `deleteExportJob` and must not race an open download. **For Phase 131:** `toExportJobDto` and `exportDownloadName` (in `src/lib/exportJobAccess.ts`) are the seams for `name`/`expiresAt`.
+**Resolved (Phase 130):** per-user concurrency (default 2), row and file-size env caps now exist; the 129->130 do-not-ship warning no longer applies.
+**Phase 130 outcome (2026-10-07):** 6/6 plans. Env knobs: EXPORT_TTL_HOURS (default 24, capped at 87600), EXPORT_MAX_ROWS (off), EXPORT_MAX_FILE_MB (off), EXPORT_MAX_CONCURRENT_PER_USER (default 2); invalid values fall back with one warn, so a typo disables a row/size cap. Error codes: `row_cap`, `size_cap`, `server_restarted` are stored on the job; `concurrency_cap` is a 429 body only. Expiry is computed from finished_at (no schema change); sweep every 5 min plus once at boot; boot reconcile runs in the bootstrap IIFE only; the sweep skips files held by an open download (refcount claimed in the download route's sync gate); expired-unswept download is 410, swept 404. Live smoke vs demo.nyctaxi R1-R10 all PASS (R8: open=true expired_get=410 skipped=1 file_kept=true sha_match=true after_close_deleted=true new_get=404). Real kill -9 restart test: job failed/server_restarted, .part and stray csv removed, foreign file untouched. Checkpoint reply (criterion 3): "approved". Post-checkpoint review fixes: b260084 (cancel frees the concurrency slot at once; closed-response guard in trackExportDownload; size-cap message "after about N rows"), 8bea0f3 + a0fa0f5 (password login loads /me deploy config in one set; EXPORT_TTL_HOURS overflow RangeError fixed by 87600 cap; pre-open abort check as regression guard). **Accepted trade-off:** a cancelled run's in-flight Kinetica call (normally <1s, up to Node fetch's ~5-min default timeout if Kinetica stalls) no longer counts against the cap. Gates: server tsc clean, test:gate PASSED (8 known files), 8 phase specs 174/174, web tsc clean, vitest 4244/4244, theme-guard green. 18 discrimination probes A-R. EXPRT-V126-14/15 Complete; -05/-07 still in progress (Phase 131).
+**Open debt carried forward:** (1) proxy-path `curl -C -` resume not exercised (Phase 131 UAT); (2) widget-action overrides on export (Phase 131 follow-up); (3) snapshot isolation under a changing table (Phase 131 UAT).
+**For Phase 131:** `toExportJobDto` and `exportDownloadName` (in `src/lib/exportJobAccess.ts`) are the seams for `name`. DTO carries `expiresAt` (ISO, null while active) for the history list. `/api/auth/me` `exportLimits { maxRows, maxFileMb, maxConcurrentPerUser }` is in `useAuthStore().exportLimits` so the dialog can show limits in advance (operator wants this; e.g. "Limits: 10,000,000 rows · 2 GB · 2 at a time"; MB are MiB, `maxFileMb % 1024 === 0` shows GB). A 429 from POST /api/exports carries `{ error, code: "concurrency_cap" }` to show verbatim; cap failures arrive as job `errorCode` (`row_cap`/`size_cap`/`server_restarted`) + `errorMessage` to show verbatim.
 
-**Next:** verify Phase 129, then `/gsd:plan-phase 130`.
+**Next:** verify Phase 130, then `/gsd:plan-phase 131`.
 
 **Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
 interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;

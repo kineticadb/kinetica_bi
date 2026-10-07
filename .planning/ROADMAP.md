@@ -128,12 +128,12 @@
   3. `checkpoint:human-verify` — the cleanup sweep never deletes a file an active download currently holds open; this is a live timing race between a download in progress and a sweep tick, not provable by a fast unit test alone — verify with a deliberately slow/held-open download spanning a forced sweep.
   4. An admin-configured row cap, file-size cap, or per-user concurrent-export cap (env vars only, no settings UI) stops an export that would exceed it, and the user is told why in the resulting failure message.
 **Plans**: 6 plans
-- [ ] 130-01-PLAN.md — exportCaps module (env knobs, exact cap messages, cap errors), db read helpers, computed expiresAt on the DTO
-- [ ] 130-02-PLAN.md — runner caps: per-user concurrency (429), row cap after COUNT, size cap after gzip
-- [ ] 130-03-PLAN.md — exportCleanup: open-download tracker, synchronous expiry sweep, boot reconciliation
-- [ ] 130-04-PLAN.md — wiring: download tracking + expired 410, DELETE helper, bootstrap IIFE reconcile/sweep, /me exportLimits
-- [ ] 130-05-PLAN.md — web seam: exportLimits through fetchMe into the auth store (no UI)
-- [ ] 130-06-PLAN.md — live smoke R8-R10, gates, operator checkpoint (criterion 3), shared docs
+- [x] 130-01-PLAN.md — exportCaps module (env knobs, exact cap messages, cap errors), db read helpers, computed expiresAt on the DTO
+- [x] 130-02-PLAN.md — runner caps: per-user concurrency (429), row cap after COUNT, size cap after gzip
+- [x] 130-03-PLAN.md — exportCleanup: open-download tracker, synchronous expiry sweep, boot reconciliation
+- [x] 130-04-PLAN.md — wiring: download tracking + expired 410, DELETE helper, bootstrap IIFE reconcile/sweep, /me exportLimits
+- [x] 130-05-PLAN.md — web seam: exportLimits through fetchMe into the auth store (no UI)
+- [x] 130-06-PLAN.md — live smoke R8-R10, gates, operator checkpoint (criterion 3), shared docs
 
 ### Phase 131: Client Export UI — Trigger Dialog, Progress & History
 **Goal**: From the records table, the user can start, name, configure, watch, and manage background exports end to end — verified against a real Kinetica instance, not only green automated gates.
