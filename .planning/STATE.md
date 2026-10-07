@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: phase_129_complete
-stopped_at: "Phase 129 plans complete (2026-10-07); awaiting verification, then /gsd:plan-phase 130"
+stopped_at: "Phase 129 complete + verified (2026-10-07); next /gsd:plan-phase 130"
 last_updated: "2026-10-07T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 18
   completed_plans: 18
 ---
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.26 Large Exports & Fixes — Phases 127-128 complete; Phase 129 (Export Routes) next
+**Current focus:** v1.26 Large Exports & Fixes — Phases 127-129 complete; Phase 130 (Export TTL Cleanup & Caps) next
 
 ## Current Position
 
-**v1.26 Large Exports & Fixes — Phase 128 COMPLETE (2026-10-06, verified: 128-VERIFICATION.md); next Phase 129.** (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
+**v1.26 Large Exports & Fixes — Phase 129 COMPLETE (2026-10-07, verified: 129-VERIFICATION.md, proxy-path resume open debt); next Phase 130.** (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
 (127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
 and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
 repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).

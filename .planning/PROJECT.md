@@ -39,6 +39,11 @@ live spike chose a job-private snapshot MV + OFFSET + composite ORDER BY (`pagin
 materialised on this instance; `max_get_records_size` 20000); `export_jobs` registry, streaming runner
 with a COUNT self-check, cancel. EXPRT-V126-05/07 engine delivered, user-facing completion in Phase 131.
 Split-call row-order stability (from 127) verified live — no follow-up.
+Phase 129 complete (2026-10-07) — EXPRT-V126-11/13/17 validated: `/api/exports` start/list/status/
+cancel/delete/download routes (requireAuth-only; start gated by dashboard view + widget CSV toggle; no new
+permission). Owner-only identical-404 on every :id route; UUID ids; download serves only complete,
+size-verified files via `res.download` (Range/206/416). Proxy-path resume not exercised live (open debt →
+Phase 131 UAT). No concurrency cap until Phase 130 — do not ship between 129 and 130.
 
 **Known hazards going in:**
 - **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.
