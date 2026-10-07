@@ -17,6 +17,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
+import http from "node:http";
+import { createHash } from "node:crypto";
+import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { buildTestApp } from "./helpers/app";
@@ -34,6 +37,8 @@ import {
 import { addDashboardGrant } from "../src/lib/dashboardAccessDb";
 import { createSession } from "../src/sessionStore";
 import { __exportRunForTest } from "../src/lib/exportRunner";
+import { createApp } from "../src/index";
+import { isExportDownloading, runExportSweepOnce, __resetExportDownloadsForTest } from "../src/lib/exportCleanup";
 
 const respond = (encoded: unknown, extra: Record<string, unknown> = {}) =>
   new Response(
@@ -328,5 +333,113 @@ describe("export download route", () => {
     const part = await getBin(url(id), cookie, { Range: "bytes=10-" });
     expect(part.status).toBe(206);
     expect(Buffer.compare(part.body, full.body.subarray(10))).toBe(0);
+  });
+
+  describe("Phase 130 sweep vs download", () => {
+    let server: http.Server | undefined;
+    beforeEach(() => {
+      __resetExportDownloadsForTest();
+    });
+    afterEach(async () => {
+      if (server) await new Promise((r) => server!.close(r));
+      server = undefined;
+      __resetExportDownloadsForTest();
+    });
+    const backdate = (id: string, hours: number) =>
+      db.prepare("UPDATE export_jobs SET finished_at = datetime('now', ?) WHERE id = ?").run(`-${hours} hours`, id);
+    const bigContent = (mb: number) => {
+      const line = "123456,some-name-value,987.5\r\n";
+      return Buffer.from(line.repeat(Math.ceil((mb * 1024 * 1024) / line.length)));
+    };
+    const startReal = async () => {
+      server = (await createApp()).listen(0);
+      await new Promise((r) => server!.once("listening", r));
+      return (server.address() as AddressInfo).port;
+    };
+
+    it("EXPSWEEP-expired-410: expired-but-unswept refuses (incl. Range) with 410; once swept 404", async () => {
+      const { id } = seedComplete("alice", FULL);
+      backdate(id, 25);
+      const { cookie } = session("alice");
+      const r = await get(url(id), cookie);
+      expect(r.status).toBe(410);
+      expect(r.body).toEqual({ error: "This export is no longer available." });
+      expect((await get(url(id), cookie, { Range: "bytes=10-" })).status).toBe(410);
+      expect(runExportSweepOnce().deleted).toBe(1);
+      expect((await get(url(id), cookie)).status).toBe(404);
+    });
+
+    it("EXPSWEEP-unexpired-200: 23h old still downloads", async () => {
+      const { id } = seedComplete("alice", FULL);
+      backdate(id, 23);
+      const r = await get(url(id), session("alice").cookie);
+      expect(r.status).toBe(200);
+      expect(r.text).toBe(FULL);
+    });
+
+    it("EXPSWEEP-held-download: sweep skips a paused in-flight download; it completes byte-identical", async () => {
+      const content = bigContent(32);
+      const { id } = seedComplete("alice", content);
+      const filePath = (getExportJob(id) as ExportJob).filePath!;
+      const want = createHash("sha256").update(content).digest("hex");
+      const port = await startReal();
+      const { cookie } = session("alice");
+      const hash = createHash("sha256");
+      const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
+        const rq = http.get({ port, path: url(id), headers: { Cookie: cookie } }, (m) => {
+          m.once("data", (d: Buffer) => {
+            m.pause();
+            hash.update(d);
+            resolve(m);
+          });
+        });
+        rq.on("error", reject);
+      });
+      await waitFor(() => isExportDownloading(id));
+      backdate(id, 25);
+      expect(runExportSweepOnce()).toEqual({ deleted: 0, skippedOpen: 1 });
+      expect(fs.existsSync(filePath)).toBe(true);
+      expect(getExportJob(id)).toBeTruthy();
+      expect((await get(url(id), cookie)).status).toBe(410);
+      await new Promise<void>((resolve, reject) => {
+        res.on("data", (d: Buffer) => hash.update(d));
+        res.on("end", resolve);
+        res.on("error", reject);
+        res.resume();
+      });
+      expect(hash.digest("hex")).toBe(want);
+      await waitFor(() => !isExportDownloading(id));
+      expect(runExportSweepOnce().deleted).toBe(1);
+      expect((await get(url(id), cookie)).status).toBe(404);
+    });
+
+    it("EXPSWEEP-abort-release: an aborted download releases the claim", async () => {
+      const { id } = seedComplete("alice", bigContent(32));
+      const port = await startReal();
+      const { cookie } = session("alice");
+      await new Promise<void>((resolve, reject) => {
+        const rq = http.get({ port, path: url(id), headers: { Cookie: cookie } }, (m) => {
+          m.once("data", () => {
+            rq.destroy();
+            resolve();
+          });
+        });
+        rq.on("error", () => {});
+        rq.on("error", reject);
+      }).catch(() => {});
+      await waitFor(() => !isExportDownloading(id), 2000);
+    });
+
+    it("EXPSWEEP-not-tracked-on-refusal: 409 and missing-file 410 do not claim", async () => {
+      const { cookie } = session("alice");
+      const running = insert("alice");
+      markExportJobRunning(running);
+      expect((await get(url(running), cookie)).status).toBe(409);
+      expect(isExportDownloading(running)).toBe(false);
+      const { id, job } = seedComplete("alice", FULL);
+      fs.rmSync(job.filePath!, { force: true });
+      expect((await get(url(id), cookie)).status).toBe(410);
+      expect(isExportDownloading(id)).toBe(false);
+    });
   });
 });

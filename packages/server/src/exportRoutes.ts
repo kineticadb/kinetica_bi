@@ -2,11 +2,9 @@
  * Phase 129 — background export HTTP routes (EXPRT-V126-13/17; route half of -05/-07).
  * requireAuth-only (analyst passthrough): NO requirePermission — access to start = canViewDashboard
  * on the widget's dashboard; access to every :id route = ownership (operator O-4).
- * The download route (GET /api/exports/:id/download) lives here too: owner(404) -> complete(409) -> file(410) -> send.
+ * The download route (GET /api/exports/:id/download) lives here too: owner(404) -> complete(409) -> expired(410) -> file(410) -> track -> send.
  */
 import type { Express, Request, Response } from "express";
-import fs from "node:fs";
-import path from "node:path";
 import type { AuthedRequest } from "./auth";
 import {
   getWidget,
@@ -17,10 +15,11 @@ import {
   type ExportJob,
 } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
-import { startExport, cancelExport, exportFilePaths, type ExportOptions } from "./lib/exportRunner";
+import { startExport, cancelExport, type ExportOptions } from "./lib/exportRunner";
 import { ExportCapError } from "./lib/exportCaps";
 import { ExportSpecError, type ExportSpec } from "./lib/exportSql";
-import { findOwnedExportJob, toExportJobDto, exportDownloadName, resolveServableExportFile } from "./lib/exportJobAccess";
+import { findOwnedExportJob, toExportJobDto, exportDownloadName, resolveServableExportFile, isExportExpired } from "./lib/exportJobAccess";
+import { trackExportDownload, removeExportFiles } from "./lib/exportCleanup";
 
 const NOT_FOUND = { error: "Export not found." };
 const GONE = { error: "This export is no longer available." };
@@ -130,11 +129,7 @@ export function registerExportRoutes(app: Express): void {
     const job = loadOwnedJob(req, res);
     if (!job) return;
     if (ACTIVE.has(job.status)) cancelExport(job.id);
-    for (const f of exportFilePaths(job.id)) fs.rmSync(f, { force: true });
-    if (job.filePath) {
-      const base = path.basename(job.filePath);
-      if (base === `${job.id}.csv` || base === `${job.id}.csv.gz`) fs.rmSync(job.filePath, { force: true });
-    }
+    removeExportFiles(job);
     deleteExportJob(job.id);
     return res.status(204).end();
   });
@@ -148,8 +143,12 @@ export function registerExportRoutes(app: Express): void {
     if (job.status !== "complete") {
       return res.status(409).json({ error: "Export is not ready to download.", status: job.status });
     }
+    // Phase 130 D-04: TTL means no longer OFFERED, independent of physical deletion; a Range resume after expiry is refused too.
+    if (isExportExpired(job)) return res.status(410).json(GONE);
     const file = resolveServableExportFile(job);
     if (!file) return res.status(410).json(GONE);
+    // Phase 130 D-04: claim the file in this same synchronous segment (no async gap since the gates) so the synchronous sweep either ran before (404/410 above) or sees it open and skips.
+    trackExportDownload(job.id, res);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.download(file.path, exportDownloadName(job), { cacheControl: false, dotfiles: "allow" }, (err) => {
