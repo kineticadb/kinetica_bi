@@ -3,6 +3,8 @@ import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import DashboardsPage from "./components/DashboardsPage";
 import DatasetsPage from "./components/DatasetsPage";
+import ExportsPage from "./components/ExportsPage";
+import { stopAllExportTracking } from "./store/exportTracker";
 import LoginPage from "./components/LoginPage";
 import Toast from "./components/Toast";
 import { UsersPage } from "./components/UsersPage";
@@ -20,7 +22,7 @@ import { useBrandStore } from "./store/brandStore";
 import { BrandStyleInjector } from "./components/BrandStyleInjector";
 import { BrandingSettingsPage } from "./components/settings/BrandingSettingsPage";
 import { brandPageGuard } from "./components/settings/brandPageGuard";
-import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, fetchMe, dropFilterView, dropDynamicView, dropCombinationView, listUsers } from "./api/client";
+import { UNAUTHORIZED_EVENT, PERMISSION_DENIED_EVENT, NAVIGATE_EXPORTS_EVENT, fetchMe, dropFilterView, dropDynamicView, dropCombinationView, listUsers } from "./api/client";
 import { useFilterCombinationStore } from "./store/filterCombinationStore";
 import { useMapViewportSyncStore } from "./store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "./store/filterHighlightStore";
@@ -31,7 +33,7 @@ import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashbo
 import { useDeepLinkTable, DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkTable";  // Phase 116 (TLINK-V121-02/04)
 import { hasTableParam, clearTableUrl, restoreTableUrl, isValidTableId, type TableMode } from "./lib/tableUrl";  // Phase 116
 
-type Page = "dashboards" | "datasets" | "settings" | "users" | "roles" | "profile" | "branding";
+type Page = "dashboards" | "datasets" | "exports" | "settings" | "users" | "roles" | "profile" | "branding";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
 // Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
@@ -258,6 +260,8 @@ const App = () => {
       // No fire-and-forget DROP loop — info-selection store is session-only (STORE-V14-02);
       // no server-side resource to clean up.
       useInfoSelectionStore.getState().reset();
+      // Phase 131 D-12: no export poll may outlive the session (each poll would 401 anyway).
+      stopAllExportTracking();
       // Plan 23-02 (CARD-V14-02): fourth reset — last-info-click context store.
       // Pitfall 1 lock (23-RESEARCH.md): stale dashboard-A click coords MUST NOT survive a
       // logout/session boundary. Session-only store; no DROP loop needed.
@@ -406,6 +410,18 @@ const App = () => {
     return () => window.removeEventListener(PERMISSION_DENIED_EVENT, handler);
   }, []);
 
+  // Phase 131 D-18: the export dialog ("See all exports") lives deep in DashboardsPage, so it
+  // signals via a window event. The branding leave-guard cannot apply: the source is always the
+  // dashboards page.
+  useEffect(() => {
+    const onNav = () => {
+      setPage("exports");
+      setDashboardViewMode("list");
+    };
+    window.addEventListener(NAVIGATE_EXPORTS_EVENT, onNav);
+    return () => window.removeEventListener(NAVIGATE_EXPORTS_EVENT, onNav);
+  }, []);
+
   // Phase 7 (UX-06): when bootstrap finishes and the user is authenticated, restore
   // the page state from sessionStorage if it's set. Single-use: clear after restore.
   useEffect(() => {
@@ -418,6 +434,7 @@ const App = () => {
       if (
         parsed.page === "dashboards" ||
         parsed.page === "datasets" ||
+        parsed.page === "exports" ||
         parsed.page === "settings" ||
         parsed.page === "users" ||
         parsed.page === "roles" ||
@@ -638,6 +655,7 @@ const App = () => {
         )}
         {page === "dashboards" && <DashboardsPage onViewChange={setDashboardViewMode} initialOpenDashboard={initialOpenDashboard} />}
         {page === "datasets" && <DatasetsPage initialOpenTable={initialOpenTable} />}
+        {page === "exports" && <ExportsPage />}
         {page === "settings" && (
           <div className="muted">Section coming soon.</div>
         )}

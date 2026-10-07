@@ -3,7 +3,7 @@
 // Phase 15 LIFE-V13-03: logout cleanup — snapshot views, fire-and-forget DROPs, reset both stores.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useAuthStore } from "./store/auth";
 import { useFilterStore, type ActiveFilter } from "./store/filterStore";
 import { useFilterViewStore } from "./store/filterViewStore";
@@ -11,13 +11,15 @@ import { useInfoSelectionStore } from "./store/infoSelectionStore";
 import { useLastInfoClickContextStore } from "./store/lastInfoClickContextStore";
 import { useSpatialFilterStore } from "./store/spatialFilterStore";
 import { useDynamicViewStore } from "./store/dynamicViewStore";
-import { UNAUTHORIZED_EVENT } from "./api/client";
+import { UNAUTHORIZED_EVENT, NAVIGATE_EXPORTS_EVENT } from "./api/client";
+import { stopAllExportTracking } from "./store/exportTracker";
 
 // Stub heavy child components — App.tsx routing logic is what we're testing.
 vi.mock("./components/Sidebar", () => ({
   default: ({ onSelect, activeKey }: { onSelect: (k: string) => void; activeKey: string }) => (
     <nav data-testid="sidebar" data-active={activeKey}>
       <button onClick={() => onSelect("datasets")}>nav-datasets</button>
+      <button onClick={() => onSelect("exports")}>nav-exports</button>
     </nav>
   ),
 }));
@@ -30,6 +32,10 @@ vi.mock("./components/DashboardsPage", () => ({
 vi.mock("./components/DatasetsPage", () => ({
   default: () => <main data-testid="page-datasets">Datasets</main>,
 }));
+vi.mock("./components/ExportsPage", () => ({
+  default: () => <main data-testid="page-exports">Exports</main>,
+}));
+vi.mock("./store/exportTracker", () => ({ stopAllExportTracking: vi.fn() }));
 vi.mock("./components/LoginPage", () => ({
   default: () => <div data-testid="login-page">Login</div>,
 }));
@@ -745,5 +751,51 @@ describe("App — onboarding banner (USERS-V18-04)", () => {
 
     // unassignedCount === 0 → banner must NOT appear
     expect(document.body).not.toHaveTextContent(/on the default analyst role/);
+  });
+});
+
+describe("App — Phase 131 Exports page wiring", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("EXPAPP-render: selecting Exports in the sidebar shows the Exports page", async () => {
+    setAuth({ status: "authenticated", authMode: "password", user: { username: "alice", roles: [], permissions: [] } });
+    render(<App />);
+    expect(screen.queryByTestId("page-exports")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("nav-exports"));
+    expect(await screen.findByTestId("page-exports")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-dashboards")).not.toBeInTheDocument();
+  });
+
+  it("EXPAPP-returnto: restores page='exports' after re-auth", async () => {
+    sessionStorage.setItem("kbi_returnTo", JSON.stringify({ page: "exports" }));
+    setAuth({ status: "unknown" });
+    const { rerender } = render(<App />);
+    setAuth({ status: "authenticated", authMode: "oidc", user: { username: "alice", roles: [], permissions: [] } });
+    rerender(<App />);
+    expect(await screen.findByTestId("page-exports")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-dashboards")).not.toBeInTheDocument();
+  });
+
+  it("EXPAPP-nav-event: NAVIGATE_EXPORTS_EVENT switches to the Exports page", async () => {
+    setAuth({ status: "authenticated", authMode: "password", user: { username: "alice", roles: [], permissions: [] } });
+    render(<App />);
+    expect(screen.getByTestId("page-dashboards")).toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new CustomEvent(NAVIGATE_EXPORTS_EVENT));
+    });
+    expect(await screen.findByTestId("page-exports")).toBeInTheDocument();
+  });
+
+  it("EXPAPP-logout: going unauthenticated stops all export tracking once", () => {
+    vi.mocked(stopAllExportTracking).mockClear();
+    setAuth({ status: "authenticated", authMode: "password", user: { username: "alice", roles: [], permissions: [] } });
+    render(<App />);
+    expect(stopAllExportTracking).not.toHaveBeenCalled();
+    act(() => {
+      useAuthStore.setState({ status: "unauthenticated" } as ReturnType<typeof useAuthStore.getState>);
+    });
+    expect(stopAllExportTracking).toHaveBeenCalledTimes(1);
   });
 });
