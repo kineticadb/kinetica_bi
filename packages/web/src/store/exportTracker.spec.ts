@@ -93,14 +93,21 @@ describe("exportTracker", () => {
   });
 
   it("EXPTRK-fail-toast: failed and session_expired show the server message as an error", async () => {
-    const msg = "This export has 12,345 rows; the limit is 1,000. Add filters to narrow it down and try again.";
+    const msg =
+      "This export has 12,345 rows; the limit is 1,000. Add filters to narrow it down and try again.";
     getJob.mockResolvedValue(dto({ status: "failed", errorMessage: msg }));
     trackExport(dto());
     await vi.advanceTimersByTimeAsync(EXPORT_POLL_MS);
     expect(showToast).toHaveBeenCalledWith(msg, "error");
 
     showToast.mockClear();
-    getJob.mockResolvedValue(dto({ id: "j2", status: "session_expired", errorMessage: "Session ended." }));
+    getJob.mockResolvedValue(
+      dto({
+        id: "j2",
+        status: "session_expired",
+        errorMessage: "Session ended.",
+      }),
+    );
     trackExport(dto({ id: "j2" }));
     await vi.advanceTimersByTimeAsync(EXPORT_POLL_MS);
     expect(showToast).toHaveBeenCalledWith("Session ended.", "error");
@@ -147,7 +154,9 @@ describe("exportTracker", () => {
   });
 
   it("EXPTRK-network: a network failure keeps tracking and retries", async () => {
-    getJob.mockRejectedValueOnce(new TypeError("fail")).mockResolvedValue(dto());
+    getJob
+      .mockRejectedValueOnce(new TypeError("fail"))
+      .mockResolvedValue(dto());
     trackExport(dto());
     await vi.advanceTimersByTimeAsync(EXPORT_POLL_MS);
     expect(useExportTrackerStore.getState().jobs.j1).toBeDefined();
@@ -175,7 +184,10 @@ describe("exportTracker", () => {
     await vi.advanceTimersByTimeAsync(EXPORT_POLL_MS);
     stopAllExportTracking();
     expect(vi.getTimerCount()).toBe(0);
-    expect(useExportTrackerStore.getState()).toMatchObject({ jobs: {}, dialogJobId: null });
+    expect(useExportTrackerStore.getState()).toMatchObject({
+      jobs: {},
+      dialogJobId: null,
+    });
     // The same id is tracked again (re-login) before the stale poll lands: only the generation check rejects it.
     trackExport(dto());
     resolve(dto({ status: "complete" }));
