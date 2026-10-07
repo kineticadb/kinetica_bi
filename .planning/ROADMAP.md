@@ -110,7 +110,11 @@
   2. A download, cancel, delete or status request for an export id made by any user other than the one who started it is rejected on every one of those routes, and export ids are opaque (UUID), not sequential or guessable.
   3. A user who can already view the dashboard can trigger and download its export using only their existing session — no new permission constant exists anywhere in `packages/server/src/lib/permissions.ts` or `rbacDb.ts` for this feature.
   4. Only a job whose status is "complete" is ever served by the download route — a request against any other status is refused rather than streaming a partial or still-open file.
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 129-01-PLAN.md — exportJobAccess seam (ownership, DTO, filename, servable file) + deleteExportJob + case-insensitive list (wave 1)
+- [ ] 129-02-PLAN.md — registerExportRoutes: start/list/status/cancel/delete, wiring, privacy + RBAC specs (wave 2)
+- [ ] 129-03-PLAN.md — Range-resumable download route + download specs + grant-only analyst e2e (wave 3)
+- [ ] 129-04-PLAN.md — live route smoke, proxy-path resume checkpoint, gates, STATE/ROADMAP/REQUIREMENTS (wave 4)
 
 ### Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps
 **Goal**: The whole export subsystem is durable across restarts and over time — nothing is ever stuck "running," nothing is orphaned on disk, and an admin can cap rows/file size/concurrency through env config alone.
