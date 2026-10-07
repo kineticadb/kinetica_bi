@@ -9,6 +9,7 @@ import {
   faUsers,
   faUserShield,
   faPalette,
+  faDownload,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useAuthStore } from "../store/auth";
@@ -27,6 +28,8 @@ type NavItem = {
 const nav: NavItem[] = [
   { label: "Dashboards", key: "dashboards", icon: faTableColumns },
   { label: "Datasets", key: "datasets", icon: faDatabase },
+  // Phase 131 D-14: every signed-in user; each sees only their own exports (server-enforced).
+  { label: "Exports", key: "exports", icon: faDownload },
   { label: "User Management", key: "users", icon: faUsers, permission: PERMISSIONS.USERS_VIEW },
   { label: "Roles", key: "roles", icon: faUserShield, permission: PERMISSIONS.ROLES_VIEW },
   { label: "Branding", key: "branding", icon: faPalette, permission: PERMISSIONS.BRANDING_MANAGE },
