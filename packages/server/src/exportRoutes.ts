@@ -152,8 +152,15 @@ export function registerExportRoutes(app: Express): void {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.download(file.path, exportDownloadName(job), { cacheControl: false, dotfiles: "allow" }, (err) => {
       if (!err || res.headersSent) return; // mid-stream failure: client resumes with Range
-      const code = (err as NodeJS.ErrnoException).code;
-      res.status(code === "ENOENT" ? 410 : 500).json(code === "ENOENT" ? GONE : { error: "Download failed." });
+      const e = err as NodeJS.ErrnoException & { status?: number; statusCode?: number; headers?: Record<string, string> };
+      if (e.code === "ENOENT") return res.status(410).json(GONE);
+      // send reports 416 (unsatisfiable Range) through the callback with its Content-Range header on the error.
+      const st = e.statusCode ?? e.status;
+      if (st === 416) {
+        if (e.headers) res.set(e.headers);
+        return res.status(416).end();
+      }
+      return res.status(500).json({ error: "Download failed." });
     });
   });
 }
