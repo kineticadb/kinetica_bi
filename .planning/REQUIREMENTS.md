@@ -22,13 +22,13 @@
 - [ ] **EXPRT-V126-08**: The user can name the file before starting (default: widget title + timestamp); any name is made safe for the filesystem and the `Content-Disposition` header, and a non-ASCII name survives.
 - [ ] **EXPRT-V126-09**: The user chooses raw values (real column names, unformatted values) or formatted values (display labels and number formats from Format columns).
 - [ ] **EXPRT-V126-10**: The user can tick "Compress (.csv.gz)"; it is off by default.
-- [ ] **EXPRT-V126-11**: A finished export downloads resumably — a dropped connection continues where it stopped rather than restarting. Only a complete, closed file is ever served.
+- [x] **EXPRT-V126-11**: A finished export downloads resumably — a dropped connection continues where it stopped rather than restarting. Only a complete, closed file is ever served.
 - [ ] **EXPRT-V126-12**: The user can see a list of their recent exports (name, status, rows, size, expiry), re-download any until it expires, and delete them.
-- [ ] **EXPRT-V126-13**: Only the user who started an export can see, download, cancel or delete it; export ids are unguessable and every route checks ownership.
+- [x] **EXPRT-V126-13**: Only the user who started an export can see, download, cancel or delete it; export ids are unguessable and every route checks ownership.
 - [ ] **EXPRT-V126-14**: Exports and their files are deleted after a deploy-configured expiry; a server restart leaves no export stuck "running" and no orphaned files; cleanup never deletes a file mid-download.
 - [ ] **EXPRT-V126-15**: An admin can cap rows per export, file size, and concurrent exports per user through env config (not a settings UI); the user is told when a cap stops their export.
 - [x] **EXPRT-V126-16**: If the user's session ends (logout or expiry), a running export stops with a clear failure state rather than hanging, and never runs on stale credentials.
-- [ ] **EXPRT-V126-17**: Anyone who can view the dashboard can export, wherever the widget's CSV toggle is enabled — no new RBAC permission.
+- [x] **EXPRT-V126-17**: Anyone who can view the dashboard can export, wherever the widget's CSV toggle is enabled — no new RBAC permission.
 
 ### Line chart
 
@@ -67,19 +67,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXPRT-V126-02 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-03 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-04 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
-| EXPRT-V126-05 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine delivered in 128; completes in Phase 131 |
+| EXPRT-V126-05 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine 128, routes 129; completes in Phase 131 |
 | EXPRT-V126-06 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-07 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine delivered in 128; completes in Phase 131 |
+| EXPRT-V126-07 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine 128, routes 129; completes in Phase 131 |
 | EXPRT-V126-08 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
 | EXPRT-V126-09 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
 | EXPRT-V126-10 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-11 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Pending |
+| EXPRT-V126-11 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Complete (proxy-path resume not exercised — see STATE) |
 | EXPRT-V126-12 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-13 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Pending |
+| EXPRT-V126-13 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Complete |
 | EXPRT-V126-14 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Pending |
 | EXPRT-V126-15 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Pending |
 | EXPRT-V126-16 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
-| EXPRT-V126-17 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Pending |
+| EXPRT-V126-17 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Complete |
 | LINE-V126-01 | Phase 132 — Line Chart Multi-Series Group By | Pending |
 | LINE-V126-02 | Phase 132 — Line Chart Multi-Series Group By | Pending |
 | LINE-V126-03 | Phase 132 — Line Chart Multi-Series Group By | Pending |
@@ -92,4 +92,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-01*
-*Last updated: 2026-10-01 after roadmap creation (Phases 127-132)*
+*Last updated: 2026-10-07 after Phase 129 (EXPRT-V126-11, -13, -17 complete)*

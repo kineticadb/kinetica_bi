@@ -105,16 +105,17 @@
 **Depends on**: Phase 128 (wires routes over the runner/job registry)
 **Requirements**: EXPRT-V126-11, EXPRT-V126-13, EXPRT-V126-17
 **Canonical refs**: Express `res.download`/`res.sendFile` (native `Range`/`Accept-Ranges`/`206 Partial Content`, already 4.19.2), `packages/server/src/lib/dashboardExport.ts` (RFC-5987-aware `Content-Disposition` precedent), `packages/server/src/lib/permissions.ts` (existing dashboard-view-style gate to reuse — no new permission constant)
+**Correction (129 research):** `dashboardExport.ts` ASCII-slugs filenames and is not RFC 5987-aware; the download route relies on `res.download`'s content-disposition encoding instead.
 **Success Criteria** (what must be TRUE):
   1. A download request against a completed export carrying an HTTP Range header receives a `206 Partial Content` response and resumes from the requested byte offset rather than restarting; a Range request against a still-running job is refused rather than served a partial or corrupt file.
   2. A download, cancel, delete or status request for an export id made by any user other than the one who started it is rejected on every one of those routes, and export ids are opaque (UUID), not sequential or guessable.
   3. A user who can already view the dashboard can trigger and download its export using only their existing session — no new permission constant exists anywhere in `packages/server/src/lib/permissions.ts` or `rbacDb.ts` for this feature.
   4. Only a job whose status is "complete" is ever served by the download route — a request against any other status is refused rather than streaming a partial or still-open file.
 **Plans**: 4 plans
-- [ ] 129-01-PLAN.md — exportJobAccess seam (ownership, DTO, filename, servable file) + deleteExportJob + case-insensitive list (wave 1)
-- [ ] 129-02-PLAN.md — registerExportRoutes: start/list/status/cancel/delete, wiring, privacy + RBAC specs (wave 2)
-- [ ] 129-03-PLAN.md — Range-resumable download route + download specs + grant-only analyst e2e (wave 3)
-- [ ] 129-04-PLAN.md — live route smoke, proxy-path resume checkpoint, gates, STATE/ROADMAP/REQUIREMENTS (wave 4)
+- [x] 129-01-PLAN.md — exportJobAccess seam (ownership, DTO, filename, servable file) + deleteExportJob + case-insensitive list (wave 1)
+- [x] 129-02-PLAN.md — registerExportRoutes: start/list/status/cancel/delete, wiring, privacy + RBAC specs (wave 2)
+- [x] 129-03-PLAN.md — Range-resumable download route + download specs + grant-only analyst e2e (wave 3)
+- [x] 129-04-PLAN.md — live route smoke, proxy-path resume checkpoint, gates, STATE/ROADMAP/REQUIREMENTS (wave 4)
 
 ### Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps
 **Goal**: The whole export subsystem is durable across restarts and over time — nothing is ever stuck "running," nothing is orphaned on disk, and an admin can cap rows/file size/concurrency through env config alone.

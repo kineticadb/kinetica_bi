@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: phase_128_complete
-stopped_at: "Phase 128 complete + verified (2026-10-06); next /gsd:plan-phase 129"
-last_updated: "2026-10-06T00:00:00.000Z"
+status: phase_129_complete
+stopped_at: "Phase 129 plans complete (2026-10-07); awaiting verification, then /gsd:plan-phase 130"
+last_updated: "2026-10-07T00:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 18
+  completed_plans: 18
 ---
 
 # Project State
@@ -54,7 +54,12 @@ Accepted noted risks: (1) per-page sort cost grows with offset (516 -> 815 ms/20
 Primitives for Phase 129: `startExport`, `cancelExport`, `getExportJob`, `listExportJobsForUser`, `EXPORT_DIR`, `EXPORT_VIEW_TTL_MINUTES`; object prefix `_kbi_exp_` for Phase 130's orphan sweep (a session-ended job cannot drop its snapshot; TTL, default 60 min, is the backstop). Smoke: `npm run export-runner-smoke`.
 Carried items: Phase 131 Q-D follow-up; Phase 127 follow-ups = none (D-04a/b verified).
 
-**Next:** verify Phase 128, then `/gsd:plan-phase 129`.
+**Phase 129 outcome (2026-10-07):** 4/4 plans. Six routes under /api/exports: POST / (202 start; 404 no-leak on no view/CSV disabled; 400 validation), GET / (200 own history), GET /:id (200; 404 non-owner), POST /:id/cancel (202; 409 already terminal; 404), DELETE /:id (204; 404), GET /:id/download (200/206 native Range + If-Range; 404 non-owner; 409 not complete; 410/416 per spec). Operator decisions O-1..O-7 applied. EXPRT-V126-11/13/17 Complete; EXPRT-V126-05/07 still in progress (routes delivered, complete in Phase 131). Live smoke vs demo.nyctaxi (500k, real socket) R1-R7 all PASS, incl. R4 interrupted download resumed from byte 1048576 -> 206 with matching sha256; cleanup verified. Probes: 129-01 five mutations red, 129-02 seven (P7 strengthened), 129-03 six (D3 equivalent mutation and D6 ENOENT race honestly not discriminated). Gates: server tsc clean, test:gate PASSED (8 known files), 4 phase specs 60/60, packages/web unchanged since ba8af45.
+**Open verification debt (Phase 129 Task 2):** proxy-path `curl -C -` resume was NOT exercised. Operator reply: "not exercised: proxy not running". Nginx config reviewed statically only (gzip_types excludes text/csv; plain proxy_pass, no Range override; default buffering), so Range/If-Range should pass through. Closes at Phase 131 UAT (success criterion 5) or an earlier curl run against the deployed :8080 origin with `-H 'Accept-Encoding: gzip'` on the 206 step.
+**Do not ship the milestone between Phase 129 and Phase 130:** there is no per-user concurrency/row/size cap yet (operator O-6); any dashboard viewer can start unbounded concurrent exports until Phase 130's env caps land.
+**For Phase 130:** the TTL sweep must remove files and rows via `exportFilePaths` + `deleteExportJob` and must not race an open download. **For Phase 131:** `toExportJobDto` and `exportDownloadName` (in `src/lib/exportJobAccess.ts`) are the seams for `name`/`expiresAt`.
+
+**Next:** verify Phase 129, then `/gsd:plan-phase 130`.
 
 **Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
 interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;
