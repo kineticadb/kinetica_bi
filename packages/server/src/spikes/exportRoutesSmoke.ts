@@ -1,5 +1,5 @@
 /**
- * Phase 129 live smoke of the /api/exports routes over a real HTTP socket against real Kinetica.
+ * Phase 129-130 live smoke (R1-R7 routes; R8 sweep vs open download, R9 row cap, R10 concurrency cap) of the /api/exports routes over a real HTTP socket against real Kinetica.
  * NOT part of the app. In-memory SQLite, temp EXPORT_DIR, never prints credentials or cookies.
  * USAGE: cd packages/server && EXPORT_SMOKE_TABLE=schema.table [EXPORT_SMOKE_COLUMNS='a, b, c'] npm run export-routes-smoke
  */
@@ -206,6 +206,88 @@ async function main() {
     const gone = !fs.readdirSync(exportDir).some((f) => f.startsWith(id));
     const after = await call("GET", `/api/exports/${id}`);
     report("R7", "delete", del.status === 204 && gone && after.status === 404, `delete=${del.status} file_gone=${gone} get_after=${after.status}`);
+
+    const { runExportSweepOnce, isExportDownloading } = await import("../lib/exportCleanup");
+    const { rowCapMessage, concurrencyCapMessage } = await import("../lib/exportCaps");
+    const { db } = await import("../db");
+    const hasFile = (jid: string) => fs.readdirSync(exportDir).some((f) => f.startsWith(jid));
+
+    // R8: sweep vs a held-open download
+    {
+      const r8Start = ((await (await call("POST", "/api/exports", cookie, { widgetId: widget.id })).json()) as { data: Record<string, any> }).data;
+      const jid = r8Start.id as string;
+      jobIds.push(jid);
+      const j8 = await poll(jid);
+      const fileBytes = j8.fileBytes as number;
+      const refSha = sha(Buffer.from(await (await call("GET", `/api/exports/${jid}/download`)).arrayBuffer()));
+      const chunks: Buffer[] = [];
+      let httpRes: http.IncomingMessage | undefined;
+      let ended: Promise<void> = Promise.resolve();
+      await new Promise<void>((resolve, reject) => {
+        const req = http.get(`${base}/api/exports/${jid}/download`, { headers: { Cookie: cookie } }, (res) => {
+          httpRes = res;
+          ended = new Promise<void>((e) => res.on("end", () => e()));
+          let paused = false;
+          res.on("data", (c: Buffer) => {
+            chunks.push(c);
+            if (!paused) { paused = true; res.pause(); resolve(); }
+          });
+        });
+        req.on("error", reject);
+      });
+      let open = false;
+      for (const dl8 = Date.now() + 5000; Date.now() < dl8 && !open; ) {
+        open = isExportDownloading(jid);
+        if (!open) await sleep(20);
+      }
+      db.prepare("UPDATE export_jobs SET finished_at = datetime('now','-3 days') WHERE id = ?").run(jid);
+      const expiredGet = (await call("GET", `/api/exports/${jid}/download`)).status;
+      const s1 = runExportSweepOnce();
+      const fileKept = hasFile(jid) && (await call("GET", `/api/exports/${jid}`)).status === 200;
+      httpRes!.resume();
+      await ended;
+      const shaMatch = sha(Buffer.concat(chunks)) === refSha;
+      await sleep(50);
+      const closed = !isExportDownloading(jid);
+      const s2r = runExportSweepOnce();
+      const afterDeleted = !hasFile(jid);
+      const newGet = (await call("GET", `/api/exports/${jid}/download`)).status;
+      const pass8 = open && expiredGet === 410 && s1.skippedOpen >= 1 && fileKept && shaMatch && closed && s2r.deleted >= 1 && afterDeleted && newGet === 404;
+      report("R8", "sweep-vs-open-download", pass8,
+        `open=${open} expired_get=${expiredGet} skipped=${s1.skippedOpen} file_kept=${fileKept} sha_match=${shaMatch} after_close_deleted=${afterDeleted} new_get=${newGet} bytes=${fileBytes}` +
+        (fileBytes < 8 * 1024 * 1024 ? " (small file: kernel buffers may absorb it; the unit/integration tests are the structural proof)" : ""));
+    }
+
+    // R9: row cap live
+    try {
+      process.env.EXPORT_MAX_ROWS = "1000";
+      const r9s = ((await (await call("POST", "/api/exports", cookie, { widgetId: widget.id })).json()) as { data: Record<string, any> }).data;
+      jobIds.push(r9s.id);
+      const j9 = await poll(r9s.id);
+      const msgOk = j9.errorMessage === rowCapMessage(j9.totalRows, 1000);
+      const noFile = !hasFile(r9s.id);
+      report("R9", "row-cap-live", j9.status === "failed" && j9.errorCode === "row_cap" && msgOk && j9.rowsWritten === 0 && noFile,
+        `status=${j9.status} code=${j9.errorCode} message_match=${msgOk} rows_written=${j9.rowsWritten} no_file=${noFile}`);
+    } finally {
+      delete process.env.EXPORT_MAX_ROWS;
+    }
+
+    // R10: concurrency cap live
+    try {
+      process.env.EXPORT_MAX_CONCURRENT_PER_USER = "1";
+      const a = await call("POST", "/api/exports", cookie, { widgetId: widget.id });
+      const aj = ((await a.json()) as { data: Record<string, any> }).data;
+      jobIds.push(aj.id);
+      const b = await call("POST", "/api/exports", cookie, { widgetId: widget.id });
+      const bb = (await b.json().catch(() => ({}))) as Record<string, any>;
+      const cres10 = await call("POST", `/api/exports/${aj.id}/cancel`);
+      const fin10 = await poll(aj.id);
+      const ev10 = `a_http=${a.status} b_http=${b.status} code=${bb.code} message_match=${bb.error === concurrencyCapMessage(1)} cancel_http=${cres10.status} a_final=${fin10.status}`;
+      if (b.status !== 429 && fin10.status === "complete") report("R10", "concurrency-live", "SKIPPED", `A completed before the second POST (${ev10})`);
+      else report("R10", "concurrency-live", a.status === 202 && b.status === 429 && bb.code === "concurrency_cap" && bb.error === concurrencyCapMessage(1) && cres10.status === 202, ev10);
+    } finally {
+      delete process.env.EXPORT_MAX_CONCURRENT_PER_USER;
+    }
   } finally {
     server.close();
   }
