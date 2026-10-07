@@ -59,6 +59,8 @@ import {
   KineticaPermissionError,
   KineticaUpstreamError,
 } from "./kineticaErrors";
+import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
+import { getExportLimits } from "./lib/exportCaps";
 import { createSession, deleteSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
 import {
   createDashboard,
@@ -213,6 +215,8 @@ export const createApp = async (): Promise<express.Express> => {
   const CSV_INBROWSER_MAX_ROWS = readPositiveIntEnv("CSV_INBROWSER_MAX_ROWS", 100000);
   // Phase 127 (D-12): per-query max on /me so the records table clamps its page size and paging never skips rows.
   const MAX_ROWS_PER_QUERY = getRowLimitConfig().maxRowsPerQuery;
+  // Phase 130 (EXPRT-V126-15, D-18): admin export caps for the Phase 131 dialog. Unset caps are null. Read once.
+  const EXPORT_LIMITS = getExportLimits();
 
   // Phase 127 caller audit: INFORMATION_SCHEMA lists feed un-paginated dropdowns; pin an explicit limit so they never inherit an admin-raised KINETICA_MAX_ROWS_PER_QUERY (and are still clamped by it if lowered).
   const DISCOVERY_ROW_LIMIT = 20_000;
@@ -455,7 +459,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY, exportLimits: EXPORT_LIMITS });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
@@ -3286,12 +3290,15 @@ export const errorMiddleware = (
 
 if (process.env.NODE_ENV !== "test") {
   // Async IIFE — the bootstrap regex test (tests/bootstrap.spec.ts) verifies that this
-  // gate body contains BOTH app.listen AND startSessionSweep(). Both live inside the IIFE
+  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen and startExportSweep() after). All live inside the IIFE
   // body which is itself inside the gate's brace block, so the regex matches.
   void (async () => {
     try {
       const port = process.env.PORT || 4000;
       const app = await createApp();
+      // Phase 130 D-05/D-07: reconcile export jobs/files ONCE, before accepting traffic. Never inside createApp():
+      // every route spec and the routes smoke call createApp() while their own exports may be in flight.
+      reconcileExportsOnBoot();
       app.listen(port, () => {
         console.log(`Kinetica BI backend running on http://localhost:${port}`);
       });
@@ -3299,6 +3306,8 @@ if (process.env.NODE_ENV !== "test") {
       // surfaces before we accept traffic. .unref() inside startSessionSweep keeps
       // test processes able to exit cleanly.
       startSessionSweep();
+      // Phase 130 D-04: export expiry sweep (first pass immediately, then every 5 min, .unref()'d).
+      startExportSweep();
     } catch (err) {
       console.error(
         JSON.stringify({
