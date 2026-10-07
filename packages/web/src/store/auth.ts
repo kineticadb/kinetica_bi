@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { DEFAULT_EXPORT_LIMITS, type ExportLimits } from "../lib/exportLimits";
-import { AuthUser, AuthMode, fetchAuthConfig, fetchMe, login as apiLogin, logout as apiLogout } from "../api/client";
+import { AuthUser, AuthMode, fetchAuthConfig, fetchMe, login as apiLogin, logout as apiLogout, type MeResponse } from "../api/client";
 
 type AuthStatus = "unknown" | "authenticated" | "unauthenticated";
 type AuthReason = "session-expired" | null;
@@ -35,6 +35,20 @@ type AuthState = {
   setPermissions: (roles: string[], permissions: string[]) => void;
 };
 
+// The /me-derived slice of state, shared by bootstrap() and login() so the two can never drift apart.
+const meToState = (me: MeResponse) => ({
+  status: "authenticated" as const,
+  user: me.user,
+  authMode: me.authMode,
+  ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes,
+  maxCombinationViewsPerTable: me.maxCombinationViewsPerTable,
+  dvFilterScopeDisabled: me.dvFilterScopeDisabled,
+  maxBarGroupBySeriesCap: me.maxBarGroupBySeriesCap,
+  csvInBrowserMaxRows: me.csvInBrowserMaxRows,
+  maxRowsPerQuery: me.maxRowsPerQuery,
+  exportLimits: me.exportLimits ?? { ...DEFAULT_EXPORT_LIMITS },
+});
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "unknown",
   user: null,
@@ -62,7 +76,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const me = await fetchMe();
       if (me) {
         // /me carries authMode now; latest-write-wins (more authoritative than /config's pre-auth read).
-        set({ status: "authenticated", user: me.user, authMode: me.authMode, ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes, maxCombinationViewsPerTable: me.maxCombinationViewsPerTable, dvFilterScopeDisabled: me.dvFilterScopeDisabled, maxBarGroupBySeriesCap: me.maxBarGroupBySeriesCap, csvInBrowserMaxRows: me.csvInBrowserMaxRows, maxRowsPerQuery: me.maxRowsPerQuery, exportLimits: me.exportLimits ?? { ...DEFAULT_EXPORT_LIMITS }, error: null, reason: null });
+        set({ ...meToState(me), error: null, reason: null });
       } else {
         // bootstrap-driven 401: honest "not logged in", NOT mid-session expiry — reason stays null
         set({ status: "unauthenticated", user: null, reason: null });
@@ -76,6 +90,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const user = await apiLogin(username, password);
       set({ status: "authenticated", user, error: null, reason: null });
+      // A password login does not reload the page, so bootstrap's /me read never runs: load the deploy
+      // config (export limits, CSV/row caps, dv scope flag, …) now. Best-effort — the login itself already succeeded.
+      try {
+        const me = await fetchMe();
+        if (me) set(meToState(me));
+      } catch {
+        // keep the login result; the deploy config falls back to defaults until the next page load
+      }
     } catch (err) {
       set({ status: "unauthenticated", user: null, error: (err as Error).message, reason: null });
       throw err;
