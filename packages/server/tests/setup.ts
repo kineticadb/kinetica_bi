@@ -27,6 +27,11 @@ process.env.CSV_INBROWSER_MAX_ROWS = "";
 // Export runner envs: same dev .env leak guard (specs set EXPORT_DIR to a mkdtemp dir themselves).
 process.env.EXPORT_DIR = "";
 process.env.EXPORT_VIEW_TTL_MINUTES = "";
+// Phase 130 export caps/TTL: dev .env leak guard (a dev EXPORT_MAX_CONCURRENT_PER_USER=1 would falsely 429 specs)
+process.env.EXPORT_TTL_HOURS = "";
+process.env.EXPORT_MAX_ROWS = "";
+process.env.EXPORT_MAX_FILE_MB = "";
+process.env.EXPORT_MAX_CONCURRENT_PER_USER = "";
 
 beforeEach(() => {
   // Clear any global fetch stub between tests.
