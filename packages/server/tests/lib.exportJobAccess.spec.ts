@@ -2,7 +2,7 @@
  * lib.exportJobAccess.spec.ts - Phase 129 Plan 01 (EXPRT-V126-11, EXPRT-V126-13).
  * Synthetic fixtures only.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,8 @@ import { db, finalizeExportJob, getExportJob, insertExportJob, markExportJobRunn
 import {
   EXPORT_UUID_RE,
   exportDownloadName,
+  exportExpiresAt,
+  isExportExpired,
   findOwnedExportJob,
   resolveServableExportFile,
   toExportJobDto,
@@ -80,7 +82,7 @@ describe("exportJobAccess", () => {
     const j = mkComplete();
     const dto = toExportJobDto(j);
     expect(Object.keys(dto).sort()).toEqual([
-      "createdAt", "dashboardId", "errorCode", "errorMessage", "fileBytes", "finishedAt",
+      "createdAt", "dashboardId", "errorCode", "errorMessage", "expiresAt", "fileBytes", "finishedAt",
       "gzip", "id", "rowsWritten", "startedAt", "status", "totalRows", "widgetId",
     ]);
     const json = JSON.stringify(dto);
@@ -139,5 +141,36 @@ describe("exportJobAccess", () => {
   it("EXPACC129-servable-null: null filePath -> null", () => {
     const j = mk();
     expect(resolveServableExportFile({ id: j.id, filePath: null, fileBytes: 5 })).toBeNull();
+  });
+});
+
+describe("Phase 130 computed expiry", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const sqlAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString().slice(0, 19).replace("T", " ");
+
+  it("EXPACC130-expires-at: parsed as UTC, default 24h", () => {
+    expect(exportExpiresAt({ finishedAt: "2026-10-07 10:00:00" })).toBe("2026-10-08T10:00:00.000Z");
+  });
+  it("EXPACC130-expires-at-ttl-env: honours EXPORT_TTL_HOURS", () => {
+    vi.stubEnv("EXPORT_TTL_HOURS", "2");
+    expect(exportExpiresAt({ finishedAt: "2026-10-07 10:00:00" })).toBe("2026-10-07T12:00:00.000Z");
+  });
+  it("EXPACC130-expires-null: no finishedAt -> null / not expired", () => {
+    expect(exportExpiresAt({ finishedAt: null })).toBeNull();
+    expect(isExportExpired({ finishedAt: null })).toBe(false);
+  });
+  it("EXPACC130-is-expired: 25h true, 23h false, exactly at expiry true", () => {
+    expect(isExportExpired({ finishedAt: sqlAgo(25) })).toBe(true);
+    expect(isExportExpired({ finishedAt: sqlAgo(23) })).toBe(false);
+    const f = "2026-10-07 10:00:00";
+    const at = Date.parse("2026-10-08T10:00:00.000Z");
+    expect(isExportExpired({ finishedAt: f }, at)).toBe(true);
+    expect(isExportExpired({ finishedAt: f }, at - 1)).toBe(false);
+  });
+  it("EXPACC130-dto-expires: DTO carries computed expiresAt; queued is null", () => {
+    const c = mkComplete();
+    expect(toExportJobDto(c).expiresAt).toBe(exportExpiresAt(c));
+    expect(toExportJobDto(c).expiresAt).not.toBeNull();
+    expect(toExportJobDto(mk()).expiresAt).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getExportJob, type ExportJob } from "../db";
 import { getExportDir } from "./exportRunner";
+import { getExportTtlHours } from "./exportCaps";
 
 export const EXPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -18,7 +19,7 @@ export const findOwnedExportJob = (id: string, username: string): ExportJob | un
   return job && sameExportOwner(job.username, username) ? job : undefined;
 };
 
-// Phase 130 adds `expiresAt` and Phase 131 a user-supplied name to toExportJobDto / exportDownloadName.
+// Phase 130 added `expiresAt` (computed). Phase 131 adds a user-supplied name to toExportJobDto / exportDownloadName.
 export type ExportJobDto = {
   id: string;
   status: ExportJob["status"];
@@ -32,6 +33,7 @@ export type ExportJobDto = {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  expiresAt: string | null;
   gzip: boolean;
 };
 
@@ -41,6 +43,17 @@ const parseGzip = (s: string | null): boolean => {
   } catch {
     return false;
   }
+};
+
+/** Phase 130 D-02/D-03: expiry = finished_at + EXPORT_TTL_HOURS for EVERY terminal status. Computed, never stored (an env change applies retroactively). */
+export const exportExpiresAt = (job: Pick<ExportJob, "finishedAt">): string | null => {
+  if (!job.finishedAt) return null;
+  const t = Date.parse(job.finishedAt.replace(" ", "T") + "Z"); // SQLite UTC string has no Z; without it JS parses LOCAL time
+  return Number.isFinite(t) ? new Date(t + getExportTtlHours() * 3_600_000).toISOString() : null;
+};
+export const isExportExpired = (job: Pick<ExportJob, "finishedAt">, now: number = Date.now()): boolean => {
+  const e = exportExpiresAt(job);
+  return e !== null && Date.parse(e) <= now;
 };
 
 export const toExportJobDto = (job: ExportJob): ExportJobDto => ({
@@ -56,6 +69,7 @@ export const toExportJobDto = (job: ExportJob): ExportJobDto => ({
   createdAt: job.createdAt,
   startedAt: job.startedAt,
   finishedAt: job.finishedAt,
+  expiresAt: exportExpiresAt(job),
   gzip: parseGzip(job.optionsJson),
 });
 
