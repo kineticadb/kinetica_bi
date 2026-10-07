@@ -18,6 +18,8 @@
  * <DashboardContextProvider dashboardId={N}> — useDashboardContext() throws otherwise.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { stopAllExportTracking } from "../../store/exportTracker";
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { render, waitFor, act, screen, fireEvent } from "@testing-library/react";
 import WidgetRenderer, { resolveAggregatedDrillTarget } from "./WidgetRenderer";
 import { useFilterStore } from "../../store/filterStore";
@@ -73,7 +75,18 @@ vi.mock("../../api/client", async (importOriginal) => {
     // Phase 77-01: default no-op so loadConfig never makes real HTTP calls.
     // Tests that need config data use upsertColumn on the real store directly.
     listColumnDisplayConfig: vi.fn().mockResolvedValue([]),
+    // Phase 131-07: background export client calls (dialog Start/poll/cancel).
+    startExport: vi.fn(),
+    cancelExportJob: vi.fn(),
+    getExportJob: vi.fn(),
   };
+});
+vi.mock("../../lib/exportDownload", async (o) => ({
+  ...(await o<typeof import("../../lib/exportDownload")>()),
+  startExportDownload: vi.fn(),
+}));
+afterEach(() => {
+  stopAllExportTracking();
 });
 
 // Clear all mock call histories between tests to prevent cross-test contamination.
@@ -2605,6 +2618,7 @@ describe("RecordsTableRenderer CSV download", () => {
     const widget = makeCsvRecordsWidget();
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
 
     await act(async () => {
       fireEvent.click(screen.getByText("Download"));
@@ -2634,7 +2648,13 @@ describe("RecordsTableRenderer CSV download", () => {
     ...buildCsvResponse(["region", "amount"], Array.from({ length: n }, (_, i) => [`R${i}`, i])),
     ...(hasMore === undefined ? {} : { has_more_records: hasMore }),
   });
-  const rlcsvSetup = async (cap: number, count: number, exports: unknown[], extraCfg: Record<string, unknown> = {}) => {
+  const rlcsvSetup = async (
+    cap: number,
+    count: number,
+    exports: unknown[],
+    extraCfg: Record<string, unknown> = {},
+    opts: { viaDialog?: boolean } = {},
+  ) => {
     const showToastMock = vi.fn();
     const { useToastStore: toastStore } = await import("../../store/toast");
     toastStore.setState({ showToast: showToastMock } as Parameters<typeof toastStore.setState>[0]);
@@ -2646,10 +2666,21 @@ describe("RecordsTableRenderer CSV download", () => {
     });
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
     await act(async () => {
       fireEvent.click(screen.getByText("Download"));
       await new Promise((r) => setTimeout(r, 100));
     });
+    if (opts.viaDialog) {
+      // Phase 131 D-01: count above the cap opens the dialog; its partial button runs the in-browser path.
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^Download first [\d,]+ rows now$/ }));
+        await new Promise((r) => setTimeout(r, 100));
+      });
+    } else {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    }
     const exportCalls = m.mock.calls.slice(2).map((c) => c[0] as string);
     return { showToastMock, exportCalls, m };
   };
@@ -2677,13 +2708,13 @@ describe("RecordsTableRenderer CSV download", () => {
 
   it("RLCSV-ceiling-clamp: csvInBrowserMaxRows clamps a larger widget cap", async () => {
     useAuthStore.setState({ csvInBrowserMaxRows: 3 });
-    const { exportCalls, showToastMock } = await rlcsvSetup(1000000, 10, [rowsN(3, false)]);
+    const { exportCalls, showToastMock } = await rlcsvSetup(1000000, 10, [rowsN(3, false)], {}, { viaDialog: true });
     expect(exportCalls[0]).toContain("LIMIT 3 OFFSET 0");
     expect(showToastMock).toHaveBeenCalledWith("Downloaded the first 3 of 10 rows", "info");
   });
 
   it("RLCSV-cap-message: cap reached with rows left out reports N of M", async () => {
-    const { showToastMock } = await rlcsvSetup(2, 10, [rowsN(2, false)]);
+    const { showToastMock } = await rlcsvSetup(2, 10, [rowsN(2, false)], {}, { viaDialog: true });
     expect(showToastMock).toHaveBeenCalledWith("Downloaded the first 2 of 10 rows", "info");
     expect(showToastMock.mock.calls.some((a: unknown[]) => String(a[0]).includes("Capped at"))).toBe(false);
   });
@@ -2707,6 +2738,7 @@ describe("RecordsTableRenderer CSV download", () => {
     });
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
     await act(async () => {
       fireEvent.click(screen.getByText("Download"));
       await new Promise((r) => setTimeout(r, 50));
@@ -2809,6 +2841,7 @@ describe("RecordsTableRenderer CSV download", () => {
     const widget = makeCsvRecordsWidget();
     const { unmount } = render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
 
     // Start export (will hang on the export runSql call)
     await act(async () => {
@@ -2825,6 +2858,107 @@ describe("RecordsTableRenderer CSV download", () => {
     // Signal captured from the export call must now be aborted
     expect(capturedSignal).toBeDefined();
     expect(capturedSignal!.aborted).toBe(true);
+  });
+
+  // ---- Phase 131-07 EXPTRIG tests ----
+  const trigRender = async (count: number | "fail", cap: number, cfg: Record<string, unknown> = {}) => {
+    const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+    m.mockResolvedValueOnce(rowsN(2));
+    if (count === "fail") m.mockRejectedValueOnce(new Error("count failed"));
+    else m.mockResolvedValueOnce(cntResp(count));
+    m.mockResolvedValue(rowsN(2, false)); // any export page
+    const widget = makeCsvRecordsWidget({
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: cap, ...cfg },
+    });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download"));
+    if (count === "fail") await new Promise((r) => setTimeout(r, 50));
+    else await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
+    return { m, widget };
+  };
+  const clickDownload = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download"));
+      await new Promise((r) => setTimeout(r, 100));
+    });
+  };
+
+  it("EXPTRIG-under-cap: count at or below the cap keeps the one-click in-browser download", async () => {
+    const { m } = await trigRender(5, 10);
+    const before = m.mock.calls.length;
+    await clickDownload();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const after = m.mock.calls.slice(before).map((c) => c[0] as string);
+    expect(after.some((q) => q.includes("SELECT region, amount FROM sales"))).toBe(true);
+  });
+
+  it("EXPTRIG-over-cap: count above the cap opens the dialog and issues no export SELECT", async () => {
+    const { m } = await trigRender(10, 2);
+    const before = m.mock.calls.length;
+    await clickDownload();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("Export records");
+    expect(m.mock.calls.length).toBe(before);
+  });
+
+  it("EXPTRIG-unknown-count: a failed count query opens the dialog", async () => {
+    await trigRender("fail", 10);
+    await clickDownload();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("EXPTRIG-request: Start export sends the filterSelection-scoped filters and the table sort", async () => {
+    const fA = { column: "region", value: "EAST", dataType: "string", sourceWidgetId: 11, addedAt: 1 };
+    const fB = { column: "amount", value: "5", dataType: "string", sourceWidgetId: 12, addedAt: 2 };
+    useFilterStore.setState({ filters: { 50: [fA, fB] } } as never);
+    (clientModule.startExport as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job1", status: "running", widgetId: 5, dashboardId: 1, rowsWritten: 0, totalRows: 10, fileBytes: null,
+      errorCode: null, errorMessage: null, createdAt: "2026-10-07 10:00:00", startedAt: null, finishedAt: null,
+      expiresAt: null, gzip: false, name: "x", dashboardName: null, widgetTitle: null,
+    });
+    (clientModule.getExportJob as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    await trigRender(10, 2, {
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [11] },
+      sortField: "amount",
+      sortDirection: "desc",
+    });
+    await clickDownload();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    const start = clientModule.startExport as ReturnType<typeof vi.fn>;
+    expect(start).toHaveBeenCalledTimes(1);
+    const body = start.mock.calls[0][0];
+    expect(body.widgetId).toBe(5);
+    expect(body.filters).toEqual([fA]);
+    expect(body.sortField).toBe("amount");
+    expect(body.sortDir).toBe("desc");
+    expect(body.options).toMatchObject({ gzip: false, format: "raw" });
+    expect(body.options.name).toMatch(/^.+ \d{4}-\d{2}-\d{2} \d{4}$/);
+  });
+
+  it("EXPTRIG-override-note: an active widget-action override shows the saved-settings note", async () => {
+    useWidgetActionStore.setState({ widgetOverrides: { 5: { pageSize: 10 } } } as never);
+    try {
+      await trigRender(10, 2);
+      await clickDownload();
+      expect(screen.getByRole("dialog").textContent).toContain(
+        "Exports use the saved widget settings. Filters and sort are included; widget-action overrides are not.",
+      );
+    } finally {
+      useWidgetActionStore.setState({ widgetOverrides: {} } as never);
+    }
+  });
+
+  it("EXPTRIG-close: Close removes the dialog and Download is enabled again", async () => {
+    await trigRender(10, 2);
+    await clickDownload();
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect((screen.getByText("Download") as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
