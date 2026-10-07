@@ -146,6 +146,7 @@ import type { Permission } from "./lib/permissions";
 import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboardGrant } from "./lib/dashboardAccessDb";
 // v1.16 Phase 81 (BRANDFND-02, SECA-V116-01): branding deps — multer upload, magic-byte
 // type detection, jsdom DOM environment, DOMPurify SVG sanitization.
+import { registerExportRoutes } from "./exportRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -1250,11 +1251,21 @@ export const createApp = async (): Promise<express.Express> => {
   //   GET  /api/kinetica/*           — schema/table/column discovery; auth-only per CONTEXT.
   //   GET  /api/tables               — app table registry reads.
   //   GET  /api/tables/:id           — single table read.
+  //   POST   /api/exports            — start a background export of a records widget; gated by
+  //                                    canViewDashboard on the widget's dashboard (EXPRT-V126-17).
+  //   GET    /api/exports            — the caller's own export history.
+  //   GET    /api/exports/:id        — status; ownership-checked (404 for not-yours).
+  //   POST   /api/exports/:id/cancel — cancel own running export.
+  //   DELETE /api/exports/:id        — delete own export (cancels first if running).
+  //   GET    /api/exports/:id/download — own COMPLETE export only, Range-resumable (Plan 129-03).
   //
   // If adding a new route, ask: "Can an analyst (dashboards:view only) need this?"
   //   YES → place here with requireAuth (or requireAuth + requireConfig) only.
   //   NO  → place in the guarded section with requirePermission(...).
   // ═══════════════════════════════════════════════════════════════════════════════
+
+  // v1.26 Phase 129: background export routes (requireAuth only — see boundary list above).
+  registerExportRoutes(app);
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.
