@@ -1,3 +1,4 @@
+import { normalizeExportLimits, type ExportLimits } from "../lib/exportLimits";
 import type { ActiveFilter } from "../store/filterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
 import { useToastStore } from "../store/toast";
@@ -250,7 +251,9 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 94 (FSCOPE-V118-03): /api/me returns the dv filter-scope disable flag (default false = enabled).
 // Phase 102 (BARGRP-V119-03): /api/me returns the deploy-time bar group-by series cap (default 12).
 // Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV ceiling (default 100000).
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number; maxRowsPerQuery: number };
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number; maxRowsPerQuery: number;
+  // Phase 130 (EXPRT-V126-15, D-18): admin export caps (unset = null; default concurrency 2).
+  exportLimits: ExportLimits };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -298,6 +301,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     csvInBrowserMaxRows: typeof json.csvInBrowserMaxRows === "number" ? json.csvInBrowserMaxRows : 100000,
     // Phase 127 (D-12): coalesce to 20000 (server KINETICA_MAX_ROWS_PER_QUERY default) for an older server build.
     maxRowsPerQuery: typeof json.maxRowsPerQuery === "number" ? json.maxRowsPerQuery : 20000,
+    // Phase 130 (D-18): normalised — an older server omitting the field yields the defaults, never undefined.
+    exportLimits: normalizeExportLimits(json.exportLimits),
   };
 };
 
