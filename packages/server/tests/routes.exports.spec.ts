@@ -222,6 +222,54 @@ describe("export routes", () => {
     expect(fs.existsSync(path.join(dir, `${id}.csv.gz`))).toBe(true);
   });
 
+  it("EXPRT131-format-formatted: options.format formatted accepted and stored", async () => {
+    installStub(5);
+    addDashboardGrant(dashId, "user", "fm");
+    const { cookie } = session("fm");
+    const r = await post(cookie, { widgetId, options: { format: "formatted" } });
+    expect(r.status).toBe(202);
+    const id = r.body.data.id as string;
+    expect(JSON.parse(getExportJob(id)!.optionsJson!).format).toBe("formatted");
+    await __exportRunForTest(id);
+  });
+
+  it("EXPRT131-format-invalid: pretty -> 400 with new message", async () => {
+    const { cookie } = session("fi");
+    const r = await post(cookie, { widgetId, options: { format: "pretty" } });
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("invalid_export_request");
+    expect(r.body.error).toBe('options.format must be "raw" or "formatted".');
+  });
+
+  it("EXPRT131-name-stored: name sanitised and returned in DTO", async () => {
+    installStub(5);
+    addDashboardGrant(dashId, "user", "nm");
+    const { cookie } = session("nm");
+    const r = await post(cookie, { widgetId, options: { name: "  Q1\treport  " } });
+    expect(r.status).toBe(202);
+    expect(r.body.data.name).toBe("Q1 report");
+    expect(JSON.parse(getExportJob(r.body.data.id)!.optionsJson!).name).toBe("Q1 report");
+    await __exportRunForTest(r.body.data.id as string);
+  });
+
+  it("EXPRT131-name-empty: blank name not stored", async () => {
+    installStub(5);
+    addDashboardGrant(dashId, "user", "ne");
+    const { cookie } = session("ne");
+    const r = await post(cookie, { widgetId, options: { name: "   " } });
+    expect(r.status).toBe(202);
+    expect(r.body.data.name).toBeNull();
+    expect(JSON.parse(getExportJob(r.body.data.id)!.optionsJson!)).not.toHaveProperty("name");
+    await __exportRunForTest(r.body.data.id as string);
+  });
+
+  it("EXPRT131-name-type: non-string name -> 400", async () => {
+    const { cookie } = session("nt");
+    const r = await post(cookie, { widgetId, options: { name: 42 } });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe("options.name must be a string.");
+  });
+
   const seedJob = (username: string, sid: string, id = randomUUID()) =>
     insertExportJob({ id, username, sid, dashboardId: dashId, widgetId, specJson: JSON.stringify({ widgetId }), optionsJson: null });
 

@@ -16,6 +16,7 @@ import {
 } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { startExport, cancelExport, type ExportOptions } from "./lib/exportRunner";
+import { sanitizeExportName } from "./lib/exportName";
 import { ExportCapError } from "./lib/exportCaps";
 import { ExportSpecError, type ExportSpec } from "./lib/exportSql";
 import { findOwnedExportJob, toExportJobDto, exportDownloadName, resolveServableExportFile, isExportExpired } from "./lib/exportJobAccess";
@@ -70,10 +71,15 @@ export function registerExportRoutes(app: Express): void {
     const rawOpts = b.options;
     if (rawOpts !== undefined && !isObj(rawOpts)) return bad(res, "options must be an object.");
     if (rawOpts && rawOpts.gzip !== undefined && typeof rawOpts.gzip !== "boolean") return bad(res, "options.gzip must be a boolean.");
-    if (rawOpts && rawOpts.format !== undefined && rawOpts.format !== "raw") return bad(res, 'options.format must be "raw".');
+    if (rawOpts && rawOpts.format !== undefined && rawOpts.format !== "raw" && rawOpts.format !== "formatted") {
+      return bad(res, 'options.format must be "raw" or "formatted".');
+    }
+    if (rawOpts && rawOpts.name !== undefined && typeof rawOpts.name !== "string") return bad(res, "options.name must be a string.");
     const options: ExportOptions = {};
     if (rawOpts && typeof rawOpts.gzip === "boolean") options.gzip = rawOpts.gzip;
-    if (rawOpts && rawOpts.format === "raw") options.format = "raw";
+    if (rawOpts && (rawOpts.format === "raw" || rawOpts.format === "formatted")) options.format = rawOpts.format;
+    const nm = rawOpts ? sanitizeExportName(rawOpts.name) : undefined;
+    if (nm) options.name = nm;
 
     const spec = {
       widgetId: b.widgetId as number,

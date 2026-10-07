@@ -142,12 +142,12 @@ describe("export download route", () => {
     return r.buffer(true).parse(bin);
   };
 
-  const insert = (owner: string, id = randomUUID()) => {
-    insertExportJob({ id, username: owner, sid: "x", dashboardId: dashId, widgetId, specJson: "{}", optionsJson: null });
+  const insert = (owner: string, id = randomUUID(), optionsJson: string | null = null) => {
+    insertExportJob({ id, username: owner, sid: "x", dashboardId: dashId, widgetId, specJson: "{}", optionsJson });
     return id;
   };
-  const seedComplete = (owner: string, content: string | Buffer, ext = ".csv") => {
-    const id = insert(owner);
+  const seedComplete = (owner: string, content: string | Buffer, ext = ".csv", optionsJson: string | null = null) => {
+    const id = insert(owner, randomUUID(), optionsJson);
     markExportJobRunning(id);
     const filePath = path.join(dir, `${id}${ext}`);
     fs.writeFileSync(filePath, content);
@@ -169,6 +169,16 @@ describe("export download route", () => {
     expect(r.headers["content-disposition"]).toContain(`export-${job.createdAt.slice(0, 10)}-${id.slice(0, 8)}.csv`);
     expect(r.headers["content-type"]).toMatch(/^text\/csv/);
     expect(r.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("EXPRT131-dl-name: stored non-ASCII name downloads intact via filename*", async () => {
+    const { id } = seedComplete("alice", FULL, ".csv", '{"name":"Résumé – 数据 / Q1"}');
+    const r = await get(url(id), session("alice").cookie);
+    expect(r.status).toBe(200);
+    const cd = r.headers["content-disposition"] as string;
+    expect(cd).toContain("attachment");
+    const enc = cd.split("filename*=UTF-8''")[1];
+    expect(decodeURIComponent(enc)).toBe("Résumé – 数据 - Q1.csv");
   });
 
   it("EXPRT129-dl-range-206: open-ended range returns 206 with correct Content-Range", async () => {
