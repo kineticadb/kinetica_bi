@@ -8,12 +8,15 @@ import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import { db, finalizeExportJob, getExportJob, insertExportJob, markExportJobRunning } from "../src/db";
+import { db, finalizeExportJob, getExportJob, insertExportJob, markExportJobRunning, createDashboard, createWidget, createTable } from "../src/db";
+import { createSession } from "../src/sessionStore";
+import { startExport, __exportRunForTest } from "../src/lib/exportRunner";
 import {
   trackExportDownload,
   isExportDownloading,
   removeExportFiles,
   runExportSweepOnce,
+  reconcileExportsOnBoot,
   startExportSweep,
   EXPORT_SWEEP_INTERVAL_MS,
   __resetExportDownloadsForTest,
@@ -164,5 +167,162 @@ describe("exportCleanup sweep", () => {
     } finally {
       clearInterval(handle);
     }
+  });
+});
+
+const RESTART_MSG = "Export stopped: the server restarted. Start it again.";
+const touch = (name: string, body = "x") => fs.writeFileSync(path.join(dir, name), body);
+
+describe("exportCleanup boot reconcile", () => {
+  it("EXPBOOT-interrupted: queued + running rows fail with server_restarted and partials are removed", () => {
+    const q = mkJob();
+    const r = mkJob();
+    markExportJobRunning(r);
+    touch(`${q}.csv.part`);
+    touch(`${r}.csv.gz.part`);
+    const res = reconcileExportsOnBoot();
+    expect(res.failed).toBe(2);
+    for (const id of [q, r]) {
+      const j = getExportJob(id)!;
+      expect(j.status).toBe("failed");
+      expect(j.errorCode).toBe("server_restarted");
+      expect(j.errorMessage).toBe(RESTART_MSG);
+      expect(j.finishedAt).toBeTruthy();
+    }
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it("EXPBOOT-keeps-complete-file: a complete row's file is kept", () => {
+    const a = mkTerminal("complete", 1);
+    reconcileExportsOnBoot();
+    expect(fs.existsSync(a.file)).toBe(true);
+  });
+
+  it("EXPBOOT-orphans: only unowned own-name files are removed (a .part beside a complete file is an orphan)", () => {
+    const A = randomUUID();
+    const B = mkTerminal("failed", 1).id;
+    const C = mkTerminal("complete", 1);
+    const D = randomUUID();
+    touch(`${A}.csv`);
+    touch(`${B}.csv.gz`);
+    touch(`${C.id}.csv.part`);
+    touch(`${D}.csv.gz.part`);
+    const res = reconcileExportsOnBoot();
+    expect(res.orphansRemoved).toBe(4);
+    expect(fs.readdirSync(dir)).toEqual([`${C.id}.csv`]);
+  });
+
+  it("EXPBOOT-foreign-untouched: non-matching names, dirs and symlinks are left alone", () => {
+    const outside = path.join(os.tmpdir(), `kbi-outside-${randomUUID()}.csv`);
+    fs.writeFileSync(outside, "precious");
+    const u1 = randomUUID();
+    const u2 = randomUUID();
+    const u3 = randomUUID();
+    touch("notes.txt");
+    touch(`${u1}.csv.bak`);
+    fs.mkdirSync(path.join(dir, `${u3}.csv`));
+    fs.symlinkSync(outside, path.join(dir, `${u2}.csv`));
+    try {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const res = reconcileExportsOnBoot();
+      expect(res.unrecognised).toBe(4);
+      expect(res.orphansRemoved).toBe(0);
+      expect(fs.existsSync(path.join(dir, "notes.txt"))).toBe(true);
+      expect(fs.existsSync(path.join(dir, `${u1}.csv.bak`))).toBe(true);
+      expect(fs.statSync(path.join(dir, `${u3}.csv`)).isDirectory()).toBe(true);
+      expect(fs.lstatSync(path.join(dir, `${u2}.csv`)).isSymbolicLink()).toBe(true);
+      expect(fs.readFileSync(outside, "utf8")).toBe("precious");
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+
+  it("EXPBOOT-missing-dir: no throw, zero counts, directory not created", () => {
+    const missing = path.join(dir, "nope");
+    process.env.EXPORT_DIR = missing;
+    expect(reconcileExportsOnBoot()).toEqual({ failed: 0, orphansRemoved: 0, unrecognised: 0 });
+    expect(fs.existsSync(missing)).toBe(false);
+  });
+
+  it("EXPBOOT-skip-live: a run this process owns is neither failed nor has its .part removed", async () => {
+    process.env.KINETICA_MAX_RECORDS_PER_CALL = "20";
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
+    const sid = createSession({ username: "bootuser", secret: "s", kineticaUrl: process.env.KINETICA_URL! });
+    const dash = createDashboard("expboot-" + Math.random());
+    const t = createTable({ name: "demo_table", schema: "demo_schema" });
+    const widgetId = createWidget(dash.id, {
+      title: "w", type: "records", position: 0,
+      config: { tableId: t.id, table: "demo_schema.demo_table", columns: "id, name, amount", sortField: "id", sortDirection: "asc" },
+    }).id;
+    const respond = (encoded: unknown, extra: Record<string, unknown> = {}) =>
+      new Response(JSON.stringify({ status: "OK", data_str: JSON.stringify({ json_encoded_response: JSON.stringify(encoded), ...extra }) }), { status: 200 });
+    let release!: () => void;
+    const deferred = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (_u: string, init: any) => {
+      const body = JSON.parse(init.body as string);
+      const stmt: string = body.statement;
+      if (/^CREATE (OR REPLACE )?MATERIALIZED VIEW/.test(stmt) || /^DROP TABLE IF EXISTS/.test(stmt)) return respond({});
+      if (/SELECT COUNT\(\*\)/.test(stmt)) return respond({ column_headers: ["total"], column_1: [100] });
+      calls++;
+      if (calls === 2) await deferred;
+      const n = Math.min(body.limit, Math.max(0, 100 - body.offset));
+      const ids = Array.from({ length: n }, (_, k) => body.offset + k);
+      return respond(
+        { column_headers: ["id", "name", "amount"], column_1: ids, column_2: ids.map((i) => `n${i}`), column_3: ids.map((i) => i * 1.5) },
+        { has_more_records: body.offset + n < 100 },
+      );
+    }));
+    try {
+      const { jobId } = startExport({ spec: { widgetId }, sid, username: "bootuser" });
+      const run = __exportRunForTest(jobId)!;
+      const t0 = Date.now();
+      while (calls < 2 || !fs.existsSync(path.join(dir, `${jobId}.csv.part`))) {
+        if (Date.now() - t0 > 3000) throw new Error("timeout");
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      const res = reconcileExportsOnBoot();
+      expect(res.failed).toBe(0);
+      expect(res.orphansRemoved).toBe(0);
+      expect(getExportJob(jobId)!.status).toBe("running");
+      expect(fs.existsSync(path.join(dir, `${jobId}.csv.part`))).toBe(true);
+      release();
+      await run;
+    } finally {
+      release();
+      process.env.KINETICA_MAX_RECORDS_PER_CALL = "";
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("EXPBOOT-log-once: one summary line and one warning line", () => {
+    const j = mkJob();
+    touch(`${j}.csv.part`);
+    touch(`${randomUUID()}.csv`);
+    touch("notes.txt");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reconcileExportsOnBoot();
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith("[export] reconcile: 1 interrupted jobs failed, 1 orphan files removed");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("[export] reconcile: left 1 unrecognised file(s) in EXPORT_DIR untouched");
+  });
+
+  it("EXPBOOT-silent: nothing to do logs nothing", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reconcileExportsOnBoot();
+    expect(log).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("EXPBOOT-never-throws: an unreadable EXPORT_DIR is logged, not thrown", () => {
+    const file = path.join(dir, "afile");
+    fs.writeFileSync(file, "x");
+    process.env.EXPORT_DIR = file; // readdirSync -> ENOTDIR
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => reconcileExportsOnBoot()).not.toThrow();
+    expect(err).toHaveBeenCalled();
   });
 });
