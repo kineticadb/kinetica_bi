@@ -337,6 +337,8 @@ async function run(
       }
     }
 
+    // Don't open a .part for a run that is already cancelled (pipeline() would still clean it up; this just skips the work).
+    if (signal.aborted) throw abortError();
     const written = await writeCsv(batches(), header, fs.createWriteStream(partPath, { mode: 0o600 }), {
       signal,
       gzip: options.gzip,

@@ -155,6 +155,15 @@ describe("Phase 130 computed expiry", () => {
     vi.stubEnv("EXPORT_TTL_HOURS", "2");
     expect(exportExpiresAt({ finishedAt: "2026-10-07 10:00:00" })).toBe("2026-10-07T12:00:00.000Z");
   });
+  it("EXPACC130-ttl-overflow: an absurd EXPORT_TTL_HOURS falls back to 24h instead of throwing", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubEnv("EXPORT_TTL_HOURS", "99999999999");
+    expect(() => exportExpiresAt({ finishedAt: "2026-10-07 10:00:00" })).not.toThrow();
+    expect(exportExpiresAt({ finishedAt: "2026-10-07 10:00:00" })).toBe("2026-10-08T10:00:00.000Z");
+    vi.stubEnv("EXPORT_TTL_HOURS", "87600"); // the 10-year ceiling itself is accepted
+    expect(exportExpiresAt({ finishedAt: "2026-10-07 10:00:00" })).toBe("2036-10-04T10:00:00.000Z");
+    vi.restoreAllMocks();
+  });
   it("EXPACC130-expires-null: no finishedAt -> null / not expired", () => {
     expect(exportExpiresAt({ finishedAt: null })).toBeNull();
     expect(isExportExpired({ finishedAt: null })).toBe(false);

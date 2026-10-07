@@ -89,15 +89,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ error: null });
     try {
       const user = await apiLogin(username, password);
-      set({ status: "authenticated", user, error: null, reason: null });
       // A password login does not reload the page, so bootstrap's /me read never runs: load the deploy
-      // config (export limits, CSV/row caps, dv scope flag, …) now. Best-effort — the login itself already succeeded.
+      // config (export limits, CSV/row caps, dv scope flag, …) BEFORE flipping to authenticated, in one set,
+      // so nothing renders against defaults first. Best-effort — the login itself already succeeded.
+      let me: Awaited<ReturnType<typeof fetchMe>> = null;
       try {
-        const me = await fetchMe();
-        if (me) set(meToState(me));
+        me = await fetchMe();
       } catch {
         // keep the login result; the deploy config falls back to defaults until the next page load
       }
+      set({ ...(me ? meToState(me) : { status: "authenticated" as const, user }), error: null, reason: null });
     } catch (err) {
       set({ status: "unauthenticated", user: null, error: (err as Error).message, reason: null });
       throw err;

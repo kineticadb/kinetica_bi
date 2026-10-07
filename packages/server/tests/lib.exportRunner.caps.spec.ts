@@ -162,6 +162,31 @@ describe("export caps (runner)", () => {
     expect(() => start("capper")).toThrow(ExportCapError); // the new run does hold the slot
   });
 
+  // Regression guard (not a discriminating proof): pipeline() already waits for the .part stream to close before
+  // rejecting, so this passes with or without the pre-open abort check. It pins the no-orphan outcome.
+  it("EXPRUN-abort-before-open: a cancel during the COUNT leaves no .part file behind", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init: any) => {
+        const stmt: string = JSON.parse(init.body as string).statement;
+        if (/SELECT COUNT\(\*\)/.test(stmt)) {
+          await gate; // cancel lands while the count is in flight
+          return respond({ column_headers: ["total"], column_1: [5] });
+        }
+        return respond({});
+      }),
+    );
+    const { jobId } = start("capper");
+    const run = __exportRunForTest(jobId)!;
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cancelExport(jobId)).toBe(true);
+    release();
+    await run;
+    await new Promise((r) => setTimeout(r, 50)); // let any late async open land
+    expect(getExportJob(jobId)!.status).toBe("cancelled");
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
   it("EXPCAP-conc-spec-error-first: spec validation precedes the cap", () => {
     vi.stubEnv("EXPORT_MAX_CONCURRENT_PER_USER", "1");
     installStub(100, { hold: () => gate });

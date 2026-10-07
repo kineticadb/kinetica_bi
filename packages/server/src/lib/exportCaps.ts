@@ -7,15 +7,15 @@ export const EXPORT_DEFAULT_MAX_CONCURRENT_PER_USER = 2;
 const warned = new Set<string>();
 
 /** Positive-integer env reader. Unset / "" / whitespace -> null silently; invalid -> warn once per name+value, null. */
-function readPositiveInt(name: string, fallbackNote: string): number | null {
+function readPositiveInt(name: string, fallbackNote: string, max = Number.MAX_SAFE_INTEGER): number | null {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return null;
   const n = Number(raw);
-  if (!Number.isSafeInteger(n) || n <= 0) {
+  if (!Number.isSafeInteger(n) || n <= 0 || n > max) {
     const key = `${name}=${raw}`;
     if (!warned.has(key)) {
       warned.add(key);
-      console.warn(`[export] ${name} must be a positive integer (got: ${JSON.stringify(raw)}); ${fallbackNote}`);
+      console.warn(`[export] ${name} must be a positive integer${max < Number.MAX_SAFE_INTEGER ? ` up to ${max}` : ""} (got: ${JSON.stringify(raw)}); ${fallbackNote}`);
     }
     return null;
   }
@@ -26,7 +26,10 @@ const NOTE_TTL = "falling back to default 24";
 const NOTE_CONC = "falling back to default 2";
 const NOTE_CAP = "ignoring it (no limit)";
 
-export const getExportTtlHours = (): number => readPositiveInt("EXPORT_TTL_HOURS", NOTE_TTL) ?? EXPORT_DEFAULT_TTL_HOURS;
+// 10 years. Beyond this, finished_at + TTL overflows the JS Date range and toISOString() throws on every job DTO.
+export const EXPORT_MAX_TTL_HOURS = 87_600;
+export const getExportTtlHours = (): number =>
+  readPositiveInt("EXPORT_TTL_HOURS", NOTE_TTL, EXPORT_MAX_TTL_HOURS) ?? EXPORT_DEFAULT_TTL_HOURS;
 export const getExportMaxRows = (): number | null => readPositiveInt("EXPORT_MAX_ROWS", NOTE_CAP);
 export const getExportMaxFileMb = (): number | null => readPositiveInt("EXPORT_MAX_FILE_MB", NOTE_CAP);
 export const getExportMaxConcurrentPerUser = (): number =>

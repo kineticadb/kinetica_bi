@@ -267,6 +267,20 @@ describe("login() — loads /me deploy config", () => {
     expect(st.user?.roles).toEqual(["analyst"]);
   });
 
+  it("LOGINME-single-set: never authenticated with default caps before /me is applied", async () => {
+    apiLoginMock.mockResolvedValueOnce({ username: "alice", roles: [], permissions: [] });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      exportLimits: { maxRows: 10, maxFileMb: 1, maxConcurrentPerUser: 1 },
+    });
+    const seen: unknown[] = [];
+    const unsub = useAuthStore.subscribe((st) => { if (st.status === "authenticated") seen.push(st.exportLimits); });
+    await useAuthStore.getState().login("alice", "pw");
+    unsub();
+    expect(seen).toEqual([{ maxRows: 10, maxFileMb: 1, maxConcurrentPerUser: 1 }]);
+  });
+
   it("LOGINME-me-fails: a failed /me read after a successful login keeps the user signed in", async () => {
     apiLoginMock.mockResolvedValueOnce({ username: "alice", roles: [], permissions: [] });
     fetchMeMock.mockRejectedValueOnce(new Error("network"));
