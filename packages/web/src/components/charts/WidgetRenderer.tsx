@@ -30,7 +30,9 @@ import {
   YAxis,
 } from "recharts";
 import { runSql, materializeFilter, dropFilterView } from "../../api/client";
-import type { WidgetDto, TableDto } from "../../api/client";
+import type { WidgetDto, TableDto, ExportStartOptions } from "../../api/client";
+import ExportDialog from "../ExportDialog";
+import { buildExportRequest } from "../../lib/exportRequest";
 import { isViewNotFoundError } from "../../lib/kineticaErrors";
 import {
   useFilterStore,
@@ -1955,7 +1957,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   // materialization, incl. spatial), so this renderer no longer reads `widgets` to fire its own
   // spatial materialize — that legacy island was removed.
   // Phase 35 Plan 05 (DV-V16-13): also read dynamicViews (orphan detection) + retryDynamicView (error retry).
-  const { dashboardId, dynamicViews: dashboardDynamicViews, retryDynamicView } =
+  const { dashboardId, dynamicViews: dashboardDynamicViews, retryDynamicView, widgets: dashboardWidgets } =
     useDashboardContext();
   const recordsTableFilters = useFilterStore((state) =>
     tableId !== undefined ? state.filters[tableId] ?? [] : []
@@ -2011,6 +2013,9 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     csvInBrowserMaxRows,
   );
   const [exporting, setExporting] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  // Phase 131 D-04: exports use the SAVED widget; flag an active overlay so the dialog can say so (primitive selector).
+  const overrideActive = useWidgetActionStore((s) => Object.keys(s.widgetOverrides[widget.id] ?? {}).length > 0);
   const [exportedRows, setExportedRows] = useState(0);
   const exportAbortRef = useRef<AbortController | null>(null);
 
@@ -2115,6 +2120,29 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   useEffect(() => {
     setPage(1);
   }, [sortField, sortDir]);
+
+  // Phase 131 D-01/D-03: above the in-browser cap, or with an unknown count (loading/failed), take the background route.
+  const handleDownloadClick = () => {
+    if (totalCount === null || totalCount > csvDownloadRowCap) {
+      setExportDialogOpen(true);
+      return;
+    }
+    void handleDownloadCsv();
+  };
+  // Phase 131 (EXPRT-V126-05): read filter/spatial state at click time (S-02), resolved exactly like the orchestrator.
+  const buildExportBody = (options: ExportStartOptions) =>
+    buildExportRequest({
+      widgetId: widget.id,
+      config: cfg,
+      sortField,
+      sortDir,
+      options,
+      filters: useFilterStore.getState().filters,
+      dvFilters: useFilterStore.getState().dvFilters,
+      shapes: useSpatialFilterStore.getState().shapes,
+      dashboardWidgets,
+      dvScopeDisabled: useAuthStore.getState().dvFilterScopeDisabled,
+    });
 
   // Phase 96-01 GAP 2: The records-table materialize-trigger effect has been REMOVED.
   // The combination orchestrator (useCombinationOrchestrator) is now the SOLE trigger for
@@ -2451,7 +2479,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
             type="button"
             className="widget-csv-download ghost-sm"
             disabled={exporting}
-            onClick={handleDownloadCsv}
+            onClick={handleDownloadClick}
           >
             {exporting ? `Exporting… ${exportedRows.toLocaleString()} rows` : "Download"}
           </button>
@@ -2491,6 +2519,21 @@ const RecordsTableRenderer = ({ widget }: Props) => {
           </button>
         </div>
       </div>
+      {exportDialogOpen && (
+        <ExportDialog
+          widgetTitle={widget.title?.trim() ? widget.title : table}
+          totalCount={totalCount}
+          inBrowserCap={csvDownloadRowCap}
+          formattedAvailable={typeof tableId === "number"}
+          overrideActive={overrideActive}
+          dvNotReady={dynamicViewId !== undefined && recordsDvStatus !== "materialized"}
+          buildRequest={buildExportBody}
+          onPartialDownload={() => {
+            void handleDownloadCsv();
+          }}
+          onClose={() => setExportDialogOpen(false)}
+        />
+      )}
     </div>
   );
 };
