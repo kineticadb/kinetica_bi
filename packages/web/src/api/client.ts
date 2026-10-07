@@ -4,6 +4,7 @@ import type { SpatialTarget } from "../lib/spatialTargets";
 import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
+import type { ExportJobStatus } from "../lib/exportFormat";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -19,6 +20,8 @@ export const toAbsoluteAssetUrl = (u: string | null | undefined): string | null 
   !u ? null : /^https?:\/\//.test(u) ? u : `${API_BASE}${u}`;
 
 export const UNAUTHORIZED_EVENT = "kbi:unauthorized";
+// Phase 131: the export dialog asks App to show the Exports page (cross-tree signal, same pattern as UNAUTHORIZED_EVENT).
+export const NAVIGATE_EXPORTS_EVENT = "kbi:navigate-exports";
 export const PERMISSION_DENIED_EVENT = "kbi:permission-denied";
 
 // Module-level debounce timer for PERMISSION_DENIED_EVENT dispatch.
@@ -1960,4 +1963,102 @@ export const deleteTableSyncHistoryEntry = async (
     { method: "DELETE" },
   );
   if (!response.ok) await throwForStatus(response, "Failed to delete the sync history entry");
+};
+
+// --- Exports (Phase 131) ---
+
+export type { ExportJobStatus };
+
+export type ExportJobDto = {
+  id: string;
+  status: ExportJobStatus;
+  widgetId: number | null;
+  dashboardId: number | null;
+  rowsWritten: number;
+  totalRows: number | null;
+  fileBytes: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  expiresAt: string | null;
+  gzip: boolean;
+  name: string | null;
+  dashboardName: string | null;
+  widgetTitle: string | null;
+};
+
+export type ExportFormat = "raw" | "formatted";
+export type ExportStartOptions = { gzip: boolean; format: ExportFormat; name: string };
+export type StartExportBody = {
+  widgetId: number;
+  filters: ActiveFilter[];
+  spatialFilters?: { id: string; wkt: string }[];
+  spatialTarget?: SpatialTarget;
+  sortField?: string;
+  sortDir?: "asc" | "desc";
+  options: ExportStartOptions;
+};
+
+export const startExport = async (body: StartExportBody): Promise<ExportJobDto> => {
+  const response = await apiFetch(`${API_BASE}/api/exports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to start export");
+  const json = await response.json();
+  return json.data as ExportJobDto;
+};
+
+export const getExportJob = async (id: string): Promise<ExportJobDto | null> => {
+  const response = await apiFetch(`${API_BASE}/api/exports/${encodeURIComponent(id)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) await throwForStatus(response, "Failed to load export");
+  const json = await response.json();
+  return json.data as ExportJobDto;
+};
+
+export const listExportJobs = async (): Promise<ExportJobDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/exports`);
+  if (!response.ok) await throwForStatus(response, "Failed to load exports");
+  const json = await response.json();
+  return json.data as ExportJobDto[];
+};
+
+export const cancelExportJob = async (id: string): Promise<ExportJobDto | null> => {
+  const response = await apiFetch(`${API_BASE}/api/exports/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  if (response.status === 409) return null;
+  if (!response.ok) await throwForStatus(response, "Failed to cancel export");
+  const json = await response.json();
+  return json.data as ExportJobDto;
+};
+
+export const deleteExportJob = async (id: string): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/exports/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (response.status === 204 || response.status === 404) return;
+  if (!response.ok) await throwForStatus(response, "Failed to delete export");
+};
+
+export const exportDownloadUrl = (id: string): string =>
+  `${API_BASE}/api/exports/${encodeURIComponent(id)}/download`;
+
+// A plain navigation to a 4xx JSON body would replace the SPA, so probe with a 1-byte Range request first.
+export const preflightExportDownload = async (
+  id: string,
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> => {
+  const r = await apiFetch(exportDownloadUrl(id), { headers: { Range: "bytes=0-0" } });
+  if (r.status === 206 || r.ok) {
+    await r.body?.cancel().catch(() => {});
+    return { ok: true };
+  }
+  let message = "Download failed.";
+  try {
+    const b = await r.json();
+    if (b && typeof b.error === "string") message = b.error;
+  } catch {
+    // non-JSON body: keep fallback
+  }
+  return { ok: false, status: r.status, message };
 };
