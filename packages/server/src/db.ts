@@ -946,10 +946,14 @@ export const insertExportJob = (input: {
   return getExportJob(input.id) as ExportJob;
 };
 
-/** Newest first. datetime('now') has 1-second resolution, so rowid is the tiebreak. */
+/**
+ * Newest first. datetime('now') has 1-second resolution, so rowid is the tiebreak.
+ * Phase 129: username match is case-insensitive because the session stores the username as typed at
+ * login while canViewDashboard lowercases (research Pitfall 3). Stored value is NOT lowercased on insert.
+ */
 export const listExportJobsForUser = (username: string): ExportJob[] =>
   db
-    .prepare("SELECT * FROM export_jobs WHERE username = ? ORDER BY created_at DESC, rowid DESC")
+    .prepare("SELECT * FROM export_jobs WHERE lower(username) = lower(?) ORDER BY created_at DESC, rowid DESC")
     .all(username)
     .map(mapExportJob);
 
@@ -994,6 +998,10 @@ export const finalizeExportJob = (
     );
   return r.changes === 1;
 };
+
+/** Phase 129: hard-delete a job row (DELETE /api/exports/:id). Files are removed by the caller. */
+export const deleteExportJob = (id: string): boolean =>
+  db.prepare("DELETE FROM export_jobs WHERE id = ?").run(id).changes === 1;
 
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
   const stmt = db.prepare("INSERT INTO tables (name, schema, description, columns) VALUES (?, ?, ?, ?)");

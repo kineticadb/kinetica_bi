@@ -169,7 +169,8 @@ const transpose = (r: unknown): unknown[][] => {
   return rows;
 };
 
-const filePaths = (jobId: string): string[] => {
+// Phase 129: also used by DELETE /api/exports/:id
+export const exportFilePaths = (jobId: string): string[] => {
   const base = path.join(getExportDir(), jobId);
   return [`${base}.csv`, `${base}.csv.gz`, `${base}.csv.part`, `${base}.csv.gz.part`];
 };
@@ -222,7 +223,7 @@ export function cancelExport(jobId: string): boolean {
   if (job && (job.status === "queued" || job.status === "running")) {
     // No live run (e.g. after a restart): finalize directly and clear any partial file.
     finalizeExportJob(jobId, "cancelled", { errorMessage: "Export cancelled." });
-    for (const f of filePaths(jobId)) fs.rmSync(f, { force: true });
+    for (const f of exportFilePaths(jobId)) fs.rmSync(f, { force: true });
     return true;
   }
   return false;

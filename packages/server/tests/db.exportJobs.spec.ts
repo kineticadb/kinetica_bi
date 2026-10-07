@@ -9,6 +9,7 @@ import path from "node:path";
 import {
   createDb,
   db,
+  deleteExportJob,
   finalizeExportJob,
   getExportJob,
   insertExportJob,
@@ -17,6 +18,7 @@ import {
   setExportJobTotalRows,
   updateExportJobProgress,
 } from "../src/db";
+import { exportFilePaths } from "../src/lib/exportRunner";
 
 const tmpFiles: string[] = [];
 const mkTempDbPath = (): string => {
@@ -139,5 +141,50 @@ describe("export_jobs registry", () => {
     markExportJobRunning(j.id);
     expect(finalizeExportJob(j.id, "session_expired", { errorCode: "SESSION_EXPIRED" })).toBe(true);
     expect(getExportJob(j.id)?.status).toBe("session_expired");
+  });
+});
+
+describe("Phase 129 additions", () => {
+  it("EXPDB129-delete: deletes an existing row once", () => {
+    const j = mk();
+    expect(deleteExportJob(j.id)).toBe(true);
+    expect(getExportJob(j.id)).toBeUndefined();
+    expect(deleteExportJob(j.id)).toBe(false);
+  });
+
+  it("EXPDB129-delete-unknown: unknown id returns false and leaves others", () => {
+    const j = mk();
+    expect(deleteExportJob("never-existed")).toBe(false);
+    expect(getExportJob(j.id)).toBeDefined();
+  });
+
+  it("EXPDB129-list-case-insensitive: matches username regardless of case, excludes others", () => {
+    db.exec("DELETE FROM export_jobs");
+    const a = mk("Alice");
+    const b = mk("alice");
+    mk("bob");
+    const ids = listExportJobsForUser("ALICE").map((x) => x.id);
+    expect(ids).toEqual([b.id, a.id]);
+  });
+
+  it("EXPDB129-list-stored-case: stored username keeps its case", () => {
+    db.exec("DELETE FROM export_jobs");
+    mk("Alice");
+    expect(listExportJobsForUser("alice")[0].username).toBe("Alice");
+  });
+
+  it("EXPDB129-file-paths: returns the four known paths under the export dir", () => {
+    const prev = process.env.EXPORT_DIR;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kbi-fp-"));
+    process.env.EXPORT_DIR = dir;
+    try {
+      expect(exportFilePaths("abc")).toEqual([
+        path.join(dir, "abc.csv"), path.join(dir, "abc.csv.gz"),
+        path.join(dir, "abc.csv.part"), path.join(dir, "abc.csv.gz.part"),
+      ]);
+    } finally {
+      process.env.EXPORT_DIR = prev ?? "";
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
