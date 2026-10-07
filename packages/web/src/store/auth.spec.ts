@@ -112,6 +112,32 @@ describe("bootstrap() — latest-write-wins authMode", () => {
     await useAuthStore.getState().bootstrap();
     expect(useAuthStore.getState().csvInBrowserMaxRows).toBe(250000);
   });
+
+  // Phase 130 (EXPRT-V126-15, D-18)
+  it("EXPLIM-store-default: exportLimits defaults pre-bootstrap", () => {
+    expect(useAuthStore.getState().exportLimits).toEqual({ maxRows: null, maxFileMb: null, maxConcurrentPerUser: 2 });
+  });
+
+  it("EXPLIM-store-bootstrap: bootstrap sets exportLimits from /me", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      exportLimits: { maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 3 },
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().exportLimits).toEqual({ maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 3 });
+  });
+
+  it("EXPLIM-store-bootstrap-missing: missing exportLimits falls back to defaults", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().exportLimits).toEqual({ maxRows: null, maxFileMb: null, maxConcurrentPerUser: 2 });
+  });
 });
 
 describe("bootstrap() — fetchAuthConfig failure resilience (PITFALL I-03)", () => {

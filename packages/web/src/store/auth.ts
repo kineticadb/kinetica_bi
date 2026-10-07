@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DEFAULT_EXPORT_LIMITS, type ExportLimits } from "../lib/exportLimits";
 import { AuthUser, AuthMode, fetchAuthConfig, fetchMe, login as apiLogin, logout as apiLogout } from "../api/client";
 
 type AuthStatus = "unknown" | "authenticated" | "unauthenticated";
@@ -24,6 +25,8 @@ type AuthState = {
   csvInBrowserMaxRows: number;
   // Phase 127 (D-12): deploy per-query row max from /me (default 20000); records table clamps its page size to it.
   maxRowsPerQuery: number;
+  // Phase 130 (EXPRT-V126-15, D-18): admin export caps from /me for the Phase 131 export dialog. Unset caps are null.
+  exportLimits: ExportLimits;
   bootstrap: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -44,6 +47,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   maxBarGroupBySeriesCap: 12,
   csvInBrowserMaxRows: 100000,
   maxRowsPerQuery: 20000,
+  exportLimits: { ...DEFAULT_EXPORT_LIMITS },
   bootstrap: async () => {
     // Step 1: pre-auth config read. Failure → silent fallback (LoginPage falls back to password form).
     // CONTEXT.md / PITFALL I-03/I-04: must NOT throw out of bootstrap.
@@ -58,7 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const me = await fetchMe();
       if (me) {
         // /me carries authMode now; latest-write-wins (more authoritative than /config's pre-auth read).
-        set({ status: "authenticated", user: me.user, authMode: me.authMode, ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes, maxCombinationViewsPerTable: me.maxCombinationViewsPerTable, dvFilterScopeDisabled: me.dvFilterScopeDisabled, maxBarGroupBySeriesCap: me.maxBarGroupBySeriesCap, csvInBrowserMaxRows: me.csvInBrowserMaxRows, maxRowsPerQuery: me.maxRowsPerQuery, error: null, reason: null });
+        set({ status: "authenticated", user: me.user, authMode: me.authMode, ttlKeepaliveLeadMinutes: me.ttlKeepaliveLeadMinutes, maxCombinationViewsPerTable: me.maxCombinationViewsPerTable, dvFilterScopeDisabled: me.dvFilterScopeDisabled, maxBarGroupBySeriesCap: me.maxBarGroupBySeriesCap, csvInBrowserMaxRows: me.csvInBrowserMaxRows, maxRowsPerQuery: me.maxRowsPerQuery, exportLimits: me.exportLimits ?? { ...DEFAULT_EXPORT_LIMITS }, error: null, reason: null });
       } else {
         // bootstrap-driven 401: honest "not logged in", NOT mid-session expiry — reason stays null
         set({ status: "unauthenticated", user: null, reason: null });
