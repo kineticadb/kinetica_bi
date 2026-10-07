@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { db, finalizeExportJob, getExportJob, insertExportJob, markExportJobRunning } from "../src/db";
+import { createDashboard, createWidget, db, deleteWidget, finalizeExportJob, getExportJob, insertExportJob, markExportJobRunning } from "../src/db";
 import {
   EXPORT_UUID_RE,
   exportDownloadName,
@@ -78,12 +78,12 @@ describe("exportJobAccess", () => {
     expect(findOwnedExportJob("not-a-uuid", "alice")).toBeUndefined();
   });
 
-  it("EXPACC129-dto-keys: exact key set, no secrets", () => {
+  it("EXPACC131-dto-keys: exact key set, no secrets", () => {
     const j = mkComplete();
     const dto = toExportJobDto(j);
     expect(Object.keys(dto).sort()).toEqual([
-      "createdAt", "dashboardId", "errorCode", "errorMessage", "expiresAt", "fileBytes", "finishedAt",
-      "gzip", "id", "rowsWritten", "startedAt", "status", "totalRows", "widgetId",
+      "createdAt", "dashboardId", "dashboardName", "errorCode", "errorMessage", "expiresAt", "fileBytes", "finishedAt",
+      "gzip", "id", "name", "rowsWritten", "startedAt", "status", "totalRows", "widgetId", "widgetTitle",
     ]);
     const json = JSON.stringify(dto);
     expect(json).not.toContain("SID-SECRET");
@@ -103,6 +103,34 @@ describe("exportJobAccess", () => {
     const base = { id: "3a6ab67f-0000-4000-8000-000000000000", createdAt: "2026-10-07 12:34:56" };
     expect(exportDownloadName({ ...base, filePath: "/x/y.csv" })).toBe("export-2026-10-07-3a6ab67f.csv");
     expect(exportDownloadName({ ...base, filePath: "/x/y.csv.gz" })).toBe("export-2026-10-07-3a6ab67f.csv.gz");
+  });
+
+  it("EXPACC131-dto-name: stored name or null", () => {
+    expect(toExportJobDto(mk("a", '{"name":"Q1 report"}')).name).toBe("Q1 report");
+    for (const o of [null, "{}", "{", '{"name":5}', '{"name":""}']) expect(toExportJobDto(mk("a", o)).name).toBeNull();
+  });
+
+  it("EXPACC131-dto-labels: dashboard/widget names, null once deleted", () => {
+    const d = createDashboard("Labels Dash", "");
+    const w = createWidget(d.id, { title: "Labels Widget", type: "table", position: 0, config: {} });
+    const j = insertExportJob({ id: randomUUID(), username: "alice", sid: "s", dashboardId: d.id, widgetId: w.id, specJson: "{}", optionsJson: null });
+    const dto = toExportJobDto(j);
+    expect(dto.dashboardName).toBe("Labels Dash");
+    expect(dto.widgetTitle).toBe("Labels Widget");
+    deleteWidget(w.id);
+    expect(toExportJobDto(j).widgetTitle).toBeNull();
+    const gone = insertExportJob({ id: randomUUID(), username: "alice", sid: "s", dashboardId: 999999, widgetId: 999998, specJson: "{}", optionsJson: null });
+    const g = toExportJobDto(gone);
+    expect(g.dashboardName).toBeNull();
+    expect(g.widgetTitle).toBeNull();
+  });
+
+  it("EXPACC131-download-name: stored name drives the filename", () => {
+    const base = { id: "3a6ab67f-0000-4000-8000-000000000000", createdAt: "2026-10-07 12:34:56" };
+    const o = '{"name":"Résumé – 数据 / Q1"}';
+    expect(exportDownloadName({ ...base, filePath: "/x/y.csv", optionsJson: o })).toBe("Résumé – 数据 - Q1.csv");
+    expect(exportDownloadName({ ...base, filePath: "/x/y.csv.gz", optionsJson: o })).toBe("Résumé – 数据 - Q1.csv.gz");
+    expect(exportDownloadName({ ...base, filePath: "/x/y.csv", optionsJson: '{"name":"..."}' })).toBe("export-2026-10-07-3a6ab67f.csv");
   });
 
   it("EXPACC129-servable-ok: returns path and size", () => {

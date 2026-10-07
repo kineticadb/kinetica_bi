@@ -4,9 +4,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { getExportJob, type ExportJob } from "../db";
+import { getDashboard, getExportJob, getWidget, type ExportJob } from "../db";
 import { getExportDir } from "./exportRunner";
 import { getExportTtlHours } from "./exportCaps";
+import { exportFileBase } from "./exportName";
 
 export const EXPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,7 +20,8 @@ export const findOwnedExportJob = (id: string, username: string): ExportJob | un
   return job && sameExportOwner(job.username, username) ? job : undefined;
 };
 
-// Phase 130 added `expiresAt` (computed). Phase 131 adds a user-supplied name to toExportJobDto / exportDownloadName.
+// Phase 130 added `expiresAt` (computed).
+// Phase 131 added name (options_json.name), dashboardName and widgetTitle (resolved at read time; null after deletion).
 export type ExportJobDto = {
   id: string;
   status: ExportJob["status"];
@@ -35,13 +37,17 @@ export type ExportJobDto = {
   finishedAt: string | null;
   expiresAt: string | null;
   gzip: boolean;
+  name: string | null;
+  dashboardName: string | null;
+  widgetTitle: string | null;
 };
 
-const parseGzip = (s: string | null): boolean => {
+const parseExportOptions = (s: string | null | undefined): Record<string, unknown> => {
   try {
-    return JSON.parse(s ?? "{}")?.gzip === true;
+    const o = JSON.parse(s ?? "{}");
+    return o && typeof o === "object" && !Array.isArray(o) ? o : {};
   } catch {
-    return false;
+    return {};
   }
 };
 
@@ -70,11 +76,21 @@ export const toExportJobDto = (job: ExportJob): ExportJobDto => ({
   startedAt: job.startedAt,
   finishedAt: job.finishedAt,
   expiresAt: exportExpiresAt(job),
-  gzip: parseGzip(job.optionsJson),
+  gzip: parseExportOptions(job.optionsJson).gzip === true,
+  name: (() => {
+    const n = parseExportOptions(job.optionsJson).name;
+    return typeof n === "string" && n.trim() !== "" ? n : null;
+  })(),
+  dashboardName: job.dashboardId == null ? null : (getDashboard(job.dashboardId)?.name ?? null),
+  widgetTitle: job.widgetId == null ? null : (getWidget(job.widgetId)?.title ?? null),
 });
 
-export const exportDownloadName = (job: Pick<ExportJob, "id" | "createdAt" | "filePath">): string =>
-  `export-${job.createdAt.slice(0, 10)}-${job.id.slice(0, 8)}${job.filePath?.endsWith(".csv.gz") ? ".csv.gz" : ".csv"}`;
+export const exportDownloadName = (job: Pick<ExportJob, "id" | "createdAt" | "filePath"> & { optionsJson?: string | null }): string => {
+  const ext = job.filePath?.endsWith(".csv.gz") ? ".csv.gz" : ".csv";
+  const nm = parseExportOptions(job.optionsJson).name;
+  const base = exportFileBase(typeof nm === "string" ? nm : undefined) ?? `export-${job.createdAt.slice(0, 10)}-${job.id.slice(0, 8)}`;
+  return base + ext;
+};
 
 /** Does NOT check job status — the route gates that separately. */
 export const resolveServableExportFile = (
