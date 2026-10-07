@@ -55,7 +55,7 @@
 - [x] **Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix** - Every app query that asks for more than 1,000 rows gets them, with no caller silently relying on the old cap, and a truly truncated heatmap always shows its warning
 - [x] **Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel** - A verified pagination mechanism, a batch-loop runner that snapshots a widget's exact view, a working cancel, session-bound credentials, and formula-injection-safe CSV writing (completed 2026-10-06)
 - [x] **Phase 129: Export Routes — Resumable Download, History & Privacy** - A finished export downloads resumably over HTTP Range, only the owning user can reach any route for it, and no new RBAC permission is introduced (completed 2026-10-07)
-- [ ] **Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps** - Exports and files expire on schedule, a restart leaves nothing stuck or orphaned, and an admin can cap rows/size/concurrency via env config
+- [x] **Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps** - Exports and files expire on schedule, a restart leaves nothing stuck or orphaned, and an admin can cap rows/size/concurrency via env config (completed 2026-10-07)
 - [ ] **Phase 131: Client Export UI — Trigger Dialog, Progress & History** - The user can name, choose raw/formatted, tick gzip, watch progress, and manage a history list — verified live against a real Kinetica instance
 - [ ] **Phase 132: Line Chart Multi-Series Group By** - The line chart gets the bar chart's Group By Columns builder, every x-axis label shown, the legend named after the metric, and multi-series drill-down
 

@@ -43,7 +43,12 @@ Phase 129 complete (2026-10-07) — EXPRT-V126-11/13/17 validated: `/api/exports
 cancel/delete/download routes (requireAuth-only; start gated by dashboard view + widget CSV toggle; no new
 permission). Owner-only identical-404 on every :id route; UUID ids; download serves only complete,
 size-verified files via `res.download` (Range/206/416). Proxy-path resume not exercised live (open debt →
-Phase 131 UAT). No concurrency cap until Phase 130 — do not ship between 129 and 130.
+Phase 131 UAT). (Concurrency cap landed in Phase 130.)
+Phase 130 complete (2026-10-07) — EXPRT-V126-14/15 validated: exports expire 24h after finishing
+(EXPORT_TTL_HOURS, max 87600), a 5-min sweep that never deletes a file mid-download, boot reconciliation
+(interrupted jobs -> failed/server_restarted, own-name orphan files removed), env caps EXPORT_MAX_ROWS /
+EXPORT_MAX_FILE_MB (off by default) and EXPORT_MAX_CONCURRENT_PER_USER (2), cap limits on /me for the 131 dialog.
+Restart reconcile verified live (kill -9 mid-export). Review also fixed password login not loading /me config.
 
 **Known hazards going in:**
 - **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.
