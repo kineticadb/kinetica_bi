@@ -963,6 +963,33 @@ a {
   white-space: nowrap;
 }
 
+/* Exports page (Phase 131): same grid system as .ds-header/.ds-row, different columns.
+   Name | Status | Rows | Size | Started | Expires | Actions */
+.exports-table .ds-header,
+.exports-table .ds-row {
+  grid-template-columns: 2fr 1.4fr 1.2fr 0.8fr 1.3fr 1fr auto;
+}
+
+/* Failure reason / refusal text: theme token, light+dark safe. */
+.export-error {
+  color: var(--danger);
+  font-size: var(--text-base);
+}
+
+/* Progress bar: --accent fill; track tinted from --muted via color-mix so both themes work. */
+.export-progress {
+  height: 8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+  overflow: hidden;
+}
+.export-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--duration-base) ease;
+}
+/* end Phase 131 exports */
+
 .ghost-sm {
   background: transparent;
   color: var(--text);
