@@ -34,7 +34,9 @@ import {
   updateExportJobProgress,
   finalizeExportJob,
   listActiveExportJobIdsForUser,
+  listColumnDisplayConfig,
 } from "../db";
+import { buildFormatter, type FormatSpec } from "./columnFormatter";
 import {
   getExportMaxConcurrentPerUser,
   getExportMaxRows,
@@ -48,10 +50,24 @@ import {
   SizeCapError,
 } from "./exportCaps";
 
-/**
- * Phase 131 seam: "formatted" plugs in as a row mapper applied before csvLine.
- */
-export type ExportOptions = { format?: "raw"; gzip?: boolean };
+/** Phase 131: format "formatted" maps rows through the table's column display config (labels + buildFormatter) before csvLine; name is the user-supplied display name, sanitised by the route (Plan 131-04) and read back by exportJobAccess. */
+export type ExportOptions = { format?: "raw" | "formatted"; gzip?: boolean; name?: string };
+
+export type FormatPlan = { labels: string[]; fns: (((v: unknown) => unknown) | null)[] };
+/** null = raw fallback (no numeric tableId, e.g. dv-bound widget). Loaded once per run: a config edit mid-run is not applied (snapshot semantics). */
+export function loadFormatPlan(widgetId: number, header: readonly string[]): FormatPlan | null {
+  const tableId = (getWidget(widgetId)?.config as Record<string, unknown> | null | undefined)?.tableId;
+  if (typeof tableId !== "number") return null;
+  const byName = new Map(listColumnDisplayConfig(tableId).map((r) => [r.column_name, r]));
+  return {
+    labels: header.map((c) => { const l = byName.get(c)?.label; return typeof l === "string" && l !== "" ? l : c; }),
+    fns: header.map((c) => {
+      const spec = byName.get(c)?.format_spec as FormatSpec | null | undefined;
+      if (spec == null || (spec as { kind?: unknown }).kind === "none") return null; // identity: skip the call entirely
+      try { const f = buildFormatter(spec); return (v: unknown) => { try { return f(v); } catch { return v; } }; } catch { return null; }
+    }),
+  };
+}
 
 // Phase 130 D-13/D-14: counts bytes headed to disk (AFTER gzip). Exact per chunk; exceeding errors the pipeline,
 // which destroys every stage, so the existing catch deletes the .part file.
@@ -324,6 +340,9 @@ async function run(
       header = Array.isArray(probe.column_headers) ? (probe.column_headers as string[]) : [];
     }
 
+    const fmt = options.format === "formatted" ? loadFormatPlan(plan.widgetId, header) : null;
+    const outHeader = fmt ? fmt.labels : header;
+
     async function* batches(): AsyncGenerator<unknown[][]> {
       let offset = 0;
       for (;;) {
@@ -332,14 +351,14 @@ async function run(
         const r = (await sql(s, extra)) as Record<string, unknown>;
         const rows = transpose(r);
         offset += rows.length; // advance by rows RECEIVED, never the requested limit
-        yield rows;
+        yield fmt ? rows.map((row) => row.map((v, j) => (fmt.fns[j] ? fmt.fns[j]!(v) : v))) : rows;
         if (r.has_more_records !== true || rows.length === 0) break; // a short page alone never ends the loop
       }
     }
 
     // Don't open a .part for a run that is already cancelled (pipeline() would still clean it up; this just skips the work).
     if (signal.aborted) throw abortError();
-    const written = await writeCsv(batches(), header, fs.createWriteStream(partPath, { mode: 0o600 }), {
+    const written = await writeCsv(batches(), outHeader, fs.createWriteStream(partPath, { mode: 0o600 }), {
       signal,
       gzip: options.gzip,
       maxBytes: capMb === null ? undefined : exportMbToBytes(capMb),
