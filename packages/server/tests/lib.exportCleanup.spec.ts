@@ -72,6 +72,13 @@ describe("exportCleanup sweep", () => {
     expect(isExportDownloading(id)).toBe(false);
   });
 
+  it("EXPSWEEP-tracker-already-closed: a response that already closed is not tracked (would never release)", () => {
+    const id = randomUUID();
+    const closed = Object.assign(new EventEmitter(), { destroyed: true });
+    trackExportDownload(id, closed);
+    expect(isExportDownloading(id)).toBe(false);
+  });
+
   it("EXPSWEEP-deletes-expired-all-statuses: complete/failed/cancelled/session_expired past TTL are removed", () => {
     const a = mkTerminal("complete", 25);
     const ids = [a.id, mkTerminal("failed", 25).id, mkTerminal("cancelled", 25).id, mkTerminal("session_expired", 25).id];

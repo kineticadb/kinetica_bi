@@ -45,8 +45,9 @@ export const EXPORT_SERVER_RESTARTED_MESSAGE = "Export stopped: the server resta
 export const rowCapMessage = (total: number, cap: number): string =>
   `This export has ${formatExportCount(total)} rows; the limit is ${formatExportCount(cap)}. ${EXPORT_CAP_REMEDY}`;
 
+// "about": rowsAtCut counts rows handed to the stream, which runs a buffer ahead of the bytes on disk (gzip/stream buffering).
 export const sizeCapMessage = (a: { capMb: number; rowsAtCut: number; totalRows: number | null; gzip: boolean }): string =>
-  `This export passed the ${formatExportSizeLimit(a.capMb)} size limit after ${formatExportCount(a.rowsAtCut)}${
+  `This export passed the ${formatExportSizeLimit(a.capMb)} size limit after about ${formatExportCount(a.rowsAtCut)}${
     a.totalRows === null ? "" : ` of ${formatExportCount(a.totalRows)}`
   } rows. ${EXPORT_CAP_REMEDY}` + (a.gzip ? "" : ` ${EXPORT_GZIP_HINT}`);
 

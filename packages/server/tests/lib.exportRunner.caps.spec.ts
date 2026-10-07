@@ -152,6 +152,16 @@ describe("export caps (runner)", () => {
     expect(() => start("capper")).not.toThrow();
   });
 
+  it("EXPCAP-conc-cancel-immediate: Cancel frees the slot while the in-flight Kinetica call is still pending", () => {
+    vi.stubEnv("EXPORT_MAX_CONCURRENT_PER_USER", "1");
+    installStub(100, { hold: () => gate }); // gate never released here: the first run is stuck mid-call
+    const { jobId } = start("capper");
+    expect(cancelExport(jobId)).toBe(true);
+    expect(["queued", "running"]).toContain(getExportJob(jobId)!.status); // still non-terminal in the DB
+    expect(() => start("capper")).not.toThrow();
+    expect(() => start("capper")).toThrow(ExportCapError); // the new run does hold the slot
+  });
+
   it("EXPCAP-conc-spec-error-first: spec validation precedes the cap", () => {
     vi.stubEnv("EXPORT_MAX_CONCURRENT_PER_USER", "1");
     installStub(100, { hold: () => gate });

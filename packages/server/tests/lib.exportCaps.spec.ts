@@ -83,13 +83,13 @@ describe("exportCaps", () => {
 
   it("EXPCAP-msg-size-nogzip", () => {
     expect(sizeCapMessage({ capMb: 2048, rowsAtCut: 3100000, totalRows: 12400000, gzip: false })).toBe(
-      "This export passed the 2 GB size limit after 3,100,000 of 12,400,000 rows. Add filters to narrow it down and try again. You can also compress it (.csv.gz) to make the file smaller.",
+      "This export passed the 2 GB size limit after about 3,100,000 of 12,400,000 rows. Add filters to narrow it down and try again. You can also compress it (.csv.gz) to make the file smaller.",
     );
   });
 
   it("EXPCAP-msg-size-gzip", () => {
     expect(sizeCapMessage({ capMb: 2048, rowsAtCut: 3100000, totalRows: 12400000, gzip: true })).toBe(
-      "This export passed the 2 GB size limit after 3,100,000 of 12,400,000 rows. Add filters to narrow it down and try again.",
+      "This export passed the 2 GB size limit after about 3,100,000 of 12,400,000 rows. Add filters to narrow it down and try again.",
     );
   });
 
@@ -97,7 +97,7 @@ describe("exportCaps", () => {
     expect(sizeCapMessage({ capMb: 500, rowsAtCut: 1, totalRows: 2, gzip: true })).toContain("the 500 MB size limit");
     expect(sizeCapMessage({ capMb: 1536, rowsAtCut: 1, totalRows: 2, gzip: true })).toContain("the 1,536 MB size limit");
     expect(sizeCapMessage({ capMb: 500, rowsAtCut: 3100000, totalRows: null, gzip: true })).toBe(
-      "This export passed the 500 MB size limit after 3,100,000 rows. Add filters to narrow it down and try again.",
+      "This export passed the 500 MB size limit after about 3,100,000 rows. Add filters to narrow it down and try again.",
     );
   });
 

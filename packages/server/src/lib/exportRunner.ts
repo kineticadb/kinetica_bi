@@ -33,7 +33,7 @@ import {
   setExportJobTotalRows,
   updateExportJobProgress,
   finalizeExportJob,
-  countActiveExportJobsForUser,
+  listActiveExportJobIdsForUser,
 } from "../db";
 import {
   getExportMaxConcurrentPerUser,
@@ -226,7 +226,9 @@ export function startExport(args: {
   });
   // Phase 130 D-09/D-10: per-user concurrency cap. MUST stay in this synchronous segment (no await between
   // the count and insertExportJob): better-sqlite3 + single-threaded JS make check-then-insert atomic.
-  const activeNow = countActiveExportJobsForUser(username);
+  // A run whose controller is already aborted is being cancelled: it still reads "running" until its in-flight
+  // Kinetica call returns, but it no longer holds a slot, so Cancel frees the slot at once.
+  const activeNow = listActiveExportJobIdsForUser(username).filter((id) => !controllers.get(id)?.signal.aborted).length;
   if (activeNow >= getExportMaxConcurrentPerUser()) throw new ExportCapError(concurrencyCapMessage(activeNow));
   insertExportJob({
     id: jobId,

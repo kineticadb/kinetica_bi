@@ -1006,6 +1006,9 @@ export const deleteExportJob = (id: string): boolean =>
 // Phase 130: per-user concurrency cap (D-09) - case-insensitive like listExportJobsForUser.
 export const countActiveExportJobsForUser = (username: string): number =>
   (db.prepare("SELECT COUNT(*) AS n FROM export_jobs WHERE lower(username) = lower(?) AND status IN ('queued','running')").get(username) as { n: number }).n;
+// Phase 130: ids of the user's queued/running jobs, so the runner can leave out runs already being cancelled.
+export const listActiveExportJobIdsForUser = (username: string): string[] =>
+  (db.prepare("SELECT id FROM export_jobs WHERE lower(username) = lower(?) AND status IN ('queued','running')").all(username) as { id: string }[]).map((r) => r.id);
 // Phase 130: boot reconciliation (D-05).
 export const listActiveExportJobs = (): ExportJob[] =>
   db.prepare("SELECT * FROM export_jobs WHERE status IN ('queued','running')").all().map(mapExportJob);

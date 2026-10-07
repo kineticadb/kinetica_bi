@@ -20,7 +20,9 @@ export const isExportDownloading = (id: string): boolean => (openDownloads.get(i
 
 /** Call in the download route's synchronous gate segment, before res.download. Released on the response's
  *  'close', which fires on completion AND on client abort, so an aborted download can never pin a file. */
-export function trackExportDownload(id: string, res: { once(event: "close", listener: () => void): unknown }): void {
+export function trackExportDownload(id: string, res: { destroyed?: boolean; once(event: "close", listener: () => void): unknown }): void {
+  // A response that already closed will never emit 'close' again: tracking it would pin the file until restart.
+  if (res.destroyed) return;
   openDownloads.set(id, (openDownloads.get(id) ?? 0) + 1);
   let released = false;
   res.once("close", () => {
