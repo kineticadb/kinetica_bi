@@ -2,7 +2,7 @@
  * Phase 129 — background export HTTP routes (EXPRT-V126-13/17; route half of -05/-07).
  * requireAuth-only (analyst passthrough): NO requirePermission — access to start = canViewDashboard
  * on the widget's dashboard; access to every :id route = ownership (operator O-4).
- * Download route added by Plan 129-03.
+ * The download route (GET /api/exports/:id/download) lives here too: owner(404) -> complete(409) -> file(410) -> send.
  */
 import type { Express, Request, Response } from "express";
 import fs from "node:fs";
@@ -19,9 +19,10 @@ import {
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { startExport, cancelExport, exportFilePaths, type ExportOptions } from "./lib/exportRunner";
 import { ExportSpecError, type ExportSpec } from "./lib/exportSql";
-import { findOwnedExportJob, toExportJobDto } from "./lib/exportJobAccess";
+import { findOwnedExportJob, toExportJobDto, exportDownloadName, resolveServableExportFile } from "./lib/exportJobAccess";
 
 const NOT_FOUND = { error: "Export not found." };
+const GONE = { error: "This export is no longer available." };
 const WIDGET_NOT_FOUND = { error: "Widget not found." };
 const MAX_FILTERS = 200;
 const ACTIVE = new Set(["queued", "running"]);
@@ -134,5 +135,25 @@ export function registerExportRoutes(app: Express): void {
     }
     deleteExportJob(job.id);
     return res.status(204).end();
+  });
+
+  // EXPRT-V126-11: only a complete, closed file is served. The status gate refuses EVERY request for a
+  // non-complete job, Range or not (operator O-1) — there is deliberately no Range-specific branch.
+  // Range/206/416/If-Range/ETag come from res.download -> send@0.19.2. Ownership only (O-4).
+  app.get("/api/exports/:id/download", (req: Request, res: Response) => {
+    const job = loadOwnedJob(req, res);
+    if (!job) return;
+    if (job.status !== "complete") {
+      return res.status(409).json({ error: "Export is not ready to download.", status: job.status });
+    }
+    const file = resolveServableExportFile(job);
+    if (!file) return res.status(410).json(GONE);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.download(file.path, exportDownloadName(job), { cacheControl: false, dotfiles: "allow" }, (err) => {
+      if (!err || res.headersSent) return; // mid-stream failure: client resumes with Range
+      const code = (err as NodeJS.ErrnoException).code;
+      res.status(code === "ENOENT" ? 410 : 500).json(code === "ENOENT" ? GONE : { error: "Download failed." });
+    });
   });
 }
