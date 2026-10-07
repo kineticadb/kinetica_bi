@@ -18,6 +18,7 @@ import {
 } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { startExport, cancelExport, exportFilePaths, type ExportOptions } from "./lib/exportRunner";
+import { ExportCapError } from "./lib/exportCaps";
 import { ExportSpecError, type ExportSpec } from "./lib/exportSql";
 import { findOwnedExportJob, toExportJobDto, exportDownloadName, resolveServableExportFile } from "./lib/exportJobAccess";
 
@@ -96,6 +97,7 @@ export function registerExportRoutes(app: Express): void {
       const { jobId } = startExport({ spec, sid: (req as AuthedRequest).user!.sid, username, options });
       return res.status(202).json({ data: toExportJobDto(getExportJob(jobId)!) });
     } catch (e) {
+      if (e instanceof ExportCapError) return res.status(429).json({ error: e.message, code: e.code });
       if (e instanceof ExportSpecError) {
         return e.code === "widget_not_found"
           ? res.status(404).json(WIDGET_NOT_FOUND)

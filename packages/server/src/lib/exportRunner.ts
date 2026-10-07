@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { csvLine } from "./csvExport";
@@ -33,12 +33,38 @@ import {
   setExportJobTotalRows,
   updateExportJobProgress,
   finalizeExportJob,
+  countActiveExportJobsForUser,
 } from "../db";
+import {
+  getExportMaxConcurrentPerUser,
+  getExportMaxRows,
+  getExportMaxFileMb,
+  exportMbToBytes,
+  concurrencyCapMessage,
+  rowCapMessage,
+  sizeCapMessage,
+  ExportCapError,
+  RowCapError,
+  SizeCapError,
+} from "./exportCaps";
 
 /**
  * Phase 131 seam: "formatted" plugs in as a row mapper applied before csvLine.
  */
 export type ExportOptions = { format?: "raw"; gzip?: boolean };
+
+// Phase 130 D-13/D-14: counts bytes headed to disk (AFTER gzip). Exact per chunk; exceeding errors the pipeline,
+// which destroys every stage, so the existing catch deletes the .part file.
+function byteCap(maxBytes: number, rowsNow: () => number): Transform {
+  let n = 0;
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      n += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), "utf8");
+      if (n > maxBytes) return cb(new SizeCapError(maxBytes, rowsNow()));
+      cb(null, chunk);
+    },
+  });
+}
 
 /**
  * Streams a header plus batches of rows as CSV into `sink`. Records are joined
@@ -49,7 +75,7 @@ export async function writeCsv(
   batches: AsyncIterable<readonly (readonly unknown[])[]>,
   header: readonly string[],
   sink: NodeJS.WritableStream,
-  opts: { signal?: AbortSignal; gzip?: boolean; onBatch?: (rowsSoFar: number) => void } = {},
+  opts: { signal?: AbortSignal; gzip?: boolean; maxBytes?: number; onBatch?: (rowsSoFar: number) => void } = {},
 ): Promise<number> {
   let rowsSoFar = 0;
   async function* gen(): AsyncGenerator<string> {
@@ -63,7 +89,13 @@ export async function writeCsv(
     }
   }
   const src = Readable.from(gen());
-  await pipeline(src, ...(opts.gzip ? [createGzip()] : []), sink, { signal: opts.signal });
+  await pipeline(
+    src,
+    ...(opts.gzip ? [createGzip()] : []),
+    ...(opts.maxBytes ? [byteCap(opts.maxBytes, () => rowsSoFar)] : []),
+    sink,
+    { signal: opts.signal },
+  );
   return rowsSoFar;
 }
 
@@ -192,6 +224,10 @@ export function startExport(args: {
     getTable,
     getDashboardDynamicView,
   });
+  // Phase 130 D-09/D-10: per-user concurrency cap. MUST stay in this synchronous segment (no await between
+  // the count and insertExportJob): better-sqlite3 + single-threaded JS make check-then-insert atomic.
+  const activeNow = countActiveExportJobsForUser(username);
+  if (activeNow >= getExportMaxConcurrentPerUser()) throw new ExportCapError(concurrencyCapMessage(activeNow));
   insertExportJob({
     id: jobId,
     username,
@@ -246,6 +282,9 @@ async function run(
   const dir = getExportDir();
   const finalPath = path.join(dir, jobId + (options.gzip ? ".csv.gz" : ".csv"));
   const partPath = finalPath + ".part";
+  // Phase 130: hoisted so the catch formats with the same values the run enforced.
+  const rowCap = getExportMaxRows();
+  const capMb = getExportMaxFileMb();
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     // Principal is built inside each call and not stored anywhere (EXPRT-V126-16).
@@ -274,6 +313,8 @@ async function run(
     const total = Number((countRes.column_1 as unknown[] | undefined)?.[0]);
     if (!Number.isFinite(total)) throw new KineticaUpstreamError("Kinetica returned no row count for the snapshot");
     setExportJobTotalRows(jobId, total);
+    // Phase 130 D-12: refuse before any batch is fetched or any file is created.
+    if (rowCap !== null && total > rowCap) throw new RowCapError(total, rowCap);
 
     let header: string[] = plan.columns;
     if (!header.length) {
@@ -297,6 +338,7 @@ async function run(
     const written = await writeCsv(batches(), header, fs.createWriteStream(partPath, { mode: 0o600 }), {
       signal,
       gzip: options.gzip,
+      maxBytes: capMb === null ? undefined : exportMbToBytes(capMb),
       onBatch: (n) => updateExportJobProgress(jobId, n),
     });
     if (written !== total) throw new RowMismatchError(written, total);
@@ -313,6 +355,20 @@ async function run(
     const e = err as Error;
     if (signal.aborted || e?.name === "AbortError") {
       finalizeExportJob(jobId, "cancelled", { rowsWritten, errorMessage: "Export cancelled." });
+    } else if (err instanceof RowCapError) {
+      finalizeExportJob(jobId, "failed", { rowsWritten: 0, errorCode: "row_cap", errorMessage: rowCapMessage(err.total, err.cap) });
+    } else if (err instanceof SizeCapError) {
+      // finalizeExportJob is write-once: a user cancel that raced to terminal first stays authoritative.
+      finalizeExportJob(jobId, "failed", {
+        rowsWritten: err.rowsAtCut,
+        errorCode: "size_cap",
+        errorMessage: sizeCapMessage({
+          capMb: capMb!,
+          rowsAtCut: err.rowsAtCut,
+          totalRows: getExportJob(jobId)?.totalRows ?? null,
+          gzip: options.gzip === true,
+        }),
+      });
     } else if (err instanceof SessionEndedError || err instanceof KineticaAuthError) {
       finalizeExportJob(jobId, "session_expired", {
         rowsWritten,
