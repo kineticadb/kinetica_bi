@@ -377,3 +377,11 @@ Tracking stops at a terminal status, when the job is no longer tracked, and on u
 - [ ] Dimension 6 Registry Safety: PASS
 
 **Approval:** pending
+
+
+## Amendment — operator UAT gap closure (2026-10-08)
+
+Supersedes the form-phase markup above where they differ:
+- **Mounting:** the dialog renders via `createPortal(…, document.body)`. Rendered inside a records widget, the grid's CSS transforms trapped `modal-overlay`'s `position: fixed`. Open and close behaviour matches the dashboard modals: overlay click, header Close and Escape close it, and focus returns to the footer Download.
+- **Typography / layout:** this is the modal family, not the side-panel family. Name and Values are `ds-field` with a `ds-field-label`. Raw/Formatted is a segmented `radiogroup--buttons` with `radiogroup-button` and `radiogroup-button--selected` (as in DashboardSettingsModal), with `role="radiogroup"` / `role="radio"`. One `config-hint` describes the selected option. `config-group` and `config-group-label` are no longer used. Compress stays `config-toggle`, as in DynamicViewsModal.
+- **gzip:** export `.csv.gz` files carry the Unix OS byte (0x03), so macOS Archive Utility opens them.
