@@ -1983,14 +1983,14 @@ export type ExportJobDto = {
   startedAt: string | null;
   finishedAt: string | null;
   expiresAt: string | null;
-  gzip: boolean;
+  compress: boolean;
   name: string | null;
   dashboardName: string | null;
   widgetTitle: string | null;
 };
 
 export type ExportFormat = "raw" | "formatted";
-export type ExportStartOptions = { gzip: boolean; format: ExportFormat; name: string };
+export type ExportStartOptions = { compress: boolean; format: ExportFormat; name: string };
 export type StartExportBody = {
   widgetId: number;
   filters: ActiveFilter[];

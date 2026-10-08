@@ -178,11 +178,11 @@ Do not add a width class; `modal-content` 600px/90% is correct. `modal-body` scr
 Body is a vertical stack: wrap it in the existing `config-panel` (global.css:1288, `display:flex; flex-direction:column; gap:var(--space-5)`) and use its 16px gap as-is (no inline gap override).
 
 1. Optional override note (D-04), only when a widget-action override is active: `<div className="config-hint">` with the string below. First in the body.
-2. `ds-field`: `ds-field-label` "Name" + `<input type="text">`, autofocused, default per D-05, `maxLength=200`. Beneath it a `config-hint` showing the resulting file name: `<name>.csv` or `<name>.csv.gz` (updates with the gzip checkbox).
+2. `ds-field`: `ds-field-label` "Name" + `<input type="text">`, autofocused, default per D-05, `maxLength=200`. Beneath it a `config-hint` showing the resulting file name: `<name>.csv` or `<name>.zip` (updates with the Compress checkbox).
 3. `config-group` with `config-group-label` "Values": two `config-toggle` labels each wrapping `<input type="radio" name="export-format">`:
    - "Raw values" (default) + `config-hint` "Real column names and unformatted values."
    - "Formatted values" + `config-hint` "Display labels and number formats from Format columns."
-4. `config-toggle` with `<input type="checkbox">`: "Compress (.csv.gz)" (unchecked default).
+4. `config-toggle` with `<input type="checkbox">`: "Compress (.zip)" (unchecked default).
 5. Limits line: `<div className="config-hint">` "Limits: …" — render only if at least one cap is set; omit entirely otherwise.
 6. Row-limit block (D-08), only when `totalCount > exportLimits.maxRows`: `<div className="export-error" role="alert">` with the row cap message. Start is `disabled`.
 7. Server refusal block (D-09), only after a failed POST: `<div className="export-error" role="alert">` with the server `error` text verbatim.
@@ -282,13 +282,13 @@ All strings are exact. `{…}` are interpolations. Server-provided text is displ
 |---------|------|
 | Dialog title | Export records |
 | Name label | Name |
-| Name file hint | `{name}.csv` / `{name}.csv.gz` |
+| Name file hint | `{name}.csv` / `{name}.zip` |
 | Values group label | Values |
 | Raw option | Raw values |
 | Raw explanation | Real column names and unformatted values. |
 | Formatted option | Formatted values |
 | Formatted explanation | Display labels and number formats from Format columns. |
-| Gzip checkbox | Compress (.csv.gz) |
+| Compress checkbox | Compress (.zip) |
 | Limits hint | Limits: {maxRows} rows · {size} · {n} at a time — include only caps that are set; join with " · "; `maxRows` via `toLocaleString()`; size is "{n} GB" when `maxFileMb % 1024 === 0` else "{n} MB"; concurrency as "{n} at a time" |
 | Over-row-limit message | Same text as server `rowCapMessage` (mirror `exportCaps.ts`): numbers, then "Add filters to narrow it down and try again." Executor must copy the exact template from `packages/server/src/lib/exportCaps.ts`, not paraphrase |
 | Override note (D-04) | Exports use the saved widget settings. Filters and sort are included; widget-action overrides are not. |

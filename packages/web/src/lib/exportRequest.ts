@@ -42,6 +42,6 @@ export function buildExportRequest(i: ExportRequestInput): StartExportBody {
     filters,
     ...spatial,
     ...(i.sortField ? { sortField: i.sortField, sortDir: i.sortDir } : {}),
-    options: { gzip: i.options.gzip, format: i.options.format, name: i.options.name.trim() },
+    options: { compress: i.options.compress, format: i.options.format, name: i.options.name.trim() },
   };
 }

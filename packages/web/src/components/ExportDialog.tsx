@@ -60,7 +60,7 @@ export default function ExportDialog(props: ExportDialogProps) {
     defaultExportName(widgetTitle, new Date()),
   );
   const [format, setFormat] = useState<ExportFormat>("raw");
-  const [gzip, setGzip] = useState(false);
+  const [compress, setCompress] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -125,7 +125,7 @@ export default function ExportDialog(props: ExportDialogProps) {
     setStartError(null);
     try {
       const dto = await startExport(
-        buildRequest({ gzip, format, name: name.trim() }),
+        buildRequest({ compress, format, name: name.trim() }),
       );
       trackExport(dto);
       setDialogJob(dto.id);
@@ -310,7 +310,7 @@ export default function ExportDialog(props: ExportDialogProps) {
                     disabled={starting}
                     onChange={(e) => setName(e.target.value)}
                   />
-                  <span className="config-hint">{exportFileName(name, gzip)}</span>
+                  <span className="config-hint">{exportFileName(name, compress)}</span>
                 </label>
                 <div className="ds-field">
                   <span className="ds-field-label" id="export-format-label">Values</span>
@@ -344,11 +344,11 @@ export default function ExportDialog(props: ExportDialogProps) {
                 <label className="config-toggle">
                   <input
                     type="checkbox"
-                    checked={gzip}
+                    checked={compress}
                     disabled={starting}
-                    onChange={(e) => setGzip(e.target.checked)}
+                    onChange={(e) => setCompress(e.target.checked)}
                   />
-                  <span>Compress (.csv.gz)</span>
+                  <span>Compress (.zip)</span>
                 </label>
                 {limitsHint && <div className="config-hint">{limitsHint}</div>}
                 {dvNotReady && (

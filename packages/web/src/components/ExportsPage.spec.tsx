@@ -27,7 +27,7 @@ import ExportsPage from "./ExportsPage";
 const job = (o: Partial<ExportJobDto>): ExportJobDto => ({
   id: "j1", status: "complete", widgetId: 1, dashboardId: 1, rowsWritten: 5000000, totalRows: 5000000,
   fileBytes: null, errorCode: null, errorMessage: null, createdAt: "2026-03-01 10:00:00", startedAt: null,
-  finishedAt: null, expiresAt: null, gzip: false, name: "Q1", dashboardName: "Sales", widgetTitle: "Trips table", ...o,
+  finishedAt: null, expiresAt: null, compress: false, name: "Q1", dashboardName: "Sales", widgetTitle: "Trips table", ...o,
 });
 
 const rowOf = (name: string) => screen.getByText(name).closest(".ds-row") as HTMLElement;

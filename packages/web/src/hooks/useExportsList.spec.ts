@@ -14,7 +14,7 @@ import { EXPORTS_LIST_POLL_MS, useExportsList } from "./useExportsList";
 const job = (o: Partial<ExportJobDto>): ExportJobDto => ({
   id: "a", status: "complete", widgetId: 1, dashboardId: 1, rowsWritten: 1, totalRows: 1, fileBytes: 1,
   errorCode: null, errorMessage: null, createdAt: "2026-01-01 00:00:00", startedAt: null, finishedAt: null,
-  expiresAt: null, gzip: false, name: null, dashboardName: null, widgetTitle: null, ...o,
+  expiresAt: null, compress: false, name: null, dashboardName: null, widgetTitle: null, ...o,
 });
 const running = job({ id: "r", status: "running" });
 const done = job({ id: "d", status: "complete" });

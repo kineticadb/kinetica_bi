@@ -13,7 +13,7 @@ const mapWidget = (): WidgetDto => ({
   id: 50, dashboard_id: 1, title: "Map", type: "map", position: 0, created_at: "", updated_at: "",
   config: { spatialTargets: [{ tableId: 7, spatialMode: "latlon", lonCol: "lon", latCol: "lat" }] },
 });
-const opts = { gzip: false, format: "raw" as const, name: " My export " };
+const opts = { compress: false, format: "raw" as const, name: " My export " };
 const base = (over: Partial<ExportRequestInput> = {}): ExportRequestInput => ({
   widgetId: 9, config: { tableId: 7 }, sortField: "", sortDir: "asc", options: opts,
   filters: {}, dvFilters: {}, shapes: [], dashboardWidgets: [], dvScopeDisabled: false, ...over,
@@ -75,6 +75,6 @@ describe("buildExportRequest", () => {
   it("EXPREQ-options: widgetId copied, name trimmed", () => {
     const b = buildExportRequest(base());
     expect(b.widgetId).toBe(9);
-    expect(b.options).toEqual({ gzip: false, format: "raw", name: "My export" });
+    expect(b.options).toEqual({ compress: false, format: "raw", name: "My export" });
   });
 });

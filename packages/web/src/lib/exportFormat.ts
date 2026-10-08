@@ -30,8 +30,8 @@ const pad2 = (n: number): string => String(n).padStart(2, "0");
 export const defaultExportName = (widgetTitle: string | null | undefined, d: Date): string =>
   `${(widgetTitle ?? "").trim() || "Export"} ${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}${pad2(d.getMinutes())}`;
 
-export const exportFileName = (name: string, gzip: boolean): string =>
-  `${name.trim()}.csv${gzip ? ".gz" : ""}`;
+export const exportFileName = (name: string, compress: boolean): string =>
+  `${name.trim()}${compress ? ".zip" : ".csv"}`;
 
 export const relativeExpiry = (expiresAt: string | null, now: number = Date.now()): string => {
   if (expiresAt === null) return "—";

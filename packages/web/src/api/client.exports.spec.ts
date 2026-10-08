@@ -14,7 +14,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("export client helpers", () => {
   it("EXPCLI-start: posts JSON and returns data", async () => {
     const spy = stub(json({ data: dto }, 202));
-    const body = { widgetId: 1, filters: [], options: { gzip: false, format: "raw", name: "n" } } as StartExportBody;
+    const body = { widgetId: 1, filters: [], options: { compress: false, format: "raw", name: "n" } } as StartExportBody;
     expect(await startExport(body)).toEqual(dto);
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${API_BASE}/api/exports`);
@@ -26,7 +26,7 @@ describe("export client helpers", () => {
   it("EXPCLI-start-429: server error verbatim", async () => {
     const msg = "You already have 2 exports running. Wait for one to finish or cancel one, then try again.";
     stub(json({ error: msg, code: "concurrency_cap" }, 429));
-    await expect(startExport({ widgetId: 1, filters: [], options: { gzip: false, format: "raw", name: "n" } })).rejects.toThrow(msg);
+    await expect(startExport({ widgetId: 1, filters: [], options: { compress: false, format: "raw", name: "n" } })).rejects.toThrow(msg);
   });
   it("EXPCLI-get: dto or null on 404", async () => {
     stub(json({ data: dto }));

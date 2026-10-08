@@ -14,7 +14,7 @@ describe("exportFormat", () => {
   });
   it("EXPFMTC-file-name: trims and appends extension", () => {
     expect(exportFileName(" a b ", false)).toBe("a b.csv");
-    expect(exportFileName(" a b ", true)).toBe("a b.csv.gz");
+    expect(exportFileName(" a b ", true)).toBe("a b.zip");
   });
   it("EXPFMTC-limits: hint composition", () => {
     expect(exportLimitsHint({ maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 2 })).toBe("Limits: 10,000,000 rows · 2 GB · 2 at a time");

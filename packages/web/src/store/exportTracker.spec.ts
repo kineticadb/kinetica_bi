@@ -35,7 +35,7 @@ function dto(over: Partial<ExportJobDto> = {}): ExportJobDto {
     startedAt: null,
     finishedAt: null,
     expiresAt: null,
-    gzip: false,
+    compress: false,
     name: "Q1",
     dashboardName: null,
     widgetTitle: null,

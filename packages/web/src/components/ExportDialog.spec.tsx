@@ -46,7 +46,7 @@ function dto(over: Partial<ExportJobDto> = {}): ExportJobDto {
     startedAt: null,
     finishedAt: null,
     expiresAt: null,
-    gzip: false,
+    compress: false,
     name: "Q1",
     dashboardName: null,
     widgetTitle: null,
@@ -57,7 +57,7 @@ function dto(over: Partial<ExportJobDto> = {}): ExportJobDto {
 const body = {
   widgetId: 1,
   filters: [],
-  options: { gzip: false, format: "raw" as const, name: "x" },
+  options: { compress: false, format: "raw" as const, name: "x" },
 };
 
 function setup(over: Partial<ExportDialogProps> = {}) {
@@ -119,16 +119,17 @@ describe("ExportDialog", () => {
     expect(dialog.querySelectorAll(".ds-field-label").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("EXPDLG-defaults: name, raw, gzip off, file hint", async () => {
+  it("EXPDLG-defaults: name, raw, compress off, file hint", async () => {
     setup();
     const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toMatch(/^Taxi trips \d{4}-\d{2}-\d{2} \d{4}$/);
     expect(input).toHaveFocus();
     expect(screen.getByRole("radio", { name: "Raw values" })).toBeChecked();
-    expect(screen.getByLabelText("Compress (.csv.gz)")).not.toBeChecked();
+    expect(screen.getByLabelText("Compress (.zip)")).not.toBeChecked();
     expect(screen.getByText(`${input.value}.csv`)).toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText("Compress (.csv.gz)"));
-    expect(screen.getByText(`${input.value}.csv.gz`)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Compress (.zip)"));
+    expect(screen.getByText(`${input.value}.zip`)).toBeInTheDocument();
+    expect(screen.queryByText(`${input.value}.csv.gz`)).toBeNull();
   });
 
   it("EXPDLG-limits: shows set caps", () => {
@@ -185,13 +186,13 @@ describe("ExportDialog", () => {
     let resolve!: (d: ExportJobDto) => void;
     vi.mocked(startExport).mockReturnValue(new Promise((r) => (resolve = r)));
     const { props } = setup();
-    await userEvent.click(screen.getByLabelText("Compress (.csv.gz)"));
+    await userEvent.click(screen.getByLabelText("Compress (.zip)"));
     await userEvent.click(screen.getByRole("radio", { name: "Formatted values" }));
     await userEvent.clear(screen.getByRole("textbox"));
     await userEvent.type(screen.getByRole("textbox"), "Q1");
     await userEvent.click(screen.getByRole("button", { name: "Start export" }));
     expect(props.buildRequest).toHaveBeenCalledWith({
-      gzip: true,
+      compress: true,
       format: "formatted",
       name: "Q1",
     });

@@ -2914,7 +2914,7 @@ describe("RecordsTableRenderer CSV download", () => {
     (clientModule.startExport as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "job1", status: "running", widgetId: 5, dashboardId: 1, rowsWritten: 0, totalRows: 10, fileBytes: null,
       errorCode: null, errorMessage: null, createdAt: "2026-10-07 10:00:00", startedAt: null, finishedAt: null,
-      expiresAt: null, gzip: false, name: "x", dashboardName: null, widgetTitle: null,
+      expiresAt: null, compress: false, name: "x", dashboardName: null, widgetTitle: null,
     });
     (clientModule.getExportJob as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     await trigRender(10, 2, {
@@ -2934,7 +2934,7 @@ describe("RecordsTableRenderer CSV download", () => {
     expect(body.filters).toEqual([fA]);
     expect(body.sortField).toBe("amount");
     expect(body.sortDir).toBe("desc");
-    expect(body.options).toMatchObject({ gzip: false, format: "raw" });
+    expect(body.options).toMatchObject({ compress: false, format: "raw" });
     expect(body.options.name).toMatch(/^.+ \d{4}-\d{2}-\d{2} \d{4}$/);
   });
 
