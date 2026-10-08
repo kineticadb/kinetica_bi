@@ -101,12 +101,30 @@ afterEach(() => {
 });
 
 describe("ExportDialog", () => {
+  // Gap closure (operator UAT 2026-10-08): the dashboard grid positions widgets with CSS transforms, which trap
+  // position:fixed descendants, so the dialog must render into <body>, not inside the widget.
+  it("EXPDLG-portal: renders into document.body, outside the widget that mounts it", () => {
+    const { container } = setup();
+    const dialog = screen.getByRole("dialog");
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.closest(".modal-overlay")?.parentElement).toBe(document.body);
+  });
+
+  it("EXPDLG-modal-classes: uses the modal field/segmented-choice classes, not the side-panel heading", () => {
+    setup();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector(".config-group-label")).toBeNull();
+    expect(dialog.querySelector(".radiogroup--buttons")).not.toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "Values" })).toBeTruthy();
+    expect(dialog.querySelectorAll(".ds-field-label").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("EXPDLG-defaults: name, raw, gzip off, file hint", async () => {
     setup();
     const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toMatch(/^Taxi trips \d{4}-\d{2}-\d{2} \d{4}$/);
     expect(input).toHaveFocus();
-    expect(screen.getByLabelText("Raw values")).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Raw values" })).toBeChecked();
     expect(screen.getByLabelText("Compress (.csv.gz)")).not.toBeChecked();
     expect(screen.getByText(`${input.value}.csv`)).toBeInTheDocument();
     await userEvent.click(screen.getByLabelText("Compress (.csv.gz)"));
@@ -168,7 +186,7 @@ describe("ExportDialog", () => {
     vi.mocked(startExport).mockReturnValue(new Promise((r) => (resolve = r)));
     const { props } = setup();
     await userEvent.click(screen.getByLabelText("Compress (.csv.gz)"));
-    await userEvent.click(screen.getByLabelText("Formatted values"));
+    await userEvent.click(screen.getByRole("radio", { name: "Formatted values" }));
     await userEvent.clear(screen.getByRole("textbox"));
     await userEvent.type(screen.getByRole("textbox"), "Q1");
     await userEvent.click(screen.getByRole("button", { name: "Start export" }));
@@ -212,7 +230,7 @@ describe("ExportDialog", () => {
 
   it("EXPDLG-formatted-unavailable: radio disabled with hint", () => {
     setup({ formattedAvailable: false });
-    expect(screen.getByLabelText("Formatted values")).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Formatted values" })).toBeDisabled();
     expect(
       screen.getByText(
         "Not available for this widget: it has no dataset with column formats.",

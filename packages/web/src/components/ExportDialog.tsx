@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   cancelExportJob,
   NAVIGATE_EXPORTS_EVENT,
@@ -266,7 +267,9 @@ export default function ExportDialog(props: ExportDialogProps) {
     );
   }
 
-  return (
+  // Portal to <body>: the dashboard grid positions widgets with CSS transforms, and a transformed
+  // ancestor turns position:fixed into "fixed to the widget", trapping the overlay inside it.
+  return createPortal(
     <div className="modal-overlay" onClick={close}>
       <div
         className="modal-content"
@@ -307,41 +310,35 @@ export default function ExportDialog(props: ExportDialogProps) {
                     disabled={starting}
                     onChange={(e) => setName(e.target.value)}
                   />
+                  <span className="config-hint">{exportFileName(name, gzip)}</span>
                 </label>
-                <div className="config-hint">{exportFileName(name, gzip)}</div>
-                <div className="config-group">
-                  <span className="config-group-label">Values</span>
-                  <label className="config-toggle">
-                    <input
-                      type="radio"
-                      name="export-format"
-                      checked={format === "raw"}
-                      disabled={starting}
-                      onChange={() => setFormat("raw")}
-                    />
-                    Raw values
-                  </label>
-                  <div className="config-hint">
-                    Real column names and unformatted values.
+                <div className="ds-field">
+                  <span className="ds-field-label" id="export-format-label">Values</span>
+                  <div className="radiogroup--buttons" role="radiogroup" aria-labelledby="export-format-label">
+                    {(["raw", "formatted"] as const).map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        role="radio"
+                        aria-checked={format === f}
+                        className={`radiogroup-button${format === f ? " radiogroup-button--selected" : ""}`}
+                        disabled={starting || (f === "formatted" && !formattedAvailable)}
+                        onClick={() => setFormat(f)}
+                      >
+                        {f === "raw" ? "Raw values" : "Formatted values"}
+                      </button>
+                    ))}
                   </div>
-                  <label className="config-toggle">
-                    <input
-                      type="radio"
-                      name="export-format"
-                      checked={format === "formatted"}
-                      disabled={starting || !formattedAvailable}
-                      onChange={() => setFormat("formatted")}
-                    />
-                    Formatted values
-                  </label>
-                  <div className="config-hint">
-                    Display labels and number formats from Format columns.
-                  </div>
+                  <span className="config-hint">
+                    {format === "raw"
+                      ? "Real column names and unformatted values."
+                      : "Display labels and number formats from Format columns."}
+                  </span>
                   {!formattedAvailable && (
-                    <div className="config-hint">
+                    <span className="config-hint">
                       Not available for this widget: it has no dataset with
                       column formats.
-                    </div>
+                    </span>
                   )}
                 </div>
                 <label className="config-toggle">
@@ -351,7 +348,7 @@ export default function ExportDialog(props: ExportDialogProps) {
                     disabled={starting}
                     onChange={(e) => setGzip(e.target.checked)}
                   />
-                  Compress (.csv.gz)
+                  <span>Compress (.csv.gz)</span>
                 </label>
                 {limitsHint && <div className="config-hint">{limitsHint}</div>}
                 {dvNotReady && (
@@ -393,6 +390,7 @@ export default function ExportDialog(props: ExportDialogProps) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
