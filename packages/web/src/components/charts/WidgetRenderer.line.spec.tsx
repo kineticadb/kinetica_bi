@@ -440,8 +440,9 @@ describe("LineRenderer x-axis layout (Phase 132)", () => {
     });
   });
 
+  // Box 580: 11 x 48 = 528 fits the raw 580 but not 580 - 50 (measured Y axis: 34 + 16 title) - 10 (right margin) = 520.
   it("L132-22 tilt only when the Y axis and margin are subtracted", async () => {
-    await withMeasuredBoxAsync(600, 300, async () => {
+    await withMeasuredBoxAsync(580, 300, async () => {
       await renderLine(SINGLE_NOLABEL, catRows(11));
       await waitFor(() => expect(xAxis().angle).toBe(-45));
       expect(xAxis().textAnchor).toBe("end");
@@ -475,9 +476,17 @@ describe("LineRenderer x-axis layout (Phase 132)", () => {
 
   it("L132-25 axes geometry", async () => {
     await renderLine(SINGLE_CFG, SINGLE_ROWS);
-    expect(yAxis().width).toBe(72);
+    expect(yAxis().width).toBe(50); // measured: short ticks ("5") -> 34px floor + 16px for the rotated title
     expect((yAxis().tick as R).fontSize).toBe(11);
     expect((chartKids().chart.margin as R).left).toBe(0);
+  });
+});
+
+describe("LineRenderer Y-axis width (Phase 132 UAT V9)", () => {
+  it("L132-36 long formatted ticks widen the Y axis past the bar chart's 80px cap", async () => {
+    await renderLine(SINGLE_CFG, [{ region: "West", value: 123456789012 }, { region: "East", value: 5 }]);
+    expect(yAxis().width as number).toBeGreaterThan(96); // ticks round to ~"120000000000" (12 chars, ~95px); the bar's 80px cap + 16 = 96 would clip them
+    expect(yAxis().width as number).toBeLessThanOrEqual(176); // line cap 160 + 16
   });
 });
 
@@ -609,10 +618,12 @@ describe("LineRenderer dropped-categories notice (Phase 132 Plan 05)", () => {
     expect(note.textContent).toBe("Some lower values are not shown (result limit reached)");
   });
 
-  it("L132-34 legacy no group-by: one unchanged query, no note", async () => {
+  // Phase 132 UAT (V9): a legacy line with no X column shows the "choose an X axis" prompt, not raw rows.
+  it("L132-34 legacy no group-by: one unchanged query, no note, X-axis prompt instead of raw rows", async () => {
     vi.mocked(clientModule.runSql).mockResolvedValue(buildResponse(regionRows(3)) as never);
     await mount({ sql: "SELECT * FROM sales LIMIT 100" });
-    await waitFor(() => expect(captured.LineChart ?? captured.AreaChart).toBeTruthy());
+    expect(await screen.findByTestId("line-needs-x")).toHaveTextContent("Choose an X axis column in this chart's settings.");
+    expect(captured.LineChart ?? captured.AreaChart).toBeFalsy();
     expect(vi.mocked(clientModule.runSql)).toHaveBeenCalledTimes(1);
     expect(sqlOf(0)).toBe("SELECT * FROM sales LIMIT 100");
     expect(screen.queryByTestId("line-categories-note")).toBeNull();

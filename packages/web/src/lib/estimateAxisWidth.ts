@@ -24,13 +24,13 @@ export function estimateLabelWidth(label: string): number {
 }
 
 /** Width (px) for a value axis given the formatted labels it must display. */
-export function estimateAxisWidth(formattedLabels: string[]): number {
+export function estimateAxisWidth(formattedLabels: string[], maxPx: number = MAX_WIDTH_PX): number {
   const longest = formattedLabels.reduce(
     (max, s) => Math.max(max, (s ?? "").length),
     0,
   );
   const raw = Math.round(longest * FONT_PX_PER_CHAR + TICK_GUTTER_PX);
-  return Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, raw));
+  return Math.min(maxPx, Math.max(MIN_WIDTH_PX, raw));
 }
 
 // recharts draws "nice", ROUNDED tick values — never the raw, full-precision data extremes.
@@ -60,6 +60,7 @@ function roundToTickGranularity(v: number, span: number): number {
 export function estimateValueAxisWidth(
   values: number[],
   format: (v: number) => string,
+  maxPx: number = MAX_WIDTH_PX,
 ): number {
   let max = -Infinity;
   let min = Infinity;
@@ -75,5 +76,5 @@ export function estimateValueAxisWidth(
     format(roundToTickGranularity(max, span)),
     format(roundToTickGranularity(min, span)),
     format(0),
-  ]);
+  ], maxPx);
 }

@@ -902,6 +902,15 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     case "bar":
       return <BarRenderer data={data} config={cfg} {...drillProps} />;
     case "line":
+      // Phase 132 UAT (V9): a Line Chart saved with no X axis column used to plot the first raw rows
+      // (repeating, unaggregated categories). Prompt for the required column instead of drawing that.
+      if (lineXColumn(cfg) === "") {
+        return (
+          <div className="widget-placeholder" data-testid="line-needs-x">
+            <span>Choose an X axis column in this chart&apos;s settings.</span>
+          </div>
+        );
+      }
       return <LineRenderer data={data} config={cfg} categoryTruncation={lineCategoryTruncation} {...drillProps} />;
     case "pie":
       return <PieRenderer data={data} config={cfg} {...drillProps} />;
@@ -1340,6 +1349,8 @@ const BarRenderer = ({
   );
 };
 
+const LINE_Y_AXIS_MAX_PX = 160;
+
 const LineRenderer = ({
   data,
   config,
@@ -1485,7 +1496,13 @@ const LineRenderer = ({
     setWrapW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
-  const Y_AXIS_WIDTH = 72;
+  // Phase 132 UAT (V9): size the value axis to its formatted tick labels, as BarRenderer does; a fixed
+  // 72px clipped long formats ("40,000.00000"). Only finite numbers count (Number(null) would read as 0).
+  const yValueKeys = multiSeries ? top.series : [y];
+  const yValues: number[] = [];
+  for (const r of chartData) for (const k of yValueKeys) { const v = r[k]; if (typeof v === "number" && Number.isFinite(v)) yValues.push(v); }
+  // Cap 160 (not the bar's 80): an 80px cap still clipped labels like "40,000.00000" (~95px). +16 for the rotated title.
+  const Y_AXIS_WIDTH = estimateValueAxisWidth(yValues, (v) => valueAxisTickFormatter(v), LINE_Y_AXIS_MAX_PX) + 16;
   const plotWidthPx = Math.max(0, wrapW - Y_AXIS_WIDTH - chartMargin.left - chartMargin.right);
   const maxLabelChars = chartData.reduce((m, r) => Math.max(m, String(r[xKey] ?? "").length), 0);
   const layout = computeLineXAxisLayout({ n: chartData.length, plotWidthPx, maxLabelChars });
