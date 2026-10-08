@@ -49,6 +49,12 @@ Phase 130 complete (2026-10-07) — EXPRT-V126-14/15 validated: exports expire 2
 (interrupted jobs -> failed/server_restarted, own-name orphan files removed), env caps EXPORT_MAX_ROWS /
 EXPORT_MAX_FILE_MB (off by default) and EXPORT_MAX_CONCURRENT_PER_USER (2), cap limits on /me for the 131 dialog.
 Restart reconcile verified live (kill -9 mid-export). Review also fixed password login not loading /me config.
+Phase 131 complete (2026-10-08) — EXPRT-V126-05..10/12 validated: records Download opens a page-level
+"Export records" dialog above the in-browser cap (name, Raw default / Formatted, Compress (.zip), limits shown,
+progress every 5 s, cancel, ready toast) and a new Exports page (history, download, cancel, delete). Live UAT
+V1-V13 all pass on 1.5M rows incl. snapshot isolation (mid-export delete/insert ignored). UAT gap closures:
+dialog portal + modal styling, gzip -> .zip (macOS Archive Utility rejected .gz; own streaming ZIP64 writer, no
+new dep), Name focus under StrictMode. Follow-up: records page_size widget-action override is a no-op (Phase 58).
 
 **Known hazards going in:**
 - **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.

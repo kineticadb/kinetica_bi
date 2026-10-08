@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: phase_131_executed_pending_verification
-stopped_at: "Phase 131 plans complete (2026-10-08); verify next"
+status: phase_131_complete
+stopped_at: "Phase 131 complete + verified (2026-10-08); next /gsd:discuss-phase 132"
 last_updated: "2026-10-08T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 35
   completed_plans: 35
 ---
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.26 Large Exports & Fixes — Phases 127-130 complete; Phase 131 (Client Export UI) next
+**Current focus:** v1.26 Large Exports & Fixes — Phases 127-131 complete (export feature done); Phase 132 (Line Chart Multi-Series Group By) next
 
 ## Current Position
 
-**v1.26 Large Exports & Fixes — Phase 130 COMPLETE (2026-10-07, verified: 130-VERIFICATION.md); next Phase 131.** (Phase 129 COMPLETE 2026-10-07, proxy-path resume open debt.) (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
+**v1.26 Large Exports & Fixes — Phase 131 COMPLETE (2026-10-08, verified: 131-VERIFICATION.md); next Phase 132.** (Phase 130 COMPLETE 2026-10-07.) (Phase 129 COMPLETE 2026-10-07, proxy-path resume open debt.) (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
 (127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
 and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
 repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).
@@ -64,7 +64,7 @@ Carried items: Phase 131 Q-D follow-up; Phase 127 follow-ups = none (D-04a/b ver
 **Follow-up (pending todo, outside Phase 131):** the records `page_size` widget-action override never changes the table: pre-existing Phase 58 bug, actionAllowList key `page_size` (actionAllowList.ts:119, radioGroupCapture.ts:48) vs records reading `cfg.pageSize` (WidgetRenderer.tsx:1920); the overlay merges `page_size`, so it is a no-op and "Capture from target" captures nothing.
 **For Phase 132:** Phase 132 also edits `WidgetRenderer.tsx`; Phase 131 touched only RecordsTableRenderer (handleDownloadClick + ExportDialog mount) and the CSV specs.
 
-**Next:** verify Phase 131, then `/gsd:plan-phase 132`.
+**Next:** Phase 132 (Line Chart Multi-Series Group By): `/gsd:discuss-phase 132`.
 
 **Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
 interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;
