@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: phase_131_complete
-stopped_at: "Phase 132 context gathered (2026-10-08); next /gsd:ui-phase 132 or /gsd:plan-phase 132"
+stopped_at: "Phase 132 UI-SPEC approved (2026-10-08); next /gsd:plan-phase 132"
 last_updated: "2026-10-08T00:00:00.000Z"
 progress:
   total_phases: 6
