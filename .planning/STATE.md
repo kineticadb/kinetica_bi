@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: phase_132_executed_pending_verification
-stopped_at: "Phase 132 plans complete (2026-10-08); verify next"
+status: milestone_v1.26_phases_complete
+stopped_at: "Phase 132 complete + verified (2026-10-08); all v1.26 phases done; next /gsd:audit-milestone"
 last_updated: "2026-10-08T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 41
   completed_plans: 41
 ---
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.26 Large Exports & Fixes — Phases 127-131 complete (export feature done); Phase 132 (Line Chart Multi-Series Group By) next
+**Current focus:** v1.26 Large Exports & Fixes — All 6 phases (127-132) complete; next: milestone audit + close
 
 ## Current Position
 
-**v1.26 Large Exports & Fixes — Phase 131 COMPLETE (2026-10-08, verified: 131-VERIFICATION.md); next Phase 132.** (Phase 130 COMPLETE 2026-10-07.) (Phase 129 COMPLETE 2026-10-07, proxy-path resume open debt.) (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
+**v1.26 Large Exports & Fixes — Phase 132 COMPLETE (2026-10-08, verified: 132-VERIFICATION.md); all 6 phases done, next milestone audit.** (Phase 131 COMPLETE 2026-10-08.) (Phase 130 COMPLETE 2026-10-07.) (Phase 129 COMPLETE 2026-10-07, proxy-path resume open debt.) (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
 (127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
 and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
 repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).

@@ -55,6 +55,12 @@ progress every 5 s, cancel, ready toast) and a new Exports page (history, downlo
 V1-V13 all pass on 1.5M rows incl. snapshot isolation (mid-export delete/insert ignored). UAT gap closures:
 dialog portal + modal styling, gzip -> .zip (macOS Archive Utility rejected .gz; own streaming ZIP64 writer, no
 new dep), Name focus under StrictMode. Follow-up: records page_size widget-action override is a no-op (Phase 58).
+Phase 132 complete (2026-10-08) — LINE-V126-01..04 validated: the Line Chart uses the bar's Group By
+builder (column 1 = X axis, required; extra columns = one line per value, shared series cap), X ascending,
+every label shown (tilt -> scroll), metric-named legend/Y title, gaps for missing points, bar-style drill, and a
+'Showing N of M categories' notice when the result limit drops categories. UAT fix: a no-X legacy line shows
+a 'choose an X axis' prompt; the Y axis is sized to its tick labels. Numeric Line remains the numeric/multi-metric
+chart. All six v1.26 phases are complete; next is the milestone audit.
 
 **Known hazards going in:**
 - **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.

@@ -57,7 +57,7 @@
 - [x] **Phase 129: Export Routes — Resumable Download, History & Privacy** - A finished export downloads resumably over HTTP Range, only the owning user can reach any route for it, and no new RBAC permission is introduced (completed 2026-10-07)
 - [x] **Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps** - Exports and files expire on schedule, a restart leaves nothing stuck or orphaned, and an admin can cap rows/size/concurrency via env config (completed 2026-10-07)
 - [x] **Phase 131: Client Export UI — Trigger Dialog, Progress & History** - The user can name, choose raw/formatted, tick Compress (.zip), watch progress, and manage a history list — verified live against a real Kinetica instance (completed 2026-10-08)
-- [ ] **Phase 132: Line Chart Multi-Series Group By** - The line chart gets the bar chart's Group By Columns builder, every x-axis label shown, the legend named after the metric, and multi-series drill-down
+- [x] **Phase 132: Line Chart Multi-Series Group By** - The line chart gets the bar chart's Group By Columns builder, every x-axis label shown, the legend named after the metric, and multi-series drill-down (completed 2026-10-08)
 
 ## Phase Details
 
