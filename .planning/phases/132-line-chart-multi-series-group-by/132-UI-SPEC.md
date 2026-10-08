@@ -132,7 +132,7 @@ Existing pattern: there is NO built-in-chart validation message today. Only the 
 | Label text | Tick text renders in FULL: no truncation, no ellipsis, no character cap (D-07: "angle + scroll", shorten rejected; LINE-V126-02: every label shown, never dropped). The tooltip header also shows the full value. |
 | Angled XAxis `height` | Derived from the longest label, with a wide-glyph safety margin: `maxLabelPx = maxLabelChars * 7` (7px/char at 11px, so wide glyphs such as W/M don't under-size); `height = ceil(maxLabelPx * sin(45°)) + 16`, floor 30 (horizontal default). Example: 12 chars -> 60 + 16 = 76; 24 chars -> 119 + 16 = 135. Typical upper range around 160px (about 29 chars). NEVER clamped, clipped or truncated (D-07). To stop a tall label area from squeezing the plot, the inner chart box gets `minHeight: xAxisHeight + LINE_MIN_PLOT_PX` (`LINE_MIN_PLOT_PX = 160`), in BOTH the scroll and non-scroll branches. When that exceeds the widget height, the region scrolls vertically (`overflowY: "auto"`), so the plot keeps at least 160px and every label stays fully visible. Horizontal ticks keep the Recharts default `height` (30). |
 | Scroll trigger and slot width | when `n * 24 > plotWidthPx`, size the inner box `minWidth = n * 24 + ceil(maxLabelPx * cos(45°))` (the added term is the left overhang of the longest tilted label, so label length widens the box) and wrap in the bar's scroll region |
-| Order | data order as today; no re-sort (D-07) |
+| Order | **SUPERSEDED by Amendment A1 (O-1):** ascending by the X category value (numbers numerically, dates chronologically, text A to Z), single AND multi-series |
 
 Scroll region markup: copy the BarRenderer structure at WidgetRenderer.tsx:1266-1309 - outer `<div data-testid="line-chart" style={{ position:"relative", width:"100%", height:"100%", display:"flex", flexDirection:"column" }}>`; scroll branch `<div data-testid="line-scroll-region" style={{ flex:"1 1 auto", minHeight:0, overflowX:"auto", overflowY:"auto" }}>` wrapping `<div style={{ width:"100%", height:"100%", minWidth: neededCategoryPx }}>`; non-scroll branch the `position:relative` / `absolute inset:0` pair (:1303-1306). Inline styles only, as bar does (there is no `bar-scroll-region` CSS class, only a `data-testid`; do not add a className).
 
@@ -166,7 +166,7 @@ Scroll region markup: copy the BarRenderer structure at WidgetRenderer.tsx:1266-
 | `type` | `curved ? "monotone" : "linear"` (existing Smooth Curve) |
 | `connectNulls` | `{false}` on every multi-series `<Line>` (gap, not zero, Timeline precedent TimelineRenderer.tsx:690-715) |
 | `isAnimationActive` | `{false}` (matches bar and Timeline) |
-| Dots | shown when `showDots !== false` AND `chartData.length <= 24`; hidden (`dot={false}`) when `chartData.length > 24` even if `showDots` is true. Dot `{ r: 3 }` (existing). `activeDot={{ r: 5 }}` always on, so hover works when dots are hidden. |
+| Dots | (**Amendment A1: multi-series only**; single-series keeps today's `dot={showDots ? { r: 3 } : false}`) shown when `showDots !== false` AND `chartData.length <= 24`; hidden (`dot={false}`) when `chartData.length > 24` even if `showDots` is true. Dot `{ r: 3 }` (existing). `activeDot={{ r: 5 }}` always on, so hover works when dots are hidden. |
 | Isolated point | a point whose neighbors are both null renders as a dot REGARDLESS of the density threshold (otherwise it is invisible). Implement with a per-point `dot` renderer: draw `<circle r=3 fill=stroke>` when `prev == null && next == null`, else follow the rule above. Applies in multi-series; single-series has no nulls. |
 | Legend/line order | `top.series` order (selectTopSeries), same as bar |
 
@@ -227,6 +227,44 @@ Grep/tsc/vitest/theme-guard cannot prove any of these; per CLAUDE.md do not dres
 6. Legacy saved Line dashboards look unchanged apart from the intended X/Y labeling fixes.
 
 Structural preconditions that ARE checkable (verify each reads 0/absent BEFORE the work): `interval={0}` and `connectNulls={false}` occurring inside `LineRenderer`; `data-testid="line-truncated-note"`; `data-testid="line-scroll-region"`; `isLine` in ChartConfigPanel.tsx; the string `Group By column 1 is required`; helper name `resolveLineMetricTitle`. (Run each grep first; e.g. `connectNulls` already appears in TimelineRenderer.tsx, so scope the grep to the LineRenderer range / the new spec.)
+
+---
+
+## Amendment A1 (2026-10-08, operator decisions O-1 / O-2 and planning resolutions)
+
+Added at plan-phase time. Where this section conflicts with anything above, this section wins.
+
+### O-1: X order is ascending by the X category value
+- Applies to single-series AND multi-series line charts whose X column is configured (Group By column 1, or the legacy `groupByColumn`). A legacy Line saved with NO group-by (`SELECT * ... LIMIT 100`) is not re-sorted.
+- Comparator (pure helper `sortLineRowsByX`, `lib/lineChartData.ts`): missing X values (`null`, `undefined`, `""`, the string `"null"`) sort last. If every other value is a finite number or a numeric string, sort numerically (1, 2, 10). Else, if every other value is an ISO-like date/time string (`YYYY-MM-DD` optionally followed by ` HH:MM[:SS[.fff]]` or `THH:MM...`), sort chronologically. Else sort as text with `String(a).localeCompare(String(b))` (A to Z). Never mutates its input.
+- **Accepted visible change to D-05:** existing line charts used to plot points in metric-value order (`ORDER BY value DESC`); they now plot X ascending. The SQL is unchanged (it still fetches the top categories by metric value); only the display order changes.
+
+### O-2: categories dropped by the Result limit are announced, never silent
+- The SQL is unchanged: it still fetches the top categories by metric value (single-series `LIMIT <Result limit>`; multi-series `LIMIT <Result limit> x maxBarGroupBySeriesCap x 2`), then the chart sorts them by X.
+- **Detection:** for a line widget whose SQL ends in the generated aggregate tail (`ORDER BY value ASC|DESC LIMIT n`), `AggregatedWidgetRenderer` asks for `LIMIT n+1` (the Phase 127 `bumpTrailingLimit` probe the heatmap already uses), shows at most n rows, and treats `n+1` returned rows as "the Result limit was hit".
+- **Where M comes from:** only when the limit was hit, a second query counts the categories: `SELECT COUNT(DISTINCT <col1>) AS n FROM (<the same SQL without its ORDER BY/LIMIT tail>) kbi_line_x`, built by the pure helper `buildLineCategoryCountSql` from the SQL that was actually run (so it inherits the filter-view / dynamic-view FROM swap, the custom WHERE and the live custom-metric expression).
+  - Justification: Kinetica's `has_more_records` (Phase 127) only reports the deployment per-query cap, never the widget's own LIMIT (`lib/rowTruncation.ts` header); the LIMIT+1 probe says "more exist" but not how many; `COUNT(DISTINCT col1)` over the grouped result is the only source of M. Running it only when the probe fired keeps the common path to one query.
+  - If the count query fails (or returns no usable number), the notice still shows, without M.
+- **Notice element** (same element and styling as the series note; no new class), rendered as its own flex row above the plot, below the series note when both apply:
+  `<div className="config-hint" data-testid="line-categories-note" title={LINE_CATEGORY_NOTE_TITLE} style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>{text}</div>`
+- **Copy** (`lineCategoryNoteText({ shown, total })`; N = `chartData.length`, the categories actually drawn; M = the count; numbers via `toLocaleString()`):
+
+| Case | Copy |
+|------|------|
+| M known and N < M | `Showing {N} of {M} categories` |
+| M known and N >= M (multi-series only: every category is present but some lower (x, series) points were cut) | `Some lower values are not shown (result limit reached)` |
+| M unknown (count query failed) | `Showing top {N} categories (more exist)` |
+| Note `title` (all cases) | `The query reached its Result limit, so lower-value points are not shown. Raise "Result limit" or narrow the query.` |
+
+- Not shown when the limit was not hit, for non-line widgets, or for a legacy Line with no group-by. The Phase 127 generic "Limited to N rows" note (deployment cap) is unchanged and may appear as well.
+
+### Planning resolutions (Claude's discretion, adopted)
+- **Dots:** the density rule (dots hidden when `chartData.length > 24`, isolated points always dotted) applies to multi-series only. Single-series keeps `dot={showDots ? { r: 3 } : false}`.
+- **Tooltip:** `ColumnFormatTooltip` gains optional `multiSeries?: boolean` (when defined it replaces the `payload.length === 1` guess) and `metricTitle?: string` (when non-empty, the single-series value line uses it instead of the Format-columns label, so the tooltip matches the legend). Multi-series line passes `multiSeries`; single-series line passes `metricTitle={yTitle}`. Other renderers pass neither (unchanged).
+- **Title helper never returns `value`:** when nothing resolves, `resolveLineMetricTitle` returns `fallbackKey` unless it is empty or the literal `value`, in which case it returns `Metric`.
+- **Drill typing (multi-series):** the clicked bucket is mapped back to the raw X value from the fetched rows, and `resolveAggregatedDrillTarget` supplies the type, so the persisted `drillDownColumnType` of column 1 is honoured (a numeric X drills as a number, as single-series line does today). Column = Group By column 1; the series column is never added.
+- **Blank builder rows:** the renderer uses `lineGroupByColumns(config)` (blank entries removed); multi-series means two or more non-blank columns. The SQL LIMIT multiplier applies to line only when two or more non-blank columns exist (`isBar || (isLine && cols.length >= 2)`), so `["region", ""]` produces the byte-identical single-column SQL.
+- **Builder seeding:** a line whose `groupByColumns` is empty and whose `groupByColumn` is falsy seeds one blank `X axis` row, so the required control and its error are visible.
 
 ---
 

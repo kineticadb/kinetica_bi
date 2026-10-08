@@ -170,7 +170,13 @@
   3. The chart's legend shows the metric's name, never the literal string `value`.
   4. Clicking a point on a multi-series line chart triggers the same drill-down behavior the multi-series bar chart does for the equivalent click.
   5. `checkpoint:human-verify` — a deliberately sparse multi-series dataset (some x/series combinations missing) renders with an explicit, deliberate gap-vs-zero choice rather than an unexamined Recharts default, confirmed visually correct in both light and dark themes.
-**Plans**: TBD
+**Plans**: 6 plans
+- [ ] 132-01-PLAN.md — pure libs: aggregationLabels (moved AGGREGATIONS), resolveLineMetricTitle, x-axis layout math / isolated point / blank-row filter, X sort + category-count SQL + notice copy (wave 1)
+- [ ] 132-02-PLAN.md — ColumnFormatTooltip multiSeries + metricTitle props; line.ts groupByColumns default (wave 1)
+- [ ] 132-03-PLAN.md — ChartConfigPanel: line Group By builder, required column 1 validation, line LIMIT multiplier, AGGREGATIONS import (wave 2)
+- [ ] 132-04-PLAN.md — LineRenderer: multi-series lines with gaps + lone dot, X ascending, metric-named legend/Y title, interval 0 + tilt/scroll, column-1 drill; new WidgetRenderer.line.spec (wave 2)
+- [ ] 132-05-PLAN.md — dropped-categories notice: line LIMIT+1 probe + COUNT(DISTINCT) only when hit (operator O-2) (wave 3)
+- [ ] 132-06-PLAN.md — phase gates + criterion-5 live checkpoint (sparse data, light/dark) + shared docs (wave 4)
 
 ---
 

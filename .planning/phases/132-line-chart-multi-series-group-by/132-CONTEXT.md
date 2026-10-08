@@ -122,6 +122,12 @@ Requirements: LINE-V126-01..04.
 
 </deferred>
 
+## Operator decisions after research (2026-10-08, LOCKED)
+
+- **O-1 (supersedes "X order follows today's data order" in D-07):** X order is ascending by the X category value (numbers numerically, dates chronologically, text A to Z), single AND multi-series. This is an **accepted visible change to D-05's "no visible change"**: existing line charts used to plot points in metric-value order.
+- **O-2:** keep fetching the top categories by metric value, sort them by X for display, and show a notice when the Result limit dropped categories; never drop silently. Copy and the source of M are in `132-UI-SPEC.md` Amendment A1.
+
+
 ---
 
 *Phase: 132-line-chart-multi-series-group-by*
