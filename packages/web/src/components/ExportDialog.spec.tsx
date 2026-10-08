@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
+import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import type { ExportJobDto } from "../api/client";
 
@@ -345,6 +346,24 @@ describe("ExportDialog", () => {
     await startWith();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Operator UAT 2026-10-08 (V12): in dev, StrictMode runs the mount cleanup once (focus -> opener) and autoFocus
+  // does not re-run, so the Name field lost focus and Enter did nothing until the user clicked into it.
+  it("EXPDLG-strictmode-focus: under StrictMode the Name field has focus on open (Enter starts)", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const props: ExportDialogProps = {
+      widgetTitle: "Taxi trips", totalCount: 5_000_000, inBrowserCap: 100000, formattedAvailable: true,
+      overrideActive: false, dvNotReady: false, buildRequest: vi.fn().mockReturnValue(body),
+      onPartialDownload: vi.fn(), onClose: vi.fn(),
+    };
+    const { unmount } = render(<StrictMode><ExportDialog {...props} /></StrictMode>);
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 
   it("EXPDLG-focus-return: focus returns to the opener", () => {

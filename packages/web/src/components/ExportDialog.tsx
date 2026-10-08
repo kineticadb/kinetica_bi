@@ -72,6 +72,7 @@ export default function ExportDialog(props: ExportDialogProps) {
   const returnTo = useRef(document.activeElement as HTMLElement | null);
   const jobIdRef = useRef<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const nameEmpty = name.trim() === "";
   const overRowLimit =
@@ -102,15 +103,18 @@ export default function ExportDialog(props: ExportDialogProps) {
 
   // The records widget can unmount while the dialog is open (remount, URL/history change) without close() running.
   // Release the tracker's dialog slot so a finished export still toasts (D-11); only clear our own claim.
-  useEffect(
-    () => () => {
+  // Focus the Name field in the SAME effect that restores focus on close. In dev, StrictMode runs this effect's
+  // cleanup once right after mount (focus -> opener) and autoFocus never re-runs, so focusing here makes the
+  // re-run put focus back in Name (operator UAT V12: Enter did nothing until the user clicked into the field).
+  useEffect(() => {
+    nameRef.current?.focus();
+    return () => {
       const id = jobIdRef.current;
       if (id && useExportTrackerStore.getState().dialogJobId === id)
         setDialogJob(null);
       returnTo.current?.focus?.();
-    },
-    [],
-  );
+    };
+  }, []);
 
   const terminal = job ? isTerminalExportStatus(job.status) : false;
   useEffect(() => {
@@ -303,8 +307,8 @@ export default function ExportDialog(props: ExportDialogProps) {
                 <label className="ds-field">
                   <span className="ds-field-label">Name</span>
                   <input
+                    ref={nameRef}
                     type="text"
-                    autoFocus
                     maxLength={200}
                     value={name}
                     disabled={starting}
