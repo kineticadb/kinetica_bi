@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: phase_131_complete
-stopped_at: "Phase 132 UI-SPEC approved (2026-10-08); next /gsd:plan-phase 132"
+status: phase_132_executed_pending_verification
+stopped_at: "Phase 132 plans complete (2026-10-08); verify next"
 last_updated: "2026-10-08T00:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 35
-  completed_plans: 35
+  total_plans: 41
+  completed_plans: 41
 ---
 
 # Project State
@@ -62,9 +62,10 @@ Carried items: Phase 131 Q-D follow-up; Phase 127 follow-ups = none (D-04a/b ver
 **Phase 131 UAT gap closure (2026-10-08):** 6c710cf dialog portals to document.body (grid CSS transforms trapped position:fixed inside the widget) plus modal-family styling (segmented radiogroup--buttons, ds-field labels), tests EXPDLG-portal/EXPDLG-modal-classes; c83d138 reverted 0418602 (gzip OS byte; wrong diagnosis: the operator's Archive Utility refuses every .gz, even CLI gzip); 131-11 (717e2de, 86a84c3, d1c857d, 52d4725, 0d450b5) compression switched to .zip per CONTEXT D-07a, Z1-Z5 approved incl. Finder double-click, legacy .csv.gz still served/cleaned; fd5e312 Name field keeps focus under StrictMode (V12 initially failed: Enter did not start the export), test EXPDLG-strictmode-focus. Watch item: tests/lib.exportRunner.memory.spec.ts failed once in a full server test:gate run but passes alone (contamination; it holds the new zip backpressure test).
 **Open debt carried forward:** (1) proxy-path `curl -C -` resume STILL not exercised (V6 was local-only: Range 206, resume 206, sha256 identical on :4000; the Phase 129 debt stays open until run through the deploy proxy :8080 with `-H 'Accept-Encoding: gzip'`); (2) widget-action overrides (Phase 128 Q-D) closed under D-04 (V13: page_size override active, saved-settings note shown, then cleared and gone; exports use the saved widget). Sending overrides to the server remains a deferred future follow-up, not debt; (3) snapshot isolation closed (V10).
 **Follow-up (pending todo, outside Phase 131):** the records `page_size` widget-action override never changes the table: pre-existing Phase 58 bug, actionAllowList key `page_size` (actionAllowList.ts:119, radioGroupCapture.ts:48) vs records reading `cfg.pageSize` (WidgetRenderer.tsx:1920); the overlay merges `page_size`, so it is a no-op and "Capture from target" captures nothing.
-**For Phase 132:** Phase 132 also edits `WidgetRenderer.tsx`; Phase 131 touched only RecordsTableRenderer (handleDownloadClick + ExportDialog mount) and the CSV specs.
+**Phase 132 outcome (2026-10-08):** 6/6 plans, phase NOT yet verified; this was the last phase of v1.26. LINE-V126-01..04 Complete (web-only; server, numeric line, timeline, styles and BarRenderer untouched vs PHASE_BASE d35081f). Shipped: line chart reuses the bar Group By Columns builder (column 1 = X axis, required, with validation; extra columns draw one line per value, Set2, shared series cap D-04); line LIMIT multiplier; X categories ascending (accepted visible change to D-05); interval 0 with tilt/scroll geometry so every X label shows; resolveLineMetricTitle for the legend and rotated Y title; tooltip multiSeries/metricTitle; gaps (connectNulls false) plus a lone dot; column-1 typed drill; LIMIT+1 probe and COUNT(DISTINCT) only when the limit is hit for the "Showing N of M categories" notice. Gates: web tsc 0, vitest 203 files / 4433 tests (4434 after the UAT fix), theme-guard 158/158, check-classnames clean. Operator live UAT V1-V9 all PASS. V3: the dev server .env has MAX_BAR_GROUP_BY_SERIES=2, so the series cap correctly showed "Showing top 2 of 5 series" until raised (local config, not a defect). V6 live count M=7. V9 initially showed a legacy no-Group-By line as raw rows under a misleading title with clipped Y ticks; UAT fix 79daf34: a line with no X column now prompts "Choose an X axis column in this chart's settings." (the Numeric Line Chart remains the numeric/multi-metric option), and the Y axis width is measured from the formatted ticks (line cap 160px; bar default 80 unchanged); test L132-36 new. Not explicitly confirmed: light+dark pass for V7, and how pickup_datetime X labels render.
+**Phase 132 follow-ups:** (1) evaluate rounding raw floats in line tooltips when no column format is set (long floats seen; pre-existing, shared with the bar chart); (2) check whether pickup_datetime/epoch X labels show raw numbers instead of dates (unconfirmed); (3) deferred idea from CONTEXT: merge or rename Line vs Numeric Line.
 
-**Next:** Phase 132 (Line Chart Multi-Series Group By): `/gsd:discuss-phase 132`.
+**Next:** verify Phase 132, then the v1.26 milestone audit (`/gsd:audit-milestone`).
 
 **Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
 interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;

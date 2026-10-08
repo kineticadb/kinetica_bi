@@ -32,10 +32,10 @@
 
 ### Line chart
 
-- [ ] **LINE-V126-01**: The line chart has the bar chart's Group By Columns builder; a second column draws one line per value (e.g. one line per `payment_type`).
-- [ ] **LINE-V126-02**: Every x-axis category label is shown, never silently dropped.
-- [ ] **LINE-V126-03**: The legend shows the metric's name, not `value`.
-- [ ] **LINE-V126-04**: Clicking a point on a multi-series line chart drills down the same way the multi-series bar chart does.
+- [x] **LINE-V126-01**: The line chart has the bar chart's Group By Columns builder; Group By column 1 is required and is the x-axis, with categories ordered ascending by X value; a second column draws one line per value (e.g. one line per `payment_type`).
+- [x] **LINE-V126-02**: Every x-axis category label is shown, never silently dropped.
+- [x] **LINE-V126-03**: The legend shows the metric's name, not `value`.
+- [x] **LINE-V126-04**: Clicking a point on a multi-series line chart drills down the same way the multi-series bar chart does.
 
 ## v2 Requirements
 
@@ -80,10 +80,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXPRT-V126-15 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Complete |
 | EXPRT-V126-16 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
 | EXPRT-V126-17 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Complete |
-| LINE-V126-01 | Phase 132 — Line Chart Multi-Series Group By | Pending |
-| LINE-V126-02 | Phase 132 — Line Chart Multi-Series Group By | Pending |
-| LINE-V126-03 | Phase 132 — Line Chart Multi-Series Group By | Pending |
-| LINE-V126-04 | Phase 132 — Line Chart Multi-Series Group By | Pending |
+| LINE-V126-01 | Phase 132 — Line Chart Multi-Series Group By | Complete |
+| LINE-V126-02 | Phase 132 — Line Chart Multi-Series Group By | Complete |
+| LINE-V126-03 | Phase 132 — Line Chart Multi-Series Group By | Complete |
+| LINE-V126-04 | Phase 132 — Line Chart Multi-Series Group By | Complete |
 
 **Coverage:**
 - v1 requirements: 21 total
@@ -92,4 +92,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-01*
-*Last updated: 2026-10-08 after Phase 131 (EXPRT-V126-05..10, -12 complete; live UAT V1-V13 passed; Compress is .zip)*
+*Last updated: 2026-10-08 after Phase 132 (LINE-V126-01..04 Complete; live UAT V1-V9 all PASS, V9 after fix 79daf34)*
