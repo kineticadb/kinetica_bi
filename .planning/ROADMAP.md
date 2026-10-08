@@ -146,17 +146,18 @@
   3. While an export runs, the user sees a rows-written progress readout that updates without a page reload.
   4. The user can see a list of their recent exports (name, status, rows, size, expiry), re-download any of them until it expires, and delete one.
   5. `checkpoint:human-verify` — operator verification against a real Kinetica instance: a ≥1M-row export completes and downloads correctly, a cancelled export's partial file is confirmed gone, a download resumes after a killed connection instead of restarting, logout mid-export leaves the job in a clear failed state, a server restart mid-export leaves no orphaned file or stuck "running" row, and the dialog/progress/history render correctly in both light and dark themes using only existing `global.css` classes. Also (deferred from Phase 128 verification): start an export against a writable table, insert/delete source rows mid-run, and confirm the CSV equals the state at start (`rows_written` == COUNT of the job snapshot MV).
-**Plans**: 10 plans
-- [ ] 131-01-PLAN.md — server formatted values: d3-format dep + lockfile, formatter port + parity spec, runner row mapper (wave 1)
-- [ ] 131-02-PLAN.md — web foundations: /api/exports client helpers, exportFormat/exportRequest pure libs, preflighted download seam (wave 1)
-- [ ] 131-03-PLAN.md — Phase 131 CSS block, className existence check script, toast action button (wave 1)
-- [ ] 131-04-PLAN.md — server name in options_json + safe filename, route accepts name/formatted, DTO dashboard/widget names, message parity (wave 2)
-- [ ] 131-05-PLAN.md — module-level export tracker + Export records dialog (wave 2)
-- [ ] 131-06-PLAN.md — Exports page + polling hook (wave 2)
-- [ ] 131-07-PLAN.md — records Download trigger branch + dialog mount + spec updates (wave 3)
-- [ ] 131-08-PLAN.md — Exports nav item, App page/ReturnTo/navigate event, logout stops tracking (wave 3)
-- [ ] 131-09-PLAN.md — integrated gates, className check, approval-gated scratch table (operator decision O-2) (wave 4)
-- [ ] 131-10-PLAN.md — live criterion-5 checkpoint, scratch cleanup, shared docs (wave 5)
+**Plans**: 11 plans
+- [x] 131-01-PLAN.md — server formatted values: d3-format dep + lockfile, formatter port + parity spec, runner row mapper (wave 1)
+- [x] 131-02-PLAN.md — web foundations: /api/exports client helpers, exportFormat/exportRequest pure libs, preflighted download seam (wave 1)
+- [x] 131-03-PLAN.md — Phase 131 CSS block, className existence check script, toast action button (wave 1)
+- [x] 131-04-PLAN.md — server name in options_json + safe filename, route accepts name/formatted, DTO dashboard/widget names, message parity (wave 2)
+- [x] 131-05-PLAN.md — module-level export tracker + Export records dialog (wave 2)
+- [x] 131-06-PLAN.md — Exports page + polling hook (wave 2)
+- [x] 131-07-PLAN.md — records Download trigger branch + dialog mount + spec updates (wave 3)
+- [x] 131-08-PLAN.md — Exports nav item, App page/ReturnTo/navigate event, logout stops tracking (wave 3)
+- [x] 131-09-PLAN.md — integrated gates, className check, approval-gated scratch table (operator decision O-2) (wave 4)
+- [x] 131-10-PLAN.md — live criterion-5 checkpoint, scratch cleanup, shared docs (wave 5)
+- [x] 131-11-PLAN.md — gap closure: compression switched from .csv.gz to .zip (CONTEXT D-07a; macOS Archive Utility rejects .gz)
 
 ### Phase 132: Line Chart Multi-Series Group By
 **Goal**: The line chart gets the bar chart's existing multi-column Group By builder, draws one line per series value, never silently drops an x-axis label, names its legend after the metric, and drills down the same way the bar chart does.

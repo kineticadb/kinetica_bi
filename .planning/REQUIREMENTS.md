@@ -16,14 +16,14 @@
 
 ### Background export
 
-- [ ] **EXPRT-V126-05**: When a download exceeds the in-browser row cap, the user can start a background export instead. It contains exactly the rows, columns, column order and sort the records table shows, with filters fixed at the moment it starts (snapshot semantics).
-- [ ] **EXPRT-V126-06**: While an export runs, the user sees its progress (rows written).
-- [ ] **EXPRT-V126-07**: The user can cancel a running export; its partial file is deleted.
-- [ ] **EXPRT-V126-08**: The user can name the file before starting (default: widget title + timestamp); any name is made safe for the filesystem and the `Content-Disposition` header, and a non-ASCII name survives.
-- [ ] **EXPRT-V126-09**: The user chooses raw values (real column names, unformatted values) or formatted values (display labels and number formats from Format columns).
-- [ ] **EXPRT-V126-10**: The user can tick "Compress (.csv.gz)"; it is off by default.
+- [x] **EXPRT-V126-05**: When a download exceeds the in-browser row cap, the user can start a background export instead. It contains exactly the rows, columns, column order and sort the records table shows, with filters fixed at the moment it starts (snapshot semantics).
+- [x] **EXPRT-V126-06**: While an export runs, the user sees its progress (rows written).
+- [x] **EXPRT-V126-07**: The user can cancel a running export; its partial file is deleted.
+- [x] **EXPRT-V126-08**: The user can name the file before starting (default: widget title + timestamp); any name is made safe for the filesystem and the `Content-Disposition` header, and a non-ASCII name survives.
+- [x] **EXPRT-V126-09**: The user chooses raw values (real column names, unformatted values) or formatted values (display labels and number formats from Format columns).
+- [x] **EXPRT-V126-10**: The user can tick "Compress (.zip)"; it is off by default. (Changed from ".csv.gz" in UAT 2026-10-08: macOS Archive Utility rejected .gz; CONTEXT D-07a.)
 - [x] **EXPRT-V126-11**: A finished export downloads resumably — a dropped connection continues where it stopped rather than restarting. Only a complete, closed file is ever served.
-- [ ] **EXPRT-V126-12**: The user can see a list of their recent exports (name, status, rows, size, expiry), re-download any until it expires, and delete them.
+- [x] **EXPRT-V126-12**: The user can see a list of their recent exports (name, status, rows, size, expiry), re-download any until it expires, and delete them.
 - [x] **EXPRT-V126-13**: Only the user who started an export can see, download, cancel or delete it; export ids are unguessable and every route checks ownership.
 - [x] **EXPRT-V126-14**: Exports and their files are deleted after a deploy-configured expiry; a server restart leaves no export stuck "running" and no orphaned files; cleanup never deletes a file mid-download.
 - [x] **EXPRT-V126-15**: An admin can cap rows per export, file size, and concurrent exports per user through env config (not a settings UI); the user is told when a cap stops their export.
@@ -67,14 +67,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXPRT-V126-02 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-03 | Phase 127 — Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix | Complete |
 | EXPRT-V126-04 | Phase 128 — Export Job Core — Live Spike, Runner, Snapshot & Cancel | Complete |
-| EXPRT-V126-05 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine 128, routes 129; completes in Phase 131 |
-| EXPRT-V126-06 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-07 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | In progress — engine 128, routes 129; completes in Phase 131 |
-| EXPRT-V126-08 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-09 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
-| EXPRT-V126-10 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
+| EXPRT-V126-05 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | Complete |
+| EXPRT-V126-06 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Complete |
+| EXPRT-V126-07 | Phase 128 (engine) → 129 (routes) → 131 (user-facing) | Complete |
+| EXPRT-V126-08 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Complete |
+| EXPRT-V126-09 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Complete |
+| EXPRT-V126-10 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Complete |
 | EXPRT-V126-11 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Complete (proxy-path resume not exercised — see STATE) |
-| EXPRT-V126-12 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Pending |
+| EXPRT-V126-12 | Phase 131 — Client Export UI — Trigger Dialog, Progress & History | Complete |
 | EXPRT-V126-13 | Phase 129 — Export Routes — Resumable Download, History & Privacy | Complete |
 | EXPRT-V126-14 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Complete |
 | EXPRT-V126-15 | Phase 130 — Export TTL Cleanup, Boot Reconciliation & Admin Caps | Complete |
@@ -92,4 +92,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-01*
-*Last updated: 2026-10-07 after Phase 130 (EXPRT-V126-14, -15 complete)*
+*Last updated: 2026-10-08 after Phase 131 (EXPRT-V126-05..10, -12 complete; live UAT V1-V13 passed; Compress is .zip)*
