@@ -92,7 +92,7 @@ import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
 import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
-import { sortLineRowsByX } from "../../lib/lineChartData";
+import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
 import {
@@ -417,6 +417,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // Phase 127: heatmap banner (own-LIMIT+1 probe / has_more_records) and the
   // generic "Limited to N rows" notice for every other aggregated chart.
   const [heatmapTruncation, setHeatmapTruncation] = useState<TruncationInfo | null>(null);
+  // Phase 132 (O-2): line categories dropped by the widget's own Result limit (LIMIT+1 probe) -> notice, never silent.
+  const [lineCategoryTruncation, setLineCategoryTruncation] = useState<LineCategoryTruncation | null>(null);
   const [chartLimitedRows, setChartLimitedRows] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -579,6 +581,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     if (!sql?.trim()) {
       setData([]);
       setHeatmapTruncation(null);
+      setLineCategoryTruncation(null);
       setChartLimitedRows(null);
       return;
     }
@@ -651,6 +654,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       if (!dvSource) {
         setData([]);
         setHeatmapTruncation(null);
+        setLineCategoryTruncation(null);
         setChartLimitedRows(null);
         setLoading(false);
         setError("Internal error: materialized dynamic view has no viewName");
@@ -678,7 +682,9 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
         // Phase 127: a heatmap asks for its own LIMIT n+1 so "exactly n cells" is
         // distinguishable from "more than n exist". Bumped HERE so the view-not-found
         // retry paths (which re-enter runChartQuery) get it too.
-        const bump = widget.type === "heatmap" ? bumpTrailingLimit(sqlToRun) : null;
+        const lineX = widget.type === "line" ? lineXColumn(cfg) : "";
+        const lineCountSql = lineX ? buildLineCategoryCountSql(sqlToRun, lineX) : null;
+        const bump = widget.type === "heatmap" || lineCountSql ? bumpTrailingLimit(sqlToRun) : null;
         const res = await runSql<Record<string, unknown>>(bump ? bump.sql : sqlToRun, undefined, controller.signal);
         const rows = parseKineticaResponse(res);
         const serverHasMore = readHasMore(res);
@@ -689,10 +695,31 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
           // ORDER BY value keeps the top n; the dropped row is the n+1th probe row.
           setData(bump && rows.length > bump.limit ? rows.slice(0, bump.limit) : rows);
           setChartLimitedRows(null);
+          setLineCategoryTruncation(null);
+        } else if (lineCountSql && bump) {
+          const hit = rows.length > bump.limit;
+          let lineTrunc: LineCategoryTruncation | null = null;
+          if (hit) {
+            // Only now pay for the count: M = distinct column-1 values over the SAME source/filters.
+            let total: number | null = null;
+            try {
+              const countRes = await runSql<Record<string, unknown>>(lineCountSql, undefined, controller.signal);
+              total = parseCategoryCount(parseKineticaResponse(countRes));
+            } catch (countErr) {
+              if ((countErr as Error)?.name === "AbortError") return;
+              total = null; // notice still shows, without M
+            }
+            lineTrunc = { totalCategories: total };
+          }
+          setData(hit ? rows.slice(0, bump.limit) : rows);
+          setLineCategoryTruncation(lineTrunc);
+          setChartLimitedRows(serverHasMore === true ? Math.min(rows.length, bump.limit) : null);
+          setHeatmapTruncation(null);
         } else {
           setData(rows);
           setChartLimitedRows(serverHasMore === true ? rows.length : null);
           setHeatmapTruncation(null);
+          setLineCategoryTruncation(null);
         }
       } catch (err) {
         // AbortError is expected control flow on filter change — never route to setError
@@ -875,7 +902,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     case "bar":
       return <BarRenderer data={data} config={cfg} {...drillProps} />;
     case "line":
-      return <LineRenderer data={data} config={cfg} {...drillProps} />;
+      return <LineRenderer data={data} config={cfg} categoryTruncation={lineCategoryTruncation} {...drillProps} />;
     case "pie":
       return <PieRenderer data={data} config={cfg} {...drillProps} />;
     case "scatter":
@@ -1316,13 +1343,14 @@ const BarRenderer = ({
 const LineRenderer = ({
   data,
   config,
+  categoryTruncation,
   widgetId,
   tableId,
   dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
-}: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
+}: { data: Row[]; config: Record<string, unknown>; categoryTruncation?: LineCategoryTruncation | null } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
   const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);

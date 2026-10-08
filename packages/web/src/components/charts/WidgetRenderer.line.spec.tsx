@@ -17,6 +17,7 @@ import { useCustomMetricsStore } from "../../store/customMetricsStore";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useFilterStore } from "../../store/filterStore";
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
+import { LINE_CATEGORY_NOTE_TITLE } from "../../lib/lineChartData";
 import { themeColorsFor, getCbColorTheme } from "../../lib/cbColorThemes";
 
 const { captured } = vi.hoisted(() => ({ captured: {} as Record<string, Array<Record<string, unknown>>> }));
@@ -536,5 +537,93 @@ describe("LineRenderer drill (Phase 132)", () => {
     const f = useFilterStore.getState().filters[TABLE_ID] ?? [];
     expect(f).toHaveLength(1);
     expect(f[0]).toMatchObject({ column: "region", value: "West", dataType: "string" });
+  });
+});
+
+describe("LineRenderer dropped-categories notice (Phase 132 Plan 05)", () => {
+  const CAT_SQL = "SELECT region, SUM(amount) AS value FROM sales GROUP BY region ORDER BY value DESC LIMIT 5";
+  const CAT_CFG = { groupByColumn: "region", metricColumn: "amount", aggregation: "SUM", sql: CAT_SQL };
+  const regionRows = (n: number): R[] => Array.from({ length: n }, (_, i) => ({ region: `r${i + 1}`, value: 100 - i }));
+  const countRes = (n: number) => ({ column_headers: ["n"], column_datatypes: ["long"], column_1: [n] });
+  const mount = async (config: Record<string, unknown>, type = "line") => {
+    const w = { ...makeWidget(config), type } as WidgetDto;
+    render(wrap(<WidgetRenderer widget={w} />));
+    await waitFor(() => expect(vi.mocked(clientModule.runSql).mock.calls.length).toBeGreaterThan(0));
+  };
+  const sqlOf = (i: number) => vi.mocked(clientModule.runSql).mock.calls[i][0] as string;
+
+  it("L132-30 limit hit: LIMIT+1 probe, count query, note with M", async () => {
+    vi.mocked(clientModule.runSql)
+      .mockResolvedValueOnce(buildResponse(regionRows(6)) as never)
+      .mockResolvedValueOnce(countRes(40) as never);
+    await mount(CAT_CFG);
+    const note = await screen.findByTestId("line-categories-note");
+    expect(note.textContent).toBe("Showing 5 of 40 categories");
+    expect(note.className).toBe("config-hint");
+    expect(note.getAttribute("title")).toBe(LINE_CATEGORY_NOTE_TITLE);
+    expect(sqlOf(0)).toMatch(/LIMIT 6$/);
+    expect(sqlOf(1)).toBe(
+      "SELECT COUNT(DISTINCT region) AS n FROM (SELECT region, SUM(amount) AS value FROM sales GROUP BY region) kbi_line_x",
+    );
+    expect(chartData()).toHaveLength(5);
+  });
+
+  it("L132-31 under the limit: one query, no note", async () => {
+    vi.mocked(clientModule.runSql).mockResolvedValue(buildResponse(regionRows(5)) as never);
+    await mount(CAT_CFG);
+    await waitFor(() => expect(captured.LineChart ?? captured.AreaChart).toBeTruthy());
+    expect(vi.mocked(clientModule.runSql)).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("line-categories-note")).toBeNull();
+    expect(chartData()).toHaveLength(5);
+  });
+
+  it("L132-32 count fails: note without M, no error placeholder", async () => {
+    vi.mocked(clientModule.runSql)
+      .mockResolvedValueOnce(buildResponse(regionRows(6)) as never)
+      .mockRejectedValueOnce(new Error("boom"));
+    await mount(CAT_CFG);
+    const note = await screen.findByTestId("line-categories-note");
+    expect(note.textContent).toBe("Showing top 5 categories (more exist)");
+    expect(screen.queryByText(/boom/)).toBeNull();
+  });
+
+  it("L132-33 multi, all categories present: lower-values note", async () => {
+    const rows: R[] = [
+      { day: "Mon", pay: "Cash", value: 5 },
+      { day: "Mon", pay: "Credit", value: 4 },
+      { day: "Tue", pay: "Cash", value: 3 },
+      { day: "Tue", pay: "Credit", value: 2 },
+      { day: "Tue", pay: "Other", value: 1 },
+    ];
+    vi.mocked(clientModule.runSql)
+      .mockResolvedValueOnce(buildResponse(rows) as never)
+      .mockResolvedValueOnce(countRes(2) as never);
+    await mount({
+      groupByColumns: ["day", "pay"],
+      groupByColumn: "day",
+      metricColumn: "amount",
+      aggregation: "SUM",
+      sql: "SELECT day, pay, SUM(amount) AS value FROM sales GROUP BY day, pay ORDER BY value DESC LIMIT 4",
+    });
+    const note = await screen.findByTestId("line-categories-note");
+    expect(note.textContent).toBe("Some lower values are not shown (result limit reached)");
+  });
+
+  it("L132-34 legacy no group-by: one unchanged query, no note", async () => {
+    vi.mocked(clientModule.runSql).mockResolvedValue(buildResponse(regionRows(3)) as never);
+    await mount({ sql: "SELECT * FROM sales LIMIT 100" });
+    await waitFor(() => expect(captured.LineChart ?? captured.AreaChart).toBeTruthy());
+    expect(vi.mocked(clientModule.runSql)).toHaveBeenCalledTimes(1);
+    expect(sqlOf(0)).toBe("SELECT * FROM sales LIMIT 100");
+    expect(screen.queryByTestId("line-categories-note")).toBeNull();
+  });
+
+  it("L132-35 non-line unchanged: bar runs one query with SQL unchanged", async () => {
+    vi.mocked(clientModule.runSql).mockResolvedValue(buildResponse(regionRows(6)) as never);
+    await mount(CAT_CFG, "bar");
+    await waitFor(() => expect(vi.mocked(clientModule.runSql)).toHaveBeenCalled());
+    expect(vi.mocked(clientModule.runSql)).toHaveBeenCalledTimes(1);
+    expect(sqlOf(0)).toMatch(/LIMIT 5$/);
+    expect(screen.queryByTestId("line-categories-note")).toBeNull();
   });
 });
