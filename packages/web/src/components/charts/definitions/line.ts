@@ -35,6 +35,10 @@ const line: ChartTypeDefinition = {
     showGrid: true,
     showTooltip: true,
     customWhere: "",
+    // Phase 132 (LINE-V126-01): ordered [col1 (x-axis, REQUIRED), col2..N (series)] — bar's model.
+    // Legacy widgets merge this [] and the config panel seeds col1 from `groupByColumn`
+    // (no stored-JSON rewrite until the operator edits and Applies, D-05).
+    groupByColumns: [] as string[],
   },
 };
 
