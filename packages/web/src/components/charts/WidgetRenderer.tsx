@@ -90,6 +90,9 @@ import { useCustomMetricsStore } from "../../store/customMetricsStore";
 import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
+import { isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
+import { sortLineRowsByX } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
 import {
@@ -1328,8 +1331,16 @@ const LineRenderer = ({
   useEffect(() => {
     if (tableId !== undefined) loadConfig(tableId);
   }, [tableId, loadConfig]);
+  // Custom-metric label subscription (ported from BarRenderer): a custom metric has no
+  // metricColumn (keyed by metricId), so its axis title / series name comes from the stored label.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  void customMetricsConfigVersion; // reactive via subscription
+  useEffect(() => {
+    if (tableId !== undefined) useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+  }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const metricId = config.metricId as number | undefined;
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_LINE_COLOR;
   const strokeWidth = (config.strokeWidth as number) ?? 2;
@@ -1340,6 +1351,48 @@ const LineRenderer = ({
   const showLegend = config.showLegend !== false;
   const showTooltip = config.showTooltip !== false;
   const gradientId = `area-fill-${y}`;
+
+  // Phase 132 (LINE-V126-01): a second Group By column makes N series, exactly as the bar chart's
+  // pivot does. Blank builder rows are dropped (lineGroupByColumns) so they never make a phantom series.
+  const groupByColumns = lineGroupByColumns(config);
+  const multiSeries = groupByColumns.length >= 2;
+  const maxCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
+  const pivotInput = multiSeries ? toBarPivotInput(data as Record<string, unknown>[], groupByColumns) : [];
+  const top = multiSeries
+    ? selectTopSeries(pivotInput, { max: maxCap })
+    : { series: [] as string[], truncated: false, total: 0 };
+  // D-08: X ascending. A legacy chart with no configured X keeps the query's order.
+  const xConfigured = lineXColumn(config) !== "";
+  const chartData: Row[] = multiSeries
+    ? sortLineRowsByX(pivotSeriesRows(pivotInput, top.series) as Row[], (r) => r.bucket)
+    : xConfigured
+      ? sortLineRowsByX(data, (r) => r[x])
+      : data;
+  const xKey = multiSeries ? "bucket" : x;
+  // The pivot stringifies X buckets; keep the raw value so a click can drill with its real type.
+  const rawXByBucket = multiSeries
+    ? new Map(data.map((r) => [String(r[groupByColumns[0]]), r[groupByColumns[0]]] as const))
+    : null;
+  // D-11: Line has no colour-theme control; multi-series always uses the default (Set2) theme.
+  const seriesColors = multiSeries
+    ? themeColorsFor(getCbColorTheme(DEFAULT_COLOR_THEME)!, Math.max(1, top.series.length))
+    : [];
+  // D-09: the legend / Y title never says "value".
+  const yTitle = resolveLineMetricTitle({
+    yFieldLabel: config.yFieldLabel as string | undefined,
+    customLabel: isCustomSelection(metricId) ? resolveMetricLabel(metricId, tableId) : null,
+    columnLabel: tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : null,
+    metricColumn,
+    aggregation: config.aggregation as string | undefined,
+    fallbackKey: y,
+  });
+  const valueAxisTickFormatter = (v: unknown): string => {
+    if (tableId !== undefined && metricColumn) {
+      const out = resolveFormatter(tableId, metricColumn)(v);
+      if (out !== v) return String(out);
+    }
+    return v == null ? "" : String(v);
+  };
 
   // Phase 10 DRILL-04: clickedElement state is preserved across line/area branches
   // for consistency, though Recharts Line/Area do not support per-point opacity easily —
@@ -1378,72 +1431,144 @@ const LineRenderer = ({
     }, 300);
   };
 
-  return (
+  const chartMargin = { top: 10, right: 10, left: 0, bottom: 0 };
+  const yAxisEl = (
+    <YAxis
+      stroke={AXIS_COLOR}
+      tick={{ fontSize: 11, fill: AXIS_COLOR }}
+      width={72}
+      tickFormatter={valueAxisTickFormatter}
+      label={{ value: yTitle, angle: -90, position: "insideLeft", fill: AXIS_COLOR, fontSize: 11, style: { textAnchor: "middle" } }}
+    />
+  );
+  const xAxisEl = <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />;
+  const tooltipEl = showTooltip ? (
+    <Tooltip
+      {...RECHARTS_TOOLTIP_PROPS}
+      content={
+        <ColumnFormatTooltip
+          tableId={tableId}
+          groupByColumn={multiSeries ? groupByColumns[0] : groupByColumn}
+          metricColumn={metricColumn}
+          multiSeries={multiSeries}
+          metricTitle={multiSeries ? undefined : yTitle}
+        />
+      }
+    />
+  ) : null;
+  const legendEl = showLegend ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
+  const gridEl = showGrid ? <CartesianGrid stroke={GRID_COLOR} vertical={false} /> : null;
+
+  const chart = multiSeries ? (
+    <LineChart data={chartData} margin={chartMargin} onClick={handleChartClick} style={wrapperStyle}>
+      {gridEl}
+      {xAxisEl}
+      {yAxisEl}
+      {tooltipEl}
+      {legendEl}
+      {top.series.map((sk, i) => (
+        <Line
+          key={`series_${sk}`}
+          type={curved ? "monotone" : "linear"}
+          dataKey={sk}
+          name={sk}
+          stroke={toCssColor(seriesColors[i] ?? seriesColors[0] ?? "FF66C2A5")}
+          strokeWidth={strokeWidth}
+          connectNulls={false}
+          isAnimationActive={false}
+          dot={makeLineDot(showDots, chartData.length > LINE_DOT_DENSITY_MAX)}
+          activeDot={{ r: 5 }}
+        />
+      ))}
+    </LineChart>
+  ) : fillArea ? (
+    <AreaChart data={chartData} margin={chartMargin} onClick={handleChartClick} style={wrapperStyle}>
+      <defs>
+        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="5%" stopColor={color} stopOpacity={0.5} />
+          <stop offset="95%" stopColor={color} stopOpacity={0.05} />
+        </linearGradient>
+      </defs>
+      {gridEl}
+      {xAxisEl}
+      {yAxisEl}
+      {tooltipEl}
+      {legendEl}
+      <Area
+        type={curved ? "monotone" : "linear"}
+        dataKey={y}
+        stroke={color}
+        fill={`url(#${gradientId})`}
+        strokeWidth={strokeWidth}
+        dot={showDots ? { r: 3 } : false}
+        name={yTitle}
+      />
+    </AreaChart>
+  ) : (
+    <LineChart data={chartData} margin={chartMargin} onClick={handleChartClick} style={wrapperStyle}>
+      {gridEl}
+      {xAxisEl}
+      {yAxisEl}
+      {tooltipEl}
+      {legendEl}
+      <Line
+        type={curved ? "monotone" : "linear"}
+        dataKey={y}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        dot={showDots ? { r: 3 } : false}
+        name={yTitle}
+      />
+    </LineChart>
+  );
+  const responsiveChart = (
     <ResponsiveContainer width="100%" height="100%">
-      {fillArea ? (
-        <AreaChart
-          data={data}
-          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-          onClick={handleChartClick}
-          style={wrapperStyle}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.5} />
-              <stop offset="95%" stopColor={color} stopOpacity={0.05} />
-            </linearGradient>
-          </defs>
-          {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
-          <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && (
-            <Tooltip
-              {...RECHARTS_TOOLTIP_PROPS}
-              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
-            />
-          )}
-          {showLegend && <Legend />}
-          <Area
-            type={curved ? "monotone" : "linear"}
-            dataKey={y}
-            stroke={color}
-            fill={`url(#${gradientId})`}
-            strokeWidth={strokeWidth}
-            dot={showDots ? { r: 3 } : false}
-            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
-          />
-        </AreaChart>
-      ) : (
-        <LineChart
-          data={data}
-          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-          onClick={handleChartClick}
-          style={wrapperStyle}
-        >
-          {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
-          <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && (
-            <Tooltip
-              {...RECHARTS_TOOLTIP_PROPS}
-              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
-            />
-          )}
-          {showLegend && <Legend />}
-          <Line
-            type={curved ? "monotone" : "linear"}
-            dataKey={y}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            dot={showDots ? { r: 3 } : false}
-            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
-          />
-        </LineChart>
-      )}
+      {chart}
     </ResponsiveContainer>
+  );
+
+  return (
+    <div
+      data-testid="line-chart"
+      style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}
+    >
+      {multiSeries && top.truncated && (
+        <div
+          className="config-hint"
+          data-testid="line-truncated-note"
+          style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}
+        >
+          Showing top {maxCap} of {top.total} series
+        </div>
+      )}
+      <div data-testid="line-plot-region" style={{ position: "relative", flex: "1 1 auto", minHeight: 0 }}>
+        <div style={{ position: "absolute", inset: 0 }}>{responsiveChart}</div>
+      </div>
+    </div>
   );
 };
 
+// Phase 132 (D-06/D-11): per-point dot for multi-series lines. A point whose neighbours are both
+// missing has no line segment, so it is drawn REGARDLESS of density (else it is invisible);
+// otherwise dots follow showDots and hide when the X axis is dense. Recharts maps EVERY point,
+// including missing ones (cx/cy null), and its DotType requires an element, so return <g/>.
+function makeLineDot(showDots: boolean, dense: boolean) {
+  return (p: {
+    key?: string;
+    cx?: number | null;
+    cy?: number | null;
+    index: number;
+    points?: ReadonlyArray<{ y?: number | null }>;
+    stroke?: string;
+  }): ReactElement => {
+    const { key, cx, cy, index, points = [], stroke } = p;
+    if (cx == null || cy == null) return <g key={key} />;
+    if (isIsolatedLinePoint(points, index) || (showDots && !dense)) {
+      return <circle key={key} cx={cx} cy={cy} r={3} fill={stroke} stroke={stroke} />;
+    }
+    return <g key={key} />;
+  };
+}
 
 const PieRenderer = ({
   data,
