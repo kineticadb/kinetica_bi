@@ -91,7 +91,7 @@ import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
-import { isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
+import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
 import { sortLineRowsByX } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
@@ -1413,6 +1413,20 @@ const LineRenderer = ({
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
     // Aggregated chart → drill on the group-by / x-dimension column (the clicked category).
+    // Phase 132 (D-10, LINE-V126-04): multi-series drill = the multi-series bar's: column 1 = clicked X,
+    // series column never filtered, 300 ms. The pivot stringifies buckets, so map back to the RAW X
+    // value and let resolveAggregatedDrillTarget apply column 1's persisted type (numeric X stays a number).
+    if (multiSeries) {
+      const column = groupByColumns[0];
+      const bucket = String((payload as Record<string, unknown>)["bucket"] ?? "");
+      const raw = rawXByBucket && rawXByBucket.has(bucket) ? rawXByBucket.get(bucket) : bucket;
+      const { value, dataType } = resolveAggregatedDrillTarget({ [column]: raw }, column, drillDownColumn, drillDownColumnType);
+      setClickedElement(value);
+      setTimeout(() => {
+        dispatchDrillDown({ tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId });
+      }, 300);
+      return;
+    }
     const { column, value, dataType } = resolveAggregatedDrillTarget(
       payload, groupByColumn, drillDownColumn, drillDownColumnType,
     );
@@ -1432,16 +1446,40 @@ const LineRenderer = ({
   };
 
   const chartMargin = { top: 10, right: 10, left: 0, bottom: 0 };
+  // Measure the OUTER wrapper (never the inner scroll box, or tilt/scroll would oscillate as it grows).
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [wrapW, setWrapW] = useState(0);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return; // jsdom has none -> width unknown -> fallback
+    const ro = new ResizeObserver(() => setWrapW(el.clientWidth));
+    ro.observe(el);
+    setWrapW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const Y_AXIS_WIDTH = 72;
+  const plotWidthPx = Math.max(0, wrapW - Y_AXIS_WIDTH - chartMargin.left - chartMargin.right);
+  const maxLabelChars = chartData.reduce((m, r) => Math.max(m, String(r[xKey] ?? "").length), 0);
+  const layout = computeLineXAxisLayout({ n: chartData.length, plotWidthPx, maxLabelChars });
   const yAxisEl = (
     <YAxis
       stroke={AXIS_COLOR}
       tick={{ fontSize: 11, fill: AXIS_COLOR }}
-      width={72}
+      width={Y_AXIS_WIDTH}
       tickFormatter={valueAxisTickFormatter}
       label={{ value: yTitle, angle: -90, position: "insideLeft", fill: AXIS_COLOR, fontSize: 11, style: { textAnchor: "middle" } }}
     />
   );
-  const xAxisEl = <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />;
+  const xAxisEl = (
+    <XAxis
+      dataKey={xKey}
+      stroke={AXIS_COLOR}
+      interval={0}
+      tick={{ fontSize: 11, fill: AXIS_COLOR }}
+      height={layout.xAxisHeight}
+      {...(layout.tilt ? { angle: -45, textAnchor: "end" as const } : {})}
+    />
+  );
   const tooltipEl = showTooltip ? (
     <Tooltip
       {...RECHARTS_TOOLTIP_PROPS}
@@ -1530,6 +1568,7 @@ const LineRenderer = ({
   return (
     <div
       data-testid="line-chart"
+      ref={wrapRef}
       style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}
     >
       {multiSeries && top.truncated && (
@@ -1541,9 +1580,15 @@ const LineRenderer = ({
           Showing top {maxCap} of {top.total} series
         </div>
       )}
-      <div data-testid="line-plot-region" style={{ position: "relative", flex: "1 1 auto", minHeight: 0 }}>
-        <div style={{ position: "absolute", inset: 0 }}>{responsiveChart}</div>
-      </div>
+      {layout.scroll ? (
+        <div data-testid="line-scroll-region" style={{ flex: "1 1 auto", minHeight: 0, overflowX: "auto", overflowY: "auto" }}>
+          <div style={{ width: "100%", height: "100%", minWidth: layout.minInnerWidth, minHeight: layout.minInnerHeight }}>{responsiveChart}</div>
+        </div>
+      ) : (
+        <div data-testid="line-plot-region" style={{ position: "relative", flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+          <div style={{ position: "absolute", inset: 0, minHeight: layout.minInnerHeight }}>{responsiveChart}</div>
+        </div>
+      )}
     </div>
   );
 };

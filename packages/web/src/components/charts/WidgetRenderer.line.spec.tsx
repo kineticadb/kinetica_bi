@@ -380,3 +380,161 @@ describe("LineRenderer multi-series (Phase 132)", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------------------------
+// Task 2: axis layout + drill
+// ---------------------------------------------------------------------------------------------
+
+async function withMeasuredBoxAsync(w: number, h: number, fn: () => Promise<void>): Promise<void> {
+  class RO {
+    observe() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("ResizeObserver", RO);
+  const shadow = (prop: "clientWidth" | "clientHeight", value: number): (() => void) => {
+    const had = Object.getOwnPropertyDescriptor(HTMLElement.prototype, prop);
+    Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
+    return () => {
+      if (had) Object.defineProperty(HTMLElement.prototype, prop, had);
+      else Reflect.deleteProperty(HTMLElement.prototype, prop);
+    };
+  };
+  const restore = [shadow("clientWidth", w), shadow("clientHeight", h)];
+  try {
+    await fn();
+  } finally {
+    restore.forEach((r) => r());
+    vi.unstubAllGlobals();
+  }
+}
+
+const catRows = (n: number): R[] =>
+  Array.from({ length: n }, (_, i) => ({ region: `cat_${String(i).padStart(2, "0")}_label`, value: i }));
+const SINGLE_NOLABEL = { groupByColumn: "region", metricColumn: "fare", aggregation: "SUM" };
+
+describe("LineRenderer x-axis layout (Phase 132)", () => {
+  it("L132-20 every label: interval 0, tick 11, in all three modes", async () => {
+    await renderLine(SINGLE_NOLABEL, catRows(3));
+    expect(xAxis().interval).toBe(0);
+    expect((xAxis().tick as R).fontSize).toBe(11);
+    cleanup();
+    for (const k of Object.keys(captured)) delete captured[k];
+    await renderLine(MULTI_CFG, MULTI_ROWS);
+    expect(xAxis().interval).toBe(0);
+    expect((xAxis().tick as R).fontSize).toBe(11);
+    cleanup();
+    for (const k of Object.keys(captured)) delete captured[k];
+    await renderLine({ ...SINGLE_NOLABEL, fillArea: true }, catRows(3));
+    expect(xAxis().interval).toBe(0);
+    expect((xAxis().tick as R).fontSize).toBe(11);
+  });
+
+  it("L132-21 horizontal when labels fit", async () => {
+    await withMeasuredBoxAsync(600, 300, async () => {
+      await renderLine(SINGLE_NOLABEL, catRows(10));
+      expect(xAxis().angle).toBeUndefined();
+      expect(xAxis().height).toBe(30);
+      expect(screen.queryByTestId("line-scroll-region")).toBeNull();
+      expect((screen.getByTestId("line-plot-region").firstChild as HTMLElement).style.minHeight).toBe("190px");
+    });
+  });
+
+  it("L132-22 tilt only when the Y axis and margin are subtracted", async () => {
+    await withMeasuredBoxAsync(600, 300, async () => {
+      await renderLine(SINGLE_NOLABEL, catRows(11));
+      await waitFor(() => expect(xAxis().angle).toBe(-45));
+      expect(xAxis().textAnchor).toBe("end");
+      expect(xAxis().height).toBe(76);
+      expect(screen.queryByTestId("line-scroll-region")).toBeNull();
+      expect((screen.getByTestId("line-plot-region").firstChild as HTMLElement).style.minHeight).toBe("236px");
+    });
+  });
+
+  it("L132-23 scroll when even tilted labels cannot fit", async () => {
+    await withMeasuredBoxAsync(600, 300, async () => {
+      await renderLine(SINGLE_NOLABEL, catRows(30));
+      const region = await screen.findByTestId("line-scroll-region");
+      expect(region.style.overflowX).toBe("auto");
+      const inner = region.firstChild as HTMLElement;
+      expect(inner.style.minWidth).toBe("780px");
+      expect(inner.style.minHeight).toBe("236px");
+      expect(xAxis().angle).toBe(-45);
+    });
+  });
+
+  it("L132-24 unmeasured width falls back on category count", async () => {
+    await renderLine(SINGLE_NOLABEL, catRows(9));
+    expect(xAxis().angle).toBe(-45);
+    expect(screen.queryByTestId("line-scroll-region")).toBeNull();
+    cleanup();
+    for (const k of Object.keys(captured)) delete captured[k];
+    await renderLine(SINGLE_NOLABEL, catRows(8));
+    expect(xAxis().angle).toBeUndefined();
+  });
+
+  it("L132-25 axes geometry", async () => {
+    await renderLine(SINGLE_CFG, SINGLE_ROWS);
+    expect(yAxis().width).toBe(72);
+    expect((yAxis().tick as R).fontSize).toBe(11);
+    expect((chartKids().chart.margin as R).left).toBe(0);
+  });
+});
+
+describe("LineRenderer drill (Phase 132)", () => {
+  const HOUR_ROWS: R[] = [
+    { hour: 1, payment_type: "Cash", value: 1 },
+    { hour: 2, payment_type: "Cash", value: 2 },
+    { hour: 10, payment_type: "Cash", value: 3 },
+    { hour: 10, payment_type: "Credit", value: 4 },
+  ];
+  const HOUR_CFG = {
+    groupByColumns: ["hour", "payment_type"],
+    groupByColumn: "hour",
+    metricColumn: "fare",
+    aggregation: "SUM",
+  };
+
+  it("L132-26 multi drill: column 1 = clicked X with persisted type after 300ms", async () => {
+    await renderLine({ ...HOUR_CFG, drillDownColumn: "hour", drillDownColumnType: "number" }, HOUR_ROWS);
+    const onClick = chartKids().chart.onClick as (s: unknown) => void;
+    const row = chartData().find((r) => r.bucket === "10");
+    vi.useFakeTimers();
+    act(() => onClick({ activePayload: [{ payload: row }] }));
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(useFilterStore.getState().filters[TABLE_ID] ?? []).toHaveLength(0);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    const f = useFilterStore.getState().filters[TABLE_ID] ?? [];
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ column: "hour", value: 10, dataType: "number", sourceWidgetId: 501 });
+    expect(f.some((x) => x.column === "payment_type")).toBe(false);
+  });
+
+  it("L132-27 drill disabled does nothing", async () => {
+    await renderLine({ ...HOUR_CFG, drillDownColumn: "" }, HOUR_ROWS);
+    const onClick = chartKids().chart.onClick as (s: unknown) => void;
+    const row = chartData().find((r) => r.bucket === "10");
+    vi.useFakeTimers();
+    act(() => onClick({ activePayload: [{ payload: row }] }));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(useFilterStore.getState().filters[TABLE_ID] ?? []).toHaveLength(0);
+  });
+
+  it("L132-28 single drill unchanged", async () => {
+    await renderLine({ ...SINGLE_CFG, drillDownColumn: "region", drillDownColumnType: "string" }, SINGLE_ROWS);
+    const onClick = chartKids().chart.onClick as (s: unknown) => void;
+    vi.useFakeTimers();
+    act(() => onClick({ activePayload: [{ payload: { region: "West", value: 3 } }] }));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    const f = useFilterStore.getState().filters[TABLE_ID] ?? [];
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ column: "region", value: "West", dataType: "string" });
+  });
+});
