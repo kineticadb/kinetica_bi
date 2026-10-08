@@ -41,6 +41,10 @@ export type ColumnFormatTooltipProps = {
     color?: string;
   }>;
   label?: unknown;
+  /** Phase 132: when defined, decides single vs multi series instead of guessing from payload.length. */
+  multiSeries?: boolean;
+  /** Phase 132: when non-empty, the single-series value line uses this (the legend title) instead of the Format-columns label. */
+  metricTitle?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -62,6 +66,8 @@ export function ColumnFormatTooltip({
   active,
   payload,
   label,
+  multiSeries,
+  metricTitle,
 }: ColumnFormatTooltipProps): React.ReactElement | null {
   if (!active || !payload || payload.length === 0) {
     return null;
@@ -98,7 +104,9 @@ export function ColumnFormatTooltip({
     tableId !== undefined && metricColumn
       ? resolveLabel(tableId, metricColumn)
       : undefined;
-  const singleSeries = payload.length === 1;
+  // Phase 132: a multi-series line at an X where only ONE series has a value still has payload.length === 1 (Recharts filterNull drops the others) -- the explicit multiSeries prop stops the metric label from replacing the series name.
+  const singleSeries = multiSeries === undefined ? payload.length === 1 : !multiSeries;
+  const singleLabel = metricTitle ? metricTitle : metricLabel;
 
   return (
     <div
@@ -125,7 +133,7 @@ export function ColumnFormatTooltip({
       {/* Value lines — one per payload entry */}
       {payload.map((entry, i) => {
         // Single-series → prefer the metric label; multi-series → keep the per-series name.
-        const valueName = singleSeries && metricLabel != null ? metricLabel : entry.name;
+        const valueName = singleSeries && singleLabel != null ? singleLabel : entry.name;
         return (
           <p
             key={i}
