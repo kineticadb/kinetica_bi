@@ -71,23 +71,6 @@ export function loadFormatPlan(widgetId: number, header: readonly string[]): For
 
 // Phase 130 D-13/D-14: counts bytes headed to disk (AFTER gzip). Exact per chunk; exceeding errors the pipeline,
 // which destroys every stage, so the existing catch deletes the .part file.
-// Gap closure (operator UAT 2026-10-08): Node's bundled zlib writes gzip header OS byte 0x13 ("macOS", zlib
-// >= 1.2.12). macOS Archive Utility refused those files (Error 79); `gzip` writes 0x03 (Unix). The OS byte (RFC
-// 1952 offset 9) is outside the CRC32/ISIZE trailer, so rewriting it leaves the stream valid.
-export function gzipUnixHeader(): Transform {
-  let offset = 0;
-  return new Transform({
-    transform(chunk: Buffer, _enc, cb) {
-      if (offset <= 9 && 9 < offset + chunk.length) {
-        chunk = Buffer.from(chunk);
-        chunk[9 - offset] = 0x03;
-      }
-      offset += chunk.length;
-      cb(null, chunk);
-    },
-  });
-}
-
 function byteCap(maxBytes: number, rowsNow: () => number): Transform {
   let n = 0;
   return new Transform({
@@ -124,7 +107,7 @@ export async function writeCsv(
   const src = Readable.from(gen());
   await pipeline(
     src,
-    ...(opts.gzip ? [createGzip(), gzipUnixHeader()] : []),
+    ...(opts.gzip ? [createGzip()] : []),
     ...(opts.maxBytes ? [byteCap(opts.maxBytes, () => rowsSoFar)] : []),
     sink,
     { signal: opts.signal },

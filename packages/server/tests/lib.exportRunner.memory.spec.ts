@@ -81,31 +81,6 @@ describe("writeCsv memory/laziness", () => {
     expect(zlib.gunzipSync(gz.bytes()).toString()).toBe(plain.bytes().toString());
   });
 
-  it("EXPMEM-gzip-os: gzip header OS byte is 0x03 (Unix), so macOS Archive Utility opens it; stream stays valid", async () => {
-    const batches = [[[1, "x"], [2, "y"]]];
-    const gz = collector();
-    await writeCsv(fromBatches(batches), ["a", "b"], gz.sink, { gzip: true });
-    const out = gz.bytes();
-    expect(out.subarray(0, 3)).toEqual(Buffer.from([0x1f, 0x8b, 0x08]));
-    expect(out[9]).toBe(0x03);
-    expect(zlib.gunzipSync(out).toString()).toBe("a,b\r\n1,x\r\n2,y");
-  });
-
-  it("EXPMEM-gzip-os-split: the OS byte is patched even when the header arrives in 1-byte chunks", async () => {
-    const { gzipUnixHeader } = await import("../src/lib/exportRunner");
-    const src = zlib.gzipSync(Buffer.from("hello"));
-    src[9] = 0x13;
-    const t = gzipUnixHeader();
-    const parts: Buffer[] = [];
-    t.on("data", (c: Buffer) => parts.push(c));
-    for (let i = 0; i < src.length; i++) t.write(src.subarray(i, i + 1));
-    t.end();
-    await new Promise((r) => t.on("end", r));
-    const out = Buffer.concat(parts);
-    expect(out[9]).toBe(0x03);
-    expect(zlib.gunzipSync(out).toString()).toBe("hello");
-  });
-
   it("EXPMEM-abort: an aborted signal rejects with AbortError and stops pulling the generator", async () => {
     const ac = new AbortController();
     let produced = 0;
