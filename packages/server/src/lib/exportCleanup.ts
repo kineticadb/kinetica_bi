@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getExportDir, exportFilePaths, isExportRunLive } from "./exportRunner";
+import { EXPORT_FINAL_EXTS } from "./exportName";
 import { getExportTtlHours, EXPORT_SERVER_RESTARTED_MESSAGE } from "./exportCaps";
 import {
   listExpiredExportJobs,
@@ -41,7 +42,7 @@ export function removeExportFiles(job: Pick<ExportJob, "id" | "filePath">): void
   for (const f of exportFilePaths(job.id)) fs.rmSync(f, { force: true });
   if (job.filePath) {
     const base = path.basename(job.filePath);
-    if (base === `${job.id}.csv` || base === `${job.id}.csv.gz`) fs.rmSync(job.filePath, { force: true });
+    if (EXPORT_FINAL_EXTS.some((e) => base === job.id + e)) fs.rmSync(job.filePath, { force: true });
   }
 }
 
@@ -78,7 +79,7 @@ export function startExportSweep(): NodeJS.Timeout {
   return handle;
 }
 
-const OWN_EXPORT_FILE_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.csv(?:\.gz)?(?:\.part)?$/i;
+const OWN_EXPORT_FILE_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.csv(?:\.gz)?|\.zip)(?:\.part)?$/i;
 
 /** Phase 130 D-05..D-08. Called ONCE from the index.ts bootstrap IIFE before app.listen — NEVER from createApp()
  *  (every route spec calls createApp() while other jobs may be in flight). Makes no Kinetica call (D-06). Never throws. */
@@ -94,7 +95,7 @@ export function reconcileExportsOnBoot(): { failed: number; orphansRemoved: numb
       for (const f of exportFilePaths(job.id)) fs.rmSync(f, { force: true });
     }
 
-    // 2. Orphan files: only regular files with our own <uuid>.csv[.gz][.part] names that no complete row owns.
+    // 2. Orphan files: only regular files with our own <uuid>.{csv,zip,csv.gz}[.part] (csv.gz: legacy) names that no complete row owns.
     const resolved = path.resolve(getExportDir());
     if (path.parse(resolved).root === resolved) {
       console.warn("[export] reconcile: EXPORT_DIR is the filesystem root; skipping the orphan scan");

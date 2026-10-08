@@ -43,9 +43,9 @@ const mkJob = (): string => {
   insertExportJob({ id, username: "u", sid: "s", dashboardId: null, widgetId: null, specJson: "{}", optionsJson: null });
   return id;
 };
-const mkTerminal = (status: "complete" | "failed" | "cancelled" | "session_expired", ageHours: number, withFile = true): { id: string; file: string } => {
+const mkTerminal = (status: "complete" | "failed" | "cancelled" | "session_expired", ageHours: number, withFile = true, ext = ".csv"): { id: string; file: string } => {
   const id = mkJob();
-  const file = path.join(dir, `${id}.csv`);
+  const file = path.join(dir, `${id}${ext}`);
   if (status === "complete") {
     if (withFile) fs.writeFileSync(file, "a,b\n");
     finalizeExportJob(id, "complete", { rowsWritten: 1, filePath: file, fileBytes: 4 });
@@ -219,6 +219,27 @@ describe("exportCleanup boot reconcile", () => {
     expect(fs.readdirSync(dir)).toEqual([`${C.id}.csv`]);
   });
 
+  it("EXPBOOT-zip-orphans: unowned .zip/.zip.part/legacy .csv.gz removed, the owned .zip kept", () => {
+    const A = randomUUID();
+    const B = mkTerminal("failed", 1).id;
+    const C = mkTerminal("complete", 1, true, ".zip");
+    const D = randomUUID();
+    touch(`${A}.zip`);
+    touch(`${B}.zip.part`);
+    touch(`${D}.csv.gz`);
+    const res = reconcileExportsOnBoot();
+    expect(res.orphansRemoved).toBe(3);
+    expect(fs.readdirSync(dir)).toEqual([`${C.id}.zip`]);
+  });
+
+  it("EXPCLEAN-zip-remove: removeExportFiles deletes the .zip and its .zip.part", () => {
+    const id = randomUUID();
+    touch(`${id}.zip`);
+    touch(`${id}.zip.part`);
+    removeExportFiles({ id, filePath: path.join(dir, `${id}.zip`) });
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
   it("EXPBOOT-foreign-untouched: non-matching names, dirs and symlinks are left alone", () => {
     const outside = path.join(os.tmpdir(), `kbi-outside-${randomUUID()}.csv`);
     fs.writeFileSync(outside, "precious");
@@ -227,12 +248,13 @@ describe("exportCleanup boot reconcile", () => {
     const u3 = randomUUID();
     touch("notes.txt");
     touch(`${u1}.csv.bak`);
+    touch(`${randomUUID()}.zip.bak`);
     fs.mkdirSync(path.join(dir, `${u3}.csv`));
     fs.symlinkSync(outside, path.join(dir, `${u2}.csv`));
     try {
       vi.spyOn(console, "warn").mockImplementation(() => {});
       const res = reconcileExportsOnBoot();
-      expect(res.unrecognised).toBe(4);
+      expect(res.unrecognised).toBe(5);
       expect(res.orphansRemoved).toBe(0);
       expect(fs.existsSync(path.join(dir, "notes.txt"))).toBe(true);
       expect(fs.existsSync(path.join(dir, `${u1}.csv.bak`))).toBe(true);

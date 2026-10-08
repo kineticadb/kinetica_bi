@@ -106,6 +106,18 @@ describe("exportJobAccess", () => {
     expect(exportDownloadName({ ...base, filePath: "/x/y.csv.gz" })).toBe("export-2026-10-07-3a6ab67f.csv.gz");
   });
 
+  it("EXPACC131-zip-name: .zip suffix and display name", () => {
+    const base = { id: "3a6ab67f-0000-4000-8000-000000000000", createdAt: "2026-10-07 12:34:56" };
+    expect(exportDownloadName({ ...base, filePath: "/x/y.zip" })).toBe("export-2026-10-07-3a6ab67f.zip");
+    expect(exportDownloadName({ ...base, filePath: "/x/y.zip", optionsJson: '{"name":"Résumé – 数据 / Q1"}' })).toBe("Résumé – 数据 - Q1.zip");
+  });
+
+  it("EXPACC131-servable-zip: accepts <id>.zip, rejects .zip.part and another job's .zip", () => {
+    expect(resolveServableExportFile(mkComplete({ file: (id) => path.join(dir, `${id}.zip`) }))).not.toBeNull();
+    expect(resolveServableExportFile(mkComplete({ file: (id) => path.join(dir, `${id}.zip.part`) }))).toBeNull();
+    expect(resolveServableExportFile(mkComplete({ file: () => path.join(dir, `${randomUUID()}.zip`) }))).toBeNull();
+  });
+
   it("EXPACC131-dto-name: stored name or null", () => {
     expect(toExportJobDto(mk("a", '{"name":"Q1 report"}')).name).toBe("Q1 report");
     for (const o of [null, "{}", "{", '{"name":5}', '{"name":""}']) expect(toExportJobDto(mk("a", o)).name).toBeNull();

@@ -7,7 +7,7 @@ import path from "node:path";
 import { getDashboard, getExportJob, getWidget, type ExportJob } from "../db";
 import { getExportDir } from "./exportRunner";
 import { getExportTtlHours } from "./exportCaps";
-import { exportDownloadBase } from "./exportName";
+import { EXPORT_FINAL_EXTS, exportDownloadBase } from "./exportName";
 
 export const EXPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -86,7 +86,7 @@ export const toExportJobDto = (job: ExportJob): ExportJobDto => ({
 });
 
 export const exportDownloadName = (job: Pick<ExportJob, "id" | "createdAt" | "filePath"> & { optionsJson?: string | null }): string => {
-  const ext = job.filePath?.endsWith(".csv.gz") ? ".csv.gz" : ".csv";
+  const ext = EXPORT_FINAL_EXTS.find((e) => job.filePath?.endsWith(e)) ?? ".csv";
   return exportDownloadBase(parseExportOptions(job.optionsJson).name, job.id, job.createdAt) + ext;
 };
 
@@ -97,7 +97,7 @@ export const resolveServableExportFile = (
   const fp = job.filePath;
   if (typeof fp !== "string" || fp === "") return null;
   const base = path.basename(fp);
-  if (base !== `${job.id}.csv` && base !== `${job.id}.csv.gz`) return null;
+  if (!EXPORT_FINAL_EXTS.some((e) => base === job.id + e)) return null;
   if (path.resolve(path.dirname(fp)) !== path.resolve(getExportDir())) return null;
   try {
     const st = fs.statSync(fp);

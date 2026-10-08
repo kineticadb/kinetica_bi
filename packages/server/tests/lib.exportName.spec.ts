@@ -38,6 +38,10 @@ describe("exportFileBase", () => {
     expect(exportFileBase("report.CSV.GZ")).toBe("report");
     expect(exportFileBase("x.csv.csv")).toBe("x.csv");
   });
+  it("EXPNAME-strip-zip: a typed .zip extension is stripped", () => {
+    expect(exportFileBase("report.ZIP")).toBe("report");
+    expect(exportFileBase("a.zip.csv")).toBe("a.zip");
+  });
   it("EXPNAME-file-device: windows device names", () => {
     expect(exportFileBase("CON")).toBe("CON_");
     expect(exportFileBase("nul")).toBe("nul_");

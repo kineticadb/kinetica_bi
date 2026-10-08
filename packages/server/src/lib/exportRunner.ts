@@ -3,7 +3,7 @@
  *
  * Background job, no queue library. Credentials are re-derived from the session
  * before every Kinetica call and never stored. Only complete, closed files exist
- * on disk (<jobId>.csv.part is renamed after the count check).
+ * on disk (<jobId>.csv.part / <jobId>.zip.part is renamed after the count check).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -221,7 +221,8 @@ const transpose = (r: unknown): unknown[][] => {
 // Phase 129: also used by DELETE /api/exports/:id
 export const exportFilePaths = (jobId: string): string[] => {
   const base = path.join(getExportDir(), jobId);
-  return [`${base}.csv`, `${base}.csv.gz`, `${base}.csv.part`, `${base}.csv.gz.part`];
+  // last two: legacy .csv.gz jobs
+  return [`${base}.csv`, `${base}.zip`, `${base}.csv.part`, `${base}.zip.part`, `${base}.csv.gz`, `${base}.csv.gz.part`];
 };
 
 export function startExport(args: {

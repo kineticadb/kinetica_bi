@@ -235,6 +235,18 @@ describe("export download route", () => {
     expect(a.text + b.text).toBe(FULL);
   });
 
+  it("EXPRT131-dl-zip: .zip served as application/zip with the display name", async () => {
+    const zipBytes = Buffer.from("PK\x05\x06" + "\0".repeat(18), "latin1");
+    const { id } = seedComplete("alice", zipBytes, ".zip", '{"name":"Q1"}');
+    const r = await getBin(url(id), session("alice").cookie);
+    expect(r.status).toBe(200);
+    expect(r.headers["content-type"]).toBe("application/zip");
+    expect(r.headers["content-encoding"]).toBeUndefined();
+    expect(Buffer.compare(r.body, zipBytes)).toBe(0);
+    expect(r.headers["content-disposition"]).toMatch(/Q1\.zip"/);
+  });
+
+  // legacy .csv.gz job (pre-D-07a): still served until it expires
   it("EXPRT129-dl-gzip: .csv.gz served as application/gzip with no content-encoding", async () => {
     const gz = zlib.gzipSync(FULL);
     const { id } = seedComplete("alice", gz, ".csv.gz");

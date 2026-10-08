@@ -177,14 +177,15 @@ describe("Phase 129 additions", () => {
     expect(listExportJobsForUser("alice")[0].username).toBe("Alice");
   });
 
-  it("EXPDB129-file-paths: returns the four known paths under the export dir", () => {
+  it("EXPDB129-file-paths: returns the six known paths under the export dir", () => {
     const prev = process.env.EXPORT_DIR;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kbi-fp-"));
     process.env.EXPORT_DIR = dir;
     try {
       expect(exportFilePaths("abc")).toEqual([
-        path.join(dir, "abc.csv"), path.join(dir, "abc.csv.gz"),
-        path.join(dir, "abc.csv.part"), path.join(dir, "abc.csv.gz.part"),
+        path.join(dir, "abc.csv"), path.join(dir, "abc.zip"),
+        path.join(dir, "abc.csv.part"), path.join(dir, "abc.zip.part"),
+        path.join(dir, "abc.csv.gz"), path.join(dir, "abc.csv.gz.part"),
       ]);
     } finally {
       process.env.EXPORT_DIR = prev ?? "";
