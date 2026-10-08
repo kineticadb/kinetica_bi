@@ -7,7 +7,7 @@ import path from "node:path";
 import { getDashboard, getExportJob, getWidget, type ExportJob } from "../db";
 import { getExportDir } from "./exportRunner";
 import { getExportTtlHours } from "./exportCaps";
-import { exportFileBase } from "./exportName";
+import { exportDownloadBase } from "./exportName";
 
 export const EXPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -36,7 +36,7 @@ export type ExportJobDto = {
   startedAt: string | null;
   finishedAt: string | null;
   expiresAt: string | null;
-  gzip: boolean;
+  compress: boolean;
   name: string | null;
   dashboardName: string | null;
   widgetTitle: string | null;
@@ -76,7 +76,7 @@ export const toExportJobDto = (job: ExportJob): ExportJobDto => ({
   startedAt: job.startedAt,
   finishedAt: job.finishedAt,
   expiresAt: exportExpiresAt(job),
-  gzip: parseExportOptions(job.optionsJson).gzip === true,
+  compress: ((o) => o.compress === true || o.gzip === true)(parseExportOptions(job.optionsJson)), // legacy rows stored gzip
   name: (() => {
     const n = parseExportOptions(job.optionsJson).name;
     return typeof n === "string" && n.trim() !== "" ? n : null;
@@ -87,9 +87,7 @@ export const toExportJobDto = (job: ExportJob): ExportJobDto => ({
 
 export const exportDownloadName = (job: Pick<ExportJob, "id" | "createdAt" | "filePath"> & { optionsJson?: string | null }): string => {
   const ext = job.filePath?.endsWith(".csv.gz") ? ".csv.gz" : ".csv";
-  const nm = parseExportOptions(job.optionsJson).name;
-  const base = exportFileBase(typeof nm === "string" ? nm : undefined) ?? `export-${job.createdAt.slice(0, 10)}-${job.id.slice(0, 8)}`;
-  return base + ext;
+  return exportDownloadBase(parseExportOptions(job.optionsJson).name, job.id, job.createdAt) + ext;
 };
 
 /** Does NOT check job status — the route gates that separately. */

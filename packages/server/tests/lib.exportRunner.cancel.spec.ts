@@ -116,6 +116,27 @@ describe("export cancel", () => {
     expect(st.stmts.some((s) => /^DROP TABLE IF EXISTS _kbi_exp_/.test(s))).toBe(true);
   });
 
+  it("EXPCANCEL-zip-mid-run: cancel during a zip export leaves no .zip or .zip.part", async () => {
+    let release!: () => void;
+    const deferred = new Promise<void>((r) => (release = r));
+    let batch2Held = false;
+    installStub(100, (n) => {
+      if (n === 2) {
+        batch2Held = true;
+        return deferred;
+      }
+    });
+    const { jobId } = startExport({ spec: { widgetId }, sid, username: "canceller", options: { compress: true } });
+    const run = __exportRunForTest(jobId)!;
+    await waitFor(() => batch2Held);
+    await waitFor(() => fs.existsSync(path.join(dir, `${jobId}.zip.part`)));
+    expect(cancelExport(jobId)).toBe(true);
+    release();
+    await run;
+    expect(getExportJob(jobId)!.status).toBe("cancelled");
+    expect(files(jobId)).toEqual([]);
+  });
+
   it("EXPCANCEL-before-start: cancel immediately after startExport ends cancelled with no file and no batch request", async () => {
     const st = installStub(100);
     const { jobId } = startExport({ spec: { widgetId }, sid, username: "canceller" });

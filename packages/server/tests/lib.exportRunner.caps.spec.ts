@@ -67,7 +67,7 @@ describe("export caps (runner)", () => {
   let gate: Promise<void>;
   const started: string[] = [];
 
-  const start = (username: string, options?: { gzip?: boolean }) => {
+  const start = (username: string, options?: { compress?: boolean }) => {
     const r = startExport({ spec: { widgetId }, sid, username, options });
     started.push(r.jobId);
     return r;
@@ -291,25 +291,25 @@ describe("export caps (runner)", () => {
     expect(job.errorCode).toBe("size_cap");
     expect(dirFiles().filter((f) => f.startsWith(jobId))).toEqual([]);
     expect(job.errorMessage).toBe(
-      sizeCapMessage({ capMb: 1, rowsAtCut: getExportBatchSize(), totalRows: N, gzip: false }),
+      sizeCapMessage({ capMb: 1, rowsAtCut: getExportBatchSize(), totalRows: N, compressed: false }),
     );
-    expect(job.errorMessage).toContain("You can also compress it (.csv.gz)");
+    expect(job.errorMessage).toContain("You can also compress it (.zip)");
   });
 
-  it("EXPCAP-size-gzip-measures-compressed: compressible data under cap after gzip completes", async () => {
+  it("EXPCAP-size-zip-measures-compressed: compressible data under cap after zip completes", async () => {
     vi.stubEnv("EXPORT_MAX_FILE_MB", "1");
     process.env.KINETICA_MAX_RECORDS_PER_CALL = "20000";
     bigStub();
-    const { jobId } = start("capper", { gzip: true });
+    const { jobId } = start("capper", { compress: true });
     await __exportRunForTest(jobId);
     expect(getExportJob(jobId)!.status).toBe("complete");
   });
 
-  it("EXPCAP-size-gzip-over: incompressible gzip stream over cap fails without the gzip hint", async () => {
+  it("EXPCAP-size-zip-over: incompressible zip stream over cap fails without the compress hint", async () => {
     vi.stubEnv("EXPORT_MAX_FILE_MB", "1");
     process.env.KINETICA_MAX_RECORDS_PER_CALL = "20000";
     bigStub(() => randomBytes(50).toString("hex"));
-    const { jobId } = start("capper", { gzip: true });
+    const { jobId } = start("capper", { compress: true });
     await __exportRunForTest(jobId);
     const job = getExportJob(jobId)!;
     expect(job.status).toBe("failed");

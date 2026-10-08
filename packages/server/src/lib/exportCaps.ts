@@ -42,17 +42,17 @@ export const formatExportSizeLimit = (mb: number): string =>
   mb % 1024 === 0 ? `${mb / 1024} GB` : `${formatExportCount(mb)} MB`;
 
 export const EXPORT_CAP_REMEDY = "Add filters to narrow it down and try again.";
-export const EXPORT_GZIP_HINT = "You can also compress it (.csv.gz) to make the file smaller.";
+export const EXPORT_COMPRESS_HINT = "You can also compress it (.zip) to make the file smaller.";
 export const EXPORT_SERVER_RESTARTED_MESSAGE = "Export stopped: the server restarted. Start it again.";
 
 export const rowCapMessage = (total: number, cap: number): string =>
   `This export has ${formatExportCount(total)} rows; the limit is ${formatExportCount(cap)}. ${EXPORT_CAP_REMEDY}`;
 
-// "about": rowsAtCut counts rows handed to the stream, which runs a buffer ahead of the bytes on disk (gzip/stream buffering).
-export const sizeCapMessage = (a: { capMb: number; rowsAtCut: number; totalRows: number | null; gzip: boolean }): string =>
+// "about": rowsAtCut counts rows handed to the stream, which runs a buffer ahead of the bytes on disk (zip/stream buffering).
+export const sizeCapMessage = (a: { capMb: number; rowsAtCut: number; totalRows: number | null; compressed: boolean }): string =>
   `This export passed the ${formatExportSizeLimit(a.capMb)} size limit after about ${formatExportCount(a.rowsAtCut)}${
     a.totalRows === null ? "" : ` of ${formatExportCount(a.totalRows)}`
-  } rows. ${EXPORT_CAP_REMEDY}` + (a.gzip ? "" : ` ${EXPORT_GZIP_HINT}`);
+  } rows. ${EXPORT_CAP_REMEDY}` + (a.compressed ? "" : ` ${EXPORT_COMPRESS_HINT}`);
 
 export const concurrencyCapMessage = (count: number): string =>
   `You already have ${count} export${count === 1 ? "" : "s"} running. Wait for one to finish or cancel one, then try again.`;

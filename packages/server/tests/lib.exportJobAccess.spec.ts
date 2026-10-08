@@ -82,8 +82,8 @@ describe("exportJobAccess", () => {
     const j = mkComplete();
     const dto = toExportJobDto(j);
     expect(Object.keys(dto).sort()).toEqual([
-      "createdAt", "dashboardId", "dashboardName", "errorCode", "errorMessage", "expiresAt", "fileBytes", "finishedAt",
-      "gzip", "id", "name", "rowsWritten", "startedAt", "status", "totalRows", "widgetId", "widgetTitle",
+      "compress", "createdAt", "dashboardId", "dashboardName", "errorCode", "errorMessage", "expiresAt", "fileBytes", "finishedAt",
+      "id", "name", "rowsWritten", "startedAt", "status", "totalRows", "widgetId", "widgetTitle",
     ]);
     const json = JSON.stringify(dto);
     expect(json).not.toContain("SID-SECRET");
@@ -92,11 +92,12 @@ describe("exportJobAccess", () => {
     expect(json).not.toContain("SPEC-SECRET");
   });
 
-  it("EXPACC129-dto-gzip: parses gzip flag safely", () => {
-    expect(toExportJobDto(mk("a", '{"gzip":true}')).gzip).toBe(true);
-    expect(toExportJobDto(mk("a", null)).gzip).toBe(false);
-    expect(toExportJobDto(mk("a", "{}")).gzip).toBe(false);
-    expect(toExportJobDto(mk("a", "{")).gzip).toBe(false);
+  it("EXPACC131-compress-dto: reads compress, and legacy gzip rows", () => {
+    expect(toExportJobDto(mk("a", '{"compress":true}')).compress).toBe(true);
+    expect(toExportJobDto(mk("a", '{"gzip":true}')).compress).toBe(true); // legacy row
+    expect(toExportJobDto(mk("a", null)).compress).toBe(false);
+    expect(toExportJobDto(mk("a", "{}")).compress).toBe(false);
+    expect(toExportJobDto(mk("a", "{")).compress).toBe(false);
   });
 
   it("EXPACC129-name: download name seam", () => {

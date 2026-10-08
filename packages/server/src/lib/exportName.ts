@@ -26,3 +26,6 @@ export function exportFileBase(name: string | null | undefined): string | undefi
   if (WIN_DEVICE.test(s)) s += "_";
   return s === "" ? undefined : s;
 }
+
+export const exportDownloadBase = (name: unknown, id: string, createdAt: string): string =>
+  exportFileBase(typeof name === "string" ? name : undefined) ?? `export-${createdAt.slice(0, 10)}-${id.slice(0, 8)}`;

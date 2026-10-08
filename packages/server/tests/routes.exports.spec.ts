@@ -181,6 +181,7 @@ describe("export routes", () => {
       [{ widgetId, filters: [1] }, "invalid_export_request"],
       [{ widgetId, sortDir: "sideways" }, "invalid_export_request"],
       [{ widgetId, options: { gzip: "yes" } }, "invalid_export_request"],
+      [{ widgetId, options: { compress: "yes" } }, "invalid_export_request"],
       [{ widgetId, options: { format: "pretty" } }, "invalid_export_request"],
       [{ widgetId, sortField: "a;b" }, "invalid_sort"],
       [{ widgetId, filters: [{ column: "bad col", op: "eq", value: 1 }] }, "invalid_column"],
@@ -208,18 +209,30 @@ describe("export routes", () => {
     }
   });
 
-  it("EXPRT129-gzip-option: options.gzip produces a .csv.gz", async () => {
+  it("EXPRT131-compress-option: options.compress produces a .zip", async () => {
     installStub(30);
     addDashboardGrant(dashId, "user", "gz");
     const { cookie } = session("gz");
-    const r = await post(cookie, { widgetId, options: { gzip: true } });
+    const r = await post(cookie, { widgetId, options: { compress: true } });
     expect(r.status).toBe(202);
-    expect(r.body.data.gzip).toBe(true);
+    expect(r.body.data.compress).toBe(true);
     const id = r.body.data.id as string;
     await __exportRunForTest(id);
     const s = await call("get", `/api/exports/${id}`, cookie);
     expect(s.body.data.status).toBe("complete");
-    expect(fs.existsSync(path.join(dir, `${id}.csv.gz`))).toBe(true);
+    expect(fs.existsSync(path.join(dir, `${id}.zip`))).toBe(true);
+  });
+
+  it("EXPRT131-gzip-alias: deprecated options.gzip still produces a .zip", async () => {
+    installStub(30);
+    addDashboardGrant(dashId, "user", "gz2");
+    const { cookie } = session("gz2");
+    const r = await post(cookie, { widgetId, options: { gzip: true } });
+    expect(r.status).toBe(202);
+    expect(r.body.data.compress).toBe(true);
+    const id = r.body.data.id as string;
+    await __exportRunForTest(id);
+    expect(fs.existsSync(path.join(dir, `${id}.zip`))).toBe(true);
   });
 
   it("EXPRT131-format-formatted: options.format formatted accepted and stored", async () => {

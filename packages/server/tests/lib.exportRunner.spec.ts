@@ -64,7 +64,7 @@ describe("runner primitives", () => {
 // ---------------------------------------------------------------------------
 import fs from "node:fs";
 import os from "node:os";
-import zlib from "node:zlib";
+import { readSingleEntryZip } from "./helpers/readZip";
 import { createDashboard, createWidget, createTable, getExportJob, db } from "../src/db";
 import { startExport, __exportRunForTest, cancelExport } from "../src/lib/exportRunner";
 import { ExportSpecError, EXPORT_PAGING_MECHANISM } from "../src/lib/exportSql";
@@ -306,12 +306,21 @@ describe("run loop", () => {
     expect((db.prepare("SELECT COUNT(*) AS n FROM export_jobs").get() as any).n).toBe(before);
   });
 
-  it("EXPRUN-gzip: options { gzip: true } produces <jobId>.csv.gz whose gunzip equals the plain bytes", async () => {
+  it("EXPRUN-zip: options { compress: true } produces <jobId>.zip holding the plain bytes", async () => {
     installStub(25);
-    const { jobId, job } = await go({ widgetId }, { gzip: true });
+    const { jobId, job } = await go({ widgetId }, { compress: true });
     expect(job.status).toBe("complete");
-    expect(job.filePath).toBe(path.join(dir, `${jobId}.csv.gz`));
-    expect(zlib.gunzipSync(fs.readFileSync(job.filePath!)).toString()).toBe(expected(25));
+    expect(job.filePath).toBe(path.join(dir, `${jobId}.zip`));
+    const r = readSingleEntryZip(fs.readFileSync(job.filePath!));
+    expect(r.data.toString()).toBe(expected(25));
+    expect(r.name).toBe(`export-${job.createdAt.slice(0, 10)}-${jobId.slice(0, 8)}.csv`);
+  });
+
+  it("EXPRUN-zip-named: the entry name is the sanitized display name + .csv", async () => {
+    installStub(5);
+    const { jobId, job } = await go({ widgetId }, { compress: true, name: "Q1 / Résumé" });
+    expect(job.filePath).toBe(path.join(dir, `${jobId}.zip`));
+    expect(readSingleEntryZip(fs.readFileSync(job.filePath!)).name).toBe("Q1 - Résumé.csv");
   });
 
   it("EXPRUN-batch-size: each batch request asks for min(maxRowsPerQuery, maxRecordsPerCall) rows", async () => {

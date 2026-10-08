@@ -70,13 +70,16 @@ export function registerExportRoutes(app: Express): void {
     }
     const rawOpts = b.options;
     if (rawOpts !== undefined && !isObj(rawOpts)) return bad(res, "options must be an object.");
-    if (rawOpts && rawOpts.gzip !== undefined && typeof rawOpts.gzip !== "boolean") return bad(res, "options.gzip must be a boolean.");
+    for (const k of ["compress", "gzip"] as const) { // gzip: deprecated alias for tabs loaded before the .zip change
+      if (rawOpts && rawOpts[k] !== undefined && typeof rawOpts[k] !== "boolean") return bad(res, `options.${k} must be a boolean.`);
+    }
     if (rawOpts && rawOpts.format !== undefined && rawOpts.format !== "raw" && rawOpts.format !== "formatted") {
       return bad(res, 'options.format must be "raw" or "formatted".');
     }
     if (rawOpts && rawOpts.name !== undefined && typeof rawOpts.name !== "string") return bad(res, "options.name must be a string.");
     const options: ExportOptions = {};
-    if (rawOpts && typeof rawOpts.gzip === "boolean") options.gzip = rawOpts.gzip;
+    if (rawOpts && typeof rawOpts.compress === "boolean") options.compress = rawOpts.compress;
+    else if (rawOpts && typeof rawOpts.gzip === "boolean") options.compress = rawOpts.gzip; // deprecated alias
     if (rawOpts && (rawOpts.format === "raw" || rawOpts.format === "formatted")) options.format = rawOpts.format;
     const nm = rawOpts ? sanitizeExportName(rawOpts.name) : undefined;
     if (nm) options.name = nm;

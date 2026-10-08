@@ -10,7 +10,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createGzip } from "node:zlib";
+import { createZipEntryStages, type ZipEntryOptions } from "./zipStream";
+import { exportDownloadBase } from "./exportName";
 import { csvLine } from "./csvExport";
 import { getRowLimitConfig, kineticaSql, type KineticaPrincipal } from "../kinetica";
 import { getSession, deleteSession } from "../sessionStore";
@@ -51,7 +52,7 @@ import {
 } from "./exportCaps";
 
 /** Phase 131: format "formatted" maps rows through the table's column display config (labels + buildFormatter) before csvLine; name is the user-supplied display name, sanitised by the route (Plan 131-04) and read back by exportJobAccess. */
-export type ExportOptions = { format?: "raw" | "formatted"; gzip?: boolean; name?: string };
+export type ExportOptions = { format?: "raw" | "formatted"; compress?: boolean; name?: string };
 
 export type FormatPlan = { labels: string[]; fns: (((v: unknown) => unknown) | null)[] };
 /** null = raw fallback (no numeric tableId, e.g. dv-bound widget). Loaded once per run: a config edit mid-run is not applied (snapshot semantics). */
@@ -69,7 +70,7 @@ export function loadFormatPlan(widgetId: number, header: readonly string[]): For
   };
 }
 
-// Phase 130 D-13/D-14: counts bytes headed to disk (AFTER gzip). Exact per chunk; exceeding errors the pipeline,
+// Phase 130 D-13/D-14: counts bytes headed to disk (AFTER zip framing). Exact per chunk; exceeding errors the pipeline,
 // which destroys every stage, so the existing catch deletes the .part file.
 function byteCap(maxBytes: number, rowsNow: () => number): Transform {
   let n = 0;
@@ -91,7 +92,7 @@ export async function writeCsv(
   batches: AsyncIterable<readonly (readonly unknown[])[]>,
   header: readonly string[],
   sink: NodeJS.WritableStream,
-  opts: { signal?: AbortSignal; gzip?: boolean; maxBytes?: number; onBatch?: (rowsSoFar: number) => void } = {},
+  opts: { signal?: AbortSignal; zip?: ZipEntryOptions; maxBytes?: number; onBatch?: (rowsSoFar: number) => void } = {},
 ): Promise<number> {
   let rowsSoFar = 0;
   async function* gen(): AsyncGenerator<string> {
@@ -107,7 +108,7 @@ export async function writeCsv(
   const src = Readable.from(gen());
   await pipeline(
     src,
-    ...(opts.gzip ? [createGzip()] : []),
+    ...(opts.zip ? createZipEntryStages(opts.zip) : []),
     ...(opts.maxBytes ? [byteCap(opts.maxBytes, () => rowsSoFar)] : []),
     sink,
     { signal: opts.signal },
@@ -298,7 +299,7 @@ async function run(
 ): Promise<void> {
   if (!markExportJobRunning(jobId)) return; // cancelled before start
   const dir = getExportDir();
-  const finalPath = path.join(dir, jobId + (options.gzip ? ".csv.gz" : ".csv"));
+  const finalPath = path.join(dir, jobId + (options.compress ? ".zip" : ".csv"));
   const partPath = finalPath + ".part";
   // Phase 130: hoisted so the catch formats with the same values the run enforced.
   const rowCap = getExportMaxRows();
@@ -360,7 +361,7 @@ async function run(
     if (signal.aborted) throw abortError();
     const written = await writeCsv(batches(), outHeader, fs.createWriteStream(partPath, { mode: 0o600 }), {
       signal,
-      gzip: options.gzip,
+      zip: options.compress ? { entryName: exportDownloadBase(options.name, jobId, getExportJob(jobId)?.createdAt ?? new Date().toISOString()) + ".csv" } : undefined,
       maxBytes: capMb === null ? undefined : exportMbToBytes(capMb),
       onBatch: (n) => updateExportJobProgress(jobId, n),
     });
@@ -389,7 +390,7 @@ async function run(
           capMb: capMb!,
           rowsAtCut: err.rowsAtCut,
           totalRows: getExportJob(jobId)?.totalRows ?? null,
-          gzip: options.gzip === true,
+          compressed: options.compress === true,
         }),
       });
     } else if (err instanceof SessionEndedError || err instanceof KineticaAuthError) {
