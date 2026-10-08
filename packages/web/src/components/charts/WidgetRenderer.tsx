@@ -1608,6 +1608,16 @@ const LineRenderer = ({
           Showing top {maxCap} of {top.total} series
         </div>
       )}
+      {categoryTruncation && (
+        <div
+          className="config-hint"
+          data-testid="line-categories-note"
+          title={LINE_CATEGORY_NOTE_TITLE}
+          style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}
+        >
+          {lineCategoryNoteText({ shown: chartData.length, total: categoryTruncation.totalCategories })}
+        </div>
+      )}
       {layout.scroll ? (
         <div data-testid="line-scroll-region" style={{ flex: "1 1 auto", minHeight: 0, overflowX: "auto", overflowY: "auto" }}>
           <div style={{ width: "100%", height: "100%", minWidth: layout.minInnerWidth, minHeight: layout.minInnerHeight }}>{responsiveChart}</div>
