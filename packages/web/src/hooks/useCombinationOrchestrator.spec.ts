@@ -1930,3 +1930,83 @@ describe("DVCOMBO orchestrator — dv source combination", () => {
     expect(materializeFilter).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("DVCOMBO-SP orchestrator — dv source combination includes spatial draws", () => {
+  const DVS: DynamicViewRow[] = [
+    {
+      id: 5, dashboard_id: DASH_ID, source_table_id: 7, name: "Avg", template_sql: "SELECT 1 FROM {view}",
+      max_records: 100000, columns_json: null, created_at: "", updated_at: "",
+    } as unknown as DynamicViewRow,
+  ];
+  const F7: ActiveFilter = { column: "vendor", value: "A", dataType: "string", addedAt: 1, sourceWidgetId: 1 } as ActiveFilter;
+  const CIRCLE = { id: "c1", type: "circle" as const, wkt: "POLYGON((0 0,1 0,1 1,0 0))", label: "Circle 1", measurement: "1.9 km", addedAt: 1 };
+  const MAPW = makeMapWidgetWithTarget(1, 7);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useSpatialFilterStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_filt_dv_sp", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("DVCOMBO-SP1: spatial-only draw -> dv source combo materialized WITH spatialFilters + spatialTarget, bound to dv:<id>", async () => {
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [MAPW], [], DVS));
+    setShapes([CIRCLE]);
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [], [CIRCLE])!;
+    expect(hash).toBeDefined();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    const arg = (materializeFilter as Mock).mock.calls[0][0];
+    expect(arg).toMatchObject({ tableId: 7, combinationKey: hash });
+    expect(arg.spatialFilters).toEqual([{ id: "c1", wkt: CIRCLE.wkt }]);
+    expect(arg.spatialTarget).toMatchObject({ tableId: 7, spatialMode: "latlon", lonCol: "lon", latCol: "lat" });
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBe(hash);
+  });
+
+  it("DVCOMBO-SP2: column + spatial -> ONE combined combination (columns and shapes in the same POST/hash)", async () => {
+    useFilterStore.setState((s) => ({ filters: { ...s.filters, 7: [F7] }, filterVersion: s.filterVersion + 1 }));
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [MAPW], [], DVS));
+    setShapes([CIRCLE]);
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [F7], [CIRCLE])!;
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalled());
+    const calls = (materializeFilter as Mock).mock.calls.map((c) => c[0]);
+    const dvCalls = calls.filter((a) => a.combinationKey === hash);
+    expect(dvCalls).toHaveLength(1);
+    expect(dvCalls[0].filters).toEqual([F7]);
+    expect(dvCalls[0].spatialFilters).toHaveLength(1);
+    expect(hash).not.toBe(dvSourceComboHash(7, [F7]));
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBe(hash);
+  });
+
+  it("DVCOMBO-SP3: clearing the draw -> dv:<id> unbound, combination released + dropped (back to no_filter)", async () => {
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [MAPW], [], DVS));
+    setShapes([CIRCLE]);
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [], [CIRCLE])!;
+    await waitFor(() => expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1));
+    setShapes([]);
+    advanceDebounce();
+    await waitFor(() => expect(dropCombinationView).toHaveBeenCalledWith({ dashboardId: DASH_ID, viewName: "_kbi_filt_dv_sp" }));
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBeUndefined();
+    expect(useFilterCombinationStore.getState().registry[hash]).toBeUndefined();
+  });
+
+  it("DVCOMBO-SP4: no eligible spatial target on the source table -> draw ignored (column-only fallback, no combo)", async () => {
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [makeMapWidgetWithTarget(1, 999)], [], DVS));
+    setShapes([CIRCLE]);
+    advanceDebounce();
+    await act(async () => { await Promise.resolve(); });
+    expect(materializeFilter).not.toHaveBeenCalled();
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBeUndefined();
+  });
+});

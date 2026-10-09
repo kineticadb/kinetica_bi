@@ -32,9 +32,10 @@ import { useFilterStore } from "../store/filterStore";
 import type { ActiveFilter } from "../store/filterStore";
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
 import { dvSourceComboHash } from "../lib/dvSourceCombo";
+import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
-import type { DynamicViewRow, MaterializeDynamicViewResponse } from "../api/client";
+import type { DynamicViewRow, MaterializeDynamicViewResponse, WidgetDto } from "../api/client";
 
 // ---------------------------------------------------------------------------
 // Mock the client module — every test sets up listDynamicViews + materializeDynamicView
@@ -811,6 +812,75 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(useDynamicViewStore.getState().views[5]?.status).toBe("error");
     expect(useDynamicViewStore.getState().views[5]?.error).toBe("kinetica boom");
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("DVCOMBO-SPC chain — spatial draws on the source table", () => {
+  const CIRCLE = { id: "c1", type: "circle" as const, wkt: "POLYGON((0 0,1 0,1 1,0 0))", label: "Circle 1", measurement: "1.9 km", addedAt: 1 };
+  const MAPW = {
+    id: 1, dashboard_id: 42, title: "Map", type: "map", position: 0,
+    config: { spatialTargets: [{ tableId: 7, spatialMode: "latlon", lonCol: "lon", latCol: "lat" }] },
+    created_at: "", updated_at: "",
+  } as WidgetDto;
+  const okMat = { status: "materialized", view_name: "_kbi_dv_uu1_d42_7", row_count: 1, expires_at: 9_999_999_999 } satisfies MaterializeDynamicViewResponse;
+  const MAPWS = [MAPW]; // stable reference (a fresh array each render would re-run the effect and mask a missing spatialFilterVersion dep)
+  const drawCircle = () =>
+    act(() => {
+      useSpatialFilterStore.setState({ shapes: [CIRCLE], spatialFilterVersion: 1 });
+    });
+
+  beforeEach(() => {
+    useAuthStore.setState({ status: "authenticated", user: { username: "u1", roles: [], permissions: [] }, error: null, reason: null, authMode: "password" });
+    (listDynamicViews as Mock).mockReset();
+    (materializeDynamicView as Mock).mockReset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useFilterCombinationStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+    useSpatialFilterStore.getState().reset();
+  });
+
+  it("DVCOMBO-SP-C1: spatial-only draw -> pending (no no_filter fast-path); combo ready -> POST with the spatial hash as combination_key", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 100000 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42, MAPWS));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter"));
+    const hash = dvSourceComboHash(7, [], [CIRCLE])!;
+    drawCircle();
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.status).toBe("pending"));
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+    act(() => {
+      useFilterCombinationStore.getState().setEntry(hash, {
+        viewName: "_kbi_filt_sp", expiresAt: 9_999_999_999, materializing: false, materializeVersion: 0,
+        refCount: 1, dashboardId: 42, sourceType: "table", sourceId: 7,
+      });
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect(materializeDynamicView).toHaveBeenCalledWith(5, expect.any(AbortSignal), hash);
+  });
+
+  it("DVCOMBO-SP-C3: clearing the draw returns a capped dv to local no_filter", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 100000 })] });
+    renderHook(() => useDynamicViewMaterializeChain(42, MAPWS));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    drawCircle();
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.status).toBe("pending"));
+    act(() => {
+      useSpatialFilterStore.setState({ shapes: [], spatialFilterVersion: 2 });
+    });
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter"));
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+  });
+
+  it("DVCOMBO-SP-C4: a draw on a table with no eligible spatial target is ignored (still no_filter)", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 8, max_records: 100000 })] });
+    renderHook(() => useDynamicViewMaterializeChain(42, MAPWS));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    drawCircle();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter");
     expect(materializeDynamicView).not.toHaveBeenCalled();
   });
 });

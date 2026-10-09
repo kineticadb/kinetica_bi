@@ -28,7 +28,8 @@
  * orchestrator or filterCombinationStore.setEntry → no feedback loop. Safe dep.
  *
  * quick-261009-jg6: also materializes + ref-counts each dynamic view's SOURCE combination
- * (all column filters on dv.source_table_id, `dvSourceComboHash`) under vizKey `dv:<dvId>`.
+ * (all column filters + spatial draws on dv.source_table_id, `dvSourceComboHash`; spatial only when
+ * the table has an eligible map spatialTarget, else column-only) under vizKey `dv:<dvId>`.
  * useDynamicViewMaterializeChain only READS that registry entry and sends the hash to the
  * server; this hook stays the sole materializeFilter caller. dvSourcesKey joins the deps.
  * If that materialize fails, the dv status is set to `error` (not left pending) and the hash
@@ -56,7 +57,7 @@ import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { materializeFilter, dropCombinationView } from "../api/client";
 import type { WidgetDto, DashboardLayerDto, DynamicViewRow } from "../api/client";
-import { dvSourceComboHash } from "../lib/dvSourceCombo";
+import { dvSourceComboHash, resolveDvSourceSpatial } from "../lib/dvSourceCombo";
 import type { FilterSelectionConfig } from "../types/filterSelection";
 import type { Shape } from "../store/spatialFilterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
@@ -372,14 +373,17 @@ export function useCombinationOrchestrator(
       // --- quick-261009-jg6: each dv's SOURCE combination (all column filters on its source table) ---
       // Bound under vizKey `dv:<id>` and NOT added to byTable: the hash equals the per-table
       // ceiling-fallback hash by construction, so the ceiling can never orphan it.
-      const dvSourceEntries: Array<{ hash: string; tableId: number; resolved: ReturnType<typeof resolveFilterSet> }> = [];
+      // Spatial draws on the source table are folded in (a dv accepts all draws), but only when the
+      // table has an eligible spatial target — otherwise column-only (same Pitfall-1 rule as widgets).
+      const dvSourceEntries: Array<{ hash: string; tableId: number; resolved: ReturnType<typeof resolveFilterSet>; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget }> = [];
       const dvIdsByHash = new Map<string, number[]>();
       for (const dv of dynamicViews) {
         const dvTableFilters = (filterState.filters[dv.source_table_id] ?? []) as ReturnType<typeof resolveFilterSet>;
-        const hash = dvSourceComboHash(dv.source_table_id, dvTableFilters);
+        const dvSpatial = resolveDvSourceSpatial(dv.source_table_id, widgets, shapes);
+        const hash = dvSourceComboHash(dv.source_table_id, dvTableFilters, dvSpatial.shapes);
         vizKeyToHash.set(`dv:${dv.id}`, hash);
         if (hash !== undefined) {
-          dvSourceEntries.push({ hash, tableId: dv.source_table_id, resolved: dvTableFilters.slice() });
+          dvSourceEntries.push({ hash, tableId: dv.source_table_id, resolved: dvTableFilters.slice(), acceptedShapes: dvSpatial.shapes, spatialTarget: dvSpatial.target });
           dvIdsByHash.set(hash, [...(dvIdsByHash.get(hash) ?? []), dv.id]);
         }
       }
@@ -521,9 +525,9 @@ export function useCombinationOrchestrator(
       }
 
       // quick-261009-jg6: dv source combinations (dedupes with any identical table entry)
-      for (const { hash, tableId, resolved } of dvSourceEntries) {
+      for (const { hash, tableId, resolved, acceptedShapes, spatialTarget } of dvSourceEntries) {
         if (!desired.has(hash)) {
-          desired.set(hash, { tableId, sourceType: "table", resolved, acceptedShapes: [], spatialTarget: undefined });
+          desired.set(hash, { tableId, sourceType: "table", resolved, acceptedShapes, spatialTarget });
         }
       }
 

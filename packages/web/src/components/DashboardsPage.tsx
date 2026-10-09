@@ -634,7 +634,7 @@ const DashboardOpen = ({
   // LayersModal. Phase 35 Plan 05: `retry` is now threaded through
   // DashboardContext so renderers' error-state Retry button can re-fire the
   // cascade for a specific dynamic-view id.
-  const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id);
+  const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id, widgets);
 
   // Phase 78 (TTLKEEP-V115-01): dashboard-level keep-alive — fires a lightweight READ touch
   // against each live materialized view (filter-views + dynamic-views) ~ttlKeepaliveLeadMinutes
@@ -1683,6 +1683,7 @@ const DashboardOpen = ({
         <DynamicViewsModal
           dashboardId={dashboard.id}
           associatedTables={associatedTables}
+          widgets={widgets}
           onClose={() => setShowDynamicViewsModal(false)}
         />
       )}

@@ -4,7 +4,7 @@
  *
  * Driven by `filterVersion` + `filterCombinationStore` readiness (NOT the legacy
  * filterViewStore, whose materializeVersion has been dead since v1.18). For each dv:
- *   - hash = dvSourceComboHash(dv.source_table_id, filters[source_table_id]) -- the
+ *   - hash = currentDvSourceComboHash(source_table_id, widgets) (column filters + spatial draws) -- the
  *     combination useCombinationOrchestrator materializes + ref-counts under `dv:<id>`.
  *   - token = "nofilter" | "wait:<hash>" (registry entry absent/materializing)
  *             | "ready:<hash>:<viewName>:<expiresAt>:<materializeVersion>".
@@ -30,8 +30,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useFilterStore } from "../store/filterStore";
+import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useFilterCombinationStore } from "../store/filterCombinationStore";
-import { dvSourceComboHash } from "../lib/dvSourceCombo";
+import { currentDvSourceComboHash } from "../lib/dvSourceCombo";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
@@ -40,6 +41,7 @@ import {
   listDynamicViews,
   materializeDynamicView,
   type DynamicViewRow,
+  type WidgetDto,
 } from "../api/client";
 
 export type UseDynamicViewMaterializeChainResult = {
@@ -47,8 +49,13 @@ export type UseDynamicViewMaterializeChainResult = {
   retry: (dynamicViewId: number) => void;
 };
 
+const NO_WIDGETS: WidgetDto[] = [];
+
 export function useDynamicViewMaterializeChain(
   dashboardId: number,
+  // Dashboard widgets: only used to resolve each source table's eligible spatial target (map
+  // widgets' spatialTargets) so the hash matches the orchestrator's. Omitted => column-only.
+  widgets: WidgetDto[] = NO_WIDGETS,
 ): UseDynamicViewMaterializeChainResult {
   // --- 1. List state — refreshes on mount + when dynamicViewVersion increments ---
   const [dynamicViews, setDynamicViews] = useState<DynamicViewRow[]>([]);
@@ -75,6 +82,9 @@ export function useDynamicViewMaterializeChain(
   //     change; combinationVersion bumps on every registry mutation (the orchestrator's
   //     setEntry flips a `wait` token to `ready`). Per-dv tokens below dedupe the re-fires.
   const filterVersion = useFilterStore((s) => s.filterVersion);
+  // spatialFilterVersion: a spatial-only draw/clear changes the dv source combination (no
+  // filterVersion bump). Bumps only on draw/remove/clear, never on registry writes -> no loop.
+  const spatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
   const combinationVersion = useFilterCombinationStore((s) => s.combinationVersion);
 
   // --- 3. Per-dv AbortController Map (cross-dv isolation; survives re-renders) ---
@@ -83,6 +93,9 @@ export function useDynamicViewMaterializeChain(
   // --- 3b. Per-dv last-seen token -- prevents re-firing dv-A when an unrelated
   //     registry mutation (combinationVersion bump) leaves dv-A's token unchanged.
   const lastTokenRef = useRef<Map<number, string>>(new Map());
+
+  const widgetsRef = useRef<WidgetDto[]>(widgets);
+  widgetsRef.current = widgets;
 
   // --- 4. Cascade fire helper -- shared by the effect and the retry callback.
   //     `force=true` (retry path) skips the token gate and the no_filter fast-path so the
@@ -102,10 +115,7 @@ export function useDynamicViewMaterializeChain(
     const username = useAuthStore.getState().user?.username;
     if (!username) return; // Test 17: no username → defensive short-circuit
 
-    const hash = dvSourceComboHash(
-      dv.source_table_id,
-      useFilterStore.getState().filters[dv.source_table_id],
-    );
+    const hash = currentDvSourceComboHash(dv.source_table_id, widgetsRef.current);
     const entry = hash ? useFilterCombinationStore.getState().registry[hash] : undefined;
     const ready = !!entry && !entry.materializing && entry.viewName !== "";
     const token =
@@ -204,7 +214,7 @@ export function useDynamicViewMaterializeChain(
       if (!activeIds.has(id)) lastTokenRef.current.delete(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, combinationVersion, dynamicViews, fireCascade]);
+  }, [filterVersion, spatialFilterVersion, combinationVersion, dynamicViews, widgets, fireCascade]);
 
   // --- 6. Unmount cleanup: abort all in-flight cascades ---
   useEffect(
