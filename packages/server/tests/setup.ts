@@ -33,6 +33,16 @@ process.env.EXPORT_MAX_ROWS = "";
 process.env.EXPORT_MAX_FILE_MB = "";
 process.env.EXPORT_MAX_CONCURRENT_PER_USER = "";
 
+// Phase 133 AI env: dev .env leak guard — a developer's real AI key/flags must never reach specs.
+process.env.AI_ENABLED = "";
+process.env.AI_PROVIDER = "";
+process.env.AI_BASE_URL = "";
+process.env.AI_MODEL = "";
+process.env.AI_API_KEY = "";
+process.env.AI_DATA_ACCESS = "";
+process.env.AI_MAX_TOOL_STEPS = "";
+process.env.AI_TIMEOUT_MS = "";
+
 beforeEach(() => {
   // Clear any global fetch stub between tests.
   vi.restoreAllMocks();

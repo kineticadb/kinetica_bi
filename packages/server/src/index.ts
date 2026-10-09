@@ -62,6 +62,7 @@ import {
 } from "./kineticaErrors";
 import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
 import { getExportLimits } from "./lib/exportCaps";
+import { loadAiConfig } from "./lib/aiConfig";
 import { createSession, deleteSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
 import {
   createDashboard,
@@ -219,6 +220,9 @@ export const createApp = async (): Promise<express.Express> => {
   const MAX_ROWS_PER_QUERY = getRowLimitConfig().maxRowsPerQuery;
   // Phase 130 (EXPRT-V126-15, D-18): admin export caps for the Phase 131 dialog. Unset caps are null. Read once.
   const EXPORT_LIMITS = getExportLimits();
+
+  // Phase 133 (AIPRV-V20-01): AI config is read ONCE at boot. Invalid -> AI disabled + loud log; NEVER exits (D-06), NEVER calls the provider (D-07).
+  loadAiConfig(process.env);
 
   // Phase 127 caller audit: INFORMATION_SCHEMA lists feed un-paginated dropdowns; pin an explicit limit so they never inherit an admin-raised KINETICA_MAX_ROWS_PER_QUERY (and are still clamped by it if lowered).
   const DISCOVERY_ROW_LIMIT = 20_000;

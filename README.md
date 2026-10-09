@@ -222,6 +222,8 @@ Types with a dedicated renderer (`CustomConfigPanel` + a short-circuit in `Widge
 
 Backend config lives in `packages/server/.env` (copy `packages/server/.env.example`). **Req.** marks variables required to boot/operate; OIDC vars are required only when `AUTH_MODE=oidc`.
 
+**AI (optional, off by default).** AI stays off unless `AI_ENABLED=true`; see the commented AI block in `packages/server/.env.example` for the Gemini and Ollama examples. Misconfiguration disables AI without stopping the server (the `[ai]` line in the server log names each bad setting), and the API key is never logged.
+
 **Core**
 
 | Variable | Default | Req. | Description |
