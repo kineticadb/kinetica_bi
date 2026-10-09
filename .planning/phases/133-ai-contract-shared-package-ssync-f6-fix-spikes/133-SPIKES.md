@@ -174,7 +174,7 @@ Kinetica column resolution is case-INSENSITIVE even when quoted (as-given `vendo
 | S3 validators | Derive-for-all FAILS (8/16 types have `fields: []`); named subset below | Yes (hand-written validators for extra types, map first) | 136: hand-maintained/generated catalogue in packages/shared + web-side drift test; `customWhere` AI-blocked |
 | S7 Kinetica caps | Non-admin can create MVs (default schema); NOT read-only by grants; no server timeout; EXPLAIN has no cost estimate; tag/find/cancel works | Yes (fully app-side guard) | 137/140: tag -> find -> `/admin/alter/jobs` cancel; 140: SQL guard fully app-side, row cap + LIMIT, no EXPLAIN gate |
 
-- **S3 v2.0 AI widget-type subset (for approval, verbatim):** bar, line, pie, table, bignumber, records. `map` flagged separately (main AI target, custom config; needs a hand-written validator if Phase 136 requires it). scatter, heatmap and the 7 other custom-panel types are out.
+- **S3 v2.0 AI widget-type subset (APPROVED with edit, 2026-10-09):** bar, line, pie, table, bignumber, records, **map** (heatmap layers only; hand-written validators in Phase 136). scatter, heatmap widget and the 7 other custom-panel types are out.
 - **AIACT-V20-07 wording flag:** S1 did NOT fall back, so no rewording is proposed. (If the operator disagrees, the fallback wording would be: "The AI can propose a dynamic view; it goes live after Keep".)
 - **S7 Phase 140 stance:** guarded SELECT is fully app-side (statement allow-list, row cap, per-session view cap); no reliance on Kinetica grants (user can CREATE TABLE and INSERT); abort alone does not stop a job, so cancel uses tag/find/cancel. Results are from the NON-admin `uat_analyst`.
 - **S2 nginx:** `proxy_buffering off; proxy_cache off; proxy_read_timeout 300s; gzip off; proxy_http_version 1.1; proxy_set_header Connection "";` on the stream location is deferred to Phase 137 and verified there.
@@ -185,4 +185,13 @@ Kinetica column resolution is case-INSENSITIVE even when quoted (as-given `vendo
 
 ## Checkpoint (D-15)
 
-Status: awaiting operator review (plan 133-10)
+Status: approved by operator on 2026-10-09
+
+Operator responses (recorded from the resume message):
+
+- **A1 (S3 subset) — EDITED:** v2.0 AI widget-type subset = **bar, line, pie, table, bignumber, records, AND map**. Map is "very important for Kinetica's geospatial capabilities". For v2.0 the AI may add/edit **heatmap map layers only** ("start with heatmap for now, add others later"). Map widget and heatmap layer config get hand-written validators in Phase 136. AIACT-V20-04/06 reworded, AI-F12 added; AIACT-V20-05 (remove a layer) stays and applies to any layer type (removal needs no per-type validator; undo restores the saved config).
+- **A2 approved.** **A3 approved** (results came from non-admin `uat_analyst`). **A4 approved.**
+- **A5 approved** — roadmap 133 criterion 1 amended (dv path: one read-only column lookup).
+- **B live check on :4000:** chart drill, spatial map filter, map info popup all PASS; no "Column ... no longer exists" errors. One issue: a dynamic-view-backed map layer ("Avgs" -> dv "Avg NYC", H3 aggregate over demo.nyctaxi, max records 100000, also tried Unlimited) shows OVER THRESHOLD and never renders even with a narrow filter. Diagnosed as the PRE-EXISTING open defect `.planning/defect-dv-combination-filter-view.md` (found 2026-09-17, v1.24; dv materialize looks up the unsuffixed filter view name while filter-combination materialize creates `..._c<hash>`). NOT a Phase 133 regression (133's only edits to the dv materialize route are viewColumnsCache.delete lines). Decision: fix as a SEPARATE `/gsd:quick` task outside the milestone, before Phase 138 (AI filters) / 139 (AI dvs). The Unlimited-still-blank case is not yet root-caused (the client no_filter fast-path in useDynamicViewMaterializeChain.ts may also be involved) — note for the quick task.
+- **C AI config check: PASS** (bad AI_BASE_URL -> app works, one `[ai] AI is DISABLED` line, key not shown; no AI_* -> no [ai] line).
+- **D export cancel:** logged as tech debt **TD-V20-EXPORT-CANCEL**: `cancelExport` (packages/server/src/lib/exportRunner.ts:272) only aborts the client; the Kinetica job continues until finished. Fix by tag/find/cancel via /admin/alter/jobs (S7.6 mechanism). Low priority given 20k-row batches; the snapshot MV build is the long step.

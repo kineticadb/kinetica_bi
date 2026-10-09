@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: milestone-complete
-stopped_at: "v1.26 shipped (2026-10-08); next /gsd:new-milestone"
-last_updated: "2026-10-08T18:00:00.000Z"
+status: in-progress
+stopped_at: "Phase 133 complete (2026-10-09); next Phase 134 and 135 (parallel)"
+last_updated: "2026-10-09T18:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards star
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 133 of 133-142 (not started)
+Phase: 133 complete — next: 134 ∥ 135
 Plan: —
-Status: Ready to plan
-Last activity: 2026-10-09 — Phase 133 context gathered
+Status: Phase 133 complete
+Last activity: 2026-10-09 — Phase 133 executed; spikes approved
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -46,7 +46,14 @@ Last activity: 2026-10-09 — Phase 133 context gathered
 
 **Phase 133 context gathered 2026-10-09** (`phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-CONTEXT.md`): snapshot-based column check with clear error + audit of all column-interpolating routes; bad AI config → AI disabled, app still starts; S2 proxy deferred to 137; S7 as non-admin user; S1 fallback = dv live only after Keep; spikes pause for operator review.
 
-**Next: `/gsd:plan-phase 133` (research-phase runs first: S1, S3).**
+**Phase 133 outcomes (2026-10-09):** SSYNC-F6 column guard landed (residuals in `133-COLUMN-AUDIT.md`); `packages/shared` contract + AI env config done. Spikes approved (`133-SPIKES.md`): S1 ad-hoc dv path viable, no fallback; S2 SSE over POST (nginx deferred to 137); S3 subset = bar, line, pie, table, bignumber, records, map (AI adds/edits heatmap layers only; AI-F12 defers the rest); S7 fully app-side SQL guard, tag/find/cancel for jobs.
+
+**Pending from Phase 133:**
+- Quick task (`/gsd:quick`) for `defect-dv-combination-filter-view.md` (dv-backed map layer stuck OVER THRESHOLD; also Unlimited-still-blank, check `useDynamicViewMaterializeChain.ts` no_filter fast-path) — must land before Phase 138/139.
+- TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
+- Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
+
+**Next: `/gsd:plan-phase 134` and `/gsd:plan-phase 135` (parallel).**
 
 **Open blockers:** none.
 

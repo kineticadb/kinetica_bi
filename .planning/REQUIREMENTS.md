@@ -11,7 +11,7 @@
 
 ### Safety foundations
 
-- [ ] **AISAFE-V20-01**: `POST /api/filter/materialize` rejects any column that does not exist on the target table or view (closes `SSYNC-F6`). Lands before any AI filter or dynamic-view tool.
+- [x] **AISAFE-V20-01**: `POST /api/filter/materialize` rejects any column that does not exist on the target table or view (closes `SSYNC-F6`). Lands before any AI filter or dynamic-view tool.
 - [ ] **AISAFE-V20-02**: Every AI-proposed change passes one server-side gateway — request shape, allow-list, the user's permissions, the live table schema — before reaching the browser. A change that fails any check is rejected and never applied.
 - [ ] **AISAFE-V20-03**: The AI never exceeds the asking user's rights: it sees only tables the user can see and proposes only changes the user's role allows.
 - [ ] **AISAFE-V20-04**: AI dynamic views are a structured description (table, columns, filters, grouping, aggregates, sort, limit) that the server compiles to SQL. The model never submits raw SQL.
@@ -33,9 +33,9 @@
 - [ ] **AIACT-V20-01**: The AI can add a visualization.
 - [ ] **AIACT-V20-02**: The AI can remove a visualization.
 - [ ] **AIACT-V20-03**: The AI can edit an existing visualization's settings (chart type, metric, group-by, sort; colors only via theme tokens, never hex).
-- [ ] **AIACT-V20-04**: The AI can add a map layer.
+- [ ] **AIACT-V20-04**: The AI can add a heatmap map layer (other layer types: AI-F12).
 - [ ] **AIACT-V20-05**: The AI can remove a map layer.
-- [ ] **AIACT-V20-06**: The AI can edit a map layer's style or render mode (e.g. raster, heatmap, class-break).
+- [ ] **AIACT-V20-06**: The AI can edit a heatmap map layer's style (other layer types: AI-F12).
 - [ ] **AIACT-V20-07**: The AI can add a session-only dynamic view and point widgets or layers at it; map tiles follow.
 - [ ] **AIACT-V20-08**: The AI can remove a dynamic view.
 - [ ] **AIACT-V20-09**: The AI can apply and clear filters through the existing filter path; charts, records tables and map tiles narrow exactly as they would after a click.
@@ -59,7 +59,7 @@
 
 ### Provider
 
-- [ ] **AIPRV-V20-01**: An admin sets the AI provider, endpoint, model and key through env. AI is off by default, and the app behaves exactly as today without it.
+- [x] **AIPRV-V20-01**: An admin sets the AI provider, endpoint, model and key through env. AI is off by default, and the app behaves exactly as today without it.
 - [ ] **AIPRV-V20-02**: The OpenAI-compatible provider works end to end, proven live by the operator on **Gemini** (Google AI Studio).
 - [ ] **AIPRV-V20-03**: The same provider is proven live on one named **local open model** (Ollama).
 - [ ] **AIPRV-V20-04**: A Claude provider exists and is unit-tested, documented as not live-verified.
@@ -89,6 +89,7 @@ Deferred to a future release. Tracked but not in the current roadmap.
 - **AI-F9**: Plan-then-approve mode (propose changes before applying).
 - **AI-F10**: Thumbs up/down feedback on answers.
 - **AI-F11**: Live verification of the Claude provider (needs an Anthropic key).
+- **AI-F12**: The AI can add and edit raster, class-break and track map layers.
 
 ## Out of Scope
 
@@ -107,7 +108,7 @@ Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AISAFE-V20-01 | Phase 133 | Pending |
+| AISAFE-V20-01 | Phase 133 | Complete |
 | AISAFE-V20-02 | Phase 135 | Pending |
 | AISAFE-V20-03 | Phase 135 | Pending |
 | AISAFE-V20-04 | Phase 139 | Pending |
@@ -140,7 +141,7 @@ Which phases cover which requirements.
 | AISES-V20-07 | Phase 134 | Pending |
 | AIGEN-V20-01 | Phase 142 | Pending |
 | AIGEN-V20-02 | Phase 142 | Pending |
-| AIPRV-V20-01 | Phase 133 | Pending |
+| AIPRV-V20-01 | Phase 133 | Complete |
 | AIPRV-V20-02 | Phase 142 | Pending |
 | AIPRV-V20-03 | Phase 142 | Pending |
 | AIPRV-V20-04 | Phase 135 | Pending |
@@ -159,4 +160,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-08 after roadmap creation*
+*Last updated: 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*

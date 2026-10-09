@@ -48,7 +48,7 @@
 
 ### Phases
 
-- [ ] **Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes** — close the column-interpolation hole; shared zod contract; env fail-fast; spikes S1/S2/S3/S7 decided
+- [x] **Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes** — close the column-interpolation hole; shared zod contract; AI env validated at startup; spikes S1/S2/S3/S7 decided
 - [ ] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
 - [ ] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
 - [ ] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
@@ -65,28 +65,28 @@
 ### Phase Details
 
 ### Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes
-**Goal:** The column-interpolation hole is closed, the shared AI contract exists for web and server, AI env config fails fast, and the risky unknowns have recorded decisions.
+**Goal:** The column-interpolation hole is closed, the shared AI contract exists for web and server, AI env config is validated at startup (bad config disables AI; the app still starts), and the risky unknowns have recorded decisions.
 **Depends on:** — (first phase)
 **Requirements:** AISAFE-V20-01, AIPRV-V20-01
 **Research flag:** yes (S1 ad-hoc dv materialize, S3 per-type validators; also S2, S7)
 **Success Criteria:**
-1. `POST /api/filter/materialize` rejects a column that does not exist on the target table or view, with no SQL executed; a valid column works as before.
+1. `POST /api/filter/materialize` rejects a column that does not exist on the target table or view, with no materialize statement executed (dv path: one read-only column lookup); a valid column works as before.
 2. With no `AI_*` env set the app behaves exactly as today; with AI enabled but misconfigured, the app still starts with AI disabled and the server log names the bad setting (never the key value) — no live provider call at boot (133-CONTEXT D-06/D-07).
 3. The `packages/shared` contract builds and is imported by both web and server; an invalid op is rejected by the shared schema.
 4. S1, S3 and S7 (as the operator's non-admin Kinetica user) and S2 (against `:4000`; proxy deferred to 137) each have a recorded decision and fallback in `133-SPIKES.md`, approved by the operator at a checkpoint before 134/135 start.
 **Plans:** 10 plans
 
 Plans:
-- [ ] 133-01-PLAN.md — column audit doc + pure columnGuard helper + filter/materialize table-path & spatial guard, red-before specs, fixture re-seed (wave 1)
-- [ ] 133-02-PLAN.md — guard exports + info/query (spatial cols, schema/table match, dv-view Tier B); export/info fixture re-seed (wave 2)
-- [ ] 133-03-PLAN.md — guard quantile/top-values/column-stats (assertSchemaTableColumn); DELETE ?viewName= own-prefix guard (wave 3)
-- [ ] 133-04-PLAN.md — packages/shared: move widgetAction/actionAllowList, AiOp union, allow-list v3, web shims (wave 1)
-- [ ] 133-05-PLAN.md — server consumes @kinetica-bi/shared; build:server = tsc --noEmit + esbuild --alias; Dockerfile, README, CI shared job (wave 2)
-- [ ] 133-06-PLAN.md — AI_* env config: pure parseAiConfig, degrade-to-disabled boot log, test-env leak guard, .env.example, bundle check (wave 4)
-- [ ] 133-07-PLAN.md — spikes S2 (SSE on :4000) + S3 (per-type validators); create 133-SPIKES.md (wave 1)
-- [ ] 133-08-PLAN.md — spikes S1 + S7 live as the operator's non-admin Kinetica user (operator checkpoint) (wave 2)
-- [ ] 133-09-PLAN.md — dv-path column guard using the S1-decided column source + cache (wave 5)
-- [ ] 133-10-PLAN.md — phase gates, D-15 operator review of 133-SPIKES.md + live guard check, STATE/REQUIREMENTS/ROADMAP bookkeeping (wave 6)
+- [x] 133-01-PLAN.md — column audit doc + pure columnGuard helper + filter/materialize table-path & spatial guard, red-before specs, fixture re-seed (wave 1)
+- [x] 133-02-PLAN.md — guard exports + info/query (spatial cols, schema/table match, dv-view Tier B); export/info fixture re-seed (wave 2)
+- [x] 133-03-PLAN.md — guard quantile/top-values/column-stats (assertSchemaTableColumn); DELETE ?viewName= own-prefix guard (wave 3)
+- [x] 133-04-PLAN.md — packages/shared: move widgetAction/actionAllowList, AiOp union, allow-list v3, web shims (wave 1)
+- [x] 133-05-PLAN.md — server consumes @kinetica-bi/shared; build:server = tsc --noEmit + esbuild --alias; Dockerfile, README, CI shared job (wave 2)
+- [x] 133-06-PLAN.md — AI_* env config: pure parseAiConfig, degrade-to-disabled boot log, test-env leak guard, .env.example, bundle check (wave 4)
+- [x] 133-07-PLAN.md — spikes S2 (SSE on :4000) + S3 (per-type validators); create 133-SPIKES.md (wave 1)
+- [x] 133-08-PLAN.md — spikes S1 + S7 live as the operator's non-admin Kinetica user (operator checkpoint) (wave 2)
+- [x] 133-09-PLAN.md — dv-path column guard using the S1-decided column source + cache (wave 5)
+- [x] 133-10-PLAN.md — phase gates, D-15 operator review of 133-SPIKES.md + live guard check, STATE/REQUIREMENTS/ROADMAP bookkeeping (wave 6)
 
 ### Phase 134: Session Layer Engine (client, no LLM)
 **Goal:** A per-user, in-memory session layer applies AI-style changes as a unit, undoes them answer by answer, and reverts cleanly — driven by a test harness, no AI involved.
@@ -120,10 +120,13 @@ Plans:
 **Requirements:** AIACT-V20-01, AIACT-V20-02, AIACT-V20-03, AIACT-V20-04, AIACT-V20-05, AIACT-V20-06, AIACT-V20-10, AIACT-V20-11
 **Research flag:** standard (after S3)
 **Success Criteria:**
-1. Scripted ops add, remove and edit a visualization, and add, remove and restyle a map layer (raster, heatmap, class-break); each is undoable.
+1. Scripted ops add, remove and edit a visualization, and add, remove and restyle a heatmap map layer; each is undoable.
 2. A nonexistent table or column is repaired within 2 attempts or refused, never applied; the model cannot emit hex colours.
 3. New widgets do not overlap and the AI can resize and reorder; layout sensibility is operator human-verify.
-4. An AI-added or restyled layer renders tiles and legend correctly (both `buildWmsParams` sites; operator human-verify in light and dark).
+4. An AI-added or restyled heatmap layer renders tiles and legend correctly (both `buildWmsParams` sites; operator human-verify in light and dark).
+
+**Map test plan (operator, 2026-10-09):** automated — validator round-trip against the operator's real saved map/heatmap-layer configs + invalid cases, and buildWmsParams snapshot for AI heatmap layers on BOTH MapChartRenderer sites; operator-run — WMS GetMap render check (HTTP 200 image/png, non-blank) like spike S1.4; human-verify — light/dark visual. Optional later: claude-in-chrome screenshots (no new dependency).
+**Scope note (operator, 2026-10-09):** v2.0 AI widget subset is bar, line, pie, table, bignumber, records and map; the AI adds/edits heatmap map layers only (others: AI-F12). Map widget and heatmap layer config get hand-written validators in this phase.
 **Plans:** TBD
 
 ### Phase 137: AI Widget & Streaming UI
@@ -204,7 +207,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 133. AI Contract, Shared Package, SSYNC-F6 Fix & Spikes | 0/? | Not started | - |
+| 133. AI Contract, Shared Package, SSYNC-F6 Fix & Spikes | 10/10 | Complete | 2026-10-09 |
 | 134. Session Layer Engine | 0/? | Not started | - |
 | 135. Server Gateway, Agent Loop, Providers & Governance Core | 0/? | Not started | - |
 | 136. Structural & Edit Ops | 0/? | Not started | - |
