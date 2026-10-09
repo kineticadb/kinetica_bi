@@ -731,9 +731,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
 
       // dvStatus enrichment (Phase 44 follow-up)
       let dvStatus: DvLayerStatus | undefined;
+      let dvReason: ResolvedLegendLayer["dvReason"];
       if (isDv) {
         const dvEntry = dvViews[dvId!];
         dvStatus = dvEntry ? dvEntry.status : "absent";
+        dvReason = dvEntry?.reason;
       }
 
       // COMM-V118-02: per-layer filter-scope indicator.
@@ -778,7 +780,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
         totalCount: summary.totalCount,
       };
 
-      return { ...entry, dvStatus, filterSummary };
+      return { ...entry, dvStatus, dvReason, filterSummary };
     });
     // legendKey is the read-trigger; includedLayerIdsForLegend is the filter trigger;
     // dynamicViewsKey is the dv-state re-render trigger.
