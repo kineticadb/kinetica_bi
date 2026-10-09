@@ -1,3 +1,4 @@
+// Phase 133: moved from packages/web/src/lib — shared by web and server via @kinetica-bi/shared. Pure: zod only.
 /**
  * Phase 58 Plan 01 / Phase 58.1 Plan 01 — Versioned allow-list for the widget-action engine.
  *
