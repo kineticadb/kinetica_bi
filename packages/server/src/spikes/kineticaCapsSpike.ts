@@ -179,42 +179,61 @@ try {
     }
   } else record("S7.5 case folding", "SKIPPED", "SPIKE_FILTER_COLUMN unset");
 
-  // S7.6 tag -> abort -> find -> explicit cancel, as the NON-ADMIN user (operator design 2026-10-09:
-  // client abort does not stop a Kinetica job; tag the SQL with a unique comment and kill the job).
+  // S7.6 tag -> find (poll while running) -> explicit cancel, as the NON-ADMIN user.
+  // Run 1 (2026-10-09) listed jobs=0 ~3 s after submit: either the query had already finished or a
+  // non-admin cannot see jobs. This version polls from submit time and times the query itself.
   {
     const TAG = `kbi-spike-${r6}`;
     const tagged = `/* ${TAG} */ ${S76_SQL}`;
     const ac6 = new AbortController();
-    const pending = sql(tagged, { signal: ac6.signal });
-    await new Promise((r) => setTimeout(r, 2000));
-    ac6.abort();
-    await pending;
-    await new Promise((r) => setTimeout(r, 1000));
-
-    const list = await api("/admin/show/jobs", { options: {} });
-    if (!list.ok) {
-      record("S7.6a list jobs (/admin/show/jobs)", "DENIED", list.message ?? "");
-    } else {
+    const t0 = Date.now();
+    let doneAt = 0;
+    const pending = sql(tagged, { signal: ac6.signal }).then((r) => { doneAt = Date.now(); return r; });
+    let seenAny = 0, seenMine = 0, foundId: unknown = undefined, foundField = "", sample = "";
+    let listErr = "";
+    while (!doneAt && Date.now() - t0 < 20_000 && foundId === undefined) {
+      await new Promise((r) => setTimeout(r, 500));
+      const list = await api("/admin/show/jobs", { options: {} });
+      if (!list.ok) { listErr = list.message ?? "denied"; break; }
       const d = list.data ?? {};
       const ids = (d.job_id as unknown[]) ?? [];
-      const cols = Object.keys(d);
-      record("S7.6a list jobs (/admin/show/jobs)", "PASS", `jobs=${ids.length} fields=${JSON.stringify(cols)}`);
-      const texts = cols.filter((c) => Array.isArray(d[c]) && (d[c] as unknown[]).some((v) => typeof v === "string" && v.includes(TAG)));
-      const idx = texts.length ? (d[texts[0]] as unknown[]).findIndex((v) => typeof v === "string" && v.includes(TAG)) : -1;
-      if (idx < 0) {
-        const mine = (d.auth_id as unknown[] | undefined)?.map((a, i) => (a === USER ? i : -1)).filter((i) => i >= 0) ?? [];
-        record("S7.6b find tagged job", "FAIL", `tag not visible in any field; jobs for ${USER}: ${JSON.stringify(mine.map((i) => ids[i]))} (job may have finished, or the comment is stripped)`);
+      seenAny = Math.max(seenAny, ids.length);
+      const auth = (d.auth_id as unknown[]) ?? [];
+      seenMine = Math.max(seenMine, auth.filter((x) => x === USER).length);
+      for (const c of Object.keys(d)) {
+        const col = d[c];
+        if (!Array.isArray(col)) continue;
+        const i = col.findIndex((v) => typeof v === "string" && v.includes(TAG));
+        if (i >= 0) { foundId = ids[i]; foundField = c; break; }
+      }
+      if (!sample && ids.length) {
+        const qt = (d.query_text as unknown[]) ?? [];
+        sample = ids.map((id, i) => `${String(id)}:${String(auth[i])}:${String(qt[i] ?? "").slice(0, 60)}`).join(" | ").slice(0, 400);
+      }
+    }
+    const runningFor = (doneAt || Date.now()) - t0;
+    if (listErr) {
+      record("S7.6a list jobs (/admin/show/jobs)", "DENIED", listErr);
+    } else {
+      record("S7.6a list jobs while query runs", "PASS",
+        `query ${doneAt ? "finished" : "still running"} after ${runningFor} ms; max jobs visible=${seenAny}, max own=${seenMine}${sample ? "; sample=" + sample : ""}`);
+      if (foundId === undefined) {
+        record("S7.6b find tagged job", "FAIL",
+          doneAt ? `query finished in ${runningFor} ms before it was seen (raise SPIKE_S76_SQL)` :
+          seenMine ? "own jobs visible but tag not found (comment likely stripped from query_text)" :
+          "query still running but no own job visible (non-admin likely cannot see jobs)");
       } else {
-        const jobId = ids[idx];
-        record("S7.6b find tagged job", "PASS", `job_id=${String(jobId)} matched in field "${texts[0]}"`);
-        const cancel = await api("/admin/alter/jobs", { job_ids: [jobId], action: "cancel", options: {} });
+        record("S7.6b find tagged job", "PASS", `job_id=${String(foundId)} via field "${foundField}" after ${Date.now() - t0} ms`);
+        const cancel = await api("/admin/alter/jobs", { job_ids: [foundId], action: "cancel", options: {} });
         record("S7.6c cancel own job (/admin/alter/jobs)", cancel.ok ? "PASS" : "DENIED", cancel.ok ? JSON.stringify(cancel.data).slice(0, 300) : (cancel.message ?? ""));
         await new Promise((r) => setTimeout(r, 2000));
         const again = await api("/admin/show/jobs", { options: {} });
-        const still = again.ok && ((again.data?.job_id as unknown[]) ?? []).some((j) => String(j) === String(jobId));
+        const still = again.ok && ((again.data?.job_id as unknown[]) ?? []).some((j) => String(j) === String(foundId));
         record("S7.6d job gone after cancel", again.ok && !still ? "PASS" : "FAIL", again.ok ? (still ? "still listed" : "not listed") : (again.message ?? ""));
       }
     }
+    ac6.abort();
+    await pending;
   }
 } finally {
   const drops = await Promise.all([V, V2, W].map((n) => sql(`DROP TABLE IF EXISTS ${n}`)));
