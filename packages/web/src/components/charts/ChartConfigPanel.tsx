@@ -19,6 +19,7 @@ import {
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
+import { AGGREGATIONS } from "../../lib/aggregationLabels";
 import { buildBucketExpr } from "../../lib/heatmapBucket";
 
 /**
@@ -80,17 +81,6 @@ type Props = {
   onSave: (payload: { title: string; config: Record<string, unknown> }) => void;
   onCancel: () => void;
 };
-
-const AGGREGATIONS = [
-  { value: "SUM", label: "Sum" },
-  { value: "AVG", label: "Average" },
-  { value: "MIN", label: "Min" },
-  { value: "MAX", label: "Max" },
-  { value: "COUNT", label: "Count" },
-  { value: "COUNT_DISTINCT", label: "Count Distinct" },
-  { value: "STDDEV", label: "Std Deviation" },
-  { value: "VARIANCE", label: "Variance" },
-];
 
 const NUMERIC_TYPES = new Set([
   "int", "integer", "int8", "int16", "int32", "int64",
@@ -349,11 +339,28 @@ const ChartConfigPanel = ({
   // columns are POSITIONAL (col1 = X axis, col2 = Y axis) and a third would have no
   // meaning on a 2-D matrix — hence the type-specific cap below.
   const isHeatmap = widgetType === "heatmap";
-  const usesMultiColumnGroupBy = isBar || isTable || isHeatmap;
+  // Phase 132: Line uses the same builder; extra columns become one line per series value,
+  // column 1 is the x-axis and is required.
+  const isLine = widgetType === "line";
+  const usesMultiColumnGroupBy = isBar || isTable || isHeatmap || isLine;
   // Soft cap on the number of group-by columns in the builder (distinct from maxBarGroupBySeriesCap
   // which caps SERIES at render time). 6 columns is a reasonable UI ceiling before the
   // GROUP BY becomes unreadable — not an env-driven value per CONTEXT.md.
   const MAX_BAR_GROUP_BY_COLUMNS = isHeatmap ? 2 : 6;
+  // Phase 132 (D-02/D-05): the builder's seeded column list, hoisted so Apply can validate it.
+  // Legacy single-column widgets seed from `groupByColumn`; a Line with no group-by seeds one
+  // blank "X axis" row so the REQUIRED control (and its error) is visible.
+  const storedGroupByColumns = draft.groupByColumns as string[] | undefined;
+  const effectiveGroupByColumns: string[] =
+    storedGroupByColumns && storedGroupByColumns.length > 0
+      ? storedGroupByColumns
+      : draft.groupByColumn
+        ? [draft.groupByColumn as string]
+        : isLine
+          ? [""]
+          : [];
+  // Phase 132 (D-02): Group By column 1 is required for the Line Chart.
+  const lineMissingXColumn = isLine && requiresGroupBy && (effectiveGroupByColumns[0] ?? "") === "";
 
   // Build the SQL preview from structured fields
   const generatedSql = useMemo(() => {
@@ -432,13 +439,16 @@ const ChartConfigPanel = ({
       // A heatmap needs one row per (x,y) INTERSECTION, so it validates the
       // operator's choice against its OWN ladder (which defaults to the cap)
       // rather than the shared group ladder. ORDER BY value DESC is retained so
-      // an over-cap grid keeps its hottest cells; HeatmapRenderer reads the same
-      // config.limit to decide when to show its truncation notice, so the two
-      // must stay in agreement.
+      // an over-cap grid keeps its hottest cells; AggregatedWidgetRenderer bumps this
+      // trailing LIMIT by one at fetch time to detect real truncation (Phase 127),
+      // so it must stay the LAST clause.
       const heatmapLimit = HEATMAP_LIMITS.includes(rawLimitM)
         ? rawLimitM
         : HEATMAP_CELL_LIMIT;
-      const sqlLimit = isBar
+      // Phase 132: a multi-series line expands categories x series like bar (else it is starved at
+      // LIMIT 100 and shows false gaps). Only with >= 2 NON-BLANK columns: ["region", ""] stays
+      // the byte-identical single-column SQL.
+      const sqlLimit = (isBar || (isLine && cols.length >= 2))
         ? baseLimit * useAuthStore.getState().maxBarGroupBySeriesCap * 2
         : isHeatmap
           ? heatmapLimit
@@ -493,7 +503,7 @@ const ChartConfigPanel = ({
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
     return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
-  }, [usesAggregation, requiresGroupBy, isHeatmap, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
     return (
@@ -821,7 +831,7 @@ const ChartConfigPanel = ({
                 </label>
                 )}
 
-                {/* Group By — bar and the Data Table get the N-column ordered builder (Phase 102
+                {/* Group By — bar, line (Phase 132) and the Data Table get the N-column ordered builder (Phase 102
                     BARGRP-V119-01; table added later); other grouped chart types keep the single
                     Group By select unchanged. Bar turns extra columns into colored series; the
                     table renders them as extra columns. */}
@@ -829,15 +839,14 @@ const ChartConfigPanel = ({
                   // Backward-compat: legacy single-column widgets carry `groupByColumn` but no
                   // `groupByColumns` array — seed the builder from it so their column still shows
                   // (and is captured into `groupByColumns` on the first edit).
-                  const stored = draft.groupByColumns as string[] | undefined;
-                  const groupByColumns = stored && stored.length > 0
-                    ? stored
-                    : (draft.groupByColumn ? [draft.groupByColumn as string] : []);
+                  const groupByColumns = effectiveGroupByColumns;
                   // Bar keeps its primary/series wording; the table's columns are all equal;
                   // heatmap's two are the matrix axes, so they get the axis names directly.
                   const labelFor = (idx: number) =>
                     isHeatmap
                       ? (idx === 0 ? "X Axis" : "Y Axis")
+                      : isLine
+                      ? (idx === 0 ? "X axis" : `Series dimension ${idx}`)
                       : isBar
                       ? (idx === 0 ? "Primary group (x-axis)" : `Series dimension ${idx}`)
                       : `Group column ${idx + 1}`;
@@ -873,6 +882,7 @@ const ChartConfigPanel = ({
                             className="ghost-sm"
                             type="button"
                             disabled={dvColumnsMissing}
+                            aria-label="Remove column"
                             onClick={() => {
                               const next = groupByColumns.filter((_, i) => i !== idx);
                               set("groupByColumns", next);
@@ -894,16 +904,23 @@ const ChartConfigPanel = ({
                       <span className="config-hint">
                         {isHeatmap
                           ? "First column = X axis; second column = Y axis. The metric below colors each cell."
+                          : isLine
+                          ? `First column = x-axis categories (required); the rest become colored lines (${MAX_BAR_GROUP_BY_COLUMNS} column max).`
                           : isBar
                           ? `First column = x-axis categories; the rest become colored series (${MAX_BAR_GROUP_BY_COLUMNS} column max).`
                           : `Rows are grouped by every selected column; each becomes a column in the table (${MAX_BAR_GROUP_BY_COLUMNS} column max).`}
                       </span>
+                      {lineMissingXColumn && (
+                        <span className="config-hint" role="alert" style={{ color: "var(--danger)" }}>
+                          Group By column 1 is required: choose the column for the x-axis.
+                        </span>
+                      )}
                     </div>
                   );
                 })()}
 
                 {/* Single Group By for grouped charts without the multi-column builder; hidden
-                    for bignumber (requiresGroupBy false), bar, and the Data Table. */}
+                    for bignumber (requiresGroupBy false), bar, line, and the Data Table. */}
                 {requiresGroupBy && !usesMultiColumnGroupBy && (
                   <label className="ds-field">
                     <span className="ds-field-label">Group By</span>
@@ -960,7 +977,7 @@ const ChartConfigPanel = ({
                     </select>
                     <span className="config-hint">
                       {isHeatmap
-                        ? "Maximum number of cells (x × y intersections) to return. The grid warns when a result reaches this limit."
+                        ? "Maximum number of cells (x × y intersections) to return. The grid warns when more cells exist than this limit."
                         : "Maximum number of groups to return"}
                     </span>
                   </label>
@@ -1051,8 +1068,8 @@ const ChartConfigPanel = ({
       <div className="config-panel-actions">
         <button
           className="btn-primary btn-sm"
-          disabled={!customPanelValid}
-          title={!customPanelValid ? "Add at least 2 break rows" : undefined}
+          disabled={!customPanelValid || lineMissingXColumn}
+          title={lineMissingXColumn ? "Group By column 1 is required" : (!customPanelValid ? "Add at least 2 break rows" : undefined)}
           onClick={() => {
             // Phase 10 DRILL-02 + RESEARCH.md Pitfall 2: persist drillDownColumn AND
             // drillDownColumnType at save time so renderers don't need TableDto.columns

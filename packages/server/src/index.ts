@@ -14,8 +14,19 @@ import {
   verifyKineticaCredentials,
   type AuthedRequest,
 } from "./auth";
-import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable } from "./kinetica";
+import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
+// v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
+// diff contract for the on-demand schema-check route.
+import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
+import { diffResult, baselineRequiredResult, tableMissingResult } from "./lib/schemaDiff";
+// v1.25 Phase 125 (SSYNC-V125-13/-14/-15/-16/-17): the apply transaction -- the milestone's
+// only write path. The route below it stays thin; the write lives in the lib.
+import { applySchemaSync } from "./lib/schemaApply";
+import type { ColumnFingerprintMap } from "./lib/schemaFingerprint";
+// v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): the operator-facing impact report.
+import { buildImpactReport } from "./lib/schemaImpact";
+import type { SchemaCheckResponse } from "./lib/schemaImpact";
 import { buildFilterViewName } from "./lib/viewNaming";
 import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
@@ -48,6 +59,8 @@ import {
   KineticaPermissionError,
   KineticaUpstreamError,
 } from "./kineticaErrors";
+import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
+import { getExportLimits } from "./lib/exportCaps";
 import { createSession, deleteSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
 import {
   createDashboard,
@@ -97,6 +110,15 @@ import {
   createCustomMetric,
   updateCustomMetric,
   deleteCustomMetric,
+  // v1.25 Phase 122 (SSYNC-V125-05): SELECT-only stored-baseline accessor for the schema-check route.
+  getTableColumnsFingerprint,
+  // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): SELECT-only all-dashboards loader for the
+  // impact report's ColumnRefsInput.
+  loadColumnRefsInput,
+  // v1.25 Phase 125 (SSYNC-V125-16/-17): the sync-history read + per-entry delete accessors.
+  listTableSyncHistory,
+  getTableSyncHistoryEntry,
+  deleteTableSyncHistoryEntry,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -126,6 +148,7 @@ import type { Permission } from "./lib/permissions";
 import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboardGrant } from "./lib/dashboardAccessDb";
 // v1.16 Phase 81 (BRANDFND-02, SECA-V116-01): branding deps — multer upload, magic-byte
 // type detection, jsdom DOM environment, DOMPurify SVG sanitization.
+import { registerExportRoutes } from "./exportRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -187,6 +210,16 @@ export const createApp = async (): Promise<express.Express> => {
   // Read ONCE at boot, fallback+warn on invalid (mirrors the TTL / combination-ceiling knobs).
   // Default 12 matches the web MAX_SERIES timeline cap + auth-store default.
   const MAX_BAR_GROUP_BY_SERIES = readPositiveIntEnv("MAX_BAR_GROUP_BY_SERIES", 12);
+
+  // ---- Phase 127 (EXPRT-V126-01, D-07): admin hard ceiling on the in-browser CSV download. Read ONCE at boot, fallback+warn. Default 100,000 = the per-widget csvDownloadRowCap default and the Phase 131 hand-off point to the background export.
+  const CSV_INBROWSER_MAX_ROWS = readPositiveIntEnv("CSV_INBROWSER_MAX_ROWS", 100000);
+  // Phase 127 (D-12): per-query max on /me so the records table clamps its page size and paging never skips rows.
+  const MAX_ROWS_PER_QUERY = getRowLimitConfig().maxRowsPerQuery;
+  // Phase 130 (EXPRT-V126-15, D-18): admin export caps for the Phase 131 dialog. Unset caps are null. Read once.
+  const EXPORT_LIMITS = getExportLimits();
+
+  // Phase 127 caller audit: INFORMATION_SCHEMA lists feed un-paginated dropdowns; pin an explicit limit so they never inherit an admin-raised KINETICA_MAX_ROWS_PER_QUERY (and are still clamped by it if lowered).
+  const DISCOVERY_ROW_LIMIT = 20_000;
 
   // ---- Phase 94 (FSCOPE-V118-03): deploy-time disable switch for the dv filter-scope UI ----
   // Boolean — absent or anything but "true" → enabled (default, UI shown). "true" → UI hidden for dv-bound vizs.
@@ -426,7 +459,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY, exportLimits: EXPORT_LIMITS });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
@@ -1222,11 +1255,21 @@ export const createApp = async (): Promise<express.Express> => {
   //   GET  /api/kinetica/*           — schema/table/column discovery; auth-only per CONTEXT.
   //   GET  /api/tables               — app table registry reads.
   //   GET  /api/tables/:id           — single table read.
+  //   POST   /api/exports            — start a background export of a records widget; gated by
+  //                                    canViewDashboard on the widget's dashboard (EXPRT-V126-17).
+  //   GET    /api/exports            — the caller's own export history.
+  //   GET    /api/exports/:id        — status; ownership-checked (404 for not-yours).
+  //   POST   /api/exports/:id/cancel — cancel own running export.
+  //   DELETE /api/exports/:id        — delete own export (cancels first if running).
+  //   GET    /api/exports/:id/download — own COMPLETE export only, Range-resumable (Plan 129-03).
   //
   // If adding a new route, ask: "Can an analyst (dashboards:view only) need this?"
   //   YES → place here with requireAuth (or requireAuth + requireConfig) only.
   //   NO  → place in the guarded section with requirePermission(...).
   // ═══════════════════════════════════════════════════════════════════════════════
+
+  // v1.26 Phase 129: background export routes (requireAuth only — see boundary list above).
+  registerExportRoutes(app);
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.
@@ -2447,6 +2490,232 @@ export const createApp = async (): Promise<express.Express> => {
     return res.status(204).send();
   });
 
+  // v1.25 Phase 122 (SSYNC-V125-02/-03/-04/-05): on-demand schema check for ONE registered
+  // table. READS ONLY — no INSERT, no UPDATE, no DELETE, not even a baseline write. Phase 125's
+  // apply owns every write; phase success criterion 4 requires the five config tables to be
+  // byte-identical after a check.
+  //
+  // ONE Kinetica call, /show/table, with no_error_if_not_exists. That option is the whole
+  // three-outcome design: WITHOUT it a missing table returns HTTP 400 status:"ERROR", which
+  // kinetica.ts maps to KineticaUpstreamError — the SAME class a connection failure throws — so
+  // "your table was deleted" and "the network blipped" become indistinguishable. WITH it, a
+  // missing table is HTTP 200 / status:"OK" / table_names: [], which no failure can imitate.
+  // Verified live: 122-SPIKE-NOTES.md Q5.
+  //
+  // INFORMATION_SCHEMA is deliberately NOT consulted: it reports character(256) for char1,
+  // char4 and char16 alike (spike Q4), so it cannot contribute anything the fingerprint may
+  // trust, and a second source of truth is how the outcomes get confused again later.
+  //
+  // NO try/catch. The existing discovery route's best-effort fallback (index.ts ~2607) would
+  // report every temporal column as retyped timestamp -> bigint from an intermittent upstream
+  // failure. Here a thrown typed error IS the "could not reach Kinetica" outcome, and
+  // errorMiddleware turns it into 401/403/502 — structurally incapable of being a 200 finding.
+  // v1.25 Phase 124 route-gate amendment (SSYNC-V125-06/-09/-10/-11/-12, operator decision
+  // 2026-09-24): the impact report (wired below) names widgets and dashboards across EVERY
+  // dashboard, deliberately -- a report scoped to what the caller can already see would
+  // under-report. datasets:manage alone does not govern cross-dashboard visibility
+  // (canViewDashboard bypasses on dashboards:manage_access, lib/dashboardAccessDb.ts:11, a
+  // DIFFERENT permission), so this route now requires BOTH -- the same AND-gate spread form as
+  // the v1.24 dashboard-import route (:817-818). Adds NO new permission to the catalog.
+  app.get(
+    "/api/tables/:id/schema-check",
+    requireConfig,
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    asyncHandler(async (req, res) => {
+      const id = Number(req.params.id);
+      const table = getTable(id);
+      if (!table) return res.status(404).json({ error: "Table not found." });
+
+      const qualified = `${table.schema}.${table.name}`;
+
+      const body = await kineticaShowTable(req as AuthedRequest, qualified, {
+        route: "GET /api/tables/:id/schema-check",
+        op: "DISCOVERY",
+        showOptions: { no_error_if_not_exists: "true" },
+      });
+
+      const presence = tablePresence(body);
+      if (presence === "unreadable") {
+        throw new KineticaUpstreamError(
+          "Kinetica returned an unreadable /show/table response; the schema check could not complete."
+        );
+      }
+      if (presence === "missing") {
+        return res.json(tableMissingResult(qualified));
+      }
+
+      const live = parseColumnFingerprints(body, qualified);
+      if (Object.keys(live).length === 0) {
+        // The table exists but no column types could be read. Reporting a diff here would say
+        // every column was removed — a confidently wrong finding from a degraded response.
+        throw new KineticaUpstreamError(
+          "Kinetica reported the table exists but returned no readable column types; the schema check could not complete."
+        );
+      }
+
+      const stored = parseFingerprintSnapshot(getTableColumnsFingerprint(id));
+      if (!stored) return res.json(baselineRequiredResult(qualified, live));
+
+      const diff = diffResult(qualified, stored, live);
+      // The impact report is attached ONLY to the "diff" outcome. Its ABSENCE is what tells
+      // Phase 126 "not yet run / not applicable" — a baseline_required or table_missing response
+      // carries no `impact` key at all, and an empty report would be indistinguishable from one.
+      if (diff.outcome !== "diff") return res.json(diff); // unreachable; narrows the union
+      const impact = buildImpactReport({
+        check: diff,
+        tableId: id,
+        refsInput: loadColumnRefsInput(id),
+        dashboards: listDashboards().map((d) => ({ id: d.id, name: d.name })),
+      });
+      const response: SchemaCheckResponse = { ...diff, impact };
+      return res.json(response);
+    })
+  );
+
+  // v1.25 Phase 125 (SSYNC-V125-13/-14/-15/-16/-17): apply the refreshed schema. THE FIRST
+  // WRITE ROUTE of this milestone -- 122-124 all carried criteria proving they wrote nothing.
+  //
+  // Gated on datasets:manage AND dashboards:manage_access, the same AND-gate spread as the
+  // check above. A write route must be at least as strict as the read it follows, and the
+  // history entry this creates PERSISTS the impact report, which names widgets and dashboards
+  // across every dashboard -- so the stricter of the two gates is the floor, not a ceiling.
+  //
+  // ONE Kinetica call, /show/table with no_error_if_not_exists, exactly as the check makes.
+  // The re-read is the whole point: the client posts back the fingerprint map its report was
+  // built from, and if Kinetica has moved since, this route REFUSES rather than storing a
+  // snapshot the operator never saw. A history entry must never record a report that fails to
+  // describe what was written.
+  //
+  // NO try/catch, for the same reason the check has none: a thrown typed Kinetica error IS the
+  // "could not reach Kinetica" outcome and errorMiddleware turns it into 401/403/502. A write
+  // route swallowing that would be strictly worse than a read one doing it.
+  //
+  // A breaking change NEVER blocks this route (SSYNC-V125-15). There is no force flag, no
+  // acknowledgement step, and no branch that inspects severity -- the operator decides with
+  // the report in front of them. `stale` and `table_missing` are the only refusals.
+  app.post(
+    "/api/tables/:id/schema-apply",
+    requireConfig,
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    asyncHandler(async (req, res) => {
+      const id = Number(req.params.id);
+      const table = getTable(id);
+      if (!table) return res.status(404).json({ error: "Table not found." });
+
+      // THE most dangerous edge in this phase, and the reason this check precedes the Kinetica
+      // call rather than following it. `isStaleAgainst({}, {})` is false and
+      // `renderColumnsMap({})` is {} -- by design, per 125-02 -- so an empty map reaching
+      // applySchemaSync would be applied happily and would WIPE tables.columns. The lib
+      // deliberately does not defend against it; this route is where that defence lives.
+      const { live: reportedLive } = req.body as { live?: unknown };
+      if (
+        !reportedLive ||
+        typeof reportedLive !== "object" ||
+        Array.isArray(reportedLive) ||
+        Object.keys(reportedLive as object).length === 0
+      ) {
+        return res.status(400).json({
+          error:
+            "Body must include `live`: the column fingerprint map the schema check returned. " +
+            "Re-run the check and apply the result it gave you.",
+        });
+      }
+
+      const qualified = `${table.schema}.${table.name}`;
+      const body = await kineticaShowTable(req as AuthedRequest, qualified, {
+        route: "POST /api/tables/:id/schema-apply",
+        op: "DISCOVERY",
+        showOptions: { no_error_if_not_exists: "true" },
+      });
+
+      const presence = tablePresence(body);
+      if (presence === "unreadable") {
+        throw new KineticaUpstreamError(
+          "Kinetica returned an unreadable /show/table response; nothing was applied."
+        );
+      }
+      if (presence === "missing") {
+        // The message is SPREAD from the check's own tableMissingResult rather than retyped,
+        // so the check and the apply cannot drift into describing the same situation
+        // differently. 409 rather than the check's 200: for a read, "the table is gone" is a
+        // finding; for a write, it is a conflict with current reality that stopped the write.
+        // Note this is NOT applySchemaSync's table_missing arm, which covers an unknown table
+        // ROW -- that one is unreachable here because of the 404 above.
+        return res.status(409).json({ ...tableMissingResult(qualified), tableId: id });
+      }
+
+      const live = parseColumnFingerprints(body, qualified);
+      if (Object.keys(live).length === 0) {
+        throw new KineticaUpstreamError(
+          "Kinetica reported the table exists but returned no readable column types; nothing was applied."
+        );
+      }
+
+      const result = applySchemaSync({
+        tableId: id,
+        table: qualified,
+        live,
+        reportedLive: reportedLive as ColumnFingerprintMap,
+        actor: (req as AuthedRequest).user!.creds.username,
+      });
+
+      // 409 for the two refusals, 200 for applied and no_changes. A refusal is a CONFLICT with
+      // current reality, not a malformed request -- 400 would tell the operator they did
+      // something wrong when they did not.
+      if (result.outcome === "stale" || result.outcome === "table_missing") {
+        return res.status(409).json(result);
+      }
+      return res.json(result);
+    })
+  );
+
+  // v1.25 Phase 125 (SSYNC-V125-16/-17): read one table's sync history. Gated identically to
+  // the apply that writes it -- entries embed the impact report, which names widgets and
+  // dashboards across EVERY dashboard, so a looser gate here would leak exactly what the
+  // check route's Phase 124 widening exists to contain.
+  //
+  // No requireConfig on this route or the delete below: neither touches a Kinetica connection,
+  // matching the column-display-config and custom-metrics routes, which are permission-gated
+  // but not config-gated.
+  //
+  // Phase 126 renders this. `cap` and `droppedCount` are returned so the UI can state "older
+  // entries were dropped" from server-side fact rather than inferring it from entries.length.
+  app.get(
+    "/api/tables/:id/sync-history",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    (req, res) => {
+      const id = Number(req.params.id);
+      if (!getTable(id)) return res.status(404).json({ error: "Table not found." });
+      return res.json(listTableSyncHistory(id));
+    }
+  );
+
+  // Delete ONE entry (ROADMAP criterion 5). The table id in the path is checked against the
+  // entry's own table_id -- an entry id alone would let a caller delete another table's
+  // history through a path that claims otherwise.
+  //
+  // droppedCount is deliberately NOT decremented: it records what the CAP removed, which is a
+  // different fact from how many entries remain. Resetting it here would let the operator
+  // clear one entry and silently stop being told that older ones were lost.
+  app.delete(
+    "/api/tables/:id/sync-history/:entryId",
+    ...requirePermission(PERMISSIONS.DATASETS_MANAGE),
+    ...requirePermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS),
+    (req, res) => {
+      const id = Number(req.params.id);
+      const entryId = Number(req.params.entryId);
+      const entry = getTableSyncHistoryEntry(entryId);
+      if (!entry || entry.table_id !== id) {
+        return res.status(404).json({ error: "Sync history entry not found." });
+      }
+      deleteTableSyncHistoryEntry(entryId);
+      return res.status(204).send();
+    }
+  );
+
   // v1.15 Phase 75 (COLCFG-V115-01): global per-table column display config.
   // READ ungated (requireAuth only) — render surfaces (Phase 77) resolve labels for any viewer.
   app.get("/api/tables/:tableId/column-display-config", requireAuth, (req, res) => {
@@ -2563,8 +2832,9 @@ export const createApp = async (): Promise<express.Express> => {
     const result = (await kineticaSqlHelper(
       req as AuthedRequest,
       "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('SYSTEM', 'information_schema', 'ki_catalog', 'pg_catalog') ORDER BY SCHEMA_NAME ASC",
-      { route: "GET /api/kinetica/schemas", op: "DISCOVERY" }
+      { route: "GET /api/kinetica/schemas", op: "DISCOVERY", extra: { limit: DISCOVERY_ROW_LIMIT } }
     )) as { column_1?: string[] };
+    if ((result as { has_more_records?: unknown })?.has_more_records === true) console.warn(`[discovery] GET /api/kinetica/schemas result truncated at ${DISCOVERY_ROW_LIMIT} rows`);
     const schemas: string[] = result?.column_1 || [];
     return res.json({ data: schemas });
   }));
@@ -2574,8 +2844,9 @@ export const createApp = async (): Promise<express.Express> => {
     const result = (await kineticaSqlHelper(
       req as AuthedRequest,
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}' ORDER BY TABLE_NAME ASC`,
-      { route: "GET /api/kinetica/schemas/:schema/tables", op: "DISCOVERY" }
+      { route: "GET /api/kinetica/schemas/:schema/tables", op: "DISCOVERY", extra: { limit: DISCOVERY_ROW_LIMIT } }
     )) as { column_1?: string[] };
+    if ((result as { has_more_records?: unknown })?.has_more_records === true) console.warn(`[discovery] GET /api/kinetica/schemas/:schema/tables result truncated at ${DISCOVERY_ROW_LIMIT} rows`);
     const tables: string[] = result?.column_1 || [];
     return res.json({ data: tables });
   }));
@@ -2586,8 +2857,9 @@ export const createApp = async (): Promise<express.Express> => {
     const result = (await kineticaSqlHelper(
       req as AuthedRequest,
       `SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}' AND TABLE_NAME = '${table.replace(/'/g, "''")}' ORDER BY ORDINAL_POSITION ASC`,
-      { route: "GET /api/kinetica/schemas/:schema/tables/:table/columns", op: "DISCOVERY" }
+      { route: "GET /api/kinetica/schemas/:schema/tables/:table/columns", op: "DISCOVERY", extra: { limit: DISCOVERY_ROW_LIMIT } }
     )) as { column_1?: string[]; column_2?: string[] };
+    if ((result as { has_more_records?: unknown })?.has_more_records === true) console.warn(`[discovery] GET /api/kinetica/schemas/:schema/tables/:table/columns result truncated at ${DISCOVERY_ROW_LIMIT} rows`);
     const names: string[] = result?.column_1 || [];
     const types: string[] = result?.column_2 || [];
     const columns: Record<string, string> = {};
@@ -3018,12 +3290,15 @@ export const errorMiddleware = (
 
 if (process.env.NODE_ENV !== "test") {
   // Async IIFE — the bootstrap regex test (tests/bootstrap.spec.ts) verifies that this
-  // gate body contains BOTH app.listen AND startSessionSweep(). Both live inside the IIFE
+  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen and startExportSweep() after). All live inside the IIFE
   // body which is itself inside the gate's brace block, so the regex matches.
   void (async () => {
     try {
       const port = process.env.PORT || 4000;
       const app = await createApp();
+      // Phase 130 D-05/D-07: reconcile export jobs/files ONCE, before accepting traffic. Never inside createApp():
+      // every route spec and the routes smoke call createApp() while their own exports may be in flight.
+      reconcileExportsOnBoot();
       app.listen(port, () => {
         console.log(`Kinetica BI backend running on http://localhost:${port}`);
       });
@@ -3031,6 +3306,8 @@ if (process.env.NODE_ENV !== "test") {
       // surfaces before we accept traffic. .unref() inside startSessionSweep keeps
       // test processes able to exit cleanly.
       startSessionSweep();
+      // Phase 130 D-04: export expiry sweep (first pass immediately, then every 5 min, .unref()'d).
+      startExportSweep();
     } catch (err) {
       console.error(
         JSON.stringify({

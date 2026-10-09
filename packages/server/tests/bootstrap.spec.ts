@@ -64,6 +64,15 @@ describe("bootstrap gate (Phase 3 EADDRINUSE regression)", () => {
     expect(gateRegex.test(src)).toBe(true);
   });
 
+  it("EXPBOOT-iife: reconcile runs once between createApp() and app.listen; export sweep starts after the session sweep", () => {
+    const src = readFileSync(resolve(__dirname, "../src/index.ts"), "utf-8");
+    expect(
+      /if\s*\(\s*process\.env\.NODE_ENV\s*!==\s*"test"\s*\)\s*\{[\s\S]*?await createApp\(\);[\s\S]*?reconcileExportsOnBoot\(\);[\s\S]*?app\.listen[\s\S]*?startSessionSweep\(\);[\s\S]*?startExportSweep\(\);/.test(src),
+    ).toBe(true);
+    // Exactly one CALL site (never in createApp); the import line has no parens.
+    expect(src.match(/reconcileExportsOnBoot\(\)/g)?.length).toBe(1);
+  });
+
   it.skip("does NOT call app.listen or startSessionSweep when NODE_ENV === 'test' (runtime check)", async () => {
     // Skipped by default — vi.doMock + resetModules + dynamic import is fragile in this codebase
     // because tests/helpers/app.ts has already imported src/index in other specs. The structural

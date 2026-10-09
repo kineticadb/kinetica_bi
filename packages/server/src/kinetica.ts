@@ -20,6 +20,13 @@
 
 import { randomUUID } from "node:crypto";
 import type { AuthedRequest } from "./auth";
+
+/**
+ * The only parts of a request kineticaSql reads. A background export job (Phase 128) has no Express req: it
+ * builds one of these from sessionStore.getSession(sid) immediately before EACH Kinetica call and discards it
+ * (EXPRT-V126-16 - never cached, never persisted). An AuthedRequest satisfies this type unchanged.
+ */
+export type KineticaPrincipal = Pick<AuthedRequest, "user" | "requestId">;
 import {
   KineticaAuthError,
   KineticaPermissionError,
@@ -70,7 +77,7 @@ type AuditOutcome = "success" | "auth-fail" | "permission-denied" | "upstream-er
 // Build Authorization header from per-request session creds — never from env vars.
 // Credential-type-aware: OIDC sessions send Bearer <access_token>; password sessions send Basic.
 // PITFALLS I-01: discriminant is credentialType (string-literal union), NOT the truthiness of creds.password.
-const buildAuthHeader = (req: AuthedRequest): string => {
+const buildAuthHeader = (req: KineticaPrincipal): string => {
   const { credentialType, creds } = req.user!;
   if (credentialType === "oidc") {
     return `Bearer ${creds.token}`;
@@ -150,15 +157,99 @@ const classifyHttpError = async (response: Response): Promise<never> => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// Phase 127 — row-limit ceiling. Read per call (kinetica.ts has no boot hook).
+// ---------------------------------------------------------------------------
+export const DEFAULT_MAX_ROWS_PER_QUERY = 20_000;
+// Kinetica's max_get_records_size default; no single call may exceed it.
+export const DEFAULT_MAX_RECORDS_PER_CALL = 20_000;
+export type RowLimitConfig = { maxRowsPerQuery: number; maxRecordsPerCall: number };
+
+const warnedRowLimitEnv = new Set<string>();
+
+const readRowLimitEnv = (name: string, def: number): number => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return def;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    const key = `${name}=${raw}`;
+    if (!warnedRowLimitEnv.has(key)) {
+      warnedRowLimitEnv.add(key);
+      console.warn(
+        `[kinetica] ${name} must be a positive integer (got: ${JSON.stringify(raw)}); falling back to default ${def}`
+      );
+    }
+    return def;
+  }
+  return n;
+};
+
+export const getRowLimitConfig = (): RowLimitConfig => ({
+  maxRowsPerQuery: readRowLimitEnv("KINETICA_MAX_ROWS_PER_QUERY", DEFAULT_MAX_ROWS_PER_QUERY),
+  maxRecordsPerCall: readRowLimitEnv("KINETICA_MAX_RECORDS_PER_CALL", DEFAULT_MAX_RECORDS_PER_CALL),
+});
+
+export const __resetRowLimitWarningsForTest = (): void => {
+  warnedRowLimitEnv.clear();
+  warnedBatchExceedsServerMax = false;
+};
+
+const isPositiveInt = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v > 0;
+
+let warnedBatchExceedsServerMax = false;
+
+const warnBatchExceedsServerMaxOnce = (maxRecordsPerCall: number, callLimit: number, n: number): void => {
+  if (warnedBatchExceedsServerMax) return;
+  warnedBatchExceedsServerMax = true;
+  console.warn(
+    `[kinetica] KINETICA_MAX_RECORDS_PER_CALL=${maxRecordsPerCall} exceeds this Kinetica server's max_get_records_size (a call asking for ${callLimit} rows returned ${n} with has_more_records=true); continuing to page. Lower KINETICA_MAX_RECORDS_PER_CALL to match the server.`
+  );
+};
+
+const NON_DATA_KEYS = new Set(["column_headers", "column_datatypes"]);
+
+const rowCount = (encoded: unknown): number => {
+  if (!encoded || typeof encoded !== "object" || Array.isArray(encoded)) return 0;
+  for (const [k, v] of Object.entries(encoded as Record<string, unknown>)) {
+    if (!NON_DATA_KEYS.has(k) && Array.isArray(v)) return v.length;
+  }
+  return 0;
+};
+
+const mergeChunks = (acc: unknown, chunk: unknown): unknown => {
+  if (acc === undefined) return chunk;
+  if (!acc || typeof acc !== "object" || !chunk || typeof chunk !== "object") return acc;
+  const out = { ...(acc as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(chunk as Record<string, unknown>)) {
+    if (NON_DATA_KEYS.has(k)) continue;
+    if (Array.isArray(v) && Array.isArray(out[k])) out[k] = [...(out[k] as unknown[]), ...v];
+  }
+  return out;
+};
+
+type SqlPage = {
+  encoded: unknown;
+  hasMore: boolean | undefined;
+  total: number | undefined;
+  body: unknown;
+};
+
 /**
  * kineticaSql — POST /execute/sql with per-user credentials.
  *
- * Returns the parsed `encoded` shape (json_encoded_response → JSON.parse),
+ * Returns the parsed `encoded` shape (json_encoded_response -> JSON.parse),
  * same contract as the existing index.ts:333-365 kineticaSql helper.
  * Throws on any failure.
+ *
+ * Phase 127: the envelope limit is the deploy-time per-query max
+ * (KINETICA_MAX_ROWS_PER_QUERY, default 20,000), every caller's extra.limit is clamped to
+ * it, and no single call asks for more than KINETICA_MAX_RECORDS_PER_CALL rows — a larger
+ * limit is served by several ordered calls (offset advances) whose columns are concatenated.
+ * has_more_records (never a short page) is the continuation signal.
  */
 export const kineticaSql = async (
-  req: AuthedRequest,
+  req: KineticaPrincipal,
   sql: string,
   options: KineticaSqlOptions
 ): Promise<unknown> => {
@@ -173,8 +264,17 @@ export const kineticaSql = async (
     auth_mode: req.user!.credentialType,
   };
   const kineticaUrl = process.env.KINETICA_URL!;
+  const { maxRowsPerQuery, maxRecordsPerCall } = getRowLimitConfig();
+  // Clamp inside kineticaSql so every caller (untrusted /api/sql options AND internal pins) is bound (D-04/D-05).
+  const { limit: reqLimit, offset: reqOffset, ...restExtra } = (options.extra ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const effectiveLimit = isPositiveInt(reqLimit) ? Math.min(reqLimit, maxRowsPerQuery) : maxRowsPerQuery;
+  const baseOffset =
+    typeof reqOffset === "number" && Number.isInteger(reqOffset) && reqOffset >= 0 ? reqOffset : 0;
 
-  try {
+  const postPage = async (offset: number, limit: number): Promise<SqlPage> => {
     const response = await fetch(`${kineticaUrl.replace(/\/$/, "")}/execute/sql`, {
       method: "POST",
       headers: {
@@ -183,13 +283,13 @@ export const kineticaSql = async (
       },
       body: JSON.stringify({
         statement: sql,
-        offset: 0,
-        limit: 1000,
         encoding: "json",
         request_schema_str: "",
         data: [],
         options: {},
-        ...(options.extra ?? {}),
+        ...restExtra,
+        offset,
+        limit,
       }),
     });
 
@@ -235,9 +335,48 @@ export const kineticaSql = async (
       typeof dataStr?.json_encoded_response === "string"
         ? JSON.parse(dataStr.json_encoded_response)
         : dataStr?.json_encoded_response;
+    return {
+      encoded,
+      hasMore: typeof dataStr?.has_more_records === "boolean" ? dataStr.has_more_records : undefined,
+      total:
+        typeof dataStr?.total_number_of_records === "number"
+          ? dataStr.total_number_of_records
+          : undefined,
+      body,
+    };
+  };
+
+  try {
+    // Row-order stability across split calls without a unique ORDER BY is not documented by
+    // Kinetica — verified live at the Phase 127 checkpoint / Phase 128 spike.
+    let fetched = 0;
+    let merged: unknown = undefined;
+    let first: SqlPage | undefined;
+    let lastHasMore: boolean | undefined;
+    let lastTotal: number | undefined;
+    while (fetched < effectiveLimit) {
+      const callLimit = Math.min(maxRecordsPerCall, effectiveLimit - fetched);
+      const r = await postPage(baseOffset + fetched, callLimit);
+      first ??= r;
+      const n = rowCount(r.encoded);
+      merged = mergeChunks(merged, r.encoded);
+      fetched += n;
+      lastHasMore = r.hasMore;
+      lastTotal = r.total ?? lastTotal;
+      if (r.hasMore !== true || n === 0) break;
+      // D-11: a short page flagged has_more_records is NOT the end; keep paging.
+      if (n < callLimit) warnBatchExceedsServerMaxOnce(maxRecordsPerCall, callLimit, n);
+    }
 
     emitAudit({ ...baseAudit, outcome: "success", status: 200, duration_ms: Date.now() - start });
-    return encoded ?? body;
+    if (merged && typeof merged === "object" && !Array.isArray(merged)) {
+      return {
+        ...(merged as Record<string, unknown>),
+        ...(typeof lastHasMore === "boolean" ? { has_more_records: lastHasMore } : {}),
+        ...(typeof lastTotal === "number" ? { total_number_of_records: lastTotal } : {}),
+      };
+    }
+    return (first?.encoded as unknown) ?? first?.body;
   } catch (error) {
     // Re-throw typed errors immediately (they've already emitted audit + console.error)
     if (
@@ -270,11 +409,20 @@ export const kineticaSql = async (
  * Used by the column-discovery route to recover TIMESTAMP/DATE/TIME/DATETIME
  * sub-types that INFORMATION_SCHEMA.COLUMNS.DATA_TYPE drops (it reports the base
  * `bigint`/`long` storage type). See lib/showTableTypes.ts.
+ *
+ * `showOptions` is spread into the Kinetica request's own `options` map. Phase 122's
+ * schema check passes `{ no_error_if_not_exists: "true" }` so that a table Kinetica
+ * no longer has returns HTTP 200 with an empty `table_names` instead of a
+ * `status: "ERROR"` body — which this function maps to `KineticaUpstreamError`, the
+ * SAME class a genuine connection failure produces. Without that option, "table
+ * missing" and "could not reach Kinetica" are indistinguishable by exception type.
+ * Verified against the live instance — see
+ * `.planning/phases/122-schema-diff-table-missing-detection/122-SPIKE-NOTES.md` Q5.
  */
 export const kineticaShowTable = async (
   req: AuthedRequest,
   tableName: string,
-  options: { route: string; op: KineticaOp }
+  options: { route: string; op: KineticaOp; showOptions?: Record<string, string> }
 ): Promise<unknown> => {
   const start = Date.now();
   const username = req.user?.creds?.username ?? "unknown";
@@ -295,7 +443,7 @@ export const kineticaShowTable = async (
         "Content-Type": "application/json",
         Authorization: buildAuthHeader(req),
       },
-      body: JSON.stringify({ table_name: tableName, options: {} }),
+      body: JSON.stringify({ table_name: tableName, options: { ...(options.showOptions ?? {}) } }),
     });
 
     if (!response.ok) {

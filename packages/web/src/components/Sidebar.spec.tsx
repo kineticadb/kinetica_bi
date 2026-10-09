@@ -42,6 +42,31 @@ describe("Sidebar", () => {
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
 
+  it("EXPNAV-visible: a user with no permissions sees Exports", () => {
+    renderSidebar();
+    expect(screen.getByRole("button", { name: "Exports" })).toBeInTheDocument();
+  });
+
+  it("EXPNAV-order: Exports comes immediately after Datasets", () => {
+    renderSidebar();
+    const names = screen.getAllByRole("button").map((b) => b.textContent?.trim() ?? b.getAttribute("aria-label"));
+    const d = names.indexOf("Datasets");
+    expect(d).toBeGreaterThanOrEqual(0);
+    expect(names[d + 1]).toBe("Exports");
+  });
+
+  it("EXPNAV-select: clicking Exports fires onSelect('exports')", () => {
+    const { onSelect } = renderSidebar();
+    fireEvent.click(screen.getByRole("button", { name: "Exports" }));
+    expect(onSelect).toHaveBeenCalledWith("exports");
+  });
+
+  it("EXPNAV-active: activeKey exports marks the Exports item active", () => {
+    renderSidebar({ activeKey: "exports" });
+    expect(screen.getByRole("button", { name: "Exports" }).className).toContain("active");
+    expect(screen.getByRole("button", { name: "Datasets" }).className).not.toContain("active");
+  });
+
   it("active nav item has the .active class", () => {
     renderSidebar({ activeKey: "datasets" });
     expect(screen.getByRole("button", { name: "Datasets" }).className).toContain("active");

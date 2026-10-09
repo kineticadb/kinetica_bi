@@ -294,3 +294,51 @@ describe("ColumnFormatTooltip (COLAPPLY-V115-02)", () => {
     }
   });
 });
+
+describe("Phase 132 multiSeries / metricTitle", () => {
+  const TABLE_ID = 55;
+  const cash = [{ name: "Cash", value: 5, color: "var(--chart-1)" }];
+  const T = (extra: Record<string, unknown>, payload = cash) =>
+    render(
+      <ColumnFormatTooltip
+        tableId={TABLE_ID}
+        groupByColumn="day"
+        metricColumn="amount"
+        active={true}
+        payload={payload}
+        label="Mon"
+        {...extra}
+      />,
+    ).container.textContent ?? "";
+
+  it("CFT132-1: multiSeries keeps series name for a lone visible series", () => {
+    const t = T({ multiSeries: true });
+    expect(t).toContain("Cash: 5");
+    expect(t).not.toContain("amount: 5");
+  });
+  it("CFT132-2: omitted multiSeries keeps legacy payload.length guess", () => {
+    const t = T({});
+    expect(t).toContain("amount: 5");
+    expect(t).not.toContain("Cash: 5");
+  });
+  it("CFT132-3: metricTitle used for single series", () => {
+    expect(T({ multiSeries: false, metricTitle: "Sum of amount" })).toContain("Sum of amount: 5");
+  });
+  it("CFT132-4: metricTitle ignored for multi-series", () => {
+    const t = T({ multiSeries: true, metricTitle: "Sum of amount" });
+    expect(t).toContain("Cash: 5");
+    expect(t).not.toContain("Sum of amount");
+  });
+  it("CFT132-5: empty metricTitle falls back to Format-columns label", () => {
+    useColumnDisplayConfigStore.getState().upsertColumn(TABLE_ID, "amount", "Total Revenue", null);
+    expect(T({ metricTitle: "" })).toContain("Total Revenue: 5");
+  });
+  it("CFT132-6: two series both keep names", () => {
+    const t = T({ multiSeries: true }, [
+      { name: "Cash", value: 5, color: "var(--chart-1)" },
+      { name: "Credit", value: 7, color: "var(--chart-2)" },
+    ]);
+    expect(t).toContain("Cash: 5");
+    expect(t).toContain("Credit: 7");
+  });
+});

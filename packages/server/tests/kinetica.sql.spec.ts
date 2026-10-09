@@ -302,3 +302,28 @@ describe("kineticaSql sanitization", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 127: response metadata surfacing
+// ---------------------------------------------------------------------------
+describe("kineticaSql ROWLIM response metadata", () => {
+  it("ROWLIM-meta-1: has_more_records / total_number_of_records surface beside the columns", async () => {
+    mockFetch(200, {
+      status: "OK",
+      data_str: JSON.stringify({
+        json_encoded_response: JSON.stringify({ column_1: [1, 2] }),
+        has_more_records: true,
+        total_number_of_records: 5,
+      }),
+    });
+    // limit 2 == rows returned, so the page is full and the loop ends after one call.
+    const result = await kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL", extra: { limit: 2 } });
+    expect(result).toEqual({ column_1: [1, 2], has_more_records: true, total_number_of_records: 5 });
+  });
+
+  it("ROWLIM-meta-2: absent fields are not invented", async () => {
+    mockFetch(200, happyBody);
+    const result = await kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL" });
+    expect(result).toEqual({ column_1: [1, 2] });
+  });
+});

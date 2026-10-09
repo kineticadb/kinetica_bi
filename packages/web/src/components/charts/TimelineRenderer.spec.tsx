@@ -19,6 +19,15 @@ vi.mock("recharts", async (importOriginal) => {
     ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
       <div style={{ width: 800, height: 400 }}>{children}</div>
     ),
+    // Phase 127: expose the row count the chart receives (jsdom draws no SVG).
+    LineChart: (props: { data?: unknown[]; children?: React.ReactNode }) => {
+      const Actual = actual.LineChart as React.ComponentType<Record<string, unknown>>;
+      return (
+        <div data-testid="mock-linechart" data-rows={props.data?.length ?? 0}>
+          <Actual {...props} />
+        </div>
+      );
+    },
   };
 });
 
@@ -836,5 +845,89 @@ describe("TimelineRenderer — customWhere injection (Phase 98, VIZSQL-V119-02/0
     expect(src).toMatch(/yAxisScale/);
     // Specifically reads from cfg
     expect(src).toMatch(/cfg\.yAxisScale/);
+  });
+
+  describe("Row truncation notice (Phase 127 D-16)", () => {
+    function mockRows(
+      topSeries: string[],
+      mainRows: number,
+      hasMore?: boolean,
+    ) {
+      const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [86400] };
+      const topResp = {
+        column_headers: ["series", "value"],
+        column_1: topSeries,
+        column_2: topSeries.map(() => 1),
+      };
+      const mainResp = {
+        column_headers: ["bucket", "series", "value"],
+        column_1: Array.from({ length: mainRows }, (_, i) => `2024-01-01 0${i}:00:00`),
+        column_2: Array.from({ length: mainRows }, () => topSeries[0]),
+        column_3: Array.from({ length: mainRows }, () => 1),
+        ...(hasMore === undefined ? {} : { has_more_records: hasMore }),
+      };
+      let call = 0;
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        const r = call === 0 ? rangeResp : call === 1 ? topResp : mainResp;
+        call++;
+        return Promise.resolve(r);
+      });
+    }
+
+    it("RLD16-tl-own-limit: limit+1 rows shows the note naming Max intervals and drops the extra row", async () => {
+      mockRows(["a"], 3);
+      render(
+        <TimelineRenderer widget={makeWidget({ groupByColumn: "g", maxIntervals: 2 })} tables={TABLES} />,
+      );
+      const note = await screen.findByTestId("timeline-limited-note");
+      expect(note).toHaveTextContent("Limited to 2 rows");
+      expect(note.getAttribute("title")).toContain("Max intervals");
+      expect(screen.getByTestId("mock-linechart").getAttribute("data-rows")).toBe("2");
+      const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[2][0] as string;
+      expect(sql).toMatch(/LIMIT 3$/);
+    });
+
+    it("RLD16-tl-exact: exactly-full result shows no note", async () => {
+      mockRows(["a"], 2);
+      render(<TimelineRenderer widget={makeWidget({ groupByColumn: "g", maxIntervals: 2 })} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("timeline-renderer")).toBeInTheDocument());
+      await waitFor(() => expect((runSql as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3));
+      expect(screen.queryByTestId("timeline-limited-note")).toBeNull();
+    });
+
+    it("RLD16-tl-deploy-max: server has_more names the deployment max", async () => {
+      mockRows(["a"], 1, true);
+      render(<TimelineRenderer widget={makeWidget({ groupByColumn: "g", maxIntervals: 2 })} tables={TABLES} />);
+      const note = await screen.findByTestId("timeline-limited-note");
+      expect(note).toHaveTextContent("Limited to 1 rows");
+      expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+    });
+
+    it("RLD16-tl-ungrouped-deploy-max: ungrouped has_more shows the note; false hides it", async () => {
+      const mk = (hasMore: boolean) => {
+        const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [86400] };
+        const metricResp = {
+          column_headers: ["bucket", "value"],
+          column_1: ["2024-01-01 00:00:00"],
+          column_2: [1],
+          has_more_records: hasMore,
+        };
+        let call = 0;
+        (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+          const r = call === 0 ? rangeResp : metricResp;
+          call++;
+          return Promise.resolve(r);
+        });
+      };
+      mk(true);
+      const first = render(<TimelineRenderer widget={makeWidget()} tables={TABLES} />);
+      const note = await screen.findByTestId("timeline-limited-note");
+      expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+      first.unmount();
+      mk(false);
+      render(<TimelineRenderer widget={makeWidget()} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("timeline-renderer")).toBeInTheDocument());
+      expect(screen.queryByTestId("timeline-limited-note")).toBeNull();
+    });
   });
 });

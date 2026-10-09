@@ -963,6 +963,33 @@ a {
   white-space: nowrap;
 }
 
+/* Exports page (Phase 131): same grid system as .ds-header/.ds-row, different columns.
+   Name | Status | Rows | Size | Started | Expires | Actions */
+.exports-table .ds-header,
+.exports-table .ds-row {
+  grid-template-columns: 2fr 1.4fr 1.2fr 0.8fr 1.3fr 1fr auto;
+}
+
+/* Failure reason / refusal text: theme token, light+dark safe. */
+.export-error {
+  color: var(--danger);
+  font-size: var(--text-base);
+}
+
+/* Progress bar: --accent fill; track tinted from --muted via color-mix so both themes work. */
+.export-progress {
+  height: 8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+  overflow: hidden;
+}
+.export-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--duration-base) ease;
+}
+/* end Phase 131 exports */
+
 .ghost-sm {
   background: transparent;
   color: var(--text);
@@ -5004,4 +5031,225 @@ input[type="checkbox"],
   margin-top: var(--space-2);
   padding-top: var(--space-5);
   border-top: 1px solid var(--border);
+}
+
+/* ── Schema sync modal (v1.25 Phase 126 Plan 02 — SSYNC-V125-01) ─────────────────
+   TOKEN-ONLY BY HAND, NOT BY GATE. global.css is a TOTAL hex exemption in
+   theme-guard (an allowlisted file asserts hex IS present and returns), so nothing
+   automated protects the colours below. They follow .login-error (:2164) — a
+   color-mix tint over the semantic token — which re-skins with both themes AND with
+   a re-branded palette. Deliberately NOT copied: .view-status-* and
+   .layer-row-badge.error, both of which carry unthemed hex.
+   Severity colour comes from the pre-existing .text-danger / .text-warning /
+   .text-muted co-classes. --success is NOT used: it aliases --accent (brand violet)
+   in BOTH themes and would read as an accent control rather than a severity. */
+.schema-sync-modal {
+  max-width: 900px;
+}
+
+.schema-sync-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.schema-sync-message {
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-refusal {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-caveat {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.impact-severity {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.impact-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-3);
+}
+
+.impact-column-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: var(--font-weight-semibold);
+}
+
+.impact-column-name {
+  color: var(--text);
+  font-size: var(--text-base);
+}
+
+.impact-column-kind {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-normal);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.impact-column-types {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-normal);
+}
+
+.impact-column-summary {
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.impact-record {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  padding: var(--space-1) 0;
+}
+
+.impact-record-label {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.impact-advisory {
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
+.impact-reference {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.impact-reference-path {
+  color: var(--text);
+}
+
+.impact-reference-certainty {
+  color: var(--muted);
+}
+
+.impact-gaps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* ── Schema sync — the sync-history tab (Phase 126 Plan 03, SSYNC-V125-18) ──────────
+   Appended AFTER .schema-sync-modal on purpose: that rule's max-width:900px beats
+   .modal-content's 600px by source order, and nothing below may land before it.
+   TOKEN-ONLY BY HAND, as above — global.css is a TOTAL hex exemption in theme-guard,
+   so no automated gate protects these colours. .schema-sync-cap-notice follows
+   .login-error (:2164) with --warning: it reports a fact about retention, not an
+   error. The success token is again avoided: it aliases the brand-violet accent in
+   BOTH themes and would read as an accent control rather than a status. (Spelling it
+   out in prose here would blind the very grep that forbids using it — the exact trap
+   126-02 fell into with a code comment.)
+   Every colour token below is redefined under :root[data-theme="light"];
+   the --space-*/--radius-*/--text-* tokens are deliberately theme-independent. */
+.schema-sync-tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-2);
+}
+
+.schema-sync-tab-active {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.schema-sync-cap-notice {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.schema-sync-history-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.schema-sync-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.schema-sync-history-detail {
+  padding-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Operator finding at the Phase 126 verification checkpoint (G11): the expanded history
+   detail rendered noticeably larger than everything around it. Cause: the shared
+   `.data-table` sets `font-size: var(--text-lg)` (14px) at :571, while this panel's report
+   text is `--text-sm` (11px) -- correct for `.data-table`'s original dense-grid context,
+   wrong inside a compact modal detail view.
+   `.data-table` is ALSO used by DatasetsPage (x2) and DataTable.tsx, so it is NOT changed
+   globally; the override is scoped to this modal's sections only. Padding is tightened for
+   the same reason -- `--space-3` row padding suits a full-width grid, not a nested detail. */
+.schema-sync-section .data-table {
+  font-size: var(--text-sm);
+}
+
+.schema-sync-section .data-table td {
+  padding: var(--space-1) var(--space-2);
+}
+
+/* G11 follow-up: the "None." placeholders inherited body's --text-xl (16px), and the
+   history's Added/Removed/Retyped labels used .modal-section-title (--text-lg). The labels
+   now reuse .impact-severity; the placeholder is pinned to the report's --text-sm here. */
+.schema-sync-section > .muted {
+  font-size: var(--text-sm);
 }

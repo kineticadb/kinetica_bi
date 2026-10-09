@@ -1,8 +1,10 @@
+import { normalizeExportLimits, type ExportLimits } from "../lib/exportLimits";
 import type { ActiveFilter } from "../store/filterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
 import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
+import type { ExportJobStatus } from "../lib/exportFormat";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -18,6 +20,8 @@ export const toAbsoluteAssetUrl = (u: string | null | undefined): string | null 
   !u ? null : /^https?:\/\//.test(u) ? u : `${API_BASE}${u}`;
 
 export const UNAUTHORIZED_EVENT = "kbi:unauthorized";
+// Phase 131: the export dialog asks App to show the Exports page (cross-tree signal, same pattern as UNAUTHORIZED_EVENT).
+export const NAVIGATE_EXPORTS_EVENT = "kbi:navigate-exports";
 export const PERMISSION_DENIED_EVENT = "kbi:permission-denied";
 
 // Module-level debounce timer for PERMISSION_DENIED_EVENT dispatch.
@@ -249,7 +253,10 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 90 (COMBO-V118-03): /api/me returns the per-table combination ceiling (default 10).
 // Phase 94 (FSCOPE-V118-03): /api/me returns the dv filter-scope disable flag (default false = enabled).
 // Phase 102 (BARGRP-V119-03): /api/me returns the deploy-time bar group-by series cap (default 12).
-export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number };
+// Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV ceiling (default 100000).
+export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number; maxRowsPerQuery: number;
+  // Phase 130 (EXPRT-V126-15, D-18): admin export caps (unset = null; default concurrency 2).
+  exportLimits: ExportLimits };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -293,6 +300,12 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     dvFilterScopeDisabled: json.dvFilterScopeDisabled === true,
     // Phase 102 (BARGRP-V119-03): coalesce to 12 — an older server build that omits the field must never yield undefined.
     maxBarGroupBySeriesCap: typeof json.maxBarGroupBySeriesCap === "number" ? json.maxBarGroupBySeriesCap : 12,
+    // Phase 127 (D-07): coalesce to 100000 — an older server build that omits the field must never yield undefined.
+    csvInBrowserMaxRows: typeof json.csvInBrowserMaxRows === "number" ? json.csvInBrowserMaxRows : 100000,
+    // Phase 127 (D-12): coalesce to 20000 (server KINETICA_MAX_ROWS_PER_QUERY default) for an older server build.
+    maxRowsPerQuery: typeof json.maxRowsPerQuery === "number" ? json.maxRowsPerQuery : 20000,
+    // Phase 130 (D-18): normalised — an older server omitting the field yields the defaults, never undefined.
+    exportLimits: normalizeExportLimits(json.exportLimits),
   };
 };
 
@@ -1764,4 +1777,288 @@ export const deleteCustomMetric = async (tableId: number, id: number): Promise<v
     method: "DELETE",
   });
   if (!response.ok) await throwForStatus(response, "Failed to delete custom metric");
+};
+
+// --- Schema Sync (v1.25 Phase 126 — SSYNC-V125-01/-18/-19) ---
+
+// These DTOs mirror the server's own shapes. This repo has no cross-package imports, so they
+// are re-declared here exactly as `TableDto`, `ImportReportDto` and
+// `MaterializeDynamicViewResponse` already are.
+
+export type ColumnFingerprint = { base: string; refinements: string[] };
+export type ColumnFingerprintMap = Record<string, ColumnFingerprint>;
+
+export type AddedColumn = { column: string; live: ColumnFingerprint; liveType: string };
+export type RemovedColumn = { column: string; stored: ColumnFingerprint; storedType: string };
+export type RetypedColumn = {
+  column: string;
+  stored: ColumnFingerprint;
+  storedType: string;
+  live: ColumnFingerprint;
+  liveType: string;
+};
+
+export type ImpactAdvisoryKind = "unnamed-record" | "ambiguous-name";
+export type ImpactAdvisory = { kind: ImpactAdvisoryKind; message: string };
+
+export type RefConfidence = "exact" | "heuristic" | "low-confidence";
+export type ColumnRefTableScope = "scoped" | "free-sql" | "unresolved";
+export type ColumnRefRecordKind =
+  | "widget"
+  | "layer"
+  | "customMetric"
+  | "dynamicView"
+  | "tableView"
+  | "columnDisplayConfig";
+export type ColumnRefMatch = { line: string; lineNumber: number; offset: number };
+// Deliberately `string`, not the server's 40-member ColumnRefSite union: it is display-only on
+// the client, and a server-side site rename must not become a web compile error.
+export type ColumnRefSite = string;
+
+export type ImpactSeverity = "breaking" | "changed" | "harmless";
+export type ImpactChangeKind = "removed" | "retyped" | "added";
+
+export type ImpactReference = {
+  site: ColumnRefSite;
+  path: string;
+  confidence: RefConfidence;
+  tableScope: ColumnRefTableScope;
+  certainty: string;
+  matches: ColumnRefMatch[];
+};
+
+export type ImpactRecord = {
+  recordKind: ColumnRefRecordKind;
+  recordId: number | null;
+  name: string;
+  dashboardName: string | null;
+  displayLabel: string;
+  advisories: ImpactAdvisory[];
+  references: ImpactReference[];
+  staleDrillDownType?: { frozenType: string; message: string };
+};
+
+export type ImpactColumn = {
+  column: string;
+  changeKind: ImpactChangeKind;
+  storedType: string | null;
+  liveType: string | null;
+  // storedClass/liveClass are `string | null`, not the server's ColumnTypeClass union: that
+  // union is server-internal and the UI renders neither value directly.
+  storedClass: string | null;
+  liveClass: string | null;
+  summary: string;
+  records: ImpactRecord[];
+};
+
+// `sections` is ALWAYS 3 entries, ALWAYS breaking / changed / harmless, in that order.
+export type ImpactSection = { severity: ImpactSeverity; columns: ImpactColumn[] };
+
+export type ImpactReport = {
+  v: 1;
+  table: string;
+  tableId: number;
+  outcome: "changes" | "no_changes";
+  sections: ImpactSection[];
+  advisorySummary: ImpactAdvisory[];
+  knownGaps: string[];
+};
+
+export type SchemaCheckResult =
+  | {
+      outcome: "diff";
+      table: string;
+      hasChanges: boolean;
+      added: AddedColumn[];
+      removed: RemovedColumn[];
+      retyped: RetypedColumn[];
+      live: ColumnFingerprintMap;
+    }
+  | { outcome: "baseline_required"; table: string; message: string; live: ColumnFingerprintMap }
+  | { outcome: "table_missing"; table: string; message: string };
+
+// `impact` is OPTIONAL by design: its PRESENCE (not an empty array) is what distinguishes
+// "no findings" from "the report was not run". Never default it.
+export type SchemaCheckResponse = SchemaCheckResult & { impact?: ImpactReport };
+
+export type SyncChangeset = {
+  v: 1;
+  added: { column: string; liveType: string }[];
+  removed: { column: string; storedType: string }[];
+  retyped: { column: string; storedType: string; liveType: string }[];
+};
+
+export type TableSyncHistoryEntry = {
+  id: number;
+  table_id: number;
+  ts: string;
+  actor: string;
+  kind: "baseline" | "diff";
+  changeset: SyncChangeset | null;
+  report: ImpactReport | null;
+};
+
+export type TableSyncHistory = {
+  entries: TableSyncHistoryEntry[];
+  droppedCount: number;
+  lastDroppedTs: string | null;
+  cap: number;
+};
+
+export type SchemaApplyResult =
+  | {
+      outcome: "applied";
+      kind: "baseline" | "diff";
+      table: string;
+      tableId: number;
+      recorded: true;
+      historyId: number;
+      droppedThisApply: number;
+      columns: Record<string, string>;
+      changeset: SyncChangeset | null;
+      message: string;
+    }
+  | { outcome: "no_changes"; table: string; tableId: number; message: string }
+  | { outcome: "stale"; table: string; tableId: number; message: string }
+  | { outcome: "table_missing"; table: string; tableId: number; message: string };
+
+export const checkTableSchema = async (tableId: number): Promise<SchemaCheckResponse> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/schema-check`);
+  if (!response.ok) await throwForStatus(response, "Failed to check the table schema");
+  return (await response.json()) as SchemaCheckResponse;
+};
+
+export const applyTableSchema = async (
+  tableId: number,
+  live: ColumnFingerprintMap,
+): Promise<SchemaApplyResult> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/schema-apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ live }),
+  });
+  // A 409 here is the server's REFUSAL, not a failure. `stale` and `table_missing` are modelled
+  // outcomes carrying operator-facing text that throwForStatus() would DESTROY: it reads only an
+  // `{ error }` key (client.ts:97-118) and a 409 body has none, so the approved refusal message
+  // would be replaced by the generic fallback below. Parsed as a result, not an error, so the
+  // whole apply surface is one discriminated union on `outcome` — the shape the server already
+  // models. 401/403/502 keep their existing error classes; 400/404 still throw.
+  if (response.status === 409) return (await response.json()) as SchemaApplyResult;
+  if (!response.ok) await throwForStatus(response, "Failed to apply the schema");
+  return (await response.json()) as SchemaApplyResult;
+};
+
+export const listTableSyncHistory = async (tableId: number): Promise<TableSyncHistory> => {
+  const response = await apiFetch(`${API_BASE}/api/tables/${tableId}/sync-history`);
+  if (!response.ok) await throwForStatus(response, "Failed to load sync history");
+  return (await response.json()) as TableSyncHistory;
+};
+
+export const deleteTableSyncHistoryEntry = async (
+  tableId: number,
+  entryId: number,
+): Promise<void> => {
+  const response = await apiFetch(
+    `${API_BASE}/api/tables/${tableId}/sync-history/${entryId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) await throwForStatus(response, "Failed to delete the sync history entry");
+};
+
+// --- Exports (Phase 131) ---
+
+export type { ExportJobStatus };
+
+export type ExportJobDto = {
+  id: string;
+  status: ExportJobStatus;
+  widgetId: number | null;
+  dashboardId: number | null;
+  rowsWritten: number;
+  totalRows: number | null;
+  fileBytes: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  expiresAt: string | null;
+  compress: boolean;
+  name: string | null;
+  dashboardName: string | null;
+  widgetTitle: string | null;
+};
+
+export type ExportFormat = "raw" | "formatted";
+export type ExportStartOptions = { compress: boolean; format: ExportFormat; name: string };
+export type StartExportBody = {
+  widgetId: number;
+  filters: ActiveFilter[];
+  spatialFilters?: { id: string; wkt: string }[];
+  spatialTarget?: SpatialTarget;
+  sortField?: string;
+  sortDir?: "asc" | "desc";
+  options: ExportStartOptions;
+};
+
+export const startExport = async (body: StartExportBody): Promise<ExportJobDto> => {
+  const response = await apiFetch(`${API_BASE}/api/exports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to start export");
+  const json = await response.json();
+  return json.data as ExportJobDto;
+};
+
+export const getExportJob = async (id: string): Promise<ExportJobDto | null> => {
+  const response = await apiFetch(`${API_BASE}/api/exports/${encodeURIComponent(id)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) await throwForStatus(response, "Failed to load export");
+  const json = await response.json();
+  return json.data as ExportJobDto;
+};
+
+export const listExportJobs = async (): Promise<ExportJobDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/exports`);
+  if (!response.ok) await throwForStatus(response, "Failed to load exports");
+  const json = await response.json();
+  return json.data as ExportJobDto[];
+};
+
+export const cancelExportJob = async (id: string): Promise<ExportJobDto | null> => {
+  const response = await apiFetch(`${API_BASE}/api/exports/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  if (response.status === 409) return null;
+  if (!response.ok) await throwForStatus(response, "Failed to cancel export");
+  const json = await response.json();
+  return json.data as ExportJobDto;
+};
+
+export const deleteExportJob = async (id: string): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/exports/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (response.status === 204 || response.status === 404) return;
+  if (!response.ok) await throwForStatus(response, "Failed to delete export");
+};
+
+export const exportDownloadUrl = (id: string): string =>
+  `${API_BASE}/api/exports/${encodeURIComponent(id)}/download`;
+
+// A plain navigation to a 4xx JSON body would replace the SPA, so probe with a 1-byte Range request first.
+export const preflightExportDownload = async (
+  id: string,
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> => {
+  const r = await apiFetch(exportDownloadUrl(id), { headers: { Range: "bytes=0-0" } });
+  if (r.status === 206 || r.ok) {
+    await r.body?.cancel().catch(() => {});
+    return { ok: true };
+  }
+  let message = "Download failed.";
+  try {
+    const b = await r.json();
+    if (b && typeof b.error === "string") message = b.error;
+  } catch {
+    // non-JSON body: keep fallback
+  }
+  return { ok: false, status: r.status, message };
 };

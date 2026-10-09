@@ -32,6 +32,37 @@
 
 - ✅ **v1.24 Dashboard Export & Import** — Phases 119-121 (shipped 2026-09-21) — see `milestones/v1.24-ROADMAP.md`
 
+- ✅ **v1.25 Schema Sync** — Phases 122-126 (shipped 2026-09-30) — see `milestones/v1.25-ROADMAP.md`
+
+- ✅ **v1.26 Large Exports & Fixes** — Phases 127-132 (shipped 2026-10-08) — see `milestones/v1.26-ROADMAP.md`
+
+---
+
+## v1.26 Large Exports & Fixes — SHIPPED 2026-10-08
+✅ v1.26 (Phases 127-132) — SHIPPED 2026-10-08 — full phase details archived in `milestones/v1.26-ROADMAP.md`
+- [x] Phase 127: Row-Limit Ceiling, Caller Audit & Heatmap Truncation Fix
+- [x] Phase 128: Export Job Core — Live Spike, Runner, Snapshot & Cancel
+- [x] Phase 129: Export Routes — Resumable Download, History & Privacy
+- [x] Phase 130: Export TTL Cleanup, Boot Reconciliation & Admin Caps
+- [x] Phase 131: Client Export UI — Trigger Dialog, Progress & History
+- [x] Phase 132: Line Chart Multi-Series Group By
+**Verification:** 21/21 EXPRT-V126/LINE-V126 requirements Complete; all six phases verified (128 and 129 `human_needed`, 128's item closed live in 131 V10, 129's proxy-path resume still open). Web vitest 203 files / 4434 tests, web+server tsc clean, theme-guard 158/158, check-classnames clean, server `scripts/test-gate.mjs` GATE PASSED (set-based, 1803/1857 at the 131 verification; 132 was web-only). Operator-verified against a real Kinetica instance: 131 V1-V13 plus Z1-Z5 (1.5M-row export, snapshot isolation byte-identical, kill -9 restart reconcile) and 132 V1-V9. Audit `tech_debt`, no blockers (`milestones/v1.26-MILESTONE-AUDIT.md`).
+**Known gaps carried, not smoothed over:** (1) **CSS and layout defects passed every automated gate and only the operator found them**: the export dialog was trapped inside its widget by grid CSS transforms, the dialog text was oversized, the Name field lost focus under StrictMode so Enter did not start the export, and the line Y axis was clipped; (2) **a wrong fix shipped first**: the `.gz` refusal was misdiagnosed as the gzip OS byte (`0418602`, reverted in `c83d138`), and the real cause was that Archive Utility refuses every `.gz`, so the format became `.zip`; (3) the integration checker's claim that formatted negatives get an apostrophe was **refuted** (d3 emits U+2212); (4) EXPRT-V126-05/07 were marked complete early in 128, then re-opened and completed in 131; (5) the plan checker kept catching non-discriminating guards, and more were reported during execution rather than satisfied; (6) `d3-format` was added to the server despite the "no new npm dependency" opening line; (7) proxy-path resume was never exercised.
+**Open tech debt:** proxy-path resume; offset paging re-sorts per page; snapshot MV needs CREATE MATERIALIZED VIEW (untested as non-admin); `_kbi_exp_*` left to TTL by ended jobs; `EXPORT_DIR`/`EXPORT_VIEW_TTL_MINUTES` missing from `.env.example`; `exportRunner.memory.spec` contamination watch; unused web `ExportJobDto.compress`; records `page_size` override no-op (Phase 58); 132 V7 light/dark and epoch X labels unconfirmed; raw floats in line tooltips; Line vs Numeric Line merge deferred; operator dev `.env` `MAX_BAR_GROUP_BY_SERIES=2`; `EXPRT-F1`-`F4`, `CFGSQL-F1` deferred; carried: `SSYNC-F6`, `TD-V16-TEST-ISOLATION`, the theme-guard `global.css` exemption, `loadConfig(...).catch(() => {})`, OIDC never browser-verified.
+
+---
+
+## v1.25 Schema Sync — SHIPPED 2026-09-30
+✅ v1.25 (Phases 122-126) — SHIPPED 2026-09-30 — full phase details archived in `milestones/v1.25-ROADMAP.md`
+- [x] Phase 122: Schema Diff & Table-Missing Detection
+- [x] Phase 123: Column Reference Enumeration
+- [x] Phase 124: Impact Report
+- [x] Phase 125: Apply & Sync History
+- [x] Phase 126: Datasets UI, Access Gating & Operator Verification
+**Verification:** 19/19 SSYNC-V125 requirements Complete; all five phases carry a passing VERIFICATION.md (126's written during the milestone audit). Web vitest 185 files / 4162 tests, web+server tsc clean, theme-guard 154/154, server `scripts/test-gate.mjs` GATE PASSED (set-based, 1490/1543, 8 documented failing files). Operator-verified against a real Kinetica instance 2026-09-30, 14/14 checks PASS (`phases/126-*/126-UAT.md`). Audit `tech_debt`, no blockers; F1/F2/PG-3 remediated the same day (`milestones/v1.25-MILESTONE-AUDIT.md`).
+**Known gaps carried, not smoothed over:** (1) **three defects passed `tsc`, `vitest` AND `theme-guard` and only the operator found them** — the permission gate sealed itself shut (the client re-syncs permissions only on a 403, and a hidden button can never produce one), and the history font was wrong twice; (2) **the milestone audit found a guard recorded as closed that could not fail** — every MIRROR-PARITY test over the web's type Sets compared a hardcoded copy to a hardcoded copy, so a web-side edit reddened nothing; now read from source (`abb1304`), with a control run proving the old spec passed against a web mutation; (3) **same-screen staleness after apply** (audit F1) shipped past the operator checkpoint because the UAT script only checked the Dashboards config panels; fixed in `edd648b` but not yet re-verified live; (4) no automated gate covers colour or font size in `global.css`; (5) five of nine registered tables have been dropped from Kinetica, so most live checks return `table_missing`.
+**Open tech debt:** `SSYNC-F1`-`F6` deferred (auto-repair on declared rename, rename-pairing UI, check-all-tables, dashboard staleness indicator, nullability, a server-side column-existence gate on `POST /api/filter/materialize`); `SCHEMA_APPLY_TABLE_MISSING_MESSAGE` kept with no HTTP emitter by operator decision; renderColumnType vs classifyFingerprint marker order proven only over a fixture; `DatasetsPage.spec.tsx` test that passes for the wrong reason (`deferred-items.md`); removing persisted `config.sql` is the named v1.26 candidate; carried: `TD-V16-TEST-ISOLATION`, the theme-guard `global.css` exemption, `loadConfig(...).catch(() => {})`, OIDC never browser-verified.
+
 ---
 
 ## v1.24 Dashboard Export & Import — SHIPPED 2026-09-21

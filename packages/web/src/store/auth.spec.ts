@@ -12,10 +12,11 @@ vi.mock("../api/client", () => ({
   logout: vi.fn(),
 }));
 
-import { fetchAuthConfig, fetchMe } from "../api/client";
+import { fetchAuthConfig, fetchMe, login as apiLogin } from "../api/client";
 
 const fetchAuthConfigMock = fetchAuthConfig as unknown as ReturnType<typeof vi.fn>;
 const fetchMeMock = fetchMe as unknown as ReturnType<typeof vi.fn>;
+const apiLoginMock = apiLogin as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fetchAuthConfigMock.mockReset();
@@ -93,6 +94,50 @@ describe("bootstrap() — latest-write-wins authMode", () => {
     await useAuthStore.getState().bootstrap();
     expect(useAuthStore.getState().maxCombinationViewsPerTable).toBe(5);
     expect(useAuthStore.getState().status).toBe("authenticated");
+  });
+
+  // Phase 127 (EXPRT-V126-01, D-07)
+  it("RLME-store-default: csvInBrowserMaxRows defaults to 100000 pre-bootstrap", () => {
+    expect(useAuthStore.getState().csvInBrowserMaxRows).toBe(100000);
+  });
+
+  it("RLME-store-bootstrap: bootstrap sets csvInBrowserMaxRows from /me", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      ttlKeepaliveLeadMinutes: 1,
+      maxCombinationViewsPerTable: 10,
+      csvInBrowserMaxRows: 250000,
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().csvInBrowserMaxRows).toBe(250000);
+  });
+
+  // Phase 130 (EXPRT-V126-15, D-18)
+  it("EXPLIM-store-default: exportLimits defaults pre-bootstrap", () => {
+    expect(useAuthStore.getState().exportLimits).toEqual({ maxRows: null, maxFileMb: null, maxConcurrentPerUser: 2 });
+  });
+
+  it("EXPLIM-store-bootstrap: bootstrap sets exportLimits from /me", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      exportLimits: { maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 3 },
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().exportLimits).toEqual({ maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 3 });
+  });
+
+  it("EXPLIM-store-bootstrap-missing: missing exportLimits falls back to defaults", async () => {
+    fetchAuthConfigMock.mockResolvedValueOnce({ authMode: "password" });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+    });
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().exportLimits).toEqual({ maxRows: null, maxFileMb: null, maxConcurrentPerUser: 2 });
   });
 });
 
@@ -194,5 +239,55 @@ describe("hasPermission selector + setPermissions", () => {
     useAuthStore.setState({ user: null });
     useAuthStore.getState().setPermissions(["designer"], ["dashboards:edit"]);
     expect(useAuthStore.getState().user).toBeNull();
+  });
+});
+
+// Password login does not reload the page, so login() must load the /me deploy config itself.
+describe("login() — loads /me deploy config", () => {
+  beforeEach(() => {
+    apiLoginMock.mockReset();
+    useAuthStore.setState({ status: "unauthenticated", user: null, exportLimits: { maxRows: null, maxFileMb: null, maxConcurrentPerUser: 2 }, csvInBrowserMaxRows: 100000, dvFilterScopeDisabled: false });
+  });
+
+  it("LOGINME-refresh: login applies exportLimits and the other /me caps", async () => {
+    apiLoginMock.mockResolvedValueOnce({ username: "alice", roles: [], permissions: [] });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: ["analyst"], permissions: [] },
+      authMode: "password",
+      csvInBrowserMaxRows: 5000,
+      dvFilterScopeDisabled: true,
+      exportLimits: { maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 3 },
+    });
+    await useAuthStore.getState().login("alice", "pw");
+    const st = useAuthStore.getState();
+    expect(st.status).toBe("authenticated");
+    expect(st.exportLimits).toEqual({ maxRows: 10000000, maxFileMb: 2048, maxConcurrentPerUser: 3 });
+    expect(st.csvInBrowserMaxRows).toBe(5000);
+    expect(st.dvFilterScopeDisabled).toBe(true);
+    expect(st.user?.roles).toEqual(["analyst"]);
+  });
+
+  it("LOGINME-single-set: never authenticated with default caps before /me is applied", async () => {
+    apiLoginMock.mockResolvedValueOnce({ username: "alice", roles: [], permissions: [] });
+    fetchMeMock.mockResolvedValueOnce({
+      user: { username: "alice", roles: [], permissions: [] },
+      authMode: "password",
+      exportLimits: { maxRows: 10, maxFileMb: 1, maxConcurrentPerUser: 1 },
+    });
+    const seen: unknown[] = [];
+    const unsub = useAuthStore.subscribe((st) => { if (st.status === "authenticated") seen.push(st.exportLimits); });
+    await useAuthStore.getState().login("alice", "pw");
+    unsub();
+    expect(seen).toEqual([{ maxRows: 10, maxFileMb: 1, maxConcurrentPerUser: 1 }]);
+  });
+
+  it("LOGINME-me-fails: a failed /me read after a successful login keeps the user signed in", async () => {
+    apiLoginMock.mockResolvedValueOnce({ username: "alice", roles: [], permissions: [] });
+    fetchMeMock.mockRejectedValueOnce(new Error("network"));
+    await expect(useAuthStore.getState().login("alice", "pw")).resolves.toBeUndefined();
+    const st = useAuthStore.getState();
+    expect(st.status).toBe("authenticated");
+    expect(st.user?.username).toBe("alice");
+    expect(st.exportLimits).toEqual({ maxRows: null, maxFileMb: null, maxConcurrentPerUser: 2 });
   });
 });

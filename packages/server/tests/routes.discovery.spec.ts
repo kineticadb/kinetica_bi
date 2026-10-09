@@ -12,7 +12,7 @@
  *   - SQL-escape parameter values to prevent injection
  *   - Return existing { data: [...] } / { data: { col: type } } shapes
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { buildTestApp } from "./helpers/app";
 import { createAdminSession } from "./helpers/db";
 import { db } from "../src/db";
@@ -366,5 +366,83 @@ describe("GET /api/kinetica/schemas/:schema/tables/:table/columns with per-user 
       .map((c) => String(c[0]))
       .find((s) => s.includes('"op":"DISCOVERY"'));
     expect(auditLine).toBeDefined();
+  });
+});
+
+// ---- Phase 127 (EXPRT-V126-01): discovery routes pin an explicit 20,000 row limit ----
+describe("discovery routes pin an explicit row limit (RLDISC-)", () => {
+  const prevPerQuery = process.env.KINETICA_MAX_ROWS_PER_QUERY;
+  const prevPerCall = process.env.KINETICA_MAX_RECORDS_PER_CALL;
+  beforeEach(() => {
+    db.exec("DELETE FROM sessions");
+    // Raise BOTH so neither the shared default nor the per-call splitter can produce 20000 on its own.
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = "100000";
+    process.env.KINETICA_MAX_RECORDS_PER_CALL = "100000";
+  });
+  afterEach(() => {
+    // Never delete: dotenv would refill from packages/server/.env.
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = prevPerQuery ?? "";
+    process.env.KINETICA_MAX_RECORDS_PER_CALL = prevPerCall ?? "";
+    vi.restoreAllMocks();
+  });
+
+  const mockFetch = (body: unknown) => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+  const sqlCalls = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls.filter(([url]) => String(url).includes("/execute/sql"));
+
+  it("RLDISC-schemas: limit === 20000, one call", async () => {
+    const fetchMock = mockFetch(successSchemasBody);
+    const { cookie } = makeSessionCookie();
+    const app = await buildTestApp();
+    const res = await app.get("/api/kinetica/schemas").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    const calls = sqlCalls(fetchMock);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0][1].body).limit).toBe(20000);
+  });
+
+  it("RLDISC-tables: limit === 20000, one call", async () => {
+    const fetchMock = mockFetch(successTablesBody);
+    const { cookie } = makeSessionCookie();
+    const app = await buildTestApp();
+    const res = await app.get("/api/kinetica/schemas/public/tables").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    const calls = sqlCalls(fetchMock);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0][1].body).limit).toBe(20000);
+  });
+
+  it("RLDISC-columns: limit === 20000, one /execute/sql call", async () => {
+    const fetchMock = mockFetch(successColumnsBody);
+    const { cookie } = makeSessionCookie();
+    const app = await buildTestApp();
+    const res = await app.get("/api/kinetica/schemas/public/tables/orders/columns").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    const calls = sqlCalls(fetchMock);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0][1].body).limit).toBe(20000);
+  });
+
+  it("RLDISC-warn: has_more_records logs a [discovery] warning with 20000 and still returns the list", async () => {
+    mockFetch({
+      status: "OK",
+      data_str: JSON.stringify({
+        json_encoded_response: JSON.stringify({ column_1: ["public"], has_more_records: true }),
+      }),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { cookie } = makeSessionCookie();
+    const app = await buildTestApp();
+    const res = await app.get("/api/kinetica/schemas").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ data: ["public"] });
+    const msgs = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(msgs.some((m) => m.includes("[discovery]") && m.includes("20000"))).toBe(true);
   });
 });

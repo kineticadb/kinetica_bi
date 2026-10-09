@@ -1527,3 +1527,141 @@ describe("ChartConfigPanel — heatmap axes + SQL contract", () => {
   });
 
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 132 — line chart Group By builder (LINE-V126-01/04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LINE_DEF_GROUPED: import("./registry").ChartTypeDefinition = {
+  type: "line",
+  label: "Line Chart",
+  icon: "~",
+  fields: [],
+  defaultConfig: { groupByColumns: [] as string[] },
+  usesAggregation: true,
+  requiresGroupBy: true,
+  supportsDrillDown: true,
+};
+
+describe("Phase 132 — line chart Group By builder (LINE-V126-01/04)", () => {
+  const BASE = { table: "public.taxi_trips", metricColumn: "lat", aggregation: "SUM" };
+  const SINGLE_SQL =
+    "SELECT vendor_id, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockReturnValue(LINE_DEF_GROUPED);
+  });
+
+  function renderLine(config: Record<string, unknown>, onSave = vi.fn()) {
+    render(
+      <ChartConfigPanel
+        widgetType="line"
+        title="Line"
+        config={{ ...BASE, ...config }}
+        tables={TABLES}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    return onSave;
+  }
+
+  it("P132-1 builder shown instead of the single Group By select", () => {
+    renderLine({ groupByColumn: "vendor_id" });
+    const x = screen.getByLabelText("X axis") as HTMLSelectElement;
+    expect(x.tagName).toBe("SELECT");
+    expect(x.value).toBe("vendor_id");
+    expect(screen.queryByLabelText("Group By")).toBeNull();
+    expect(
+      screen.getByText(
+        "First column = x-axis categories (required); the rest become colored lines (6 column max).",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: /apply/i })).not.toBeDisabled();
+  });
+
+  it("P132-2 legacy single groupByColumn re-applies byte-identical SQL and drill column", () => {
+    const onSave = renderLine({ groupByColumn: "vendor_id" });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const cfg = onSave.mock.calls[0][0].config;
+    expect(cfg.sql).toBe(SINGLE_SQL);
+    expect(cfg.drillDownColumn).toBe("vendor_id");
+    expect(cfg.drillDownColumnType).toBe("string");
+  });
+
+  it("P132-3 new widget without column 1 is blocked", () => {
+    renderLine({});
+    expect((screen.getByLabelText("X axis") as HTMLSelectElement).value).toBe("");
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Group By column 1 is required: choose the column for the x-axis.",
+    );
+    const apply = screen.getByRole("button", { name: /apply/i });
+    expect(apply).toBeDisabled();
+    expect(apply.getAttribute("title")).toBe("Group By column 1 is required");
+  });
+
+  it("P132-4 choosing column 1 unblocks Apply", () => {
+    const onSave = renderLine({});
+    fireEvent.change(screen.getByLabelText("X axis"), { target: { value: "vendor_id" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    const apply = screen.getByRole("button", { name: /apply/i });
+    expect(apply).not.toBeDisabled();
+    fireEvent.click(apply);
+    const cfg = onSave.mock.calls[0][0].config;
+    expect(cfg.groupByColumns).toEqual(["vendor_id"]);
+    expect(cfg.groupByColumn).toBe("vendor_id");
+    expect(cfg.sql).toBe(SINGLE_SQL);
+  });
+
+  it("P132-5 two columns produce multi-column SQL with the widened LIMIT", () => {
+    const onSave = renderLine({
+      groupByColumn: "vendor_id",
+      groupByColumns: ["vendor_id", "lon"],
+      limit: 100,
+    });
+    expect(screen.getByLabelText("Series dimension 1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const cfg = onSave.mock.calls[0][0].config;
+    expect(cfg.sql).toBe(
+      "SELECT vendor_id, lon, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id, lon ORDER BY value DESC LIMIT 2400",
+    );
+    expect(cfg.drillDownColumn).toBe("vendor_id");
+  });
+
+  it("P132-6 blank extra row changes nothing", () => {
+    const onSave = renderLine({ groupByColumn: "vendor_id", groupByColumns: ["vendor_id", ""] });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(SINGLE_SQL);
+  });
+
+  it("P132-7 removing column 1 shifts the next column up; removing the last re-blocks", () => {
+    renderLine({ groupByColumn: "vendor_id", groupByColumns: ["vendor_id", "lon"] });
+    expect(screen.getAllByRole("button", { name: "Remove column" })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove column" })[0]);
+    expect((screen.getByLabelText("X axis") as HTMLSelectElement).value).toBe("lon");
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove column" }));
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /apply/i })).toBeDisabled();
+  });
+
+  it("P132-8 bar is unaffected (not blocked) and remove button has an accessible name", () => {
+    vi.spyOn(registry, "getChartType").mockReturnValue(BAR_DEF_GROUPED);
+    render(
+      <ChartConfigPanel
+        widgetType="bar"
+        title="Bar"
+        config={{ ...BASE, groupByColumns: [""] }}
+        tables={TABLES}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: /apply/i })).not.toBeDisabled();
+    expect(screen.getByLabelText("Primary group (x-axis)")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Remove column" })).toHaveLength(1);
+  });
+});

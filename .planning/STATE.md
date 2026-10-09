@@ -1,42 +1,320 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.24
-milestone_name: Dashboard Export & Import
+milestone: v1.26
+milestone_name: Large Exports & Fixes
 status: milestone-complete
-stopped_at: "v1.24 Dashboard Export & Import SHIPPED 2026-09-21 and archived. 3 phases (119-121), 16 plans, 11/11 DXIM-V124 requirements Complete. Milestone audit graded tech_debt — no blockers. Archived to milestones/v1.24-ROADMAP.md, v1.24-REQUIREMENTS.md and v1.24-MILESTONE-AUDIT.md; ROADMAP.md collapsed to the house one-liner; REQUIREMENTS.md deleted (fresh one comes from /gsd:new-milestone). Tag v1.24.0, three-part per RELEASING.md. NOT pushed — origin is shared with another developer, fetch before pushing. Gates at ship: web tsc clean, vitest 181 files/4100 tests/0 failed, theme-guard 152/152, server tsc clean, server test-gate.mjs GATE PASSED (set-based, 8 documented failing files). THE MILESTONE'S LESSON: four defects shipped past tsc, vitest AND theme-guard, and one operator cross-environment checkpoint found all four — spatialTargets[].tableId missing from the reference inventory, max_records 0 rejected at the import boundary, custom metrics loaded for the wrong table, and the frozen config.sql metric expression. The fourth's signature was the side-by-side comparison PASSING. CARRIED DEBT, highest first: loadConfig(...).catch(() => {}) suspends a widget in Loading... forever on a rejected fetch (pre-existing, project-wide, now reachable from seven more widget types — the one worth scheduling); defect-dv-combination-filter-view.md still OPEN; phases 119/120 never ran gsd-verifier; nginx same-origin path and data-source portability unverified; DXIM-F1-F5 deferred. TOOLING: gsd-tools state/roadmap/phase mutation commands are unusable here — state begin-phase and milestone complete each silently rewrote STATE.md (status to unknown, stopped_at rewound to a stale Phase 120-02 string), and verify key-links cannot parse correctly-nested plan frontmatter. Do all bookkeeping by hand. Next: /gsd:new-milestone."
-last_updated: "2026-09-21T14:50:00.000Z"
+stopped_at: "v1.26 shipped (2026-10-08); next /gsd:new-milestone"
+last_updated: "2026-10-08T18:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 16
-  completed_plans: 16
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 41
+  completed_plans: 41
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-14 — v1.21 SHIPPED)
+See: .planning/PROJECT.md (updated 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Phase 121 — UI + Cross-Environment Verification
+**Current focus:** Planning next milestone (v1.26 shipped; next milestone not yet defined)
 
 ## Current Position
 
-**v1.24 Dashboard Export & Import — SHIPPED 2026-09-21.** Archived. No phase in progress.
+**Planning next milestone. v1.26 Large Exports & Fixes — SHIPPED 2026-10-08.** Archived. No phase in progress.
 
-Milestone: 3 phases (119-121), 16 plans, 11/11 requirements Complete. Audit: `tech_debt`, no blockers.
-Tag `v1.24.0` created locally and **NOT pushed** — `origin` is shared with another developer, so
-fetch before pushing.
+- **Milestone:** 6 phases (127-132), 41 plans, 21/21 requirements Complete.
+- **Audit:** `tech_debt`, with no blockers (`milestones/v1.26-MILESTONE-AUDIT.md`).
+- **Archived to:**
+  - `milestones/v1.26-ROADMAP.md`
+  - `milestones/v1.26-REQUIREMENTS.md`
+  - `milestones/v1.26-MILESTONE-AUDIT.md`
+- **REQUIREMENTS.md:** no working copy exists. `/gsd:new-milestone` creates the fresh one.
+- **Tag and branch:**
+  - Tag `v1.26.0` (three-part per RELEASING.md) is left to the operator.
+  - Nothing is pushed. `origin` is shared with another developer, so fetch before pushing.
+  - Branch `feat/large-exports` is not yet merged to master. Branch the next milestone off master AFTER it merges.
 
-**Next: `/gsd:new-milestone`** — it creates the fresh REQUIREMENTS.md (this milestone's was archived
-to `milestones/v1.24-REQUIREMENTS.md` and the working copy deleted, per the completion workflow).
+**Next: `/gsd:new-milestone`.**
+
+**Open blockers:** none.
+
+**Open verification debt:**
+1. Proxy-path `curl -C -` resume through the deploy nginx (`:8080`, with `-H 'Accept-Encoding: gzip'` on the 206 step) has never been exercised (EXPRT-V126-11). All resume checks ran against `:4000`.
+2. 132 V7 light/dark pass and the rendering of `pickup_datetime` (epoch) X labels were not explicitly confirmed.
+3. The v1.25 F1 fix (the Datasets detail view refreshes after an apply, `edd648b`) still needs re-verification against real Kinetica.
+
+**v1.26 tech debt carried to the next milestone:**
+- Offset paging re-sorts per page (516 → 815 ms per 20k page at 500k rows).
+- The snapshot MV needs CREATE MATERIALIZED VIEW, untested as a non-admin.
+- Ended or killed jobs leave `_kbi_exp_*` objects to their TTL (one `_kbi_exp_2432df35` was observed after UAT).
+- `EXPORT_DIR` and `EXPORT_VIEW_TTL_MINUTES` are missing from `packages/server/.env.example`.
+- `lib.exportRunner.memory.spec.ts` contamination watch.
+- The web `ExportJobDto.compress` is never read.
+- Pre-existing since Phase 58: the records `page_size` widget-action override is a no-op (`page_size` vs `cfg.pageSize`; pending todo).
+- Raw floats in line tooltips.
+- Line Chart vs Numeric Line Chart merge or rename deferred.
+- **The operator's dev `.env` has `MAX_BAR_GROUP_BY_SERIES=2` (default 12). Restore it.**
+- `EXPRT-F1`-`F4` and `CFGSQL-F1` (remove persisted `config.sql`) are deferred.
+
+**Carried debt from earlier milestones:**
+- `SSYNC-F6`: `POST /api/filter/materialize` interpolates client-supplied column names into SQL unchecked.
+- `loadConfig(...).catch(() => {})`.
+- `defect-dv-combination-filter-view.md` is still OPEN.
+- The theme-guard `global.css` exemption.
+- `TD-V16-TEST-ISOLATION`.
+- OIDC has never been browser-verified.
+
+**Earlier position notes (historical):**
+
+**v1.26 position notes at close (historical, 2026-10-08):**
+
+**v1.26 Large Exports & Fixes — Phase 132 COMPLETE (2026-10-08, verified: 132-VERIFICATION.md); all 6 phases done, next milestone audit.** (Phase 131 COMPLETE 2026-10-08.) (Phase 130 COMPLETE 2026-10-07.) (Phase 129 COMPLETE 2026-10-07, proxy-path resume open debt.) (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
+(127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
+and `.planning/REQUIREMENTS.md` written by hand (no `gsd-tools` mutation commands run, per this
+repo's own well-evidenced lesson that they corrupt STATE.md/ROADMAP.md).
+
+Phase order: 127 (row-limit fix, no dependency) → 128 (export job core — live spike, runner,
+snapshot, cancel, session-bound credentials, depends on 127) → 129 (routes — resumable download,
+history, privacy, depends on 128) → 130 (TTL cleanup, boot reconciliation, admin env caps, depends
+on 128/129) → 131 (client export UI — dialog, progress, history list; operator checkpoint against
+real Kinetica; depends on 129/130) → 132 (line chart multi-series Group By; depends on 131 only to
+avoid a `WidgetRenderer.tsx` file collision with the export UI phase, not a logical dependency).
+
+**Open architectural question, deliberately NOT settled in planning.** Phase 128 begins with a live
+spike against the real Kinetica instance to choose between `options.paging_table` and a job-private
+snapshot view + OFFSET + composite `ORDER BY` for the export job's pagination — both research
+sources proposed different mechanisms and neither was verified live.
+
+**Phase 127 outcome (2026-10-05):** 7/7 plans, EXPRT-V126-01/02/03 Complete. Operator live check
+APPROVED (CSV >1,000 rows, CSV cap + CSV_INBROWSER_MAX_ROWS, heatmap banner, notices light+dark).
+Decision: `/api/auth/me` now also carries `maxRowsPerQuery` (Phase 128+ can reuse it); records table also
+learns the page cap from a server-cut page (stale-tab safe).
+**Phase 127 carry-overs, verified live in Phase 128 (spike Q7/Q8):** D-04a (split-call row order without ORDER BY) VERIFIED; D-04b (`KINETICA_MAX_RECORDS_PER_CALL` above server max) VERIFIED. No Phase 127 follow-up is needed. Caveat: order stability is empirical (static single-table `SELECT *`), not a documented Kinetica guarantee. Grouped Numeric Line notice still shares the Timeline code path (unit-tested only).
+
+**Phase 128 context gathered (2026-10-06):** `128-CONTEXT.md` — executor-run live spike (prefer `paging_table` if it holds; also verifies the 127 carry-overs) gated by an operator checkpoint; COUNT(*) self-check fails on mismatch; OWASP `'` formula prefix with numeric exemption on both paths; partial file deleted on any non-complete end; statuses include `session_expired`.
+
+**Phase 128 outcome (2026-10-06):** 7/7 plans, verified (`128-VERIFICATION.md`). EXPRT-V126-04/16 Complete; EXPRT-V126-05/07 re-opened by the operator at verification — engine delivered in 128, user-facing completion in Phase 131 (they say "the user can…", and there are no routes/UI yet). Snapshot isolation under a changing source table deferred to Phase 131 UAT (added to its criterion 5). Spike (`128-SPIKE-NOTES.md`, operator Approved 2026-10-06): **Chosen mechanism: offset** (job-private snapshot MV `_kbi_exp_<id8>` + request-level OFFSET + `ORDER BY <user sort>, <remaining exported columns>`); `paging_table` could not be shown to create any table on this instance. Confirmed `max_get_records_size` = 20000 (empirical; the SHOW SYSTEM PROPERTIES probe is empty for this user). `has_more_records` is the exhaustion signal; `total_rows` comes from `COUNT(*)` on the MV and the runner fails on mismatch. Live runner smoke vs `demo.nyctaxi` (500k): complete (500000 = COUNT, header ok, snapshot dropped, ~49k rows/s), cancel (no file), session-end (`session_expired`, no file, no further Kinetica call); all `_kbi_exp_*` objects dropped. Source-table changes mid-job NOT tested live (read-only, D-02): guaranteed structurally by reading only the job-private MV (REFRESH OFF).
+Operator decisions: Q-A/Q-B approve offset + MV in both paths; Q-C export = exactly the configured columns (IDENT_RE-filtered, in order; all columns if none configured), no hidden-column concept; Q-D widget-action overrides (`widgetOverrides`) are NOT reflected in the export, a **Phase 131 follow-up** (e.g. client sends validated overrides).
+Accepted noted risks: (1) per-page sort cost grows with offset (516 -> 815 ms/20k page at 500k rows; ~500 pages at 10M rows), consider progress/ETA in 130/131; (2) the offset path needs CREATE MATERIALIZED VIEW for the exporting user, untested as a non-admin (runner classifies as `kinetica_error` with a readable message).
+Primitives for Phase 129: `startExport`, `cancelExport`, `getExportJob`, `listExportJobsForUser`, `EXPORT_DIR`, `EXPORT_VIEW_TTL_MINUTES`; object prefix `_kbi_exp_` for Phase 130's orphan sweep (a session-ended job cannot drop its snapshot; TTL, default 60 min, is the backstop). Smoke: `npm run export-runner-smoke`.
+Carried items: Phase 131 Q-D follow-up; Phase 127 follow-ups = none (D-04a/b verified).
+
+**Phase 129 outcome (2026-10-07):** 4/4 plans. Six routes under /api/exports: POST / (202 start; 404 no-leak on no view/CSV disabled; 400 validation), GET / (200 own history), GET /:id (200; 404 non-owner), POST /:id/cancel (202; 409 already terminal; 404), DELETE /:id (204; 404), GET /:id/download (200/206 native Range + If-Range; 404 non-owner; 409 not complete; 410/416 per spec). Operator decisions O-1..O-7 applied. EXPRT-V126-11/13/17 Complete; EXPRT-V126-05/07 still in progress (routes delivered, complete in Phase 131). Live smoke vs demo.nyctaxi (500k, real socket) R1-R7 all PASS, incl. R4 interrupted download resumed from byte 1048576 -> 206 with matching sha256; cleanup verified. Probes: 129-01 five mutations red, 129-02 seven (P7 strengthened), 129-03 six (D3 equivalent mutation and D6 ENOENT race honestly not discriminated). Gates: server tsc clean, test:gate PASSED (8 known files), 4 phase specs 60/60, packages/web unchanged since ba8af45.
+**Open verification debt (Phase 129 Task 2):** proxy-path `curl -C -` resume was NOT exercised. Operator reply: "not exercised: proxy not running". Nginx config reviewed statically only (gzip_types excludes text/csv; plain proxy_pass, no Range override; default buffering), so Range/If-Range should pass through. Closes at Phase 131 UAT (success criterion 5) or an earlier curl run against the deployed :8080 origin with `-H 'Accept-Encoding: gzip'` on the 206 step.
+**Resolved (Phase 130):** per-user concurrency (default 2), row and file-size env caps now exist; the 129->130 do-not-ship warning no longer applies.
+**Phase 130 outcome (2026-10-07):** 6/6 plans. Env knobs: EXPORT_TTL_HOURS (default 24, capped at 87600), EXPORT_MAX_ROWS (off), EXPORT_MAX_FILE_MB (off), EXPORT_MAX_CONCURRENT_PER_USER (default 2); invalid values fall back with one warn, so a typo disables a row/size cap. Error codes: `row_cap`, `size_cap`, `server_restarted` are stored on the job; `concurrency_cap` is a 429 body only. Expiry is computed from finished_at (no schema change); sweep every 5 min plus once at boot; boot reconcile runs in the bootstrap IIFE only; the sweep skips files held by an open download (refcount claimed in the download route's sync gate); expired-unswept download is 410, swept 404. Live smoke vs demo.nyctaxi R1-R10 all PASS (R8: open=true expired_get=410 skipped=1 file_kept=true sha_match=true after_close_deleted=true new_get=404). Real kill -9 restart test: job failed/server_restarted, .part and stray csv removed, foreign file untouched. Checkpoint reply (criterion 3): "approved". Post-checkpoint review fixes: b260084 (cancel frees the concurrency slot at once; closed-response guard in trackExportDownload; size-cap message "after about N rows"), 8bea0f3 + a0fa0f5 (password login loads /me deploy config in one set; EXPORT_TTL_HOURS overflow RangeError fixed by 87600 cap; pre-open abort check as regression guard). **Accepted trade-off:** a cancelled run's in-flight Kinetica call (normally <1s, up to Node fetch's ~5-min default timeout if Kinetica stalls) no longer counts against the cap. Gates: server tsc clean, test:gate PASSED (8 known files), 8 phase specs 174/174, web tsc clean, vitest 4244/4244, theme-guard green. 18 discrimination probes A-R. EXPRT-V126-14/15 Complete; -05/-07 still in progress (Phase 131).
+**Phase 131 outcome (2026-10-08):** 11/11 plans (10 planned + 131-11 zip gap closure); phase NOT yet verified. EXPRT-V126-05/06/07/08/09/10/12 Complete. Shipped: records Download opens an "Export records" dialog above the in-browser cap or with an unknown count (name default widget title + timestamp, raw/formatted, Compress (.zip), limits shown in advance, 5 s progress, Cancel, preflighted resumable Download, toast when closed); Exports page (sidebar after Datasets: live rows, Download, Cancel, Delete); name stored in options_json with filesystem/header-safe, non-ASCII-intact filenames; formatted mode via a server port of the client formatter (d3-format server dependency + lockfile, parity spec); DTO name/dashboardName/widgetTitle; className existence check script; logout stops tracking. Operator live UAT V1-V13 all PASS (server side run live by the orchestrator via the real bootstrap + HTTP): 1.5M-row raw export 74 s / 50,103,744 bytes, header = configured columns in order, 0 sort violations, no trailing CRLF; formatted+compressed non-ASCII name `Resume - shu ju / Q1` (originally gzip, 64 s) with `filename*=UTF-8''` Content-Disposition; cancel leaves no file; resume Range 206 with identical sha256 (local-only); logout gives session_expired with the D-16 message and no file; kill -9 mid-export then restart reconciled ("1 interrupted jobs failed, 0 orphan files removed", .part removed); 3rd concurrent start 429 concurrency_cap verbatim; EXPORT_MAX_ROWS=500000 gives /me exportLimits and a row_cap failure with the verbatim message (dialog disabled-Start UI unit-tested only, not live); light/dark OK; Enter-to-start OK; D-04 saved-settings note shown with a page_size override active. **Snapshot isolation verified live (V10):** with the table mutated mid-export (1,489,624 rows, 0 DDS) the export still had 1,500,000 rows incl. all 11,376 DDS and was byte-identical to the V2 file (operator-approved predicate `vendor_id = 'DDS'`, which replaced `vendor_id = 1` that matched 0 rows). This closes the Phase 128 snapshot-isolation debt. Scratch table `kbi_scratch.exp131_iso` and schema dropped; the table is gone (count fails). One `_kbi_exp_2432df35` snapshot object remains from the UAT runs (default 60 min TTL is the backstop; not covered by the drop approval).
+**Phase 131 UAT gap closure (2026-10-08):** 6c710cf dialog portals to document.body (grid CSS transforms trapped position:fixed inside the widget) plus modal-family styling (segmented radiogroup--buttons, ds-field labels), tests EXPDLG-portal/EXPDLG-modal-classes; c83d138 reverted 0418602 (gzip OS byte; wrong diagnosis: the operator's Archive Utility refuses every .gz, even CLI gzip); 131-11 (717e2de, 86a84c3, d1c857d, 52d4725, 0d450b5) compression switched to .zip per CONTEXT D-07a, Z1-Z5 approved incl. Finder double-click, legacy .csv.gz still served/cleaned; fd5e312 Name field keeps focus under StrictMode (V12 initially failed: Enter did not start the export), test EXPDLG-strictmode-focus. Watch item: tests/lib.exportRunner.memory.spec.ts failed once in a full server test:gate run but passes alone (contamination; it holds the new zip backpressure test).
+**Open debt carried forward:** (1) proxy-path `curl -C -` resume STILL not exercised (V6 was local-only: Range 206, resume 206, sha256 identical on :4000; the Phase 129 debt stays open until run through the deploy proxy :8080 with `-H 'Accept-Encoding: gzip'`); (2) widget-action overrides (Phase 128 Q-D) closed under D-04 (V13: page_size override active, saved-settings note shown, then cleared and gone; exports use the saved widget). Sending overrides to the server remains a deferred future follow-up, not debt; (3) snapshot isolation closed (V10).
+**Follow-up (pending todo, outside Phase 131):** the records `page_size` widget-action override never changes the table: pre-existing Phase 58 bug, actionAllowList key `page_size` (actionAllowList.ts:119, radioGroupCapture.ts:48) vs records reading `cfg.pageSize` (WidgetRenderer.tsx:1920); the overlay merges `page_size`, so it is a no-op and "Capture from target" captures nothing.
+**Phase 132 outcome (2026-10-08):** 6/6 plans, phase NOT yet verified; this was the last phase of v1.26. LINE-V126-01..04 Complete (web-only; server, numeric line, timeline, styles and BarRenderer untouched vs PHASE_BASE d35081f). Shipped: line chart reuses the bar Group By Columns builder (column 1 = X axis, required, with validation; extra columns draw one line per value, Set2, shared series cap D-04); line LIMIT multiplier; X categories ascending (accepted visible change to D-05); interval 0 with tilt/scroll geometry so every X label shows; resolveLineMetricTitle for the legend and rotated Y title; tooltip multiSeries/metricTitle; gaps (connectNulls false) plus a lone dot; column-1 typed drill; LIMIT+1 probe and COUNT(DISTINCT) only when the limit is hit for the "Showing N of M categories" notice. Gates: web tsc 0, vitest 203 files / 4433 tests (4434 after the UAT fix), theme-guard 158/158, check-classnames clean. Operator live UAT V1-V9 all PASS. V3: the dev server .env has MAX_BAR_GROUP_BY_SERIES=2, so the series cap correctly showed "Showing top 2 of 5 series" until raised (local config, not a defect). V6 live count M=7. V9 initially showed a legacy no-Group-By line as raw rows under a misleading title with clipped Y ticks; UAT fix 79daf34: a line with no X column now prompts "Choose an X axis column in this chart's settings." (the Numeric Line Chart remains the numeric/multi-metric option), and the Y axis width is measured from the formatted ticks (line cap 160px; bar default 80 unchanged); test L132-36 new. Not explicitly confirmed: light+dark pass for V7, and how pickup_datetime X labels render.
+**Phase 132 follow-ups:** (1) evaluate rounding raw floats in line tooltips when no column format is set (long floats seen; pre-existing, shared with the bar chart); (2) check whether pickup_datetime/epoch X labels show raw numbers instead of dates (unconfirmed); (3) deferred idea from CONTEXT: merge or rename Line vs Numeric Line.
+
+**Next:** verify Phase 132, then the v1.26 milestone audit (`/gsd:audit-milestone`).
+
+**Carried debt from v1.25, highest-value first:** `SSYNC-F6` — `POST /api/filter/materialize`
+interpolates client-supplied column names into SQL unchecked; `loadConfig(...).catch(() => {})`;
+`defect-dv-combination-filter-view.md` still OPEN; the theme-guard `global.css` exemption;
+`TD-V16-TEST-ISOLATION`; OIDC never browser-verified. (Removing persisted `config.sql` was the
+previously-named v1.26 candidate — moved out at this milestone's open; see `REQUIREMENTS.md`
+v2 `CFGSQL-F1`.)
+
+**One v1.25 live check still owed:** the F1 fix (Datasets detail view refreshes after an apply,
+`edd648b`) is probed 4/4 but not re-verified against real Kinetica.
+
+
+**v1.25 Schema Sync — Phase 125 COMPLETE (2026-09-28), verification `passed` 5/5.**
+Next: **Phase 126 (Datasets UI, Access Gating & Operator Verification)** — the last phase of v1.25.
+
+Progress: 4/5 phases, 16/19 requirements Complete
+(SSYNC-V125-02..-17). Remaining: SSYNC-V125-01, -18, -19, all owned by Phase 126.
+
+**Phase 126 carries a NEW success criterion 6**, added 2026-09-28 by operator decision at Phase
+125's blocking checkpoint: the UI must render `SCHEMA_APPLY_TEXT_WIDTH_GAP` after an apply,
+unconditionally. Phase 125 exported and tested that constant but attached it to no response, so
+the `text` → `string` drill-down over-inclusion it names is currently invisible to operators.
+The conditional variant was offered and declined — the server does not track the pre-apply
+vocabulary.
+
+**Phase 126 Plan 01 COMPLETE (2026-09-28)** — the web API layer, and the first `packages/web`
+diff of the whole v1.25 milestone. SHIPPED as one appended `// --- Schema Sync ---` section in
+`packages/web/src/api/client.ts` (1767 → 1953 lines, pure append): 22 mirrored DTO types plus
+`checkTableSchema` / `applyTableSchema` / `listTableSyncHistory` / `deleteTableSyncHistoryEntry`.
+11/11 `CLIENT-` tests, 6/6 probes fired on the FIRST attempt with no test needing strengthening,
+tsc clean, web suite 182 files / 4111 tests green, theme-guard **152** (unchanged — no component
+file added), `packages/server` ZERO diff. All signatures pinned VERBATIM in `126-01-SUMMARY.md`;
+plans 126-02..04 are planned against that text.
+
+THREE FACTS 126-02 MUST NOT REDISCOVER:
+- **`applyTableSchema` NEVER throws on 409.** The 409 is checked BEFORE `throwForStatus` and the
+  server's `stale` / `table_missing` body is returned as a VALUE with its operator-facing `message`
+  byte-intact. `throwForStatus` (`client.ts:97-118`) special-cases only 401/403/502 and reads only
+  an `{ error }` key, which a 409 body does not have — routed through it the approved
+  `SCHEMA_APPLY_STALE_MESSAGE` becomes "Failed to apply the schema". Branch on `outcome`; there is
+  no `ConflictError` to catch. No fourth error class was added and `useApiQuery` was NOT touched
+  (it is mount-scoped, wrong for a button-triggered mutation).
+- **`SchemaCheckResponse.impact` is optional and its ABSENCE is load-bearing.** The caller does not
+  default it: `"impact" in result === false` means "not yet run"; empty sections mean "no findings".
+  Probe P6 (defaulting a missing `impact`) exists solely to keep that true and reddens
+  `CLIENT-check-impact-absent`.
+- **`cap` and `droppedCount` come off the response.** `CLIENT-history-shape` deliberately uses
+  `cap: 5`, never the server's default 20, so a hardcoded 20 downstream is mechanically detectable.
+
+NO BROKEN ACCEPTANCE CRITERION THIS PLAN — the first in this milestone. All ten stated before-values
+were re-measured and all ten genuinely read 0, because every anchor is a symbol or test-id the plan
+introduces. Recorded caveat for future planners: criteria 9 and 10 (the ZERO-server-diff and
+untouched-`useApiQuery` absence checks) read 0 both before AND after by construction, so they cannot
+fail-before. They are worth keeping as the milestone's only mechanical diff-budget guard, but they
+prove "nothing broke", not "something was built" — do not count them as discriminating criteria.
+The prohibition criterion was correctly anchored to ADDED lines
+(`git diff --unified=0 … | grep '^+[^+]'`), which is what makes it meaningful against a 1767-line
+pre-existing file; a whole-file grep there would have been toothless.
+
+**Phase 125 Plan 01 COMPLETE (2026-09-25)** — the storage layer, and the milestone's first writer.
+SHIPPED in `packages/server/src/db.ts`: `table_sync_history` + `table_sync_history_meta` DDL,
+`SYNC_HISTORY_CAP = 20`, `setTableSchemaSnapshot` (FIRST writer for `tables.columns` +
+`tables.columns_fingerprint`), `insertTableSyncHistoryEntry` / `listTableSyncHistory` /
+`getTableSyncHistoryEntry` / `deleteTableSyncHistoryEntry`, and explicit history cleanup in
+`deleteTable`. 18/18 tests in `tests/db.syncHistory.spec.ts`, 9/9 probes fired, tsc clean,
+test-gate GATE PASSED (same 8 KNOWN_FAILING), web ZERO diff.
+Accessor shapes are pinned VERBATIM in `125-01-SUMMARY.md` — Phase 126 is planned against that text.
+
+**Phase 125 Plan 02 COMPLETE (2026-09-25)** — the two pure apply primitives.
+SHIPPED: `canonicalFingerprintJson` (pure append to `lib/schemaFingerprint.ts`; 36 added / 0
+deleted, byte-prefix verified) and a new `lib/schemaApply.ts` carrying `isStaleAgainst`,
+`SCHEMA_APPLY_STALE_MESSAGE`, `TYPE_NAMING_REFINEMENTS`, `renderColumnType`, `renderColumnsMap` and
+`SCHEMA_APPLY_TEXT_WIDTH_GAP`. 22/22 tests in `tests/lib.schemaApply.spec.ts` (9 STALE-, 10 RENDER-,
+3 PARITY-), 8/8 probes fired with NO test needing strengthening, tsc clean, test-gate GATE PASSED
+(same 8 KNOWN_FAILING), web ZERO diff. All declarations pinned VERBATIM in `125-02-SUMMARY.md` —
+Phase 126 renders `SCHEMA_APPLY_STALE_MESSAGE` verbatim.
+
+THREE FACTS 125-03 MUST NOT REDISCOVER:
+- **`formatFingerprint` must NEVER be written straight into `tables.columns`.**
+  `{base:"long",refinements:["timestamp"]}` formats as `long(timestamp)`; the web's `normalizeType`
+  strips the parenthetical (`columnTypes.ts:69`) leaving `long`, which is in `NUMERIC_TYPES` — so
+  every TIMESTAMP column would classify as a NUMBER in every config panel after the first apply, and
+  `string(wkt)` → `string` would admit geometry to the drill-down picker. Use `renderColumnsMap`.
+- **The two serialisers are NOT interchangeable.** `canonicalFingerprintJson` is for EQUALITY ONLY
+  and must never be stored; the stored form stays `serializeFingerprintSnapshot`. Feed
+  `setTableSchemaSnapshot` with `renderColumnsMap(live)` + `serializeFingerprintSnapshot(live)`,
+  both from the FRESHLY RE-READ map, never the echoed one.
+- **Neither primitive refuses an empty body.** `isStaleAgainst({},{})` is `false` and
+  `renderColumnsMap({})` is `{}`, by design — the ROUTE must reject an empty map first.
+
+**Phase 125 Plan 03 COMPLETE (2026-09-25)** — THE WRITE. SHIPPED in
+`packages/server/src/lib/schemaApply.ts`: `SchemaApplyResult` (the four outcomes:
+`applied` with `kind: baseline|diff` / `no_changes` / `stale` / `table_missing`),
+`SCHEMA_APPLY_BASELINE_MESSAGE` / `_NO_CHANGES_MESSAGE` / `_TABLE_MISSING_MESSAGE` /
+`schemaApplyDiffMessage`, and `applySchemaSync` — the whole write in ONE `db.transaction`.
+12/12 tests in `tests/lib.schemaApply.transaction.spec.ts` (4 ONLYTABLES-, 2 BASELINE-,
+2 ROLLBACK-, 1 each DIFF-/NOOP-/STALE-/MISSING-), 11/11 probes fired (10 planned + 1 bonus),
+tsc clean, test-gate GATE PASSED on THREE runs (same 8 KNOWN_FAILING every time), web ZERO diff.
+All declarations pinned VERBATIM in `125-03-SUMMARY.md` — Phase 126 renders all four messages
+verbatim and is planned against that text. ROADMAP criteria 1-4 are met.
+
+PROBE P10 DID NOT FIRE ON THE FIRST SWEEP — the most important finding of this plan.
+P10 plants a stray `UPDATE widgets SET updated_at = datetime('now')` inside the apply
+transaction and reddened NOTHING. The snapshot was not vacuous and not count-based; it was
+faithfully comparing full rows. The problem: `datetime('now')` has ONE-SECOND resolution and the
+fixture created the widget in that same second, so the stray UPDATE wrote back a BYTE-IDENTICAL
+value. **A row comparison cannot detect a write that stores the value already there.**
+Investigating surfaced a worse hole: **`dashboard_layers` carries NO timestamp column at all**, so
+a stray write to it is invisible to ANY content comparison, forever — one quarter of ROADMAP
+criterion 2's named tables was structurally unprovable by the technique the plan specified.
+Fixed by strengthening the TEST, never the probe (commit `305c45d`), two ways:
+`ageSeededRows()` pushes every seeded row's timestamps to a fixed past instant so any
+`datetime('now')` rewrite is visible; and `expectRowWriteBudget()` asserts the delta in SQLite's
+own `total_changes()` — measured at exactly **2** for an apply (the `tables` UPDATE + the history
+INSERT) and **0** for a no-op or a stale refusal. That second guard is content-INDEPENDENT, so it
+catches a value-identical write and covers the timestamp-less `dashboard_layers`. P10 now reddens
+`ONLYTABLES-diff`; a bonus probe P10b (value-identical write to `dashboard_layers`) reddens it too.
+**Reuse `total_changes()` as a row-write budget wherever a "nothing else was touched" claim needs
+proving — it is strictly stronger than any row or count snapshot.**
+
+TWO MORE BROKEN ACCEPTANCE CRITERIA from 125-03, reported not gamed:
+- **Criterion 2.10 is UNSATISFIABLE**: it demands two gate runs "produce the same result set",
+  but the gate is SET-BASED precisely because the extra non-`KNOWN_FAILING` set ROTATES
+  (TD-V16-TEST-ISOLATION). Three runs flagged `routes.dashboard-import.refs.spec.ts`, then
+  nothing, then `routes.management.spec.ts`. The real requirement ("no trigger leaked") was
+  verified directly: `lib.dashboardImport.apply.spec.ts` was absent from all three failing sets.
+  Correct form: name the file that must be absent, never "the result set is identical".
+- **Criterion 2.6 is weakly discriminating**: `grep -c "COUNT(*) c FROM table_sync_history" >= 2`
+  counts SQL LITERALS, not assertion sites — factoring the query into a helper (better practice)
+  collapses it to 1 regardless of how many tests assert on it. Verified directly instead.
+- Two stated "before" values in the plan were also wrong: `\bforce\b` reads **3** under
+  `packages/server/src` (all `force callers to`/`force-bad`, none an override flag), not 0; and
+  `applySchemaSync` already occurred **2** times, in `schemaApply.ts`'s own header comment. Both
+  criteria were still sound in their ANCHORED form; only the prose was stale. **Measure the
+  before-value, do not assert it from memory.**
+
+ONE BROKEN ACCEPTANCE CRITERION, reported not gamed: 125-02's criterion 1.7
+(`git diff … | grep -c '^-'` = 0) is UNSATISFIABLE, because a unified diff always opens with
+`--- a/<path>`, which `^-` matches. It reads ≥1 for any change whatsoever. The real requirement
+(pure append) was verified directly three ways instead. Correct form for future plans:
+`grep -c '^-[^-]'`, or `git diff --numstat`'s deletions column. This is the same family as Phase
+124's four toothless criteria — a grep anchor that matches its own scaffolding.
+
+
+TWO FACTS FROM 125-01 THAT 125-03 MUST NOT REDISCOVER:
+- **better-sqlite3 opens connections with `PRAGMA foreign_keys = ON` by DEFAULT** (measured). The
+  long-standing `deleteDashboard` comment claiming otherwise is stale for this driver. Consequence:
+  `insertTableSyncHistoryEntry` THROWS `FOREIGN KEY constraint failed` on an unknown `tableId` — it
+  does not return falsy. The apply route must 404 before inserting.
+- **Same-second `ts` ties are NOT enough to prove id-ordering.** SQLite's sorter leaves tied rows in
+  `(table_id, id DESC)` index order, so `ORDER BY ts DESC` looked correct and two probes did not
+  fire. `CAP-over` / `HIST-order` now invert `ts` against `id` deliberately. Reuse that idiom.
+
+**Phase 125 is the first phase in this milestone that WRITES.** Phases 122-124 all deliberately
+ship no writer — `tables.columns_fingerprint` has a read-only accessor and no setter anywhere in the
+tree. 125 adds the first one, and it also persists the `ImpactReport`, so the contract reproduced
+verbatim in `124-03-SUMMARY.md` is what it must store.
+
+Four things 125 inherits, recorded at 124's close rather than rediscovered:
+- The **baseline-before-diff** rule from Phase 122: a table whose snapshot predates precise capture
+  reports `baseline_required` and does NOT diff types, because comparing an old lossy value against
+  a precise one would report a FALSE retype on the first run of every table. Establishing that
+  baseline is an APPLY, not a check — which is exactly what 125 owns.
+- The report is **JSON-serialisable with a byte-stable sort**, a constraint that exists because 125
+  persists it.
+- `impact` PRESENCE (not an empty array) distinguishes "no findings" from "not yet run".
+- Five of nine registered tables are dropped from Kinetica, so most live checks return
+  `table_missing` — expected behaviour.
 
 **Carried debt, highest-value first:** `loadConfig(...).catch(() => {})` silently suspends a widget
-in `Loading...` forever on a rejected fetch — pre-existing and project-wide, but now reachable from
-seven more widget types than a week ago; `defect-dv-combination-filter-view.md` still OPEN; phases
-119/120 never ran through `gsd-verifier`; the nginx same-origin path and data-source portability are
-both unverified; `DXIM-F1`-`F5` deferred.
+in `Loading...` forever on a rejected fetch — pre-existing and project-wide, now reachable from
+seven more widget types; `defect-dv-combination-filter-view.md` still OPEN; phases 119/120 never ran
+through `gsd-verifier`; nginx same-origin path and data-source portability unverified; `DXIM-F1`-`F5`
+deferred.
+
+**Parallel-wave git race — found 2026-09-21, independently reported by BOTH wave-1 executors of
+Phase 122.** When two plans in the same wave execute concurrently, they share ONE working tree and
+ONE git index. `git add <specific-files>` followed by `git commit` is therefore **not atomic**: the
+other executor's staging can land in between, so a commit sweeps in files the plan never touched.
+Observed: commit `ed4fc16` (plan 122-01) contains `tests/db.schemaFingerprintColumn.spec.ts`, which
+belongs to plan 122-02. No data loss — the content was correct and both plans completed — but
+attribution is wrong and `git show --stat` on that commit is misleading.
+
+It also produced two **transient** `test-gate.mjs` failures in files the running executor had never
+touched, at moments when the other executor had those exact files mid-edit and uncommitted. Both
+cleared on re-run. Correctly NOT added to `KNOWN_FAILING` — they were momentary states, not
+permanent failures. Worth knowing because it looks exactly like flakiness and could easily be
+mis-attributed to the `TD-V16-TEST-ISOLATION` set.
+
+Mitigations, in order of preference:
+1. Give parallel plans **separate git worktrees** (the Agent tool supports `isolation: "worktree"`).
+   This is the real fix and removes the shared index entirely.
+2. Failing that, pass an explicit trailing pathspec to `git commit` itself — not just to `git add` —
+   so commit scope is immune to concurrent staging. Plan 122-01's executor adopted this mid-run.
+3. Do not run the test gate while a concurrent executor is mid-edit; the failures are real states of
+   the tree, just not of any committed code.
+
+**Tooling, confirmed repeatedly:** `gsd-tools` `state`/`roadmap`/`phase`/`milestone` mutation
+commands corrupt this project's documents — `state begin-phase` and `milestone complete` each
+silently rewrote STATE.md, and `verify key-links` cannot parse correctly-nested plan frontmatter.
+Do all bookkeeping by hand.
 
 ### Phase 121 Plans 05-07 decisions (2026-09-21)
 
@@ -744,6 +1022,67 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 - **Operator's default schema:** `ki_home` (recorded in case future Plan 13-NN needs it)
 
 ## Decisions
+
+### Phase 125 Plan 03 Decisions (2026-09-25)
+
+- **`table_missing` is checked FIRST, before anything else.** `insertTableSyncHistoryEntry` THROWS
+  `FOREIGN KEY constraint failed` on an unknown `tableId` (better-sqlite3 enforces FKs by default);
+  it does not return falsy. `applySchemaSync` calls `getTable` first and returns the
+  `table_missing` arm, so the route does NOT need its own pre-flight 404 — just map the outcome.
+- **Staleness is checked before anything is computed and long before the transaction opens**, so a
+  stale apply provably performs zero writes rather than relying on a rollback to undo them. Probe
+  P2 (moving the check after the write) reddens `STALE-refuses`.
+- **The `ImpactReport` is rebuilt server-side from the freshly re-read live map, never accepted
+  from the client.** The caller echoes back only the fingerprint map its report was built FROM, so
+  the staleness comparison can run. This is what makes the locked guarantee hold — a history entry
+  can never record a report that fails to describe what was written — and it keeps a client from
+  persisting arbitrary text into an audit record.
+- **SSYNC-V125-15 is enforced by SHAPE, not by a branch.** There is no force/override parameter, no
+  refusal outcome for "this change is breaking", and no findings-acknowledgement step. The absence
+  is a property of `applySchemaSync`'s input type and of `SchemaApplyResult`'s union, which `tsc`
+  enforces; criterion 1.6 is a live diff-anchored guard against reintroducing the word in code.
+- **Criterion 2 is proven by full ROWS plus a `total_changes()` budget, not by rows alone.** Row
+  content cannot see a value-identical write, and `dashboard_layers` has no timestamp column for a
+  row comparison to catch at all. See the P10 finding in Current Position.
+- **`schemaApply.ts` is now a deliberate purity exception.** Everything above the Plan 125-03
+  banner is pure and independently testable; `applySchemaSync` below it value-imports `db` the way
+  `dashboardImport.ts` does, because a transaction cannot be expressed otherwise. The WRITE still
+  lives in a lib so the route stays thin — the lib is simply no longer pure, and the module header
+  now says so (the shipped 125-02 header claimed "PURE. No `db`…", which this plan made false).
+
+### Phase 125 Plan 02 Decisions (2026-09-25)
+
+- **Echo the whole fingerprint map rather than mint a digest** for the staleness check. The client
+  already holds `live: ColumnFingerprintMap` verbatim on both the `diff` and `baseline_required`
+  check outcomes, so echoing adds no response field, no second implementation in `packages/web` to
+  drift, and no collision surface. Cost is a larger request body only (~20 KB for the widest dev
+  table, against express.json's 1 MB limit). Recorded in the shipped source with its trade-off.
+- **Canonical key order is byte-ascending, never `localeCompare`** — a locale-dependent order would
+  make the comparison machine-dependent. `refinements` is deliberately NOT re-sorted:
+  `parseColumnFingerprints` already lowercases and sorts it, and a second sort would create a rival
+  notion of fingerprint identity beside `schemaDiff.ts`'s index-wise comparison.
+- **A pure column REORDER never refuses an apply**; any change to the column set, a base or a
+  refinement does. Proven by `STALE-reorder` (with a non-vacuity precondition on `Object.keys`
+  order) and `STALE-reorder-case` (byte order and locale order made to disagree).
+- **Type-NAMING markers are emitted BARE, width markers keep their parenthetical.**
+  `TYPE_NAMING_REFINEMENTS` = temporal (`timestamp`,`datetime`,`date`,`time`) → boolean
+  (`boolean`,`bool`) → spatial (`wkt`,`wkb`), consulted in DECLARED precedence, never in the
+  refinements array's own (byte-sorted) order. Widths fall through to `formatFingerprint`, where
+  `string(char4)` → `string` and `int(int8)` → `int` land in the same class the old
+  INFORMATION_SCHEMA value did while the width itself is finally PRESERVED — `character(256)`
+  destroyed it for char1, char4 and char16 alike.
+- **`PARITY-class` asserts against the SHIPPED `classifyFingerprint`**, never a table of hardcoded
+  expected classes, and is backed by `PARITY-class-naive` — a counter-proof asserting the naive
+  `formatFingerprint` renderer DOES disagree on at least one fixture (`col_ts`). That makes the
+  plan's central claim falsifiable inside the suite instead of resting on planning-time analysis.
+- **Three gaps carried deliberately, not papered over:** (1) `text` → `string` drill-down
+  over-inclusion, named in code as `SCHEMA_APPLY_TEXT_WIDTH_GAP` and pinned by `RENDER-text-gap`;
+  (2) the Kinetica BOOLEAN marker was NOT live-probed — both spellings are carried defensively, and
+  `classifyFingerprint` shares the same assumption so `PARITY-class` would not catch a third
+  spelling; (3) a theoretical precedence-order divergence between `renderColumnType` (temporal →
+  boolean → spatial) and `classifyFingerprint` (datetime → boolean → NUMERIC → base), which agree
+  over every live and documented Kinetica shape only because a numeric-literal refinement never
+  co-occurs with a temporal/boolean/spatial marker. Stated, not fixed speculatively.
 
 ### Phase 120 Plan 02 Decisions (2026-09-16)
 

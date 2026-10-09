@@ -30,7 +30,9 @@ import {
   YAxis,
 } from "recharts";
 import { runSql, materializeFilter, dropFilterView } from "../../api/client";
-import type { WidgetDto, TableDto } from "../../api/client";
+import type { WidgetDto, TableDto, ExportStartOptions } from "../../api/client";
+import ExportDialog from "../ExportDialog";
+import { buildExportRequest } from "../../lib/exportRequest";
 import { isViewNotFoundError } from "../../lib/kineticaErrors";
 import {
   useFilterStore,
@@ -88,8 +90,18 @@ import { useCustomMetricsStore } from "../../store/customMetricsStore";
 import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
+import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
+import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
+import {
+  readHasMore,
+  DEPLOYMENT_MAX_HINT,
+  bumpTrailingLimit,
+  detectTruncation,
+  type TruncationInfo,
+} from "../../lib/rowTruncation";
 
 // "FF66C2A5" → "#66c2a5" for Recharts fill prop (recharts SVG needs #hex; sanctioned exception —
 // same pattern as TimelineRenderer.tsx toCssColor).
@@ -266,7 +278,8 @@ function parseKineticaResponse(payload: Record<string, unknown>): Row[] {
 
     // Extract the real column names from column_headers (always present in
     // Kinetica responses). Metadata-only keys are excluded from data iteration.
-    const METADATA_KEYS = new Set(["column_headers", "column_datatypes"]);
+    // Phase 127: /api/sql now carries Kinetica's has_more_records / total_number_of_records beside the columns; they are not data columns.
+    const METADATA_KEYS = new Set(["column_headers", "column_datatypes", "has_more_records", "total_number_of_records"]);
     const columnHeaders = Array.isArray(columnar.column_headers)
       ? (columnar.column_headers as string[])
       : null;
@@ -401,6 +414,12 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
 
 const AggregatedWidgetRenderer = ({ widget }: Props) => {
   const [data, setData] = useState<Row[]>([]);
+  // Phase 127: heatmap banner (own-LIMIT+1 probe / has_more_records) and the
+  // generic "Limited to N rows" notice for every other aggregated chart.
+  const [heatmapTruncation, setHeatmapTruncation] = useState<TruncationInfo | null>(null);
+  // Phase 132 (O-2): line categories dropped by the widget's own Result limit (LIMIT+1 probe) -> notice, never silent.
+  const [lineCategoryTruncation, setLineCategoryTruncation] = useState<LineCategoryTruncation | null>(null);
+  const [chartLimitedRows, setChartLimitedRows] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -561,6 +580,9 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   useEffect(() => {
     if (!sql?.trim()) {
       setData([]);
+      setHeatmapTruncation(null);
+      setLineCategoryTruncation(null);
+      setChartLimitedRows(null);
       return;
     }
 
@@ -631,6 +653,9 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       const dvSource = dvComboEntry?.viewName || dvViewName;
       if (!dvSource) {
         setData([]);
+        setHeatmapTruncation(null);
+        setLineCategoryTruncation(null);
+        setChartLimitedRows(null);
         setLoading(false);
         setError("Internal error: materialized dynamic view has no viewName");
         return;
@@ -654,8 +679,48 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
 
     const runChartQuery = async (sqlToRun: string): Promise<void> => {
       try {
-        const res = await runSql<Record<string, unknown>>(sqlToRun, undefined, controller.signal);
-        setData(parseKineticaResponse(res));
+        // Phase 127: a heatmap asks for its own LIMIT n+1 so "exactly n cells" is
+        // distinguishable from "more than n exist". Bumped HERE so the view-not-found
+        // retry paths (which re-enter runChartQuery) get it too.
+        const lineX = widget.type === "line" ? lineXColumn(cfg) : "";
+        const lineCountSql = lineX ? buildLineCategoryCountSql(sqlToRun, lineX) : null;
+        const bump = widget.type === "heatmap" || lineCountSql ? bumpTrailingLimit(sqlToRun) : null;
+        const res = await runSql<Record<string, unknown>>(bump ? bump.sql : sqlToRun, undefined, controller.signal);
+        const rows = parseKineticaResponse(res);
+        const serverHasMore = readHasMore(res);
+        if (widget.type === "heatmap") {
+          setHeatmapTruncation(
+            detectTruncation({ fetched: rows.length, ownLimit: bump ? bump.limit : null, serverHasMore }),
+          );
+          // ORDER BY value keeps the top n; the dropped row is the n+1th probe row.
+          setData(bump && rows.length > bump.limit ? rows.slice(0, bump.limit) : rows);
+          setChartLimitedRows(null);
+          setLineCategoryTruncation(null);
+        } else if (lineCountSql && bump) {
+          const hit = rows.length > bump.limit;
+          let lineTrunc: LineCategoryTruncation | null = null;
+          if (hit) {
+            // Only now pay for the count: M = distinct column-1 values over the SAME source/filters.
+            let total: number | null = null;
+            try {
+              const countRes = await runSql<Record<string, unknown>>(lineCountSql, undefined, controller.signal);
+              total = parseCategoryCount(parseKineticaResponse(countRes));
+            } catch (countErr) {
+              if ((countErr as Error)?.name === "AbortError") return;
+              total = null; // notice still shows, without M
+            }
+            lineTrunc = { totalCategories: total };
+          }
+          setData(hit ? rows.slice(0, bump.limit) : rows);
+          setLineCategoryTruncation(lineTrunc);
+          setChartLimitedRows(serverHasMore === true ? Math.min(rows.length, bump.limit) : null);
+          setHeatmapTruncation(null);
+        } else {
+          setData(rows);
+          setChartLimitedRows(serverHasMore === true ? rows.length : null);
+          setHeatmapTruncation(null);
+          setLineCategoryTruncation(null);
+        }
       } catch (err) {
         // AbortError is expected control flow on filter change — never route to setError
         // (would flash red error UI on every filter mutation).
@@ -833,11 +898,20 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     drillDownColumnType,
   };
 
-  switch (widget.type) {
+  const chart = (() => { switch (widget.type) {
     case "bar":
       return <BarRenderer data={data} config={cfg} {...drillProps} />;
     case "line":
-      return <LineRenderer data={data} config={cfg} {...drillProps} />;
+      // Phase 132 UAT (V9): a Line Chart saved with no X axis column used to plot the first raw rows
+      // (repeating, unaggregated categories). Prompt for the required column instead of drawing that.
+      if (lineXColumn(cfg) === "") {
+        return (
+          <div className="widget-placeholder" data-testid="line-needs-x">
+            <span>Choose an X axis column in this chart&apos;s settings.</span>
+          </div>
+        );
+      }
+      return <LineRenderer data={data} config={cfg} categoryTruncation={lineCategoryTruncation} {...drillProps} />;
     case "pie":
       return <PieRenderer data={data} config={cfg} {...drillProps} />;
     case "scatter":
@@ -851,7 +925,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       // AS value), so `data` already carries one row per (x,y) intersection and no
       // drill props are threaded — supportsDrillDown is false because a single-column
       // drill cannot express a 2-dimension cell.
-      return <HeatmapRenderer data={data} config={cfg} />;
+      return <HeatmapRenderer data={data} config={cfg} truncation={heatmapTruncation} />;
     case "map":
       // Phase 12: MapChartRenderer reads layers from useDashboardLayersStore. Each layer carries
       // its own table_id; the renderer resolves table_id → schema.name for the WMS LAYERS param.
@@ -864,7 +938,30 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
           <span>Renderer not available for "{widget.type}"</span>
         </div>
       );
-  }
+  } })();
+
+  if (chartLimitedRows === null || widget.type === "heatmap") return chart;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
+      <div
+        className="config-hint"
+        data-testid="chart-limited-note"
+        title={`This query returned more rows than this deployment's per-query maximum, so only the first ${chartLimitedRows.toLocaleString()} are shown. ${DEPLOYMENT_MAX_HINT}`}
+        style={{
+          fontSize: 10,
+          padding: "1px 2px",
+          margin: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          flexShrink: 0,
+        }}
+      >
+        Limited to {chartLimitedRows.toLocaleString()} rows
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>{chart}</div>
+    </div>
+  );
 };
 
 /* ------------------------------------------------------------------ */
@@ -1252,16 +1349,19 @@ const BarRenderer = ({
   );
 };
 
+const LINE_Y_AXIS_MAX_PX = 160;
+
 const LineRenderer = ({
   data,
   config,
+  categoryTruncation,
   widgetId,
   tableId,
   dynamicViewId,
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
-}: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
+}: { data: Row[]; config: Record<string, unknown>; categoryTruncation?: LineCategoryTruncation | null } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
   const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
@@ -1270,8 +1370,16 @@ const LineRenderer = ({
   useEffect(() => {
     if (tableId !== undefined) loadConfig(tableId);
   }, [tableId, loadConfig]);
+  // Custom-metric label subscription (ported from BarRenderer): a custom metric has no
+  // metricColumn (keyed by metricId), so its axis title / series name comes from the stored label.
+  const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
+  void customMetricsConfigVersion; // reactive via subscription
+  useEffect(() => {
+    if (tableId !== undefined) useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
+  }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const metricId = config.metricId as number | undefined;
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_LINE_COLOR;
   const strokeWidth = (config.strokeWidth as number) ?? 2;
@@ -1282,6 +1390,48 @@ const LineRenderer = ({
   const showLegend = config.showLegend !== false;
   const showTooltip = config.showTooltip !== false;
   const gradientId = `area-fill-${y}`;
+
+  // Phase 132 (LINE-V126-01): a second Group By column makes N series, exactly as the bar chart's
+  // pivot does. Blank builder rows are dropped (lineGroupByColumns) so they never make a phantom series.
+  const groupByColumns = lineGroupByColumns(config);
+  const multiSeries = groupByColumns.length >= 2;
+  const maxCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
+  const pivotInput = multiSeries ? toBarPivotInput(data as Record<string, unknown>[], groupByColumns) : [];
+  const top = multiSeries
+    ? selectTopSeries(pivotInput, { max: maxCap })
+    : { series: [] as string[], truncated: false, total: 0 };
+  // D-08: X ascending. A legacy chart with no configured X keeps the query's order.
+  const xConfigured = lineXColumn(config) !== "";
+  const chartData: Row[] = multiSeries
+    ? sortLineRowsByX(pivotSeriesRows(pivotInput, top.series) as Row[], (r) => r.bucket)
+    : xConfigured
+      ? sortLineRowsByX(data, (r) => r[x])
+      : data;
+  const xKey = multiSeries ? "bucket" : x;
+  // The pivot stringifies X buckets; keep the raw value so a click can drill with its real type.
+  const rawXByBucket = multiSeries
+    ? new Map(data.map((r) => [String(r[groupByColumns[0]]), r[groupByColumns[0]]] as const))
+    : null;
+  // D-11: Line has no colour-theme control; multi-series always uses the default (Set2) theme.
+  const seriesColors = multiSeries
+    ? themeColorsFor(getCbColorTheme(DEFAULT_COLOR_THEME)!, Math.max(1, top.series.length))
+    : [];
+  // D-09: the legend / Y title never says "value".
+  const yTitle = resolveLineMetricTitle({
+    yFieldLabel: config.yFieldLabel as string | undefined,
+    customLabel: isCustomSelection(metricId) ? resolveMetricLabel(metricId, tableId) : null,
+    columnLabel: tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : null,
+    metricColumn,
+    aggregation: config.aggregation as string | undefined,
+    fallbackKey: y,
+  });
+  const valueAxisTickFormatter = (v: unknown): string => {
+    if (tableId !== undefined && metricColumn) {
+      const out = resolveFormatter(tableId, metricColumn)(v);
+      if (out !== v) return String(out);
+    }
+    return v == null ? "" : String(v);
+  };
 
   // Phase 10 DRILL-04: clickedElement state is preserved across line/area branches
   // for consistency, though Recharts Line/Area do not support per-point opacity easily —
@@ -1302,6 +1452,20 @@ const LineRenderer = ({
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
     // Aggregated chart → drill on the group-by / x-dimension column (the clicked category).
+    // Phase 132 (D-10, LINE-V126-04): multi-series drill = the multi-series bar's: column 1 = clicked X,
+    // series column never filtered, 300 ms. The pivot stringifies buckets, so map back to the RAW X
+    // value and let resolveAggregatedDrillTarget apply column 1's persisted type (numeric X stays a number).
+    if (multiSeries) {
+      const column = groupByColumns[0];
+      const bucket = String((payload as Record<string, unknown>)["bucket"] ?? "");
+      const raw = rawXByBucket && rawXByBucket.has(bucket) ? rawXByBucket.get(bucket) : bucket;
+      const { value, dataType } = resolveAggregatedDrillTarget({ [column]: raw }, column, drillDownColumn, drillDownColumnType);
+      setClickedElement(value);
+      setTimeout(() => {
+        dispatchDrillDown({ tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId });
+      }, 300);
+      return;
+    }
     const { column, value, dataType } = resolveAggregatedDrillTarget(
       payload, groupByColumn, drillDownColumn, drillDownColumnType,
     );
@@ -1320,72 +1484,191 @@ const LineRenderer = ({
     }, 300);
   };
 
-  return (
+  const chartMargin = { top: 10, right: 10, left: 0, bottom: 0 };
+  // Measure the OUTER wrapper (never the inner scroll box, or tilt/scroll would oscillate as it grows).
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [wrapW, setWrapW] = useState(0);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return; // jsdom has none -> width unknown -> fallback
+    const ro = new ResizeObserver(() => setWrapW(el.clientWidth));
+    ro.observe(el);
+    setWrapW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  // Phase 132 UAT (V9): size the value axis to its formatted tick labels, as BarRenderer does; a fixed
+  // 72px clipped long formats ("40,000.00000"). Only finite numbers count (Number(null) would read as 0).
+  const yValueKeys = multiSeries ? top.series : [y];
+  const yValues: number[] = [];
+  for (const r of chartData) for (const k of yValueKeys) { const v = r[k]; if (typeof v === "number" && Number.isFinite(v)) yValues.push(v); }
+  // Cap 160 (not the bar's 80): an 80px cap still clipped labels like "40,000.00000" (~95px). +16 for the rotated title.
+  const Y_AXIS_WIDTH = estimateValueAxisWidth(yValues, (v) => valueAxisTickFormatter(v), LINE_Y_AXIS_MAX_PX) + 16;
+  const plotWidthPx = Math.max(0, wrapW - Y_AXIS_WIDTH - chartMargin.left - chartMargin.right);
+  const maxLabelChars = chartData.reduce((m, r) => Math.max(m, String(r[xKey] ?? "").length), 0);
+  const layout = computeLineXAxisLayout({ n: chartData.length, plotWidthPx, maxLabelChars });
+  const yAxisEl = (
+    <YAxis
+      stroke={AXIS_COLOR}
+      tick={{ fontSize: 11, fill: AXIS_COLOR }}
+      width={Y_AXIS_WIDTH}
+      tickFormatter={valueAxisTickFormatter}
+      label={{ value: yTitle, angle: -90, position: "insideLeft", fill: AXIS_COLOR, fontSize: 11, style: { textAnchor: "middle" } }}
+    />
+  );
+  const xAxisEl = (
+    <XAxis
+      dataKey={xKey}
+      stroke={AXIS_COLOR}
+      interval={0}
+      tick={{ fontSize: 11, fill: AXIS_COLOR }}
+      height={layout.xAxisHeight}
+      {...(layout.tilt ? { angle: -45, textAnchor: "end" as const } : {})}
+    />
+  );
+  const tooltipEl = showTooltip ? (
+    <Tooltip
+      {...RECHARTS_TOOLTIP_PROPS}
+      content={
+        <ColumnFormatTooltip
+          tableId={tableId}
+          groupByColumn={multiSeries ? groupByColumns[0] : groupByColumn}
+          metricColumn={metricColumn}
+          multiSeries={multiSeries}
+          metricTitle={multiSeries ? undefined : yTitle}
+        />
+      }
+    />
+  ) : null;
+  const legendEl = showLegend ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
+  const gridEl = showGrid ? <CartesianGrid stroke={GRID_COLOR} vertical={false} /> : null;
+
+  const chart = multiSeries ? (
+    <LineChart data={chartData} margin={chartMargin} onClick={handleChartClick} style={wrapperStyle}>
+      {gridEl}
+      {xAxisEl}
+      {yAxisEl}
+      {tooltipEl}
+      {legendEl}
+      {top.series.map((sk, i) => (
+        <Line
+          key={`series_${sk}`}
+          type={curved ? "monotone" : "linear"}
+          dataKey={sk}
+          name={sk}
+          stroke={toCssColor(seriesColors[i] ?? seriesColors[0] ?? "FF66C2A5")}
+          strokeWidth={strokeWidth}
+          connectNulls={false}
+          isAnimationActive={false}
+          dot={makeLineDot(showDots, chartData.length > LINE_DOT_DENSITY_MAX)}
+          activeDot={{ r: 5 }}
+        />
+      ))}
+    </LineChart>
+  ) : fillArea ? (
+    <AreaChart data={chartData} margin={chartMargin} onClick={handleChartClick} style={wrapperStyle}>
+      <defs>
+        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="5%" stopColor={color} stopOpacity={0.5} />
+          <stop offset="95%" stopColor={color} stopOpacity={0.05} />
+        </linearGradient>
+      </defs>
+      {gridEl}
+      {xAxisEl}
+      {yAxisEl}
+      {tooltipEl}
+      {legendEl}
+      <Area
+        type={curved ? "monotone" : "linear"}
+        dataKey={y}
+        stroke={color}
+        fill={`url(#${gradientId})`}
+        strokeWidth={strokeWidth}
+        dot={showDots ? { r: 3 } : false}
+        name={yTitle}
+      />
+    </AreaChart>
+  ) : (
+    <LineChart data={chartData} margin={chartMargin} onClick={handleChartClick} style={wrapperStyle}>
+      {gridEl}
+      {xAxisEl}
+      {yAxisEl}
+      {tooltipEl}
+      {legendEl}
+      <Line
+        type={curved ? "monotone" : "linear"}
+        dataKey={y}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        dot={showDots ? { r: 3 } : false}
+        name={yTitle}
+      />
+    </LineChart>
+  );
+  const responsiveChart = (
     <ResponsiveContainer width="100%" height="100%">
-      {fillArea ? (
-        <AreaChart
-          data={data}
-          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-          onClick={handleChartClick}
-          style={wrapperStyle}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.5} />
-              <stop offset="95%" stopColor={color} stopOpacity={0.05} />
-            </linearGradient>
-          </defs>
-          {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
-          <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && (
-            <Tooltip
-              {...RECHARTS_TOOLTIP_PROPS}
-              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
-            />
-          )}
-          {showLegend && <Legend />}
-          <Area
-            type={curved ? "monotone" : "linear"}
-            dataKey={y}
-            stroke={color}
-            fill={`url(#${gradientId})`}
-            strokeWidth={strokeWidth}
-            dot={showDots ? { r: 3 } : false}
-            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
-          />
-        </AreaChart>
-      ) : (
-        <LineChart
-          data={data}
-          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-          onClick={handleChartClick}
-          style={wrapperStyle}
-        >
-          {showGrid && <CartesianGrid stroke={GRID_COLOR} vertical={false} />}
-          <XAxis dataKey={x} stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 12 }} />
-          {showTooltip && (
-            <Tooltip
-              {...RECHARTS_TOOLTIP_PROPS}
-              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
-            />
-          )}
-          {showLegend && <Legend />}
-          <Line
-            type={curved ? "monotone" : "linear"}
-            dataKey={y}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            dot={showDots ? { r: 3 } : false}
-            name={(config.yFieldLabel as string) || (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "") || y}
-          />
-        </LineChart>
-      )}
+      {chart}
     </ResponsiveContainer>
+  );
+
+  return (
+    <div
+      data-testid="line-chart"
+      ref={wrapRef}
+      style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}
+    >
+      {multiSeries && top.truncated && (
+        <div
+          className="config-hint"
+          data-testid="line-truncated-note"
+          style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}
+        >
+          Showing top {maxCap} of {top.total} series
+        </div>
+      )}
+      {categoryTruncation && (
+        <div
+          className="config-hint"
+          data-testid="line-categories-note"
+          title={LINE_CATEGORY_NOTE_TITLE}
+          style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}
+        >
+          {lineCategoryNoteText({ shown: chartData.length, total: categoryTruncation.totalCategories })}
+        </div>
+      )}
+      {layout.scroll ? (
+        <div data-testid="line-scroll-region" style={{ flex: "1 1 auto", minHeight: 0, overflowX: "auto", overflowY: "auto" }}>
+          <div style={{ width: "100%", height: "100%", minWidth: layout.minInnerWidth, minHeight: layout.minInnerHeight }}>{responsiveChart}</div>
+        </div>
+      ) : (
+        <div data-testid="line-plot-region" style={{ position: "relative", flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+          <div style={{ position: "absolute", inset: 0, minHeight: layout.minInnerHeight }}>{responsiveChart}</div>
+        </div>
+      )}
+    </div>
   );
 };
 
+// Phase 132 (D-06/D-11): per-point dot for multi-series lines. A point whose neighbours are both
+// missing has no line segment, so it is drawn REGARDLESS of density (else it is invisible);
+// otherwise dots follow showDots and hide when the X axis is dense. Recharts maps EVERY point,
+// including missing ones (cx/cy null), and its DotType requires an element, so return <g/>.
+function makeLineDot(showDots: boolean, dense: boolean) {
+  return (p: {
+    key?: string;
+    cx?: number | null;
+    cy?: number | null;
+    index: number;
+    points?: ReadonlyArray<{ y?: number | null }>;
+    stroke?: string;
+  }): ReactElement => {
+    const { key, cx, cy, index, points = [], stroke } = p;
+    if (cx == null || cy == null) return <g key={key} />;
+    if (isIsolatedLinePoint(points, index) || (showDots && !dense)) {
+      return <circle key={key} cx={cx} cy={cy} r={3} fill={stroke} stroke={stroke} />;
+    }
+    return <g key={key} />;
+  };
+}
 
 const PieRenderer = ({
   data,
@@ -1859,7 +2142,16 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const safeColumns = columnsRaw.filter((c) => IDENT_RE.test(c));
   const initialSortField = (cfg.sortField as string) || "";
   const initialSortDir = ((cfg.sortDirection as string) || "asc").toLowerCase() === "desc" ? "desc" : "asc";
-  const pageSize = Math.max(1, Number(cfg.pageSize) || 25);
+  const configuredPageSize = Math.max(1, Number(cfg.pageSize) || 25);
+  // Phase 127 (D-12): a page larger than the deploy per-query max would be cut by the server while
+  // OFFSET still advanced by the configured size, skipping rows. Clamp so paging stays contiguous.
+  const maxRowsPerQuery = useAuthStore((s) => s.maxRowsPerQuery);
+  // /me is read once at bootstrap, so a tab open across an admin restart holds a stale max. A page
+  // the server cut short (has_more_records + fewer rows than asked) teaches the real cap.
+  const [learnedPageCap, setLearnedPageCap] = useState<number | null>(null);
+  useEffect(() => { setLearnedPageCap(null); }, [configuredPageSize, maxRowsPerQuery]);
+  const pageSize = Math.min(configuredPageSize, maxRowsPerQuery, learnedPageCap ?? Infinity);
+  const pageClamped = pageSize < configuredPageSize;
   const compact = cfg.compact !== false; // default compact to match the compact theme
   const striped = cfg.striped !== false;
   // Phase 98-02 (VIZSQL-V119-02): compute WHERE clause for non-empty customWhere.
@@ -1890,7 +2182,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   // materialization, incl. spatial), so this renderer no longer reads `widgets` to fire its own
   // spatial materialize — that legacy island was removed.
   // Phase 35 Plan 05 (DV-V16-13): also read dynamicViews (orphan detection) + retryDynamicView (error retry).
-  const { dashboardId, dynamicViews: dashboardDynamicViews, retryDynamicView } =
+  const { dashboardId, dynamicViews: dashboardDynamicViews, retryDynamicView, widgets: dashboardWidgets } =
     useDashboardContext();
   const recordsTableFilters = useFilterStore((state) =>
     tableId !== undefined ? state.filters[tableId] ?? [] : []
@@ -1938,8 +2230,18 @@ const RecordsTableRenderer = ({ widget }: Props) => {
 
   // FK4: CSV export state
   const enableCsvDownload = cfg.enableCsvDownload !== false;
-  const csvDownloadRowCap = Math.max(1, Math.floor(Number(cfg.csvDownloadRowCap) || 100000));
+  // Phase 127 D-07: the admin CSV_INBROWSER_MAX_ROWS ceiling wins over the per-widget cap
+  // (mirrors ChartConfigPanel's maxBarGroupBySeriesCap clamp).
+  const csvInBrowserMaxRows = useAuthStore((s) => s.csvInBrowserMaxRows);
+  const csvDownloadRowCap = Math.min(
+    Math.max(1, Math.floor(Number(cfg.csvDownloadRowCap) || 100000)),
+    csvInBrowserMaxRows,
+  );
   const [exporting, setExporting] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  // Phase 131 D-04: exports use the SAVED widget; flag an active overlay so the dialog can say so (primitive selector).
+  const overrideActive = useWidgetActionStore((s) => Object.keys(s.widgetOverrides[widget.id] ?? {}).length > 0);
+  const [exportedRows, setExportedRows] = useState(0);
   const exportAbortRef = useRef<AbortController | null>(null);
 
   // FK4: abort in-flight export on unmount
@@ -1979,10 +2281,10 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         : "";
 
     setExporting(true);
+    setExportedRows(0);
     const PAGE = 5000;
     const all: Row[] = [];
     let offset = 0;
-    let capped = false;
     try {
       while (all.length < csvDownloadRowCap) {
         const remaining = csvDownloadRowCap - all.length;
@@ -1990,13 +2292,15 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         const sql = `SELECT ${colsClause} FROM ${fromSourceCsv}${cw}${orderBy} LIMIT ${limit} OFFSET ${offset}`;
         const res = await runSql<Record<string, unknown>>(sql, undefined, controller.signal);
         const rows = parseKineticaResponse(res);
+        const hasMore = readHasMore(res);
         all.push(...rows);
         offset += rows.length;
-        if (rows.length < limit) break; // exhausted the view
-        if (all.length >= csvDownloadRowCap && rows.length === limit) {
-          capped = true;
-          break;
-        }
+        setExportedRows(all.length);
+        if (rows.length === 0) break; // never spin
+        // has_more_records=true on a SHORT page means the server cut the page (old 1,000
+        // envelope / lowered KINETICA_MAX_ROWS_PER_QUERY) — keep paging. A bare
+        // `rows.length < limit` break is what produced the silent 1,000-row file.
+        if (hasMore !== true && rows.length < limit) break;
       }
 
       const finalCols = exportCols.length > 0 ? exportCols : Object.keys(all[0] ?? {});
@@ -2019,8 +2323,15 @@ const RecordsTableRenderer = ({ widget }: Props) => {
         URL.revokeObjectURL(url);
       }
 
-      if (capped) {
-        useToastStore.getState().showToast(`Capped at ${csvDownloadRowCap.toLocaleString()} rows`, "info");
+      const reachedCap = all.length >= csvDownloadRowCap;
+      const leftOut = totalCount !== null ? totalCount > all.length : reachedCap;
+      if (reachedCap && leftOut) {
+        useToastStore.getState().showToast(
+          totalCount !== null
+            ? `Downloaded the first ${all.length.toLocaleString()} of ${totalCount.toLocaleString()} rows`
+            : `Downloaded the first ${all.length.toLocaleString()} rows (row cap reached)`,
+          "info",
+        );
       }
     } catch (err) {
       if ((err as Error)?.name === "AbortError") return;
@@ -2034,6 +2345,29 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   useEffect(() => {
     setPage(1);
   }, [sortField, sortDir]);
+
+  // Phase 131 D-01/D-03: above the in-browser cap, or with an unknown count (loading/failed), take the background route.
+  const handleDownloadClick = () => {
+    if (totalCount === null || totalCount > csvDownloadRowCap) {
+      setExportDialogOpen(true);
+      return;
+    }
+    void handleDownloadCsv();
+  };
+  // Phase 131 (EXPRT-V126-05): read filter/spatial state at click time (S-02), resolved exactly like the orchestrator.
+  const buildExportBody = (options: ExportStartOptions) =>
+    buildExportRequest({
+      widgetId: widget.id,
+      config: cfg,
+      sortField,
+      sortDir,
+      options,
+      filters: useFilterStore.getState().filters,
+      dvFilters: useFilterStore.getState().dvFilters,
+      shapes: useSpatialFilterStore.getState().shapes,
+      dashboardWidgets,
+      dvScopeDisabled: useAuthStore.getState().dvFilterScopeDisabled,
+    });
 
   // Phase 96-01 GAP 2: The records-table materialize-trigger effect has been REMOVED.
   // The combination orchestrator (useCombinationOrchestrator) is now the SOLE trigger for
@@ -2116,6 +2450,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       .then((res) => {
         const rows = parseKineticaResponse(res);
         setData(rows);
+        if (readHasMore(res) === true && rows.length > 0 && rows.length < pageSize) setLearnedPageCap(rows.length);
         // Lock in column order from effectiveColumns (preferred) or response keys
         const firstRowKeys = Object.keys(rows[0] ?? {});
         setColumnOrder(effectiveColumns.length > 0 ? effectiveColumns : firstRowKeys);
@@ -2185,7 +2520,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
       ? (comboEntry?.viewName || recordsDvViewName)
       : (comboEntry?.viewName ?? "");
     const fromSource = effectiveViewName || table;
-    runSql<Record<string, unknown>>(`SELECT COUNT(*) AS total FROM ${fromSource}`)
+    runSql<Record<string, unknown>>(`SELECT COUNT(*) AS total FROM ${fromSource}${cw}`)
       .then((res) => {
         const rows = parseKineticaResponse(res);
         const v = rows[0]?.total;
@@ -2201,6 +2536,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
     dynamicViewId,
     recordsDvStatus,
     recordsDvViewName,
+    cw,
   ]);
 
   const handleHeaderClick = (col: string) => {
@@ -2368,10 +2704,20 @@ const RecordsTableRenderer = ({ widget }: Props) => {
             type="button"
             className="widget-csv-download ghost-sm"
             disabled={exporting}
-            onClick={handleDownloadCsv}
+            onClick={handleDownloadClick}
           >
-            {exporting ? "Exporting…" : "Download"}
+            {exporting ? `Exporting… ${exportedRows.toLocaleString()} rows` : "Download"}
           </button>
+        )}
+        {pageClamped && (
+          <span
+            className="config-hint"
+            data-testid="records-limited-note"
+            title={`Page size is set to ${configuredPageSize.toLocaleString()} rows but this deployment's per-query maximum is ${pageSize.toLocaleString()}, so each page shows ${pageSize.toLocaleString()} rows. Lower the page size, or ${DEPLOYMENT_MAX_HINT.charAt(0).toLowerCase()}${DEPLOYMENT_MAX_HINT.slice(1)}`}
+            style={{ margin: 0, whiteSpace: "nowrap" }}
+          >
+            Limited to {pageSize.toLocaleString()} rows per page
+          </span>
         )}
         <span className="widget-records-count">
           {totalCount !== null
@@ -2398,6 +2744,21 @@ const RecordsTableRenderer = ({ widget }: Props) => {
           </button>
         </div>
       </div>
+      {exportDialogOpen && (
+        <ExportDialog
+          widgetTitle={widget.title?.trim() ? widget.title : table}
+          totalCount={totalCount}
+          inBrowserCap={csvDownloadRowCap}
+          formattedAvailable={typeof tableId === "number"}
+          overrideActive={overrideActive}
+          dvNotReady={dynamicViewId !== undefined && recordsDvStatus !== "materialized"}
+          buildRequest={buildExportBody}
+          onPartialDownload={() => {
+            void handleDownloadCsv();
+          }}
+          onClose={() => setExportDialogOpen(false)}
+        />
+      )}
     </div>
   );
 };

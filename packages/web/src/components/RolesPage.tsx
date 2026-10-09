@@ -61,14 +61,19 @@ export function RolesPage() {
 
   // ─── Fetch ──────────────────────────────────────────────────────────────────
 
-  const fetchRoles = async (signal?: AbortSignal) => {
+  // RETURNS the fetched list as well as setting state. handleSave needs the fresh value
+  // synchronously: `roles` inside an async handler is the value captured at render time, so
+  // reading it after `await fetchRoles()` yields the PRE-save list (see handleSave).
+  const fetchRoles = async (signal?: AbortSignal): Promise<RoleDto[] | null> => {
     try {
       const fetched = await listRoles(signal);
       setRoles(fetched);
       setError(null);
+      return fetched;
     } catch (err) {
-      if ((err as Error)?.name === "AbortError") return;
+      if ((err as Error)?.name === "AbortError") return null;
       setError("Failed to load roles.");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -136,10 +141,19 @@ export function RolesPage() {
       );
     } else {
       setIsDirty(false);
-      await fetchRoles();
-      // Re-sync draft from refetched role
-      const refreshed = roles.find((r) => r.id === selectedId);
+      // STALE-CLOSURE BUG, found by the operator 2026-09-30 and fixed here.
+      // This previously did `await fetchRoles()` and then read the component-scope `roles`.
+      // `fetchRoles` only calls setRoles; `roles` in this async handler is still the value
+      // captured when this render ran -- i.e. the PRE-save list. So the draft was re-seeded
+      // from the OLD permission set and a box the operator had just unchecked re-checked
+      // itself, while the server had in fact saved correctly (a page refresh showed it
+      // unchecked). Read the value fetchRoles RETURNS instead.
+      const fresh = await fetchRoles();
+      const refreshed = fresh?.find((r) => r.id === selectedId);
       if (refreshed) setDraftPerms(new Set(refreshed.permissions));
+      // If the refetch failed, `fresh` is null and the draft is deliberately left alone: it
+      // already equals what the server just accepted. Falling back to the stale `roles` here
+      // would reintroduce exactly the bug above.
     }
   };
 

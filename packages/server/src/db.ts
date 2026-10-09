@@ -3,6 +3,12 @@ import path from "path";
 import fs from "fs";
 import { ColumnDisplayConfigRow, CustomMetricRow, Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
 import { seedRbac } from "./lib/rbacSeed";
+// v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): type-only import for loadColumnRefsInput's
+// return shape. No value import from this module — db.ts stays the SELECT-only data layer.
+import type { ColumnRefsInput } from "./lib/columnRefs";
+// v1.25 Phase 125 (SSYNC-V125-16/-17): type-only import for the stored report shape.
+// No value import — db.ts must not start depending on the impact composer.
+import type { ImpactReport } from "./lib/schemaImpact";
 
 const ensureDir = (dbPath: string) => {
   // Skip directory creation for in-memory databases used in tests.
@@ -26,6 +32,12 @@ const SCHEMA_DDL = `
     schema TEXT NOT NULL DEFAULT '',
     description TEXT,
     columns TEXT NOT NULL DEFAULT '{}',
+    -- v1.25 Phase 122 (SSYNC-V125-02): precise per-column type fingerprint from
+    -- /show/table's type_schemas + properties. NULL = snapshot predates precise
+    -- capture (INFORMATION_SCHEMA reported character(256) for char1/char4/char16
+    -- alike, so old values are WRONG about width, not merely lossy). Written by
+    -- Phase 125's apply, never by a check.
+    columns_fingerprint TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -288,6 +300,83 @@ const SCHEMA_DDL = `
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by  TEXT
   );
+
+  -- v1.25 Phase 125 (SSYNC-V125-16/-17): per-table sync history. Shape copied from
+  -- rbac_audit (autoincrement id, ts defaulting to datetime('now'), an actor column,
+  -- JSON payload columns, an index on what is actually queried).
+  --
+  -- 'kind' is 'baseline' or 'diff'. A BASELINE apply establishes the first precise
+  -- fingerprint on an old-format snapshot and carries no changeset and no report, so
+  -- both JSON columns are NULL for it -- it is recorded because it explains why earlier
+  -- checks could not diff types (Phase 122's baseline-before-diff rule). A NO-OP apply
+  -- is never recorded at all and therefore has no 'kind' value here.
+  --
+  -- report_json stores JSON.stringify(ImpactReport) VERBATIM. Phase 124 built that type
+  -- JSON-serialisable with a byte-stable sort precisely so it could land here unchanged;
+  -- nothing in this layer re-sorts, re-formats or re-keys it.
+  --
+  -- The index is (table_id, id DESC) because every read is "this table's entries, newest
+  -- first" and every cap sweep is "this table's ids, newest first". Ordering is by 'id',
+  -- NOT by 'ts': datetime('now') has one-second resolution, so two applies inside the same
+  -- second tie on ts, and AUTOINCREMENT id is the only stable tiebreaker.
+  --
+  -- NO PRAGMA-guarded ALTER accompanies these two: they are NEW tables, so
+  -- CREATE TABLE IF NOT EXISTS alone covers fresh installs AND existing deployments
+  -- (the brand_config precedent above). Do not go looking for a missing migration.
+  CREATE TABLE IF NOT EXISTS table_sync_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_id INTEGER NOT NULL REFERENCES tables(id) ON DELETE CASCADE,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    actor TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('baseline','diff')),
+    changeset_json TEXT,
+    report_json TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_table_sync_history_table_id ON table_sync_history (table_id, id DESC);
+
+  -- The "older entries were dropped" fact, per table. It lives in its OWN table rather
+  -- than on a history row for one reason that decides it: ROADMAP criterion 5 lets the
+  -- operator delete ANY single entry, so a counter carried on an entry (even the newest)
+  -- would vanish the moment that entry was deleted, and the operator would silently go
+  -- back to believing they are seeing everything. It is also deliberately NOT a column on
+  -- 'tables': keeping it out of that row leaves the 'Table' type, 'mapTable' and the
+  -- dashboard-export payload at zero diff, the same discipline Phase 122 used for
+  -- columns_fingerprint.
+  --
+  -- dropped_count is CUMULATIVE and monotonic. It is never decremented, including when
+  -- the operator deletes entries by hand -- it records what the CAP removed, which is a
+  -- different fact from how many entries are present now.
+  CREATE TABLE IF NOT EXISTS table_sync_history_meta (
+    table_id INTEGER PRIMARY KEY REFERENCES tables(id) ON DELETE CASCADE,
+    dropped_count INTEGER NOT NULL DEFAULT 0,
+    last_dropped_ts TEXT
+  );
+
+  -- v1.26 Phase 128: export job registry. NEW table, so CREATE TABLE IF NOT EXISTS alone
+  -- covers fresh and existing installs. No FK on dashboard_id/widget_id so deleting a widget
+  -- never cascades away history. sid is the session lookup key ONLY -- credentials are never
+  -- stored (D-17). Terminal writes are guarded (see finalizeExportJob).
+  CREATE TABLE IF NOT EXISTS export_jobs (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    sid TEXT NOT NULL,
+    dashboard_id INTEGER,
+    widget_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'queued'
+      CHECK(status IN ('queued','running','complete','failed','cancelled','session_expired')),
+    error_code TEXT,
+    error_message TEXT,
+    total_rows INTEGER,
+    rows_written INTEGER NOT NULL DEFAULT 0,
+    file_path TEXT,
+    file_bytes INTEGER,
+    spec_json TEXT NOT NULL,
+    options_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at TEXT,
+    finished_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_export_jobs_user ON export_jobs (username, created_at DESC);
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -380,6 +469,19 @@ export const createDb = (dbPath: string): Database.Database => {
   const dashboardColNames = new Set(dashboardCols.map((c) => c.name));
   if (!dashboardColNames.has("filter_display_mode")) {
     instance.exec("ALTER TABLE dashboards ADD COLUMN filter_display_mode TEXT");
+  }
+
+  // v1.25 Phase 122 (SSYNC-V125-02): add columns_fingerprint TEXT to existing `tables`.
+  // NULL = this table's snapshot predates precise type capture, so the first schema check
+  // reports baseline_required instead of diffing types (122-SPIKE-NOTES.md Q4: the stored
+  // INFORMATION_SCHEMA values are actively wrong about char width, so a diff would emit a
+  // false retype for every char column). Idempotent: PRAGMA guard makes a second boot a no-op.
+  const tableCols = instance
+    .prepare("PRAGMA table_info(tables)")
+    .all() as Array<{ name: string }>;
+  const tableColNames = new Set(tableCols.map((c) => c.name));
+  if (!tableColNames.has("columns_fingerprint")) {
+    instance.exec("ALTER TABLE tables ADD COLUMN columns_fingerprint TEXT");
   }
 
   // v1.8 RBAC (SCHEMA-V18-01): idempotent built-in role + default-mapping seed.
@@ -597,6 +699,328 @@ export const getTableBySchemaName = (schema: string, name: string): Table | unde
   return row ? mapTable(row) : undefined;
 };
 
+/**
+ * getTableColumnsFingerprint — v1.25 Phase 122 (SSYNC-V125-02/-05).
+ *
+ * Returns the RAW `columns_fingerprint` TEXT (or null), deliberately unparsed: decoding is
+ * `lib/schemaFingerprint.ts`'s job, so db.ts stays ignorant of the fingerprint shape and
+ * `mapTable` / the `Table` type / the dashboard-export payload all stay at zero diff.
+ *
+ * null means "no precise baseline" — an old-format row, or a corrupt snapshot. Both cases
+ * are handled identically by the check (baseline_required), neither is an error.
+ *
+ * READ-ONLY BY CONSTRUCTION. Phase 122 ships NO writer for this column: SSYNC-V125-05 and
+ * phase success criterion 4 require a check to leave the database byte-identical. The writer
+ * belongs to Phase 125's apply. Do not add one here.
+ */
+export const getTableColumnsFingerprint = (id: number): string | null => {
+  const row = db
+    .prepare("SELECT columns_fingerprint FROM tables WHERE id = ?")
+    .get(id) as { columns_fingerprint: string | null } | undefined;
+  return row?.columns_fingerprint ?? null;
+};
+
+/** Maximum sync-history entries kept per table. Locked at 20 in 125-CONTEXT.md. */
+export const SYNC_HISTORY_CAP = 20;
+
+/**
+ * setTableSchemaSnapshot — v1.25 Phase 125 (SSYNC-V125-13/-14).
+ *
+ * THE FIRST WRITER for `tables.columns_fingerprint`. Phase 122 shipped the read-only
+ * accessor above and deliberately no setter anywhere in the tree; this is it.
+ *
+ * Writes BOTH halves of the snapshot in one statement:
+ *   - `columns`             -- the Record<string,string> the config panels read
+ *   - `columns_fingerprint` -- the precise {"v":1,"columns":{...}} payload the diff reads
+ * Writing only one of the two would leave the table describing itself two different ways.
+ *
+ * Touches the `tables` row and NOTHING else. ROADMAP criterion 2 requires that widgets,
+ * dashboard_layers, custom_metrics and column_display_config are byte-identical after an
+ * apply -- this function is the only reason that is easy to guarantee.
+ *
+ * Returns false for an unknown id, having written nothing.
+ */
+export const setTableSchemaSnapshot = (
+  id: number,
+  columns: Record<string, string>,
+  fingerprintJson: string
+): boolean => {
+  const result = db
+    .prepare(
+      "UPDATE tables SET columns = ?, columns_fingerprint = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .run(JSON.stringify(columns), fingerprintJson, id);
+  return result.changes > 0;
+};
+
+/** The changeset persisted with a 'diff' entry. Mirrors SchemaDiff's three groups, versioned
+ *  so a later shape change is detectable rather than silently misread. */
+export type SyncChangeset = {
+  v: 1;
+  added: { column: string; liveType: string }[];
+  removed: { column: string; storedType: string }[];
+  retyped: { column: string; storedType: string; liveType: string }[];
+};
+
+/** One sync-history entry, JSON columns already parsed. */
+export type TableSyncHistoryEntry = {
+  id: number;
+  table_id: number;
+  ts: string;
+  actor: string;
+  kind: "baseline" | "diff";
+  /** null for a baseline entry -- establishing a first fingerprint has no changeset. */
+  changeset: SyncChangeset | null;
+  /** null for a baseline entry. Otherwise the ImpactReport exactly as it was built. */
+  report: ImpactReport | null;
+};
+
+/** A table's whole history, plus the two facts the operator must not be left guessing at. */
+export type TableSyncHistory = {
+  /** Newest first, ordered by id DESC. At most SYNC_HISTORY_CAP long. */
+  entries: TableSyncHistoryEntry[];
+  /** How many entries the CAP has removed for this table, ever. 0 means nothing was lost.
+   *  Phase 126 renders a "older entries were dropped" line when this is > 0 -- an operator
+   *  returning to a worklist must never believe they are seeing everything when they are not. */
+  droppedCount: number;
+  /** When the most recent cap-drop happened, or null when none ever has. */
+  lastDroppedTs: string | null;
+  /** Echoed so the UI never hardcodes the number. */
+  cap: number;
+};
+
+/** Parse one stored history row. A corrupt JSON payload degrades to null rather than taking
+ *  the whole list down -- an unreadable entry is still evidence that an apply happened. */
+const mapSyncHistoryRow = (row: any): TableSyncHistoryEntry => {
+  const parse = <T>(raw: string | null): T | null => {
+    if (raw === null || raw === undefined) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    id: row.id,
+    table_id: row.table_id,
+    ts: row.ts,
+    actor: row.actor,
+    kind: row.kind,
+    changeset: parse<SyncChangeset>(row.changeset_json),
+    report: parse<ImpactReport>(row.report_json),
+  };
+};
+
+/**
+ * insertTableSyncHistoryEntry — append one entry and enforce the per-table cap in ONE
+ * transaction, so a crash can never leave an over-cap history or a dropped_count that
+ * disagrees with what was actually removed.
+ *
+ * Cap enforcement is DELETE-ON-INSERT rather than a trigger or a sweep: it runs exactly
+ * when the only thing that can breach the cap happens, it is visible in this function
+ * rather than hidden in schema metadata, and it gives the caller the drop count directly.
+ *
+ * The sweep orders by `id DESC`, never by `ts`. datetime('now') has one-second resolution,
+ * so two applies inside the same second tie on ts and an ORDER BY ts sweep would delete an
+ * arbitrary one of them.
+ *
+ * Returns the new entry id and how many entries this insert dropped.
+ */
+export const insertTableSyncHistoryEntry = (input: {
+  tableId: number;
+  actor: string;
+  kind: "baseline" | "diff";
+  changeset: SyncChangeset | null;
+  report: ImpactReport | null;
+}): { id: number; dropped: number } => {
+  const txn = db.transaction((i: typeof input) => {
+    const res = db
+      .prepare(
+        "INSERT INTO table_sync_history (table_id, actor, kind, changeset_json, report_json) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(
+        i.tableId,
+        i.actor,
+        i.kind,
+        i.changeset === null ? null : JSON.stringify(i.changeset),
+        i.report === null ? null : JSON.stringify(i.report)
+      );
+    const newId = Number(res.lastInsertRowid);
+
+    const pruned = db
+      .prepare(
+        "DELETE FROM table_sync_history WHERE table_id = ? AND id NOT IN " +
+          "(SELECT id FROM table_sync_history WHERE table_id = ? ORDER BY id DESC LIMIT ?)"
+      )
+      .run(i.tableId, i.tableId, SYNC_HISTORY_CAP);
+    const dropped = pruned.changes;
+
+    if (dropped > 0) {
+      db.prepare(
+        "INSERT INTO table_sync_history_meta (table_id, dropped_count, last_dropped_ts) " +
+          "VALUES (?, ?, datetime('now')) " +
+          "ON CONFLICT(table_id) DO UPDATE SET " +
+          "dropped_count = dropped_count + excluded.dropped_count, " +
+          "last_dropped_ts = excluded.last_dropped_ts"
+      ).run(i.tableId, dropped);
+    }
+    return { id: newId, dropped };
+  });
+  return txn(input);
+};
+
+/** A table's history, newest first, with the cap facts. Never throws on malformed stored
+ *  JSON -- a corrupt payload reads back as null rather than taking the whole list down. */
+export const listTableSyncHistory = (tableId: number): TableSyncHistory => {
+  const rows = db
+    .prepare("SELECT * FROM table_sync_history WHERE table_id = ? ORDER BY id DESC")
+    .all(tableId);
+  const meta = db
+    .prepare("SELECT dropped_count, last_dropped_ts FROM table_sync_history_meta WHERE table_id = ?")
+    .get(tableId) as { dropped_count: number; last_dropped_ts: string | null } | undefined;
+  return {
+    entries: rows.map(mapSyncHistoryRow),
+    droppedCount: meta?.dropped_count ?? 0,
+    lastDroppedTs: meta?.last_dropped_ts ?? null,
+    cap: SYNC_HISTORY_CAP,
+  };
+};
+
+/** One entry by id, or undefined. Used by the delete route to 404 before deleting. */
+export const getTableSyncHistoryEntry = (id: number): TableSyncHistoryEntry | undefined => {
+  const row = db.prepare("SELECT * FROM table_sync_history WHERE id = ?").get(id);
+  return row ? mapSyncHistoryRow(row) : undefined;
+};
+
+/** Delete ONE entry. Touches no other entry and no `tables` row (ROADMAP criterion 5).
+ *  dropped_count is deliberately NOT decremented: it records what the CAP removed, which is
+ *  a different fact from how many entries are present now. */
+export const deleteTableSyncHistoryEntry = (id: number): boolean => {
+  const result = db.prepare("DELETE FROM table_sync_history WHERE id = ?").run(id);
+  return result.changes > 0;
+};
+
+// --- Export jobs (v1.26 Phase 128) ---
+
+export type ExportJobStatus = "queued" | "running" | "complete" | "failed" | "cancelled" | "session_expired";
+export type ExportJobTerminalStatus = Exclude<ExportJobStatus, "queued" | "running">;
+export type ExportJob = {
+  id: string; username: string; sid: string; dashboardId: number | null; widgetId: number | null;
+  status: ExportJobStatus; errorCode: string | null; errorMessage: string | null;
+  totalRows: number | null; rowsWritten: number; filePath: string | null; fileBytes: number | null;
+  specJson: string; optionsJson: string | null; createdAt: string; startedAt: string | null; finishedAt: string | null;
+};
+
+const mapExportJob = (row: any): ExportJob => ({
+  id: row.id,
+  username: row.username,
+  sid: row.sid,
+  dashboardId: row.dashboard_id,
+  widgetId: row.widget_id,
+  status: row.status,
+  errorCode: row.error_code,
+  errorMessage: row.error_message,
+  totalRows: row.total_rows,
+  rowsWritten: row.rows_written,
+  filePath: row.file_path,
+  fileBytes: row.file_bytes,
+  specJson: row.spec_json,
+  optionsJson: row.options_json,
+  createdAt: row.created_at,
+  startedAt: row.started_at,
+  finishedAt: row.finished_at,
+});
+
+export const getExportJob = (id: string): ExportJob | undefined => {
+  const row = db.prepare("SELECT * FROM export_jobs WHERE id = ?").get(id);
+  return row ? mapExportJob(row) : undefined;
+};
+
+export const insertExportJob = (input: {
+  id: string; username: string; sid: string; dashboardId: number | null;
+  widgetId: number | null; specJson: string; optionsJson: string | null;
+}): ExportJob => {
+  db.prepare(
+    "INSERT INTO export_jobs (id, username, sid, dashboard_id, widget_id, spec_json, options_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(input.id, input.username, input.sid, input.dashboardId, input.widgetId, input.specJson, input.optionsJson);
+  return getExportJob(input.id) as ExportJob;
+};
+
+/**
+ * Newest first. datetime('now') has 1-second resolution, so rowid is the tiebreak.
+ * Phase 129: username match is case-insensitive because the session stores the username as typed at
+ * login while canViewDashboard lowercases (research Pitfall 3). Stored value is NOT lowercased on insert.
+ */
+export const listExportJobsForUser = (username: string): ExportJob[] =>
+  db
+    .prepare("SELECT * FROM export_jobs WHERE lower(username) = lower(?) ORDER BY created_at DESC, rowid DESC")
+    .all(username)
+    .map(mapExportJob);
+
+export const markExportJobRunning = (id: string): boolean => {
+  const r = db
+    .prepare("UPDATE export_jobs SET status = 'running', started_at = datetime('now') WHERE id = ? AND status = 'queued'")
+    .run(id);
+  return r.changes === 1;
+};
+
+export const setExportJobTotalRows = (id: string, totalRows: number): void => {
+  db.prepare("UPDATE export_jobs SET total_rows = ? WHERE id = ? AND status = 'running'").run(totalRows, id);
+};
+
+export const updateExportJobProgress = (id: string, rowsWritten: number): void => {
+  db.prepare("UPDATE export_jobs SET rows_written = ? WHERE id = ? AND status = 'running'").run(rowsWritten, id);
+};
+
+/** Write-once terminal transition: only a queued/running job can be finalized. Returns false if refused. */
+export const finalizeExportJob = (
+  id: string,
+  status: ExportJobTerminalStatus,
+  fields: {
+    rowsWritten?: number; errorCode?: string | null; errorMessage?: string | null;
+    filePath?: string | null; fileBytes?: number | null;
+  },
+): boolean => {
+  const r = db
+    .prepare(
+      `UPDATE export_jobs SET status = ?, rows_written = COALESCE(?, rows_written), error_code = ?, error_message = ?,
+         file_path = ?, file_bytes = ?, finished_at = datetime('now')
+       WHERE id = ? AND status IN ('queued','running')`,
+    )
+    .run(
+      status,
+      fields.rowsWritten ?? null,
+      fields.errorCode ?? null,
+      fields.errorMessage ?? null,
+      fields.filePath ?? null,
+      fields.fileBytes ?? null,
+      id,
+    );
+  return r.changes === 1;
+};
+
+/** Phase 129: hard-delete a job row (DELETE /api/exports/:id). Files are removed by the caller. */
+export const deleteExportJob = (id: string): boolean =>
+  db.prepare("DELETE FROM export_jobs WHERE id = ?").run(id).changes === 1;
+
+// Phase 130: per-user concurrency cap (D-09) - case-insensitive like listExportJobsForUser.
+export const countActiveExportJobsForUser = (username: string): number =>
+  (db.prepare("SELECT COUNT(*) AS n FROM export_jobs WHERE lower(username) = lower(?) AND status IN ('queued','running')").get(username) as { n: number }).n;
+// Phase 130: ids of the user's queued/running jobs, so the runner can leave out runs already being cancelled.
+export const listActiveExportJobIdsForUser = (username: string): string[] =>
+  (db.prepare("SELECT id FROM export_jobs WHERE lower(username) = lower(?) AND status IN ('queued','running')").all(username) as { id: string }[]).map((r) => r.id);
+// Phase 130: boot reconciliation (D-05).
+export const listActiveExportJobs = (): ExportJob[] =>
+  db.prepare("SELECT * FROM export_jobs WHERE status IN ('queued','running')").all().map(mapExportJob);
+// Phase 130: expiry sweep (D-02/D-03). One clock for all terminal rows: finished_at + ttlHours. Both sides are SQLite UTC strings.
+export const listExpiredExportJobs = (ttlHours: number): ExportJob[] => {
+  if (!Number.isSafeInteger(ttlHours) || ttlHours <= 0) throw new Error(`listExpiredExportJobs: ttlHours must be a positive integer (got ${ttlHours})`);
+  return db.prepare("SELECT * FROM export_jobs WHERE status NOT IN ('queued','running') AND finished_at IS NOT NULL AND finished_at <= datetime('now', ?)").all(`-${ttlHours} hours`).map(mapExportJob);
+};
+// Phase 130: boot orphan rule (D-07) - a file is kept only if a complete row names it.
+export const listCompleteExportFilePaths = (): { id: string; filePath: string }[] =>
+  (db.prepare("SELECT id, file_path FROM export_jobs WHERE status = 'complete' AND file_path IS NOT NULL").all() as { id: string; file_path: string }[]).map((r) => ({ id: r.id, filePath: r.file_path }));
+
 export const createTable = (input: Pick<Table, "name" | "schema"> & Partial<Pick<Table, "description" | "columns">>): Table => {
   const stmt = db.prepare("INSERT INTO tables (name, schema, description, columns) VALUES (?, ?, ?, ?)");
   const result = stmt.run(input.name, input.schema, input.description ?? null, JSON.stringify(input.columns ?? {}));
@@ -622,6 +1046,18 @@ export const updateTable = (
 };
 
 export const deleteTable = (id: number): boolean => {
+  // Explicit sync-history cleanup before the table row goes, mirroring deleteDashboard's
+  // hand-written dashboard_access_grants cleanup (ACCESS-V110-02).
+  //
+  // MEASURED, not assumed: better-sqlite3 opens connections with `PRAGMA foreign_keys = ON`
+  // by DEFAULT (verified 2026-09-25), so the ON DELETE CASCADE declared on
+  // table_sync_history / table_sync_history_meta DOES fire here today -- the long-standing
+  // comment on deleteDashboard claiming the PRAGMA is off is stale for this driver. These
+  // two statements are therefore belt-and-braces, and deliberately kept: the cleanup must
+  // hold if the PRAGMA is ever turned off (a raw `new Database()` elsewhere, a future
+  // connection-level change), and HIST-cascade asserts it with foreign_keys = OFF.
+  db.prepare("DELETE FROM table_sync_history WHERE table_id = ?").run(id);
+  db.prepare("DELETE FROM table_sync_history_meta WHERE table_id = ?").run(id);
   const result = db.prepare("DELETE FROM tables WHERE id = ?").run(id);
   return result.changes > 0;
 };
@@ -1008,6 +1444,40 @@ export const listCustomMetrics = (tableId: number): CustomMetricRow[] =>
   db.prepare("SELECT * FROM custom_metrics WHERE table_id = ? ORDER BY label ASC")
     .all(tableId)
     .map(mapCustomMetric);
+
+/**
+ * v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): assemble the ColumnRefsInput the impact report
+ * walks. SELECT-only — this function writes NOTHING, matching the schema-check route's own
+ * no-write guarantee (proven by that route's "byte-identical config tables" spec).
+ *
+ * Four TABLE-WIDE selects, not a per-dashboard loop: a column reference from ANY dashboard is
+ * relevant to the table that changed, and the existing listWidgets/listDashboardLayers/
+ * listDashboardDynamicViews/listViews accessors are all dashboard-scoped. `ORDER BY id ASC` on
+ * each makes the input deterministic, which the report's byte-stability depends on.
+ *
+ * Custom metrics and column-display-config rows ARE table-scoped (their tables carry table_id),
+ * so those two reuse the existing accessors unchanged.
+ *
+ * Visibility note: this deliberately reads EVERY dashboard's rows regardless of per-dashboard view
+ * grants. The schema-check route is gated on datasets:manage AND dashboards:manage_access — an
+ * administrative operation whose whole purpose is "show me everything this change breaks".
+ * Filtering by the caller's dashboard grants would under-report, which is the failure mode this
+ * milestone exists to prevent.
+ */
+export const loadColumnRefsInput = (tableId: number): ColumnRefsInput => ({
+  widgets: db.prepare("SELECT * FROM widgets ORDER BY id ASC").all().map(mapWidget),
+  layers: db.prepare("SELECT * FROM dashboard_layers ORDER BY id ASC").all().map(mapDashboardLayer),
+  dynamicViews: db
+    .prepare("SELECT * FROM dashboard_dynamic_views ORDER BY id ASC")
+    .all()
+    .map(mapDashboardDynamicView),
+  tableViews: db
+    .prepare("SELECT * FROM dashboard_table_views ORDER BY id ASC")
+    .all()
+    .map(mapView),
+  customMetrics: listCustomMetrics(tableId),
+  columnDisplayConfig: listColumnDisplayConfig(tableId),
+});
 
 export const getCustomMetric = (id: number): CustomMetricRow | undefined => {
   const row = db.prepare("SELECT * FROM custom_metrics WHERE id = ?").get(id);

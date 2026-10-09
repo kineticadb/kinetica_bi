@@ -7,10 +7,13 @@ import {
   fetchKineticaSchemas,
   fetchKineticaTables,
   fetchKineticaColumns,
+  fetchMe,
+  getTableById,
   TableDto
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { useAuthStore } from "../store/auth";
+import { PERMISSIONS } from "../lib/permissions";
 import {
   openTableUrl, clearTableUrl, setTableMode, leaveTableUrl,
   readTableIdFromSearch, type TableMode,
@@ -18,6 +21,7 @@ import {
 import ChartCard from "./ChartCard";
 import ColumnFormatEditorModal from "./ColumnFormatEditorModal";
 import CustomMetricsEditorModal from "./CustomMetricsEditorModal";
+import SchemaSyncModal from "./SchemaSyncModal";
 
 type View =
   | { mode: "list" }
@@ -45,6 +49,32 @@ const DatasetsPage = ({ initialOpenTable }: {
       ? { mode: initialOpenTable.mode, table: initialOpenTable.table }
       : { mode: "list" },
   );
+
+  // Phase 126 (SSYNC-V125-19): re-sync /me once when Datasets mounts.
+  //
+  // WHY THIS EXISTS. Client permissions are set at login and refreshed in exactly one other
+  // place: App.tsx's PERMISSION_DENIED_EVENT listener, which fires only from api/client.ts's
+  // 403 handler. So the client picks up a permission LOSS but never a mid-session GRANT.
+  //
+  // That was harmless while this page gated nothing client-side: every control rendered, the
+  // user clicked, the server returned 403, the event fired and /me re-synced. The reactive
+  // path worked BECAUSE nothing was hidden.
+  //
+  // `Schema sync` is hidden behind `canSchemaSync`. A hidden button cannot be clicked, so it
+  // cannot produce a 403, so the refresh never fires — the gate seals itself shut and an
+  // operator who was just granted both permissions sees nothing until they re-login. Found by
+  // the operator at Phase 126's verification checkpoint, not by any automated gate.
+  //
+  // One call on mount, not a poll, and not a Kinetica round-trip — ROADMAP criterion 2 forbids
+  // polling and extra Kinetica traffic on DASHBOARD load; this is neither. Errors are swallowed
+  // exactly as App.tsx does: a failed /me must never blank the Datasets page.
+  useEffect(() => {
+    fetchMe()
+      .then((me) => {
+        if (me) useAuthStore.getState().setPermissions(me.user.roles, me.user.permissions);
+      })
+      .catch(() => {});
+  }, []);
 
   // Sync tables from query data; local state used for delete mutations
   useEffect(() => {
@@ -134,6 +164,10 @@ const DatasetsPage = ({ initialOpenTable }: {
     return (
       <TableDetail
         table={view.table}
+        onTableUpdated={(updated) => {
+          setView({ mode: "view", table: updated });
+          setTables((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        }}
         onBack={() => { leaveTableUrl(); setView({ mode: "list" }); }}
       />
     );
@@ -211,10 +245,28 @@ const DatasetsPage = ({ initialOpenTable }: {
   );
 };
 
-const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void }) => {
+const TableDetail = ({ table, onTableUpdated, onBack }: {
+  table: TableDto;
+  onTableUpdated: (table: TableDto) => void;
+  onBack: () => void;
+}) => {
   const columns = Object.entries(table.columns);
   const [showFormatEditor, setShowFormatEditor] = useState(false);
   const [showMetricsEditor, setShowMetricsEditor] = useState(false);
+  const [showSchemaSync, setShowSchemaSync] = useState(false);
+
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  // v1.25 Phase 126 (SSYNC-V125-19): mirrors all four schema-sync routes' OWN gate exactly —
+  // index.ts:2500-2501, :2577-2578, :2664-2665, :2682-2683 each spread
+  // requirePermission(DATASETS_MANAGE) AND requirePermission(DASHBOARDS_MANAGE_ACCESS). An AND,
+  // so the control is HIDDEN rather than offered to someone the server will refuse with a 403.
+  // The second permission is deliberate (Phase 124 RBAC widening), not an accident to paper over.
+  // ABSENT, not disabled: a disabled button still tells an unauthorised user the feature exists.
+  // Nothing else on this page is gated — the reactive "Permission denied" render from a server
+  // 403 stays as the backstop for the pre-existing controls.
+  const canSchemaSync =
+    hasPermission(PERMISSIONS.DATASETS_MANAGE) &&
+    hasPermission(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS);
 
   return (
     <div className="dashboard-list">
@@ -229,6 +281,11 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
             <button className="ghost-sm" onClick={() => setShowMetricsEditor(true)}>
               Custom metrics
             </button>
+            {canSchemaSync && (
+              <button className="ghost-sm" onClick={() => setShowSchemaSync(true)}>
+                Schema sync
+              </button>
+            )}
             <button className="ghost-sm" onClick={onBack}>
               Back
             </button>
@@ -285,6 +342,21 @@ const TableDetail = ({ table, onBack }: { table: TableDto; onBack: () => void })
         <CustomMetricsEditorModal
           table={table}
           onClose={() => setShowMetricsEditor(false)}
+        />
+      )}
+      {showSchemaSync && (
+        <SchemaSyncModal
+          table={table}
+          onClose={() => setShowSchemaSync(false)}
+          // v1.25 audit F1: `table` is the snapshot taken at `View`. Without this, the column
+          // list below, Format columns and the list row's count all stay PRE-apply until the
+          // operator leaves the page. Re-read the row (updated_at moved too); if that fails,
+          // patch in the column map the server just stored rather than keep the stale one.
+          onApplied={(columns) => {
+            getTableById(table.id)
+              .then(onTableUpdated)
+              .catch(() => onTableUpdated({ ...table, columns }));
+          }}
         />
       )}
     </div>

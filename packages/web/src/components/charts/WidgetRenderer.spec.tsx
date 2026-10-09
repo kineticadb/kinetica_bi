@@ -18,10 +18,13 @@
  * <DashboardContextProvider dashboardId={N}> — useDashboardContext() throws otherwise.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { stopAllExportTracking } from "../../store/exportTracker";
+import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { render, waitFor, act, screen, fireEvent } from "@testing-library/react";
 import WidgetRenderer, { resolveAggregatedDrillTarget } from "./WidgetRenderer";
 import { useFilterStore } from "../../store/filterStore";
 import { useFilterViewStore } from "../../store/filterViewStore";
+import { useAuthStore } from "../../store/auth";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
 // Phase 35 Plan 05 (DV-V16-13/14): dynamic-view store + Retry context wiring tests
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
@@ -72,7 +75,18 @@ vi.mock("../../api/client", async (importOriginal) => {
     // Phase 77-01: default no-op so loadConfig never makes real HTTP calls.
     // Tests that need config data use upsertColumn on the real store directly.
     listColumnDisplayConfig: vi.fn().mockResolvedValue([]),
+    // Phase 131-07: background export client calls (dialog Start/poll/cancel).
+    startExport: vi.fn(),
+    cancelExportJob: vi.fn(),
+    getExportJob: vi.fn(),
   };
+});
+vi.mock("../../lib/exportDownload", async (o) => ({
+  ...(await o<typeof import("../../lib/exportDownload")>()),
+  startExportDownload: vi.fn(),
+}));
+afterEach(() => {
+  stopAllExportTracking();
 });
 
 // Clear all mock call histories between tests to prevent cross-test contamination.
@@ -2604,6 +2618,7 @@ describe("RecordsTableRenderer CSV download", () => {
     const widget = makeCsvRecordsWidget();
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
 
     await act(async () => {
       fireEvent.click(screen.getByText("Download"));
@@ -2627,34 +2642,187 @@ describe("RecordsTableRenderer CSV download", () => {
     expect(exportSql).toMatch(/SELECT region, amount FROM sales/);
   });
 
-  it("cap behavior + toast: csvDownloadRowCap=2 with full page triggers 'Capped at 2 rows' toast", async () => {
+  // ---- Phase 127-04 RLCSV tests ----
+  const cntResp = (n: number) => ({ column_headers: ["total"], column_datatypes: ["long"], column_1: [n] });
+  const rowsN = (n: number, hasMore?: boolean) => ({
+    ...buildCsvResponse(["region", "amount"], Array.from({ length: n }, (_, i) => [`R${i}`, i])),
+    ...(hasMore === undefined ? {} : { has_more_records: hasMore }),
+  });
+  const rlcsvSetup = async (
+    cap: number,
+    count: number,
+    exports: unknown[],
+    extraCfg: Record<string, unknown> = {},
+    opts: { viaDialog?: boolean } = {},
+  ) => {
     const showToastMock = vi.fn();
     const { useToastStore: toastStore } = await import("../../store/toast");
     toastStore.setState({ showToast: showToastMock } as Parameters<typeof toastStore.setState>[0]);
-
-    // Page fetch returns 2 rows, count fetch
-    (clientModule.runSql as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100], ["WEST", 200]])) // page fetch
-      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }) // count (10 total → more exist)
-      .mockResolvedValueOnce(buildCsvResponse(["region", "amount"], [["EAST", 100], ["WEST", 200]])); // CSV export - returns full 2 rows
-
+    const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+    m.mockResolvedValueOnce(rowsN(2)).mockResolvedValueOnce(cntResp(count));
+    for (const e of exports) m.mockResolvedValueOnce(e);
     const widget = makeCsvRecordsWidget({
-      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: 2 },
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: cap, ...extraCfg },
     });
     render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
-
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
     await act(async () => {
       fireEvent.click(screen.getByText("Download"));
       await new Promise((r) => setTimeout(r, 100));
     });
+    if (opts.viaDialog) {
+      // Phase 131 D-01: count above the cap opens the dialog; its partial button runs the in-browser path.
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^Download first [\d,]+ rows now$/ }));
+        await new Promise((r) => setTimeout(r, 100));
+      });
+    } else {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    }
+    const exportCalls = m.mock.calls.slice(2).map((c) => c[0] as string);
+    return { showToastMock, exportCalls, m };
+  };
 
-    // Toast should be called with cap message
-    const capToastCall = showToastMock.mock.calls.find(
-      (args: unknown[]) => args[0] === "Capped at 2 rows",
+  afterEach(() => {
+    useAuthStore.setState({ csvInBrowserMaxRows: 100000 });
+  });
+
+  it("RLCSV-continue-on-has-more: short page flagged has_more keeps paging from offset", async () => {
+    const { exportCalls, showToastMock } = await rlcsvSetup(10, 10, [rowsN(4, true), rowsN(6, false)]);
+    expect(exportCalls).toHaveLength(2);
+    expect(exportCalls[1]).toContain("OFFSET 4");
+    expect(showToastMock.mock.calls.find((a: unknown[]) => a[1] === "info")).toBeUndefined();
+  });
+
+  it("RLCSV-stop-when-exhausted: short page with has_more false stops", async () => {
+    const { exportCalls } = await rlcsvSetup(10, 10, [rowsN(3, false)]);
+    expect(exportCalls).toHaveLength(1);
+  });
+
+  it("RLCSV-legacy-short-page: no has_more field falls back to short-page stop", async () => {
+    const { exportCalls } = await rlcsvSetup(10, 10, [rowsN(3)]);
+    expect(exportCalls).toHaveLength(1);
+  });
+
+  it("RLCSV-ceiling-clamp: csvInBrowserMaxRows clamps a larger widget cap", async () => {
+    useAuthStore.setState({ csvInBrowserMaxRows: 3 });
+    const { exportCalls, showToastMock } = await rlcsvSetup(1000000, 10, [rowsN(3, false)], {}, { viaDialog: true });
+    expect(exportCalls[0]).toContain("LIMIT 3 OFFSET 0");
+    expect(showToastMock).toHaveBeenCalledWith("Downloaded the first 3 of 10 rows", "info");
+  });
+
+  it("RLCSV-cap-message: cap reached with rows left out reports N of M", async () => {
+    const { showToastMock } = await rlcsvSetup(2, 10, [rowsN(2, false)], {}, { viaDialog: true });
+    expect(showToastMock).toHaveBeenCalledWith("Downloaded the first 2 of 10 rows", "info");
+    expect(showToastMock.mock.calls.some((a: unknown[]) => String(a[0]).includes("Capped at"))).toBe(false);
+  });
+
+  it("RLCSV-no-false-cap: exactly-full download is not reported as truncated", async () => {
+    const { showToastMock } = await rlcsvSetup(2, 2, [rowsN(2, false)]);
+    expect(showToastMock.mock.calls.find((a: unknown[]) => a[1] === "info")).toBeUndefined();
+  });
+
+  it("RLCSV-progress: button shows rows exported so far", async () => {
+    const showToastMock = vi.fn();
+    const { useToastStore: toastStore } = await import("../../store/toast");
+    toastStore.setState({ showToast: showToastMock } as Parameters<typeof toastStore.setState>[0]);
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(rowsN(2))
+      .mockResolvedValueOnce(cntResp(10))
+      .mockResolvedValueOnce(rowsN(4, true))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const widget = makeCsvRecordsWidget({
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: 10 },
+    });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download"));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.getByText("Exporting… 4 rows")).toBeTruthy();
+  });
+
+  it("RLCSV-count-cw: total-count query applies customWhere", async () => {
+    const { m } = await rlcsvSetup(10, 10, [rowsN(1, false)], { customWhere: "amount > 5" });
+    const countSql = m.mock.calls.map((c) => c[0] as string).find((q) => q.includes("COUNT(*)"));
+    expect(countSql).toContain("amount > 5");
+  });
+
+  const rlrecRender = async (page: unknown) => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce({ column_headers: ["total"], column_datatypes: ["long"], column_1: [50] })
+      .mockResolvedValueOnce(page); // re-fetch at the learned page cap (RLREC-limited)
+    render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
+    await waitFor(() => screen.getByText(/Showing/));
+  };
+
+  it("RLREC-limited: page cut short by the server shows a Limited-to note", async () => {
+    await rlrecRender({ ...buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2]]), has_more_records: true });
+    const note = await screen.findByTestId("records-limited-note");
+    expect(note.textContent).toBe("Limited to 2 rows per page");
+    expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+    expect(note.getAttribute("title")).toContain("page size");
+  });
+
+  it("RLREC-page-clamp: page size clamps to the deploy max so Next does not skip rows", async () => {
+    useAuthStore.setState({ maxRowsPerQuery: 3 });
+    try {
+      const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+      m.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes("COUNT(*)")
+            ? { column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }
+            : buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2], ["N", 3]]),
+        ),
+      );
+      render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
+      await waitFor(() => screen.getByText(/Showing 1–3 of 10/));
+      expect(screen.getByText(/Page 1 of 4/)).toBeTruthy();
+      expect(screen.getByTestId("records-limited-note").textContent).toBe("Limited to 3 rows per page");
+      await act(async () => { fireEvent.click(screen.getByText("Next")); });
+      await waitFor(() => screen.getByText(/Showing 4–6 of 10/));
+      const pageSqls = m.mock.calls.map((c) => c[0] as string).filter((q) => !q.includes("COUNT(*)"));
+      expect(pageSqls.some((q) => q.includes("LIMIT 3 OFFSET 3"))).toBe(true);
+      expect(pageSqls.some((q) => q.includes("OFFSET 25"))).toBe(false);
+    } finally {
+      useAuthStore.setState({ maxRowsPerQuery: 20000 });
+    }
+  });
+
+  it("RLREC-learned-cap: stale /me max still pages contiguously once the server cuts a page", async () => {
+    // Store still holds the default (e.g. tab open across an admin restart that lowered the max).
+    useAuthStore.setState({ maxRowsPerQuery: 20000 });
+    const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+    m.mockImplementation((sql: string) =>
+      Promise.resolve(
+        sql.includes("COUNT(*)")
+          ? { column_headers: ["total"], column_datatypes: ["long"], column_1: [10] }
+          : { ...buildCsvResponse(["region", "amount"], [["E", 1], ["W", 2], ["N", 3]]), has_more_records: true },
+      ),
     );
-    expect(capToastCall).toBeDefined();
-    expect(capToastCall![1]).toBe("info");
+    render(wrap(<WidgetRenderer widget={makeCsvRecordsWidget()} />));
+    await waitFor(() => screen.getByText(/Page 1 of 4/));
+    expect(screen.getByTestId("records-limited-note").textContent).toBe("Limited to 3 rows per page");
+    await act(async () => { fireEvent.click(screen.getByText("Next")); });
+    await waitFor(() => screen.getByText(/Showing 4–6 of 10/));
+    const pageSqls = m.mock.calls.map((c) => c[0] as string).filter((q) => !q.includes("COUNT(*)"));
+    expect(pageSqls.some((q) => q.includes("LIMIT 3 OFFSET 3"))).toBe(true);
+    expect(pageSqls.some((q) => q.includes("OFFSET 25"))).toBe(false);
+  });
+
+  it("RLREC-not-limited: has_more false shows no note", async () => {
+    await rlrecRender({ ...buildCsvResponse(["region", "amount"], [["E", 1]]), has_more_records: false });
+    expect(screen.queryByTestId("records-limited-note")).toBeNull();
+  });
+
+  it("RLREC-legacy: no has_more field shows no note", async () => {
+    await rlrecRender(buildCsvResponse(["region", "amount"], [["E", 1]]));
+    expect(screen.queryByTestId("records-limited-note")).toBeNull();
   });
 
   it("abort-on-unmount: AbortController signal aborts when component unmounts during export", async () => {
@@ -2673,6 +2841,7 @@ describe("RecordsTableRenderer CSV download", () => {
     const widget = makeCsvRecordsWidget();
     const { unmount } = render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
 
     // Start export (will hang on the export runSql call)
     await act(async () => {
@@ -2689,6 +2858,107 @@ describe("RecordsTableRenderer CSV download", () => {
     // Signal captured from the export call must now be aborted
     expect(capturedSignal).toBeDefined();
     expect(capturedSignal!.aborted).toBe(true);
+  });
+
+  // ---- Phase 131-07 EXPTRIG tests ----
+  const trigRender = async (count: number | "fail", cap: number, cfg: Record<string, unknown> = {}) => {
+    const m = clientModule.runSql as ReturnType<typeof vi.fn>;
+    m.mockResolvedValueOnce(rowsN(2));
+    if (count === "fail") m.mockRejectedValueOnce(new Error("count failed"));
+    else m.mockResolvedValueOnce(cntResp(count));
+    m.mockResolvedValue(rowsN(2, false)); // any export page
+    const widget = makeCsvRecordsWidget({
+      config: { table: "sales", tableId: 50, columns: "region,amount", pageSize: 25, csvDownloadRowCap: cap, ...cfg },
+    });
+    render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => screen.getByText("Download"));
+    if (count === "fail") await new Promise((r) => setTimeout(r, 50));
+    else await waitFor(() => screen.getByText(/^Showing .+ of [\d,]+$/));
+    return { m, widget };
+  };
+  const clickDownload = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByText("Download"));
+      await new Promise((r) => setTimeout(r, 100));
+    });
+  };
+
+  it("EXPTRIG-under-cap: count at or below the cap keeps the one-click in-browser download", async () => {
+    const { m } = await trigRender(5, 10);
+    const before = m.mock.calls.length;
+    await clickDownload();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const after = m.mock.calls.slice(before).map((c) => c[0] as string);
+    expect(after.some((q) => q.includes("SELECT region, amount FROM sales"))).toBe(true);
+  });
+
+  it("EXPTRIG-over-cap: count above the cap opens the dialog and issues no export SELECT", async () => {
+    const { m } = await trigRender(10, 2);
+    const before = m.mock.calls.length;
+    await clickDownload();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("Export records");
+    expect(m.mock.calls.length).toBe(before);
+  });
+
+  it("EXPTRIG-unknown-count: a failed count query opens the dialog", async () => {
+    await trigRender("fail", 10);
+    await clickDownload();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("EXPTRIG-request: Start export sends the filterSelection-scoped filters and the table sort", async () => {
+    const fA = { column: "region", value: "EAST", dataType: "string", sourceWidgetId: 11, addedAt: 1 };
+    const fB = { column: "amount", value: "5", dataType: "string", sourceWidgetId: 12, addedAt: 2 };
+    useFilterStore.setState({ filters: { 50: [fA, fB] } } as never);
+    (clientModule.startExport as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job1", status: "running", widgetId: 5, dashboardId: 1, rowsWritten: 0, totalRows: 10, fileBytes: null,
+      errorCode: null, errorMessage: null, createdAt: "2026-10-07 10:00:00", startedAt: null, finishedAt: null,
+      expiresAt: null, compress: false, name: "x", dashboardName: null, widgetTitle: null,
+    });
+    (clientModule.getExportJob as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    await trigRender(10, 2, {
+      filterSelection: { sourceMode: "allowlist", allowedSourceWidgetIds: [11] },
+      sortField: "amount",
+      sortDirection: "desc",
+    });
+    await clickDownload();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start export" }));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    const start = clientModule.startExport as ReturnType<typeof vi.fn>;
+    expect(start).toHaveBeenCalledTimes(1);
+    const body = start.mock.calls[0][0];
+    expect(body.widgetId).toBe(5);
+    expect(body.filters).toEqual([fA]);
+    expect(body.sortField).toBe("amount");
+    expect(body.sortDir).toBe("desc");
+    expect(body.options).toMatchObject({ compress: false, format: "raw" });
+    expect(body.options.name).toMatch(/^.+ \d{4}-\d{2}-\d{2} \d{4}$/);
+  });
+
+  it("EXPTRIG-override-note: an active widget-action override shows the saved-settings note", async () => {
+    useWidgetActionStore.setState({ widgetOverrides: { 5: { pageSize: 10 } } } as never);
+    try {
+      await trigRender(10, 2);
+      await clickDownload();
+      expect(screen.getByRole("dialog").textContent).toContain(
+        "Exports use the saved widget settings. Filters and sort are included; widget-action overrides are not.",
+      );
+    } finally {
+      useWidgetActionStore.setState({ widgetOverrides: {} } as never);
+    }
+  });
+
+  it("EXPTRIG-close: Close removes the dialog and Download is enabled again", async () => {
+    await trigRender(10, 2);
+    await clickDownload();
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect((screen.getByText("Download") as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
@@ -4239,6 +4509,7 @@ vi.mock("./HeatmapRenderer", () => ({
     <div
       data-testid="heatmap-renderer"
       data-row-count={String(((props.data as unknown[]) ?? []).length)}
+      data-truncation={JSON.stringify(props.truncation ?? null)}
       data-group-by={String(
         (((props.config as Record<string, unknown>)?.groupByColumns as string[]) ?? []).join(","),
       )}
@@ -4320,7 +4591,136 @@ describe("WidgetRenderer — heatmap rides the shared aggregated path", () => {
     render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
 
     await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
-    // Exactly `data` + `config`: no widgetId/tableId/drillDownColumn/dashboardId.
-    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-extra-props")).toBe("");
+    // Exactly `data` + `config` + the Phase 127 `truncation` banner prop: no widgetId/tableId/drillDownColumn/dashboardId.
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-extra-props")).toBe("truncation");
+  });
+
+  it("RLMETA-1: has_more_records/total_number_of_records FIRST in the payload do not zero the row count", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      has_more_records: false,
+      total_number_of_records: 3,
+      ...heatmapResponse,
+    });
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("3");
+  });
+
+  it("RLMETA-2: has_more_records true LAST in the payload is ignored as a data column", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...heatmapResponse,
+      total_number_of_records: 3,
+      has_more_records: true,
+    });
+
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("3");
+  });
+
+  // ── Phase 127 plan 06: real-signal truncation ─────────────────────────────
+  const gridRes = (n: number, extra: Record<string, unknown> = {}) => ({
+    column_headers: ["day_name", "hour_of_day", "value"],
+    column_1: Array.from({ length: n }, (_, i) => `d${i}`),
+    column_2: Array.from({ length: n }, () => 0),
+    column_3: Array.from({ length: n }, (_, i) => i),
+    ...extra,
+  });
+  const lastSql = () => {
+    const calls = (clientModule.runSql as ReturnType<typeof vi.fn>).mock.calls;
+    return calls[calls.length - 1][0] as string;
+  };
+
+  it("RLHM-wire-bump: heatmap SQL LIMIT 5000 is sent as LIMIT 5001", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(heatmapResponse);
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer")).toBeInTheDocument());
+    expect(lastSql()).toMatch(/LIMIT 5001$/);
+  });
+
+  it("RLHM-wire-full-5000: exactly 5,000 rows draw whole with no banner", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(gridRes(5000));
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("5000"));
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-truncation")).toBe("null");
+  });
+
+  it("RLHM-wire-over: 5,001 rows -> 5,000 shown + result-limit truncation", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(gridRes(5001));
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("5000"));
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-truncation")).toBe(
+      '{"shown":5000,"reason":"result-limit"}',
+    );
+  });
+
+  it("RLHM-wire-server-cut: LIMIT 2500 cut to 1,000 by the server -> deployment-max", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue(
+      gridRes(1000, { has_more_records: true }),
+    );
+    const w = makeHeatmapWidget({
+      config: { ...makeHeatmapWidget().config, sql: HEATMAP_SQL.replace("LIMIT 5000", "LIMIT 2500") },
+    });
+    render(wrap(<WidgetRenderer widget={w} />));
+    await waitFor(() => expect(screen.getByTestId("heatmap-renderer").getAttribute("data-row-count")).toBe("1000"));
+    expect(screen.getByTestId("heatmap-renderer").getAttribute("data-truncation")).toBe(
+      '{"shown":1000,"reason":"deployment-max"}',
+    );
+  });
+
+  it("RLHM-wire-retry: the view-not-found retry path also sends the bumped SQL", async () => {
+    const comboHash = 'table:42:day_name|eq|"A"';
+    mockVizToHash["w:77"] = comboHash;
+    mockRegistry[comboHash] = { viewName: "_kbi_combo_c_stale", expiresAt: Date.now() + 60000, materializing: false };
+    const { useFilterCombinationStore } = await import("../../store/filterCombinationStore");
+    (useFilterCombinationStore as unknown as { getState: () => Record<string, unknown> }).getState = () => ({
+      vizToHash: mockVizToHash,
+      registry: mockRegistry,
+      combinationVersion: mockCombinationVersion,
+      clearEntry: vi.fn(),
+    });
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockReset();
+    spy.mockImplementation((sql: string) =>
+      sql.includes("_kbi_combo_c_stale")
+        ? Promise.reject(new Error("SqlEngine: Object '_kbi_combo_c_stale' not found (S/SDc:1513)"))
+        : Promise.resolve(heatmapResponse),
+    );
+    render(wrap(<WidgetRenderer widget={makeHeatmapWidget()} />));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const [first, second] = spy.mock.calls.map((c) => c[0] as string);
+    expect(first).toMatch(/_kbi_combo_c_stale.*LIMIT 5001$/);
+    expect(second).not.toContain("_kbi_combo_c_stale");
+    expect(second).toMatch(/LIMIT 5001$/);
+  });
+
+  it("RLCHART-limited: a server-cut bar chart shows 'Limited to N rows'", async () => {
+    (clientModule.runSql as ReturnType<typeof vi.fn>).mockResolvedValue({
+      column_headers: ["g", "value"], column_1: ["A", "B"], column_2: [1, 2], has_more_records: true,
+    });
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+    const note = await screen.findByTestId("chart-limited-note");
+    expect(note.textContent).toBe("Limited to 2 rows");
+    expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+  });
+
+  it("RLCHART-not-limited: no note when the server did not cut the result", async () => {
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockResolvedValue({ column_headers: ["g", "value"], column_1: ["A"], column_2: [1], has_more_records: false });
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId("chart-limited-note")).toBeNull();
+  });
+
+  it("RLCHART-bar-sql-untouched: a non-heatmap widget's SQL is sent unmodified", async () => {
+    const spy = clientModule.runSql as ReturnType<typeof vi.fn>;
+    spy.mockResolvedValue({ column_headers: ["g", "value"], column_1: ["A"], column_2: [1] });
+    render(wrap(<WidgetRenderer widget={makeAggregatedWidget()} />));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(lastSql()).toMatch(/LIMIT 100$/);
   });
 });

@@ -152,6 +152,29 @@ describe("POST /api/sql with per-user credentials", () => {
     expect(sentBody.limit).toBe(50);
   });
 
+  it("ROWLIM-route-clamp: client options.limit above the per-query max is clamped", async () => {
+    process.env.KINETICA_MAX_ROWS_PER_QUERY = "20000";
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(successKineticaBody), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { cookie } = makeSessionCookie();
+      const app = await buildTestApp();
+      await app
+        .post("/api/sql")
+        .set("Cookie", cookie)
+        .send({ sql: "SELECT 1", options: { limit: 5000000 } });
+      const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(sentBody.limit).toBe(20000);
+    } finally {
+      process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
+    }
+  });
+
   it("no admin-cred fallback: fetch called exactly once even on error", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response("Forbidden", { status: 403 })

@@ -35,6 +35,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { TableDto, WidgetDto } from "../../api/client";
 import { runSql } from "../../api/client";
 import { buildCalendarSql } from "../../lib/buildCalendarSql";
+import { detectTruncation, readHasMore, DEPLOYMENT_MAX_HINT, type TruncationInfo } from "../../lib/rowTruncation";
 import {
   CALENDAR_BUCKET_COUNT,
   calendarBucketColors,
@@ -45,7 +46,7 @@ import { gapFillCalendar } from "../../lib/calendarGapFill";
 import { inferWeekAnchorDow } from "../../lib/calendarBuckets";
 import { useChartAxisColors } from "../../lib/chartColors";
 import type { CalendarDomain, CalendarSubdomain, SmartScale } from "../../lib/calendarBin";
-import { computeCellBounds, VALID_DOMAIN_SUBDOMAIN, SMART_SCALES, SMART_SCALE_TO_PAIR } from "../../lib/calendarBin";
+import { CELL_LIMIT, computeCellBounds, VALID_DOMAIN_SUBDOMAIN, SMART_SCALES, SMART_SCALE_TO_PAIR } from "../../lib/calendarBin";
 import { layoutCalendar, WEEK_START } from "../../lib/calendarLayout";
 import type { TimelineAggregation, TimelineIntervalKey } from "../../lib/timelineBin";
 import { formatTimelineTick } from "../../lib/timelineBin";
@@ -264,6 +265,9 @@ export default function CalendarRenderer({
   // ---- Data fetch state ----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [data, setData] = useState<CalendarSqlRow[]>([]);
+  // Phase 127 D-16: cell-limit truncation notice (only when more rows really exist).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [rowLimit, setRowLimit] = useState<TruncationInfo | null>(null);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [loading, setLoading] = useState(true);
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -323,9 +327,17 @@ export default function CalendarRenderer({
           // Phase 100 (METRIC-V119-04): thread tableId + metricId so resolveMetricExpr resolves live.
           tableId,
           metricId,
+          // Phase 127 D-14: ask one extra row to tell "exactly full" from "more exist".
+          limit: CELL_LIMIT + 1,
         });
         const resp = await runSql(sql, undefined, ctrl.signal);
-        const rows = decodeSqlResponse(resp).map((r) => ({
+        const decoded = decodeSqlResponse(resp);
+        const limitInfo = detectTruncation({
+          fetched: decoded.length,
+          ownLimit: CELL_LIMIT,
+          serverHasMore: readHasMore(resp),
+        });
+        const rows = decoded.slice(0, CELL_LIMIT).map((r) => ({
           domain_bucket: String(r.domain_bucket),
           subdomain_bucket: String(r.subdomain_bucket),
           value:
@@ -337,6 +349,7 @@ export default function CalendarRenderer({
         }));
         if (!cancelled) {
           setData(rows);
+          setRowLimit(limitInfo);
           setLoading(false);
         }
       } catch (err) {
@@ -602,6 +615,18 @@ export default function CalendarRenderer({
 
   return (
     <div className="widget-calendar" style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
+      {rowLimit && (
+        <div
+          className="config-hint"
+          data-testid="calendar-limited-note"
+          title={rowLimit.reason === "result-limit"
+            ? `The calendar reached its ${CELL_LIMIT.toLocaleString()}-cell limit, so later periods are not shown. Choose a coarser subdomain or a narrower time range.`
+            : `This deployment's per-query maximum returned only ${rowLimit.shown.toLocaleString()} cells, so later periods are not shown. ${DEPLOYMENT_MAX_HINT}`}
+          style={{ color: "var(--muted)", fontSize: 11, padding: "2px 6px", flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+        >
+          Limited to {rowLimit.shown.toLocaleString()} cells
+        </div>
+      )}
       {/* ---- Smart viewer time-scale control bar (Phase 103, CALSMART-V119-03) ---- */}
       {effectiveMode === "smart" && (
         <div data-testid="calendar-smart-control-bar" style={{ display: "flex", gap: 8, padding: "4px 8px", flexShrink: 0 }}>

@@ -14,6 +14,15 @@ vi.mock("recharts", async (importOriginal) => {
     ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
       <div style={{ width: 800, height: 400 }}>{children}</div>
     ),
+    // Phase 127: expose the row count the chart receives (jsdom draws no SVG).
+    LineChart: (props: { data?: unknown[]; children?: React.ReactNode }) => {
+      const Actual = actual.LineChart as React.ComponentType<Record<string, unknown>>;
+      return (
+        <div data-testid="mock-linechart" data-rows={props.data?.length ?? 0}>
+          <Actual {...props} />
+        </div>
+      );
+    },
   };
 });
 
@@ -636,5 +645,79 @@ describe("NumericLineRenderer — customWhere injection (Phase 98, VIZSQL-V119-0
     expect(src).toMatch(/yAxisScale/);
     // Specifically reads from cfg
     expect(src).toMatch(/cfg\.yAxisScale/);
+  });
+
+  describe("Row truncation notice (Phase 127 D-16)", () => {
+    function mockRows(topSeries: string[], mainRows: number, hasMore?: boolean) {
+      const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [100] };
+      const topResp = {
+        column_headers: ["series", "value"],
+        column_1: topSeries,
+        column_2: topSeries.map(() => 1),
+      };
+      const mainResp = {
+        column_headers: ["bucket", "series", "value"],
+        column_1: Array.from({ length: mainRows }, (_, i) => i * 10),
+        column_2: Array.from({ length: mainRows }, () => topSeries[0]),
+        column_3: Array.from({ length: mainRows }, () => 1),
+        ...(hasMore === undefined ? {} : { has_more_records: hasMore }),
+      };
+      let call = 0;
+      (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        const r = call === 0 ? rangeResp : call === 1 ? topResp : mainResp;
+        call++;
+        return Promise.resolve(r);
+      });
+    }
+    const grouped = (extra: Record<string, unknown> = {}) =>
+      makeWidget({ groupByColumn: "g", maxBuckets: 2, ...extra });
+
+    it("RLD16-nl-own-limit: limit+1 rows shows the note naming Max buckets and drops the extra row", async () => {
+      mockRows(["a"], 4); // limit = (2+1)*1 = 3, probe asks 4
+      render(<NumericLineRenderer widget={grouped()} tables={TABLES} />);
+      const note = await screen.findByTestId("numericline-limited-note");
+      expect(note).toHaveTextContent("Limited to 3 rows");
+      expect(note.getAttribute("title")).toContain("Max buckets");
+      expect(screen.getByTestId("mock-linechart").getAttribute("data-rows")).toBe("3");
+      const sql = (runSql as unknown as ReturnType<typeof vi.fn>).mock.calls[2][0] as string;
+      expect(sql).toMatch(/LIMIT 4$/);
+    });
+
+    it("RLD16-nl-exact: exactly-full result shows no note", async () => {
+      mockRows(["a"], 3);
+      render(<NumericLineRenderer widget={grouped()} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("mock-linechart").getAttribute("data-rows")).toBe("3"));
+      expect(screen.queryByTestId("numericline-limited-note")).toBeNull();
+    });
+
+    it("RLD16-nl-deploy-max: server has_more names the deployment max", async () => {
+      mockRows(["a"], 1, true);
+      render(<NumericLineRenderer widget={grouped()} tables={TABLES} />);
+      const note = await screen.findByTestId("numericline-limited-note");
+      expect(note).toHaveTextContent("Limited to 1 rows");
+      expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+    });
+
+    it("RLD16-nl-ungrouped-deploy-max: ungrouped has_more shows the note; false hides it", async () => {
+      const mk = (hasMore: boolean) => {
+        const rangeResp = { column_headers: ["lo", "hi"], column_1: [0], column_2: [100] };
+        const metricResp = { column_headers: ["bucket", "value"], column_1: [0], column_2: [1], has_more_records: hasMore };
+        let call = 0;
+        (runSql as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+          const r = call === 0 ? rangeResp : metricResp;
+          call++;
+          return Promise.resolve(r);
+        });
+      };
+      mk(true);
+      const first = render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
+      const note = await screen.findByTestId("numericline-limited-note");
+      expect(note.getAttribute("title")).toContain("KINETICA_MAX_ROWS_PER_QUERY");
+      first.unmount();
+      mk(false);
+      render(<NumericLineRenderer widget={makeWidget()} tables={TABLES} />);
+      await waitFor(() => expect(screen.getByTestId("mock-linechart").getAttribute("data-rows")).toBe("1"));
+      expect(screen.queryByTestId("numericline-limited-note")).toBeNull();
+    });
   });
 });

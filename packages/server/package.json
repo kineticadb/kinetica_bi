@@ -12,6 +12,10 @@
     "wkb-spike": "tsx src/spikes/wkbSpike.ts",
     "spatial-predicate-spike": "tsx src/spikes/spatialPredicateSpike.ts",
     "cb-track-spike": "tsx src/spikes/cbTrackSpike.ts",
+    "schema-fingerprint-spike": "tsx src/spikes/schemaFingerprintSpike.ts",
+    "export-paging-spike": "tsx src/spikes/exportPagingSpike.ts",
+    "export-runner-smoke": "tsx src/spikes/exportRunnerSmoke.ts",
+    "export-routes-smoke": "tsx src/spikes/exportRoutesSmoke.ts",
     "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
@@ -20,6 +24,7 @@
     "better-sqlite3": "^12.8.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "d3-format": "^3.1.2",
     "dompurify": "^3.4.11",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -35,6 +40,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",
+    "@types/d3-format": "^3.0.4",
     "@types/express": "^4.17.21",
     "@types/jsdom": "^28.0.3",
     "@types/multer": "^2.1.0",

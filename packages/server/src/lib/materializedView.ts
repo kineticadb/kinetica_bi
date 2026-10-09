@@ -15,12 +15,12 @@
  * Used by:
  *   - POST /api/filter/materialize (extracted from index.ts in Phase 32 Plan 01)
  *   - POST /api/dynamic-view/materialize (added in Phase 32 Plan 03)
+ *   - Phase 128 export runner (job-private snapshot view)
  */
-import { kineticaSql, type KineticaOp } from "../kinetica";
-import type { AuthedRequest } from "../auth";
+import { kineticaSql, type KineticaOp, type KineticaPrincipal } from "../kinetica";
 
 export type CreateOrReplaceMaterializedArgs = {
-  req: AuthedRequest;
+  req: KineticaPrincipal;
   view: string;       // bare unqualified Kinetica view name
   sqlBody: string;    // the SELECT clause WITHOUT outer parens — helper wraps it
   ttl: number;        // minutes; emitted as USING TABLE PROPERTIES (TTL = <n>)

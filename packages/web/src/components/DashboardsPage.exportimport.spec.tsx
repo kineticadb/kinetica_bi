@@ -9,8 +9,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { seedDesignerStore, seedAnalystStore } from "../test/seedAuthStore";
-import { useAuthStore } from "../store/auth";
+import { seedDesignerStore, seedAnalystStore, seedPermissionsStore } from "../test/seedAuthStore";
 import { PERMISSIONS } from "../lib/permissions";
 import type { ImportReportDto } from "../api/client";
 
@@ -133,15 +132,6 @@ const mockReport: ImportReportDto = {
   preflightDangling: [],
 };
 
-// Do NOT call this seedPermissions helper before the zustand reset shim runs (per
-// seedAuthStore.ts's own header warning) — always call it at the top of the test body,
-// same as seedDesignerStore()/seedAnalystStore() are called elsewhere in this file.
-const seedPermissions = (permissions: string[]) =>
-  useAuthStore.setState({
-    status: "authenticated",
-    user: { username: "testcustom", roles: ["custom"], permissions },
-  });
-
 describe("DashboardsPage export/import wiring (Phase 121 Plan 03)", () => {
   beforeEach(() => {
     (listDashboards as Mock).mockReset();
@@ -200,7 +190,7 @@ describe("DashboardsPage export/import wiring (Phase 121 Plan 03)", () => {
   });
 
   it("UIWIRE-import-create-only: AND-gate probe A — dashboards:create alone does not see Import dashboard, but still sees + New Dashboard", async () => {
-    seedPermissions([PERMISSIONS.DASHBOARDS_VIEW, PERMISSIONS.DASHBOARDS_CREATE]);
+    seedPermissionsStore([PERMISSIONS.DASHBOARDS_VIEW, PERMISSIONS.DASHBOARDS_CREATE]);
     render(<DashboardsPage onViewChange={() => {}} />);
     await screen.findByText(dashboard.name);
     expect(screen.queryByRole("button", { name: /import dashboard/i })).toBeNull();
@@ -208,7 +198,7 @@ describe("DashboardsPage export/import wiring (Phase 121 Plan 03)", () => {
   });
 
   it("UIWIRE-import-manage-only: AND-gate probe B — datasets:manage alone sees neither Import dashboard nor + New Dashboard", async () => {
-    seedPermissions([PERMISSIONS.DASHBOARDS_VIEW, PERMISSIONS.DATASETS_MANAGE]);
+    seedPermissionsStore([PERMISSIONS.DASHBOARDS_VIEW, PERMISSIONS.DATASETS_MANAGE]);
     render(<DashboardsPage onViewChange={() => {}} />);
     await screen.findByText(dashboard.name);
     expect(screen.queryByRole("button", { name: /import dashboard/i })).toBeNull();

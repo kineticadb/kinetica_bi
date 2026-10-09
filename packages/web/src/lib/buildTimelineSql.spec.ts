@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTimelineSql } from "./buildTimelineSql";
+import { buildTimelineSql, groupedTimelineLimit } from "./buildTimelineSql";
 import { INTERVAL_LADDER } from "./timelineBin";
 import type { TimelineInterval, TimelineMetric } from "./timelineBin";
 import { MAX_SERIES } from "./groupedSeries";
@@ -347,5 +347,26 @@ describe("buildTimelineSql — customWhere (Phase 98-01)", () => {
       customWhere: "status = 'active'",
     });
     expect(sql).toContain("AND vendor IS NOT NULL AND (status = 'active') GROUP BY bucket, series");
+  });
+});
+
+describe("buildTimelineSql — overflowProbe (Phase 127 D-16)", () => {
+  const m: TimelineMetric = { column: "fare", aggregation: "SUM", color: "FF66C2A5" } as TimelineMetric;
+  const iv = INTERVAL_LADDER[0] as TimelineInterval;
+  const base = { schema: "demo", table: "t", timeCol: "ts", metric: m, interval: iv, maxIntervals: 100 };
+
+  it("RLD16-tl-limit: groupedTimelineLimit scales by seriesIn or MAX_SERIES", () => {
+    expect(groupedTimelineLimit({ maxIntervals: 100, seriesIn: ["a", "b"] })).toBe(200);
+    expect(groupedTimelineLimit({ maxIntervals: 100 })).toBe(100 * MAX_SERIES);
+  });
+
+  it("RLD16-tl-probe: grouped overflowProbe adds one row; absent flag unchanged", () => {
+    const g = { ...base, groupByColumn: "v", seriesIn: ["a", "b"] };
+    expect(buildTimelineSql({ ...g, overflowProbe: true })).toMatch(/LIMIT 201$/);
+    expect(buildTimelineSql(g)).toMatch(/LIMIT 200$/);
+  });
+
+  it("RLD16-tl-ungrouped-locked: ungrouped output ignores overflowProbe", () => {
+    expect(buildTimelineSql({ ...base, overflowProbe: true })).toBe(buildTimelineSql(base));
   });
 });
