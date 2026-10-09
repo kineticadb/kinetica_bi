@@ -111,7 +111,7 @@ npm run dev                      # frontend → http://localhost:5173
 npm run dev:server               # backend  → http://localhost:4000  (separate terminal)
 ```
 
-Other workspace scripts (run from the repo root): `npm run test` (frontend), `npm run test:server`, `npm run test:all`, `npm run build`, `npm run build:server`.
+Other workspace scripts (run from the repo root): `npm run test` (frontend), `npm run test:server`, `npm run test:shared`, `npm run test:all`, `npm run build`, `npm run build:server`.
 
 ## Production Deployment
 
@@ -119,12 +119,14 @@ The app is **two independently-deployed pieces**: a static frontend bundle and t
 
 ### 1. Build & run
 
+The server bundle inlines the @kinetica-bi/shared workspace package; always build with npm run build:server (plain tsc no longer produces a runnable dist).
+
 ```bash
 # From the repo root — one npm ci covers both workspaces
 npm ci
 
 # Backend  → compiled JS, run under a process supervisor (systemd / pm2 / container)
-npm run build:server    # tsc → packages/server/dist/
+npm run build:server    # tsc --noEmit + esbuild bundle (inlines packages/shared) → packages/server/dist/index.js
 NODE_ENV=production npm start --workspace @kinetica-bi/server   # node dist/index.js  (listens on $PORT, default 4000)
 
 # Frontend → static bundle; serve dist/ from a static host / CDN / nginx (NOT the API server)

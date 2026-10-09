@@ -57,3 +57,20 @@ jobs:
       - name: vitest set-based gate
         run: node scripts/test-gate.mjs
         working-directory: packages/server
+
+  shared:
+    name: shared (tsc + vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+        working-directory: packages/shared
+      - name: vitest
+        run: npx vitest run
+        working-directory: packages/shared
