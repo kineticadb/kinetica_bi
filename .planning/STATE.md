@@ -16,28 +16,30 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED)
+See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** Planning next milestone (v1.26 shipped; next milestone not yet defined)
+**Current focus:** v2.0 AI-Driven Dashboards — defining requirements
 
 ## Current Position
 
-**Planning next milestone. v1.26 Large Exports & Fixes — SHIPPED 2026-10-08.** Archived. No phase in progress.
+Milestone: v2.0 AI-Driven Dashboards
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-10-08 — Milestone v2.0 started
 
-- **Milestone:** 6 phases (127-132), 41 plans, 21/21 requirements Complete.
-- **Audit:** `tech_debt`, with no blockers (`milestones/v1.26-MILESTONE-AUDIT.md`).
-- **Archived to:**
-  - `milestones/v1.26-ROADMAP.md`
-  - `milestones/v1.26-REQUIREMENTS.md`
-  - `milestones/v1.26-MILESTONE-AUDIT.md`
-- **REQUIREMENTS.md:** no working copy exists. `/gsd:new-milestone` creates the fresh one.
-- **Tag and branch:**
-  - Tag `v1.26.0` (three-part per RELEASING.md) is left to the operator.
-  - Nothing is pushed. `origin` is shared with another developer, so fetch before pushing.
-  - Branch `feat/large-exports` is not yet merged to master. Branch the next milestone off master AFTER it merges.
+- **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
+- **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
+- **Locked scope decisions (from milestone questioning, 2026-10-08):**
+  1. Input is a new AI **visualization** on the dashboard, not a chat panel. Designer picks Compact (ask box only) or Full (ask box + short explanation + suggested follow-ups).
+  2. The AI answers by changing the dashboard: add/remove visualizations, map layers, dynamic views; apply filters.
+  3. Changes apply immediately with undo, as a per-user **session layer**; "Keep" saves (only if the user may edit), otherwise reload/discard reverts. Other viewers never see unsaved AI changes.
+  4. Both users in scope: analysts exploring and designers generating a dashboard from a table. Full loop this milestone, not a spike.
+  5. AI provider is **pluggable** (Claude default; local/on-prem possible).
+  6. AI data access is **admin-configurable** (schema/config only vs read-only query results run as the user). Operator preference is env config over a runtime settings store.
 
-**Next: `/gsd:new-milestone`.**
+**Next: research (4-way), then REQUIREMENTS.md, then roadmap.**
 
 **Open blockers:** none.
 

@@ -8,9 +8,28 @@ A business intelligence dashboard application for data engineers and business an
 
 Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
 
-## Current Milestone: none — v1.26 shipped; next milestone not yet defined
+## Current Milestone: v2.0 AI-Driven Dashboards
 
-v1.26 Large Exports & Fixes shipped 2026-10-08. The next milestone is opened with `/gsd:new-milestone`, which also creates a fresh `REQUIREMENTS.md` (v1.26's is archived at `milestones/v1.26-REQUIREMENTS.md`). Named candidates: `CFGSQL-F1` (remove persisted `config.sql`), `EXPRT-F1`-`F4`, `SSYNC-F6`.
+**Goal:** A user asks a question in an AI visualization on the dashboard, and the AI answers by changing the dashboard itself — adding/removing visualizations, map layers and dynamic views and applying filters — instead of replying in a chat transcript; designers can also ask it to build a dashboard from a table.
+
+**Target features:**
+- **AI visualization (new widget type)** — the place to ask questions and get explanations. Designer chooses a display mode: **Compact** (ask box only — the dashboard is the answer) or **Full** (ask box + a short explanation + clickable suggested follow-up questions).
+- **AI drives the dashboard** — answers are expressed as dashboard changes: add/remove visualizations, add/remove map layers, add/remove dynamic views, apply filters.
+- **Apply immediately, with undo** — changes land at once (that is the "talking back"); the user can undo the AI's steps.
+- **Session layer, Keep to save** — AI changes are a per-user temporary overlay; other viewers never see them. "Keep" saves them into the dashboard (only if the user may edit it); "Discard"/reload reverts.
+- **Both users** — analysts explore an existing dashboard; designers say "build a dashboard for table X" and get a starter dashboard to refine.
+- **Pluggable AI provider** — provider-agnostic server layer; Claude by default, but an on-prem/air-gapped customer can point it at another (e.g. local) model.
+- **Admin-configurable data access** — a deploy setting decides what the AI may see: schema + dashboard config only, or also read-only query results run as the user under their Kinetica permissions.
+
+**Done means:** the full loop for both users ships in this milestone (not a spike): AI widget + pluggable provider + session layer/undo/keep; analysts explore via filters and add/remove of widgets, layers and dynamic views; designers generate a dashboard from a table.
+
+**Existing seams to build on (research must confirm):**
+- v1.11 action engine — serializable `{target, configPatch}` envelope + versioned allow-list (`actionAllowList.ts`), applied by `applyWidgetAction` to the transient session overlay `widgetActionStore` (no PATCH, per-viewer). It was explicitly designed as the seam an AI/MCP layer reuses — see `packages/web/docs/mcp-action-seam.md`. **Gap:** it only *patches* existing targets; it cannot add/remove widgets, layers or dynamic views, and does not set data filters.
+- v1.24 dashboard export/import — a versioned JSON format for a whole dashboard + dependency graph (a candidate target format for "build me a dashboard").
+- Drill-down/filter combination store (`filterCombinationStore`) + server-side materialize — the existing filter path the AI must drive rather than bypass.
+- Kinetica's own SQL-GPT exists — research whether it has a role behind the pluggable provider.
+
+**Research:** yes — 4-way (stack / features / architecture / pitfalls): provider abstraction + tool-calling across providers, how AI-driven BI tools act on dashboards, extending the action engine to structural changes and filters, prompt-injection / data-exfiltration / RBAC pitfalls of letting a model mutate dashboards and read data.
 
 ## Shipped Milestone: v1.26 Large Exports & Fixes (2026-10-08)
 
@@ -591,7 +610,13 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 
 ### Active
 
-<!-- No active milestone — v1.26 shipped 2026-10-08; its requirements moved to Validated above. Next: /gsd:new-milestone -->
+<!-- v2.0 AI-Driven Dashboards — scoped REQ-IDs live in REQUIREMENTS.md -->
+- [ ] AI visualization widget (Compact / Full modes) where users ask questions
+- [ ] AI answers by changing the dashboard: add/remove visualizations, map layers, dynamic views; apply filters
+- [ ] AI changes apply immediately with undo, as a per-user session layer saved only on Keep
+- [ ] Designer can ask the AI to build a dashboard from a table
+- [ ] Pluggable AI provider (Claude default, local/on-prem possible)
+- [ ] Admin-configurable AI data access (schema-only vs read-only query results as the user)
 
 <!-- Open tech-debt carry-overs -->
 - [x] TD-V122-TEST-FLAKE — RESOLVED in v1.23: root-caused to TWO one-line async-query defects (RTL's unconfigured 1000ms `asyncUtilTimeout` vs vitest's 5000ms `testTimeout`; one sync-`getBy*`-after-`await findBy*` site), NOT cross-mode contamination as first assumed — bisection proved no contaminating file exists. Fixed in `cde63ae`. Before: 0/4 clean full-suite runs; after: 4/4. Full trail (incl. four wrong diagnoses) in `.planning/v123-flake-investigation-notes.md`. ~105 other sync-after-async sites remain across 12 spec files — fix opportunistically, not a sweep. Casts doubt on `TD-V16-TEST-ISOLATION`'s identical "contamination" attribution, never tested this way.
@@ -723,7 +748,9 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 | v1.26: Line Chart gets the bar's Group By builder (column 1 = required X, ascending); Numeric Line Chart kept | Reuse the chart-type-agnostic pivot libs; the operator compared with the Timeline chart and found Numeric Line already covers numeric/multi-metric | ✓ Shipped v1.26 Phase 132 — no-X legacy line shows a prompt; Line vs Numeric Line merge deferred |
 
 ---
-*Last updated: 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED (`/gsd:complete-milestone`, bookkeeping by hand). 6 phases (127-132), 41 plans; 21/21 requirements; web vitest 203 files / 4434 tests, web+server tsc clean, theme-guard 158/158, server test-gate GATE PASSED. Operator-verified against real Kinetica (131 V1-V13 + Z1-Z5, 132 V1-V9). Audit `tech_debt`, no blockers. Next milestone not yet defined.*
+*Last updated: 2026-10-08 — v2.0 AI-Driven Dashboards started (`/gsd:new-milestone`).*
+
+*Previous: 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED (`/gsd:complete-milestone`, bookkeeping by hand). 6 phases (127-132), 41 plans; 21/21 requirements; web vitest 203 files / 4434 tests, web+server tsc clean, theme-guard 158/158, server test-gate GATE PASSED. Operator-verified against real Kinetica (131 V1-V13 + Z1-Z5, 132 V1-V9). Audit `tech_debt`, no blockers. Next milestone not yet defined.*
 
 *Previous: 2026-09-30 — v1.25 Schema Sync SHIPPED (`/gsd:complete-milestone`). 5 phases (122-126), 21 plans; 19/19 requirements; web vitest 185 files / 4162 tests, web+server tsc clean, theme-guard 154/154, server test-gate GATE PASSED. Operator-verified against real Kinetica 14/14. (v1.24's close did not update this footer; see its Shipped Milestone section above.)*
 
