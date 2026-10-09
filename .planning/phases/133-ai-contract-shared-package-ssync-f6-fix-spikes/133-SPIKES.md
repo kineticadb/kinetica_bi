@@ -1,6 +1,6 @@
 # Phase 133 Spike Decision Record
 
-**How to read:** one section per spike in the D-15 template. S2 and S3 were run autonomously in plan 133-07. S1 and S7 are PENDING the operator run in plan 133-08. All spikes must be reviewed at the D-15 checkpoint before Phases 134/135.
+**How to read:** one section per spike in the D-15 template. S2 and S3 were run autonomously in plan 133-07. S1 and S7 were run live by the operator as a non-admin user in plan 133-08. All spikes must be reviewed at the D-15 checkpoint before Phases 134/135.
 
 ---
 
@@ -10,19 +10,31 @@
 
 **Method:** (1) Code half: `createOrReplaceMaterialized` (`lib/materializedView.ts`) takes `{req, view, sqlBody, ttl, route, op}` with no row dependency; the route-level blockers are `POST /api/dynamic-view/materialize` (loads the dv row, names from `row.id`), the dv branch of `/api/filter/materialize` (requires `dvRow`) and `buildFilterViewName` (requires `tableId` or `dynamicViewId`). Sketch: ad-hoc branch taking a server-held structured spec, a session-bound name `_kbi_ai_u<user>_s<sid8>_<n>`, prefix-validated `adHocViewName`. (2) Operator live half (`src/spikes/adhocDvSpike.ts`, plan 133-08) as the non-admin user: create ad-hoc view, `SELECT COUNT(*)`, filter view over it, WMS tile against filter view, wait past TTL (sliding?), `DROP TABLE IF EXISTS`.
 
-**Result:** PENDING — operator run in plan 133-08
+**Result:** ALL PASS. Live run 2026-10-09 by the operator as `uat_analyst` (confirmed NON-ADMIN, D-12) against http://172.31.0.22:8082/gpudb-0, source `demo.nyctaxi`, `adhocDvSpike.ts --wait-ttl`:
 
-**Decision:** PENDING — operator run in plan 133-08. Rule (D-13): all green means ad-hoc inline path; any of {create denied for non-admin, view-of-view filter fails, WMS cannot render the view} means "AI dvs go live only after Keep" and AIACT-V20-07 is flagged for rewording.
+```
+S1.1 create ad-hoc view: PASS
+S1.2 count ad-hoc view: PASS - n=1000
+S1.3 view-of-view filter: PASS - n=464
+S1.4 WMS GetMap: PASS - HTTP 200 content-type=image/png bytes=1367
+S1.5a LIMIT 0 column_headers: PASS - headers=["vendor_id","pickup_datetime","dropoff_datetime","passenger_count","trip_distance"]...
+S1.5b LIMIT 1 column_headers: PASS
+S1.5c INFORMATION_SCHEMA.COLUMNS: PASS - rows=20 keys=["column_1","column_headers","column_datatypes"]
+S1.6 TTL reaped: PASS - gone: HTTP 400 SqlEngine: Object '_kbi_spike_zq3snq_dv' not found (TTL = 1 min, waited 150 s)
+S1.7 drop spike views: PASS
+```
 
-**Fallback:** PENDING — operator run in plan 133-08 (expected: AI dvs materialize only on Keep; Phase 139 shrinks).
+**Decision:** (D-13) S1.1 + S1.3 + S1.4 all PASS, so the **ad-hoc inline path (ARCHITECTURE option B)** is viable for a non-admin user. NO Keep-only fallback; AIACT-V20-07 is unchanged (no rewording). TTL behaviour (S1.6): view was reaped after its 1 min TTL (observed gone within 150 s); sliding vs fixed expiry was not distinguished. Phase 139 input: still call DROP on session end, TTL is the safety net.
 
-**Consequence for later phases:** PENDING — operator run in plan 133-08
+**Fallback:** Not triggered. (Would have been: AI dvs materialize only on Keep; Phase 139 shrinks.)
 
-**Confidence:** PENDING (code facts HIGH, live behaviour unknown)
+**Consequence for later phases:** Phase 139 may build the ad-hoc materialize branch with a session-bound prefix-validated name and no `dashboard_dynamic_views` row. Phase 139 should keep a per-session view cap (see S7: grants do not constrain the user).
+
+**Confidence:** HIGH (measured live as non-admin). Sliding-vs-fixed TTL untested.
 
 ### S1 → Dv column source decision
 
-Does `SELECT * FROM <view> LIMIT 0` return `column_headers`? If not, `LIMIT 1`; if not, `INFORMATION_SCHEMA.COLUMNS`. Feeds the dv column guard. PENDING — operator run in plan 133-08
+`LIMIT 0`. Exact SQL for plan 133-09: `SELECT * FROM <view> LIMIT 0`, read `column_headers` (returned all 5 expected names on S1.5a). `LIMIT 1` and `INFORMATION_SCHEMA.COLUMNS` also work as fallbacks (the latter returns keys `column_1`, `column_headers`, `column_datatypes`, i.e. not a plain COLUMN_NAME shape).
 
 ---
 
@@ -107,19 +119,49 @@ Notes: "accepts default" is trivially true for `fields: []` types because the de
 
 **Method:** Operator-run `src/spikes/kineticaCapsSpike.ts` (plan 133-08), non-destructive, own `_kbi_spike_*` objects only: (1) `CREATE OR REPLACE MATERIALIZED VIEW _kbi_spike_<rand> ... TTL = 2` in default schema and with `current_schema`, recording exact denial text; (2) statement timeout: `/execute/sql` options list has no per-statement timeout; run a slow query with and without client AbortSignal and see if the server keeps executing; (3) attempt DELETE / INSERT / DROP TABLE / ALTER / CREATE TABLE and record which are denied by grants alone; (4) does `EXPLAIN <select>` work and return a usable row estimate.
 
-**Result:** PENDING — operator run in plan 133-08
+**Result:** run 2026-10-09 as `uat_analyst` (NON-ADMIN), same instance. Run 1 used the original harness; the final run used `--skip-slow` after harness edits (see 133-08-SUMMARY).
 
-**Decision:** PENDING — operator run in plan 133-08
+Run 1 (original harness, killed by operator): S7.1a create view PASS; S7.2 baseline `SELECT 1` 49 ms; S7.2a slow query FAIL (elapsed 300652 ms, `fetch failed`, unbounded self-join too heavy); S7.2b client abort after 2 s returned in 2002 ms (AbortError), `SELECT 1` afterwards 68 ms. GAdmin Running Jobs showed the `uat_analyst` `SELECT COUNT(*) FROM demo.nyctaxi a, demo.nyctaxi b` jobs still "dispatched" (elapsed 198-501 s) after the abort AND after the script was killed. Operator: "Cancelling a query does not stop the request in Kinetica. You have to explicitly kill the job." S7.2c (`options.timeout`) was NOT tested; assume no server-side timeout.
 
-**Fallback:** App-side guard + row cap + per-session view cap + client abort (from research summary).
+Final run (`--skip-slow`):
+```
+S7.1a create view (default schema): PASS
+S7.1b create view (current_schema): SKIPPED - SPIKE_SCHEMA unset
+S7.2 abort/timeout: SKIPPED (answered by run 1 + operator)
+S7.3a CREATE TABLE scratch: PASS
+S7.3b DELETE source (WHERE 1 = 0): DENIED - HTTP 400 SqlEngine: Sub-queries are not allowed in DELETE statement  (engine/syntax refusal, NOT a grant denial -> inconclusive)
+S7.3c INSERT source (WHERE 1 = 0): PASS - ALLOWED by grants (0 rows inserted)
+S7.3d ALTER: SKIPPED
+S7.4 EXPLAIN: PASS - plan rows (ID, ENDPOINT, INPUT_TABLES, OUTPUT_TABLE, DEPENDENCIES); no cost/row estimate
+S7.5 as-given vendor_id: PASS ["vendor_id"]; UPPER unquoted: PASS ["VENDOR_ID"]; UPPER quoted "VENDOR_ID": PASS ["VENDOR_ID"]
+S7.6a list jobs while query runs: PASS - still running after 570 ms; max own jobs visible=1; sample=82616:uat_analyst:/* kbi-spike-3kittv */ SELECT COUNT(*) ...
+S7.6b find tagged job: PASS - job_id=82616 via field "query_text" after 570 ms
+S7.6c cancel own job (/admin/alter/jobs): PASS - {"job_ids":[82616],"action":"cancel","status":["Job marked for cancellation."],"info":{}}
+S7.6d job gone after cancel: PASS - not listed
+S7.cleanup: PASS
+```
+Not exercised: S7.1b (non-default schema), S7.2c (`options.timeout`), S7.3d (ALTER), a genuine grant-based DELETE denial.
 
-**Consequence for later phases:** PENDING — operator run in plan 133-08 (decides whether Phase 140's read-only SELECT can lean on a read-only Kinetica role).
+**Decision:**
+- Create materialized views as non-admin: works in the default schema (S7.1a). Non-default schema untested.
+- Read-only by grants: NO. The user can CREATE TABLE and INSERT into the source, so Phase 140's guarded SELECT must be FULLY app-side (statement allow-list + row cap + per-session view cap), not reliant on a read-only Kinetica role. The DELETE refusal was an engine syntax error, not evidence of a grant.
+- Server-side timeout: none found. Client abort does NOT stop the Kinetica job (Operator-verified; jobs keep running after abort and after the client process dies). A client AbortSignal only frees the app side.
+- EXPLAIN: works but gives no cost or row estimate, so it is NOT usable as a cost preflight for 139/140. Use row cap and LIMIT wrapping instead.
+- **Job-cancel decision (operator design, verified S7.6):** every AI/app cancel path that runs Kinetica SQL must tag the statement with a unique comment (e.g. `/* kbi:<user>:<request-id> */`), find it in `/admin/show/jobs` via `query_text`, and cancel via `/admin/alter/jobs {job_ids, action:"cancel"}`. A non-admin can do this for its own jobs.
 
-**Confidence:** PENDING
+**Fallback:** App-side guard + row cap + per-session view cap + client abort (from research summary), plus tag/find/cancel for real cancellation.
+
+**Consequence for later phases:**
+- Phase 137 (AIWID-V20-04 cancel) and Phase 140 (query tool) MUST use the tag -> find -> cancel path; abort alone leaves the job running on the GPU cluster.
+- Phase 140 SQL guard is fully app-side; no reliance on grants.
+- Phases 139/140 cannot use EXPLAIN as a cost gate.
+- **NEW TECH DEBT (for the 133-10 checkpoint, not fixed here):** v1.26 export cancel (`cancelExport` in `packages/server/src/lib/exportRunner.ts:272`) only calls `ac.abort()`, so it likely leaves Kinetica jobs running after a user cancels an export. Needs the same tag/find/cancel treatment.
+
+**Confidence:** HIGH for cancel mechanics, EXPLAIN, INSERT-allowed, and case folding (measured); MEDIUM for timeout absence (`options.timeout` untested).
 
 ### S7 → Column-name case folding
 
-Does Kinetica fold column-name case (so the column guard must compare case-insensitively)? PENDING — operator run in plan 133-08
+Kinetica column resolution is case-INSENSITIVE even when quoted (as-given `vendor_id`, unquoted `UPPER`, and quoted `"VENDOR_ID"` all resolved, with output header case following the query text). Our 133 exact-match column guard is therefore stricter than Kinetica: it stands, because snapshot names are canonical. It may reject a differently-cased name that Kinetica would accept, which is safe.
 
 ---
 
