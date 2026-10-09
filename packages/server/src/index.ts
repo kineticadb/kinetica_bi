@@ -16,6 +16,7 @@ import {
 } from "./auth";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
+import { assertColumnsExist, tableLabel, ColumnGuardError } from "./lib/columnGuard";
 // v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
 // diff contract for the on-demand schema-check route.
 import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
@@ -1432,6 +1433,20 @@ export const createApp = async (): Promise<express.Express> => {
     const table = getTable(tableId);
     if (!table) return res.status(404).json({ error: "Table not found." });
     const tableRef = table.schema ? `${table.schema}.${table.name}` : table.name;
+
+    // Phase 133 (AISAFE-V20-01): client column names must exist in the registered snapshot (D-01/D-02). No SQL is built or sent on rejection.
+    assertColumnsExist(
+      table.columns,
+      [
+        ...filtersArr.map((f) => (f as { column?: unknown } | null)?.column),
+        ...(spatialTarget
+          ? [spatialTarget.lonCol, spatialTarget.latCol, spatialTarget.spatialCol].filter(
+              (c) => c !== undefined && c !== "",
+            )
+          : []),
+      ],
+      tableLabel(table),
+    );
 
     const authedReq = req as AuthedRequest;
     const viewName = buildFilterViewName({
@@ -3250,6 +3265,10 @@ export const errorMiddleware = (
   res: Response,
   _next: NextFunction
 ): void => {
+  if (err instanceof ColumnGuardError) {
+    res.status(400).json(err.toBody());
+    return;
+  }
   if (err instanceof KineticaAuthError) {
     clearSessionCookie(res);
     res.status(401).json({ error: err.message, code: "REAUTH_REQUIRED" });

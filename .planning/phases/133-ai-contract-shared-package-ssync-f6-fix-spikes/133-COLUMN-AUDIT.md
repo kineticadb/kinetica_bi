@@ -19,8 +19,8 @@ Each site was read at the shipped file:line (index.ts lines are at HEAD 1b31b24,
 
 | # | File:line | Route / builder | Name source | Guard before 133 | Class / Tier | Fixed by (plan · task · test) | Status |
 |---|---|---|---|---|---|---|---|
-| 1 | lib/whereClause.ts via index.ts:1446 (`composeWhereClause`) | POST /api/filter/materialize table path (index.ts:1289) | `body.filters[].column` | none; header comment falsely claims server metadata | CLIENT-COL, A | 133-01 T3 · CG-FM1..8 | pending |
-| 2 | lib/spatialWhereClause.ts via index.ts:1446 | POST /api/filter/materialize spatial target | `body.spatialTarget.lonCol/latCol/spatialCol` | none; only presence/mode coherence | CLIENT-COL, A | 133-01 T3 · CG-FM1..8 | pending |
+| 1 | lib/whereClause.ts via index.ts:1446 (`composeWhereClause`) | POST /api/filter/materialize table path (index.ts:1289) | `body.filters[].column` | none; header comment falsely claims server metadata | CLIENT-COL, A | 133-01 T3 · CG-FM1..8 | guarded (133-01) |
+| 2 | lib/spatialWhereClause.ts via index.ts:1446 | POST /api/filter/materialize spatial target | `body.spatialTarget.lonCol/latCol/spatialCol` | none; only presence/mode coherence | CLIENT-COL, A | 133-01 T3 · CG-FM1..8 | guarded (133-01) |
 | 3 | lib/whereClause.ts via index.ts (dv branch ~1331-1381) | POST /api/filter/materialize dv path | `body.filters[].column` | none; no registered snapshot (`columns_json` client-asserted) | CLIENT-COL, A (dv column source) | 133-09 · CG-DV1..4 | pending |
 | 4 | lib/exportSql.ts:95-230 (`buildExportPlan`) via exportRoutes.ts | POST /api/exports | `spec.filters[].column`, `spec.sortField`, spatial cols; `cfg.columns`/`cfg.sortField` (SERVER-HELD) | shape only: `EXPORT_IDENT_RE` (exportSql.ts:23) | CLIENT-COL, A on table path; B-kept on dv path / unregistered `cfg.table` fallback | 133-02 · CG-OR1..2 | pending |
 | 5 | lib/spatialQuery.ts via index.ts:2394,2418 | POST /api/info/query (index.ts:2260) | `body.spatialColumns.*`, `body.schema`, `body.table`, `body.viewName` | `typeof === "string"` only; `tableRow` used only as 404 guard | CLIENT-COL + CLIENT-TABLE, A (see finding below) | 133-02 · CG-OR3..7 | pending |
