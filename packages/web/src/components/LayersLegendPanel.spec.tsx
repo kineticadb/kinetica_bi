@@ -645,3 +645,37 @@ describe("Phase 118 (ZLGND-V123-01/02/03/06/07): zoom-aware legend rendering", (
     expect(screen.getByText("zoom ≤ 10")).toBeTruthy();
   });
 });
+
+describe("DVCOMBO legend badge — reason-aware dv status", () => {
+  const badgeFor = (dvReason?: "no_filter" | "exceeds_max_records") => {
+    const layer = makeResolvedLayer({ id: 900 });
+    const entry: ResolvedLegendLayer = {
+      ...layer,
+      visible: true,
+      dvStatus: "over_threshold",
+      ...(dvReason ? { dvReason } : {}),
+    };
+    const { container } = render(<LayersLegendPanel {...defaultProps()} layers={[entry]} />);
+    return container.querySelector(".layers-legend-panel-dv-badge") as HTMLElement;
+  };
+
+  it("DVCOMBO-L1: no_filter reads 'No filter applied' with an actionable title", () => {
+    const badge = badgeFor("no_filter");
+    expect(badge.textContent).toBe("No filter applied");
+    expect(badge.getAttribute("title")).toContain("apply a filter");
+  });
+
+  it("DVCOMBO-L2: exceeds_max_records reads 'Over threshold'", () => {
+    expect(badgeFor("exceeds_max_records").textContent).toBe("Over threshold");
+  });
+
+  it("DVCOMBO-L3: no reason reads 'Over threshold' (back-compat)", () => {
+    expect(badgeFor(undefined).textContent).toBe("Over threshold");
+  });
+
+  it("DVCOMBO-L4: className is exactly the existing badge classes in both reason cases", () => {
+    const expected = "layers-legend-panel-dv-badge layers-legend-panel-dv-badge--over_threshold";
+    expect(badgeFor("no_filter").className).toBe(expected);
+    expect(badgeFor("exceeds_max_records").className).toBe(expected);
+  });
+});

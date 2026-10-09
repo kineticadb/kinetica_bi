@@ -1002,6 +1002,7 @@ describe("DynamicViewsModal", () => {
           expect(mockedClient.materializeDynamicView).toHaveBeenCalledWith(
             42,
             expect.anything(),
+            undefined, // no filter on the source table -> no combination key
           ),
         );
         await waitFor(() =>

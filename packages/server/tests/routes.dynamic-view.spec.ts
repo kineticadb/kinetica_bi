@@ -77,6 +77,7 @@ import { buildTestApp } from "./helpers/app";
 import { createSession } from "../src/sessionStore";
 import { createAdminSession } from "./helpers/db";
 import { resetOidcClientForTests } from "../src/oidc";
+import { hashKey8 } from "../src/lib/viewNaming";
 import {
   db,
   createDashboard,
@@ -955,5 +956,105 @@ describe("Dynamic-view runtime — AUTH_MODE=oidc smoke", () => {
     expect(getDashboardDynamicView(dv.id)).toBeUndefined();
     const statements = sqlStatements(fetchMock);
     expect(statements[0]).toMatch(/^DROP TABLE IF EXISTS _kbi_dv_uadmin_/);
+  });
+});
+
+describe("DVCOMBO server — combination_key threads into the dv filter-view lookup", () => {
+  beforeEach(() => {
+    vi.stubEnv("AUTH_MODE", "password");
+    cleanFixtures();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const KEY = "table:1:fare|gt|10";
+
+  it("DVCOMBO-S1: materialize with combination_key probes + selects FROM the _c<hash8> view", async () => {
+    let callIndex = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      callIndex += 1;
+      if (callIndex === 1) return respond(countResult(50));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 1000 });
+    const { cookie } = makeSessionCookie();
+
+    const res = await agent
+      .post("/api/dynamic-view/materialize")
+      .set("Cookie", cookie)
+      .send({ dynamic_view_id: dv.id, combination_key: KEY });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("materialized");
+    const suffix = `_c${hashKey8(KEY)}`;
+    const statements = sqlStatements(fetchMock);
+    expect(statements[0].endsWith(suffix)).toBe(true);
+    expect(statements[1]).toContain(`FROM _kbi_filt_u`);
+    expect(statements[1]).toMatch(new RegExp(`FROM _kbi_filt_u\\w+${suffix} GROUP BY`));
+  });
+
+  it("DVCOMBO-S2: materialize WITHOUT combination_key probes the legacy unsuffixed name", async () => {
+    let callIndex = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      callIndex += 1;
+      if (callIndex === 1) return respond(countResult(50));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 1000 });
+    const { cookie } = makeSessionCookie();
+
+    await agent
+      .post("/api/dynamic-view/materialize")
+      .set("Cookie", cookie)
+      .send({ dynamic_view_id: dv.id });
+
+    const statements = sqlStatements(fetchMock);
+    expect(statements[0]).toMatch(/^SELECT COUNT\(\*\) FROM _kbi_filt_u\w+_d\d+_t\d+_s\w{8}$/);
+  });
+
+  it("DVCOMBO-S3: non-string combination_key -> 400 and no Kinetica call", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => respond(kineticaOk()));
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId);
+    const { cookie } = makeSessionCookie();
+
+    const res = await agent
+      .post("/api/dynamic-view/materialize")
+      .set("Cookie", cookie)
+      .send({ dynamic_view_id: dv.id, combination_key: 123 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("combination_key");
+    expect(sqlStatements(fetchMock).length).toBe(0);
+  });
+
+  it("DVCOMBO-S4: preview with combination_key probes the _c<hash8> view", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => respond(kineticaOk({ column_headers: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const { cookie } = makeSessionCookie();
+
+    await agent
+      .post("/api/dynamic-view/preview")
+      .set("Cookie", cookie)
+      .send({
+        dashboard_id: dashId,
+        source_table_id: tableId,
+        template_sql: "SELECT vendor FROM {view}",
+        combination_key: KEY,
+      });
+
+    const statements = sqlStatements(fetchMock);
+    expect(statements[0]).toContain(`_c${hashKey8(KEY)}`);
   });
 });

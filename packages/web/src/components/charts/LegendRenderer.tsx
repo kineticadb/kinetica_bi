@@ -117,7 +117,7 @@ export default function LegendRenderer({
       if (dvId === null || dvId === undefined) return entry; // base-table layer — no status
       const dvEntry = dvViews[dvId];
       const dvStatus: DvLayerStatus = dvEntry ? dvEntry.status : "absent";
-      return { ...entry, dvStatus };
+      return { ...entry, dvStatus, dvReason: dvEntry?.reason };
     });
     // effectiveLayers is the (overlay-merged) read-trigger; includedLayerIds is the filter
     // trigger; dynamicViewVersion is the dv-state re-render trigger; isOrphan gates render.

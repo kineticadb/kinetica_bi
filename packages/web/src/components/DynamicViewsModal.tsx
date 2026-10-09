@@ -55,6 +55,7 @@ import {
   type DynamicViewColumn,
   type PreviewDynamicViewResponse,
   type TableDto,
+  type WidgetDto,
   type UpdateDynamicViewArgs,           // NEW Plan 34-04 (MAJOR #3) — Save UPDATE body type
   type CreateDynamicViewArgs,           // Post-VERIFY fix — CREATE body type now includes optional columns_json
 } from "../api/client";
@@ -65,11 +66,14 @@ import {
 } from "../store/dynamicViewStore";
 import { useToastStore } from "../store/toast";
 import { buildDynamicViewName } from "../lib/dynamicViewName";  // NEW Plan 34-04 — deterministic viewName
+import { currentDvSourceComboHash } from "../lib/dvSourceCombo";
 import { useAuthStore } from "../store/auth";                    // NEW Plan 34-04 — userId for buildDynamicViewName
 
 export type DynamicViewsModalProps = {
   dashboardId: number;
   associatedTables: TableDto[];
+  /** Dashboard widgets — resolve the source table's spatial target for the combination key. */
+  widgets?: WidgetDto[];
   onClose: () => void;
 };
 
@@ -84,6 +88,7 @@ type PreviewState =
 export default function DynamicViewsModal({
   dashboardId,
   associatedTables: _associatedTables,
+  widgets = [],
   onClose,
 }: DynamicViewsModalProps): JSX.Element {
   // ---- State (Plan 34-02 — left list + selection) ----
@@ -372,6 +377,9 @@ export default function DynamicViewsModal({
           source_table_id: formSourceTableId,
           dashboard_id: dashboardId,
           sample_limit: 100,
+          // Imperative read (no subscription). The combination view may not exist yet for a
+          // brand-new dv; the server then falls back to the base table exactly as before.
+          combination_key: currentDvSourceComboHash(formSourceTableId, widgets),
         },
         ctrl.signal,
       );
@@ -450,6 +458,7 @@ export default function DynamicViewsModal({
             source_table_id: formSourceTableId!,
             dashboard_id: dashboardId,
             sample_limit: 1, // we only need the column metadata, not rows
+            combination_key: currentDvSourceComboHash(formSourceTableId!, widgets),
           },
           ctrl.signal,
         );
@@ -592,7 +601,11 @@ export default function DynamicViewsModal({
       useDynamicViewStore.getState().markPending(row.id, viewName);
 
       try {
-        const matResult = await materializeDynamicView(row.id, ctrl.signal);
+        const matResult = await materializeDynamicView(
+          row.id,
+          ctrl.signal,
+          currentDvSourceComboHash(row.source_table_id, widgets),
+        );
         if (ctrl.signal.aborted) return;
         if (matResult.status === "materialized") {
           useDynamicViewStore.getState().setView(row.id, {
