@@ -19,14 +19,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — defining requirements
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 133 (AI Contract, Shared Package, SSYNC-F6 Fix & Spikes)
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: Not started (defining requirements)
+Phase: 133 of 133-142 (not started)
 Plan: —
-Status: Defining requirements
+Status: Ready to plan
 Last activity: 2026-10-08 — Milestone v2.0 started
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
@@ -39,7 +39,12 @@ Last activity: 2026-10-08 — Milestone v2.0 started
   5. AI provider is **pluggable** (Claude default; local/on-prem possible).
   6. AI data access is **admin-configurable** (schema/config only vs read-only query results run as the user). Operator preference is env config over a runtime settings store.
 
-**Next: research (4-way), then REQUIREMENTS.md, then roadmap.**
+**v2.0 roadmap approved 2026-10-08: 10 phases (133-142), 44/44 requirements mapped.** Research: `research/SUMMARY.md`; requirements: `REQUIREMENTS.md`.
+- 133 Contract / shared pkg / SSYNC-F6 / spikes S1,S2,S3,S7 → {134 Session layer (client) ∥ 135 Server gateway, loop, providers, "Use AI" permission, audit, caps} → 136 Structural & edit ops → 137 AI widget & streaming UI → 138 Filters → 139 Session dynamic views → 140 Query mode & injection hardening → 141 Keep → 142 Generate, audit viewer (own permission ripple), live Gemini/Ollama UAT.
+- Research-phase flagged: 133, 135, 137, 139, 140.
+- Provider reality: no Anthropic key; live verification on Gemini (AI Studio free tier, demo tables only) + one Ollama model; Claude adapter unit-tested only.
+
+**Next: `/gsd:discuss-phase 133` (or `/gsd:research-phase 133` → `/gsd:plan-phase 133`).**
 
 **Open blockers:** none.
 

@@ -36,6 +36,173 @@
 
 - ✅ **v1.26 Large Exports & Fixes** — Phases 127-132 (shipped 2026-10-08) — see `milestones/v1.26-ROADMAP.md`
 
+- 🚧 **v2.0 AI-Driven Dashboards** — Phases 133-142 (in progress, started 2026-10-08)
+
+---
+
+## v2.0 AI-Driven Dashboards — IN PROGRESS (started 2026-10-08)
+
+**Goal:** A user asks a question in an AI visualization on the dashboard, and the AI answers by changing the dashboard itself (adding/removing/editing visualizations, map layers and dynamic views, applying filters) instead of replying in a chat transcript. Designers can also ask it to build a starter dashboard from a table.
+
+**Operator constraints:** no Anthropic API key — the OpenAI-compatible adapter is the live-verified path (Gemini via AI Studio free tier for development, demo tables only; one local Ollama model); the Claude adapter is `fetch`-based and unit-tested only; no `@anthropic-ai/sdk`. AI is off by default and env-configured. Research: `research/SUMMARY.md` (spikes S1–S7). Requirements: `REQUIREMENTS.md` (44).
+
+### Phases
+
+- [ ] **Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes** — close the column-interpolation hole; shared zod contract; env fail-fast; spikes S1/S2/S3/S7 decided
+- [ ] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
+- [ ] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
+- [ ] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
+- [ ] **Phase 137: AI Widget & Streaming UI** — Compact/Full widget, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
+- [ ] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
+- [ ] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
+- [ ] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
+- [ ] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
+- [ ] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
+
+**Order:** 133 → {134 ∥ 135} → 136 → 137 → 138 → 139 → 140 → 141 → 142. 134 (client) and 135 (server) touch disjoint files and may run in parallel after 133.
+**Research-phase flagged:** 133 (S1, S3), 135 (S6), 137 (S2 through the deploy proxy), 139 (S1, S7), 140 (SQL guard, S7). Standard: 134, 136, 138, 141, 142.
+
+### Phase Details
+
+### Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes
+**Goal:** The column-interpolation hole is closed, the shared AI contract exists for web and server, AI env config fails fast, and the risky unknowns have recorded decisions.
+**Depends on:** — (first phase)
+**Requirements:** AISAFE-V20-01, AIPRV-V20-01
+**Research flag:** yes (S1 ad-hoc dv materialize, S3 per-type validators; also S2, S7)
+**Success Criteria:**
+1. `POST /api/filter/materialize` rejects a column that does not exist on the target table or view, with no SQL executed; a valid column works as before.
+2. With no `AI_*` env set the app behaves exactly as today; with AI enabled but misconfigured, startup fails fast with a clear message.
+3. The `packages/shared` contract builds and is imported by both web and server; an invalid op is rejected by the shared schema.
+4. S1, S2, S3 and S7 each have a recorded decision and fallback; S2's real-proxy behaviour is operator-verified or explicitly deferred to Phase 137.
+**Plans:** TBD
+
+### Phase 134: Session Layer Engine (client, no LLM)
+**Goal:** A per-user, in-memory session layer applies AI-style changes as a unit, undoes them answer by answer, and reverts cleanly — driven by a test harness, no AI involved.
+**Depends on:** 133
+**Requirements:** AISES-V20-01, AISES-V20-02, AISES-V20-03, AISES-V20-07
+**Research flag:** standard
+**Success Criteria:**
+1. Scripted ops from a test harness apply as one unit, appear only for the asking user, and cause no dashboard DB write.
+2. Turn 2 does not erase turn 1's patches — the test fails before rebuild-from-log exists (`widgetActionStore` source-keyed replacement hazard).
+3. Undo removes the last answer as one unit, repeatedly.
+4. Discard or reload restores the saved dashboard exactly, and AI geometry is never persisted by `onLayoutChange` (test + operator human-verify).
+**Plans:** TBD
+
+### Phase 135: Server Gateway, Agent Loop, Providers & Governance Core
+**Goal:** The server runs the agent loop behind one validation gateway, with pluggable providers, schema-only data access by default, the "Use AI" permission, audit records and usage caps.
+**Depends on:** 133 (parallel with 134)
+**Requirements:** AISAFE-V20-02, AISAFE-V20-03, AIPRV-V20-04, AIPRV-V20-05, AIGOV-V20-01, AIGOV-V20-02, AIGOV-V20-04, AIGOV-V20-06
+**Research flag:** yes (S6 tool calling on Gemini / a local model)
+**RBAC note:** this phase OWNS the "Use AI" permission and its ripple across the count-asserting specs (rbacDb, rbacMigration, web permissions, RolesPage) plus `permissionGroups` wiring — assign it to ONE plan.
+**Success Criteria:**
+1. A change failing any gateway check (shape, allow-list, permission, live schema) is rejected and never reaches the browser; a valid change from a user lacking the right is rejected.
+2. A user without "Use AI" is refused by the server; an admin can grant it on the Roles page; the AI sees only tables the user can see.
+3. In schema mode a planted canary row value never appears in any outbound provider message, including error paths; the API key never reaches the browser or logs.
+4. Each answer writes an audit record with no row values; exceeding the step or hourly cap returns a message saying why.
+5. The Claude adapter passes unit tests against recorded fixtures and is documented as not live-verified; tests never call a real provider or read the dev key.
+**Plans:** TBD
+
+### Phase 136: Structural & Edit Ops
+**Goal:** The AI can add, remove and edit visualizations and map layers and place them sensibly, with every change validated against the live schema.
+**Depends on:** 134, 135
+**Requirements:** AIACT-V20-01, AIACT-V20-02, AIACT-V20-03, AIACT-V20-04, AIACT-V20-05, AIACT-V20-06, AIACT-V20-10, AIACT-V20-11
+**Research flag:** standard (after S3)
+**Success Criteria:**
+1. Scripted ops add, remove and edit a visualization, and add, remove and restyle a map layer (raster, heatmap, class-break); each is undoable.
+2. A nonexistent table or column is repaired within 2 attempts or refused, never applied; the model cannot emit hex colours.
+3. New widgets do not overlap and the AI can resize and reorder; layout sensibility is operator human-verify.
+4. An AI-added or restyled layer renders tiles and legend correctly (both `buildWmsParams` sites; operator human-verify in light and dark).
+**Plans:** TBD
+
+### Phase 137: AI Widget & Streaming UI
+**Goal:** Users ask questions in a Compact or Full AI widget and watch the dashboard answer, with progress, cancel, follow-ups, clarification, highlights and a Keep/Discard bar.
+**Depends on:** 136
+**Requirements:** AIWID-V20-01, AIWID-V20-02, AIWID-V20-03, AIWID-V20-04, AIWID-V20-05, AIWID-V20-06, AIWID-V20-07, AISES-V20-04
+**Research flag:** yes (S2 streaming through the deploy proxy)
+**Success Criteria:**
+1. A designer adds a Compact or Full AI widget; a user without "Use AI" cannot add or use it.
+2. A question changes the dashboard with no transcript; progress shows, Cancel works, and a second ask is blocked while one runs.
+3. Full mode shows a plain-text explanation and clickable follow-ups; an ambiguous question yields 2–3 clickable choices.
+4. A provider error, cap or quota failure shows a clear message and leaves the dashboard unchanged.
+5. Highlights and the Keep/Discard bar with counts are legible in light and dark (operator human-verify; reuse `global.css` classes, portal any modal).
+**Plans:** TBD
+
+### Phase 138: AI Filters
+**Goal:** The AI applies and clears filters through the same path a click uses, so charts, records tables and map tiles narrow consistently.
+**Depends on:** 137
+**Requirements:** AIACT-V20-09
+**Research flag:** standard
+**Success Criteria:**
+1. "Show only X" narrows charts, records tables and map tiles exactly as a click would; clear removes it.
+2. Undo restores the prior per-source filter state; filter badges read `filterCombinationStore`.
+3. A filter on a nonexistent column is refused, and the per-table filter cap holds.
+4. Map tiles visibly narrow against real Kinetica (operator human-verify).
+**Plans:** TBD
+
+### Phase 139: Session-Only Dynamic Views
+**Goal:** The AI can create and remove session-only dynamic views from a structured description, and their temporary Kinetica views never outlive the session.
+**Depends on:** 138
+**Requirements:** AIACT-V20-07, AIACT-V20-08, AISAFE-V20-04, AISAFE-V20-06
+**Research flag:** yes (S1 follow-through, S7 Kinetica limits)
+**Success Criteria:**
+1. A structured spec compiles server-side with quoted identifiers and a server-chosen name; raw SQL or an unknown column is rejected.
+2. A widget or layer pointed at the view renders, and map tiles follow (both `buildWmsParams` sites).
+3. The temp Kinetica view is dropped on undo, discard, dashboard switch, logout and server restart (verified by listing views in Kinetica); the per-session view cap and TTL hold.
+4. Removing a view repoints or removes its dependents with no dangling references.
+**Plans:** TBD
+
+### Phase 140: Query Data-Access Mode & Injection Hardening
+**Goal:** In query mode the AI can run only guarded read-only queries as the user, and poisoned inputs cannot push it past the gateway.
+**Depends on:** 135, 137, 139
+**Requirements:** AIGOV-V20-03, AISAFE-V20-05
+**Research flag:** yes (SQL guard robustness, S7)
+**Success Criteria:**
+1. In query mode a single SELECT runs as the user with a row cap; multi-statement, non-SELECT and comment-smuggled SQL is refused; in schema mode the query tools are not registered.
+2. A scripted "obedient" provider reading a poisoned table comment, column name, value or title cannot act outside the gateway's rules.
+3. Model-supplied markup, links and images render as literal text (operator human-verify).
+4. The canary no-egress test still passes across every tool and error path.
+**Plans:** TBD
+
+### Phase 141: Keep (Persist AI Changes)
+**Goal:** A user with edit rights saves the AI's changes in one all-or-nothing step that never overwrites someone else's edits.
+**Depends on:** 139, 140
+**Requirements:** AISES-V20-05, AISES-V20-06
+**Research flag:** standard (S4 temp-id re-keying)
+**Success Criteria:**
+1. Keep persists additions, edits and removals with real ids, all-or-nothing under an injected mid-transaction failure.
+2. A user without edit rights is not offered Keep, and a forged Keep request is rejected server-side.
+3. If the dashboard changed since the session began, Keep returns 409 and overwrites nothing.
+4. After Keep, a reload shows the saved result; the UI says filters are not saved (operator human-verify).
+**Plans:** TBD
+
+### Phase 142: Generate, Audit Viewer & Live Provider Proofs
+**Goal:** Designers generate a starter dashboard from a table, admins browse the AI audit log, and the operator proves the provider live on Gemini and a local model.
+**Depends on:** 141
+**Requirements:** AIGEN-V20-01, AIGEN-V20-02, AIGOV-V20-05, AIPRV-V20-02, AIPRV-V20-03
+**Research flag:** standard
+**RBAC note:** this phase OWNS the audit-viewer permission and its own spec ripple — one plan.
+**Success Criteria:**
+1. A designer picks a table and gets 4–8 widgets suited to its columns, refinable by asking and keepable (operator human-verify of fit and layout).
+2. Discarding a generated dashboard leaves no dashboard, widgets or views (checked in SQLite and Kinetica).
+3. An admin with the audit permission browses the log (no row values); a user without it cannot open the page.
+4. The operator completes live runs on Gemini and on one named Ollama model, recorded in a UAT file with a tested-models matrix.
+**Plans:** TBD
+
+### Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 133. AI Contract, Shared Package, SSYNC-F6 Fix & Spikes | 0/? | Not started | - |
+| 134. Session Layer Engine | 0/? | Not started | - |
+| 135. Server Gateway, Agent Loop, Providers & Governance Core | 0/? | Not started | - |
+| 136. Structural & Edit Ops | 0/? | Not started | - |
+| 137. AI Widget & Streaming UI | 0/? | Not started | - |
+| 138. AI Filters | 0/? | Not started | - |
+| 139. Session-Only Dynamic Views | 0/? | Not started | - |
+| 140. Query Data-Access Mode & Injection Hardening | 0/? | Not started | - |
+| 141. Keep (Persist AI Changes) | 0/? | Not started | - |
+| 142. Generate, Audit Viewer & Live Provider Proofs | 0/? | Not started | - |
+
 ---
 
 ## v1.26 Large Exports & Fixes — SHIPPED 2026-10-08

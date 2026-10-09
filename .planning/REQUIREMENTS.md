@@ -103,16 +103,60 @@ Deferred to a future release. Tracked but not in the current roadmap.
 
 ## Traceability
 
-Which phases cover which requirements. Filled in during roadmap creation.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| AISAFE-V20-01 | Phase 133 | Pending |
+| AISAFE-V20-02 | Phase 135 | Pending |
+| AISAFE-V20-03 | Phase 135 | Pending |
+| AISAFE-V20-04 | Phase 139 | Pending |
+| AISAFE-V20-05 | Phase 140 | Pending |
+| AISAFE-V20-06 | Phase 139 | Pending |
+| AIWID-V20-01 | Phase 137 | Pending |
+| AIWID-V20-02 | Phase 137 | Pending |
+| AIWID-V20-03 | Phase 137 | Pending |
+| AIWID-V20-04 | Phase 137 | Pending |
+| AIWID-V20-05 | Phase 137 | Pending |
+| AIWID-V20-06 | Phase 137 | Pending |
+| AIWID-V20-07 | Phase 137 | Pending |
+| AIACT-V20-01 | Phase 136 | Pending |
+| AIACT-V20-02 | Phase 136 | Pending |
+| AIACT-V20-03 | Phase 136 | Pending |
+| AIACT-V20-04 | Phase 136 | Pending |
+| AIACT-V20-05 | Phase 136 | Pending |
+| AIACT-V20-06 | Phase 136 | Pending |
+| AIACT-V20-07 | Phase 139 | Pending |
+| AIACT-V20-08 | Phase 139 | Pending |
+| AIACT-V20-09 | Phase 138 | Pending |
+| AIACT-V20-10 | Phase 136 | Pending |
+| AIACT-V20-11 | Phase 136 | Pending |
+| AISES-V20-01 | Phase 134 | Pending |
+| AISES-V20-02 | Phase 134 | Pending |
+| AISES-V20-03 | Phase 134 | Pending |
+| AISES-V20-04 | Phase 137 | Pending |
+| AISES-V20-05 | Phase 141 | Pending |
+| AISES-V20-06 | Phase 141 | Pending |
+| AISES-V20-07 | Phase 134 | Pending |
+| AIGEN-V20-01 | Phase 142 | Pending |
+| AIGEN-V20-02 | Phase 142 | Pending |
+| AIPRV-V20-01 | Phase 133 | Pending |
+| AIPRV-V20-02 | Phase 142 | Pending |
+| AIPRV-V20-03 | Phase 142 | Pending |
+| AIPRV-V20-04 | Phase 135 | Pending |
+| AIPRV-V20-05 | Phase 135 | Pending |
+| AIGOV-V20-01 | Phase 135 | Pending |
+| AIGOV-V20-02 | Phase 135 | Pending |
+| AIGOV-V20-03 | Phase 140 | Pending |
+| AIGOV-V20-04 | Phase 135 | Pending |
+| AIGOV-V20-05 | Phase 142 | Pending |
+| AIGOV-V20-06 | Phase 135 | Pending |
 
 **Coverage:**
 - v1 requirements: 44 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 44
+- Mapped to phases: 44 (133: 2, 134: 4, 135: 8, 136: 8, 137: 8, 138: 1, 139: 4, 140: 2, 141: 2, 142: 5)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-08 after initial definition*
+*Last updated: 2026-10-08 after roadmap creation*
