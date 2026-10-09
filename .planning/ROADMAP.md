@@ -74,7 +74,18 @@
 2. With no `AI_*` env set the app behaves exactly as today; with AI enabled but misconfigured, the app still starts with AI disabled and the server log names the bad setting (never the key value) — no live provider call at boot (133-CONTEXT D-06/D-07).
 3. The `packages/shared` contract builds and is imported by both web and server; an invalid op is rejected by the shared schema.
 4. S1, S3 and S7 (as the operator's non-admin Kinetica user) and S2 (against `:4000`; proxy deferred to 137) each have a recorded decision and fallback in `133-SPIKES.md`, approved by the operator at a checkpoint before 134/135 start.
-**Plans:** TBD
+**Plans:** 9 plans
+
+Plans:
+- [ ] 133-01-PLAN.md — column audit doc + pure columnGuard helper + filter/materialize table-path & spatial guard, red-before specs, fixture re-seed (wave 1)
+- [ ] 133-02-PLAN.md — guard exports, info/query, quantile/top-values/column-stats; DELETE ?viewName= own-prefix guard (wave 2)
+- [ ] 133-03-PLAN.md — packages/shared: move widgetAction/actionAllowList, AiOp union, allow-list v3, web shims (wave 1)
+- [ ] 133-04-PLAN.md — server consumes @kinetica-bi/shared; build:server = tsc --noEmit + esbuild --alias; Dockerfile, README, CI shared job (wave 2)
+- [ ] 133-05-PLAN.md — AI_* env config: pure parseAiConfig, degrade-to-disabled boot log, test-env leak guard, .env.example, bundle check (wave 3)
+- [ ] 133-06-PLAN.md — spikes S2 (SSE on :4000) + S3 (per-type validators); create 133-SPIKES.md (wave 1)
+- [ ] 133-07-PLAN.md — spikes S1 + S7 live as the operator's non-admin Kinetica user (operator checkpoint) (wave 2)
+- [ ] 133-08-PLAN.md — dv-path column guard using the S1-decided column source + cache (wave 4)
+- [ ] 133-09-PLAN.md — phase gates, D-15 operator review of 133-SPIKES.md + live guard check, STATE/REQUIREMENTS/ROADMAP bookkeeping (wave 5)
 
 ### Phase 134: Session Layer Engine (client, no LLM)
 **Goal:** A per-user, in-memory session layer applies AI-style changes as a unit, undoes them answer by answer, and reverts cleanly — driven by a test harness, no AI involved.
