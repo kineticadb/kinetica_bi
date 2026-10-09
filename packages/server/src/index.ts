@@ -16,7 +16,7 @@ import {
 } from "./auth";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
-import { assertColumnsExist, assertIdentifier, tableLabel, ColumnGuardError } from "./lib/columnGuard";
+import { assertColumnsExist, assertIdentifier, assertSchemaTableColumn, tableLabel, ColumnGuardError, SQL_IDENT_RE } from "./lib/columnGuard";
 // v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
 // diff contract for the on-demand schema-check route.
 import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
@@ -28,7 +28,7 @@ import type { ColumnFingerprintMap } from "./lib/schemaFingerprint";
 // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): the operator-facing impact report.
 import { buildImpactReport } from "./lib/schemaImpact";
 import type { SchemaCheckResponse } from "./lib/schemaImpact";
-import { buildFilterViewName } from "./lib/viewNaming";
+import { buildFilterViewName, sanitizeForViewName } from "./lib/viewNaming";
 import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
 // composer (CONTEXT.md § D7 — _kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>).
@@ -120,6 +120,7 @@ import {
   listTableSyncHistory,
   getTableSyncHistoryEntry,
   deleteTableSyncHistoryEntry,
+  getTableBySchemaName,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -1501,10 +1502,15 @@ export const createApp = async (): Promise<express.Express> => {
     // COMBO-V118-04: direct-drop branch — client already knows the exact combination
     // view name (predicted locally via buildFilterViewName + combinationKey). Accepts
     // ?viewName=<name> and drops it without re-deriving from tableId/dynamicViewId.
-    // The same DROP TABLE IF EXISTS path is used; no new injection surface (the
-    // existing dv/table branches also interpolate a computed name).
+    // Phase 133 (AISAFE-V20-01): the name is client-supplied and interpolated into DROP
+    // TABLE, so it must be a plain identifier AND carry the caller's own
+    // _kbi_filt_u<user>_ prefix — otherwise it could drop any table or another user's view.
     const directViewName = req.query.viewName;
     if (typeof directViewName === "string" && directViewName !== "") {
+      const ownPrefix = `_kbi_filt_u${sanitizeForViewName(authedReq.user!.creds.username)}_`;
+      if (!directViewName.startsWith(ownPrefix) || !SQL_IDENT_RE.test(directViewName)) {
+        return res.status(400).json({ error: "viewName must be one of your own filter views.", code: "VIEWNAME_NOT_OWNED" });
+      }
       viewName = directViewName;
     } else if (dynamicViewId !== undefined && Number.isFinite(dynamicViewId)) {
       // dv path — drop the dv-filter view.
@@ -1586,6 +1592,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Build the locked NTILE SQL via the pure lib module + run via per-user kineticaSql.
     // Kinetica permission / upstream / column-not-found / non-numeric-column errors bubble
     // through asyncHandler → errorMiddleware unchanged (typed-error middleware handles them).
+    assertSchemaTableColumn({ schema, table, column }, getTableBySchemaName);
     const sql = buildQuantileSql({ schema, table, column, n });
     const authedReq = req as AuthedRequest;
     const encoded = await kineticaSqlHelper(authedReq, sql, {
@@ -1637,6 +1644,7 @@ export const createApp = async (): Promise<express.Express> => {
       n: number;
     };
 
+    assertSchemaTableColumn({ schema, table, column }, getTableBySchemaName);
     const sql = buildTopValuesSql({ schema, table, column, n });
     const authedReq = req as AuthedRequest;
     const encoded = await kineticaSqlHelper(authedReq, sql, {
@@ -1669,6 +1677,7 @@ export const createApp = async (): Promise<express.Express> => {
     }
 
     const { schema, table, column } = body as { schema: string; table: string; column: string };
+    assertSchemaTableColumn({ schema, table, column }, getTableBySchemaName);
     const sql = buildColumnStatsSql({ schema, table, column });
     const authedReq = req as AuthedRequest;
     const encoded = await kineticaSqlHelper(authedReq, sql, {

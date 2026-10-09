@@ -68,3 +68,23 @@ export function assertIdentifier(
     (value === "" ? opts?.allowEmpty === true : SQL_IDENT_RE.test(value));
   if (!ok) throw new InvalidIdentifierError(field, String(value));
 }
+
+/**
+ * Tier B + A-when-registered: identifier-check schema/table/column; when the target is a
+ * registered table (non-empty schema + lookup hit) the column must also exist in its snapshot.
+ * Dynamic-view targets (schema "") and unregistered tables pass on identifier validity alone.
+ */
+export function assertSchemaTableColumn(
+  args: { schema: string; table: string; column: string },
+  lookup: (
+    schema: string,
+    table: string,
+  ) => { schema: string; name: string; columns: Record<string, string> } | undefined,
+): void {
+  assertIdentifier(args.schema, "schema", { allowEmpty: true });
+  assertIdentifier(args.table, "table");
+  assertIdentifier(args.column, "column");
+  if (args.schema === "") return;
+  const row = lookup(args.schema, args.table);
+  if (row) assertColumnsExist(row.columns, [args.column], tableLabel(row));
+}

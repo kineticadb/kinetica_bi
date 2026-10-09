@@ -24,10 +24,10 @@ Each site was read at the shipped file:line (index.ts lines are at HEAD 1b31b24,
 | 3 | lib/whereClause.ts via index.ts (dv branch ~1331-1381) | POST /api/filter/materialize dv path | `body.filters[].column` | none; no registered snapshot (`columns_json` client-asserted) | CLIENT-COL, A (dv column source) | 133-09 · CG-DV1..4 | pending |
 | 4 | lib/exportSql.ts:95-230 (`buildExportPlan`) via exportRoutes.ts | POST /api/exports | `spec.filters[].column`, `spec.sortField`, spatial cols; `cfg.columns`/`cfg.sortField` (SERVER-HELD) | shape only: `EXPORT_IDENT_RE` (exportSql.ts:23) | CLIENT-COL, A on table path; B-kept on dv path / unregistered `cfg.table` fallback | 133-02 · CG-OR1..2 | guarded (133-02) |
 | 5 | lib/spatialQuery.ts via index.ts:2394,2418 | POST /api/info/query (index.ts:2260) | `body.spatialColumns.*`, `body.schema`, `body.table`, `body.viewName` | `typeof === "string"` only; `tableRow` used only as 404 guard | CLIENT-COL + CLIENT-TABLE, A (see finding below) | 133-02 · CG-OR3..7 | guarded (133-02) |
-| 6 | lib/quantileSql.ts via index.ts:1576 | POST /api/quantile (index.ts:1535) | `body.schema`, `body.table`, `body.column` | non-empty string only | CLIENT-COL + CLIENT-TABLE, B (+A if registered) | 133-03 · CG-TB1..6 | pending |
-| 7 | lib/topValuesSql.ts via index.ts:1627 | POST /api/top-values (index.ts:1589) | same | same | B (+A) | 133-03 · CG-TB1..6 | pending |
-| 8 | lib/columnStatsSql.ts via index.ts:1659 | POST /api/column-stats (index.ts:1639) | same | same | B (+A) | 133-03 · CG-TB1..6 | pending |
-| 9 | index.ts:1491 then 1516 | DELETE /api/filter/materialize `?viewName=` direct drop | `req.query.viewName` into `DROP TABLE IF EXISTS` | none | ADJACENT (not a column site) | 133-03 · CG-TB7..9 | pending |
+| 6 | lib/quantileSql.ts via index.ts:1576 | POST /api/quantile (index.ts:1535) | `body.schema`, `body.table`, `body.column` | non-empty string only | CLIENT-COL + CLIENT-TABLE, B (+A if registered) | 133-03 · CG-TB1..6 | guarded (133-03) |
+| 7 | lib/topValuesSql.ts via index.ts:1627 | POST /api/top-values (index.ts:1589) | same | same | B (+A) | 133-03 · CG-TB1..6 | guarded (133-03) |
+| 8 | lib/columnStatsSql.ts via index.ts:1659 | POST /api/column-stats (index.ts:1639) | same | same | B (+A) | 133-03 · CG-TB1..6 | guarded (133-03) |
+| 9 | index.ts:1491 then 1516 | DELETE /api/filter/materialize `?viewName=` direct drop | `req.query.viewName` into `DROP TABLE IF EXISTS` | none | ADJACENT (not a column site) | 133-03 · CG-TB7..9 | guarded (133-03) |
 | 10 | index.ts:2935 | POST /api/sql | whole statement | none by design | FREE-SQL, C | n/a (C) | n/a |
 | 11 | index.ts:1944,1970, lib/dynamicViewSql.ts | POST /api/dynamic-view/preview | `body.template_sql` | `{view}` token only | FREE-SQL, C | n/a (C) | n/a |
 | 12 | index.ts:2046-2213 | POST /api/dynamic-view/materialize | stored `template_sql`; names from naming helpers | server-derived | SERVER-DERIVED + stored FREE-SQL, C | n/a (C) | n/a |

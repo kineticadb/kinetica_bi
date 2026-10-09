@@ -5,6 +5,7 @@ import {
   InvalidIdentifierError,
   assertColumnsExist,
   assertIdentifier,
+  assertSchemaTableColumn,
   tableLabel,
 } from "../src/lib/columnGuard";
 
@@ -86,5 +87,31 @@ describe("columnGuard (Phase 133)", () => {
       code: "INVALID_IDENTIFIER",
       field: "column",
     });
+  });
+
+  it("CG-U11: assertSchemaTableColumn registered table + missing column -> UnknownColumnError", () => {
+    const lookup = () => ({ schema: "fleet", name: "trips", columns: { fare: "double" } });
+    expect(() => assertSchemaTableColumn({ schema: "fleet", table: "trips", column: "region" }, lookup)).toThrow(UnknownColumnError);
+    expect(() => assertSchemaTableColumn({ schema: "fleet", table: "trips", column: "fare" }, lookup)).not.toThrow();
+  });
+
+  it("CG-U12: assertSchemaTableColumn schema empty skips lookup", () => {
+    let called = 0;
+    const lookup = () => {
+      called++;
+      return undefined;
+    };
+    expect(() => assertSchemaTableColumn({ schema: "", table: "_kbi_dv_u1", column: "anything" }, lookup)).not.toThrow();
+    expect(called).toBe(0);
+  });
+
+  it("CG-U13: assertSchemaTableColumn injected column throws before lookup", () => {
+    let called = 0;
+    const lookup = () => {
+      called++;
+      return undefined;
+    };
+    expect(() => assertSchemaTableColumn({ schema: "fleet", table: "trips", column: "x; DROP" }, lookup)).toThrow(InvalidIdentifierError);
+    expect(called).toBe(0);
   });
 });
