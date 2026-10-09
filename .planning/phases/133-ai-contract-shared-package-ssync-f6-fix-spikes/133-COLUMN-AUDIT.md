@@ -17,6 +17,8 @@ Each site was read at the shipped file:line (index.ts lines are at HEAD 1b31b24,
 
 ## Sites
 
+**Final state:** 17 sites: 9 guarded (rows 1-9, plans 133-01/02/03/09), 0 pending, 8 n/a (C: record only, rows 10-17); residual-accepted gaps within guarded rows are listed under Accepted residuals.
+
 | # | File:line | Route / builder | Name source | Guard before 133 | Class / Tier | Fixed by (plan · task · test) | Status |
 |---|---|---|---|---|---|---|---|
 | 1 | lib/whereClause.ts via index.ts:1446 (`composeWhereClause`) | POST /api/filter/materialize table path (index.ts:1289) | `body.filters[].column` | none; header comment falsely claims server metadata | CLIENT-COL, A | 133-01 T3 · CG-FM1..8 | guarded (133-01) |
@@ -43,7 +45,7 @@ dv-bound map layers send `viewName` = the dv's own `_kbi_dv_*` view or a `_kbi_f
 
 ## Accepted residuals
 
-(a) Tier-B sites accept a syntactically valid but nonexistent column on a VIEW (no snapshot; Kinetica returns its own error). Accepted because views have no registered snapshot; a dv probe (Phase 139) could close it.
+(a) Tier-B sites (quantile/top-values/column-stats, info/query on dv views, export dv path) accept a syntactically valid but nonexistent column on a VIEW (no snapshot; Kinetica returns its own error). Accepted because views have no registered snapshot. NOTE: the filter/materialize dv path IS now guarded (133-09, `LIMIT 0` probe cached per view for the TTL); the remaining sites could reuse that probe (Phase 139).
 (b) Export dv path and unregistered `cfg.table` fallback are regex-only (`EXPORT_IDENT_RE` already present). Accepted: no anchor to check against; closable by the dv probe.
 (c) info/query on dv views is regex-only, for the reason in the finding above. Closable in Phase 139 with the structured-spec output column list.
 (d) SERVER-HELD `cfg.columns`/`cfg.sortField` are not membership-checked: written by authorised designers. The Phase 141 Keep path must validate AI-written config.

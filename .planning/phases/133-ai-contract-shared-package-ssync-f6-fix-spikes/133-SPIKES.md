@@ -165,6 +165,24 @@ Kinetica column resolution is case-INSENSITIVE even when quoted (as-given `vendo
 
 ---
 
+## Summary of decisions
+
+| Spike | Decision | Fallback taken? | Consequence (phase number: change) |
+|---|---|---|---|
+| S1 session-only dvs | Ad-hoc inline path viable as non-admin (S1.1/1.3/1.4 PASS); dv column source = `SELECT * FROM <view> LIMIT 0` | No | 139: ad-hoc materialize branch, session-bound prefix-validated name, no `dashboard_dynamic_views` row, per-session view cap, DROP on session end (TTL is safety net) |
+| S2 streaming | SSE over POST, fetch ReadableStream, `: ping` heartbeat ~15 s, cap at `AI_TIMEOUT_MS`, per-op session re-check | No (NDJSON/polling held in reserve) | 137: build stream endpoint, `res.on("close")` abort, verify through nginx :8080 and add stream-location directives |
+| S3 validators | Derive-for-all FAILS (8/16 types have `fields: []`); named subset below | Yes (hand-written validators for extra types, map first) | 136: hand-maintained/generated catalogue in packages/shared + web-side drift test; `customWhere` AI-blocked |
+| S7 Kinetica caps | Non-admin can create MVs (default schema); NOT read-only by grants; no server timeout; EXPLAIN has no cost estimate; tag/find/cancel works | Yes (fully app-side guard) | 137/140: tag -> find -> `/admin/alter/jobs` cancel; 140: SQL guard fully app-side, row cap + LIMIT, no EXPLAIN gate |
+
+- **S3 v2.0 AI widget-type subset (for approval, verbatim):** bar, line, pie, table, bignumber, records. `map` flagged separately (main AI target, custom config; needs a hand-written validator if Phase 136 requires it). scatter, heatmap and the 7 other custom-panel types are out.
+- **AIACT-V20-07 wording flag:** S1 did NOT fall back, so no rewording is proposed. (If the operator disagrees, the fallback wording would be: "The AI can propose a dynamic view; it goes live after Keep".)
+- **S7 Phase 140 stance:** guarded SELECT is fully app-side (statement allow-list, row cap, per-session view cap); no reliance on Kinetica grants (user can CREATE TABLE and INSERT); abort alone does not stop a job, so cancel uses tag/find/cancel. Results are from the NON-admin `uat_analyst`.
+- **S2 nginx:** `proxy_buffering off; proxy_cache off; proxy_read_timeout 300s; gzip off; proxy_http_version 1.1; proxy_set_header Connection "";` on the stream location is deferred to Phase 137 and verified there.
+- **dv column-guard note (133-09):** on the dv path of `POST /api/filter/materialize` a rejected request costs one read-only column lookup per dv per TTL window (cached, invalidated on re-materialize/drop); never the DDL. This deviates from roadmap 133 criterion 1 ("no SQL executed") and needs approval (A5).
+- **Tech debt (new):** v1.26 `cancelExport` (`packages/server/src/lib/exportRunner.ts:272`) only calls `ac.abort()`; the Kinetica job keeps running (S7.6). Default: log as tech debt.
+
+---
+
 ## Checkpoint (D-15)
 
 Status: awaiting operator review (plan 133-10)
