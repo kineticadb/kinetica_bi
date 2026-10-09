@@ -31,7 +31,8 @@ import { useToastStore } from "../store/toast";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { stableComboHash } from "../lib/stableComboHash";
 import { SPATIAL_DRAWS_SENTINEL } from "../components/charts/filterSourceTypes";
-import type { WidgetDto, DashboardLayerDto } from "../api/client";
+import type { WidgetDto, DashboardLayerDto, DynamicViewRow } from "../api/client";
+import { dvSourceComboHash } from "../lib/dvSourceCombo";
 import type { ActiveFilter } from "../store/filterStore";
 
 // ---------------------------------------------------------------------------
@@ -1828,5 +1829,104 @@ describe("Phase 94 — dv-bound combination orchestration (FSCOPE-V118-03)", () 
     expect(src).toContain('"dv", dvId');
     // Phase 96-01 GAP 3: must contain dvFilterScopeDisabled read (data-path wired)
     expect(src).toContain("dvFilterScopeDisabled");
+  });
+});
+
+describe("DVCOMBO orchestrator — dv source combination", () => {
+  const DVS: DynamicViewRow[] = [
+    {
+      id: 5, dashboard_id: DASH_ID, source_table_id: 7, name: "Avg", template_sql: "SELECT 1 FROM {view}",
+      max_records: 1000, columns_json: null, created_at: "", updated_at: "",
+    } as unknown as DynamicViewRow,
+  ];
+  const F7: ActiveFilter = { column: "vendor", value: "A", dataType: "string", addedAt: 1, sourceWidgetId: 1 } as ActiveFilter;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_filt_dv_src", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const setF7 = (filters: ActiveFilter[]) =>
+    act(() => {
+      useFilterStore.setState((s) => ({ filters: { ...s.filters, 7: filters }, filterVersion: s.filterVersion + 1 }));
+    });
+
+  it("DVCOMBO-O1: dv source combination is materialized once (table path, no dynamicViewId) and bound to dv:<id>", async () => {
+    setF7([F7]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [], DVS));
+    bumpFilterVersion();
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [F7])!;
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    const arg = (materializeFilter as Mock).mock.calls[0][0];
+    expect(arg).toMatchObject({ dashboardId: DASH_ID, tableId: 7, combinationKey: hash });
+    expect(arg.filters).toEqual([F7]);
+    expect(arg.dynamicViewId).toBeUndefined();
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBe(hash);
+    await waitFor(() => expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1));
+  });
+
+  it("DVCOMBO-O2: an unscoped table widget on the same table shares the dv's combination (one POST, refCount 2)", async () => {
+    setF7([F7]);
+    const w = makeWidget({ id: 1, tableId: 7 });
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], DVS));
+    bumpFilterVersion();
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [F7])!;
+    await waitFor(() => expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(2));
+    expect(materializeFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it("DVCOMBO-O3: clearing the source-table filters releases + drops the dv combination", async () => {
+    setF7([F7]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [], DVS));
+    bumpFilterVersion();
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [F7])!;
+    await waitFor(() => expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1));
+    setF7([]);
+    advanceDebounce();
+    await waitFor(() => expect(dropCombinationView).toHaveBeenCalledWith({ dashboardId: DASH_ID, viewName: "_kbi_filt_dv_src" }));
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBeUndefined();
+    expect(useFilterCombinationStore.getState().registry[hash]).toBeUndefined();
+  });
+
+  it("DVCOMBO-O4: removing the dv from the list releases + drops its combination", async () => {
+    setF7([F7]);
+    const { rerender } = renderHook(({ dvs }) => useCombinationOrchestrator(DASH_ID, [], [], dvs), {
+      initialProps: { dvs: DVS },
+    });
+    bumpFilterVersion();
+    advanceDebounce();
+    const hash = dvSourceComboHash(7, [F7])!;
+    await waitFor(() => expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1));
+    rerender({ dvs: [] });
+    advanceDebounce();
+    await waitFor(() => expect(dropCombinationView).toHaveBeenCalledTimes(1));
+    expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBeUndefined();
+  });
+
+  it("DVCOMBO-O5: a failed dv-source materialize surfaces dv status 'error' and does not re-fire until the filter changes", async () => {
+    (materializeFilter as Mock).mockRejectedValue(new Error("kinetica boom"));
+    setF7([F7]);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [], [], DVS));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.status).toBe("error"));
+    expect(useDynamicViewStore.getState().views[5]?.error).toBe("kinetica boom");
+    // setError bumped dynamicViewVersion (an orchestrator dep) -> a tick runs; must NOT re-POST.
+    advanceDebounce();
+    await act(async () => { await Promise.resolve(); });
+    expect(materializeFilter).toHaveBeenCalledTimes(1);
   });
 });
