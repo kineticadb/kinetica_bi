@@ -1,5 +1,48 @@
 # Milestones
 
+## v1.26 Large Exports & Fixes (Shipped: 2026-10-08)
+
+**Phases completed:** 6 phases (127, 128, 129, 130, 131, 132), 41 plans
+
+**Delivered:** A user can export every row a records table shows — 1.5 million rows in live UAT — as a server-side background job that streams to a private temp file, reports progress, cancels cleanly, resumes an interrupted download over HTTP Range, and expires on schedule, with the exported rows fixed at the moment the export starts. The 1,000-row ceiling that `kineticaSql` imposed on every query is gone, so the in-browser CSV, heatmaps and other large reads get the rows they ask for and say so when a result really is truncated. CSV cells can no longer run as spreadsheet formulas on either download path. The line chart gets the bar chart's Group By builder: one line per series, every X label shown, and a legend named after the metric. No new RBAC permission, no job-queue library, no worker process. 21/21 requirements (EXPRT-V126-01..17, LINE-V126-01..04). Operator-verified live against a real Kinetica instance (131: V1–V13 plus Z1–Z5; 132: V1–V9). Tag `v1.26.0` (three-part per RELEASING.md). 170 commits since v1.25.0 (66 `feat`, 15 `fix`), 8 days (2026-10-01 → 2026-10-08), 115 package files, +13,427 / −245.
+
+**Key accomplishments:**
+
+- **The 1,000-row ceiling removed, caller by caller** (127) — `kineticaSql`'s hardcoded `limit: 1000` became `KINETICA_MAX_ROWS_PER_QUERY` (default 20,000), split into `KINETICA_MAX_RECORDS_PER_CALL` batches. The in-browser CSV now pages on `has_more_records` up to its cap (`CSV_INBROWSER_MAX_ROWS`). Every `runSql`/`kineticaSql` caller is classified in `127-CALLER-AUDIT.md`, and heatmap, Calendar, grouped Timeline, Numeric Line, records and bar show a truncation notice only when more rows really exist.
+- **An export engine chosen by a live spike, not by documentation** (128) — `paging_table` could not be made to create a table on this instance, so the runner pages with OFFSET over a job-private snapshot materialized view (`_kbi_exp_<id8>`, deterministic composite `ORDER BY`). `max_get_records_size` was confirmed at 20,000, and a `COUNT(*)` self-check fails the job on a mismatch. A formula-injection guard (`'` prefix, numeric values exempt) covers both CSV paths. Credentials are re-derived from the session on every batch, so an ended session fails the job closed (`session_expired`, no file). Cancel deletes the partial file.
+- **Routes that only the owner can reach** (129) — start/list/status/cancel/delete/download under `/api/exports`. Every `:id` route returns the same 404 to a non-owner, ids are UUIDs, and the existing dashboard-view gate is reused, so no new permission was added. Only a complete, size-verified file is ever served, through `res.download` (Range 206/416). An interrupted download resumed live with a matching sha256 on the local origin. Resume through the deploy proxy was **not** exercised.
+- **Durable across time and restarts** (130) — a 24h TTL (`EXPORT_TTL_HOURS`), a 5-minute sweep that never deletes a file an open download holds, boot reconciliation (interrupted jobs → `server_restarted`, own-name orphan files removed) and env caps (`EXPORT_MAX_ROWS`, `EXPORT_MAX_FILE_MB`, `EXPORT_MAX_CONCURRENT_PER_USER`). Restart reconciliation was verified live with `kill -9`. Two review passes found five bugs: password login did not load the `/me` deploy config, cancel did not free the concurrency slot, an oversized TTL overflowed `Date` into a `RangeError` on every list, the download tracker accepted an already-closed response, and the size-cap message overstated the row count.
+- **An export dialog and an Exports page, verified on 1.5M rows** (131) — above the in-browser cap, the records Download opens "Export records". It offers a name (with non-ASCII names kept intact), Raw or Formatted values, Compress (.zip), limits shown up front, progress, cancel and a ready toast. The Exports page lists history with download, cancel and delete. Live UAT V1–V13 all passed, including snapshot isolation: deleting and inserting rows mid-export left the file byte-identical to the earlier run. The UAT forced three gap closures: the dialog moved to a portal with modal styling, gzip was replaced by .zip (a streaming ZIP64 writer with no new dependency), and the Name field kept focus under StrictMode.
+- **Line chart multi-series Group By** (132) — the line chart reuses the bar's Group By builder: column 1 is the X axis and is required, and the other columns draw one line per value under the shared series cap. X values sort ascending. Every label shows, tilting first and scrolling when there is no room. The legend and Y title use the metric's name. Missing points are drawn as gaps, drill works the same as on the bar chart, and a "Showing N of M categories" notice appears when the limit drops categories. The UAT fixes: a legacy line with no X column now shows a prompt, and the Y axis is sized to its tick labels.
+
+**Known gaps and standing costs — recorded here deliberately, not smoothed over:**
+
+- **CSS and layout defects passed every automated gate, and the operator found every one of them.** The export dialog was trapped inside its widget, because the grid's CSS transforms contain `position: fixed`. The dialog text was oversized. Enter did not start the export because the Name field lost focus under StrictMode. The line chart's Y axis was clipped. `tsc`, `vitest`, `theme-guard` and the new className check all passed on every one of them, because jsdom applies no CSS. This is the third milestone running in which the operator checkpoint found defects that every gate had passed.
+- **A wrong fix shipped before the right one.** The `.gz` failure was first diagnosed as the gzip header's OS byte and "fixed" (`0418602`). That commit was reverted (`c83d138`) when the operator's macOS Archive Utility turned out to refuse every `.gz`, including one written by the CLI. The out-of-scope line "zip adds no benefit" became the shipped format (CONTEXT D-07a).
+- **The integration checker made a claim that turned out to be false.** It said formatted negatives would get a leading apostrophe from the formula guard. A direct test refuted it: d3-format emits U+2212 `−`, not `-`, so formatted negatives pass through unprefixed. The finding is recorded as refuted rather than silently dropped.
+- **Requirement bookkeeping ran ahead of the evidence.** EXPRT-V126-05/07 were marked complete in Phase 128, when only the engine existed. The operator re-opened them at verification, and they were completed in Phase 131. Most phase SUMMARYs carry no `requirements-completed` frontmatter, by design, so the audit cross-checked VERIFICATION and the SUMMARY narratives by hand.
+- **Non-discriminating guards kept turning up.** The plan checker caught several before execution. During execution: a credential-logging grep in 129-04 read 1 on a message that only names `KINETICA_PASSWORD`, and it was reported rather than satisfied. Two 129-03 probes (an equivalent `cacheControl` mutation and an ENOENT race) were recorded honestly as non-discriminating. Several probes in 129/131 did not redden at first, and in each case the test was strengthened, never the probe.
+- **The opening "no new npm dependency" was not met.** `d3-format` was added to the server so that Formatted values match the client byte for byte. It was already a web dependency, and the server copy has a parity spec. The .zip writer added no dependency.
+- **Proxy-path resume (EXPRT-V126-11) is still not exercised.** Every resume check ran against `:4000`. The nginx config was reviewed statically only.
+
+**Open tech debt carried to the backlog:**
+- Proxy-path `curl -C -` resume through the deploy nginx (`:8080`, `Accept-Encoding: gzip`).
+- Offset paging re-sorts the snapshot on every page (516 → 815 ms per 20k page at 500k rows). Very large exports run long; this is an accepted risk.
+- The snapshot MV needs CREATE MATERIALIZED VIEW and is untested as a non-admin; it fails cleanly as `kinetica_error`.
+- Session-ended or killed jobs leave their `_kbi_exp_*` snapshot to its TTL. One such object was observed after UAT.
+- `EXPORT_DIR` and `EXPORT_VIEW_TTL_MINUTES` are not documented in `packages/server/.env.example`.
+- Watch item: `lib.exportRunner.memory.spec.ts` failed once in a full `test:gate` run and passes alone (the TD-V16 contamination pattern).
+- The web `ExportJobDto.compress` field is never read.
+- Pre-existing since Phase 58: the records `page_size` widget-action override is a no-op (allow-list key `page_size` vs the renderer's `cfg.pageSize`).
+- Not explicitly confirmed by the operator: the 132 V7 light/dark pass, and how `pickup_datetime` (epoch) X labels render.
+- Line tooltips show raw floats when the column has no number format.
+- Line Chart and Numeric Line Chart look like duplicates in the picker (merge or rename deferred).
+- The operator's dev `.env` has `MAX_BAR_GROUP_BY_SERIES=2` (default 12), which caps multi-series bar and line at two series locally. Restore it.
+- `EXPRT-F1`–`F4` and `CFGSQL-F1` (remove persisted `config.sql`) are deferred.
+- Carried from earlier: `SSYNC-F6` (`POST /api/filter/materialize` interpolates client column names unchecked), `loadConfig(...).catch(() => {})`, `defect-dv-combination-filter-view.md`, the theme-guard `global.css` exemption and `TD-V16-TEST-ISOLATION`. OIDC has still never been browser-verified, now seven milestones running. The v1.25 F1 live re-check is still owed.
+
+---
+
 ## v1.25 Schema Sync (Shipped: 2026-09-30)
 
 **Phases completed:** 5 phases (122, 123, 124, 125, 126), 21 plans

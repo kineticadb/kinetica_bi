@@ -8,68 +8,38 @@ A business intelligence dashboard application for data engineers and business an
 
 Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
 
-## Current Milestone: v1.26 Large Exports & Fixes
+## Current Milestone: none — v1.26 shipped; next milestone not yet defined
 
-**Goal:** A user can download every row a records table shows — a million rows if that is what the filters select — without the browser holding it in memory, without losing it to a dropped connection, and without being silently cut off at 1,000 rows. Alongside it, the line chart gets the multi-series Group By the bar chart already has.
+v1.26 Large Exports & Fixes shipped 2026-10-08. The next milestone is opened with `/gsd:new-milestone`, which also creates a fresh `REQUIREMENTS.md` (v1.26's is archived at `milestones/v1.26-REQUIREMENTS.md`). Named candidates: `CFGSQL-F1` (remove persisted `config.sql`), `EXPRT-F1`-`F4`, `SSYNC-F6`.
 
-**The bugs that started this (found by reading the code, 2026-10-01):**
-- **CSV download stops at 1,000 rows.** `kineticaSql` hardcodes `limit: 1000` in every `/execute/sql` body (`packages/server/src/lib/kinetica.ts:186`), so Kinetica returns at most 1,000 rows whatever the SQL `LIMIT` says. The client's export loop (`WidgetRenderer.tsx:1987-1999`) asks for pages of 5,000, receives 1,000, reads the short page as "view exhausted", and stops. The configured `csvDownloadRowCap` (default 100,000) is never reached. **Every other caller that expects more than 1,000 rows from `/api/sql` shares the ceiling** — that blast radius must be audited, not assumed.
-- **The line chart cannot draw one line per category.** It has a single Group By (x-axis only). The bar chart has the N-column "Group By Columns" builder (`ChartConfigPanel.tsx:824-890`) where extra columns become coloured series; the line chart was never given it. An operator who picks `payment_type` gets one line across five categories, not five lines. Separately, Recharts' default tick interval silently drops a colliding x-axis label, and the legend reads `value` rather than the metric name.
+## Shipped Milestone: v1.26 Large Exports & Fixes (2026-10-08)
 
-**Target features:**
-- Fix the 1,000-row ceiling on the existing client-side CSV download
-- A server-side export job: batched reads from Kinetica (20,000 rows per batch), streamed to a temp file, never held whole in memory
-- Progress while it runs, and cancel (which deletes the partial file)
-- A resumable download (HTTP Range), so a dropped connection resumes instead of restarting
-- Optional gzip (`.csv.gz`)
-- An operator-chosen file name
-- An export history list — re-download a recent export until it expires
-- A deploy-time admin cap on rows / file size per export (env config, not a settings UI — the operator's standing preference)
-- Temp files are private to the requesting user and deleted after a TTL
-- Line chart: the multi-column Group By builder, one line per series value; every category label shown; legend named after the metric
+**Goal delivered:** A user can export every row a records table shows. A 1.5-million-row export was verified live: it runs as a server-side background job, streams to a private temp file, reports progress, cancels cleanly, resumes an interrupted download over HTTP Range and expires on schedule, and its rows are fixed at the moment it starts. The 1,000-row ceiling on every Kinetica query is gone, and truncation is reported only when it is real. CSV cells cannot run as formulas on either download path. The line chart has the bar chart's multi-series Group By.
 
-**Progress:** Phase 127 complete (2026-10-05) — EXPRT-V126-01/02/03 validated. `kineticaSql`'s
-hardcoded 1,000 is replaced by `KINETICA_MAX_ROWS_PER_QUERY` (default 20,000) with batched calls
-(`KINETICA_MAX_RECORDS_PER_CALL`); the in-browser CSV pages on `has_more_records` up to its cap,
-clamped by `CSV_INBROWSER_MAX_ROWS`; heatmap/Calendar/grouped Timeline/Numeric Line/records/bar
-show truncation notices only when more rows really exist; caller audit in `127-CALLER-AUDIT.md`.
-Phase 128 complete (2026-10-06) — EXPRT-V126-04/16 validated (formula-injection guard on both CSV
-paths; session-bound per-batch credentials that fail closed). Export job engine built (no routes/UI yet):
-live spike chose a job-private snapshot MV + OFFSET + composite ORDER BY (`paging_table` never
-materialised on this instance; `max_get_records_size` 20000); `export_jobs` registry, streaming runner
-with a COUNT self-check, cancel. EXPRT-V126-05/07 engine delivered, user-facing completion in Phase 131.
-Split-call row-order stability (from 127) verified live — no follow-up.
-Phase 129 complete (2026-10-07) — EXPRT-V126-11/13/17 validated: `/api/exports` start/list/status/
-cancel/delete/download routes (requireAuth-only; start gated by dashboard view + widget CSV toggle; no new
-permission). Owner-only identical-404 on every :id route; UUID ids; download serves only complete,
-size-verified files via `res.download` (Range/206/416). Proxy-path resume not exercised live (open debt →
-Phase 131 UAT). (Concurrency cap landed in Phase 130.)
-Phase 130 complete (2026-10-07) — EXPRT-V126-14/15 validated: exports expire 24h after finishing
-(EXPORT_TTL_HOURS, max 87600), a 5-min sweep that never deletes a file mid-download, boot reconciliation
-(interrupted jobs -> failed/server_restarted, own-name orphan files removed), env caps EXPORT_MAX_ROWS /
-EXPORT_MAX_FILE_MB (off by default) and EXPORT_MAX_CONCURRENT_PER_USER (2), cap limits on /me for the 131 dialog.
-Restart reconcile verified live (kill -9 mid-export). Review also fixed password login not loading /me config.
-Phase 131 complete (2026-10-08) — EXPRT-V126-05..10/12 validated: records Download opens a page-level
-"Export records" dialog above the in-browser cap (name, Raw default / Formatted, Compress (.zip), limits shown,
-progress every 5 s, cancel, ready toast) and a new Exports page (history, download, cancel, delete). Live UAT
-V1-V13 all pass on 1.5M rows incl. snapshot isolation (mid-export delete/insert ignored). UAT gap closures:
-dialog portal + modal styling, gzip -> .zip (macOS Archive Utility rejected .gz; own streaming ZIP64 writer, no
-new dep), Name focus under StrictMode. Follow-up: records page_size widget-action override is a no-op (Phase 58).
-Phase 132 complete (2026-10-08) — LINE-V126-01..04 validated: the Line Chart uses the bar's Group By
-builder (column 1 = X axis, required; extra columns = one line per value, shared series cap), X ascending,
-every label shown (tilt -> scroll), metric-named legend/Y title, gaps for missing points, bar-style drill, and a
-'Showing N of M categories' notice when the result limit drops categories. UAT fix: a no-X legacy line shows
-a 'choose an X axis' prompt; the Y axis is sized to its tick labels. Numeric Line remains the numeric/multi-metric
-chart. All six v1.26 phases are complete; next is the milestone audit.
+**The bugs that started this — how they resolved:**
+- **CSV download stopped at 1,000 rows.** Fixed in Phase 127. `kineticaSql`'s hardcoded `limit: 1000` became `KINETICA_MAX_ROWS_PER_QUERY` (default 20,000), split into `KINETICA_MAX_RECORDS_PER_CALL` batches. The client pages on `has_more_records`. Every caller is classified in `127-CALLER-AUDIT.md`, and the heatmap's truncation check now compares against the real cap.
+- **The line chart could not draw one line per category.** Fixed in Phase 132. It uses the bar's Group By builder, shows every X label (tilt, then scroll), names the legend and Y title after the metric, draws gaps for missing points and drills like the bar chart.
 
-**Known hazards going in:**
-- **The export reads from transient filter views.** A records table under active filters reads a materialized view with a TTL (`DEFAULT_VIEW_TTL_MINUTES`). A long export can outlive its view — it must keep the view alive or snapshot it first.
-- **OFFSET paging needs a stable order.** Without a unique sort key, pages can repeat or skip rows when the underlying data changes.
-- **The export must reproduce exactly what the widget shows** — the same filter combination, dynamic view, `customWhere`, column order and sort as `handleDownloadCsv` assembles today (`WidgetRenderer.tsx:1957-1980`).
-- **Disk and concurrency** — a per-user concurrent-job limit and a cleanup sweep are required, not optional.
-- **Per-user Kinetica credentials** — the export runs as the requesting user; a background job must not outlive or escape that user's authorization.
+**Target features — as they actually shipped:**
+- Server-side export job. As planned, except the pagination mechanism was settled by a live spike: offset over a job-private snapshot MV, because `paging_table` never materialised on this instance. `max_get_records_size` is 20,000.
+- Progress, cancel, resumable download, file name, history and the per-user TTL. As planned.
+- Admin caps. As planned: env-only (`EXPORT_MAX_ROWS`, `EXPORT_MAX_FILE_MB`, `EXPORT_MAX_CONCURRENT_PER_USER`, `EXPORT_TTL_HOURS`).
+- Compression. **Changed.** Optional gzip (`.csv.gz`) became Compress (.zip), because the operator's macOS Archive Utility refuses every `.gz`. A streaming ZIP64 writer was written in-repo, with no new dependency.
+- Formatted values. Added: a server port of the client formatter, which brought in a `d3-format` server dependency, the one exception to "no new npm dependency".
 
-**Deferred from this milestone:** removing persisted `config.sql` (previously named as the v1.26 candidate) moves to a later milestone.
+**Known hazards going in — how they resolved:**
+- Export outliving a transient filter view. Resolved by a job-private snapshot MV (REFRESH OFF). The export never reads the filter view after the snapshot exists.
+- OFFSET paging needs a stable order. Resolved by `ORDER BY <user sort>, <remaining exported columns>` over the frozen snapshot, plus a `COUNT(*)` self-check. Snapshot isolation was verified live: deleting and inserting rows mid-export left the file byte-identical.
+- Reproducing exactly what the widget shows. Exports contain exactly the configured columns in order, with filters and sort. Widget-action overrides are **not** reflected; the dialog says so (D-04).
+- Disk and concurrency. A per-user concurrency cap (default 2), a 5-minute sweep that never deletes a file mid-download, and boot reconciliation.
+- Per-user credentials. Re-derived from the session on every batch. An ended session fails the job closed (`session_expired`).
+
+**Status:** 6 phases (127-132), 41 plans; 21/21 requirements Complete; all six phases verified; operator-verified live against real Kinetica (131 V1-V13 plus Z1-Z5, 132 V1-V9). Milestone audit graded `tech_debt`, with no blockers. Known gaps carried honestly:
+- **CSS and layout defects passed every automated gate, and only the operator found them:** a trapped dialog, oversized text, Enter/focus, and a clipped Y axis.
+- **A wrong gzip fix shipped first and was reverted.**
+- **Proxy-path resume was never exercised.**
+
+Full record: `MILESTONES.md`, `milestones/v1.26-*`.
 
 ## Shipped Milestone: v1.25 Schema Sync (2026-09-30)
 
@@ -312,6 +282,26 @@ chart. All six v1.26 phases are complete; next is the milestone audit.
 
 ## Current State
 
+**✅ v1.26 Large Exports & Fixes — SHIPPED 2026-10-08. v1.26 shipped; next milestone not yet defined.**
+- **Scope:** 6 phases (127-132), 41 plans, 21/21 requirements. The release tag is `v1.26.0` (three-part per RELEASING.md).
+- **Delivered:**
+  - Server-side background exports of records tables: a snapshot MV with offset paging, progress, cancel, Range-resumable download, `.zip` compression, raw or formatted values, user-chosen names, a history page, a 24h TTL, boot reconciliation and env caps.
+  - The 1,000-row ceiling on every Kinetica query removed, caller by caller.
+  - A formula-injection guard on both CSV paths.
+  - The line chart's multi-series Group By.
+- **Live verification:** against real Kinetica on 1.5M rows, including snapshot isolation (byte-identical file after mid-export deletes and inserts) and a `kill -9` restart.
+- **Gates:**
+  - Web: vitest 203 files / 4434 tests, tsc clean, theme-guard 158/158.
+  - Server: tsc clean, `test:gate` PASSED.
+- **Carried honestly:**
+  - CSS and layout defects passed every automated gate, and the operator found them all.
+  - The integration checker's apostrophe-on-negatives claim was refuted.
+  - EXPRT-V126-05/07 were marked complete too early, then re-opened.
+  - Proxy-path resume was never exercised.
+  - The operator's dev `.env` caps series at 2.
+- **Full record:** `MILESTONES.md` and `milestones/v1.26-*`.
+- **Next:** `/gsd:new-milestone`.
+
 **✅ v1.23 Zoom-Aware Layer Legend — SHIPPED 2026-09-16.** 1 phase (118), 3 plans, 7/7 requirements, tagged `v1.23.0` (three-part per RELEASING.md). Delivered a zoom-aware layers panel: layers currently drawing at the map's zoom read as active; layers out of their configured zoom range read as a distinctly dimmed "zoom-inactive," never confused with operator eye-off, and show the zoom range that would bring them back; the indication updates live as the operator zooms, in both the in-map legend and the standalone Legend widget (which degrades to today's plain appearance when its bound map's live zoom is unavailable). Client-only throughout — `packages/server` untouched, no new dependency. Gates: web vitest 176 files / 4025 tests, web tsc clean, theme-guard 150/150. Operator UAT 8/8 checks PASS, nothing recorded as not-exercised — the first phase in this project's recent history where every check was both runnable and run. **Two findings worth carrying forward as the best-evidenced remaining candidates for future work:** (1) **the web vitest suite's non-determinism, scheduled as this milestone's own target, was root-caused and fixed** — TWO one-line async-query defects (RTL's unconfigured `asyncUtilTimeout` racing vitest's own `testTimeout`; one sync-after-async spec assertion), not "cross-mode contamination" as first assumed, fixed in `cde63ae` (0/4 clean runs before, 4/4 after) — this casts real doubt on the server's `TD-V16-TEST-ISOLATION` set-based gate, which carries the identical "contamination" attribution and has never been tested the same way; (2) **theme-guard's wholesale `global.css` hex-scan exemption was confirmed structurally, not just suspected** — it only ever asserts hex IS present for allowlisted files, never that it is absent, so this milestone's new dimmed/inactive styling had to be hand-audited around it three separate times (executor, orchestrator, verifier, all 0) plus separate light/dark operator checks; narrowing the exemption to `:root` blocks is now a well-evidenced, unscheduled candidate. Also carried: a pre-existing SHIPPED bug (the info-click gate's raw-inclusive zoom-bounds formula, diverging from what OpenLayers actually draws) was found by research and fixed in scope on explicit operator decision, overriding the researcher's own "log as tech debt" recommendation — there is now exactly one zoom predicate in the tree; ~7 self-falsifying acceptance criteria occurred in this phase alone (running total across Phases 115-118 roughly 28-32), a planner-side habit, not executor error; the OIDC `kbi_returnTo` round trip has still never been browser-verified live, four milestones running; 26/26 mutation probes reddened as intended. Full record: `MILESTONES.md` + `milestones/v1.23-ROADMAP.md`. Next: `/gsd:new-milestone`.
 
 **✅ v1.22 Dashboard Settings Links — SHIPPED 2026-09-15.** 1 phase (117), 6 plans, 8/8 requirements, tagged `v1.22.0` (three-part per RELEASING.md). Delivered the one gap v1.21 left: a dashboard's `view` (settings) and `edit` screens are reachable by URL (`?dashboard=<id>&mode=view` / `&mode=edit`), exactly as a table's are, through login and permission/not-found error states, without changing what a bare `?dashboard=<id>` link does. Frontend-only throughout — `packages/server` untouched, no new dependency, no router. Gates: web vitest 175 files / 3990 tests, web tsc clean, theme-guard 150/150. Operator UAT 23/23 checks PASS (UAT-117-G27, the OIDC half, recorded "not exercised" — password-mode-only instance). **Most significant finding, carried as this milestone's headline gap rather than smoothed over: the test suite is non-deterministic under parallel load** — both the phase closeout and the independent verifier each needed THREE full-suite runs to get one clean pass, reddening on a different file each time (`DatasetsPage.spec.tsx`, `actionEngine.canary.spec.tsx`, `App.tableDeeplink.spec.tsx`, `DashboardContext.spec.tsx`), zero diff on disk, every failure clearing in isolation — **the operator has scheduled a dedicated investigation as the v1.23 milestone target.** Other gaps carried honestly: `TLINK-F4` was RESOLVED (not deferred again) as "keep duplicated" by measurement — there are now THREE parallel dashboard/table URL-and-hook implementations, with an explicit reopening condition recorded rather than left open-ended; two of the phase's own planning documents were wrong and both were caught before shipping (a timer-scoping proposal that would have wiped a just-written URL, and a `git diff`-with-no-range audit criterion that could not fail by construction); TWENTY-ONE toothless acceptance criteria have now occurred across Phases 115-117 (nine in this phase alone) — a planner-side habit worth fixing at the source, per CLAUDE.md's "Writing verifiable acceptance criteria"; the OIDC `kbi_returnTo` round trip has STILL never been browser-verified live, three milestones running; 20/20 mutation probes reddened as intended (zero non-firing), the positive counterpart to the toothless-criteria finding. Full record: `MILESTONES.md` + `milestones/v1.22-ROADMAP.md`. Next: `/gsd:new-milestone` — the flaky suite is the leading candidate for v1.23.
@@ -385,6 +375,29 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 ## Requirements
 
 ### Validated
+
+<!-- v1.26 deliverables (shipped 2026-10-08 — 21/21 requirements, both stacks) -->
+- ✓ Records-table CSV download contains every matching row up to the widget's CSV cap, not 1,000 (EXPRT-V126-01) — v1.26
+- ✓ Every app query that asks for more than 1,000 rows gets them, audited caller by caller (EXPRT-V126-02) — v1.26
+- ✓ A truly truncated heatmap always shows its truncation warning (EXPRT-V126-03) — v1.26
+- ✓ CSV cells beginning `=`/`+`/`-`/`@` cannot execute as formulas, on both download paths (EXPRT-V126-04) — v1.26
+- ✓ Background export above the in-browser cap, with exactly the rows, columns, order and sort the table shows, snapshotted at start (EXPRT-V126-05) — v1.26
+- ✓ Export progress (rows written) without a reload (EXPRT-V126-06) — v1.26
+- ✓ Cancel a running export; its partial file is deleted (EXPRT-V126-07) — v1.26
+- ✓ User-chosen file name, filesystem/header-safe, non-ASCII intact (EXPRT-V126-08) — v1.26
+- ✓ Raw or formatted values (EXPRT-V126-09) — v1.26
+- ✓ Compress (.zip), off by default — changed from `.csv.gz` at UAT (EXPRT-V126-10) — v1.26
+- ✓ Resumable download of a complete, closed file only — proxy-path resume not yet exercised (EXPRT-V126-11) — v1.26
+- ✓ Export history: re-download until expiry, delete (EXPRT-V126-12) — v1.26
+- ✓ Owner-only access on every export route, UUID ids (EXPRT-V126-13) — v1.26
+- ✓ TTL expiry, no stuck "running" job or orphaned file after restart, never deleted mid-download (EXPRT-V126-14) — v1.26
+- ✓ Env-configured caps on rows, file size and concurrent exports, with the reason shown to the user (EXPRT-V126-15) — v1.26
+- ✓ A session ending mid-export fails the job closed, never running on stale credentials (EXPRT-V126-16) — v1.26
+- ✓ Anyone who can view the dashboard can export where the widget's CSV toggle is on — no new permission (EXPRT-V126-17) — v1.26
+- ✓ Line chart Group By builder: required X column ordered ascending, one line per series value (LINE-V126-01) — v1.26
+- ✓ Every x-axis category label shown (LINE-V126-02) — v1.26
+- ✓ Legend named after the metric, not `value` (LINE-V126-03) — v1.26
+- ✓ Multi-series line drill-down matches the bar chart (LINE-V126-04) — v1.26
 
 <!-- v1.23 deliverables (shipped 2026-09-16 — 7/7 requirements, client-only) -->
 - ✓ Zoom-aware legend distinguishes drawing vs. not-drawing layers — the panel's notion of "currently drawing" matches OpenLayers exactly, including the inclusive/exclusive `minZoom` translation, via one shared predicate (`lib/zoomRangeBounds.ts`) — Phase 118 (ZLGND-V123-01, ZLGND-V123-05)
@@ -578,10 +591,7 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 
 ### Active
 
-<!-- v1.26 Large Exports & Fixes — scoped requirements live in REQUIREMENTS.md once defined -->
-- [ ] Records-table CSV download is not capped at 1,000 rows
-- [ ] Server-side background export job for very large result sets (progress, cancel, resumable download, gzip, naming, history, admin cap, TTL cleanup)
-- [ ] Line chart supports multi-series via the multi-column Group By builder
+<!-- No active milestone — v1.26 shipped 2026-10-08; its requirements moved to Validated above. Next: /gsd:new-milestone -->
 
 <!-- Open tech-debt carry-overs -->
 - [x] TD-V122-TEST-FLAKE — RESOLVED in v1.23: root-caused to TWO one-line async-query defects (RTL's unconfigured 1000ms `asyncUtilTimeout` vs vitest's 5000ms `testTimeout`; one sync-`getBy*`-after-`await findBy*` site), NOT cross-mode contamination as first assumed — bisection proved no contaminating file exists. Fixed in `cde63ae`. Before: 0/4 clean full-suite runs; after: 4/4. Full trail (incl. four wrong diagnoses) in `.planning/v123-flake-investigation-notes.md`. ~105 other sync-after-async sites remain across 12 spec files — fix opportunistically, not a sweep. Casts doubt on `TD-V16-TEST-ISOLATION`'s identical "contamination" attribution, never tested this way.
@@ -602,7 +612,7 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 - Real-time streaming / auto-refresh — complexity, not needed for v1
 - Mobile app — web-first
 - Custom SQL editor — structured query builder is sufficient
-- Export / download functionality — defer to v2
+- ~~Export / download functionality — defer to v2~~ — superseded: records-table CSV download shipped earlier and large background exports shipped in v1.26; aggregated-chart export stays deferred (`EXPRT-F1`)
 - Login rate limiting / brute-force protection — defer; team-internal use, low risk for now
 - MFA — defer; relies on upstream auth (Kinetica password or IdP), no app-side factor
 - Multi-tenancy / org separation — single-team use for now
@@ -703,9 +713,19 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 | v1.10: private-by-default + 404 (not 403) on denied open | A new dashboard with no grants is viewable only by bypass roles (no accidental exposure). Denial reuses the existing "Dashboard not found." 404 so existence is hidden from unauthorized users (one code path) | ✓ Shipped v1.10 Phase 55 |
 | v1.10: pre-provisioning — grant to a username before first login (free-text, not FK-bound to known_users) | Operators assign analysts ahead of onboarding; the grant resolves on the user's first session. Confirmed as the headline workflow in live UAT | ✓ Shipped v1.10 |
 | v1.10: revoke is "next list/open reflects it", NOT live ejection; dashboard URL deep-linking DEFERRED | The SPA has no dashboard URL routing; the no-access panel triggers on a 404 open (revoke-then-open), not URL nav. Live ejection of a currently-viewing analyst is out of scope. Deep-linking is a separate backlog item (surfaced during UAT) | — Pending (deep-linking deferred to a future milestone) |
+| v1.26: export pagination = offset over a job-private snapshot MV (`_kbi_exp_<id8>`, REFRESH OFF) + composite `ORDER BY`, not Kinetica `paging_table` | Settled by a live spike, not documentation: `paging_table` could not be shown to create any table on this instance; the snapshot also gives filter-at-start semantics and a stable order; `COUNT(*)` self-check fails a mismatched job; `max_get_records_size` confirmed 20000 | ✓ Shipped v1.26 Phase 128 — snapshot isolation verified live (131 V10, byte-identical); accepted cost: per-page re-sort grows with offset |
+| v1.26: per-batch credential re-derivation from the live session; jobs run in-process (no queue library, no worker) | The user's Kinetica session cannot be persisted into a detached worker; re-deriving per batch makes an ended session fail the job closed instead of running on stale credentials | ✓ Shipped v1.26 Phase 128 — `session_expired` verified live (128 smoke, 131 V7) |
+| v1.26: formula-injection guard (`'` prefix, numeric exemption) on BOTH CSV paths | Pre-existing client gap; one rule with a client/server parity spec | ✓ Shipped v1.26 Phase 128 — the integration checker's "formatted negatives get an apostrophe" claim refuted (d3 emits U+2212) |
+| v1.26: export routes owner-only (identical 404), UUID ids, NO new permission; download via `res.download` | Reuse the dashboard-view gate + widget CSV toggle; Express's native Range/If-Range gives resumable 206/416 with no dependency | ✓ Shipped v1.26 Phase 129 — local resume verified (sha256 match); proxy-path resume still open |
+| v1.26: export TTL/caps as env vars only (`EXPORT_TTL_HOURS`, `EXPORT_MAX_ROWS`, `EXPORT_MAX_FILE_MB`, `EXPORT_MAX_CONCURRENT_PER_USER`) | Operator's standing preference for set-once deploy values over a settings UI; expiry computed from `finished_at` (no schema change); sweep skips files held by an open download | ✓ Shipped v1.26 Phase 130 — two review passes fixed 5 bugs; restart reconcile verified live with kill -9 |
+| v1.26: compression `.zip` (own streaming ZIP64 writer), not `.csv.gz` | The operator's macOS Archive Utility refuses every `.gz`; an earlier OS-byte "fix" was a wrong diagnosis and was reverted | ✓ Shipped v1.26 Phase 131 (CONTEXT D-07a) — no new dependency; legacy `.csv.gz` still served/cleaned |
+| v1.26: formatted export values via a server port of the client formatter (`d3-format` server dependency) | Formatted output must match what the user sees; a parity spec guards the port | ✓ Shipped v1.26 Phase 131 — the one exception to "no new npm dependency" |
+| v1.26: Line Chart gets the bar's Group By builder (column 1 = required X, ascending); Numeric Line Chart kept | Reuse the chart-type-agnostic pivot libs; the operator compared with the Timeline chart and found Numeric Line already covers numeric/multi-metric | ✓ Shipped v1.26 Phase 132 — no-X legacy line shows a prompt; Line vs Numeric Line merge deferred |
 
 ---
-*Last updated: 2026-09-30 — v1.25 Schema Sync SHIPPED (`/gsd:complete-milestone`). 5 phases (122-126), 21 plans; 19/19 requirements; web vitest 185 files / 4162 tests, web+server tsc clean, theme-guard 154/154, server test-gate GATE PASSED. Operator-verified against real Kinetica 14/14. (v1.24's close did not update this footer; see its Shipped Milestone section above.)*
+*Last updated: 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED (`/gsd:complete-milestone`, bookkeeping by hand). 6 phases (127-132), 41 plans; 21/21 requirements; web vitest 203 files / 4434 tests, web+server tsc clean, theme-guard 158/158, server test-gate GATE PASSED. Operator-verified against real Kinetica (131 V1-V13 + Z1-Z5, 132 V1-V9). Audit `tech_debt`, no blockers. Next milestone not yet defined.*
+
+*Previous: 2026-09-30 — v1.25 Schema Sync SHIPPED (`/gsd:complete-milestone`). 5 phases (122-126), 21 plans; 19/19 requirements; web vitest 185 files / 4162 tests, web+server tsc clean, theme-guard 154/154, server test-gate GATE PASSED. Operator-verified against real Kinetica 14/14. (v1.24's close did not update this footer; see its Shipped Milestone section above.)*
 
 *Previous: 2026-09-16 — v1.23 Zoom-Aware Layer Legend SHIPPED (`/gsd:complete-milestone`). 1 phase (118), 3 plans; 7/7 requirements; web vitest 176 files / 4025 tests, web tsc clean, theme-guard 150/150; client-only (`packages/server` unchanged throughout, no new dependency). Delivered a zoom-aware layers panel: layers currently drawing at the map's zoom read as active; layers out of their configured zoom range read as a distinctly dimmed "zoom-inactive," never confused with operator eye-off, and show the zoom range that would bring them back; the indication updates live as the operator zooms, in both the in-map legend and the standalone Legend widget (which degrades to today's plain appearance when its bound map's live zoom is unavailable). Operator UAT 8/8 checks PASS, nothing recorded as not-exercised — the first phase in this project's recent history where every check was both runnable and run. **Two findings carried forward as the best-evidenced remaining candidates for future work:** (1) the web vitest suite's non-determinism, scheduled as this milestone's own target, was root-caused and fixed — TWO one-line async-query defects (RTL's unconfigured `asyncUtilTimeout` racing vitest's own `testTimeout`; one sync-after-async spec assertion), not "cross-mode contamination" as first assumed, fixed in `cde63ae` (0/4 clean runs before, 4/4 after) — this casts real doubt on the server's `TD-V16-TEST-ISOLATION` set-based gate, which carries the identical attribution and has never been tested the same way; (2) theme-guard's wholesale `global.css` hex-scan exemption was confirmed structurally, not just suspected — it only ever asserts hex IS present for allowlisted files, never that it is absent, so this milestone's new dimmed/inactive styling had to be hand-audited around it three separate times (all 0) plus separate light/dark operator checks; narrowing the exemption to `:root` blocks is now a well-evidenced, unscheduled candidate. Also carried: a pre-existing SHIPPED bug (the info-click gate's raw-inclusive zoom-bounds formula) was found by research and fixed in scope on explicit operator decision, overriding the researcher's own "log as tech debt" recommendation — there is now exactly one zoom predicate in the tree; ~7 self-falsifying acceptance criteria occurred in this phase alone (running total across Phases 115-118 roughly 28-32); the OIDC `kbi_returnTo` round trip has still never been browser-verified live, four milestones running; 26/26 mutation probes reddened as intended. Tagged `v1.23.0` (three-part per RELEASING.md); archived (`milestones/v1.23-ROADMAP.md` + `milestones/v1.23-REQUIREMENTS.md`). No next milestone defined yet. Previously: v1.23 STARTED (`/gsd:new-milestone`, 2026-09-16) — a single-phase milestone closing the flaky-suite investigation the operator scheduled at v1.22 close, plus the operator's originally-requested zoom-aware legend feature.*
 *Previous: 2026-09-15 — v1.22 Dashboard Settings Links SHIPPED (`/gsd:complete-milestone`). 1 phase (117), 6 plans; 8/8 requirements; web vitest 175 files / 3990 tests, web tsc clean, theme-guard 150/150; frontend-only (`packages/server` unchanged throughout, no new dependency, no router). Delivered the one gap v1.21 left: a dashboard's `view` (settings) and `edit` screens reachable by URL (`?dashboard=<id>&mode=view`/`&mode=edit`), through login and permission/not-found error states, without touching what a bare `?dashboard=<id>` link does. Operator UAT 23/23 checks PASS (UAT-117-G27 OIDC half recorded "not exercised" — password-mode-only instance). **Most significant finding, carried honestly rather than smoothed over: the test suite is non-deterministic under parallel load** — both the phase closeout and the independent verifier each needed THREE full-suite runs to observe one clean pass, reddening a DIFFERENT file each time, zero diff on disk, every failure clearing in isolation — **the operator has scheduled a dedicated investigation as the v1.23 milestone target** (see `TD-V122-TEST-FLAKE`). Other gaps recorded: `TLINK-F4` was RESOLVED (not deferred again) as "keep duplicated" by measurement — now THREE parallel dashboard/table URL-and-hook implementations, with an explicit reopening condition; two of the phase's own planning documents were wrong and both were caught before shipping (an unmount-timer proposal that would have wiped a just-written URL, and a `git diff`-with-no-range audit criterion that could not fail by construction); TWENTY-ONE toothless acceptance criteria have now occurred across Phases 115-117 (nine in this phase alone) — a planner-side habit, not an isolated mistake; the OIDC `kbi_returnTo` round trip has STILL never been browser-verified live, three milestones running; 20/20 mutation probes reddened as intended (zero non-firing). Tagged `v1.22.0` (three-part per RELEASING.md); archived (`milestones/v1.22-ROADMAP.md` + `milestones/v1.22-REQUIREMENTS.md`). No next milestone defined yet — the flaky suite is the leading candidate for v1.23. Previously: v1.22 STARTED (`/gsd:new-milestone`, 2026-09-15) — a single-phase milestone closing the view/edit settings-screen gap v1.21 left for dashboards, inheriting every behavioral decision from Phases 113-116 verbatim.*

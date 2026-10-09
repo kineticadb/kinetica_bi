@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
-status: milestone_v1.26_phases_complete
-stopped_at: "Phase 132 complete + verified (2026-10-08); all v1.26 phases done; next /gsd:audit-milestone"
-last_updated: "2026-10-08T00:00:00.000Z"
+status: milestone-complete
+stopped_at: "v1.26 shipped (2026-10-08); next /gsd:new-milestone"
+last_updated: "2026-10-08T18:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -16,12 +16,60 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-01 — v1.26 Large Exports & Fixes milestone opened)
+See: .planning/PROJECT.md (updated 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v1.26 Large Exports & Fixes — All 6 phases (127-132) complete; next: milestone audit + close
+**Current focus:** Planning next milestone (v1.26 shipped; next milestone not yet defined)
 
 ## Current Position
+
+**Planning next milestone. v1.26 Large Exports & Fixes — SHIPPED 2026-10-08.** Archived. No phase in progress.
+
+- **Milestone:** 6 phases (127-132), 41 plans, 21/21 requirements Complete.
+- **Audit:** `tech_debt`, with no blockers (`milestones/v1.26-MILESTONE-AUDIT.md`).
+- **Archived to:**
+  - `milestones/v1.26-ROADMAP.md`
+  - `milestones/v1.26-REQUIREMENTS.md`
+  - `milestones/v1.26-MILESTONE-AUDIT.md`
+- **REQUIREMENTS.md:** no working copy exists. `/gsd:new-milestone` creates the fresh one.
+- **Tag and branch:**
+  - Tag `v1.26.0` (three-part per RELEASING.md) is left to the operator.
+  - Nothing is pushed. `origin` is shared with another developer, so fetch before pushing.
+  - Branch `feat/large-exports` is not yet merged to master. Branch the next milestone off master AFTER it merges.
+
+**Next: `/gsd:new-milestone`.**
+
+**Open blockers:** none.
+
+**Open verification debt:**
+1. Proxy-path `curl -C -` resume through the deploy nginx (`:8080`, with `-H 'Accept-Encoding: gzip'` on the 206 step) has never been exercised (EXPRT-V126-11). All resume checks ran against `:4000`.
+2. 132 V7 light/dark pass and the rendering of `pickup_datetime` (epoch) X labels were not explicitly confirmed.
+3. The v1.25 F1 fix (the Datasets detail view refreshes after an apply, `edd648b`) still needs re-verification against real Kinetica.
+
+**v1.26 tech debt carried to the next milestone:**
+- Offset paging re-sorts per page (516 → 815 ms per 20k page at 500k rows).
+- The snapshot MV needs CREATE MATERIALIZED VIEW, untested as a non-admin.
+- Ended or killed jobs leave `_kbi_exp_*` objects to their TTL (one `_kbi_exp_2432df35` was observed after UAT).
+- `EXPORT_DIR` and `EXPORT_VIEW_TTL_MINUTES` are missing from `packages/server/.env.example`.
+- `lib.exportRunner.memory.spec.ts` contamination watch.
+- The web `ExportJobDto.compress` is never read.
+- Pre-existing since Phase 58: the records `page_size` widget-action override is a no-op (`page_size` vs `cfg.pageSize`; pending todo).
+- Raw floats in line tooltips.
+- Line Chart vs Numeric Line Chart merge or rename deferred.
+- **The operator's dev `.env` has `MAX_BAR_GROUP_BY_SERIES=2` (default 12). Restore it.**
+- `EXPRT-F1`-`F4` and `CFGSQL-F1` (remove persisted `config.sql`) are deferred.
+
+**Carried debt from earlier milestones:**
+- `SSYNC-F6`: `POST /api/filter/materialize` interpolates client-supplied column names into SQL unchecked.
+- `loadConfig(...).catch(() => {})`.
+- `defect-dv-combination-filter-view.md` is still OPEN.
+- The theme-guard `global.css` exemption.
+- `TD-V16-TEST-ISOLATION`.
+- OIDC has never been browser-verified.
+
+**Earlier position notes (historical):**
+
+**v1.26 position notes at close (historical, 2026-10-08):**
 
 **v1.26 Large Exports & Fixes — Phase 132 COMPLETE (2026-10-08, verified: 132-VERIFICATION.md); all 6 phases done, next milestone audit.** (Phase 131 COMPLETE 2026-10-08.) (Phase 130 COMPLETE 2026-10-07.) (Phase 129 COMPLETE 2026-10-07, proxy-path resume open debt.) (Phase 128 COMPLETE 2026-10-06.) (Phase 127 COMPLETE 2026-10-05.) Roadmap created 2026-10-01: 6 phases
 (127-132), 21/21 EXPRT-V126/LINE-V126 requirements mapped, zero orphans. `.planning/ROADMAP.md`
@@ -77,7 +125,6 @@ v2 `CFGSQL-F1`.)
 **One v1.25 live check still owed:** the F1 fix (Datasets detail view refreshes after an apply,
 `edd648b`) is probed 4/4 but not re-verified against real Kinetica.
 
-**Earlier position notes (historical):**
 
 **v1.25 Schema Sync — Phase 125 COMPLETE (2026-09-28), verification `passed` 5/5.**
 Next: **Phase 126 (Datasets UI, Access Gating & Operator Verification)** — the last phase of v1.25.
