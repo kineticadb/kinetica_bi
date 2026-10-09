@@ -65,6 +65,8 @@ import {
 } from "../store/dynamicViewStore";
 import { useToastStore } from "../store/toast";
 import { buildDynamicViewName } from "../lib/dynamicViewName";  // NEW Plan 34-04 — deterministic viewName
+import { useFilterStore } from "../store/filterStore";
+import { dvSourceComboHash } from "../lib/dvSourceCombo";
 import { useAuthStore } from "../store/auth";                    // NEW Plan 34-04 — userId for buildDynamicViewName
 
 export type DynamicViewsModalProps = {
@@ -372,6 +374,9 @@ export default function DynamicViewsModal({
           source_table_id: formSourceTableId,
           dashboard_id: dashboardId,
           sample_limit: 100,
+          // Imperative read (no subscription). The combination view may not exist yet for a
+          // brand-new dv; the server then falls back to the base table exactly as before.
+          combination_key: dvSourceComboHash(formSourceTableId, useFilterStore.getState().filters[formSourceTableId]),
         },
         ctrl.signal,
       );
@@ -450,6 +455,7 @@ export default function DynamicViewsModal({
             source_table_id: formSourceTableId!,
             dashboard_id: dashboardId,
             sample_limit: 1, // we only need the column metadata, not rows
+            combination_key: dvSourceComboHash(formSourceTableId!, useFilterStore.getState().filters[formSourceTableId!]),
           },
           ctrl.signal,
         );
@@ -592,7 +598,11 @@ export default function DynamicViewsModal({
       useDynamicViewStore.getState().markPending(row.id, viewName);
 
       try {
-        const matResult = await materializeDynamicView(row.id, ctrl.signal);
+        const matResult = await materializeDynamicView(
+          row.id,
+          ctrl.signal,
+          dvSourceComboHash(row.source_table_id, useFilterStore.getState().filters[row.source_table_id]),
+        );
         if (ctrl.signal.aborted) return;
         if (matResult.status === "materialized") {
           useDynamicViewStore.getState().setView(row.id, {

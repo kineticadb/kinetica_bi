@@ -1411,9 +1411,11 @@ export type PreviewDynamicViewArgs = {
   source_table_id: number;
   dashboard_id: number;
   sample_limit?: number;
+  /** dvSourceComboHash(source_table_id, filters) — selects the `_c<hash8>` filter view to probe. Omit when no filter. */
+  combination_key?: string;
 };
 
-/** POST /api/dynamic-view/preview — one-shot read; falls back to bare source-table when no active filter view exists. Server clamps sample_limit to [1, 1000], default 100. */
+/** POST /api/dynamic-view/preview — one-shot read; probes the combination filter view named by `combination_key` and falls back to bare source-table when it does not exist. Server clamps sample_limit to [1, 1000], default 100. */
 export const previewDynamicView = async (
   body: PreviewDynamicViewArgs,
   signal?: AbortSignal,
@@ -1434,11 +1436,15 @@ export const previewDynamicView = async (
 export const materializeDynamicView = async (
   dynamicViewId: number,
   signal?: AbortSignal,
+  combinationKey?: string,
 ): Promise<MaterializeDynamicViewResponse> => {
   const response = await apiFetch(`${API_BASE}/api/dynamic-view/materialize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dynamic_view_id: dynamicViewId }),
+    body: JSON.stringify({
+      dynamic_view_id: dynamicViewId,
+      ...(combinationKey ? { combination_key: combinationKey } : {}),
+    }),
     signal,
   });
   if (!response.ok) {
