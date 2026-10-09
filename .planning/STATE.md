@@ -27,7 +27,7 @@ Milestone: v2.0 AI-Driven Dashboards
 Phase: 133 of 133-142 (not started)
 Plan: —
 Status: Ready to plan
-Last activity: 2026-10-08 — Milestone v2.0 started
+Last activity: 2026-10-09 — Phase 133 context gathered
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -44,7 +44,9 @@ Last activity: 2026-10-08 — Milestone v2.0 started
 - Research-phase flagged: 133, 135, 137, 139, 140.
 - Provider reality: no Anthropic key; live verification on Gemini (AI Studio free tier, demo tables only) + one Ollama model; Claude adapter unit-tested only.
 
-**Next: `/gsd:discuss-phase 133` (or `/gsd:research-phase 133` → `/gsd:plan-phase 133`).**
+**Phase 133 context gathered 2026-10-09** (`phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-CONTEXT.md`): snapshot-based column check with clear error + audit of all column-interpolating routes; bad AI config → AI disabled, app still starts; S2 proxy deferred to 137; S7 as non-admin user; S1 fallback = dv live only after Keep; spikes pause for operator review.
+
+**Next: `/gsd:plan-phase 133` (research-phase runs first: S1, S3).**
 
 **Open blockers:** none.
 

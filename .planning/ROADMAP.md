@@ -71,9 +71,9 @@
 **Research flag:** yes (S1 ad-hoc dv materialize, S3 per-type validators; also S2, S7)
 **Success Criteria:**
 1. `POST /api/filter/materialize` rejects a column that does not exist on the target table or view, with no SQL executed; a valid column works as before.
-2. With no `AI_*` env set the app behaves exactly as today; with AI enabled but misconfigured, startup fails fast with a clear message.
+2. With no `AI_*` env set the app behaves exactly as today; with AI enabled but misconfigured, the app still starts with AI disabled and the server log names the bad setting (never the key value) — no live provider call at boot (133-CONTEXT D-06/D-07).
 3. The `packages/shared` contract builds and is imported by both web and server; an invalid op is rejected by the shared schema.
-4. S1, S2, S3 and S7 each have a recorded decision and fallback; S2's real-proxy behaviour is operator-verified or explicitly deferred to Phase 137.
+4. S1, S3 and S7 (as the operator's non-admin Kinetica user) and S2 (against `:4000`; proxy deferred to 137) each have a recorded decision and fallback in `133-SPIKES.md`, approved by the operator at a checkpoint before 134/135 start.
 **Plans:** TBD
 
 ### Phase 134: Session Layer Engine (client, no LLM)
