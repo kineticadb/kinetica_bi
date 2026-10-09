@@ -116,7 +116,7 @@ describe("export routes", () => {
     process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
     const dash = createDashboard("exproutes-" + Math.random());
     dashId = dash.id;
-    tableId = createTable({ name: "demo_table", schema: "demo_schema" }).id;
+    tableId = createTable({ name: "demo_table", schema: "demo_schema", columns: { id: "int", name: "string", amount: "double" } }).id;
     widgetId = createWidget(dashId, { title: "w", type: "records", position: 0, config: recordsConfig() }).id;
   });
   afterEach(() => {

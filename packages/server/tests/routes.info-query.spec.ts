@@ -136,7 +136,11 @@ const successKineticaBody = (rowCount = 50, cols = ["id", "name", "lon", "lat"])
 
 const seedFixture = (tableName = "events", schema = "ki_home") => {
   const dash = createDashboard("Test Dashboard", "");
-  const tbl = createTable({ name: tableName, schema, columns: {} });
+  const tbl = createTable({
+    name: tableName,
+    schema,
+    columns: { id: "int", name: "string", lon: "double", lat: "double", geom: "string", WKT: "string" },
+  });
   return { dashId: dash.id, tableId: tbl.id, schema, tableName };
 };
 

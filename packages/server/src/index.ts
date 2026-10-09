@@ -16,7 +16,7 @@ import {
 } from "./auth";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
-import { assertColumnsExist, tableLabel, ColumnGuardError } from "./lib/columnGuard";
+import { assertColumnsExist, assertIdentifier, tableLabel, ColumnGuardError } from "./lib/columnGuard";
 // v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
 // diff contract for the on-demand schema-check route.
 import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
@@ -2342,6 +2342,28 @@ export const createApp = async (): Promise<express.Express> => {
     const tableRow = getTable(body.tableId);
     if (!tableRow) {
       return res.status(404).json({ error: "Table not found." });
+    }
+
+    // Phase 133 (AISAFE-V20-01): schema/table/columns are interpolated unquoted into SQL, so
+    // they must match the registered table. All checks run BEFORE any SQL is built.
+    if (body.schema !== tableRow.schema || body.table !== tableRow.name) {
+      return res.status(400).json({ error: "schema and table must match the registered table for tableId." });
+    }
+    if (body.viewName !== undefined) assertIdentifier(body.viewName, "viewName");
+    const spatialCols =
+      body.spatialMode === "latlon"
+        ? [body.spatialColumns.lonCol, body.spatialColumns.latCol]
+        : body.spatialMode === "wkt"
+          ? [body.spatialColumns.wktCol]
+          : [body.spatialColumns.wkbCol];
+    const isTableShaped =
+      body.viewName === undefined ||
+      new RegExp(`^_kbi_filt_u[A-Za-z0-9_]*_d\\d+_t${tableRow.id}_s`).test(body.viewName);
+    if (isTableShaped) {
+      assertColumnsExist(tableRow.columns, spatialCols, tableLabel(tableRow));
+    } else {
+      // dv-backed views project columns not in the table snapshot (Tier B residual in the audit).
+      spatialCols.forEach((c) => assertIdentifier(c, "spatial column"));
     }
 
     const authedReq = req as AuthedRequest;

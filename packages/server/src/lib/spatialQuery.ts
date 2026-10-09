@@ -20,10 +20,9 @@
  *
  * Trust boundary on `schema`, `table`, and column-name fields (`lonCol`, `latCol`,
  * `wktCol`, `wkbCol`): names are interpolated DIRECTLY into the SQL without
- * quoting or escaping. They originate from server-side table metadata
- * (admin-only sources), NOT from arbitrary user input — so injection risk is
- * bounded by admin-only metadata routes. Mirrors the equivalent boundary
- * documented in `whereClause.ts`.
+ * quoting or escaping, and are CLIENT-SUPPLIED. Every route that passes them
+ * here MUST first call assertColumnsExist / assertIdentifier (lib/columnGuard.ts).
+ * Inventory: .planning/phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-COLUMN-AUDIT.md.
  *
  * Numeric click coordinates and radius are typed as `number` in
  * SpatialQueryArgs; the route handler in Plan 18-03 validates `typeof === "number"`
