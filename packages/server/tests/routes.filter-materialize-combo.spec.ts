@@ -90,6 +90,19 @@ const successKineticaBody = {
   data_str: JSON.stringify({ json_encoded_response: JSON.stringify({}) }),
 };
 
+// Phase 133 (AISAFE-V20-01): the dv path now probes the dv view's columns first
+// (`SELECT * FROM <view> LIMIT 0`, S1). Answer the probe with column_headers; everything else
+// gets the plain success body. Fixture only: the guard is NOT loosened.
+const dvProbeAwareFetch = () =>
+  vi.fn().mockImplementation(async (_url: unknown, init?: RequestInit) => {
+    const stmt = JSON.parse(String(init?.body ?? "{}")).statement as string | undefined;
+    const result = stmt && /LIMIT 0/.test(stmt) ? { column_headers: ["zone"], column_1: [] } : {};
+    return new Response(
+      JSON.stringify({ ...successKineticaBody, data_str: JSON.stringify({ json_encoded_response: JSON.stringify(result) }) }),
+      { status: 200 },
+    );
+  });
+
 const seedFixture = (tableName = "events", schema = "ki_home") => {
   const dash = createDashboard("Test Dashboard", "");
   const tbl = createTable({ name: tableName, schema, columns: { zone: "string" } });
@@ -203,9 +216,7 @@ describe("POST/DELETE /api/filter/materialize COMBO — AUTH_MODE=password", () 
   });
 
   it("PRESENT combinationKey (dv path): viewName gains _c<hash8> suffix after _dv<id> segment", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -320,9 +331,7 @@ describe("POST/DELETE /api/filter/materialize COMBO — AUTH_MODE=oidc", () => {
   });
 
   it("PRESENT combinationKey (oidc session, dv path): viewName gains _c<hash8> suffix after _dv<id> segment", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();

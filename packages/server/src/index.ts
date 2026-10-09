@@ -16,6 +16,7 @@ import {
 } from "./auth";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
+import { createViewColumnsCache, buildViewColumnsProbeSql, parseProbeColumns } from "./lib/viewColumns";
 import { assertColumnsExist, assertIdentifier, assertSchemaTableColumn, tableLabel, ColumnGuardError, SQL_IDENT_RE } from "./lib/columnGuard";
 // v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
 // diff contract for the on-demand schema-check route.
@@ -202,6 +203,8 @@ export const createApp = async (): Promise<express.Express> => {
     return n;
   };
   const DEFAULT_VIEW_TTL_MINUTES = readPositiveIntEnv("DEFAULT_VIEW_TTL_MINUTES", 5);
+  // Phase 133 (AISAFE-V20-01): per-dv-view column list for the filter/materialize guard.
+  const viewColumnsCache = createViewColumnsCache({ ttlMs: DEFAULT_VIEW_TTL_MINUTES * 60 * 1000 });
   const TTL_KEEPALIVE_LEAD_MINUTES = readPositiveIntEnv("TTL_KEEPALIVE_LEAD_MINUTES", 1);
 
   // ---- Phase 90 (COMBO-V118-03): per-table combination-view ceiling ----
@@ -1369,6 +1372,17 @@ export const createApp = async (): Promise<express.Express> => {
         dynamicViewId: dynamicViewId as number,
         combinationKey,
       });
+      // Phase 133 (AISAFE-V20-01): dv filter columns must exist on the dv's materialized view (S1-decided lookup, cached per view for the TTL window).
+      let dvColumns = viewColumnsCache.get(dvViewName);
+      if (!dvColumns) {
+        const probe = await kineticaSqlHelper(dvAuthedReq, buildViewColumnsProbeSql(dvViewName), {
+          route: "POST /api/filter/materialize",
+          op: "MATERIALIZE",
+        });
+        dvColumns = parseProbeColumns(probe);
+        if (dvColumns.length > 0) viewColumnsCache.set(dvViewName, dvColumns);
+      }
+      assertColumnsExist(dvColumns, dvFiltersArr.map((f) => (f as { column?: unknown }).column), `dynamic view "${dvRow.name}"`);
       const dvWhereClause = buildServerWhereClause(dvFiltersArr);
       // FROM the dv's OWN materialized view. If that view isn't materialized yet,
       // Kinetica's "object not found" bubbles through asyncHandler → errorMiddleware
@@ -2057,6 +2071,7 @@ export const createApp = async (): Promise<express.Express> => {
         dashboardId: row.dashboard_id,
         dynamicViewId: row.id,
       });
+      viewColumnsCache.delete(dynamicViewName); // Phase 133: re-materialize may change the column list
       const expectedFilterViewName = buildFilterViewName({
         username: authedReq.user!.creds.username,
         sessionId: authedReq.user!.sid,
@@ -2162,6 +2177,7 @@ export const createApp = async (): Promise<express.Express> => {
         route: "POST /api/dynamic-view/materialize",
         op: "DYNAMIC_MATERIALIZE",
       });
+      viewColumnsCache.delete(dynamicViewName);
 
       const expiresAt = Date.now() + DEFAULT_VIEW_TTL_MINUTES * 60 * 1000;
       return res.json({
@@ -2204,6 +2220,7 @@ export const createApp = async (): Promise<express.Express> => {
         dashboardId: row.dashboard_id,
         dynamicViewId: row.id,
       });
+      viewColumnsCache.delete(dynamicViewName);
       // DROP-only — NO call to deleteDashboardDynamicView. SQLite row stays intact.
       // Errors bubble through errorMiddleware (auth/permission/upstream — frontend swallows them).
       await kineticaSqlHelper(authedReq, `DROP TABLE IF EXISTS ${dynamicViewName}`, {
@@ -2234,6 +2251,7 @@ export const createApp = async (): Promise<express.Express> => {
         dashboardId: row.dashboard_id,
         dynamicViewId: row.id,
       });
+      viewColumnsCache.delete(dynamicViewName);
       // DROP first (best-effort — DROP IF EXISTS is idempotent on missing views);
       // then delete the SQLite row. If the DROP fails for non-existence reasons
       // (auth, permission, upstream), errorMiddleware translates it and the

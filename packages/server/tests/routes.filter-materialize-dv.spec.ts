@@ -89,6 +89,19 @@ const successKineticaBody = {
   data_str: JSON.stringify({ json_encoded_response: JSON.stringify({}) }),
 };
 
+// Phase 133 (AISAFE-V20-01): the dv path now probes the dv view's columns first
+// (`SELECT * FROM <view> LIMIT 0`, S1). Answer the probe with column_headers; everything else
+// gets the plain success body. Fixture only: the guard is NOT loosened.
+const dvProbeAwareFetch = () =>
+  vi.fn().mockImplementation(async (_url: unknown, init?: RequestInit) => {
+    const stmt = JSON.parse(String(init?.body ?? "{}")).statement as string | undefined;
+    const result = stmt && /LIMIT 0/.test(stmt) ? { column_headers: ["zone"], column_1: [] } : {};
+    return new Response(
+      JSON.stringify({ ...successKineticaBody, data_str: JSON.stringify({ json_encoded_response: JSON.stringify(result) }) }),
+      { status: 200 },
+    );
+  });
+
 const seedFixture = (tableName = "events", schema = "ki_home") => {
   const dash = createDashboard("Test Dashboard", "");
   const tbl = createTable({ name: tableName, schema, columns: { zone: "string" } });
@@ -136,7 +149,12 @@ const cleanFixtures = () => {
 const findSqlStatement = (
   fetchMock: ReturnType<typeof vi.fn>,
 ): string => {
-  const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("/execute/sql"));
+  // First non-probe statement (the dv path now sends a read-only `LIMIT 0` column lookup first).
+  const call = fetchMock.mock.calls.find((c) => {
+    if (!String(c[0]).includes("/execute/sql")) return false;
+    const st = JSON.parse((c[1] as RequestInit).body as string).statement as string;
+    return !/LIMIT 0/.test(st);
+  });
   expect(call).toBeDefined();
   const init = call![1] as RequestInit;
   return JSON.parse(init.body as string).statement as string;
@@ -152,9 +170,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
   });
 
   it("dv path: materializes FROM the dv view WHERE filters; returns the distinct _dv<id> filter-view name", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -185,9 +201,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
   });
 
   it("TABLE PATH regression: no dynamicViewId still emits FROM <schema.table> and returns the _t<tableId> name", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -210,7 +224,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
   it("missing dv (non-existent dynamicViewId): returns 404", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify(successKineticaBody), { status: 200 })),
+      dvProbeAwareFetch(),
     );
     const agent = await buildTestApp();
     const { dashId } = seedFixture();
@@ -230,7 +244,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
   it("dv belonging to a DIFFERENT dashboard: returns 404 (same-dashboard scoping)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify(successKineticaBody), { status: 200 })),
+      dvProbeAwareFetch(),
     );
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -282,9 +296,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
   });
 
   it("DELETE dv path: drops the _dv<id> filter view (NOT _t<tableId>), returns { dropped: true }", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -303,9 +315,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=password", (
 
   it("DEFAULT_VIEW_TTL_MINUTES=10 overrides TTL on dv path: DDL contains TTL = 10 and expiresAt ≈ now + 10 minutes (Phase 74 SETTINGS-V115-02)", async () => {
     vi.stubEnv("DEFAULT_VIEW_TTL_MINUTES", "10");
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -347,9 +357,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=oidc", () =>
   });
 
   it("dv path (oidc session): sanitized username; FROM dv view; distinct _dv<id> filter-view name", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
@@ -379,9 +387,7 @@ describe("POST/DELETE /api/filter/materialize DV PATH — AUTH_MODE=oidc", () =>
   });
 
   it("DELETE dv path (oidc session): drops the _dv<id> filter view via Bearer auth", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(successKineticaBody), { status: 200 }),
-    );
+    const fetchMock = dvProbeAwareFetch();
     vi.stubGlobal("fetch", fetchMock);
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
