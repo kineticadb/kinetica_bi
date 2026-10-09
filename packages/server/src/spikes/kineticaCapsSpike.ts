@@ -33,7 +33,12 @@ console.log(`[s7-spike] Kinetica: ${KINETICA_URL}`);
 const SRC = process.env.SPIKE_SOURCE_TABLE ?? "demo.nyctaxi";
 const SCHEMA = process.env.SPIKE_SCHEMA;
 const COL = process.env.SPIKE_FILTER_COLUMN;
-const SLOW = process.env.SPIKE_SLOW_SQL ?? `SELECT COUNT(*) FROM ${SRC} a, ${SRC} b`;
+// Bounded cross join (~40M pairs): long enough for the 2 s abort / 5 s timeout probes,
+// small enough to finish on a small instance. The unbounded self-join ran >5 min on UAT.
+const SLOW =
+  process.env.SPIKE_SLOW_SQL ??
+  `SELECT COUNT(*) FROM (SELECT * FROM ${SRC} LIMIT 20000) a, (SELECT * FROM ${SRC} LIMIT 2000) b`;
+const SLOW_CAP_MS = 90_000; // client-side cap for S7.2a so a heavy query cannot hang the spike
 const TRY_ALTER = process.argv.includes("--try-alter");
 const auth = "Basic " + Buffer.from(`${USER}:${PASS}`).toString("base64");
 const r6 = Math.random().toString(36).slice(2, 8);
@@ -98,7 +103,7 @@ try {
   // S7.2 timeout / abort
   const base = await sql(`SELECT 1`);
   console.log(`S7.2 baseline SELECT 1: ${base.ms} ms`);
-  const full = await sql(SLOW);
+  const full = await sql(SLOW, { signal: AbortSignal.timeout(SLOW_CAP_MS) });
   record("S7.2a slow query to completion", full.ok ? "PASS" : "FAIL", `elapsed=${full.ms} ms${full.message ? " " + full.message : ""}`);
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 2000);
