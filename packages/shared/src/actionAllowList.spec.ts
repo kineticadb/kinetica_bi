@@ -15,14 +15,20 @@
 import { describe, it, expect } from "vitest";
 import {
   ALLOW_LIST_VERSION,
+  AI_BLOCKED_CONFIG_KEYS,
   validateActionPatch,
   getFieldLocation,
   validateLayerSnapshot,
 } from "./actionAllowList";
 
 describe("ALLOW_LIST_VERSION", () => {
-  it('is "v2" (contract updated — renderMode rename + per-field location metadata)', () => {
-    expect(ALLOW_LIST_VERSION).toBe("v2");
+  it('is "v3" (Phase 133: AI-path temp ids + AI_BLOCKED_CONFIG_KEYS)', () => {
+    expect(ALLOW_LIST_VERSION).toBe("v3");
+  });
+
+  it("ALB-AI1: customWhere is AI-blocked and rejected by validateActionPatch", () => {
+    expect(AI_BLOCKED_CONFIG_KEYS).toContain("customWhere");
+    expect(validateActionPatch("widget", "bar", { customWhere: "1=1" }).valid).toBe(false);
   });
 });
 

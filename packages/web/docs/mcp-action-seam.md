@@ -19,13 +19,13 @@ packages/web/src/lib/applyWidgetAction.ts  →  applyWidgetAction()
 The serializable action envelope is defined in:
 
 ```
-packages/web/src/lib/widgetAction.ts  →  WidgetActionSchema / WidgetAction
+packages/shared/src/widgetAction.ts (web shim at packages/web/src/lib/widgetAction.ts)  →  WidgetActionSchema / WidgetAction
 ```
 
 The allow-list (the AI/MCP safety boundary) is:
 
 ```
-packages/web/src/lib/actionAllowList.ts  →  validateActionPatch / ALLOW_LIST_VERSION
+packages/shared/src/actionAllowList.ts (web shim at packages/web/src/lib/actionAllowList.ts)  →  validateActionPatch / ALLOW_LIST_VERSION
 ```
 
 ---
@@ -37,7 +37,7 @@ Every value survives a `JSON.parse(JSON.stringify(...))` round-trip unchanged �
 precisely why an AI/MCP agent can emit it directly.
 
 ```typescript
-// packages/web/src/lib/widgetAction.ts
+// packages/shared/src/widgetAction.ts (web shim at packages/web/src/lib/widgetAction.ts)
 import { z } from "zod";
 
 export const WidgetActionTargetSchema = z.object({
@@ -77,13 +77,19 @@ bound by. No free-form `Object.assign` — every field in `configPatch` must:
 The allow-list is versioned. The current version is:
 
 ```typescript
-export const ALLOW_LIST_VERSION = "v2" as const;  // actionAllowList.ts
+export const ALLOW_LIST_VERSION = "v3" as const;  // actionAllowList.ts
 ```
 
 Bumping `ALLOW_LIST_VERSION` signals that the set of patchable fields has changed —
 useful for auditing AI-surface changes.
 
-### Current allow-list seed (`ALLOW_LIST_VERSION = "v2"`)
+### v3 (Phase 133)
+
+- AI-path targets accept negative temp ids via `AiActionTargetSchema`; the web engine's `WidgetActionTargetSchema` is unchanged (positive ids only).
+- `AI_BLOCKED_CONFIG_KEYS = ["customWhere"]`: an AI-originated op may never write these keys.
+- `AiOpSchema` (strict discriminated union, 9 op kinds) lives in `packages/shared/src/aiOp.ts`.
+
+### Current allow-list seed (`ALLOW_LIST_VERSION = "v3"`)
 
 | Kind          | Widget Type | Field           | Validator                                                    | Location      |
 | ------------- | ----------- | --------------- | ------------------------------------------------------------ | ------------- |

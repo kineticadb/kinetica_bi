@@ -28,7 +28,10 @@ import type { WidgetActionTarget } from "./widgetAction";
 // Version
 // ---------------------------------------------------------------------------
 
-export const ALLOW_LIST_VERSION = "v2" as const;
+export const ALLOW_LIST_VERSION = "v3" as const;
+
+/** Keys an AI-originated op may NEVER write, regardless of allow-list (AISAFE-V20-04: no raw SQL from the model). */
+export const AI_BLOCKED_CONFIG_KEYS = ["customWhere"] as const;
 
 // ---------------------------------------------------------------------------
 // Permanently blocked keys — meta / proto / identity fields
