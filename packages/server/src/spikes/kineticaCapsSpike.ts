@@ -38,8 +38,15 @@ const COL = process.env.SPIKE_FILTER_COLUMN;
 const SLOW =
   process.env.SPIKE_SLOW_SQL ??
   `SELECT COUNT(*) FROM (SELECT * FROM ${SRC} LIMIT 20000) a, (SELECT * FROM ${SRC} LIMIT 2000) b`;
+// S7.6 needs a job still running ~3 s after submit; heavier than SLOW but still bounded (~200M pairs).
+// If S7.6c is DENIED, cancel the leftover job in GAdmin -> Running Jobs.
+const S76_SQL =
+  process.env.SPIKE_S76_SQL ??
+  `SELECT COUNT(*) FROM (SELECT * FROM ${SRC} LIMIT 20000) a, (SELECT * FROM ${SRC} LIMIT 10000) b`;
 const SLOW_CAP_MS = 90_000; // client-side cap for S7.2a so a heavy query cannot hang the spike
 const TRY_ALTER = process.argv.includes("--try-alter");
+// S7.2 already answered live (abort does NOT stop the server job); --skip-slow skips S7.2a-c.
+const SKIP_SLOW = process.argv.includes("--skip-slow");
 const auth = "Basic " + Buffer.from(`${USER}:${PASS}`).toString("base64");
 const r6 = Math.random().toString(36).slice(2, 8);
 const V = `_kbi_spike_${r6}_v`;
@@ -81,6 +88,27 @@ async function sql(
   }
 }
 
+
+type ApiResult = { ok: boolean; message?: string; data?: Record<string, unknown>; ms: number };
+async function api(endpoint: string, payload: Record<string, unknown>): Promise<ApiResult> {
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`${KINETICA_URL}${endpoint}`, {
+      method: "POST",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!res.ok || !body || body.status === "ERROR") {
+      return { ok: false, message: `HTTP ${res.status} ${String(body?.message ?? "no body")}`, ms: Date.now() - t0 };
+    }
+    const ds = typeof body.data_str === "string" ? JSON.parse(body.data_str) : (body.data_str as Record<string, unknown>);
+    return { ok: true, data: ds as Record<string, unknown>, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, message: `network: ${String(e)}`, ms: Date.now() - t0 };
+  }
+}
+
 const results: Record<string, string> = {};
 function record(step: string, outcome: "PASS" | "DENIED" | "FAIL" | "SKIPPED", detail: string): void {
   results[step] = outcome;
@@ -100,23 +128,28 @@ try {
     record(`S7.1b create view (current_schema=${SCHEMA})`, v2.ok ? "PASS" : "DENIED", v2.message ?? "");
   } else record("S7.1b create view (current_schema)", "SKIPPED", "SPIKE_SCHEMA unset");
 
-  // S7.2 timeout / abort
-  const base = await sql(`SELECT 1`);
-  console.log(`S7.2 baseline SELECT 1: ${base.ms} ms`);
-  const full = await sql(SLOW, { signal: AbortSignal.timeout(SLOW_CAP_MS) });
-  record("S7.2a slow query to completion", full.ok ? "PASS" : "FAIL", `elapsed=${full.ms} ms${full.message ? " " + full.message : ""}`);
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 2000);
-  const aborted = await sql(SLOW, { signal: ac.signal });
-  clearTimeout(timer);
-  const after = await sql(`SELECT 1`);
-  record(
-    "S7.2b client abort after 2 s",
-    aborted.ok ? "FAIL" : "PASS",
-    `slow call returned after ${aborted.ms} ms (${aborted.message?.slice(0, 80) ?? "completed"}); immediate SELECT 1 took ${after.ms} ms vs baseline ${base.ms} ms (much slower => server kept executing after abort)`,
-  );
-  const tmo = await sql(SLOW, { options: { timeout: "5" } });
-  record("S7.2c options.timeout=5 accepted?", tmo.ok ? "PASS" : "DENIED", `elapsed=${tmo.ms} ms ${tmo.message ?? "(accepted; check elapsed to see whether it was enforced)"}`);
+  if (SKIP_SLOW) {
+    record("S7.2 abort/timeout", "SKIPPED", "--skip-slow (abort observed live not to stop the job; see S7.6)");
+  } else {
+    // S7.2 timeout / abort
+    const base = await sql(`SELECT 1`);
+    console.log(`S7.2 baseline SELECT 1: ${base.ms} ms`);
+    const full = await sql(SLOW, { signal: AbortSignal.timeout(SLOW_CAP_MS) });
+    record("S7.2a slow query to completion", full.ok ? "PASS" : "FAIL", `elapsed=${full.ms} ms${full.message ? " " + full.message : ""}`);
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 2000);
+    const aborted = await sql(SLOW, { signal: ac.signal });
+    clearTimeout(timer);
+    const after = await sql(`SELECT 1`);
+    record(
+      "S7.2b client abort after 2 s",
+      aborted.ok ? "FAIL" : "PASS",
+      `slow call returned after ${aborted.ms} ms (${aborted.message?.slice(0, 80) ?? "completed"}); immediate SELECT 1 took ${after.ms} ms vs baseline ${base.ms} ms (much slower => server kept executing after abort)`,
+    );
+    const tmo = await sql(SLOW, { options: { timeout: "5" } });
+    record("S7.2c options.timeout=5 accepted?", tmo.ok ? "PASS" : "DENIED", `elapsed=${tmo.ms} ms ${tmo.message ?? "(accepted; check elapsed to see whether it was enforced)"}`);
+
+  }
 
   // S7.3 write enforcement
   const cw = await sql(`CREATE TABLE ${W} (id INT)`);
@@ -145,6 +178,44 @@ try {
       record(`S7.5 ${label}`, r.ok ? "PASS" : "FAIL", r.ok ? `header=${JSON.stringify(headers(r.encoded))}` : (r.message ?? ""));
     }
   } else record("S7.5 case folding", "SKIPPED", "SPIKE_FILTER_COLUMN unset");
+
+  // S7.6 tag -> abort -> find -> explicit cancel, as the NON-ADMIN user (operator design 2026-10-09:
+  // client abort does not stop a Kinetica job; tag the SQL with a unique comment and kill the job).
+  {
+    const TAG = `kbi-spike-${r6}`;
+    const tagged = `/* ${TAG} */ ${S76_SQL}`;
+    const ac6 = new AbortController();
+    const pending = sql(tagged, { signal: ac6.signal });
+    await new Promise((r) => setTimeout(r, 2000));
+    ac6.abort();
+    await pending;
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const list = await api("/admin/show/jobs", { options: {} });
+    if (!list.ok) {
+      record("S7.6a list jobs (/admin/show/jobs)", "DENIED", list.message ?? "");
+    } else {
+      const d = list.data ?? {};
+      const ids = (d.job_id as unknown[]) ?? [];
+      const cols = Object.keys(d);
+      record("S7.6a list jobs (/admin/show/jobs)", "PASS", `jobs=${ids.length} fields=${JSON.stringify(cols)}`);
+      const texts = cols.filter((c) => Array.isArray(d[c]) && (d[c] as unknown[]).some((v) => typeof v === "string" && v.includes(TAG)));
+      const idx = texts.length ? (d[texts[0]] as unknown[]).findIndex((v) => typeof v === "string" && v.includes(TAG)) : -1;
+      if (idx < 0) {
+        const mine = (d.auth_id as unknown[] | undefined)?.map((a, i) => (a === USER ? i : -1)).filter((i) => i >= 0) ?? [];
+        record("S7.6b find tagged job", "FAIL", `tag not visible in any field; jobs for ${USER}: ${JSON.stringify(mine.map((i) => ids[i]))} (job may have finished, or the comment is stripped)`);
+      } else {
+        const jobId = ids[idx];
+        record("S7.6b find tagged job", "PASS", `job_id=${String(jobId)} matched in field "${texts[0]}"`);
+        const cancel = await api("/admin/alter/jobs", { job_ids: [jobId], action: "cancel", options: {} });
+        record("S7.6c cancel own job (/admin/alter/jobs)", cancel.ok ? "PASS" : "DENIED", cancel.ok ? JSON.stringify(cancel.data).slice(0, 300) : (cancel.message ?? ""));
+        await new Promise((r) => setTimeout(r, 2000));
+        const again = await api("/admin/show/jobs", { options: {} });
+        const still = again.ok && ((again.data?.job_id as unknown[]) ?? []).some((j) => String(j) === String(jobId));
+        record("S7.6d job gone after cancel", again.ok && !still ? "PASS" : "FAIL", again.ok ? (still ? "still listed" : "not listed") : (again.message ?? ""));
+      }
+    }
+  }
 } finally {
   const drops = await Promise.all([V, V2, W].map((n) => sql(`DROP TABLE IF EXISTS ${n}`)));
   record("S7.cleanup drop spike objects", drops.every((d) => d.ok) ? "PASS" : "FAIL", drops.map((d) => d.message).filter(Boolean).join(" | "));
@@ -153,4 +224,4 @@ try {
 console.log("\n=== DECISION-RECORD ===");
 console.log(`user=${USER} source=${SRC}`);
 for (const [k, v] of Object.entries(results)) console.log(`${k}: ${v}`);
-console.log("Read: S7.3b/c PASS => grants do NOT block writes => Phase 140 guard must be fully app-side. S7.2c DENIED => no server-side timeout option. S7.2b slow SELECT 1 => abort does not stop the server.");
+console.log("Read: S7.3b/c PASS => grants do NOT block writes => Phase 140 guard must be fully app-side. S7.2c DENIED => no server-side timeout option. S7.2b slow SELECT 1 => abort does not stop the server. S7.6a-d PASS => a non-admin can tag, find and cancel its own job; S7.6a/c DENIED => cancel needs a privileged path.");
