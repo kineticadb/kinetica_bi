@@ -27,7 +27,7 @@ Milestone: v2.0 AI-Driven Dashboards
 Phase: 133 complete — next: 134 ∥ 135
 Plan: —
 Status: Phase 133 complete
-Last activity: 2026-10-09 — Phase 133 executed; spikes approved
+Last activity: 2026-10-09 — Completed quick task 261009-jg6: dv filter-combination defect fixed (operator-verified)
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -49,7 +49,7 @@ Last activity: 2026-10-09 — Phase 133 executed; spikes approved
 **Phase 133 outcomes (2026-10-09):** SSYNC-F6 column guard landed (residuals in `133-COLUMN-AUDIT.md`); `packages/shared` contract + AI env config done. Spikes approved (`133-SPIKES.md`): S1 ad-hoc dv path viable, no fallback; S2 SSE over POST (nginx deferred to 137); S3 subset = bar, line, pie, table, bignumber, records, map (AI adds/edits heatmap layers only; AI-F12 defers the rest); S7 fully app-side SQL guard, tag/find/cancel for jobs.
 
 **Pending from Phase 133:**
-- Quick task (`/gsd:quick`) for `defect-dv-combination-filter-view.md` (dv-backed map layer stuck OVER THRESHOLD; also Unlimited-still-blank, check `useDynamicViewMaterializeChain.ts` no_filter fast-path) — must land before Phase 138/139.
+- ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
@@ -78,7 +78,7 @@ Last activity: 2026-10-09 — Phase 133 executed; spikes approved
 **Carried debt from earlier milestones:**
 - `SSYNC-F6`: `POST /api/filter/materialize` interpolates client-supplied column names into SQL unchecked.
 - `loadConfig(...).catch(() => {})`.
-- `defect-dv-combination-filter-view.md` is still OPEN.
+- `defect-dv-combination-filter-view.md` FIXED 2026-10-09 (quick 261009-jg6).
 - The theme-guard `global.css` exemption.
 - `TD-V16-TEST-ISOLATION`.
 - OIDC has never been browser-verified.
@@ -862,6 +862,7 @@ Server phase (55) is server-only: supertests + server tsc + server vitest SET-BA
 | 260607-fk4 | Configurable CSV download on Records Table (filtered view, displayed columns, capped) | 2026-06-07 | 6bc394c | [260607-fk4-add-configurable-csv-download-to-records](./quick/260607-fk4-add-configurable-csv-download-to-records/) |
 | 260608-j5k | Map scale bar + fullscreen button (both opt-in config toggles; OL ScaleLine/FullScreen; live-toggle + CSS fix aabd7f7) | 2026-06-08 | aabd7f7 | [260608-j5k-add-a-map-scale-bar-config-option-to-sho](./quick/260608-j5k-add-a-map-scale-bar-config-option-to-sho/) |
 | 260608-rbq | Configurable WMS loading indicator on the map (per-layer imageloadstart tracker; default ON) | 2026-06-08 | 1059c88 | [260608-rbq-add-a-configurable-wms-loading-indicator](./quick/260608-rbq-add-a-configurable-wms-loading-indicator/) |
+| 261009-jg6 | Fix dynamic views not finding their filter view under v1.18 filter combinations (3 stacked causes) + spatial draws narrow dv sources + reason-aware badge | 2026-10-09 | 14b54ba | [261009-jg6-fix-dynamic-views-not-finding-their-filt](./quick/261009-jg6-fix-dynamic-views-not-finding-their-filt/) |
 
 ## Accumulated Context
 
