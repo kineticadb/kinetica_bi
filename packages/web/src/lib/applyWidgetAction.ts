@@ -110,7 +110,7 @@ const LAYER_SNAPSHOT_TOP_LEVEL = [
  * Rule: LAYER_SNAPSHOT_TOP_LEVEL keys → top-level; everything else → nested under config.
  * Only call this after validateLayerSnapshot has returned { valid: true }.
  */
-function splitLayerSnapshot(patch: Record<string, unknown>): {
+export function splitLayerSnapshot(patch: Record<string, unknown>): {
   config?: Record<string, unknown>;
   topLevel: Record<string, unknown>;
 } {
