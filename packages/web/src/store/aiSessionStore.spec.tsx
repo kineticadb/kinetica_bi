@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, act } from "@testing-library/react";
+import { useWidgetActionStore } from "./widgetActionStore";
 import fs from "node:fs";
 import path from "node:path";
 import * as client from "../api/client";
 import { useAiSessionStore, hasUnsavedAiChanges } from "./aiSessionStore";
 import { EMPTY_DERIVED, SESSION_TURN_CAP } from "../lib/aiSession/constants";
 import {
-  baselineFixture, addWidgetOp, removeWidgetOp, patchWidgetOp, addLayerOp, runTurns,
+  baselineFixture, addWidgetOp, removeWidgetOp, patchWidgetOp, addLayerOp, runTurns, patchLayerOp,
 } from "../test/aiSessionHarness";
 
 vi.mock("../api/client", async (orig) => {
@@ -114,5 +116,66 @@ describe("aiSessionStore", () => {
     expect(src).not.toMatch(/localStorage|sessionStorage/);
     runTurns(baseline, [[addWidgetOp(-1)]]);
     expect(lsSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("two-store rebuild (AISES-V20-02, D-11)", () => {
+  const wa = () => useWidgetActionStore.getState();
+  const t1 = () => [patchWidgetOp(42, { show_popup: true }), patchLayerOp(7, { opacity: 0.4 })];
+  const t2 = () => [patchWidgetOp(42, { show_scale_bar: true }), patchLayerOp(7, { renderMode: "heatmap" })];
+
+  it("AISTORE-HAZARD: raw per-source writes replace wholesale (why the AI source is rebuilt from the log)", () => {
+    wa().setControlContribution(0, { widget: { 42: { show_popup: true } }, layer: {}, dynamicView: {} });
+    wa().setControlContribution(0, { widget: { 42: { show_scale_bar: true } }, layer: {}, dynamicView: {} });
+    expect(wa().widgetOverrides[42].show_popup).toBeUndefined();
+  });
+
+  it("AISTORE-T2KEEPS-T1: turn 2 keeps turn 1 in the overlay store", () => {
+    runTurns(baseline, [t1(), t2()]);
+    expect(wa().widgetOverrides[42]).toMatchObject({ show_popup: true, show_scale_bar: true });
+    const cfg = (wa().layerOverrides[7] as { config?: Record<string, unknown> }).config;
+    expect(cfg).toMatchObject({ opacity: 0.4, renderMode: "heatmap" });
+  });
+
+  it("AISTORE-REVERT-OVERLAY: revert rebuilds overlays from the prefix", () => {
+    runTurns(baseline, [t1(), t2()]);
+    st().setCursor(0, baseline);
+    expect(wa().widgetOverrides[42]).toEqual({ show_popup: true });
+    st().setCursor(-1, baseline);
+    expect(Object.keys(wa().contributions)).not.toContain("0");
+    expect(wa().widgetOverrides[42]).toBeUndefined();
+  });
+
+  it("AISTORE-D11-RADIO: AI rebuilds count as most recent (revert and forward too)", () => {
+    wa().setControlContribution(7, { widget: { 42: { show_popup: false } }, layer: {}, dynamicView: {} });
+    runTurns(baseline, [[patchWidgetOp(42, { show_popup: true })]]);
+    expect(wa().widgetOverrides[42].show_popup).toBe(true);
+    st().setCursor(-1, baseline);
+    expect(wa().widgetOverrides[42].show_popup).toBe(false);
+    st().setCursor(0, baseline);
+    expect(wa().widgetOverrides[42].show_popup).toBe(true);
+  });
+
+  it("AISTORE-RESET-OVERLAY: reset keeps radio contributions, drops AI", () => {
+    wa().setControlContribution(7, { widget: { 42: { show_popup: false } }, layer: {}, dynamicView: {} });
+    runTurns(baseline, [[patchWidgetOp(42, { show_scale_bar: true })]]);
+    st().reset();
+    expect(Object.keys(wa().contributions)).toEqual(["7"]);
+    expect(wa().widgetOverrides[42]).toEqual({ show_popup: false });
+  });
+
+  it("AISTORE-BATCH: no render shows new derived with old overlays", async () => {
+    const seen: Array<[number, number]> = [];
+    function Probe() {
+      const d = useAiSessionStore((s) => s.derived);
+      const o = useWidgetActionStore((s) => s.widgetOverrides);
+      seen.push([d.appliedOpCount, Object.keys(o).length]);
+      return null;
+    }
+    render(<Probe />);
+    runTurns(baseline, [[patchWidgetOp(42, { show_popup: true })]]);
+    await act(async () => {});
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen).not.toContainEqual([1, 0]);
   });
 });
