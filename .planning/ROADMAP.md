@@ -52,7 +52,7 @@
 - [ ] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
 - [ ] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
 - [ ] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
-- [ ] **Phase 137: AI Widget & Streaming UI** — Compact/Full widget, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
+- [ ] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
 - [ ] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
 - [ ] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
 - [ ] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
@@ -96,7 +96,7 @@ Plans:
 **Success Criteria:**
 1. Scripted ops from a test harness apply as one unit, appear only for the asking user, and cause no dashboard DB write.
 2. Turn 2 does not erase turn 1's patches — the test fails before rebuild-from-log exists (`widgetActionStore` source-keyed replacement hazard).
-3. Undo removes the last answer as one unit, repeatedly.
+3. Reverting to any earlier answer restores that answer's state as one unit; jumping forward again works until a new question replaces the later answers.
 4. Discard or reload restores the saved dashboard exactly, and AI geometry is never persisted by `onLayoutChange` (test + operator human-verify).
 **Plans:** TBD
 
@@ -130,14 +130,14 @@ Plans:
 **Plans:** TBD
 
 ### Phase 137: AI Widget & Streaming UI
-**Goal:** Users ask questions in a Compact or Full AI widget and watch the dashboard answer, with progress, cancel, follow-ups, clarification, highlights and a Keep/Discard bar.
+**Goal:** Users ask questions in an AI widget that keeps a full chat conversation and watch the dashboard answer, with progress, cancel, follow-ups, clarification, highlights, a per-answer "Revert dashboard to this state" button and a Keep/Discard bar.
 **Depends on:** 136
 **Requirements:** AIWID-V20-01, AIWID-V20-02, AIWID-V20-03, AIWID-V20-04, AIWID-V20-05, AIWID-V20-06, AIWID-V20-07, AISES-V20-04
 **Research flag:** yes (S2 streaming through the deploy proxy)
 **Success Criteria:**
-1. A designer adds a Compact or Full AI widget; a user without "Use AI" cannot add or use it.
-2. A question changes the dashboard with no transcript; progress shows, Cancel works, and a second ask is blocked while one runs.
-3. Full mode shows a plain-text explanation and clickable follow-ups; an ambiguous question yields 2–3 clickable choices.
+1. A designer adds an AI widget; a large tile shows the chat inline, a small tile shows an ask bar + history icon and opens the shared conversation in a portalled drawer (full-screen on narrow screens); a user without "Use AI" cannot add or use it.
+2. A question changes the dashboard and appears in the shared conversation with the AI's full answer; progress shows, Cancel works, and a second ask is blocked while one runs.
+3. Each answer shows full plain-text content, clickable follow-ups and a working "Revert dashboard to this state" button; an ambiguous question yields 2–3 clickable choices.
 4. A provider error, cap or quota failure shows a clear message and leaves the dashboard unchanged.
 5. Highlights and the Keep/Discard bar with counts are legible in light and dark (operator human-verify; reuse `global.css` classes, portal any modal).
 **Plans:** TBD

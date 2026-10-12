@@ -10,10 +10,10 @@ Click-through data exploration — users drill into chart elements and the entir
 
 ## Current Milestone: v2.0 AI-Driven Dashboards
 
-**Goal:** A user asks a question in an AI visualization on the dashboard, and the AI answers by changing the dashboard itself — adding/removing visualizations, map layers and dynamic views and applying filters — instead of replying in a chat transcript; designers can also ask it to build a dashboard from a table.
+**Goal:** A user asks a question in an AI visualization on the dashboard, and the AI answers by changing the dashboard itself — adding/removing visualizations, map layers and dynamic views and applying filters — while a full chat conversation in the AI widget records each prompt and answer with a per-answer revert button; designers can also ask it to build a dashboard from a table. *(2026-10-12: "instead of a chat transcript" changed to a full chat with revert — Phase 134 discussion.)*
 
 **Target features:**
-- **AI visualization (new widget type)** — the place to ask questions and get explanations. Designer chooses a display mode: **Compact** (ask box only — the dashboard is the answer) or **Full** (ask box + a short explanation + clickable suggested follow-up questions).
+- **AI visualization (new widget type)** — the place to ask questions and get explanations. Full chat conversation (prompts + full answers + follow-ups + a "Revert dashboard to this state" button per answer); presentation follows tile size (inline chat on a large tile; ask bar + drawer on a small one). *(2026-10-12; was Compact/Full modes.)*
 - **AI drives the dashboard** — answers are expressed as dashboard changes: add/remove visualizations, add/remove map layers, add/remove dynamic views, apply filters.
 - **Apply immediately, with undo** — changes land at once (that is the "talking back"); the user can undo the AI's steps.
 - **Session layer, Keep to save** — AI changes are a per-user temporary overlay; other viewers never see them. "Keep" saves them into the dashboard (only if the user may edit it); "Discard"/reload reverts.
@@ -611,7 +611,7 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 ### Active
 
 <!-- v2.0 AI-Driven Dashboards — scoped REQ-IDs live in REQUIREMENTS.md -->
-- [ ] AI visualization widget (Compact / Full modes) where users ask questions
+- [ ] AI visualization widget: full chat with per-answer revert; size-driven presentation (inline chat or ask bar + drawer)
 - [ ] AI answers by changing the dashboard: add/remove visualizations, map layers, dynamic views; apply filters
 - [ ] AI changes apply immediately with undo, as a per-user session layer saved only on Keep
 - [ ] Designer can ask the AI to build a dashboard from a table

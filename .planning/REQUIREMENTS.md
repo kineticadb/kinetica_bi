@@ -20,9 +20,9 @@
 
 ### AI widget
 
-- [ ] **AIWID-V20-01**: A designer can add an AI widget to a dashboard and choose **Compact** (ask box only) or **Full** (ask box + explanation + suggested follow-ups).
-- [ ] **AIWID-V20-02**: A user types a question in the AI widget and the dashboard changes to answer it. There is no chat transcript.
-- [ ] **AIWID-V20-03**: In Full mode, after an answer the widget shows a short plain-text explanation and 2–3 clickable follow-up questions; clicking one asks it.
+- [ ] **AIWID-V20-01**: A designer can add an AI widget to a dashboard. Its presentation follows the tile's size (no Compact/Full setting): a large tile shows the chat inline; a small tile shows an ask bar + history icon + a one-line result of the last answer, and the full conversation opens in a portalled drawer (full-screen on narrow screens). *(Changed 2026-10-12, Phase 134 discussion — was a designer-chosen Compact/Full mode.)*
+- [ ] **AIWID-V20-02**: A user types a question in the AI widget; the dashboard changes to answer it AND the widget keeps a full chat conversation (the user's prompts and the AI's full answers). All AI widgets on a dashboard share one conversation. *(Changed 2026-10-12 — was "no chat transcript".)*
+- [ ] **AIWID-V20-03**: Each AI answer in the conversation shows its full plain-text answer (not shortened), 2–3 clickable follow-up questions (clicking one asks it), and a **"Revert dashboard to this state"** button. *(Changed 2026-10-12 — was a short explanation in Full mode only.)*
 - [ ] **AIWID-V20-04**: The widget shows progress while the AI works, and the user can cancel. Only one answer runs at a time per widget.
 - [ ] **AIWID-V20-05**: When a question is ambiguous, the widget offers 2–3 clickable choices instead of the AI guessing.
 - [ ] **AIWID-V20-06**: Widgets and layers the AI added or changed are visibly highlighted.
@@ -46,7 +46,7 @@
 
 - [ ] **AISES-V20-01**: The changes from one answer apply together and immediately, and only the asking user sees them.
 - [ ] **AISES-V20-02**: A second answer builds on the first; no earlier AI change is lost.
-- [ ] **AISES-V20-03**: The user can undo the AI's changes one answer at a time.
+- [ ] **AISES-V20-03**: The user can revert the dashboard to the state after any earlier AI answer (and jump forward again to a later one); asking a new question after reverting replaces the later answers. Keep clears the history. *(Changed 2026-10-12 — was undo one answer at a time.)*
 - [ ] **AISES-V20-04**: A visible indicator shows the dashboard has unsaved AI changes (with counts), with Keep and Discard.
 - [ ] **AISES-V20-05**: Keep saves the added, changed and removed widgets, layers and dynamic views into the dashboard in one all-or-nothing step, only for a user with edit rights (otherwise Keep is not offered). Filters are not saved, and the user is told so.
 - [ ] **AISES-V20-06**: If someone else changed the dashboard since the AI session began, Keep refuses with a clear message rather than overwriting.
@@ -90,12 +90,13 @@ Deferred to a future release. Tracked but not in the current roadmap.
 - **AI-F10**: Thumbs up/down feedback on answers.
 - **AI-F11**: Live verification of the Claude provider (needs an Anthropic key).
 - **AI-F12**: The AI can add and edit raster, class-break and track map layers.
+- **AI-F13**: A per-dashboard "viewers can prompt" switch (Tableau-style) on top of the "Use AI" role permission — e.g. for kiosk/read-only dashboards.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Chat transcript / side-panel chat | The milestone's premise is that the dashboard is the answer. |
+| ~~Chat transcript / side-panel chat~~ | REMOVED from out-of-scope 2026-10-12 (Phase 134 discussion): the operator chose a full chat conversation in the AI widget with a revert button per answer; the dashboard still changes to answer. |
 | Raw AI-written SQL (dynamic views or queries outside the guarded SELECT tool) | Injection, privilege and cost risk on a GPU DB; the structured spec replaces it. |
 | AI saving to the shared dashboard without Keep | Other viewers must never see unreviewed AI changes. |
 | AI settings stored in the DB or a settings UI | Operator prefers env config for set-once deploy values. |
@@ -160,4 +161,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*
+*Last updated: 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*

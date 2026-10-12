@@ -32,7 +32,7 @@ Last activity: 2026-10-09 — Completed quick task 261009-jg6: dv filter-combina
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
 - **Locked scope decisions (from milestone questioning, 2026-10-08):**
-  1. Input is a new AI **visualization** on the dashboard, not a chat panel. Designer picks Compact (ask box only) or Full (ask box + short explanation + suggested follow-ups).
+  1. Input is a new AI **visualization** on the dashboard. **Amended 2026-10-12 (Phase 134 discussion):** it is a full chat conversation (prompts + full answers + follow-ups + per-answer "Revert dashboard to this state"); presentation follows tile size (inline chat on a large tile, ask bar + portalled drawer on a small one); no Compact/Full setting; one shared conversation per dashboard.
   2. The AI answers by changing the dashboard: add/remove visualizations, map layers, dynamic views; apply filters.
   3. Changes apply immediately with undo, as a per-user **session layer**; "Keep" saves (only if the user may edit), otherwise reload/discard reverts. Other viewers never see unsaved AI changes.
   4. Both users in scope: analysts exploring and designers generating a dashboard from a table. Full loop this milestone, not a spike.
