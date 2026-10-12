@@ -32,11 +32,11 @@ describe("devHarness feedback (GAP-134-02)", () => {
   });
 
   const summary = (): Row => {
-    const calls = tableSpy.mock.calls.map((c) => c[0] as Row[]).filter((rows) => rows[0] && "visibleAiWidgets" in rows[0]);
+    const calls = (tableSpy.mock.calls as unknown[][]).map((c) => c[0] as Row[]).filter((rows: Row[]) => rows[0] && "visibleAiWidgets" in rows[0]);
     return calls[calls.length - 1][0];
   };
   const turnList = (): Row[] => {
-    const calls = tableSpy.mock.calls.map((c) => c[0] as Row[]).filter((rows) => rows[0] && "current" in rows[0]);
+    const calls = (tableSpy.mock.calls as unknown[][]).map((c) => c[0] as Row[]).filter((rows: Row[]) => rows[0] && "current" in rows[0]);
     return calls[calls.length - 1];
   };
   const build = () => {
