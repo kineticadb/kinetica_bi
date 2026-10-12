@@ -72,11 +72,17 @@ describe("groupPermissionList", () => {
   });
 });
 
+describe("ai:use grouping (Phase 135)", () => {
+  it("lands in its own \"AI\" group, not \"Other\"", () => {
+    expect(groupPermissionList(["ai:use"])).toEqual([{ group: "AI", perms: ["ai:use"] }]);
+  });
+});
+
 describe("NOUN_TO_GROUP", () => {
   it("maps all known permission nouns", () => {
     const expectedNouns = [
       "dashboards", "widgets", "layers", "dynamic_views",
-      "data_filters", "datasets", "users", "roles", "audit",
+      "data_filters", "datasets", "users", "roles", "audit", "ai",
     ];
     for (const noun of expectedNouns) {
       expect(NOUN_TO_GROUP[noun]).toBeDefined();
@@ -85,7 +91,7 @@ describe("NOUN_TO_GROUP", () => {
 });
 
 describe("GROUP_ORDER", () => {
-  it("has the six expected group names in order", () => {
-    expect(GROUP_ORDER).toEqual(["Dashboards", "Design", "Users", "Roles", "Audit", "Branding"]);
+  it("has the seven expected group names in order", () => {
+    expect(GROUP_ORDER).toEqual(["Dashboards", "Design", "Users", "Roles", "Audit", "Branding", "AI"]);
   });
 });

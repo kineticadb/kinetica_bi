@@ -26,6 +26,7 @@ export const PERMISSIONS = {
   DATASETS_MANAGE:          "datasets:manage",
   DASHBOARDS_MANAGE_ACCESS: "dashboards:manage_access",
   BRANDING_MANAGE:          "branding:manage",
+  AI_USE:                   "ai:use",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
