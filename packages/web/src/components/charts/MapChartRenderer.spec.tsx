@@ -6840,3 +6840,78 @@ describe("MapChartRenderer — Phase 112 initial view from config.defaultView", 
     expect(opts.zoom).toBe(12.437);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 134 (AIREAD-MAP) — map reads session-aware effective layers  */
+/* ------------------------------------------------------------------ */
+
+describe("Phase 134 session layer read path (map)", () => {
+  const blocks = () => document.querySelectorAll(".layers-legend-panel-layer-block").length;
+  const blockNames = () =>
+    Array.from(document.querySelectorAll(".layers-legend-panel-layer-name")).map((n) => n.textContent);
+
+  beforeEach(async () => {
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+    allImageWmsInstances.length = 0;
+    vi.clearAllMocks();
+  });
+  afterEach(async () => {
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+  });
+
+  it("AIREAD-MAP-1: session remove_layer drops the layer from the map legend; reset restores it", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    const l7 = makeLayer({ id: 7, position: 0, table_id: 10 });
+    const l8 = makeLayer({ id: 8, position: 1, table_id: 11 });
+    _layersState.layers = [l7, l8];
+    const { rerender } = render(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    // Positive control: the fixture reaches the code.
+    expect(blocks()).toBe(2);
+
+    const baseline = h.baselineFixture({ layers: [h.savedLayer(7), h.savedLayer(8)] });
+    act(() => {
+      h.runTurns(baseline, [[h.removeLayerOp(7)]]);
+    });
+    rerender(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);
+    expect(blocks()).toBe(1);
+
+    act(() => {
+      useAiSessionStore.getState().reset();
+    });
+    rerender(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);
+    expect(blocks()).toBe(2);
+  });
+
+  it("AIREAD-MAP-2: an AI-added placeholder layer (table_id 0) renders without a WMS source, inside a DashboardContext", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    _layersState.layers = [makeLayer({ id: 7, position: 0, table_id: 10 })];
+    const wrap = () => (
+      <DashboardContextProvider dashboardId={1} widgets={[]} dynamicViews={[]} retryDynamicView={() => {}}>
+        <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />
+      </DashboardContextProvider>
+    );
+    const { rerender } = render(wrap());
+    await act(async () => {});
+    // Positive control: the saved layer issued exactly one WMS source and one legend row.
+    const wmsBefore = allImageWmsInstances.length;
+    expect(wmsBefore).toBeGreaterThanOrEqual(1);
+    expect(blocks()).toBe(1);
+
+    const baseline = h.baselineFixture({ layers: [h.savedLayer(7)] });
+    act(() => {
+      h.runTurns(baseline, [[h.addLayerOp(-2, 42)]]);
+    });
+    rerender(wrap());
+    await act(async () => {});
+    // The placeholder is PRESENT in the legend (the session layer is read)...
+    expect(blocks()).toBe(2);
+    expect(blockNames().length).toBe(2);
+    // ...but is not issued a WMS request (source-validity auto-hide, table_id 0).
+    expect(allImageWmsInstances.length).toBe(wmsBefore);
+  });
+});

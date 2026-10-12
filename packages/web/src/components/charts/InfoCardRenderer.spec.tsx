@@ -421,3 +421,30 @@ describe("InfoCardRenderer eligibility-leave (CARD-V14-04)", () => {
     expect(screen.getByText(ROADMAP_EMPTY_COPY)).toBeInTheDocument();
   });
 });
+
+describe("Phase 134 session layer read path (info card)", () => {
+  const optionValues = () => screen.getAllByRole("option").map((o) => (o as HTMLOptionElement).value);
+
+  it("AIREAD-INFO-1: session remove_layer drops the layer from eligibility; reset restores it", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+    act(() => {
+      useDashboardLayersStore.getState().setLayers([makeLayer(7, { table_id: 100 }), makeLayer(8, { table_id: 101 })]);
+      useInfoSelectionStore.getState().setSelection(8, { rows: [{ a: 1 }], columns: ["a"], page: 0, hasMore: false });
+      useInfoSelectionStore.getState().setActiveLayer(8);
+    });
+    render(<InfoCardRenderer widget={makeWidget()} tables={defaultTables} />);
+    expect(optionValues()).toEqual(["7", "8"]); // positive control
+
+    act(() => {
+      h.runTurns(h.baselineFixture({ layers: [h.savedLayer(7), h.savedLayer(8)] }), [[h.removeLayerOp(7)]]);
+    });
+    expect(optionValues()).toEqual(["8"]);
+
+    act(() => {
+      useAiSessionStore.getState().reset();
+    });
+    expect(optionValues()).toEqual(["7", "8"]);
+  });
+});

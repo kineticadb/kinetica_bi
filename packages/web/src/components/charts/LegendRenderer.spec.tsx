@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import fs from "fs";
 import path from "path";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
@@ -371,5 +371,42 @@ describe("LegendRenderer (Phase 42 / WIDGET-V17-01..05)", () => {
     expect(screen.queryByText(/Source map widget not found/)).toBeNull();
     expect(document.querySelector(".legend-widget-orphan")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reconfigure" })).toBeNull();
+  });
+});
+
+describe("Phase 134 session layer read path (legend)", () => {
+  const legendIds = () =>
+    (lastLayersLegendPanelProps?.layers as Array<{ layer: DashboardLayerDto }>).map((r) => r.layer.id);
+  const mk = () => {
+    const mapA = makeWidget({ id: 1, type: "map", config: {} });
+    const legendWidget = makeWidget({ id: 100, type: "legend", config: { sourceMapWidgetId: 1 } });
+    return { mapA, legendWidget };
+  };
+
+  it("AIREAD-LEG-1: session remove_layer drops the legend row; reset restores it", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+    _storeState.layers = [makeLayer(7), makeLayer(8)];
+    const { mapA, legendWidget } = mk();
+    const ui = () => (
+      <DashboardContextProvider dashboardId={1} widgets={[mapA, legendWidget]} dynamicViews={[]} retryDynamicView={() => {}}>
+        <LegendRenderer widget={legendWidget} />
+      </DashboardContextProvider>
+    );
+    const { rerender } = render(ui());
+    expect(legendIds()).toEqual([7, 8]); // positive control
+
+    act(() => {
+      h.runTurns(h.baselineFixture({ layers: [h.savedLayer(7), h.savedLayer(8)] }), [[h.removeLayerOp(7)]]);
+    });
+    rerender(ui());
+    expect(legendIds()).toEqual([8]);
+
+    act(() => {
+      useAiSessionStore.getState().reset();
+    });
+    rerender(ui());
+    expect(legendIds()).toEqual([7, 8]);
   });
 });
