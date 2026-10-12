@@ -100,6 +100,15 @@ describe("foldSession", () => {
     expect(d.addedWidgets[0].config.page_size).toBe(25);
     expect(Object.keys(d.contribution.widget)).not.toContain("-1");
   });
+  it("OVK-F1: patch on an AI-added map translates show_scale_bar to the renderer key", () => {
+    const t = turn([
+      { op: "add_widget", tempId: -1, type: "map", title: "m", config: {} },
+      patch("widget", -1, { show_scale_bar: true }),
+    ]);
+    const d = foldSession(baseline, t);
+    expect(d.addedWidgets[0].config.showScaleBar).toBe(true);
+    expect("show_scale_bar" in d.addedWidgets[0].config).toBe(false);
+  });
   it("FOLD-4: removals", () => {
     const t = turn([
       patch("widget", 42, { show_popup: true }), { op: "remove_widget", id: 42 },

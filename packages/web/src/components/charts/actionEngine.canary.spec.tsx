@@ -40,6 +40,10 @@ import type { WidgetDto, DashboardLayerDto, TableDto } from "../../api/client";
 import { DashboardContextProvider } from "../DashboardContext";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { applyWidgetActions } from "../../lib/applyWidgetAction";
+import ScaleLine from "ol/control/ScaleLine";
+import FullScreen from "ol/control/FullScreen";
+import * as clientModule from "../../api/client";
 
 /* ------------------------------------------------------------------ */
 /*  Global mocks (mirrors MapChartRenderer.spec.tsx infra)             */
@@ -248,13 +252,14 @@ vi.mock("ol/ol.css", () => ({}));
 // reads filterVersion which the shim resets to 0 anyway.
 
 vi.mock("../../lib/mapInfoConfig", () => ({
-  getInfoEnabled: (_cfg: any) => false,
+  // OVK: config-aware (defaults stay false) so rendered-effect specs can observe the real keys.
+  getInfoEnabled: (cfg: any) => cfg?.infoEnabled ?? false,
   getInfoRadiusPx: () => 3,
   getInfoPopupWidthPx: () => 300,
   getInfoPopupHeightPx: () => 200,
   getShowShapeMeasurements: () => false,
-  getShowScaleBar: () => false,
-  getShowFullscreenButton: () => false,
+  getShowScaleBar: (c: any) => c?.showScaleBar ?? false,
+  getShowFullscreenButton: (c: any) => c?.showFullscreenButton ?? false,
   getShowLoadingIndicator: () => false,
   // Phase 104 (MAPSYNC-V119-06): opt-in sync — default false (legacy byte-identical)
   getSyncViewportEnabled: () => false,
@@ -743,5 +748,101 @@ describe("CANARY — CASE C: map-layer renderMode (nested config deep-merge)", (
     expect(overlayConfig?.renderMode).toBe("classbreak");
     expect(disposeCallCount).toBe(disposeBefore);  // no remount
     expect(lastMapInstance).toBe(mapBefore);         // same OL Map instance
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  OVK: allow-listed widget keys change the RENDERED widget           */
+/*  (GAP-134-01 — the store-only A1-A3 specs never saw this)           */
+/* ------------------------------------------------------------------ */
+
+describe("OVK — allow-listed widget keys change the RENDERED widget", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lastMapInstance = null;
+  });
+
+  const setOverlay = (id: number, patch: Record<string, unknown>) =>
+    act(async () => {
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, { widget: { [id]: patch } });
+    });
+
+  const mountMap = async (widget: WidgetDto) => {
+    const { default: WidgetRenderer } = await import("./WidgetRenderer");
+    await act(async () => {
+      render(
+        <DashboardContextProvider dashboardId={1} widgets={[widget]} dynamicViews={[]} retryDynamicView={() => {}}>
+          <WidgetRenderer widget={widget} tables={defaultTables} />
+        </DashboardContextProvider>,
+      );
+    });
+  };
+  const singleclickCalls = () =>
+    (lastMapInstance.on as any).mock.calls.filter((c: any[]) => c[0] === "singleclick").length;
+
+  it("OVK-1: overlay show_scale_bar:false removes a saved showScaleBar:true (no ScaleLine built)", async () => {
+    await setOverlay(10, { show_scale_bar: false });
+    await mountMap(makeMapWidget({ showScaleBar: true }));
+    expect(ScaleLine).toHaveBeenCalledTimes(0);
+  });
+
+  it("OVK-2: show_scale_bar true adds, then false removes the control", async () => {
+    await mountMap(makeMapWidget({ showScaleBar: false }));
+    expect(ScaleLine).toHaveBeenCalledTimes(0);
+    await setOverlay(10, { show_scale_bar: true });
+    expect(ScaleLine).toHaveBeenCalledTimes(1);
+    const ctrl = (ScaleLine as any).mock.instances[0];
+    expect(lastMapInstance.addControl).toHaveBeenCalledWith(ctrl);
+    await setOverlay(10, { show_scale_bar: false });
+    expect(lastMapInstance.removeControl).toHaveBeenCalledWith(ctrl);
+  });
+
+  it("OVK-3: show_fullscreen works in both directions", async () => {
+    await setOverlay(10, { show_fullscreen: false });
+    await mountMap(makeMapWidget({ showFullscreenButton: true }));
+    expect(FullScreen).toHaveBeenCalledTimes(0);
+    await setOverlay(10, { show_fullscreen: true });
+    expect(FullScreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("OVK-4: show_popup false stops the singleclick listener; true restores it over saved infoEnabled:false", async () => {
+    await setOverlay(10, { show_popup: false });
+    await mountMap(makeMapWidget({ infoEnabled: true }));
+    expect(singleclickCalls()).toBe(0);
+    useWidgetActionStore.getState().reset();
+    vi.clearAllMocks();
+    await setOverlay(11, { show_popup: true });
+    await mountMap({ ...makeMapWidget({ infoEnabled: false }), id: 11 });
+    expect(singleclickCalls()).toBeGreaterThan(0);
+  });
+
+  it("OVK-5: a v1.11 radio action patching show_scale_bar changes the rendered map", async () => {
+    const widget = makeMapWidget({ showScaleBar: false });
+    await mountMap(widget);
+    expect(ScaleLine).toHaveBeenCalledTimes(0);
+    await act(async () => {
+      applyWidgetActions(
+        [{ target: { kind: "widget", id: 10 }, configPatch: { show_scale_bar: true } } as any],
+        { widgets: [widget], layers: [], dynamicViewIds: [] },
+        CANARY_CONTROL_ID,
+      );
+    });
+    expect(ScaleLine).toHaveBeenCalledTimes(1);
+  });
+
+  it("OVK-6: records page_size overlay changes the SQL LIMIT", async () => {
+    const runSqlSpy = vi.mocked(clientModule.runSql).mockResolvedValue({ rows: [], columns: [], hasMore: false } as any);
+    const { default: WidgetRenderer } = await import("./WidgetRenderer");
+    const widget = makeWidget({ id: 20, config: { table: "t", columns: "a", pageSize: 25 } });
+    await setOverlay(20, { page_size: 50 });
+    await act(async () => {
+      render(
+        <DashboardContextProvider dashboardId={1} widgets={[widget]} dynamicViews={[]} retryDynamicView={() => {}}>
+          <WidgetRenderer widget={widget} tables={[]} />
+        </DashboardContextProvider>,
+      );
+    });
+    const sqls = runSqlSpy.mock.calls.map((c) => String(c[0]));
+    expect(sqls.some((q) => /LIMIT 50 OFFSET/.test(q))).toBe(true);
   });
 });
