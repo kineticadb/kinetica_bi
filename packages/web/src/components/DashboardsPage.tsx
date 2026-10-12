@@ -626,15 +626,15 @@ const DashboardOpen = ({
 
   // Phase 35 (DV-V16-13): orchestrator hook — mounted ONCE at DashboardOpen scope.
   // Owns the dashboard's dynamic-view list + the cascading materialize chain
-  // (markPending → materializeDynamicView → setView/setError) fired on
-  // useFilterViewStore.views[T]?.materializeVersion bumps. Cold-start gate
-  // inside the hook prevents N materialize calls on dashboard mount before any
-  // filter is applied. `dynamicViews` is the SINGLE source of truth for the
+  // (markPending → materializeDynamicView → setView/setError) driven by filterVersion +
+  // filterCombinationStore (the dv source combination, materialized by
+  // useCombinationOrchestrator below). A capped dv with no filter takes a local
+  // no_filter fast-path, preventing N materialize calls on mount. `dynamicViews` is the SINGLE source of truth for the
   // dashboard's dv list, threaded through DashboardContext + WidgetConfigModal +
   // LayersModal. Phase 35 Plan 05: `retry` is now threaded through
   // DashboardContext so renderers' error-state Retry button can re-fire the
   // cascade for a specific dynamic-view id.
-  const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id);
+  const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id, widgets);
 
   // Phase 78 (TTLKEEP-V115-01): dashboard-level keep-alive — fires a lightweight READ touch
   // against each live materialized view (filter-views + dynamic-views) ~ttlKeepaliveLeadMinutes
@@ -653,7 +653,7 @@ const DashboardOpen = ({
   // DUAL-TRIGGER (Phase 90): runs ALONGSIDE AggregatedWidgetRenderer Effect 1 — combination views
   // carry a distinct _c<hash8> suffix and are not read by any renderer until Phase 91/92.
   // Phase 92 (READ-V118-02): orchestrator now enumerates BOTH widgets and table-bound layers.
-  useCombinationOrchestrator(dashboard.id, widgets, layers);
+  useCombinationOrchestrator(dashboard.id, widgets, layers, dynamicViews);
 
   // Phase 58 Plan 02 (ENGINE-V111-02) / Phase 60 Plan 01 (RADIO-V111-03):
   // applyWidgetAction dispatch closure.
@@ -1683,6 +1683,7 @@ const DashboardOpen = ({
         <DynamicViewsModal
           dashboardId={dashboard.id}
           associatedTables={associatedTables}
+          widgets={widgets}
           onClose={() => setShowDynamicViewsModal(false)}
         />
       )}

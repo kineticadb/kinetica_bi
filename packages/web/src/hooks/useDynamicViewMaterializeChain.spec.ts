@@ -1,10 +1,11 @@
 /**
- * Phase 35 Plan 03 (DV-V16-13): orchestrator hook spec.
+ * Phase 35 Plan 03 (DV-V16-13) + quick-261009-jg6: chain hook spec (driven by filterVersion +
+ * filterCombinationStore readiness; see DVCOMBO-C1..C8 at the bottom).
  *
  * Covers the 17 locked behaviors from 35-03-orchestrator-hook-PLAN.md task 1:
  *   T1  list-fetch on mount
- *   T2  cold-start gate — matVer undefined → no cascade (Pitfall 1)
- *   T3  cold-start gate — matVer === 0 also skipped (defensive)
+ *   T2  cold-start no-filter fast-path (capped dv)
+ *   T3  wait state (combination view not ready) -> pending, no HTTP
  *   T4  cascade fires for all dvs sharing a source table when matVer > 0
  *   T5  cascade does NOT fire for unrelated source table
  *   T6  per-id AbortController: rapid filter changes abort prior in-flight for SAME id
@@ -27,10 +28,14 @@ import type { Mock } from "vitest";
 
 import { useDynamicViewMaterializeChain } from "./useDynamicViewMaterializeChain";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
-import { useFilterViewStore } from "../store/filterViewStore";
+import { useFilterStore } from "../store/filterStore";
+import type { ActiveFilter } from "../store/filterStore";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
+import { dvSourceComboHash } from "../lib/dvSourceCombo";
+import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
-import type { DynamicViewRow, MaterializeDynamicViewResponse } from "../api/client";
+import type { DynamicViewRow, MaterializeDynamicViewResponse, WidgetDto } from "../api/client";
 
 // ---------------------------------------------------------------------------
 // Mock the client module — every test sets up listDynamicViews + materializeDynamicView
@@ -60,15 +65,39 @@ const makeRow = (overrides: Partial<DynamicViewRow> & { id: number; source_table
   updated_at: overrides.updated_at ?? "2026-05-15T00:00:00Z",
 });
 
-// Helper: write materializeVersion for tableId via setView (real store).
-// setView with the same viewName bumps materializeVersion; a new viewName resets to 1.
-const setMatVersion = (tableId: number, version: number) => {
-  // Reach desired version by repeated setView; setView with same viewName increments.
-  // Start by clearing then materializing N times.
-  for (let i = 0; i < version; i++) {
-    useFilterViewStore.getState().setView(tableId, { viewName: "_kbi_filt_x", expiresAt: 9_999_999_999 }, 42);
-  }
+// Helpers: drive the REAL filter + combination stores (the chain no longer reads filterViewStore).
+const mkFilter = (value: number): ActiveFilter =>
+  ({ column: "vendor", value, dataType: "number", addedAt: 1, sourceWidgetId: 1 }) as ActiveFilter;
+
+/** Set filters[tableId] to a single filter (value n) and register its combination view as READY. */
+const applyFilter = (tableId: number, n: number) => {
+  const filters = [mkFilter(n)];
+  const hash = dvSourceComboHash(tableId, filters)!;
+  useFilterCombinationStore.getState().setEntry(hash, {
+    viewName: `_kbi_filt_${hash}`,
+    expiresAt: 9_999_999_999,
+    materializing: false,
+    materializeVersion: 0,
+    refCount: 1,
+    dashboardId: 42,
+    sourceType: "table",
+    sourceId: tableId,
+  });
+  useFilterStore.setState((s) => ({ filters: { ...s.filters, [tableId]: filters }, filterVersion: s.filterVersion + 1 }));
+  return hash;
 };
+
+/** Set filters[tableId] but leave its combination view NOT ready (orchestrator still materializing). */
+const applyFilterPending = (tableId: number, n: number) => {
+  const filters = [mkFilter(n)];
+  const hash = dvSourceComboHash(tableId, filters)!;
+  useFilterCombinationStore.getState().markMaterializing(hash, 42, "table", tableId);
+  useFilterStore.setState((s) => ({ filters: { ...s.filters, [tableId]: filters }, filterVersion: s.filterVersion + 1 }));
+  return hash;
+};
+
+const clearFilters = (tableId: number) =>
+  useFilterStore.setState((s) => ({ filters: { ...s.filters, [tableId]: [] }, filterVersion: s.filterVersion + 1 }));
 
 describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
   beforeEach(() => {
@@ -78,6 +107,9 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     (listDynamicViews as Mock).mockReset();
     (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [] });
     (materializeDynamicView as Mock).mockReset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useFilterCombinationStore.getState().reset();
+    useDynamicViewStore.getState().reset();
   });
 
   afterEach(() => {
@@ -144,22 +176,19 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
   });
 
   // T3 -----------------------------------------------------------------
-  it("T3 cold-start gate: matVer === 0 also skipped (markMaterializing placeholder)", async () => {
+  it("T3 wait state: filter set but combination view still materializing -> NO HTTP, dv pending", async () => {
     const rows: DynamicViewRow[] = [makeRow({ id: 7, source_table_id: 4 })];
     (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: rows });
 
     renderHook(() => useDynamicViewMaterializeChain(42));
-
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
 
-    // markMaterializing writes materializeVersion: 0 — verify gate also skips this case.
     act(() => {
-      useFilterViewStore.getState().markMaterializing(4, 42);
+      applyFilterPending(4, 1);
     });
-    expect(useFilterViewStore.getState().views[4]?.materializeVersion).toBe(0);
-
     await new Promise((r) => setTimeout(r, 20));
     expect(materializeDynamicView).not.toHaveBeenCalled();
+    expect(useDynamicViewStore.getState().views[7]?.status).toBe("pending");
   });
 
   // T4 -----------------------------------------------------------------
@@ -179,11 +208,10 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     );
 
     renderHook(() => useDynamicViewMaterializeChain(42));
-    await waitFor(() => expect(useFilterViewStore.getState().views).toEqual({}));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
 
     act(() => {
-      setMatVersion(4, 1);
+      applyFilter(4, 1);
     });
 
     await waitFor(() => {
@@ -217,7 +245,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     // Bump an UNRELATED table.
     act(() => {
-      setMatVersion(99, 1);
+      applyFilter(99, 1);
     });
 
     await new Promise((r) => setTimeout(r, 20));
@@ -246,7 +274,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
 
     act(() => {
-      setMatVersion(4, 1);
+      applyFilter(4, 1);
     });
     await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
     const firstSignal = (materializeDynamicView as Mock).mock.calls[0][1] as AbortSignal;
@@ -254,7 +282,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     // Second matVersion bump — orchestrator should abort the prior controller.
     act(() => {
-      setMatVersion(4, 1); // setView with same viewName bumps materializeVersion
+      applyFilter(4, 2); // new filter value -> new combination hash
     });
     await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(2));
     const secondSignal = (materializeDynamicView as Mock).mock.calls[1][1] as AbortSignal;
@@ -290,13 +318,13 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
 
     // Fire dv 7 cascade.
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
     await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
     const sigA = (materializeDynamicView as Mock).mock.calls[0][1] as AbortSignal;
     expect(sigA.aborted).toBe(false);
 
     // Fire dv 8 cascade via UNRELATED table 99 bump.
-    act(() => setMatVersion(99, 1));
+    act(() => applyFilter(99, 1));
     await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(2));
     const sigB = (materializeDynamicView as Mock).mock.calls[1][1] as AbortSignal;
 
@@ -324,7 +352,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     renderHook(() => useDynamicViewMaterializeChain(42));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
 
     await waitFor(() => {
       const entry = useDynamicViewStore.getState().views[7];
@@ -348,7 +376,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     renderHook(() => useDynamicViewMaterializeChain(42));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
 
     await waitFor(() => {
       const entry = useDynamicViewStore.getState().views[7];
@@ -372,7 +400,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     renderHook(() => useDynamicViewMaterializeChain(42));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
 
     await waitFor(() => {
       const entry = useDynamicViewStore.getState().views[7];
@@ -392,7 +420,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     renderHook(() => useDynamicViewMaterializeChain(42));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
 
     await waitFor(() => {
       const entry = useDynamicViewStore.getState().views[7];
@@ -435,7 +463,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
 
     renderHook(() => useDynamicViewMaterializeChain(42));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
 
     await waitFor(() => expect(materializeDynamicView).toHaveBeenCalled());
     // Flush microtasks to ensure the rejected promise's catch has executed.
@@ -503,7 +531,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     await waitFor(() => expect(listDynamicViews).toHaveBeenCalledTimes(1));
 
     // Bump filter-view matVer to fire cascade for dv 7.
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
     await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
     const sig = (materializeDynamicView as Mock).mock.calls[0][1] as AbortSignal;
 
@@ -599,7 +627,7 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     expect(materializeDynamicView).not.toHaveBeenCalled();
 
     // Step 1: apply a filter → cascade hits HTTP (matVer goes 0→1) → dv materializes.
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
     await waitFor(() =>
       expect(materializeDynamicView).toHaveBeenCalledTimes(1),
     );
@@ -609,10 +637,10 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
       ),
     );
 
-    // Step 2: clear the filter — remove the views[4] entry entirely
-    // (mirrors dropFilterView + useFilterViewStore.clearView behavior).
+    // Step 2: clear the filter
+    // (filters cleared -> NOFILTER token).
     act(() => {
-      useFilterViewStore.getState().clearView(4);
+      clearFilters(4);
     });
 
     // Step 3: cleared transition → fast-path fires → dv flips back to
@@ -637,10 +665,222 @@ describe("useDynamicViewMaterializeChain (Phase 35 DV-V16-13)", () => {
     renderHook(() => useDynamicViewMaterializeChain(42));
     await waitFor(() => expect((listDynamicViews as Mock)).toHaveBeenCalled());
 
-    act(() => setMatVersion(4, 1));
+    act(() => applyFilter(4, 1));
     await new Promise((r) => setTimeout(r, 20));
 
     expect(materializeDynamicView).not.toHaveBeenCalled();
     expect(useDynamicViewStore.getState().views[7]).toBeUndefined();
+  });
+
+  // ---- quick-261009-jg6 DVCOMBO-C ----------------------------------------
+  const okMat = {
+    status: "materialized",
+    view_name: "_kbi_dv_uu1_d42_7",
+    row_count: 1,
+    expires_at: 9_999_999_999,
+  } satisfies MaterializeDynamicViewResponse;
+
+  it("DVCOMBO-C1: filter set + combination view ready -> materializeDynamicView(id, signal, hash)", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    let hash = "";
+    act(() => {
+      hash = applyFilter(7, 1);
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect(materializeDynamicView).toHaveBeenCalledWith(5, expect.any(AbortSignal), hash);
+  });
+
+  it("DVCOMBO-C2: entry missing/materializing -> not called, dv pending; flips ready -> called once with hash", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    let hash = "";
+    act(() => {
+      hash = applyFilterPending(7, 1);
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+    expect(useDynamicViewStore.getState().views[5]?.status).toBe("pending");
+    act(() => {
+      useFilterCombinationStore.getState().setEntry(hash, {
+        viewName: "_kbi_filt_v",
+        expiresAt: 9_999_999_999,
+        materializing: false,
+        materializeVersion: 0,
+        refCount: 1,
+        dashboardId: 42,
+        sourceType: "table",
+        sourceId: 7,
+      });
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect(materializeDynamicView).toHaveBeenCalledWith(5, expect.any(AbortSignal), hash);
+  });
+
+  it("DVCOMBO-C3: Unlimited (max_records 0) + no filters -> server called with no key", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 0 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect(materializeDynamicView).toHaveBeenCalledWith(5, expect.any(AbortSignal), undefined);
+  });
+
+  it("DVCOMBO-C4: capped + no filters -> no HTTP, local over_threshold/no_filter", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 100000 })] });
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter"));
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+  });
+
+  it("DVCOMBO-C5: filter changes to a new hash -> re-fires with the NEW hash and aborts the prior in-flight", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7 })] });
+    (materializeDynamicView as Mock).mockReturnValueOnce(new Promise(() => {}));
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    let h1 = "";
+    let h2 = "";
+    act(() => {
+      h1 = applyFilter(7, 1);
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    const sig1 = (materializeDynamicView as Mock).mock.calls[0][1] as AbortSignal;
+    act(() => {
+      h2 = applyFilter(7, 2);
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(2));
+    expect(h1).not.toBe(h2);
+    expect((materializeDynamicView as Mock).mock.calls[1][2]).toBe(h2);
+    expect(sig1.aborted).toBe(true);
+  });
+
+  it("DVCOMBO-C6: an unrelated combinationVersion bump does not re-fire", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    act(() => {
+      applyFilter(7, 1);
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    act(() => {
+      useFilterCombinationStore.getState().setEntry("table:99:other", {
+        viewName: "_kbi_filt_other",
+        expiresAt: 9_999_999_999,
+        materializing: false,
+        materializeVersion: 0,
+        refCount: 1,
+        dashboardId: 42,
+        sourceType: "table",
+        sourceId: 99,
+      });
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(materializeDynamicView).toHaveBeenCalledTimes(1);
+  });
+
+  it("DVCOMBO-C7: retry(id) with no filter + capped still reaches the server with no key ('Load full table' CTA)", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 100000 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    const { result } = renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(result.current.dynamicViews.length).toBe(1));
+    act(() => {
+      result.current.retry(5);
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect(materializeDynamicView).toHaveBeenCalledWith(5, expect.any(AbortSignal), undefined);
+  });
+
+  it("DVCOMBO-C8: while the orchestrator's combination materialize fails (entry cleared, dv error set), the chain does not overwrite the error or hang pending", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7 })] });
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    let hash = "";
+    act(() => {
+      hash = applyFilterPending(7, 1);
+    });
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.status).toBe("pending"));
+    // Orchestrator failure path: clearEntry + setError
+    act(() => {
+      useFilterCombinationStore.getState().clearEntry(hash);
+      useDynamicViewStore.getState().setError(5, "kinetica boom");
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(useDynamicViewStore.getState().views[5]?.status).toBe("error");
+    expect(useDynamicViewStore.getState().views[5]?.error).toBe("kinetica boom");
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("DVCOMBO-SPC chain — spatial draws on the source table", () => {
+  const CIRCLE = { id: "c1", type: "circle" as const, wkt: "POLYGON((0 0,1 0,1 1,0 0))", label: "Circle 1", measurement: "1.9 km", addedAt: 1 };
+  const MAPW = {
+    id: 1, dashboard_id: 42, title: "Map", type: "map", position: 0,
+    config: { spatialTargets: [{ tableId: 7, spatialMode: "latlon", lonCol: "lon", latCol: "lat" }] },
+    created_at: "", updated_at: "",
+  } as WidgetDto;
+  const okMat = { status: "materialized", view_name: "_kbi_dv_uu1_d42_7", row_count: 1, expires_at: 9_999_999_999 } satisfies MaterializeDynamicViewResponse;
+  const MAPWS = [MAPW]; // stable reference (a fresh array each render would re-run the effect and mask a missing spatialFilterVersion dep)
+  const drawCircle = () =>
+    act(() => {
+      useSpatialFilterStore.setState({ shapes: [CIRCLE], spatialFilterVersion: 1 });
+    });
+
+  beforeEach(() => {
+    useAuthStore.setState({ status: "authenticated", user: { username: "u1", roles: [], permissions: [] }, error: null, reason: null, authMode: "password" });
+    (listDynamicViews as Mock).mockReset();
+    (materializeDynamicView as Mock).mockReset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useFilterCombinationStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+    useSpatialFilterStore.getState().reset();
+  });
+
+  it("DVCOMBO-SP-C1: spatial-only draw -> pending (no no_filter fast-path); combo ready -> POST with the spatial hash as combination_key", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 100000 })] });
+    (materializeDynamicView as Mock).mockResolvedValue(okMat);
+    renderHook(() => useDynamicViewMaterializeChain(42, MAPWS));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter"));
+    const hash = dvSourceComboHash(7, [], [CIRCLE])!;
+    drawCircle();
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.status).toBe("pending"));
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+    act(() => {
+      useFilterCombinationStore.getState().setEntry(hash, {
+        viewName: "_kbi_filt_sp", expiresAt: 9_999_999_999, materializing: false, materializeVersion: 0,
+        refCount: 1, dashboardId: 42, sourceType: "table", sourceId: 7,
+      });
+    });
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect(materializeDynamicView).toHaveBeenCalledWith(5, expect.any(AbortSignal), hash);
+  });
+
+  it("DVCOMBO-SP-C3: clearing the draw returns a capped dv to local no_filter", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 7, max_records: 100000 })] });
+    renderHook(() => useDynamicViewMaterializeChain(42, MAPWS));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    drawCircle();
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.status).toBe("pending"));
+    act(() => {
+      useSpatialFilterStore.setState({ shapes: [], spatialFilterVersion: 2 });
+    });
+    await waitFor(() => expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter"));
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+  });
+
+  it("DVCOMBO-SP-C4: a draw on a table with no eligible spatial target is ignored (still no_filter)", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [makeRow({ id: 5, source_table_id: 8, max_records: 100000 })] });
+    renderHook(() => useDynamicViewMaterializeChain(42, MAPWS));
+    await waitFor(() => expect(listDynamicViews).toHaveBeenCalled());
+    drawCircle();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(useDynamicViewStore.getState().views[5]?.reason).toBe("no_filter");
+    expect(materializeDynamicView).not.toHaveBeenCalled();
   });
 });

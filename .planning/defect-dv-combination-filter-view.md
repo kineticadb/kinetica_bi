@@ -2,7 +2,7 @@
 
 **Found:** 2026-09-17, by the operator while preparing the Phase 121 cross-environment checkpoint.
 **Severity:** Medium-High — silently disables dynamic views on any dashboard using combined filters.
-**Status:** OPEN. Pre-existing; NOT introduced by v1.24. Deliberately not fixed mid-milestone.
+**Status:** FIXED 2026-10-09 by quick task 261009-jg6 (commits 4f8393f, 80bca78, fb7325b, 14b54ba; operator-verified live). Root cause was three stacked defects — see `.planning/quick/261009-jg6-fix-dynamic-views-not-finding-their-filt/261009-jg6-SUMMARY.md`. (Originally: OPEN, pre-existing, not introduced by v1.24.)
 
 ## Symptom
 

@@ -1906,6 +1906,7 @@ export const createApp = async (): Promise<express.Express> => {
         source_table_id?: number;
         dashboard_id?: number;
         sample_limit?: number;
+        combination_key?: unknown;
       };
       if (typeof body.template_sql !== "string" || body.template_sql.trim() === "") {
         return res.status(400).json({ error: "template_sql is required and must be a non-empty string." });
@@ -1916,6 +1917,14 @@ export const createApp = async (): Promise<express.Express> => {
       if (typeof body.dashboard_id !== "number") {
         return res.status(400).json({ error: "dashboard_id is required and must be a number." });
       }
+      if (
+        body.combination_key !== undefined &&
+        (typeof body.combination_key !== "string" || body.combination_key.length > 4096)
+      ) {
+        return res.status(400).json({ error: "combination_key must be a string." });
+      }
+      const previewCombinationKey =
+        typeof body.combination_key === "string" && body.combination_key !== "" ? body.combination_key : undefined;
       // Clamp sample_limit to [1, 1000] (1000 caps Preview cost; default 100 matches CONTEXT.md endpoint example).
       const sampleLimit = typeof body.sample_limit === "number" && body.sample_limit > 0
         ? Math.min(body.sample_limit, 1000)
@@ -1933,6 +1942,7 @@ export const createApp = async (): Promise<express.Express> => {
         sessionId: authedReq.user!.sid,
         dashboardId: body.dashboard_id,
         tableId: body.source_table_id,
+        combinationKey: previewCombinationKey,
       });
 
       // Probe Kinetica for the session-scoped filter view. If it exists, use
@@ -2011,10 +2021,18 @@ export const createApp = async (): Promise<express.Express> => {
     "/api/dynamic-view/materialize",
     requireConfig,
     asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as { dynamic_view_id?: number };
+      const body = (req.body ?? {}) as { dynamic_view_id?: number; combination_key?: unknown };
       if (typeof body.dynamic_view_id !== "number") {
         return res.status(400).json({ error: "dynamic_view_id is required and must be a number." });
       }
+      if (
+        body.combination_key !== undefined &&
+        (typeof body.combination_key !== "string" || body.combination_key.length > 4096)
+      ) {
+        return res.status(400).json({ error: "combination_key must be a string." });
+      }
+      const dvCombinationKey =
+        typeof body.combination_key === "string" && body.combination_key !== "" ? body.combination_key : undefined;
       const row = getDashboardDynamicView(body.dynamic_view_id);
       if (!row) {
         return res.status(404).json({ error: "Dynamic view not found." });
@@ -2034,6 +2052,10 @@ export const createApp = async (): Promise<express.Express> => {
         sessionId: authedReq.user!.sid,
         dashboardId: row.dashboard_id,
         tableId: row.source_table_id,
+        // Key = client's dvSourceComboHash (all filters on the dv's source table). Without it
+        // the probe targets the legacy unsuffixed name, which is always absent since v1.18
+        // (every filter view is created with a _c<hash8> suffix) -> base-table branch.
+        combinationKey: dvCombinationKey,
       });
 
       // Decode a column-major COUNT(*) result. Kinetica returns column_1: [N].

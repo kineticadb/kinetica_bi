@@ -46,6 +46,7 @@ import { faEye, faEyeSlash, faChevronDown, faChevronRight } from "@fortawesome/f
 // Both the local import AND the re-export are required — the re-export alone does NOT
 // bring the name into local scope for use in LayersLegendPanelProps (per Phase 30 note).
 import type { DvLayerStatus, ResolvedLegendLayer } from "../lib/resolveLegendLayers";
+import type { DynamicViewReason } from "../store/dynamicViewStore";
 export type { DvLayerStatus, ResolvedLegendLayer } from "../lib/resolveLegendLayers";
 
 export type LayersLegendPanelProps = {
@@ -156,11 +157,11 @@ function zoomRangeChipText(range: { minZoom?: number; maxZoom?: number }): strin
  * Returns null for "materialized" (no badge — the normal case).
  * Operator-facing copy locked here so screen reader + visual stay in sync.
  */
-function dvStatusBadgeLabel(status: DvLayerStatus): string | null {
+function dvStatusBadgeLabel(status: DvLayerStatus, reason?: DynamicViewReason): string | null {
   switch (status) {
     case "materialized":   return null;
     case "pending":        return "Materializing…";
-    case "over_threshold": return "Over threshold";
+    case "over_threshold": return reason === "no_filter" ? "No filter applied" : "Over threshold";
     case "error":          return "Error";
     case "absent":         return "Not materialized";
   }
@@ -232,7 +233,7 @@ export function LayersLegendPanel({
               No layers configured on this widget.
             </div>
           ) : (
-            layers.map(({ layer, visible, dvStatus, filterSummary, zoomRange, zoomActive }) => {
+            layers.map(({ layer, visible, dvStatus, dvReason, filterSummary, zoomRange, zoomActive }) => {
               const renderMode =
                 ((layer.config as { renderMode?: string })?.renderMode) ?? "raster";
               const cb = coalesceCbConfig(layer.cb_config);
@@ -256,7 +257,7 @@ export function LayersLegendPanel({
               //   (toggling visibility on a layer that can't render is meaningless)
               // Pending is included in "stale" — even though it's transient, the layer is not on
               // the map right now and dimming reads as "not currently displayed."
-              const badgeLabel = dvStatus ? dvStatusBadgeLabel(dvStatus) : null;
+              const badgeLabel = dvStatus ? dvStatusBadgeLabel(dvStatus, dvReason) : null;
               const stale = dvStatus !== undefined && dvStatus !== "materialized";
 
               // Phase 118 (ZLGND-V123-01/02) — D1: precedence is computed HERE in JS, not left to
@@ -342,7 +343,11 @@ export function LayersLegendPanel({
                       <span
                         className={`layers-legend-panel-dv-badge layers-legend-panel-dv-badge--${dvStatus}`}
                         role="status"
-                        title={`Layer is not rendering — ${badgeLabel}`}
+                        title={
+                          dvStatus === "over_threshold" && dvReason === "no_filter"
+                            ? `Layer is not rendering — ${badgeLabel}: apply a filter or tick Unlimited on the dynamic view`
+                            : `Layer is not rendering — ${badgeLabel}`
+                        }
                       >
                         {badgeLabel}
                       </span>

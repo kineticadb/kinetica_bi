@@ -21,11 +21,19 @@
  * every successful materialize would re-fire the orchestrator, causing an infinite loop.
  * The Effect deps are EXACTLY:
  *   [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId,
- *    widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, ceiling].
+ *    widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, dvSourcesKey, ceiling].
  *
  * dynamicViewVersion SAFETY: bumps ONLY on dv materialize events (markPending/setView/
  * setError/clearView — inside useDynamicViewMaterializeChain). NEVER called by the
  * orchestrator or filterCombinationStore.setEntry → no feedback loop. Safe dep.
+ *
+ * quick-261009-jg6: also materializes + ref-counts each dynamic view's SOURCE combination
+ * (all column filters + spatial draws on dv.source_table_id, `dvSourceComboHash`; spatial only when
+ * the table has an eligible map spatialTarget, else column-only) under vizKey `dv:<dvId>`.
+ * useDynamicViewMaterializeChain only READS that registry entry and sends the hash to the
+ * server; this hook stays the sole materializeFilter caller. dvSourcesKey joins the deps.
+ * If that materialize fails, the dv status is set to `error` (not left pending) and the hash
+ * is not re-fired until the next filterVersion bump (setError bumps dynamicViewVersion, a dep).
  *
  * Mount site: `DashboardsPage.tsx` `DashboardOpen`, immediately after `useViewKeepAlive`.
  * Single instance per open dashboard.
@@ -48,7 +56,8 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { materializeFilter, dropCombinationView } from "../api/client";
-import type { WidgetDto, DashboardLayerDto } from "../api/client";
+import type { WidgetDto, DashboardLayerDto, DynamicViewRow } from "../api/client";
+import { dvSourceComboHash, resolveDvSourceSpatial } from "../lib/dvSourceCombo";
 import type { FilterSelectionConfig } from "../types/filterSelection";
 import type { Shape } from "../store/spatialFilterStore";
 import type { SpatialTarget } from "../lib/spatialTargets";
@@ -104,6 +113,7 @@ export function useCombinationOrchestrator(
   dashboardId: number,
   widgets: WidgetDto[],
   layers: DashboardLayerDto[],   // NEW — Phase 92 (READ-V118-02)
+  dynamicViews: DynamicViewRow[] = [],   // quick-261009-jg6 — dv source combinations
 ): void {
   // --- 1. Primitive subscriptions (S-02 compliant — primitives only) ---
   const filterVersion = useFilterStore((s) => s.filterVersion);
@@ -169,6 +179,17 @@ export function useCombinationOrchestrator(
     [layers],
   );
 
+  // --- 2d. quick-261009-jg6: stable primitive key for the dashboard's dynamic views (id:sourceTable) ---
+  const dvSourcesKey = useMemo(
+    () => dynamicViews.map((dv) => `${dv.id}:${dv.source_table_id}`).sort().join(","),
+    [dynamicViews],
+  );
+
+  // Hashes whose materialize failed since the last filterVersion change. Not re-fired until the
+  // filter changes — otherwise the setError -> dynamicViewVersion bump -> re-tick -> re-POST loop.
+  const failedHashesRef = useRef<Set<string>>(new Set());
+  const lastTickFilterVersionRef = useRef<number | null>(null);
+
   // --- 3. AbortController-per-hash Map (cross-hash isolation; survives re-renders) ---
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
 
@@ -183,7 +204,7 @@ export function useCombinationOrchestrator(
 
   // --- 5. Main orchestration effect ---
   // CRITICAL deps = [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId,
-  //                  widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, ceiling].
+  //                  widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, dvSourcesKey, ceiling].
   // combinationVersion is intentionally EXCLUDED — it bumps on every setEntry and
   // would cause this effect to re-fire after each materialize, creating an infinite loop.
   // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop.
@@ -196,6 +217,10 @@ export function useCombinationOrchestrator(
       // Read live state via getState() — NOT subscriptions (S-02).
       // ----------------------------------------------------------------
       const filterState = useFilterStore.getState();
+      if (lastTickFilterVersionRef.current !== filterState.filterVersion) {
+        failedHashesRef.current.clear();
+        lastTickFilterVersionRef.current = filterState.filterVersion;
+      }
       // Shapes read imperatively — avoids stale closure + re-render storm.
       const shapes = useSpatialFilterStore.getState().shapes;
       // Build per-table spatial targets once (pure, synchronous).
@@ -345,6 +370,24 @@ export function useCombinationOrchestrator(
         vizKeyToHash.set(`l:${layer.id}`, hash);
       }
 
+      // --- quick-261009-jg6: each dv's SOURCE combination (all column filters on its source table) ---
+      // Bound under vizKey `dv:<id>` and NOT added to byTable: the hash equals the per-table
+      // ceiling-fallback hash by construction, so the ceiling can never orphan it.
+      // Spatial draws on the source table are folded in (a dv accepts all draws), but only when the
+      // table has an eligible spatial target — otherwise column-only (same Pitfall-1 rule as widgets).
+      const dvSourceEntries: Array<{ hash: string; tableId: number; resolved: ReturnType<typeof resolveFilterSet>; acceptedShapes: Shape[]; spatialTarget?: SpatialTarget }> = [];
+      const dvIdsByHash = new Map<string, number[]>();
+      for (const dv of dynamicViews) {
+        const dvTableFilters = (filterState.filters[dv.source_table_id] ?? []) as ReturnType<typeof resolveFilterSet>;
+        const dvSpatial = resolveDvSourceSpatial(dv.source_table_id, widgets, shapes);
+        const hash = dvSourceComboHash(dv.source_table_id, dvTableFilters, dvSpatial.shapes);
+        vizKeyToHash.set(`dv:${dv.id}`, hash);
+        if (hash !== undefined) {
+          dvSourceEntries.push({ hash, tableId: dv.source_table_id, resolved: dvTableFilters.slice(), acceptedShapes: dvSpatial.shapes, spatialTarget: dvSpatial.target });
+          dvIdsByHash.set(hash, [...(dvIdsByHash.get(hash) ?? []), dv.id]);
+        }
+      }
+
       // ----------------------------------------------------------------
       // STEP B — Ceiling enforcement per table (COMBO-V118-03)
       // ----------------------------------------------------------------
@@ -481,6 +524,13 @@ export function useCombinationOrchestrator(
         }
       }
 
+      // quick-261009-jg6: dv source combinations (dedupes with any identical table entry)
+      for (const { hash, tableId, resolved, acceptedShapes, spatialTarget } of dvSourceEntries) {
+        if (!desired.has(hash)) {
+          desired.set(hash, { tableId, sourceType: "table", resolved, acceptedShapes, spatialTarget });
+        }
+      }
+
       // Phase 94: dv-bound entries (no ceiling — see comment at STEP A dv loop)
       for (const [dvId, hashMap] of byDv) {
         for (const [hash, entry] of hashMap) {
@@ -500,6 +550,9 @@ export function useCombinationOrchestrator(
 
         // Guard: never process NOFILTER (belt-and-suspenders)
         if (hash.endsWith(`:${NOFILTER_SENTINEL}`)) continue;
+
+        // quick-261009-jg6: a prior materialize of this hash failed under the same filters — don't loop.
+        if (failedHashesRef.current.has(hash)) continue;
 
         // Check if already in registry (re-check live state right before markMaterializing)
         const liveEntry = useFilterCombinationStore.getState().registry[hash];
@@ -558,6 +611,16 @@ export function useCombinationOrchestrator(
               if (ctrl.signal.aborted) return;
               // Clear the placeholder so a retry can re-fire
               useFilterCombinationStore.getState().clearEntry(hash);
+              // quick-261009-jg6: dvs reading this combination must not sit in `pending` forever —
+              // surface the existing `error` status. failedHashesRef stops the re-tick loop.
+              const failedDvIds = dvIdsByHash.get(hash);
+              if (failedDvIds && failedDvIds.length > 0) {
+                failedHashesRef.current.add(hash);
+                const msg = (err as Error)?.message ?? "Filter view materialize failed";
+                for (const failedDvId of failedDvIds) {
+                  useDynamicViewStore.getState().setError(failedDvId, msg);
+                }
+              }
             });
         } else {
           // ── Phase 94: dv path ──────────────────────────────────────────
@@ -607,6 +670,10 @@ export function useCombinationOrchestrator(
       for (const w of widgets) {
         currentVizKeys.add(`w:${w.id}`);
       }
+      // quick-261009-jg6: dv source bindings
+      for (const dv of dynamicViews) {
+        currentVizKeys.add(`dv:${dv.id}`);
+      }
       // Phase 94: include ALL layers (table-bound AND dv-bound) so dv-bound `l:<id>` keys are
       // tracked for release-on-removal. Previously dv-bound layers were skipped here.
       for (const layer of layers) {
@@ -615,7 +682,7 @@ export function useCombinationOrchestrator(
 
       // Handle widgets/layers that LEFT the dashboard (in store but not in this tick's set)
       for (const vizKey of Object.keys(prevVizToHash)) {
-        if (!vizKey.startsWith("w:") && !vizKey.startsWith("l:")) continue;
+        if (!vizKey.startsWith("w:") && !vizKey.startsWith("l:") && !vizKey.startsWith("dv:")) continue;
         if (currentVizKeys.has(vizKey)) continue;
         // Widget removed from dashboard
         const oldHash = prevVizToHash[vizKey];
@@ -667,7 +734,7 @@ export function useCombinationOrchestrator(
       // Handle vizKeys that were previously set but are no longer in vizKeyToHash
       // (e.g., widget became dv-bound or non-trigger this tick, or layer became dv-bound)
       for (const vizKey of Object.keys(prevVizToHash)) {
-        if (!vizKey.startsWith("w:") && !vizKey.startsWith("l:")) continue;
+        if (!vizKey.startsWith("w:") && !vizKey.startsWith("l:") && !vizKey.startsWith("dv:")) continue;
         if (!currentVizKeys.has(vizKey)) continue; // already handled above
         if (vizKeyToHash.has(vizKey)) continue;    // handled in the loop above
 
@@ -689,5 +756,5 @@ export function useCombinationOrchestrator(
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId, widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, ceiling]);
+  }, [filterVersion, spatialFilterVersion, dynamicViewVersion, dashboardId, widgetsKey, layersKey, dvWidgetsKey, dvLayersKey, dvSourcesKey, ceiling]);
 }

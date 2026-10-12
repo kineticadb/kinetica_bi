@@ -1,39 +1,38 @@
 /**
- * Phase 35 (DV-V16-13): Dashboard-scope orchestrator hook for dynamic-view
+ * Phase 35 (DV-V16-13) + quick-261009-jg6: dashboard-scope hook for dynamic-view
  * cascading materialize.
  *
- * Subscribes to `useFilterViewStore.views[T]?.materializeVersion` for each unique
- * source-table referenced by the dashboard's dynamic-views. On materializeVersion
- * bump for table T, fires `markPending → materializeDynamicView → setView/setError`
- * for each dv with `source_table_id === T`.
+ * Driven by `filterVersion` + `filterCombinationStore` readiness (NOT the legacy
+ * filterViewStore, whose materializeVersion has been dead since v1.18). For each dv:
+ *   - hash = currentDvSourceComboHash(source_table_id, widgets) (column filters + spatial draws) -- the
+ *     combination useCombinationOrchestrator materializes + ref-counts under `dv:<id>`.
+ *   - token = "nofilter" | "wait:<hash>" (registry entry absent/materializing)
+ *             | "ready:<hash>:<viewName>:<expiresAt>:<materializeVersion>".
+ *   - The cascade fires only when the token CHANGES (or on retry/force).
  *
- * Key behaviors (locked — see 35-CONTEXT.md + 35-RESEARCH.md):
- * - Cold-start gate (Pitfall 1): cascade fires ONLY when `matVer > 0` — prevents
- *   N materialize calls on dashboard mount before any filter is applied. The
- *   guard `matVer === undefined || matVer === 0` short-circuits both the
- *   uninitialized case and the `markMaterializing`-placeholder case
- *   (filterViewStore writes `materializeVersion: 0` at line 94).
- * - Per-dv AbortController in `useRef<Map<number, AbortController>>` — rapid
- *   filter changes abort prior in-flight materialize for THE SAME dv;
- *   cross-dv isolation preserved (different dvs never cancel each other).
+ * Sole-trigger invariant: this hook never calls materializeFilter; it only READS the
+ * registry and sends the hash to POST /api/dynamic-view/materialize as combination_key.
+ *
+ * Key behaviors:
+ * - Per-dv AbortController in `useRef<Map<number, AbortController>>` -- a token change
+ *   aborts the prior in-flight materialize for THE SAME dv; cross-dv isolation preserved.
  * - List refresh on `dynamicViewVersion` increment (Phase 33 locked option b).
- *   AbortController on the list-fetch is cancelled on unmount + on every
- *   dynamicViewVersion bump.
- * - Pitfall 2 cleanup: controllers for dvs no longer in the list are aborted
- *   and pruned from the Map after every cascade-effect fire.
- * - AbortError silent; other errors → setError + toast kind "error"
- *   (the only failure kind in the locked Phase 34 ToastKind union).
- * - Returns `{ dynamicViews, retry(id) }` — Plan 35-05 consumes retry for
- *   renderer error states; Plans 35-04/35-06 consume dynamicViews via prop
- *   threading through WidgetConfigModal / LayersModal.
+ * - Controllers for dvs no longer in the list are aborted and pruned.
+ * - AbortError silent; other errors -> setError + toast kind "error".
+ * - If the orchestrator's materialize of the dv source combination fails, the
+ *   orchestrator sets the dv status to `error` (this hook leaves it alone: the token
+ *   stays `wait:<hash>`), so the chain is never stuck in `pending`.
+ * - Returns `{ dynamicViews, retry(id) }`.
  *
- * Mount site: `DashboardsPage.tsx` `DashboardOpen` body. Single instance per
- * open dashboard.
+ * Mount site: `DashboardsPage.tsx` `DashboardOpen` body. Single instance per open dashboard.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useFilterViewStore } from "../store/filterViewStore";
+import { useFilterStore } from "../store/filterStore";
+import { useSpatialFilterStore } from "../store/spatialFilterStore";
+import { useFilterCombinationStore } from "../store/filterCombinationStore";
+import { currentDvSourceComboHash } from "../lib/dvSourceCombo";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
@@ -42,6 +41,7 @@ import {
   listDynamicViews,
   materializeDynamicView,
   type DynamicViewRow,
+  type WidgetDto,
 } from "../api/client";
 
 export type UseDynamicViewMaterializeChainResult = {
@@ -49,8 +49,13 @@ export type UseDynamicViewMaterializeChainResult = {
   retry: (dynamicViewId: number) => void;
 };
 
+const NO_WIDGETS: WidgetDto[] = [];
+
 export function useDynamicViewMaterializeChain(
   dashboardId: number,
+  // Dashboard widgets: only used to resolve each source table's eligible spatial target (map
+  // widgets' spatialTargets) so the hash matches the orchestrator's. Omitted => column-only.
+  widgets: WidgetDto[] = NO_WIDGETS,
 ): UseDynamicViewMaterializeChainResult {
   // --- 1. List state — refreshes on mount + when dynamicViewVersion increments ---
   const [dynamicViews, setDynamicViews] = useState<DynamicViewRow[]>([]);
@@ -73,111 +78,66 @@ export function useDynamicViewMaterializeChain(
     return () => ctrl.abort();
   }, [dashboardId, dynamicViewVersion]);
 
-  // --- 2. Stable primitive key for filter-view materializeVersion subscription ---
-  //     (PITFALL S-02): subscribe via a sorted, primitive string — not the whole
-  //     `views` object. Selector identity is stable when underlying versions don't change.
-  const sourceTableIds = useMemo(
-    () =>
-      Array.from(new Set(dynamicViews.map((dv) => dv.source_table_id))).sort(
-        (a, b) => a - b,
-      ),
-    [dynamicViews],
-  );
-  const matVersionKey = useFilterViewStore((s) =>
-    sourceTableIds
-      .map((tid) => `${tid}:${s.views[tid]?.materializeVersion ?? 0}`)
-      .join(","),
-  );
+  // --- 2. Primitive subscriptions only (PITFALL S-02). filterVersion bumps on every filter
+  //     change; combinationVersion bumps on every registry mutation (the orchestrator's
+  //     setEntry flips a `wait` token to `ready`). Per-dv tokens below dedupe the re-fires.
+  const filterVersion = useFilterStore((s) => s.filterVersion);
+  // spatialFilterVersion: a spatial-only draw/clear changes the dv source combination (no
+  // filterVersion bump). Bumps only on draw/remove/clear, never on registry writes -> no loop.
+  const spatialFilterVersion = useSpatialFilterStore((s) => s.spatialFilterVersion);
+  const combinationVersion = useFilterCombinationStore((s) => s.combinationVersion);
 
   // --- 3. Per-dv AbortController Map (cross-dv isolation; survives re-renders) ---
   const cascadeControllersRef = useRef<Map<number, AbortController>>(new Map());
 
-  // --- 3b. Per-dv last-seen matVer — prevents re-firing dv-A's cascade when an
-  //     unrelated dv-B's source-table matVer bumps the matVersionKey (cross-dv
-  //     isolation lock — Test 7). The cascade fires for dv X only when X's
-  //     source-table matVer is strictly greater than the last value we acted on.
-  const lastSeenMatVerRef = useRef<Map<number, number>>(new Map());
+  // --- 3b. Per-dv last-seen token -- prevents re-firing dv-A when an unrelated
+  //     registry mutation (combinationVersion bump) leaves dv-A's token unchanged.
+  const lastTokenRef = useRef<Map<number, string>>(new Map());
 
-  // --- 4. Cascade fire helper — shared by the effect and the retry callback.
-  //     `force=true` (retry path) skips the gate so the renderer's Retry button
-  //     always re-fires even when nothing has changed.
+  const widgetsRef = useRef<WidgetDto[]>(widgets);
+  widgetsRef.current = widgets;
+
+  // --- 4. Cascade fire helper -- shared by the effect and the retry callback.
+  //     `force=true` (retry path) skips the token gate and the no_filter fast-path so the
+  //     renderer's Retry / "Load full table" always reaches the server.
   //
-  //     Gate logic (post-VERIFY: filter-cleared transition fix):
-  //       - lastSeen = last known matVer for THIS dv (0 if never seen, tracked via
-  //         a separate `hasInitialized` Set so we can distinguish "never fired"
-  //         from "fired with matVer=0").
-  //       - currentMatVer = current matVer in store (0 if entry missing / cleared).
-  //
-  //     Cases this gates:
-  //       (a) Dashboard mount, no filter (cur=0, never-fired)   → FIRE (no_filter path)
-  //                                                                — populates dv store
-  //                                                                  with over_threshold/
-  //                                                                  no_filter so renderers
-  //                                                                  show empty state
-  //                                                                  immediately (NOT
-  //                                                                  loading-stuck) and
-  //                                                                  map layers' buildWms
-  //                                                                  params correctly
-  //                                                                  return null (skip).
-  //       (b) Already-fired no-filter steady (cur=0, last=0)    → SKIP — already at correct
-  //                                                                  state
-  //       (c) First filter applied        (cur=5, last=0)       → FIRE
-  //       (d) Filter bumped               (cur=6, last=5)       → FIRE
-  //       (e) Filter cleared              (cur=0, last=5)       → FIRE — server returns
-  //                                                                  no_filter, drops dv
-  //       (f) Re-filter after clear       (cur=7, last=0)       → FIRE
-  //
-  //     Cross-dv isolation: dv-A's source-table bump that doesn't touch dv-B's
-  //     source-table leaves dv-B's matVer unchanged → SKIP unless dv-B has
-  //     never-fired (case a).
-  //
-  //     no_filter fast-path optimization: when currentMatVer===0 we KNOW the
-  //     server would return {status:"over_threshold", reason:"no_filter"} (its
-  //     no_filter probe is deterministic from client state — the absence of a
-  //     filterViewStore entry corresponds 1:1 to the server-side
-  //     buildFilterViewName lookup miss). Setting the store directly avoids
-  //     N parallel HTTP round-trips on dashboard mount (5 dvs × no_filter
-  //     responses) while delivering the same end state.
+  //     Token cases (see header):
+  //       nofilter + capped (max_records > 0)  -> local over_threshold/no_filter fast-path
+  //                                               (mount-time HTTP saving only: since v1.18 a
+  //                                               no-filter dv can only take the server's base
+  //                                               branch; not a correctness shortcut)
+  //       nofilter + Unlimited (max_records 0) -> server call, no key -> base-table aggregate
+  //       wait                                  -> markPending, NO HTTP; the orchestrator's
+  //                                               setEntry bumps combinationVersion and the
+  //                                               token turns `ready`
+  //       ready                                 -> server call with combination_key = hash
   const fireCascade = useCallback((dv: DynamicViewRow, force = false) => {
     const username = useAuthStore.getState().user?.username;
     if (!username) return; // Test 17: no username → defensive short-circuit
 
-    const matVer = useFilterViewStore.getState().views[dv.source_table_id]
-      ?.materializeVersion;
-    const currentMatVer = matVer ?? 0;
-    const hasInitialized = lastSeenMatVerRef.current.has(dv.id);
-    if (!force) {
-      // Skip only when we've already initialized AND the value hasn't changed.
-      // First-time-seen-this-dv always fires (initial state discovery).
-      if (hasInitialized) {
-        const lastSeen = lastSeenMatVerRef.current.get(dv.id) ?? 0;
-        if (currentMatVer === lastSeen) return;
-      }
-    }
-    lastSeenMatVerRef.current.set(dv.id, currentMatVer);
+    const hash = currentDvSourceComboHash(dv.source_table_id, widgetsRef.current);
+    const entry = hash ? useFilterCombinationStore.getState().registry[hash] : undefined;
+    const ready = !!entry && !entry.materializing && entry.viewName !== "";
+    const token =
+      hash === undefined
+        ? "nofilter"
+        : ready
+          ? `ready:${hash}:${entry!.viewName}:${entry!.expiresAt}:${entry!.materializeVersion}`
+          : `wait:${hash}`;
+    if (!force && lastTokenRef.current.get(dv.id) === token) return;
+    lastTokenRef.current.set(dv.id, token);
 
-    // no_filter fast-path: deterministic from client state — skip the HTTP
-    // round-trip. Server's no_filter detection is identical to the absence of
-    // an in-store filterViewStore entry, so we can authoritatively set the dv
-    // store from here without any race. Abort any in-flight cascade for this dv
-    // (e.g. a stale materialize from a recent filter that the operator just
-    // cleared) so we don't overwrite our authoritative no_filter state with a
-    // late response.
-    //
-    // Retry (`force=true`) bypasses the fast-path. The renderer Retry button
-    // is an operator-driven confirmation gesture: even when the client KNOWS
-    // the answer is no_filter, we honor the explicit intent and round-trip
-    // the server. This also catches the edge case where client and server
-    // state have drifted (e.g. the server's filter view exists but the
-    // client's filterViewStore entry was reset).
-    if (!force && currentMatVer === 0) {
+    const viewName = buildDynamicViewName({
+      userId: username,
+      dashboardId: dv.dashboard_id,
+      dynamicViewId: dv.id,
+    });
+
+    // no_filter fast-path (capped dvs only). Abort any in-flight cascade for this dv so a
+    // late response cannot overwrite the authoritative no_filter state.
+    if (!force && token === "nofilter" && dv.max_records > 0) {
       cascadeControllersRef.current.get(dv.id)?.abort();
       cascadeControllersRef.current.delete(dv.id);
-      const viewName = buildDynamicViewName({
-        userId: username,
-        dashboardId: dv.dashboard_id,
-        dynamicViewId: dv.id,
-      });
       useDynamicViewStore.getState().setView(dv.id, {
         viewName,
         status: "over_threshold",
@@ -186,19 +146,22 @@ export function useDynamicViewMaterializeChain(
       return;
     }
 
+    // Filter set but its combination view is not ready yet: wait for the orchestrator.
+    if (!force && token.startsWith("wait:")) {
+      cascadeControllersRef.current.get(dv.id)?.abort();
+      cascadeControllersRef.current.delete(dv.id);
+      useDynamicViewStore.getState().markPending(dv.id, viewName);
+      return;
+    }
+
     // Abort prior in-flight for THIS dv only (cross-dv isolation — Test 7).
     cascadeControllersRef.current.get(dv.id)?.abort();
     const ctrl = new AbortController();
     cascadeControllersRef.current.set(dv.id, ctrl);
 
-    const viewName = buildDynamicViewName({
-      userId: username,
-      dashboardId: dv.dashboard_id,
-      dynamicViewId: dv.id,
-    });
     useDynamicViewStore.getState().markPending(dv.id, viewName);
 
-    materializeDynamicView(dv.id, ctrl.signal)
+    materializeDynamicView(dv.id, ctrl.signal, hash)
       .then((result) => {
         if (ctrl.signal.aborted) return;
         if (result.status === "materialized") {
@@ -232,13 +195,13 @@ export function useDynamicViewMaterializeChain(
       });
   }, []);
 
-  // --- 5. Cascade effect — fires on matVersionKey OR dynamicViews change ---
+  // --- 5. Cascade effect -- fires on filterVersion / combinationVersion / dynamicViews change ---
   useEffect(() => {
     for (const dv of dynamicViews) {
       fireCascade(dv);
     }
 
-    // PITFALL 2 cleanup: prune controllers + last-seen entries for dvs no
+    // PITFALL 2 cleanup: prune controllers + last-token entries for dvs no
     // longer in the list (e.g., after a delete).
     const activeIds = new Set(dynamicViews.map((dv) => dv.id));
     for (const [id, ctrl] of cascadeControllersRef.current.entries()) {
@@ -247,11 +210,11 @@ export function useDynamicViewMaterializeChain(
         cascadeControllersRef.current.delete(id);
       }
     }
-    for (const id of lastSeenMatVerRef.current.keys()) {
-      if (!activeIds.has(id)) lastSeenMatVerRef.current.delete(id);
+    for (const id of lastTokenRef.current.keys()) {
+      if (!activeIds.has(id)) lastTokenRef.current.delete(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matVersionKey, dynamicViews, fireCascade]);
+  }, [filterVersion, spatialFilterVersion, combinationVersion, dynamicViews, widgets, fireCascade]);
 
   // --- 6. Unmount cleanup: abort all in-flight cascades ---
   useEffect(
@@ -263,7 +226,7 @@ export function useDynamicViewMaterializeChain(
   );
 
   // --- 7. Retry callback for renderer error states (Plan 35-05 consumes).
-  //     Force-fires regardless of last-seen matVer / cold-start gate so the
+  //     Force-fires regardless of the last-seen token / fast-path so the
   //     renderer's Retry button always re-attempts. AbortController dedup still
   //     applies (per-id Map ensures rapid retry-clicks don't pile in-flight).
   const retry = useCallback(

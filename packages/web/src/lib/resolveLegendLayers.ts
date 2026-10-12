@@ -13,6 +13,7 @@
  */
 
 import type { DashboardLayerDto } from "../api/client";
+import type { DynamicViewReason } from "../store/dynamicViewStore";
 import { isLayerActiveAtZoom } from "./zoomRangeBounds";
 
 /**
@@ -23,8 +24,9 @@ import { isLayerActiveAtZoom } from "./zoomRangeBounds";
  *
  *  - materialized   → dv is live; layer renders normally (no badge in panel)
  *  - pending        → materialize call in flight; layer hidden from map (transient)
- *  - over_threshold → dv result exceeds max_records; layer permanently hidden
- *                      until operator drops the threshold or the underlying data shrinks
+ *  - over_threshold → layer hidden. dvReason says why: "exceeds_max_records" (filtered result too
+ *                      large: narrow the filter or raise the cap) or "no_filter" (no filter applied:
+ *                      apply one, or tick Unlimited on the dynamic view)
  *  - error          → materialize failed; layer hidden; user-fixable
  *  - absent         → no entry in dv store yet (mount before first materialize attempt)
  */
@@ -35,6 +37,8 @@ export type ResolvedLegendLayer = {
   visible: boolean;
   /** Optional dv-materialization status; only set when layer.dynamic_view_id != null. */
   dvStatus?: DvLayerStatus;
+  /** Server reason for dvStatus "over_threshold"; only meaningful when dvStatus === 'over_threshold'. */
+  dvReason?: DynamicViewReason;
   /**
    * Phase 96 Plan 03 (COMM-V118-02): per-layer filter-scope indicator data.
    * Computed by the caller (MapChartRenderer) via computeFilterScopeSummary.
