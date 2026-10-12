@@ -12,12 +12,13 @@
  * LOCATION CONTRACT (Phase 58.1 v2 — single source of truth is getFieldLocation):
  *   "layer.config"  → read from layer.config[field]  (renderMode / visible / opacity)
  *   "layer"         → read from layer[field]          (track_config / cb_config — TOP-LEVEL)
- *   "widget.config" → read from widget.config[field]  (show_popup / metric / page_size / etc.)
+ *   "widget.config" → read from widget.config[field]  (real renderer key via WIDGET_OVERLAY_KEY_MAP: show_popup -> infoEnabled, page_size -> pageSize, etc.)
  *
  * IMPORTANT: renderMode (camelCase) is the ONLY render-mode key. The snake-case variant is not in the allow-list.
  * Field names in the returned patch match the allow-list key names exactly.
  */
 import { getFieldLocation } from "./actionAllowList";
+import { WIDGET_OVERLAY_KEY_MAP } from "./widgetOverlayKeys";
 import type { WidgetActionTarget } from "./widgetAction";
 import type { DashboardLayerDto, WidgetDto } from "../api/client";
 
@@ -109,8 +110,11 @@ export function captureAllowListedSubset(args: {
       value = (layer as Record<string, unknown> | undefined)?.[field];
     } else if (location === "widget.config") {
       if (target.kind === "widget") {
-        // Nested in widget.config
-        value = (widget?.config as Record<string, unknown> | undefined)?.[field];
+        // Nested in widget.config under the renderer's REAL key (GAP-134-01): the allow-list
+        // key (show_popup ...) is only the persisted option shape; saved widgets store
+        // infoEnabled / showScaleBar / showFullscreenButton / pageSize.
+        const realKey = WIDGET_OVERLAY_KEY_MAP[widgetType ?? ""]?.[field] ?? field;
+        value = (widget?.config as Record<string, unknown> | undefined)?.[realKey];
       } else if (target.kind === "dynamicView") {
         // DynamicView rows have no config blob — read from supplied dynamicViewConfig
         value = dynamicViewConfig?.[field];
