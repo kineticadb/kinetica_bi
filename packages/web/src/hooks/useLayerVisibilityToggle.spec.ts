@@ -16,12 +16,22 @@
  * global zustand shim in src/test/setup.ts). No DashboardContext provider is mounted,
  * so the server PATCH is skipped (dashboardId undefined) — exactly the legacy-render path.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import React from "react";
 import { renderHook, act } from "@testing-library/react";
 import { useLayerVisibilityToggle } from "./useLayerVisibilityToggle";
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import type { DashboardLayerDto } from "../api/client";
+import { DashboardContextProvider } from "../components/DashboardContext";
+import { useAiSessionStore } from "../store/aiSessionStore";
+import { baselineFixture, savedLayer, addLayerOp } from "../test/aiSessionHarness";
+
+const { updateLayerApi } = vi.hoisted(() => ({ updateLayerApi: vi.fn() }));
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, updateLayer: updateLayerApi };
+});
 
 function seedLayer(id: number, config: Record<string, unknown>): void {
   useDashboardLayersStore.getState().setLayers([
@@ -73,5 +83,47 @@ describe("useLayerVisibilityToggle — Phase 61 GAP-61-02 (live toggle releases 
     expect((layer.config as Record<string, unknown>).visible).toBe(false);
     // No overlay was ever set.
     expect(useWidgetActionStore.getState().layerOverrides[2]).toBeUndefined();
+  });
+});
+
+describe("useLayerVisibilityToggle - Phase 134 D-16 (AI session vs eye toggle)", () => {
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(
+      DashboardContextProvider,
+      { dashboardId: 1, widgets: [], dynamicViews: [], retryDynamicView: () => {} },
+      children,
+    );
+
+  beforeEach(() => {
+    updateLayerApi.mockReset();
+    updateLayerApi.mockResolvedValue({});
+    useAiSessionStore.getState().reset();
+  });
+
+  it("AIREAD-EYE-1: a SAVED layer still saves while an applied AI turn holds the edit lock (D-16)", () => {
+    seedLayer(7, { visible: true });
+    act(() => {
+      useAiSessionStore.getState().applyTurn(
+        { prompt: "p", ops: [addLayerOp(-2, 42)] },
+        baselineFixture({ layers: [savedLayer(7)] }),
+      );
+    });
+    const { result } = renderHook(() => useLayerVisibilityToggle(), { wrapper });
+    act(() => result.current(7, false));
+    expect(updateLayerApi).toHaveBeenCalledTimes(1);
+    expect(updateLayerApi.mock.calls[0][1]).toBe(7);
+    const layer = useDashboardLayersStore.getState().layers.find((l) => l.id === 7)!;
+    expect((layer.config as Record<string, unknown>).visible).toBe(false);
+  });
+
+  it("AIREAD-EYE-2: a temp (negative id) layer never reaches apiUpdateLayer or the saved store", () => {
+    // With correct wiring temp layers never enter this store; this guards the API boundary
+    // if a future change leaks one into it.
+    seedLayer(-2, { visible: true });
+    const { result } = renderHook(() => useLayerVisibilityToggle(), { wrapper });
+    act(() => result.current(-2, false));
+    expect(updateLayerApi).not.toHaveBeenCalled();
+    const layer = useDashboardLayersStore.getState().layers.find((l) => l.id === -2)!;
+    expect((layer.config as Record<string, unknown>).visible).toBe(true);
   });
 });
