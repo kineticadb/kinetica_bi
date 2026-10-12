@@ -594,10 +594,10 @@ const DashboardOpen = ({
   onDashboardUpdated?: (dashboard: DashboardDto) => void;
 }) => {
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
-  const canConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
-  const canDynamicViews = hasPermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE);
-  const canLayers       = hasPermission(PERMISSIONS.LAYERS_MANAGE);
+  const rawCanEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+  const rawCanConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
+  const rawCanDynamicViews = hasPermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE);
+  const rawCanLayers       = hasPermission(PERMISSIONS.LAYERS_MANAGE);
 
   const tablesQuery = useApiQuery<TableDto[]>(() => listDashboardTables(dashboard.id), [dashboard.id]);
   const widgetsQuery = useApiQuery<WidgetDto[]>(() => listWidgets(dashboard.id), [dashboard.id]);
@@ -617,6 +617,9 @@ const DashboardOpen = ({
   // returned dashboard back up so the Phase-107 isPanelMode XOR switch re-renders LIVE
   // (no reload). Errors propagate so DashboardSettingsModal's catch can toast.
   const handleChangeDisplayMode = async (mode: "topbar" | "panel") => {
+    // Belt-and-braces (134-RESEARCH Q4): buttons are gated by can*, but a stale closure or indirect
+    // route must not persist while AI changes are unsaved.
+    if (isAiEditLocked()) return;
     const updated = await updateDashboard(dashboard.id, { filter_display_mode: mode });
     onDashboardUpdated?.(updated);
   };
@@ -655,6 +658,12 @@ const DashboardOpen = ({
   const savedLayers = useDashboardLayersStore((s) => s.layers);
   const layers = useEffectiveLayers();
   const editLocked = useAiEditLock();
+  // Phase 134 D-07: ONE lock source AND-ed into the four gates; every toolbar button,
+  // WidgetCard control, Reconfigure CTA and saved-item drag/resize reads these.
+  const canEdit         = rawCanEdit && !editLocked;
+  const canConfigure    = rawCanConfigure && !editLocked;
+  const canDynamicViews = rawCanDynamicViews && !editLocked;
+  const canLayers       = rawCanLayers && !editLocked;
   const sessionDerived = useAiSessionStore((s) => s.derived);
   const sessionGeometry = useAiSessionStore((s) => s.geometry);
   const effectiveWidgets = useMemo(() => applySessionToWidgets(widgets, sessionDerived), [widgets, sessionDerived]);
@@ -1102,6 +1111,7 @@ const DashboardOpen = ({
   const refreshViews = () => viewsQuery.refetch();
 
   const handleAddTable = (tableId: number) => {
+    if (isAiEditLocked()) return;
     addDashboardTable(dashboard.id, tableId)
       .then((tables) => {
         setAssociatedTables(tables);
@@ -1120,6 +1130,7 @@ const DashboardOpen = ({
   };
 
   const handleRemoveTable = (tableId: number) => {
+    if (isAiEditLocked()) return;
     removeDashboardTable(dashboard.id, tableId)
       .then(() => {
         setAssociatedTables((prev) => prev.filter((t) => t.id !== tableId));
@@ -1129,6 +1140,7 @@ const DashboardOpen = ({
   };
 
   const handleAddVisualization = (type: string) => {
+    if (isAiEditLocked()) return;
     const chartDef = getChartType(type);
     const label = chartDef?.label ?? type;
     const defaults = chartDef?.defaultConfig ?? {};
@@ -1155,6 +1167,7 @@ const DashboardOpen = ({
   // the original in local state). Reuses the create endpoint (no server change) and drops the
   // copy below all existing widgets so it never overlaps its source.
   const handleDuplicateWidget = useCallback((source: WidgetDto) => {
+    if (isAiEditLocked()) return;
     const nextY = widgets.length > 0
       ? Math.max(...widgets.map((w, i) => {
           const l = getWidgetLayout(w, i);
@@ -1177,6 +1190,7 @@ const DashboardOpen = ({
   }, [widgets, dashboard.id]);
 
   const handleSaveConfig = (widget: WidgetDto, payload: { title: string; config: Record<string, unknown> }) => {
+    if (isAiEditLocked()) return;
     const layout = widget.config?.layout;
     const newConfig = { ...payload.config, layout };
     // Auto-save fires every onChange for custom-panel charts (e.g. map). Closing the
@@ -1201,6 +1215,7 @@ const DashboardOpen = ({
   };
 
   const handleRemoveWidget = useCallback((widgetId: number) => {
+    if (isAiEditLocked()) return;
     deleteWidget(widgetId)
       .then(() => setWidgets((prev) => prev.filter((w) => w.id !== widgetId)))
       .catch((err) => setError(err.message));
@@ -1209,7 +1224,21 @@ const DashboardOpen = ({
 
   // Phase 108 (FSCOPE-V120-02): stable wrapper around the setConfiguringWidget setter for
   // WidgetCard's onConfigure prop — React.memo prop-stability.
-  const handleConfigureWidget = useCallback((widget: WidgetDto) => setConfiguringWidget(widget), []);
+  // Phase 134: a modal opened before the lock engaged would otherwise still save.
+  useEffect(() => {
+    if (!editLocked) return;
+    setShowTableModal(false);
+    setShowVizModal(false);
+    setShowLayersModal(false);
+    setShowDynamicViewsModal(false);
+    setShowSettingsModal(false);
+    setConfiguringWidget(null);
+  }, [editLocked]);
+
+  const handleConfigureWidget = useCallback((widget: WidgetDto) => {
+    if (isAiEditLocked()) return;
+    setConfiguringWidget(widget);
+  }, []);
 
   const handleLayoutChange = (layout: Layout) => {
     // Phase 134: AI-widget rects (negative temp ids) go to session geometry, never the DB.
@@ -1263,6 +1292,7 @@ const DashboardOpen = ({
   }, [dashboard.id]);
 
   const handleLayerPatch = useCallback((layerId: number, patch: Partial<DashboardLayerDto>) => {
+    if (isAiEditLocked()) return;
     // 1. Optimistic store update (immediate UI feedback — no await)
     useDashboardLayersStore.getState().updateLayer(layerId, patch);
     // 2. Stash patch in ref (latest wins per layer)
@@ -1274,6 +1304,7 @@ const DashboardOpen = ({
   }, [flushPendingPatches]);
 
   const handleLayerCreate = useCallback(async () => {
+    if (isAiEditLocked()) return;
     if (associatedTables.length === 0) {
       useToastStore.getState().showToast("Add a table to this dashboard first.", "info");
       return;
@@ -1321,6 +1352,7 @@ const DashboardOpen = ({
   }, [dashboard.id, associatedTables]);
 
   const handleLayerDelete = useCallback(async (layerId: number) => {
+    if (isAiEditLocked()) return;
     try {
       await apiDeleteLayer(dashboard.id, layerId);
       useDashboardLayersStore.getState().removeLayer(layerId);
@@ -1332,6 +1364,7 @@ const DashboardOpen = ({
   }, [dashboard.id]);
 
   const handleLayerDuplicate = useCallback(async (layerId: number) => {
+    if (isAiEditLocked()) return;
     const source = useDashboardLayersStore.getState().layers.find((l) => l.id === layerId);
     if (!source) return;
     try {
@@ -1345,6 +1378,7 @@ const DashboardOpen = ({
   }, [dashboard.id]);
 
   const handleLayerReorder = useCallback(async (orderedIds: number[]) => {
+    if (isAiEditLocked()) return;
     const current = useDashboardLayersStore.getState().layers;
     const reordered = orderedIds
       .map((id) => current.find((l) => l.id === id))
@@ -1369,6 +1403,7 @@ const DashboardOpen = ({
   }, [flushPendingPatches]);
 
   useEffect(() => {
+    if (isAiEditLocked()) return;
     if (showLayersModal && savedLayers.length === 0 && associatedTables.length > 0) {
       void handleLayerCreate();
     }
@@ -1403,30 +1438,60 @@ const DashboardOpen = ({
     <>
       <div className="dashboard-open-title">{dashboard.name}</div>
       <div className="dashboard-toolbar">
-        {canEdit && (
-          <button className="btn-primary btn-sm" onClick={() => setShowTableModal(true)}>
+        {rawCanEdit && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowTableModal(true)}
+          >
             Tables
           </button>
         )}
-        {canDynamicViews && (
-          <button className="btn-primary btn-sm" onClick={() => setShowDynamicViewsModal(true)}>
+        {rawCanDynamicViews && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowDynamicViewsModal(true)}
+          >
             Dynamic Views
           </button>
         )}
-        {canLayers && (
-          <button className="btn-primary btn-sm" onClick={() => setShowLayersModal(true)}>
+        {rawCanLayers && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowLayersModal(true)}
+          >
             Map Layers
           </button>
         )}
-        {canEdit && (
-          <button className="btn-primary btn-sm" onClick={() => setShowVizModal(true)}>
+        {rawCanEdit && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowVizModal(true)}
+          >
             Visualizations
           </button>
         )}
-        {canEdit && (
-          <button className="btn-primary btn-sm" onClick={() => setShowSettingsModal(true)}>
+        {rawCanEdit && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowSettingsModal(true)}
+          >
             Settings
           </button>
+        )}
+        {editLocked && (
+          <span className="config-hint" role="status">
+            Unsaved AI changes: editing is locked until they are kept or discarded.
+          </span>
         )}
         <button className="ghost-sm" onClick={onBack}>Back</button>
       </div>
@@ -1767,6 +1832,8 @@ const DashboardOpen = ({
     </div>
   );
 };
+
+const LOCK_TOOLTIP = "Keep or discard the AI changes first";
 
 const VisualizationPickerModal = ({
   onSelect,
