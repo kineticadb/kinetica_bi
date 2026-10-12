@@ -62,6 +62,7 @@ import {
   KineticaUpstreamError,
 } from "./kineticaErrors";
 import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
+import { startAiAuditSweep } from "./lib/aiAudit";
 import { getExportLimits } from "./lib/exportCaps";
 import { loadAiConfig } from "./lib/aiConfig";
 import { createSession, deleteSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
@@ -3384,7 +3385,7 @@ export const errorMiddleware = (
 
 if (process.env.NODE_ENV !== "test") {
   // Async IIFE — the bootstrap regex test (tests/bootstrap.spec.ts) verifies that this
-  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen and startExportSweep() after). All live inside the IIFE
+  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen, startExportSweep() after, and the Phase 135 AI audit sweep last). All live inside the IIFE
   // body which is itself inside the gate's brace block, so the regex matches.
   void (async () => {
     try {
@@ -3402,6 +3403,8 @@ if (process.env.NODE_ENV !== "test") {
       startSessionSweep();
       // Phase 130 D-04: export expiry sweep (first pass immediately, then every 5 min, .unref()'d).
       startExportSweep();
+      // Phase 135 D-10: AI audit retention sweep — runs even when AI is disabled (rows outlive a config change).
+      startAiAuditSweep();
     } catch (err) {
       console.error(
         JSON.stringify({

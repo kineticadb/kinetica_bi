@@ -73,6 +73,14 @@ describe("bootstrap gate (Phase 3 EADDRINUSE regression)", () => {
     expect(src.match(/reconcileExportsOnBoot\(\)/g)?.length).toBe(1);
   });
 
+  it("AIAUDIT-boot: startAiAuditSweep() is called once, after startExportSweep(), inside the NODE_ENV gate", () => {
+    const src = readFileSync(resolve(__dirname, "../src/index.ts"), "utf-8");
+    expect(
+      /if\s*\(\s*process\.env\.NODE_ENV\s*!==\s*"test"\s*\)\s*\{[\s\S]*?startExportSweep\(\);[\s\S]*?startAiAuditSweep\(\);/.test(src),
+    ).toBe(true);
+    expect(src.match(/startAiAuditSweep\(\)/g)?.length).toBe(1);
+  });
+
   it.skip("does NOT call app.listen or startSessionSweep when NODE_ENV === 'test' (runtime check)", async () => {
     // Skipped by default — vi.doMock + resetModules + dynamic import is fragile in this codebase
     // because tests/helpers/app.ts has already imported src/index in other specs. The structural
