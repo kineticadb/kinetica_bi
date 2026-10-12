@@ -24,7 +24,7 @@ import { LayersLegendPanel } from "../LayersLegendPanel";
 import type { DvLayerStatus, ResolvedLegendLayer } from "../LayersLegendPanel";
 import { resolveLegendLayers } from "../../lib/resolveLegendLayers";
 import { applyLayerOverrides } from "../../lib/applyLayerOverrides";
-import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { useEffectiveLayers } from "../../hooks/useEffectiveLayers";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useMapCurrentViewStore } from "../../store/mapCurrentViewStore";
@@ -70,7 +70,7 @@ export default function LegendRenderer({
   // renderMode/cb_config rendered on the map + in-map legend but showed "No breaks
   // configured" here (legend out of sync with the map). Both paths now merge via the
   // shared applyLayerOverrides helper so they can't drift.
-  const allLayers = useDashboardLayersStore((s) => s.layers);
+  const allLayers = useEffectiveLayers();
   const layerOverrides = useWidgetActionStore((s) => s.layerOverrides);
   const effectiveLayers = useMemo(
     () => applyLayerOverrides(allLayers, layerOverrides),
