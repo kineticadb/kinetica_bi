@@ -1,5 +1,6 @@
 // Phase 134: pure apply-time evaluation + fold of the session op-log. No stores, no toast, no
 // runtime api/client imports. See types.ts for the op-log-vs-inverse design note.
+import { translateWidgetOverlay } from "../widgetOverlayKeys";
 import { parseAiOp, validateActionPatch, validateLayerSnapshot } from "@kinetica-bi/shared";
 import type { AiOp } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
@@ -223,7 +224,7 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
         const { target, configPatch } = op.action;
         if (target.kind === "widget") {
           const temp = addedWidgets.get(target.id);
-          if (temp) addedWidgets.set(target.id, { ...temp, config: { ...temp.config, ...configPatch } });
+          if (temp) addedWidgets.set(target.id, { ...temp, config: { ...temp.config, ...translateWidgetOverlay(temp.type, configPatch) } });
           else contribution.widget[target.id] = { ...contribution.widget[target.id], ...configPatch };
         } else if (target.kind === "layer") {
           const temp = addedLayers.get(target.id);

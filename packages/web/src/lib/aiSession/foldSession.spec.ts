@@ -97,7 +97,7 @@ describe("foldSession", () => {
       patch("widget", -1, { page_size: 25 }),
     ]);
     const d = foldSession(baseline, t);
-    expect(d.addedWidgets[0].config.page_size).toBe(25);
+    expect(d.addedWidgets[0].config.pageSize).toBe(25); // 134-10: translated to the renderer key
     expect(Object.keys(d.contribution.widget)).not.toContain("-1");
   });
   it("OVK-F1: patch on an AI-added map translates show_scale_bar to the renderer key", () => {

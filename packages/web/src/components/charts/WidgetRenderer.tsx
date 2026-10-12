@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { translateWidgetOverlay } from "../../lib/widgetOverlayKeys";
 import MapChartRenderer from "./MapChartRenderer";
 import WidgetErrorBoundary from "../WidgetErrorBoundary";
 import InfoCardRenderer from "./InfoCardRenderer";
@@ -347,15 +348,17 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
   // map widgets skip this merge because their layer config is handled by
   // MapChartRenderer via effectiveLayers (useDashboardLayersStore + layerOverrides).
   // The widget.config merge still applies to non-layer widget-level config fields
-  // (e.g. show_popup / show_scale_bar for map widgets).
+  // (e.g. show_popup / show_scale_bar for map widgets). Allow-list snake keys are translated to the
+  // renderer's real keys (showScaleBar / showFullscreenButton / infoEnabled / pageSize) by
+  // translateWidgetOverlay — GAP-134-01.
   const widgetOverlay = useWidgetActionStore((s) => s.widgetOverrides[widget.id] ?? null);
   const effectiveWidget = widgetOverlay
-    ? { ...widget, config: { ...(widget.config ?? {}), ...widgetOverlay } }
+    ? { ...widget, config: { ...(widget.config ?? {}), ...translateWidgetOverlay(widget.type, widgetOverlay) } }
     : widget;
 
   let body: ReactElement;
   if (effectiveWidget.type === "map") {
-    // Pass effectiveWidget so widget.config-level fields (show_popup, show_scale_bar, etc.)
+    // Pass effectiveWidget so widget.config-level fields (showScaleBar, infoEnabled, etc., after translation)
     // reflect any overlay-merged config. Map LAYER overlays are handled separately inside
     // MapChartRenderer via effectiveLayers (see Phase 58 Plan 02 wiring there).
     body = <MapChartRenderer widget={effectiveWidget} tables={tables} />;
