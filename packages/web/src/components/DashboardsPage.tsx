@@ -77,6 +77,8 @@ import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
 import { useAiSessionStore } from "../store/aiSessionStore";  // Phase 134 (AISES-V20-01/07)
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
+import { useAiSessionActions } from "../hooks/useAiSessionActions";
+import type { SessionBaseline } from "../lib/aiSession/types";
 import { useEffectiveLayers } from "../hooks/useEffectiveLayers";
 import { applySessionToWidgets } from "../lib/aiSession/applySession";
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
@@ -798,6 +800,29 @@ const DashboardOpen = ({
       useAiSessionStore.getState().reset();
     };
   }, [dashboard.id]);
+
+  // Phase 134 (DEV only): console harness for scripted AI turns. The `import.meta.env.DEV` gate
+  // lets the bundler drop this import (and the harness module) from production builds.
+  const aiBaselineRef = useRef<SessionBaseline | null>(null);
+  aiBaselineRef.current = {
+    dashboardId: dashboard.id,
+    widgets,
+    layers: savedLayers,
+    dynamicViewIds: dynamicViews.map((dv) => dv.id),
+  };
+  const aiActions = useAiSessionActions(() => aiBaselineRef.current!);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let uninstall: (() => void) | undefined;
+    let cancelled = false;
+    void import("../lib/aiSession/devHarness").then((m) => {
+      if (!cancelled) uninstall = m.installAiDevHarness(aiActions, () => aiBaselineRef.current?.widgets ?? []);
+    });
+    return () => {
+      cancelled = true;
+      uninstall?.();
+    };
+  }, [aiActions]);
 
   // Phase 113 (DLINK-V121-07): leaving an open dashboard by ANY route must clear the
   // address bar. App.tsx:318 renders DashboardsPage conditionally, so a sidebar click to
