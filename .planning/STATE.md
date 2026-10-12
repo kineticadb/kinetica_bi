@@ -27,7 +27,7 @@ Milestone: v2.0 AI-Driven Dashboards
 Phase: 134 complete — next: 135 (can start now; 134 and 135 are disjoint)
 Plan: —
 Status: Phase 134 complete (10/10 plans, operator-approved 2026-10-12; gap plan 134-10 closed GAP-134-01/02)
-Last activity: 2026-10-12 — Phase 134 complete (gates green, operator browser check approved after gap round). New debt TD-V20-ALLOWLIST-KEYS logged for Phase 136. Pending items below carried.
+Last activity: 2026-10-12 — Phase 135 context gathered (ai:use for admin+designer; recent-turns+summary memory; full-answer audit 90d; caps 30/h)
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.

@@ -71,7 +71,7 @@
 - [ ] **AIGOV-V20-02**: An admin sets AI data access through env: **schema** (default — the AI sees table structure and dashboard config; no row value ever reaches the provider, proven with a planted value) or **query** (the AI may also run queries).
 - [ ] **AIGOV-V20-03**: In query mode, AI queries are single read-only SELECT statements, run as the user with their own Kinetica credentials and a row cap; anything else is refused.
 - [ ] **AIGOV-V20-04**: Every AI answer is logged — who asked, on which dashboard, the question, the tools run, the changes applied or rejected, and the outcome — with no row values.
-- [ ] **AIGOV-V20-05**: An admin can browse the AI log on an audit page gated by its own permission.
+- [ ] **AIGOV-V20-05**: An admin can browse the AI log on an audit page gated by the existing `audit:view` permission. *(Changed 2026-10-12, Phase 135 discussion — was "its own permission".)*
 - [ ] **AIGOV-V20-06**: An admin sets AI usage caps through env (steps per answer, answers per user per hour); a capped user is told why.
 
 ## v2 Requirements

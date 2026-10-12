@@ -209,7 +209,7 @@ Plans:
 **Depends on:** 141
 **Requirements:** AIGEN-V20-01, AIGEN-V20-02, AIGOV-V20-05, AIPRV-V20-02, AIPRV-V20-03
 **Research flag:** standard
-**RBAC note:** this phase OWNS the audit-viewer permission and its own spec ripple — one plan.
+**RBAC note:** the audit viewer reuses the existing `audit:view` permission (Phase 135 D-11, 2026-10-12) — no new permission, no spec ripple here.
 **Success Criteria:**
 1. A designer picks a table and gets 4–8 widgets suited to its columns, refinable by asking and keepable (operator human-verify of fit and layout).
 2. Discarding a generated dashboard leaves no dashboard, widgets or views (checked in SQLite and Kinetica).
