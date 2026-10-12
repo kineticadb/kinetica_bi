@@ -30,9 +30,36 @@ declare global {
 }
 
 export function installAiDevHarness(actions: Actions, getSavedWidgets: () => readonly WidgetDto[]): () => void {
+  // GAP-134-02: tell the operator where the session is after every move. Turn indices include
+  // patch-only turns (invisible), so print the cursor, turn count, turn list and visible AI widgets.
+  const reportPosition = (action: string): void => {
+    const st = useAiSessionStore.getState();
+    console.table([
+      {
+        action,
+        cursor: st.cursor,
+        turnCount: st.turns.length,
+        visibleAiWidgets: st.derived.addedWidgets.map((w) => `${w.id}:${w.title}`).join(", ") || "(none)",
+        ...(st.droppedCount > 0 ? { droppedCount: st.droppedCount } : {}),
+      },
+    ]);
+    console.table([
+      { index: -1, prompt: "saved dashboard", ops: "", current: st.cursor === -1 ? "<- current" : "" },
+      ...st.turns.map((t, index) => ({
+        index,
+        prompt: t.prompt,
+        ops: t.entries
+          .filter((e) => e.result.status === "applied")
+          .map((e) => (e.op as { op?: string } | null)?.op ?? "?")
+          .join(", "),
+        current: index === st.cursor ? "<- current" : "",
+      })),
+    ]);
+  };
   const run = (ops: unknown[], prompt = "harness turn") => {
     const res = actions.applyTurn({ prompt, ops });
     console.table(res.entries.map((e) => ({ op: (e.op as { op?: string } | null)?.op ?? "?", ...e.result })));
+    reportPosition("turn");
     return res;
   };
   const harness: Harness = {
@@ -42,8 +69,14 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
     removeWidget: (id) => run([{ op: "remove_widget", id }]),
     patchWidget: (id, configPatch) => run([{ op: "patch", action: { target: { kind: "widget", id }, configPatch } }]),
     // -1 = the saved dashboard; N = state after turn N
-    revert: (index) => actions.setCursor(index),
-    forward: (index) => actions.setCursor(index),
+    revert: (index) => {
+      actions.setCursor(index);
+      reportPosition(`revert(${index})`);
+    },
+    forward: (index) => {
+      actions.setCursor(index);
+      reportPosition(`forward(${index})`);
+    },
     discard: () => actions.discard(),
     state: () => {
       const s = useAiSessionStore.getState();
@@ -63,6 +96,9 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
           "  addWidget(type='records', title, config)   removeWidget(id)   patchWidget(id, configPatch)",
           "  turn(ops[], prompt)   revert(i)/forward(i) (-1 = saved dashboard)   discard()   state()",
           "  map widgets accept show_popup / show_scale_bar / show_fullscreen; records accept page_size",
+          "  e.g. patchWidget(<mapId>, { show_scale_bar: true })  (false equals the default, so it shows no change)",
+          "  Turn indices include patch turns: every addWidget/patchWidget/removeWidget/turn call is one turn (e.g. patch then add => the add is turn 1)",
+          "  revert(-1) shows the saved dashboard but editing stays locked until discard()",
           `  saved widgets: ${saved}`,
         ].join("\n"),
       );
