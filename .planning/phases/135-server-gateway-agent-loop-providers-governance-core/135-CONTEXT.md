@@ -41,6 +41,10 @@ Out of scope here: the chat UI / drawer / revert buttons (137), real structural 
 - **D-14** Provider **HTTP 429 mid-answer: wait and retry briefly** — honour `Retry-After`, up to ~20 s total within the answer, emitting a "Waiting for the AI provider…" status; then stop with a clear message. Because answers apply atomically, nothing from a failed answer is applied.
 - **D-15** Cap messages are **specific and say when**: e.g. "You've used 30 AI answers this hour. Try again in 12 minutes." / "This answer reached the 8-step limit; try a more specific question." / daily: "The AI's daily limit for this deployment has been reached." Admins can raise limits via env.
 
+### Decisions added after research (2026-10-12)
+- **D-16** **Session-only structural ops are allowed for any `ai:use` user**, including analysts without dashboard-edit rights: the AI may add/remove/edit widgets, layers (and later filters/dvs) in that user's own session; nothing is saved and others never see it. The gateway's per-op permission check is therefore: `ai:use` + the user can view the dashboard + the user can access every table/column the op references. **Edit rights (`dashboards:edit`, `widgets:configure`, `layers:manage`, `dynamic_views:manage`) are enforced at Keep (Phase 141)**, not at session-apply. Roadmap 135 criterion 1 reworded accordingly.
+- **D-17** History sent back to the AI (D-05/D-06) = for each of the last ~6 exchanges: the user's question, **the AI's answer text**, and the change log of what actually happened (applied/skipped ops); older turns as a short change-log-derived summary.
+
 ### Claude's Discretion
 - Gateway/tool-registry design, SSE event shapes, provider interface details (normalised events + capability flags per research), where caps are counted (SQLite table vs in-memory + audit-derived), summary generation method for D-05 (deterministic from the change log is preferred over an extra model call).
 

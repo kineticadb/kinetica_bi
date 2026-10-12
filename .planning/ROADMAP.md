@@ -119,7 +119,7 @@ Plans:
 **Research flag:** yes (S6 tool calling on Gemini / a local model)
 **RBAC note:** this phase OWNS the "Use AI" permission and its ripple across the count-asserting specs (rbacDb, rbacMigration, web permissions, RolesPage) plus `permissionGroups` wiring — assign it to ONE plan.
 **Success Criteria:**
-1. A change failing any gateway check (shape, allow-list, permission, live schema) is rejected and never reaches the browser; a valid change from a user lacking the right is rejected.
+1. A change failing any gateway check (shape, allow-list, permission, live schema) is rejected and never reaches the browser; a change from a user lacking `ai:use`, view access to the dashboard, or access to a referenced table/column is rejected. (Session-only structural changes are allowed for any `ai:use` user; edit rights are enforced at Keep, Phase 141 — 135 D-16.)
 2. A user without "Use AI" is refused by the server; an admin can grant it on the Roles page; the AI sees only tables the user can see.
 3. In schema mode a planted canary row value never appears in any outbound provider message, including error paths; the API key never reaches the browser or logs.
 4. Each answer writes an audit record with no row values; exceeding the step or hourly cap returns a message saying why.
