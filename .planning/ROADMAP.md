@@ -124,7 +124,21 @@ Plans:
 3. In schema mode a planted canary row value never appears in any outbound provider message, including error paths; the API key never reaches the browser or logs.
 4. Each answer writes an audit record with no row values; exceeding the step or hourly cap returns a message saying why.
 5. The Claude adapter passes unit tests against recorded fixtures and is documented as not live-verified; tests never call a real provider or read the dev key.
-**Plans:** TBD
+**Plans:** 12 plans (6 waves)
+
+Plans:
+- [ ] 135-01-PLAN.md — `ai:use` permission + full RBAC ripple (server catalog/seed/specs, web mirror, "AI" group, Roles page) [W1]
+- [ ] 135-02-PLAN.md — Contracts: shared AskRequestSchema (D-17), AI cap/history/tool-mode config + env blanking, provider/tool types, SSE parser, egress choke point, AI test kit [W1]
+- [ ] 135-03-PLAN.md — ai_audit table, SQLite-derived caps with exact D-15 messages, retention sweep wired after startExportSweep [W1]
+- [ ] 135-04-PLAN.md — OpenAI-compatible adapter (hand-written fixtures, Gemini quirks) + D-14 retry budget [W2]
+- [ ] 135-05-PLAN.md — Claude adapter (doc fixtures, NOT live-verified) + JSON action-plan fallback decorator [W2]
+- [ ] 135-06-PLAN.md — Gateway (shape → allow-list → permission → reference → live schema; D-16 semantics) + shadow + user-credentialed live schema [W2]
+- [ ] 135-07-PLAN.md — Tool registry: read tools (access-filtered), validate-only mutate tools, flat schemas, schema-mode query gate [W2]
+- [ ] 135-08-PLAN.md — Context builder: snapshot projection, system prompt, bounded history with answer text (D-05/06/17) [W2]
+- [ ] 135-09-PLAN.md — Agent loop: atomic buffered ops, step cap, 429 retry, cancel/timeout/session re-check + scripted/recording providers [W3]
+- [ ] 135-10-PLAN.md — /api/ai/ask (SSE) + /api/ai/config, provider factory, ai:use 403, caps 429, one audit row per answer [W4]
+- [ ] 135-11-PLAN.md — End-to-end proofs: schema-mode canary egress matrix + key-sentinel matrix with positive controls [W5]
+- [ ] 135-12-PLAN.md — S6 spike (operator-run checkpoint), tested-models matrix, provider docs, phase bookkeeping [W6]
 
 ### Phase 136: Structural & Edit Ops
 **Goal:** The AI can add, remove and edit visualizations and map layers and place them sensibly, with every change validated against the live schema.
