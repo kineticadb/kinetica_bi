@@ -33,6 +33,7 @@ export function useLayerVisibilityToggle(): (
 
   return useCallback(
     (layerId: number, nextVisible: boolean) => {
+      if (layerId < 0) return; // Phase 134 D-16: AI temp layers are session-only; never reach the saved store or apiUpdateLayer. Visibility of AI layers is wired in Phase 136.
       const layer = useDashboardLayersStore
         .getState()
         .layers.find((l) => l.id === layerId);
