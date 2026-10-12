@@ -221,6 +221,28 @@ const SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS idx_rbac_audit_ts ON rbac_audit (ts);
   CREATE INDEX IF NOT EXISTS idx_rbac_audit_actor ON rbac_audit (actor);
 
+  -- v2.0 Phase 135 (AIGOV-V20-04, D-09): one row per AI answer; never row values; also the cap counter (D-12/D-13).
+  CREATE TABLE IF NOT EXISTS ai_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_ms INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    dashboard_id INTEGER,
+    request_id TEXT,
+    question TEXT NOT NULL,
+    answer_text TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    outcome TEXT,
+    outcome_detail TEXT,
+    counted INTEGER NOT NULL DEFAULT 1,
+    provider TEXT, model TEXT, data_access TEXT, allow_list_version TEXT,
+    steps INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+    tools_json TEXT,
+    changes_json TEXT,
+    duration_ms INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_audit_ts ON ai_audit (ts_ms);
+  CREATE INDEX IF NOT EXISTS idx_ai_audit_user_ts ON ai_audit (username, ts_ms);
+
   -- v1.10 Phase 55 (ACCESS-V110-02): per-dashboard view-access grants. App-local
   -- visibility layer (Kinetica creds remain the data authority). Single table with a
   -- grantee_type discriminator covers BOTH user grants (lowercased free-form username —
