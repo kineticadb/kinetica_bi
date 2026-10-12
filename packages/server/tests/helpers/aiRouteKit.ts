@@ -112,3 +112,61 @@ export async function readSse(resp: Response): Promise<SseEv[]> {
   for await (const ev of parseSseStream(resp.body!)) out.push({ event: ev.event ?? "message", data: JSON.parse(ev.data) });
   return out;
 }
+
+import type { Express } from "express";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import type { LlmEvent, LlmProvider } from "../../src/lib/ai/provider";
+
+/** Listen on an ephemeral port; use with a fetch captured BEFORE forbidProviderNetwork stubs the global. */
+export async function listenApp(app: Express): Promise<{ base: string; server: Server }> {
+  const server: Server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  return { base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, server };
+}
+
+export const toolCall = (id: string, name: string, args: unknown): LlmEvent => ({
+  type: "tool_call",
+  id,
+  name,
+  argsRaw: typeof args === "string" ? args : JSON.stringify(args),
+});
+export const TOOLS_DONE: LlmEvent = { type: "done", finish: "tool_calls" };
+export const finalText = (text: string, usage?: { inputTokens?: number; outputTokens?: number }): LlmEvent[] => [
+  { type: "text_delta", text },
+  ...(usage ? [{ type: "usage", ...usage } as LlmEvent] : []),
+  { type: "done", finish: "stop" },
+];
+
+export const addWidgetArgs = (tableId: number, over: Record<string, unknown> = {}) => ({
+  tempId: -1,
+  type: "bar",
+  title: "Trips by zone",
+  tableId,
+  config: { metricColumn: "fare", groupByColumn: "zone" },
+  ...over,
+});
+
+const CAPS = { nativeTools: true, parallelTools: true, streaming: true, usageInStream: true, forcedToolChoice: false, opaqueReplay: false };
+/** A provider driven by an async function (for waits / signal capture). */
+export function customProvider(run: (signal: AbortSignal, call: number) => AsyncGenerator<LlmEvent>): LlmProvider & { signals: AbortSignal[] } {
+  const signals: AbortSignal[] = [];
+  let n = 0;
+  return {
+    id: "custom", model: "m", capabilities: CAPS, signals,
+    complete(_req, signal) {
+      signals.push(signal);
+      return run(signal, n++);
+    },
+  };
+}
+
+export async function pollUntil(cond: () => boolean, ms = 3000): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (cond()) return true;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  return cond();
+}

@@ -137,9 +137,11 @@ describe("POST /api/ai/ask pre-stream refusals", () => {
     const dash = makeDashboard();
     const { cookie } = sessionFor("dee", ["designer"]);
     const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now); // freeze: the exact "12 minutes / 720 s" must not depend on machine load
     insertAudit("dee", now - 48 * 60_000);
     for (let i = 1; i < 30; i++) insertAudit("dee", now - (47 - i) * 60_000 + 1000);
     const res = await request(app).post("/api/ai/ask").set("Cookie", cookie).send(validAsk(dash.id));
+    clock.mockRestore();
     expect(res.status).toBe(429);
     expect(res.headers["retry-after"]).toBe("720");
     expect(res.headers["content-type"]).toContain("json");
