@@ -27,6 +27,9 @@ import { useFilterCombinationStore } from "./store/filterCombinationStore";
 import { useMapViewportSyncStore } from "./store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "./store/filterHighlightStore";
 import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
+import { useAiSessionStore } from "./store/aiSessionStore";
+import { requestLeave } from "./lib/aiLeaveGuard";
+import AiLeaveDialog from "./components/AiLeaveDialog";
 import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
 import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl, type DashboardMode } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
@@ -300,6 +303,8 @@ const App = () => {
       // session-only, no server DROP. Prevents one user's map views leaking into the next
       // session's config-panel readouts.
       useMapCurrentViewStore.getState().reset();
+      // Phase 134 (AISES-V20-07): 14th store — AI session layer; logout/401 is not promptable, reset unconditionally.
+      useAiSessionStore.getState().reset();
     }
   }, [status]);
 
@@ -415,8 +420,10 @@ const App = () => {
   // dashboards page.
   useEffect(() => {
     const onNav = () => {
-      setPage("exports");
-      setDashboardViewMode("list");
+      requestLeave(() => {
+        setPage("exports");
+        setDashboardViewMode("list");
+      });
     };
     window.addEventListener(NAVIGATE_EXPORTS_EVENT, onNav);
     return () => window.removeEventListener(NAVIGATE_EXPORTS_EVENT, onNav);
@@ -624,18 +631,20 @@ const App = () => {
             if (!window.confirm("Discard unsaved branding changes?")) return;
             brandPageGuard.revert?.();
           }
-          setPage(key as Page);
-          setDashboardViewMode("list");
+          requestLeave(() => {
+            setPage(key as Page);
+            setDashboardViewMode("list");
+          });
         }}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />
       <div className="main">
-        <Topbar onNavigateProfile={() => setPage("profile")} />
+        <Topbar onNavigateProfile={() => requestLeave(() => setPage("profile"))} />
         {unassignedCount !== null && unassignedCount > 0 && !bannerDismissed && (
           <div className="onboarding-banner" role="status">
             {unassignedCount} user{unassignedCount !== 1 ? "s are" : " is"} on the default analyst role —{" "}
-            <button className="banner-link" onClick={() => setPage("users")}>
+            <button className="banner-link" onClick={() => requestLeave(() => setPage("users"))}>
               Review in User Management
             </button>
             <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setBannerDismissed(true)}>×</button>
@@ -666,6 +675,7 @@ const App = () => {
       </div>
       <BrandStyleInjector />
       <Toast />
+      <AiLeaveDialog />
     </div>
   );
 };
