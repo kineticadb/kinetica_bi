@@ -90,8 +90,7 @@ describe("useLayerVisibilityToggle - Phase 134 D-16 (AI session vs eye toggle)",
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(
       DashboardContextProvider,
-      { dashboardId: 1, widgets: [], dynamicViews: [], retryDynamicView: () => {} },
-      children,
+      { dashboardId: 1, widgets: [], dynamicViews: [], retryDynamicView: () => {}, children },
     );
 
   beforeEach(() => {
