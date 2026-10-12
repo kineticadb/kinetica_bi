@@ -154,6 +154,7 @@ import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboa
 // v1.16 Phase 81 (BRANDFND-02, SECA-V116-01): branding deps — multer upload, magic-byte
 // type detection, jsdom DOM environment, DOMPurify SVG sanitization.
 import { registerExportRoutes } from "./exportRoutes";
+import { registerAiRoutes } from "./aiRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -1280,6 +1281,8 @@ export const createApp = async (): Promise<express.Express> => {
 
   // v1.26 Phase 129: background export routes (requireAuth only — see boundary list above).
   registerExportRoutes(app);
+  // v2.0 Phase 135: AI routes (POST /api/ai/ask requires ai:use; GET /api/ai/config requireAuth).
+  registerAiRoutes(app);
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.

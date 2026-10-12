@@ -22,7 +22,7 @@ export function getAiProviderFactory(): AiProviderFactory {
   return override ?? createProviderFromConfig;
 }
 
-/** TEST seam: route specs inject scripted providers. null restores the default. */
+/** TEST seam: route specs inject fake providers. null restores the default. */
 export function __setAiProviderFactoryForTest(f: AiProviderFactory | null): void {
   override = f;
 }
