@@ -91,7 +91,7 @@ describe("devHarness feedback (GAP-134-02)", () => {
 
   it("HFB-5: help() explains turn numbering and suggests show_scale_bar: true", () => {
     h().help();
-    const out = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    const out = (logSpy.mock.calls as unknown[][]).map((c) => String(c[0])).join("\n");
     expect(out).toContain("Turn indices include patch turns");
     expect(out).toContain("show_scale_bar: true");
   });
