@@ -124,3 +124,35 @@ describe("parseAiConfig", () => {
     expect(formatAiConfigLog(parseAiConfig(OLLAMA))).toContain("contract=v3");
   });
 });
+
+describe("Phase 135 caps / history / tool mode", () => {
+  it("CAPS-1: defaults when blank", () => {
+    const r = parseAiConfig(OLLAMA);
+    if (!r.enabled) throw new Error("expected enabled");
+    expect(r.config.maxAnswersPerUserPerHour).toBe(30);
+    expect(r.config.maxAnswersPerDay).toBe(0);
+    expect(r.config.historyTurns).toBe(6);
+    expect(r.config.toolMode).toBe("native");
+  });
+
+  it("CAPS-2: overrides and invalid values", () => {
+    const hour0 = parseAiConfig({ ...OLLAMA, AI_MAX_ANSWERS_PER_USER_PER_HOUR: "0" });
+    if (!hour0.enabled) throw new Error("expected enabled");
+    expect(hour0.config.maxAnswersPerUserPerHour).toBe(0);
+    expect(errorsOf({ ...OLLAMA, AI_MAX_ANSWERS_PER_USER_PER_HOUR: "abc" }).join(";")).toContain("AI_MAX_ANSWERS_PER_USER_PER_HOUR");
+    expect(errorsOf({ ...OLLAMA, AI_MAX_ANSWERS_PER_DAY: "-1" }).join(";")).toContain("AI_MAX_ANSWERS_PER_DAY");
+    expect(errorsOf({ ...OLLAMA, AI_HISTORY_TURNS: "0" }).join(";")).toContain("AI_HISTORY_TURNS");
+    expect(errorsOf({ ...OLLAMA, AI_HISTORY_TURNS: "21" }).join(";")).toContain("AI_HISTORY_TURNS");
+    const json = parseAiConfig({ ...OLLAMA, AI_TOOL_MODE: "json" });
+    if (!json.enabled) throw new Error("expected enabled");
+    expect(json.config.toolMode).toBe("json");
+    expect(errorsOf({ ...OLLAMA, AI_TOOL_MODE: "xml" }).join(";")).toContain("AI_TOOL_MODE");
+  });
+
+  it("CAPS-3: log line carries the new settings and never the key", () => {
+    const line = formatAiConfigLog(parseAiConfig({ ...OLLAMA, AI_API_KEY: "sk-test-LOGKEY" }))!;
+    expect(line).toContain("capPerHour=30 capPerDay=off historyTurns=6 toolMode=native");
+    expect(line).toContain("key=set"); // positive control: the key WAS configured
+    expect(line).not.toContain("sk-test-LOGKEY");
+  });
+});

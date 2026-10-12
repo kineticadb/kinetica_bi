@@ -42,6 +42,12 @@ process.env.AI_API_KEY = "";
 process.env.AI_DATA_ACCESS = "";
 process.env.AI_MAX_TOOL_STEPS = "";
 process.env.AI_TIMEOUT_MS = "";
+// Phase 135: caps / history / tool mode / audit retention (same leak guard).
+process.env.AI_MAX_ANSWERS_PER_USER_PER_HOUR = "";
+process.env.AI_MAX_ANSWERS_PER_DAY = "";
+process.env.AI_HISTORY_TURNS = "";
+process.env.AI_TOOL_MODE = "";
+process.env.AI_AUDIT_RETENTION_DAYS = "";
 
 beforeEach(() => {
   // Clear any global fetch stub between tests.

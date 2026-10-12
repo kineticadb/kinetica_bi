@@ -3,6 +3,7 @@ import { AI_CONTRACT_VERSION } from "./aiContract";
 
 export type AiProvider = "openai-compatible" | "claude";
 export type AiDataAccess = "schema" | "query";
+export type AiToolMode = "native" | "json";
 export type AiConfig = {
   provider: AiProvider;
   baseUrl: string;
@@ -10,6 +11,10 @@ export type AiConfig = {
   dataAccess: AiDataAccess;
   maxToolSteps: number;
   timeoutMs: number;
+  maxAnswersPerUserPerHour: number; // 0 = no cap (D-12)
+  maxAnswersPerDay: number; // whole deployment, rolling 24 h; 0 = off (D-13)
+  historyTurns: number; // recent exchanges sent in full (D-05)
+  toolMode: AiToolMode;
   readonly apiKey?: string;
 };
 export type AiConfigResult =
@@ -82,11 +87,26 @@ export function parseAiConfig(env: Env): AiConfigResult {
   const timeoutMs = parseIntInRange(val(env, "AI_TIMEOUT_MS"), 60000, 1000, 600000);
   if (timeoutMs === null) errors.push("AI_TIMEOUT_MS must be an integer from 1000 to 600000");
 
-  if (errors.length > 0 || provider === null || maxToolSteps === null || timeoutMs === null) {
+  const maxAnswersPerUserPerHour = parseIntInRange(val(env, "AI_MAX_ANSWERS_PER_USER_PER_HOUR"), 30, 0, 100000);
+  if (maxAnswersPerUserPerHour === null) errors.push("AI_MAX_ANSWERS_PER_USER_PER_HOUR must be an integer from 0 to 100000");
+  const maxAnswersPerDay = parseIntInRange(val(env, "AI_MAX_ANSWERS_PER_DAY"), 0, 0, 1000000);
+  if (maxAnswersPerDay === null) errors.push("AI_MAX_ANSWERS_PER_DAY must be an integer from 0 to 1000000");
+  const historyTurns = parseIntInRange(val(env, "AI_HISTORY_TURNS"), 6, 1, 20);
+  if (historyTurns === null) errors.push("AI_HISTORY_TURNS must be an integer from 1 to 20");
+  const toolModeRaw = val(env, "AI_TOOL_MODE");
+  let toolMode: AiToolMode = "native";
+  if (toolModeRaw === "native" || toolModeRaw === "json") toolMode = toolModeRaw;
+  else if (toolModeRaw !== "") errors.push("AI_TOOL_MODE must be 'native' or 'json'");
+
+  if (errors.length > 0 || provider === null || maxToolSteps === null || timeoutMs === null ||
+    maxAnswersPerUserPerHour === null || maxAnswersPerDay === null || historyTurns === null) {
     return { enabled: false, reason: "invalid", errors };
   }
 
-  const config: AiConfig = { provider, baseUrl, model, dataAccess, maxToolSteps, timeoutMs };
+  const config: AiConfig = {
+    provider, baseUrl, model, dataAccess, maxToolSteps, timeoutMs,
+    maxAnswersPerUserPerHour, maxAnswersPerDay, historyTurns, toolMode,
+  };
   if (key !== "") Object.defineProperty(config, "apiKey", { value: key, enumerable: false, writable: false });
   return { enabled: true, config };
 }
@@ -97,6 +117,9 @@ export function formatAiConfigLog(result: AiConfigResult): string | null {
     return (
       `[ai] AI enabled: provider=${c.provider} model=${c.model} endpoint=${new URL(c.baseUrl).origin} ` +
       `dataAccess=${c.dataAccess} maxToolSteps=${c.maxToolSteps} timeoutMs=${c.timeoutMs} ` +
+      `capPerHour=${c.maxAnswersPerUserPerHour === 0 ? "off" : c.maxAnswersPerUserPerHour} ` +
+      `capPerDay=${c.maxAnswersPerDay === 0 ? "off" : c.maxAnswersPerDay} ` +
+      `historyTurns=${c.historyTurns} toolMode=${c.toolMode} ` +
       `key=${c.apiKey ? "set" : "not set"} contract=${AI_CONTRACT_VERSION}`
     );
   }
