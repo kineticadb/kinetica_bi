@@ -98,7 +98,7 @@ Plans:
 2. Turn 2 does not erase turn 1's patches — the test fails before rebuild-from-log exists (`widgetActionStore` source-keyed replacement hazard).
 3. Reverting to any earlier answer restores that answer's state as one unit; jumping forward again works until a new question replaces the later answers.
 4. Discard or reload restores the saved dashboard exactly, and AI geometry is never persisted by `onLayoutChange` (test + operator human-verify).
-**Plans:** 9 plans
+**Plans:** 10 plans
 
 Plans:
 - [ ] 134-01-PLAN.md — widgetActionStore recency ordering (D-11: most recent wins; radio-vs-radio becomes recency) (wave 1)
@@ -110,6 +110,7 @@ Plans:
 - [ ] 134-07-PLAN.md — edit lock on the open dashboard: gated can*, disabled toolbar + notice, handler guards, paired specs (wave 4)
 - [ ] 134-08-PLAN.md — DashboardsPage Back / popstate re-push / beforeunload (StrictMode-safe) (wave 5)
 - [ ] 134-09-PLAN.md — phase gates, operator browser verify via harness, STATE/ROADMAP/REQUIREMENTS bookkeeping (wave 6)
+- [ ] 134-10-PLAN.md — gap closure: allow-listed map/records overlay keys translated at the render seam (GAP-134-01); harness position feedback (GAP-134-02) (gap, runs before 134-09 resumes)
 
 ### Phase 135: Server Gateway, Agent Loop, Providers & Governance Core
 **Goal:** The server runs the agent loop behind one validation gateway, with pluggable providers, schema-only data access by default, the "Use AI" permission, audit records and usage caps.
