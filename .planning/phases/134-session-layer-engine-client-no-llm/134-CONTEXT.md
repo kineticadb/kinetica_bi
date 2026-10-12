@@ -44,6 +44,10 @@ Driven by a **test harness / scripted ops — no LLM, no server AI route, no vis
 ### Leaving with unsaved AI changes
 - **D-15** **Warn first.** In-app dashboard switch / navigation → "You have unsaved AI changes — Discard and leave / Stay" (portalled modal; reuse the existing confirm-dialog pattern and classes). Reload / tab close → browser `beforeunload` prompt. Leaving discards (and triggers temp-view cleanup hooks once 139 exists).
 
+### Decisions added after research (2026-10-12)
+- **D-16** The legend **eye toggle stays as today** while AI changes are unsaved (show/hide is exploring; it keeps saving as now). Only AI-added (negative-id) layers must never reach `apiUpdateLayer`.
+- **D-17** (orchestrator defaults from research, operator-informed) A conversation with no applied ops does **not** lock editing or trigger the leave warning. Revert/forward counts as the AI's "most recent" change for D-11. AI-added layers get a minimal default-filled builder in 134 (`add_layer` payload is `{tempId, widgetId}` until Phase 136 replaces it).
+
 ### Claude's Discretion
 - Store shape (snapshot vs op-log + inverses per turn), temp-id scheme (negative ids per research), and how derived effective widgets/layers/dvs merge at the read sites (DashboardsPage, MapChartRenderer, LegendRenderer, applyLayerOverrides).
 - The safety cap value (D-06) and the in-phase notice wording (D-09).
