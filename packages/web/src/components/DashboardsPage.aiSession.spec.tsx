@@ -114,9 +114,9 @@ vi.mock("../api/client", async (importOriginal) => {
     createWidget: vi.fn(),
     updateWidget: vi.fn(() => Promise.resolve({})),
     deleteWidget: vi.fn(),
-    createDashboardLayer: vi.fn(),
-    updateDashboardLayer: vi.fn(),
-    deleteDashboardLayer: vi.fn(),
+    createLayer: vi.fn(),
+    updateLayer: vi.fn(),
+    deleteLayer: vi.fn(),
   };
 });
 
@@ -124,7 +124,7 @@ import DashboardsPage from "./DashboardsPage";
 import {
   listDashboards, listWidgets, listViews, listDashboardTables,
   createWidget, updateWidget, deleteWidget,
-  createDashboardLayer, updateDashboardLayer, deleteDashboardLayer,
+  createLayer, updateLayer, deleteLayer,
 } from "../api/client";
 
 const dashboardId = 1;
@@ -178,7 +178,7 @@ describe("DashboardsPage AI session layer (Phase 134 Plan 05)", () => {
     await openDashboard();
     turn([addWidgetOp(-1, "records", "AI records")]);
     expect(await screen.findByText("AI records")).toBeTruthy();
-    for (const m of [createWidget, updateWidget, deleteWidget, createDashboardLayer, updateDashboardLayer, deleteDashboardLayer]) {
+    for (const m of [createWidget, updateWidget, deleteWidget, createLayer, updateLayer, deleteLayer]) {
       expect(m).not.toHaveBeenCalled();
     }
   });

@@ -75,6 +75,10 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
+import { useAiSessionStore } from "../store/aiSessionStore";  // Phase 134 (AISES-V20-01/07)
+import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
+import { useEffectiveLayers } from "../hooks/useEffectiveLayers";
+import { applySessionToWidgets } from "../lib/aiSession/applySession";
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -644,7 +648,34 @@ const DashboardOpen = ({
   useViewKeepAlive(dashboard.id);
 
   // Phase 12: Layer store subscription
-  const layers = useDashboardLayersStore((s) => s.layers);
+  // Phase 134: `savedLayers` feeds persisting/editing sites (LayersModal, auto-create);
+  // `layers` is saved + AI session add/remove for every read-only site.
+  const savedLayers = useDashboardLayersStore((s) => s.layers);
+  const layers = useEffectiveLayers();
+  const editLocked = useAiEditLock();
+  const sessionDerived = useAiSessionStore((s) => s.derived);
+  const sessionGeometry = useAiSessionStore((s) => s.geometry);
+  const effectiveWidgets = useMemo(() => applySessionToWidgets(widgets, sessionDerived), [widgets, sessionDerived]);
+  // Saved items keep their SAVED index for the fallback position (an AI removal must not shift
+  // the others) and are `static` while AI changes are unsaved (D-13). AI items use session
+  // geometry, then config.layout, then a minimal "below all content" placement.
+  // Phase 134 minimal placement; Phase 136 replaces with D-14 gap-fill + per-type sizing.
+  const layouts = useMemo(() => {
+    const savedItems = widgets.map((w, i) => getWidgetLayout(w, i));
+    const out: LayoutItem[] = savedItems
+      .filter((it) => !sessionDerived.removedWidgetIds.has(Number(it.i)))
+      .map((it) => (editLocked ? { ...it, static: true } : it));
+    let bottom = savedItems.reduce((m, it) => Math.max(m, it.y + it.h), 0);
+    for (const w of sessionDerived.addedWidgets) {
+      const g = sessionGeometry[w.id];
+      const c = w.config?.layout as Partial<LayoutItem> | undefined;
+      const full = c && [c.x, c.y, c.w, c.h].every((n) => typeof n === "number");
+      const rect = g ?? (full ? { x: c!.x!, y: c!.y!, w: c!.w!, h: c!.h! } : { x: 0, y: bottom, w: 18, h: 24 });
+      bottom = Math.max(bottom, rect.y + rect.h);
+      out.push({ i: String(w.id), ...rect, minW: 6, minH: 6 });
+    }
+    return out;
+  }, [widgets, sessionDerived, sessionGeometry, editLocked]);
   const setLayers = useDashboardLayersStore((s) => s.setLayers);
 
   // Phase 90 (COMBO-V118-01 / COMBO-V118-03): dashboard-level combination-view orchestrator.
@@ -653,7 +684,7 @@ const DashboardOpen = ({
   // DUAL-TRIGGER (Phase 90): runs ALONGSIDE AggregatedWidgetRenderer Effect 1 — combination views
   // carry a distinct _c<hash8> suffix and are not read by any renderer until Phase 91/92.
   // Phase 92 (READ-V118-02): orchestrator now enumerates BOTH widgets and table-bound layers.
-  useCombinationOrchestrator(dashboard.id, widgets, layers, dynamicViews);
+  useCombinationOrchestrator(dashboard.id, effectiveWidgets, layers, dynamicViews);
 
   // Phase 58 Plan 02 (ENGINE-V111-02) / Phase 60 Plan 01 (RADIO-V111-03):
   // applyWidgetAction dispatch closure.
@@ -664,11 +695,11 @@ const DashboardOpen = ({
   const applyAction = useCallback(
     (action: Parameters<typeof applyWidgetAction>[0], controlId: number) =>
       applyWidgetAction(action, {
-        widgets,
+        widgets: effectiveWidgets,
         layers,
         dynamicViewIds: dynamicViews.map((dv) => dv.id),
       }, controlId),
-    [widgets, layers, dynamicViews]
+    [effectiveWidgets, layers, dynamicViews]
   );
 
   // Phase 60.2 Plan 01 (RADIOMULTI-V111-01): plural dispatch closure for multi-target options.
@@ -677,11 +708,11 @@ const DashboardOpen = ({
   const applyActions = useCallback(
     (actions: Parameters<typeof applyWidgetActions>[0], controlId: number) =>
       applyWidgetActions(actions, {
-        widgets,
+        widgets: effectiveWidgets,
         layers,
         dynamicViewIds: dynamicViews.map((dv) => dv.id),
       }, controlId),
-    [widgets, layers, dynamicViews]
+    [effectiveWidgets, layers, dynamicViews]
   );
 
   const [error, setError] = useState<string | null>(null);
@@ -762,6 +793,9 @@ const DashboardOpen = ({
       // Phase 111 (MAPVIEW-V121-01): 13th store — transient per-widget live map view.
       // Dashboard-A widget views MUST NOT leak into dashboard-B's config-panel readouts.
       useMapCurrentViewStore.getState().reset();
+      // Phase 134 (AISES-V20-07): 14th store — AI session layer; in-memory only, cleared on
+      // leave/switch. Idempotent; reads nothing from closures (StrictMode-safe).
+      useAiSessionStore.getState().reset();
     };
   }, [dashboard.id]);
 
@@ -834,8 +868,8 @@ const DashboardOpen = ({
   // shapes directly — re-render on shape mutation is exactly the intended trigger.
   const shapes = useSpatialFilterStore((s) => s.shapes);
   const targetsByTable = useMemo(
-    () => aggregateSpatialTargetsByTable(widgets),
-    [widgets],
+    () => aggregateSpatialTargetsByTable(effectiveWidgets),
+    [effectiveWidgets],
   );
   // Compute the set of tableIds that have any shape mapped to them (via targetsByTable.has).
   // A shape's "target tableId" is the tableId of the SpatialTarget that aggregateSpatialTargetsByTable
@@ -902,7 +936,7 @@ const DashboardOpen = ({
   // cost class as the panel group builders below); inert in topbar mode since no
   // topbar chip ever calls onHighlight/onActivate.
   const { filterEntries, shapeEntries } = useReverseFilterMap({
-    widgets,
+    widgets: effectiveWidgets,
     layers,
     dynamicViews,
     associatedTables,
@@ -942,9 +976,9 @@ const DashboardOpen = ({
   const topmostId = (ws: WidgetApplyEntry[]): number | undefined => {
     let best: { id: number; y: number; x: number } | undefined;
     ws.forEach((entry) => {
-      const idx = widgets.findIndex((w) => w.id === entry.widgetId);
-      if (idx < 0) return;
-      const { x, y } = getWidgetLayout(widgets[idx], idx);
+      const item = layouts.find((l) => l.i === String(entry.widgetId));
+      if (!item) return;
+      const { x, y } = item;
       if (!best || y < best.y || (y === best.y && x < best.x)) best = { id: entry.widgetId, y, x };
     });
     return best?.id;
@@ -980,7 +1014,7 @@ const DashboardOpen = ({
           text: buildChipText(f.column, f.value, f.dataType, f.operator),
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeFilter(tableId, f.column),
-          provenance: resolveProvenance(f.sourceWidgetId, widgets),
+          provenance: resolveProvenance(f.sourceWidgetId, effectiveWidgets),
           appliesTo: appliesByFilter.get(f) ?? [],
           onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
           onClearHighlight: clearHl,
@@ -1002,7 +1036,7 @@ const DashboardOpen = ({
           text: buildChipText(f.column, f.value, f.dataType, f.operator),
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeDvFilter(dvId, f.column),
-          provenance: resolveProvenance(f.sourceWidgetId, widgets),
+          provenance: resolveProvenance(f.sourceWidgetId, effectiveWidgets),
           appliesTo: appliesByFilter.get(f) ?? [],
           onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
           onClearHighlight: clearHl,
@@ -1153,7 +1187,17 @@ const DashboardOpen = ({
   const handleConfigureWidget = useCallback((widget: WidgetDto) => setConfiguringWidget(widget), []);
 
   const handleLayoutChange = (layout: Layout) => {
+    // Phase 134: AI-widget rects (negative temp ids) go to session geometry, never the DB.
+    for (const item of layout) {
+      if (Number(item.i) < 0) {
+        useAiSessionStore.getState().setGeometry(Number(item.i), { x: item.x, y: item.y, w: item.w, h: item.h });
+      }
+    }
+    // D-13: never persist saved geometry or reflow while AI changes are unsaved. Read via
+    // getState so a stale closure cannot bypass the lock.
+    if (isAiEditLocked()) return;
     layout.forEach((item) => {
+      if (Number(item.i) < 0) return;
       const widget = widgets.find((w) => String(w.id) === item.i);
       if (!widget) return;
       const prev = widget.config?.layout as Partial<LayoutItem> | undefined;
@@ -1164,6 +1208,7 @@ const DashboardOpen = ({
     });
     setWidgets((prev) =>
       prev.map((w) => {
+        if (w.id < 0) return w;
         const item = layout.find((l) => l.i === String(w.id));
         if (!item) return w;
         return { ...w, config: { ...w.config, layout: { x: item.x, y: item.y, w: item.w, h: item.h } } };
@@ -1299,7 +1344,7 @@ const DashboardOpen = ({
   }, [flushPendingPatches]);
 
   useEffect(() => {
-    if (showLayersModal && layers.length === 0 && associatedTables.length > 0) {
+    if (showLayersModal && savedLayers.length === 0 && associatedTables.length > 0) {
       void handleLayerCreate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1328,7 +1373,6 @@ const DashboardOpen = ({
     );
   }
 
-  const layouts = widgets.map((w, i) => getWidgetLayout(w, i));
 
   const dashboardHeader = (
     <>
@@ -1372,7 +1416,7 @@ const DashboardOpen = ({
   const gridBlock = (
     <DashboardContextProvider
       dashboardId={dashboard.id}
-      widgets={widgets}
+      widgets={effectiveWidgets}
       dynamicViews={dynamicViews}
       retryDynamicView={retryDynamicView}
       applyWidgetAction={applyAction}
@@ -1382,7 +1426,7 @@ const DashboardOpen = ({
         ref={containerRef as React.RefObject<HTMLDivElement>}
         className={isPanelMode ? "filter-panel-grid-wrap" : undefined}
       >
-      {widgets.length > 0 && mounted && (
+      {effectiveWidgets.length > 0 && mounted && (
         <ResponsiveGridLayout
           className="dashboard-grid"
           width={width}
@@ -1411,10 +1455,10 @@ const DashboardOpen = ({
           containerPadding={[8, 8]}
           layouts={{ lg: layouts }}
           onLayoutChange={(layout) => handleLayoutChange(layout)}
-          dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
-          resizeConfig={{ enabled: canEdit }}
+          dragConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0, handle: ".widget-drag-handle" }}
+          resizeConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0 }}
         >
-          {widgets.map((w) => (
+          {effectiveWidgets.map((w) => (
             <WidgetCard
               key={String(w.id)}
               widget={w}
@@ -1607,7 +1651,7 @@ const DashboardOpen = ({
         );
       })()}
 
-      {widgets.length === 0 && (
+      {effectiveWidgets.length === 0 && (
         <div className="muted" style={{ padding: "40px 0", textAlign: "center" }}>
           No visualizations yet. Click "Visualizations" to add one.
         </div>
@@ -1663,7 +1707,7 @@ const DashboardOpen = ({
 
       {showLayersModal && (
         <LayersModal
-          layers={layers}
+          layers={savedLayers}
           associatedTables={associatedTables}
           dynamicViews={dynamicViews}
           widgets={widgets}
