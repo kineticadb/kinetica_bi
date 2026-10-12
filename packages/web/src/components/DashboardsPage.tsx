@@ -75,7 +75,8 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
-import { useAiSessionStore } from "../store/aiSessionStore";  // Phase 134 (AISES-V20-01/07)
+import { useAiSessionStore, selectHasUnsavedAiChanges, hasUnsavedAiChanges } from "../store/aiSessionStore";
+import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/07)
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
 import { useAiSessionActions } from "../hooks/useAiSessionActions";
 import type { SessionBaseline } from "../lib/aiSession/types";
@@ -165,7 +166,21 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   //  never via a `pushState`/`popstate` pair — so `popstate` itself can never observe a mismatch,
   //  and a third case would be dead code.
   useEffect(() => {
+    const openId = view.mode === "open" ? view.dashboard.id : null;
     const onPopState = () => {
+      // Phase 134 (D-15): popstate cannot be vetoed, so with unsaved AI changes we restore the
+      // entry the browser just popped and ask. Discard resets the session BEFORE proceed(), so
+      // the popstate fired by leaveDashboardUrl()'s history.back() takes the clean path.
+      // MEDIUM confidence; fallback documented in 134-08-PLAN.
+      if (openId !== null && readDashboardIdFromSearch(window.location.search) === null && hasUnsavedAiChanges()) {
+        openDashboardUrl(openId);
+        requestLeave(() => {
+          leaveDashboardUrl();
+          setViewState({ mode: "list" });
+          onViewChange?.("list");
+        });
+        return;
+      }
       if (readDashboardIdFromSearch(window.location.search) === null) {
         setViewState({ mode: "list" });
         onViewChange?.("list");
@@ -175,7 +190,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [onViewChange, view.mode]);
+  }, [onViewChange, view]);
 
   const handleDelete = (dash: DashboardDto) => {
     if (!window.confirm(`Delete dashboard "${dash.name}"?`)) return;
@@ -658,6 +673,20 @@ const DashboardOpen = ({
   const savedLayers = useDashboardLayersStore((s) => s.layers);
   const layers = useEffectiveLayers();
   const editLocked = useAiEditLock();
+  // Phase 134 (D-15): reload / tab close warns while AI changes are unsaved. Symmetric add/remove
+  // keyed on the dirty boolean keeps StrictMode (mount, cleanup, mount) at exactly one live
+  // listener. Never reset() here: the unmount cleanup chain (134-05) is what discards.
+  const aiDirty = useAiSessionStore(selectHasUnsavedAiChanges);
+  useEffect(() => {
+    if (!aiDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedAiChanges()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [aiDirty]);
   // Phase 134 D-07: ONE lock source AND-ed into the four gates; every toolbar button,
   // WidgetCard control, Reconfigure CTA and saved-item drag/resize reads these.
   const canEdit         = rawCanEdit && !editLocked;
@@ -1423,7 +1452,7 @@ const DashboardOpen = ({
       <div className="dashboard-list">
         <ChartCard
           title="No access"
-          actions={<button className="ghost-sm" onClick={onBack}>Back to dashboards</button>}
+          actions={<button className="ghost-sm" onClick={() => requestLeave(onBack)}>Back to dashboards</button>}
         >
           <div className="muted" style={{ padding: "40px 0", textAlign: "center" }}>
             You don't have access to this dashboard.
@@ -1493,7 +1522,7 @@ const DashboardOpen = ({
             Unsaved AI changes: editing is locked until they are kept or discarded.
           </span>
         )}
-        <button className="ghost-sm" onClick={onBack}>Back</button>
+        <button className="ghost-sm" onClick={() => requestLeave(onBack)}>Back</button>
       </div>
     </>
   );
