@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_n1","type":"function","function":{"name":"list_tables","arguments":"{}"}}]}}]}
+
+data: [DONE]
+
