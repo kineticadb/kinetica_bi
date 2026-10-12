@@ -1,4 +1,4 @@
-// Column truth is the user-credentialed probe (133-SPIKES S1); never columns_json or client lists.
+// Column truth is the user-credentialed probe (133-SPIKES S1); never the stored per-view column blob or client lists.
 // Inaccessible and not-found are indistinguishable by design (AISAFE-V20-03): every failure is exactly {ok:false}.
 import { kineticaSql, type KineticaPrincipal } from "../../kinetica";
 import { getTable as dbGetTable } from "../../db";
