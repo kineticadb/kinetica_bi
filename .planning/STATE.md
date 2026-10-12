@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 133 complete (2026-10-09); next Phase 134 and 135 (parallel)"
+stopped_at: "Phase 134 complete (2026-10-12); next Phase 135 (can start now)"
 last_updated: "2026-10-09T18:00:00.000Z"
 progress:
   total_phases: 6
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards star
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 133 complete — next: 134 ∥ 135
+Phase: 134 complete — next: 135 (can start now; 134 and 135 are disjoint)
 Plan: —
-Status: Phase 133 complete
-Last activity: 2026-10-12 — Phase 134 context gathered (full-chat + per-answer revert design adopted; editing locked while AI changes are unsaved)
+Status: Phase 134 complete (10/10 plans, operator-approved 2026-10-12; gap plan 134-10 closed GAP-134-01/02)
+Last activity: 2026-10-12 — Phase 134 complete (gates green, operator browser check approved after gap round). New debt TD-V20-ALLOWLIST-KEYS logged for Phase 136. Pending items below carried.
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -53,7 +53,7 @@ Last activity: 2026-10-12 — Phase 134 context gathered (full-chat + per-answer
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next: `/gsd:plan-phase 134` and `/gsd:plan-phase 135` (parallel).**
+**Next: `/gsd:plan-phase 135` (Phase 134 done).**
 
 **Open blockers:** none.
 

@@ -44,13 +44,13 @@
 
 ### Session layer
 
-- [ ] **AISES-V20-01**: The changes from one answer apply together and immediately, and only the asking user sees them.
-- [ ] **AISES-V20-02**: A second answer builds on the first; no earlier AI change is lost.
-- [ ] **AISES-V20-03**: The user can revert the dashboard to the state after any earlier AI answer (and jump forward again to a later one); asking a new question after reverting replaces the later answers. Keep clears the history. *(Changed 2026-10-12 — was undo one answer at a time.)*
+- [x] **AISES-V20-01**: The changes from one answer apply together and immediately, and only the asking user sees them.
+- [x] **AISES-V20-02**: A second answer builds on the first; no earlier AI change is lost.
+- [x] **AISES-V20-03**: The user can revert the dashboard to the state after any earlier AI answer (and jump forward again to a later one); asking a new question after reverting replaces the later answers. Keep clears the history. *(Changed 2026-10-12 — was undo one answer at a time.)*
 - [ ] **AISES-V20-04**: A visible indicator shows the dashboard has unsaved AI changes (with counts), with Keep and Discard.
 - [ ] **AISES-V20-05**: Keep saves the added, changed and removed widgets, layers and dynamic views into the dashboard in one all-or-nothing step, only for a user with edit rights (otherwise Keep is not offered). Filters are not saved, and the user is told so.
 - [ ] **AISES-V20-06**: If someone else changed the dashboard since the AI session began, Keep refuses with a clear message rather than overwriting.
-- [ ] **AISES-V20-07**: Discard, or reloading the page, restores the saved dashboard exactly.
+- [x] **AISES-V20-07**: Discard, or reloading the page, restores the saved dashboard exactly.
 
 ### Generate
 
@@ -133,13 +133,13 @@ Which phases cover which requirements.
 | AIACT-V20-09 | Phase 138 | Pending |
 | AIACT-V20-10 | Phase 136 | Pending |
 | AIACT-V20-11 | Phase 136 | Pending |
-| AISES-V20-01 | Phase 134 | Pending |
-| AISES-V20-02 | Phase 134 | Pending |
-| AISES-V20-03 | Phase 134 | Pending |
+| AISES-V20-01 | Phase 134 | Complete |
+| AISES-V20-02 | Phase 134 | Complete |
+| AISES-V20-03 | Phase 134 | Complete |
 | AISES-V20-04 | Phase 137 | Pending |
 | AISES-V20-05 | Phase 141 | Pending |
 | AISES-V20-06 | Phase 141 | Pending |
-| AISES-V20-07 | Phase 134 | Pending |
+| AISES-V20-07 | Phase 134 | Complete |
 | AIGEN-V20-01 | Phase 142 | Pending |
 | AIGEN-V20-02 | Phase 142 | Pending |
 | AIPRV-V20-01 | Phase 133 | Complete |

@@ -49,7 +49,7 @@
 ### Phases
 
 - [x] **Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes** — close the column-interpolation hole; shared zod contract; AI env validated at startup; spikes S1/S2/S3/S7 decided
-- [ ] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
+- [x] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
 - [ ] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
 - [ ] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
 - [ ] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
@@ -101,16 +101,16 @@ Plans:
 **Plans:** 10 plans
 
 Plans:
-- [ ] 134-01-PLAN.md — widgetActionStore recency ordering (D-11: most recent wins; radio-vs-radio becomes recency) (wave 1)
-- [ ] 134-02-PLAN.md — pure session core: contracts, evaluateTurn, foldSession (op-log + fold, not C7 inverses), ref-stable merge helpers (wave 1)
-- [ ] 134-03-PLAN.md — in-memory aiSessionStore (turns/cursor/cap/reset, AI_SOURCE_ID rebuild-from-log), useAiEditLock/useEffectiveLayers/useAiSessionActions, test harness (wave 2)
-- [ ] 134-04-PLAN.md — map, legend, info card read session-aware layers; eye toggle never persists temp layers (D-16) (wave 3)
-- [ ] 134-05-PLAN.md — DashboardsPage effective widgets/layers, static saved items + guarded onLayoutChange, 14th cleanup reset, DEV console harness (wave 3)
-- [ ] 134-06-PLAN.md — requestLeave + portalled AiLeaveDialog; App-level leave paths; logout reset (wave 3)
-- [ ] 134-07-PLAN.md — edit lock on the open dashboard: gated can*, disabled toolbar + notice, handler guards, paired specs (wave 4)
-- [ ] 134-08-PLAN.md — DashboardsPage Back / popstate re-push / beforeunload (StrictMode-safe) (wave 5)
-- [ ] 134-09-PLAN.md — phase gates, operator browser verify via harness, STATE/ROADMAP/REQUIREMENTS bookkeeping (wave 6)
-- [ ] 134-10-PLAN.md — gap closure: allow-listed map/records overlay keys translated at the render seam (GAP-134-01); harness position feedback (GAP-134-02) (gap, runs before 134-09 resumes)
+- [x] 134-01-PLAN.md — widgetActionStore recency ordering (D-11: most recent wins; radio-vs-radio becomes recency) (wave 1)
+- [x] 134-02-PLAN.md — pure session core: contracts, evaluateTurn, foldSession (op-log + fold, not C7 inverses), ref-stable merge helpers (wave 1)
+- [x] 134-03-PLAN.md — in-memory aiSessionStore (turns/cursor/cap/reset, AI_SOURCE_ID rebuild-from-log), useAiEditLock/useEffectiveLayers/useAiSessionActions, test harness (wave 2)
+- [x] 134-04-PLAN.md — map, legend, info card read session-aware layers; eye toggle never persists temp layers (D-16) (wave 3)
+- [x] 134-05-PLAN.md — DashboardsPage effective widgets/layers, static saved items + guarded onLayoutChange, 14th cleanup reset, DEV console harness (wave 3)
+- [x] 134-06-PLAN.md — requestLeave + portalled AiLeaveDialog; App-level leave paths; logout reset (wave 3)
+- [x] 134-07-PLAN.md — edit lock on the open dashboard: gated can*, disabled toolbar + notice, handler guards, paired specs (wave 4)
+- [x] 134-08-PLAN.md — DashboardsPage Back / popstate re-push / beforeunload (StrictMode-safe) (wave 5)
+- [x] 134-09-PLAN.md — phase gates, operator browser verify via harness, STATE/ROADMAP/REQUIREMENTS bookkeeping (wave 6)
+- [x] 134-10-PLAN.md — gap closure: allow-listed map/records overlay keys translated at the render seam (GAP-134-01); harness position feedback (GAP-134-02) (gap, runs before 134-09 resumes)
 
 ### Phase 135: Server Gateway, Agent Loop, Providers & Governance Core
 **Goal:** The server runs the agent loop behind one validation gateway, with pluggable providers, schema-only data access by default, the "Use AI" permission, audit records and usage caps.
@@ -136,6 +136,8 @@ Plans:
 2. A nonexistent table or column is repaired within 2 attempts or refused, never applied; the model cannot emit hex colours.
 3. New widgets do not overlap and the AI can resize and reorder; layout sensibility is operator human-verify.
 4. An AI-added or restyled heatmap layer renders tiles and legend correctly (both `buildWmsParams` sites; operator human-verify in light and dark).
+
+**Note (134 UAT, 2026-10-12):** see TD-V20-ALLOWLIST-KEYS in PROJECT.md — the chart metric/aggregation and layer-opacity allow-list fields must be designed before AI chart edits.
 
 **Map test plan (operator, 2026-10-09):** automated — validator round-trip against the operator's real saved map/heatmap-layer configs + invalid cases, and buildWmsParams snapshot for AI heatmap layers on BOTH MapChartRenderer sites; operator-run — WMS GetMap render check (HTTP 200 image/png, non-blank) like spike S1.4; human-verify — light/dark visual. Optional later: claude-in-chrome screenshots (no new dependency).
 **Scope note (operator, 2026-10-09):** v2.0 AI widget subset is bar, line, pie, table, bignumber, records and map; the AI adds/edits heatmap map layers only (others: AI-F12). Map widget and heatmap layer config get hand-written validators in this phase.
@@ -220,7 +222,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 133. AI Contract, Shared Package, SSYNC-F6 Fix & Spikes | 10/10 | Complete | 2026-10-09 |
-| 134. Session Layer Engine | 0/? | Not started | - |
+| 134. Session Layer Engine | 10/10 | Complete | 2026-10-12 |
 | 135. Server Gateway, Agent Loop, Providers & Governance Core | 0/? | Not started | - |
 | 136. Structural & Edit Ops | 0/? | Not started | - |
 | 137. AI Widget & Streaming UI | 0/? | Not started | - |
