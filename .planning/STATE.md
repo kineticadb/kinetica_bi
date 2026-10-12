@@ -27,7 +27,7 @@ Milestone: v2.0 AI-Driven Dashboards
 Phase: 133 complete — next: 134 ∥ 135
 Plan: —
 Status: Phase 133 complete
-Last activity: 2026-10-09 — Completed quick task 261009-jg6: dv filter-combination defect fixed (operator-verified)
+Last activity: 2026-10-12 — Phase 134 context gathered (full-chat + per-answer revert design adopted; editing locked while AI changes are unsaved)
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
