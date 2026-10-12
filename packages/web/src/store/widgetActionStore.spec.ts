@@ -364,3 +364,58 @@ describe("Phase 61 GAP-61-02 — releaseLayerConfigField (live toggle releases o
     expect(useWidgetActionStore.getState().contributions).toBe(before);
   });
 });
+
+describe("D-11 recency ordering (Phase 134)", () => {
+  const st = () => useWidgetActionStore.getState();
+
+  it("D11-1: AI (0) written after radio (7) wins the same field", () => {
+    st().setControlContribution(7, { widget: { 42: { f: "radio" } } });
+    st().setControlContribution(0, { widget: { 42: { f: "ai" } } });
+    expect(st().widgetOverrides[42].f).toBe("ai");
+  });
+
+  it("D11-2: radio (7) written after AI (0) wins the same field", () => {
+    st().setControlContribution(0, { widget: { 42: { f: "ai" } } });
+    st().setControlContribution(7, { widget: { 42: { f: "radio" } } });
+    expect(st().widgetOverrides[42].f).toBe("radio");
+  });
+
+  it("D11-3: clearing the AI source restores the radio value", () => {
+    st().setControlContribution(7, { widget: { 42: { f: "radio" } } });
+    st().setControlContribution(0, { widget: { 42: { f: "ai" } } });
+    st().clearControl(0);
+    expect(st().widgetOverrides[42].f).toBe("radio");
+  });
+
+  it("D11-4: radio-vs-radio is recency, not id order (intentional v1.11 change)", () => {
+    st().setControlContribution(9, { widget: { 42: { f: "b" } } });
+    st().setControlContribution(3, { widget: { 42: { f: "a" } } });
+    expect(st().widgetOverrides[42].f).toBe("a");
+  });
+
+  it("D11-5: re-selecting a control moves it to most recent", () => {
+    st().setControlContribution(3, { widget: { 42: { f: "a" } } });
+    st().setControlContribution(9, { widget: { 42: { f: "b" } } });
+    st().setControlContribution(3, { widget: { 42: { f: "a" } } });
+    expect(st().widgetOverrides[42].f).toBe("a");
+  });
+
+  it("D11-6: layer kind recency, and radio-only top-level track_config survives", () => {
+    st().setControlContribution(5, {
+      layer: { 100: { config: { opacity: 0.2 }, track_config: '{"enabled":true}' } },
+    });
+    st().setControlContribution(0, { layer: { 100: { config: { opacity: 0.9 } } } });
+    const ov = st().layerOverrides[100];
+    expect((ov.config as Record<string, unknown>).opacity).toBe(0.9);
+    expect(ov.track_config).toBe('{"enabled":true}');
+  });
+
+  it("D11-7: reset() clears ordering; later writes are ordered by recency only", () => {
+    st().setControlContribution(3, { widget: { 42: { f: "x" } } });
+    st().reset();
+    st().setControlContribution(9, { widget: { 42: { f: "b" } } });
+    st().setControlContribution(3, { widget: { 42: { f: "a" } } });
+    expect(st().widgetOverrides[42].f).toBe("a");
+    expect(st().order).toEqual({ 9: expect.any(Number), 3: expect.any(Number) });
+  });
+});
