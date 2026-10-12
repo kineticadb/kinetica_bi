@@ -74,4 +74,15 @@ describe("POST /api/auth/login — RBAC shape (post-48 gap regression)", () => {
     );
     expect(res.body.user.permissions).not.toContain("users:assign_roles");
   });
+
+  it("designer login lists ai:use; the analyst fallback omits it (AIGOV-V20-01)", async () => {
+    const designer = await request(app)
+      .post("/api/auth/login")
+      .send({ username: "login_shape_designer", password: "pw" });
+    expect(designer.body.user.permissions).toContain("ai:use");
+    const analyst = await request(app)
+      .post("/api/auth/login")
+      .send({ username: "fresh_user_login_shape", password: "pw" });
+    expect(analyst.body.user.permissions).not.toContain("ai:use");
+  });
 });

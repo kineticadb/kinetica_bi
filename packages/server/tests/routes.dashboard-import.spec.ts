@@ -12,7 +12,7 @@
  * Task 1 (`MALFORMED-` / `OVERSIZE-`): the two body-parser branches in `errorMiddleware`.
  * Task 2 (`ROUTE-` / `PARITY-`): the route itself — permission gate (composed from two EXISTING
  * permissions, no new one added), 201 + report shape, 400 for a structurally malformed file, and
- * that the permission catalog is unchanged at 18 entries.
+ * that the permission catalog is unchanged at 19 entries.
  *
  * Do NOT assert a fixed total server pass-count (SET-BASED TD-V16-TEST-ISOLATION gate).
  *
@@ -379,8 +379,8 @@ describe("ROUTE: POST /api/dashboards/import", () => {
     expect(res.body.data).toHaveProperty("tablesMatched");
   });
 
-  it("PARITY: the permission catalog still has exactly 18 entries", () => {
-    expect(ALL_PERMISSIONS.length).toBe(18);
+  it("PARITY: the permission catalog still has exactly 19 entries", () => {
+    expect(ALL_PERMISSIONS.length).toBe(19);
   });
 
   it("PARITY: no import-specific permission string exists", () => {

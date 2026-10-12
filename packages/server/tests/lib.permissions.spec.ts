@@ -27,14 +27,15 @@ const EXPECTED_PERMISSION_STRINGS = [
   "audit:view",
   "datasets:manage",
   "branding:manage",
+  "ai:use",
 ] as const;
 
 describe("PERMISSIONS catalog", () => {
-  it("has exactly 18 entries", () => {
-    expect(Object.keys(PERMISSIONS).length).toBe(18);
+  it("has exactly 19 entries", () => {
+    expect(Object.keys(PERMISSIONS).length).toBe(19);
   });
 
-  it("contains exactly the 18 expected permission strings (independent lock)", () => {
+  it("contains exactly the 19 expected permission strings (independent lock)", () => {
     const actual = Object.values(PERMISSIONS).sort();
     const expected = [...EXPECTED_PERMISSION_STRINGS].sort();
     expect(actual).toEqual(expected);
@@ -49,8 +50,8 @@ describe("PERMISSIONS catalog", () => {
 });
 
 describe("ALL_PERMISSIONS", () => {
-  it("has length 18", () => {
-    expect(ALL_PERMISSIONS.length).toBe(18);
+  it("has length 19", () => {
+    expect(ALL_PERMISSIONS.length).toBe(19);
   });
 
   it("contains every value in PERMISSIONS (no omissions)", () => {
@@ -108,6 +109,7 @@ const EXPECTED_ADMIN_PERMS = [
   "audit:view",
   "datasets:manage",
   "branding:manage",
+  "ai:use",
 ];
 
 const EXPECTED_DESIGNER_PERMS = [
@@ -121,6 +123,7 @@ const EXPECTED_DESIGNER_PERMS = [
   "dynamic_views:manage",
   "data_filters:configure",
   "datasets:manage",
+  "ai:use",
 ];
 
 const EXPECTED_USER_ADMIN_PERMS = [
@@ -135,20 +138,20 @@ const EXPECTED_USER_ADMIN_PERMS = [
 const EXPECTED_ANALYST_PERMS = ["dashboards:view"];
 
 describe("DEFAULT_ROLE_MAPPINGS", () => {
-  it("admin deep-equals ALL_PERMISSIONS (all 18) — compared as sorted sets", () => {
+  it("admin deep-equals ALL_PERMISSIONS (all 19) — compared as sorted sets", () => {
     const actual = [...DEFAULT_ROLE_MAPPINGS.admin].sort();
     const expected = [...ALL_PERMISSIONS].sort();
     expect(actual).toEqual(expected);
   });
 
-  it("admin has exactly 18 permissions (independently locked)", () => {
+  it("admin has exactly 19 permissions (independently locked)", () => {
     const actual = [...DEFAULT_ROLE_MAPPINGS.admin].sort();
     const expected = [...EXPECTED_ADMIN_PERMS].sort();
     expect(actual).toEqual(expected);
   });
 
-  it("designer is exactly the 10 design permissions — no users:*, roles:*, audit:*", () => {
-    expect(DEFAULT_ROLE_MAPPINGS.designer.length).toBe(10);
+  it("designer is exactly the 11 design permissions — no users:*, roles:*, audit:*", () => {
+    expect(DEFAULT_ROLE_MAPPINGS.designer.length).toBe(11);
     const actual = [...DEFAULT_ROLE_MAPPINGS.designer].sort();
     const expected = [...EXPECTED_DESIGNER_PERMS].sort();
     expect(actual).toEqual(expected);
@@ -199,5 +202,17 @@ describe("DEFAULT_ROLE_MAPPINGS", () => {
     expect(DEFAULT_ROLE_MAPPINGS.designer).not.toContain("roles:delete_custom");
     expect(DEFAULT_ROLE_MAPPINGS.user_admin).not.toContain("roles:delete_custom");
     expect(DEFAULT_ROLE_MAPPINGS.analyst).not.toContain("roles:delete_custom");
+  });
+});
+
+describe("ai:use (Phase 135, AIGOV-V20-01, D-01/D-02)", () => {
+  it("PERMISSIONS.AI_USE is 'ai:use'", () => {
+    expect((PERMISSIONS as Record<string, string>).AI_USE).toBe("ai:use");
+  });
+
+  it("designer defaults include ai:use; analyst and user_admin do not", () => {
+    expect(DEFAULT_ROLE_MAPPINGS.designer).toContain("ai:use");
+    expect(DEFAULT_ROLE_MAPPINGS.analyst).not.toContain("ai:use");
+    expect(DEFAULT_ROLE_MAPPINGS.user_admin).not.toContain("ai:use");
   });
 });

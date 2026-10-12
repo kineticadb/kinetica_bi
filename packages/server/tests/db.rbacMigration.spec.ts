@@ -165,17 +165,17 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
     }
   });
 
-  it("seeds 35 role_permissions rows total (18+10+6+1)", () => {
+  it("seeds 37 role_permissions rows total (19+11+6+1)", () => {
     const x = createDb(":memory:");
     const count = (
       x
         .prepare("SELECT COUNT(*) AS c FROM role_permissions")
         .get() as { c: number }
     ).c;
-    expect(count).toBe(35);
+    expect(count).toBe(37);
   });
 
-  it("admin role maps to exactly 18 permissions", () => {
+  it("admin role maps to exactly 19 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -184,10 +184,10 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(18);
+    expect(count).toBe(19);
   });
 
-  it("designer role maps to exactly 10 permissions", () => {
+  it("designer role maps to exactly 11 permissions", () => {
     const x = createDb(":memory:");
     const count = (
       x
@@ -196,7 +196,7 @@ describe("RBAC seed correctness (SCHEMA-V18-01)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(count).toBe(10);
+    expect(count).toBe(11);
   });
 
   it("user_admin role maps to exactly 6 permissions", () => {
@@ -250,7 +250,7 @@ describe("RBAC seed idempotency (SCHEMA-V18-01)", () => {
           .prepare("SELECT COUNT(*) AS c FROM role_permissions")
           .get() as { c: number }
       ).c;
-      expect(permCount).toBe(35);
+      expect(permCount).toBe(37);
 
       second.close();
     }).not.toThrow();
@@ -334,7 +334,7 @@ describe("RBAC operator-edit survival (SCHEMA-V18-01)", () => {
         )
         .all(designerRow.id) as Array<{ permission: string }>
     ).map((r) => r.permission);
-    expect(firstBootPerms).toHaveLength(10);
+    expect(firstBootPerms).toHaveLength(11);
     first.close();
 
     const second = createDb(dbPath);
@@ -458,7 +458,7 @@ describe("RBAC FK cascade (SCHEMA-V18-01)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
-  it("rbac_seed_history has exactly 35 rows after first boot (one per default mapping)", () => {
+  it("rbac_seed_history has exactly 37 rows after first boot (one per default mapping)", () => {
     const dbPath = mkTempDbPath();
     const x = createDb(dbPath);
 
@@ -466,8 +466,8 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
       x.prepare("SELECT COUNT(*) AS c FROM rbac_seed_history").get() as { c: number }
     ).c;
 
-    // 18 (admin) + 10 (designer) + 6 (user_admin) + 1 (analyst) = 35
-    expect(histCount).toBe(35);
+    // 19 (admin) + 11 (designer) + 6 (user_admin) + 1 (analyst) = 37
+    expect(histCount).toBe(37);
     x.close();
   });
 
@@ -512,7 +512,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
     // The removal survived — the permission was NOT re-inserted by the seed.
     expect(stillAbsent).toBe(0);
 
-    // Designer should now have 9 permissions (10 defaults minus the removed one).
+    // Designer should now have 10 permissions (11 defaults minus the removed one).
     const designerPerms = (
       second
         .prepare(
@@ -520,7 +520,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
         )
         .get() as { c: number }
     ).c;
-    expect(designerPerms).toBe(9);
+    expect(designerPerms).toBe(10);
 
     second.close();
   });
@@ -528,7 +528,7 @@ describe("RBAC seed-history contract (addendum 2026-06-05)", () => {
   it("a permission newly added to DEFAULT_ROLE_MAPPINGS (simulated by deleting its history row) is seeded exactly once on next boot", () => {
     const dbPath = mkTempDbPath();
 
-    // First boot — seeds all 35 defaults and records 35 history rows.
+    // First boot — seeds all 37 defaults and records 37 history rows.
     const first = createDb(dbPath);
 
     // Simulate a future catalog addition: delete the history row for (analyst, dashboards:view)
@@ -701,5 +701,57 @@ describe("datasets:manage — seed-history upgrade path (Phase 47)", () => {
     expect(histCount).toBe(1);
 
     second.close();
+  });
+});
+
+describe("ai:use — seed-history upgrade path (Phase 135, AIGOV-V20-01) AI-UPGRADE", () => {
+  it("a DB seeded by the 18-permission catalog gains (designer, ai:use) exactly once; a later operator removal persists", () => {
+    const dbPath = mkTempDbPath();
+    const first = createDb(dbPath);
+    const designerRow = first
+      .prepare("SELECT id FROM roles WHERE name = 'designer'")
+      .get() as { id: number };
+
+    // Simulate the pre-135 DB: no (designer, ai:use) mapping and no history row.
+    first
+      .prepare("DELETE FROM rbac_seed_history WHERE role_name = ? AND permission = ?")
+      .run("designer", "ai:use");
+    first
+      .prepare("DELETE FROM role_permissions WHERE role_id = ? AND permission = ?")
+      .run(designerRow.id, "ai:use");
+    first.close();
+
+    const hasAiUse = (d: Database.Database): number =>
+      (
+        d
+          .prepare(
+            "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name = 'designer' AND rp.permission = ?"
+          )
+          .get("ai:use") as { c: number }
+      ).c;
+
+    const second = createDb(dbPath);
+    expect(hasAiUse(second)).toBe(1); // seeded once on upgrade
+    // Operator removes it (history row stays).
+    second
+      .prepare("DELETE FROM role_permissions WHERE role_id = ? AND permission = ?")
+      .run(designerRow.id, "ai:use");
+    second.close();
+
+    const third = createDb(dbPath);
+    expect(hasAiUse(third)).toBe(0); // removal persisted
+    third.close();
+  });
+
+  it("analyst and user_admin are NOT granted ai:use by default (D-02)", () => {
+    const x = createDb(":memory:");
+    const n = (
+      x
+        .prepare(
+          "SELECT COUNT(*) AS c FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name IN ('analyst','user_admin') AND rp.permission = 'ai:use'"
+        )
+        .get() as { c: number }
+    ).c;
+    expect(n).toBe(0);
   });
 });

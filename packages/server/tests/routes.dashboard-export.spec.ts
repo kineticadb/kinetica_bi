@@ -12,7 +12,7 @@
  * proven to answer identically for "dashboard does not exist" and "exists but not permitted" —
  * a non-leak SECURITY property (NOLEAK-*). The Content-Disposition download header is proven
  * injection-safe against a dashboard name containing a quote and a CRLF (DELIV-*). The
- * permission catalog is asserted unchanged at 18 entries with no export-specific permission
+ * permission catalog is asserted unchanged at 19 entries with no export-specific permission
  * (PARITY-*).
  *
  * Do NOT assert a fixed total server pass-count (SET-BASED TD-V16-TEST-ISOLATION gate).
@@ -586,8 +586,8 @@ describe("GET /api/dashboards/:id/export — exclusions, non-leak, delivery", ()
     expect(res.text).toContain('\n  "schemaVersion"');
   });
 
-  it("PARITY: the permission catalog still has exactly 18 entries", () => {
-    expect(Object.keys(PERMISSIONS)).toHaveLength(18);
+  it("PARITY: the permission catalog still has exactly 19 entries", () => {
+    expect(Object.keys(PERMISSIONS)).toHaveLength(19);
   });
 
   it("PARITY: no export-specific permission string exists", () => {

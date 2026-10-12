@@ -406,7 +406,7 @@ describe("export routes", () => {
 
   // Regression guard (passes before and after; NOT proof of EXPRT-V126-17 — see analyst-grant-only).
   it("EXPRT129-no-new-permission: permission set unchanged and has no export permission", () => {
-    expect(Object.keys(PERMISSIONS).length).toBe(18);
+    expect(Object.keys(PERMISSIONS).length).toBe(19);
     for (const [k, v] of Object.entries(PERMISSIONS)) {
       expect(k).not.toMatch(/export/i);
       expect(v).not.toMatch(/export/i);
