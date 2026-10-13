@@ -9,6 +9,8 @@ import { HEATMAP_CELL_LIMIT } from "./heatmapGrid";
 import { buildBucketExpr } from "./heatmapBucket";
 import { inferDataTypeFromColumn } from "./columnTypes";
 import { isCustomSelection } from "./customMetricSql";
+import type { AiWidgetType } from "@kinetica-bi/shared";
+import { AI_WIDGET_DEFAULTS } from "./aiWidgetDefaults";
 
 /**
  * Heatmap "Result limit" ladder: a heatmap row is one (x,y) INTERSECTION, so it gets its own
@@ -188,14 +190,7 @@ const DERIVE_AGGREGATIONS = new Set([
   "SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "STDDEV", "VARIANCE",
 ]);
 
-/** Per-type SQL flags for the types deriveChartConfig supports (mirror the chart registry). */
-export const DERIVE_FLAGS: Record<string, { usesAggregation: boolean; requiresGroupBy: boolean }> = {
-  bar: { usesAggregation: true, requiresGroupBy: true },
-  line: { usesAggregation: true, requiresGroupBy: true },
-  pie: { usesAggregation: true, requiresGroupBy: true },
-  table: { usesAggregation: true, requiresGroupBy: true },
-  bignumber: { usesAggregation: true, requiresGroupBy: false },
-};
+const DERIVE_TYPES = new Set(["bar", "line", "pie", "table", "bignumber"]);
 
 /**
  * Regenerate sql / drillDownColumn / drillDownColumnType from structured fields, exactly as the
@@ -212,8 +207,8 @@ export function deriveChartConfig(
     resolveMetricExpr?: ChartSqlInput["resolveMetricExpr"];
   },
 ): { sql: string; drillDownColumn: string; drillDownColumnType: string } | null {
-  const flags = DERIVE_FLAGS[type];
-  if (!flags) return null;
+  if (!DERIVE_TYPES.has(type)) return null;
+  const flags = AI_WIDGET_DEFAULTS[type as AiWidgetType].flags;
   if (typeof ctx.tableName !== "string" || !TABLE_NAME.test(ctx.tableName)) return null;
 
   const idents: unknown[] = [];
