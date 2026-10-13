@@ -56,6 +56,7 @@ const mk = (o: Partial<GatewayDeps> = {}): GatewayDeps => ({
   getPermissions: vi.fn(() => ANALYST), canViewDashboard: vi.fn(() => true), dashboardTableIds: () => [5, 7], ...o,
 });
 const add = (o: Record<string, unknown> = {}) => JSON.stringify({ tempId: -1, type: "bar", title: "T", tableId: 7, metric: "fare_amount", aggregation: "sum", groupByColumn: "vendor_id", ...o });
+const APPR = { approvals: { removeSaved: true } } as const;
 const pat = (kind: string, id: number, configPatch: unknown) => JSON.stringify({ kind, id, configPatch });
 
 describe("checkAiOp gateway", () => {
@@ -99,13 +100,13 @@ describe("checkAiOp gateway", () => {
 
   it("GW-4: D-16 analyst without edit rights is accepted", async () => {
     expect((await checkAiOp(mk(), addWidget, add())).ok).toBe(true);
-    expect((await checkAiOp(mk(), removeWidget, JSON.stringify({ id: 43 }))).ok).toBe(true);
+    expect((await checkAiOp(mk(APPR), removeWidget, JSON.stringify({ id: 43 }))).ok).toBe(true);
     expect((await checkAiOp(mk(), patch, pat("widget", 42, { show_popup: true }))).ok).toBe(true);
   });
 
   it("GW-5: permissions re-read per op", async () => {
     const getPermissions = vi.fn().mockReturnValueOnce(ANALYST).mockReturnValueOnce(new Set(["dashboards:view"]));
-    const d = mk({ getPermissions });
+    const d = mk({ getPermissions, ...APPR });
     expect((await checkAiOp(d, removeWidget, JSON.stringify({ id: 43 }))).ok).toBe(true);
     expect(await checkAiOp(d, removeWidget, JSON.stringify({ id: 42 }))).toMatchObject({ ok: false, stage: "permission" });
     expect(getPermissions).toHaveBeenCalledTimes(2);
@@ -113,7 +114,7 @@ describe("checkAiOp gateway", () => {
 
   it("GW-6: reference", async () => {
     expect(await checkAiOp(mk(), removeWidget, JSON.stringify({ id: 999 }))).toMatchObject({ ok: false, stage: "reference" });
-    const d = mk();
+    const d = mk(APPR);
     expect((await checkAiOp(d, removeWidget, JSON.stringify({ id: 42 }))).ok).toBe(true);
     expect(await checkAiOp(d, patch, pat("widget", 42, { show_popup: true }))).toMatchObject({ ok: false, stage: "reference" });
     const d2 = mk({ shadow: createShadow({ ...snap(), widgets: [...snap().widgets, { id: -1, type: "bar", title: "x" }] }) });
@@ -147,7 +148,7 @@ describe("checkAiOp gateway", () => {
   });
 
   it("GW-9: success updates shadow", async () => {
-    const d = mk();
+    const d = mk(APPR);
     const r = await checkAiOp(d, addWidget, add({ type: "map", tempId: -2, tableId: undefined, metric: undefined, aggregation: undefined, groupByColumn: undefined }));
     expect(r).toMatchObject({ ok: true, label: 'Added map "T" below existing content' });
     expect((await checkAiOp(d, patch, pat("widget", -2, { show_popup: true }))).ok).toBe(true);
@@ -173,7 +174,7 @@ const snap6 = (over: Record<string, unknown> = {}) => ({
   filters: [],
   ...over,
 });
-const mk6 = (snapshot: ReturnType<typeof snap6> | ReturnType<typeof snap> = snap6(), o: Partial<GatewayDeps> = {}) => mk({ shadow: createShadow(snapshot as never), ...o });
+const mk6 = (snapshot: unknown = snap6(), o: Partial<GatewayDeps> = {}) => mk({ shadow: createShadow(snapshot as never), ...o });
 const fails: unknown[] = [];
 const run = async (d: GatewayDeps, t: MutateTool, a: string) => {
   const r = await checkAiOp(d, t, a);
@@ -289,5 +290,97 @@ describe("checkAiOp gateway (phase 136)", () => {
 
   it("GW6-15: empty patch", async () => {
     expect(await run(mk(), patch, pat("widget", 43, {}))).toMatchObject({ ok: false, stage: "shape", reasons: ["nothing to change; pass at least one setting"] });
+  });
+});
+
+const snapL = () => ({
+  widgets: [
+    { id: 3, type: "bar", title: "Revenue", tableId: 5, layout: { x: 0, y: 0, w: 18, h: 30 }, binding: { groupByColumn: "vendor_id" } },
+    { id: 10, type: "map", title: "Map A", layout: { x: 0, y: 30, w: 18, h: 30 } },
+    { id: 11, type: "map", title: "Map B", layout: { x: 18, y: 30, w: 18, h: 30 } },
+  ],
+  layers: [
+    { id: 70, widgetId: 10, tableId: 5, renderMode: "heatmap", title: "Pickups" },
+    { id: 71, widgetId: 11, tableId: 6, renderMode: "raster" },
+  ],
+  dynamicViews: [],
+  filters: [],
+});
+const oneMap = () => ({ ...snapL(), widgets: snapL().widgets.slice(0, 2), layers: [{ id: 70, widgetId: 10, tableId: 5, renderMode: "heatmap", title: "Pickups" }] });
+const twoMapsNoHost = () => ({ ...snapL(), layers: [{ id: 71, widgetId: 11, tableId: 6, renderMode: "raster" }] });
+const addLayer = (o: Record<string, unknown> = {}) =>
+  raw({ op: "add_layer", tempId: -5, tableId: 5, renderMode: "heatmap", spatialMode: "latlon", latColumn: "pickup_latitude", lonColumn: "pickup_longitude", ...o });
+
+describe("checkAiOp gateway (phase 136, clarifications/layers/layout)", () => {
+  it("GW6-7: set_layout validates the whole resulting layout", async () => {
+    const sw = raw({ op: "set_layout", items: [{ id: 1, x: 18, y: 0, w: 18, h: 30 }, { id: 2, x: 0, y: 0, w: 18, h: 30 }] });
+    expect((await run(mk6(), rawOp, sw)).ok).toBe(true);
+    const ov = await run(mk6(), rawOp, raw({ op: "set_layout", items: [{ id: 2, x: 0, y: 0, w: 18, h: 30 }] }));
+    expect(ov).toMatchObject({ ok: false, stage: "layout", slot: "layout" });
+    if (!ov.ok) expect(ov.reasons).toContain("widgets 1 and 2 overlap");
+    expect(await run(mk6(), rawOp, raw({ op: "set_layout", items: [{ id: 999, x: 0, y: 0, w: 18, h: 30 }] }))).toMatchObject({ ok: false, stage: "reference" });
+  });
+
+  it("GW6-11: layer patches are restricted to heatmap and column-checked (D-21)", async () => {
+    expect((await run(mk6(snapL()), patch, pat("layer", 70, { colormap: "plasma" }))).ok).toBe(true);
+    const r = await run(mk6(snapL()), patch, pat("layer", 71, { colormap: "plasma" }));
+    expect(r).toMatchObject({ ok: false, stage: "allow_list" });
+    if (!r.ok) expect(r.reasons).toContain("only heatmap layers can be restyled");
+    expect((await run(mk6(snapL()), patch, pat("layer", 71, { visible: false }))).ok).toBe(true);
+    const v = await run(mk6(snapL()), patch, pat("layer", 70, { valueColumn: "fares" }));
+    expect(v).toMatchObject({ ok: false, stage: "live_schema" });
+    if (!v.ok) expect(v.reasons.join(" ")).toContain("`fare_amount`");
+    const n = await run(mk6(snapL()), patch, pat("layer", 70, { valueColumn: "vendor_id" }));
+    expect(n).toMatchObject({ ok: false, stage: "live_schema" });
+    if (!n.ok) expect(n.reasons.join(" ")).toContain("column vendor_id is not numeric");
+    expect((await run(mk6(snapL()), patch, pat("layer", 70, { valueColumn: "fare_amount" }))).ok).toBe(true);
+  });
+
+  it("GW6-12: add_layer host resolution and checks", async () => {
+    expect(await run(mk6(snapL()), rawOp, addLayer({ widgetId: 3 }))).toMatchObject({ ok: false, stage: "reference", reasons: ["widget 3 is not a map"] });
+    expect(await run(mk6(snapL()), rawOp, addLayer({ widgetId: 10, tableId: 6 }))).toMatchObject({ ok: false, stage: "reference", reasons: ["table 6 isn't on this dashboard; add it in dashboard settings first"] });
+    const lat = await run(mk6(snapL()), rawOp, addLayer({ widgetId: 10, latColumn: "lat" }));
+    expect(lat).toMatchObject({ ok: false, stage: "live_schema" });
+    if (!lat.ok) expect(lat.reasons.join(" ")).toContain("`pickup_latitude`");
+    expect(await run(mk6(), rawOp, addLayer())).toMatchObject({
+      ok: false, stage: "reference",
+      reasons: ["no map on this dashboard; add a map widget first (add_widget type map), then add the heatmap layer to its tempId"],
+    });
+    const one = await run(mk6(oneMap()), rawOp, addLayer());
+    expect(one).toMatchObject({ ok: true, op: { op: "add_layer", widgetId: 10 } });
+    const ask = await run(mk6(twoMapsNoHost()), rawOp, addLayer());
+    expect(ask).toMatchObject({ ok: false, stage: "clarification", clarification: { kind: "choose_map" } });
+    if (!ask.ok) expect(ask.clarification!.options.map((o) => o.label).sort()).toEqual(["Map A", "Map B"]);
+    const host = await run(mk6(snapL()), rawOp, addLayer());
+    expect(host).toMatchObject({ ok: true, op: { op: "add_layer", widgetId: 10 } });
+  });
+
+  it("GW6-13: D-06 removing saved content asks first", async () => {
+    const d = mk6(snapL());
+    const r = await run(d, removeWidget, JSON.stringify({ id: 3 }));
+    expect(r).toMatchObject({
+      ok: false, stage: "clarification", slot: "widget:3",
+      clarification: { kind: "confirm_remove", question: 'Remove the saved bar "Revenue"?', options: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }] },
+    });
+    expect(d.shadow.widgets.has(3)).toBe(true);
+    expect((await run(mk6(snapL(), APPR), removeWidget, JSON.stringify({ id: 3 }))).ok).toBe(true);
+    const t = mk6(snapL());
+    expect((await run(t, addWidget, add({ type: "bar", tempId: -2, tableId: 5 }))).ok).toBe(true);
+    expect((await run(t, removeWidget, JSON.stringify({ id: -2 }))).ok).toBe(true);
+    const rl = await run(mk6(snapL()), rawOp, raw({ op: "remove_layer", id: 70 }));
+    expect(rl).toMatchObject({ ok: false, stage: "clarification", clarification: { question: 'Remove the saved layer "Pickups"?' } });
+    expect(await run(mk6(snapL()), removeWidget, JSON.stringify({ id: 999 }))).toMatchObject({ ok: false, stage: "reference" });
+  });
+
+  it("GW6-16: D-12 map plus heatmap layer in one answer", async () => {
+    const d = mk6();
+    const m = await run(d, addWidget, add({ type: "map", tempId: -1, title: "Trips map", tableId: undefined, metric: undefined, aggregation: undefined, groupByColumn: undefined }));
+    expect(m.ok).toBe(true);
+    if (m.ok && m.op.op === "add_widget") expect(m.op.layout).toMatchObject({ w: 28, h: 45 });
+    expect((await run(d, rawOp, addLayer({ widgetId: -1, tempId: -2 }))).ok).toBe(true);
+    const d2 = mk6();
+    await run(d2, addWidget, add({ type: "map", tempId: -1, title: "Trips map", tableId: undefined, metric: undefined, aggregation: undefined, groupByColumn: undefined }));
+    const r = await run(d2, rawOp, addLayer({ tempId: -2 }));
+    expect(r).toMatchObject({ ok: true, op: { op: "add_layer", widgetId: -1 } });
   });
 });

@@ -9,7 +9,9 @@ import {
   placeWidget,
   validateActionPatch,
   validateAiWidgetConfig,
-  validateLayerSnapshot,
+  resolveHeatmapHost,
+  validateAiLayerPatch,
+  validateLayout,
   type AiClarification,
   type AiOp,
   type AiWidgetType,
@@ -58,13 +60,18 @@ function nearest(name: string, cols: string[]): string[] {
   const n = name.toLowerCase();
   const toks = (x: string) => x.split("_").filter((t) => t.length >= 3);
   const nt = toks(n);
+  const sharedPrefix = (l: string) => {
+    let k = 0;
+    while (k < n.length && k < l.length && n[k] === l[k]) k++;
+    return k;
+  };
   const scored: { c: string; score: number; i: number }[] = [];
   cols.forEach((c, i) => {
     const l = c.toLowerCase();
     let score = Infinity;
     if (l === n) score = 0;
     else if (n.length >= 3 && (l.includes(n) || (l.length >= 3 && n.includes(l)))) score = 1;
-    else if (toks(l).some((t) => nt.includes(t))) score = 2;
+    else if (toks(l).some((t) => nt.includes(t)) || sharedPrefix(l) >= 4) score = 2;
     else if (lev(n, l) <= 2) score = 3;
     if (score !== Infinity) scored.push({ c, score, i });
   });
@@ -96,6 +103,21 @@ function opColumnRefs(op: AiOp, shadow: ShadowState): { tableId: number | undefi
   if (op.op === "patch" && op.action.target.kind === "widget") {
     const refs = fromRec(op.action.configPatch);
     return { tableId: shadow.widgets.get(op.action.target.id)?.tableId, refs, probe: refs.length > 0 };
+  }
+  if (op.op === "patch" && op.action.target.kind === "layer") {
+    // D-21: a heatmap value column is checked against the layer's own table.
+    const refs = strs(op.action.configPatch.valueColumn).map((name) => ({ name, numeric: true }));
+    return { tableId: shadow.layers.get(op.action.target.id)?.tableId, refs, probe: refs.length > 0 };
+  }
+  if (op.op === "add_layer") {
+    const refs: ColRef[] = [
+      ...strs(op.latColumn).map((name) => ({ name, numeric: true })),
+      ...strs(op.lonColumn).map((name) => ({ name, numeric: true })),
+      ...strs(op.wktColumn).map((name) => ({ name, numeric: false })),
+      ...strs(op.wkbColumn).map((name) => ({ name, numeric: false })),
+      ...strs(op.style?.valueColumn).map((name) => ({ name, numeric: true })),
+    ];
+    return { tableId: op.tableId, refs, probe: true };
   }
   return undefined;
 }
@@ -140,10 +162,34 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
   if (!parsed.success) {
     return fail("shape", parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`));
   }
-  const p = parseAiOp(tool.toOp(parsed.data));
+  const shadow = deps.shadow;
+  const candidate = tool.toOp(parsed.data);
+  // D-11/D-12: an add_layer without a map id resolves to the dashboard's (or this answer's new) map, or asks.
+  if (isRec(candidate) && candidate.op === "add_layer" && candidate.widgetId === undefined && typeof candidate.tableId === "number") {
+    const hostX: FailExtras = {
+      ...(typeof candidate.tempId === "number" ? { slot: `new:${candidate.tempId}` } : {}),
+      label: `Add heatmap layer${typeof candidate.name === "string" && candidate.name ? ` "${candidate.name}"` : ""}`,
+    };
+    const maps = [...shadow.widgets.entries()].filter(([, w]) => w.type === "map").map(([id, w]) => ({ id, title: w.title }));
+    const layers = [...shadow.layers.entries()].map(([id, l]) => ({ id, widgetId: l.widgetId, ...(l.tableId !== undefined ? { tableId: l.tableId } : {}) }));
+    const host = resolveHeatmapHost({ maps, layers, tableId: candidate.tableId });
+    if (host.kind === "use") candidate.widgetId = host.widgetId;
+    else if (host.kind === "add_map") {
+      return fail("reference", ["no map on this dashboard; add a map widget first (add_widget type map), then add the heatmap layer to its tempId"], hostX);
+    } else {
+      return fail("clarification", ["more than one map; ask the user which one"], {
+        ...hostX,
+        clarification: {
+          kind: "choose_map",
+          question: "Which map should get the heatmap?",
+          options: host.options.map((o) => ({ id: String(o.widgetId), label: o.title })),
+        },
+      });
+    }
+  }
+  const p = parseAiOp(candidate);
   if (!p.ok) return fail("shape", p.errors);
   const op: AiOp = p.op;
-  const shadow = deps.shadow;
   const x: FailExtras = { slot: slotOf(op), label: describeIntent(op, shadow) };
   const f = (stage: GatewayStage, reasons: string[], refKey?: string): GatewayResult => fail(stage, reasons, { ...x, ...(refKey ? { refKey } : {}) });
 
@@ -169,7 +215,8 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
         res = validateActionPatch("widget", w.type, patchRec);
       }
     } else if (kind === "layer") {
-      if (shadow.layers.has(id)) res = validateLayerSnapshot(patchRec);
+      const l = shadow.layers.get(id);
+      if (l) res = validateAiLayerPatch(patchRec, l.renderMode);
     } else if (kind === "dynamicView") {
       if (shadow.dynamicViews.has(id)) res = validateActionPatch("dynamicView", undefined, patchRec);
     }
@@ -189,15 +236,35 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     const d = await deps.liveSchema.describe(tableId);
     return f("reference", [d.ok ? NOT_ON_DASHBOARD(tableId) : NOT_AVAILABLE(tableId)], `table:${tableId}`);
   };
+  /** D-06: saved content is only removed with the user's approval; temp (AI-created) content never asks. Never mutates the shadow. */
+  const confirmRemove = (id: number, what: string): GatewayResult | undefined => {
+    if (id < 0 || deps.approvals?.removeSaved === true) return undefined;
+    return fail("clarification", ["removing saved content needs the user's approval"], {
+      ...x,
+      clarification: {
+        kind: "confirm_remove",
+        question: `Remove ${what}?`,
+        options: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }],
+      },
+    });
+  };
   if (op.op === "patch") {
     const { kind, id } = op.action.target;
     const exists = kind === "widget" ? shadow.widgets.has(id) : kind === "layer" ? shadow.layers.has(id) : kind === "dynamicView" ? shadow.dynamicViews.has(id) : true;
     if (!exists) return missing(kind, id);
     if (kind === "widget" && shadow.widgets.get(id)?.dynamicViewId !== undefined) return f("reference", [DV_BOUND], `ref:widget:${id}`);
   } else if (op.op === "remove_widget") {
-    if (!shadow.widgets.has(op.id)) return missing("widget", op.id);
+    const w = shadow.widgets.get(op.id);
+    if (!w) return missing("widget", op.id);
+    const ask = confirmRemove(op.id, `the saved ${w.type} "${w.title}"`);
+    if (ask) return ask;
   } else if (op.op === "remove_layer") {
-    if (!shadow.layers.has(op.id)) return missing("layer", op.id);
+    const l = shadow.layers.get(op.id);
+    if (!l) return missing("layer", op.id);
+    const ask = confirmRemove(op.id, `the saved layer ${l.title ? `"${l.title}"` : op.id}`);
+    if (ask) return ask;
+  } else if (op.op === "set_layout") {
+    for (const it of op.items) if (!shadow.widgets.has(it.id)) return missing("widget", it.id);
   } else if (op.op === "remove_dynamic_view") {
     if (!shadow.dynamicViews.has(op.id)) return missing("dynamicView", op.id, "dynamic view");
   } else if (op.op === "change_widget_type" || op.op === "set_widget_title") {
@@ -214,6 +281,13 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     }
   } else if (op.op === "add_widget" || op.op === "add_layer" || op.op === "add_dynamic_view") {
     if (shadow.usedTempIds.has(op.tempId)) return f("reference", [`temp id ${op.tempId} is already in use`], `ref:temp:${op.tempId}`);
+    if (op.op === "add_layer") {
+      const host = shadow.widgets.get(op.widgetId);
+      if (!host) return missing("widget", op.widgetId);
+      if (host.type !== "map") return f("reference", [`widget ${op.widgetId} is not a map`], `ref:widget:${op.widgetId}`);
+      const r = await tableRule(op.tableId);
+      if (r) return r;
+    }
     if (op.op === "add_widget") {
       const t = (op.config as Record<string, unknown>).tableId;
       if (op.type === "map") {
@@ -261,6 +335,13 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     const size = AI_DEFAULT_SIZE[op.type as AiWidgetType];
     const r = placeWidget(shadowRects(shadow), size);
     op.layout = { x: r.x, y: r.y, w: r.w, h: r.h };
+  }
+
+  if (op.op === "set_layout") {
+    const next = new Map(shadowRects(shadow).map((r) => [r.id, r]));
+    for (const it of op.items) next.set(it.id, it);
+    const v = validateLayout([...next.values()]);
+    if (!v.valid) return f("layout", v.reasons);
   }
 
   // g. ok
