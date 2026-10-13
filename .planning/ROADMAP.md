@@ -152,6 +152,8 @@ Plans:
 3. New widgets do not overlap and the AI can resize and reorder; layout sensibility is operator human-verify.
 4. An AI-added or restyled heatmap layer renders tiles and legend correctly (both `buildWmsParams` sites; operator human-verify in light and dark).
 
+**Carry-forward (135 verification, 2026-10-13):** (W2) the agent loop's rejection counter is keyed by tool name and never resets — after 2 rejections, later VALID calls of that tool are blocked ('too many invalid attempts') and recorded only in `tools`, not `skipped`. Key it per target or reset on success, and surface blocks in `skipped`, as part of criterion 2. Also add layer column-existence checks for heatmap `patch` ops (today only the allow-list is checked).
+
 **Note (134 UAT, 2026-10-12):** see TD-V20-ALLOWLIST-KEYS in PROJECT.md — the chart metric/aggregation and layer-opacity allow-list fields must be designed before AI chart edits.
 
 **Map test plan (operator, 2026-10-09):** automated — validator round-trip against the operator's real saved map/heatmap-layer configs + invalid cases, and buildWmsParams snapshot for AI heatmap layers on BOTH MapChartRenderer sites; operator-run — WMS GetMap render check (HTTP 200 image/png, non-blank) like spike S1.4; human-verify — light/dark visual. Optional later: claude-in-chrome screenshots (no new dependency).
@@ -161,7 +163,7 @@ Plans:
 ### Phase 137: AI Widget & Streaming UI
 **Goal:** Users ask questions in an AI widget that keeps a full chat conversation and watch the dashboard answer, with progress, cancel, follow-ups, clarification, highlights, a per-answer "Revert dashboard to this state" button and a Keep/Discard bar.
 **Depends on:** 136
-**Requirements:** AIWID-V20-01, AIWID-V20-02, AIWID-V20-03, AIWID-V20-04, AIWID-V20-05, AIWID-V20-06, AIWID-V20-07, AISES-V20-04
+**Requirements:** AIWID-V20-01, AIWID-V20-02, AIWID-V20-03, AIWID-V20-04, AIWID-V20-05, AIWID-V20-06, AIWID-V20-07, AISES-V20-04, AIGOV-V20-01 (closes the widget clause; Partial since 135)
 **Research flag:** yes (S2 streaming through the deploy proxy)
 **Success Criteria:**
 1. A designer adds an AI widget; a large tile shows the chat inline, a small tile shows an ask bar + history icon and opens the shared conversation in a portalled drawer (full-screen on narrow screens); a user without "Use AI" cannot add or use it.
@@ -169,6 +171,8 @@ Plans:
 3. Each answer shows full plain-text content, clickable follow-ups and a working "Revert dashboard to this state" button; an ambiguous question yields 2–3 clickable choices.
 4. A provider error, cap or quota failure shows a clear message and leaves the dashboard unchanged.
 5. Highlights and the Keep/Discard bar with counts are legible in light and dark (operator human-verify; reuse `global.css` classes, portal any modal).
+
+**Carry-forward (135 verification, 2026-10-13):** (W1) the per-user in-flight AI lock is released only after the answer finishes; a provider that ignores abort, or a hung Kinetica probe (no abort/timeout, ~300 s undici default), can hold AI_BUSY. Add a route-level hard deadline that always releases the lock, and give the Kinetica probes an abort signal. Kinetica job tagging/cancel for user Cancel is also in scope here (see memory: abort does not cancel jobs).
 **Plans:** TBD
 
 ### Phase 138: AI Filters
