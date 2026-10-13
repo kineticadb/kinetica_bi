@@ -12,8 +12,8 @@
 ### Safety foundations
 
 - [x] **AISAFE-V20-01**: `POST /api/filter/materialize` rejects any column that does not exist on the target table or view (closes `SSYNC-F6`). Lands before any AI filter or dynamic-view tool.
-- [ ] **AISAFE-V20-02**: Every AI-proposed change passes one server-side gateway — request shape, allow-list, the user's permissions, the live table schema — before reaching the browser. A change that fails any check is rejected and never applied.
-- [ ] **AISAFE-V20-03**: The AI never exceeds the asking user's rights: it sees only tables the user can see and proposes only changes the user's role allows.
+- [x] **AISAFE-V20-02**: Every AI-proposed change passes one server-side gateway — request shape, allow-list, the user's permissions, the live table schema — before reaching the browser. A change that fails any check is rejected and never applied.
+- [x] **AISAFE-V20-03**: The AI never exceeds the asking user's rights: it sees only tables the user can see and proposes only changes the user's role allows.
 - [ ] **AISAFE-V20-04**: AI dynamic views are a structured description (table, columns, filters, grouping, aggregates, sort, limit) that the server compiles to SQL. The model never submits raw SQL.
 - [ ] **AISAFE-V20-05**: Instructions hidden in data values, column names, table comments or dashboard titles cannot make the AI act beyond the gateway's rules. AI text renders as plain text only (no links, markdown or images). Proven with an injected-instruction fixture.
 - [ ] **AISAFE-V20-06**: Temporary Kinetica views the AI creates are removed on undo, discard, dashboard switch, logout and server restart.
@@ -62,17 +62,17 @@
 - [x] **AIPRV-V20-01**: An admin sets the AI provider, endpoint, model and key through env. AI is off by default, and the app behaves exactly as today without it.
 - [ ] **AIPRV-V20-02**: The OpenAI-compatible provider works end to end, proven live by the operator on **Gemini** (Google AI Studio).
 - [ ] **AIPRV-V20-03**: The same provider is proven live on one named **local open model** (Ollama).
-- [ ] **AIPRV-V20-04**: A Claude provider exists and is unit-tested, documented as not live-verified.
-- [ ] **AIPRV-V20-05**: The API key never reaches the browser or the logs; automated tests never call a real provider or read the dev key.
+- [x] **AIPRV-V20-04**: A Claude provider exists and is unit-tested, documented as not live-verified.
+- [x] **AIPRV-V20-05**: The API key never reaches the browser or the logs; automated tests never call a real provider or read the dev key.
 
 ### Governance
 
 - [ ] **AIGOV-V20-01**: An admin grants a **"Use AI"** permission to roles. Without it, a user cannot use or add the AI widget, and the server refuses AI requests.
-- [ ] **AIGOV-V20-02**: An admin sets AI data access through env: **schema** (default — the AI sees table structure and dashboard config; no row value ever reaches the provider, proven with a planted value) or **query** (the AI may also run queries).
+- [x] **AIGOV-V20-02**: An admin sets AI data access through env: **schema** (default — the AI sees table structure and dashboard config; no row value ever reaches the provider, proven with a planted value) or **query** (the AI may also run queries).
 - [ ] **AIGOV-V20-03**: In query mode, AI queries are single read-only SELECT statements, run as the user with their own Kinetica credentials and a row cap; anything else is refused.
-- [ ] **AIGOV-V20-04**: Every AI answer is logged — who asked, on which dashboard, the question, the tools run, the changes applied or rejected, and the outcome — with no row values.
+- [x] **AIGOV-V20-04**: Every AI answer is logged — who asked, on which dashboard, the question, the tools run, the changes applied or rejected, and the outcome — with no row values.
 - [ ] **AIGOV-V20-05**: An admin can browse the AI log on an audit page gated by the existing `audit:view` permission. *(Changed 2026-10-12, Phase 135 discussion — was "its own permission".)*
-- [ ] **AIGOV-V20-06**: An admin sets AI usage caps through env (steps per answer, answers per user per hour); a capped user is told why.
+- [x] **AIGOV-V20-06**: An admin sets AI usage caps through env (steps per answer, answers per user per hour); a capped user is told why.
 
 ## v2 Requirements
 
@@ -110,8 +110,8 @@ Which phases cover which requirements.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | AISAFE-V20-01 | Phase 133 | Complete |
-| AISAFE-V20-02 | Phase 135 | Pending |
-| AISAFE-V20-03 | Phase 135 | Pending |
+| AISAFE-V20-02 | Phase 135 | Complete |
+| AISAFE-V20-03 | Phase 135 | Complete |
 | AISAFE-V20-04 | Phase 139 | Pending |
 | AISAFE-V20-05 | Phase 140 | Pending |
 | AISAFE-V20-06 | Phase 139 | Pending |
@@ -145,14 +145,14 @@ Which phases cover which requirements.
 | AIPRV-V20-01 | Phase 133 | Complete |
 | AIPRV-V20-02 | Phase 142 | Pending |
 | AIPRV-V20-03 | Phase 142 | Pending |
-| AIPRV-V20-04 | Phase 135 | Pending |
-| AIPRV-V20-05 | Phase 135 | Pending |
-| AIGOV-V20-01 | Phase 135 | Pending |
-| AIGOV-V20-02 | Phase 135 | Pending |
+| AIPRV-V20-04 | Phase 135 | Complete |
+| AIPRV-V20-05 | Phase 135 | Complete |
+| AIGOV-V20-01 | Phase 135 | Partial (server refusal + Roles-page grant done in 135; "cannot use or add the AI widget" gate lands with the widget, Phase 137) |
+| AIGOV-V20-02 | Phase 135 | Complete |
 | AIGOV-V20-03 | Phase 140 | Pending |
-| AIGOV-V20-04 | Phase 135 | Pending |
+| AIGOV-V20-04 | Phase 135 | Complete |
 | AIGOV-V20-05 | Phase 142 | Pending |
-| AIGOV-V20-06 | Phase 135 | Pending |
+| AIGOV-V20-06 | Phase 135 | Complete |
 
 **Coverage:**
 - v1 requirements: 44 total
@@ -161,4 +161,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*
+*Last updated: 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*

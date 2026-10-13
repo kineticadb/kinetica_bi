@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 134 complete (2026-10-12); next Phase 135 (can start now)"
-last_updated: "2026-10-09T18:00:00.000Z"
+stopped_at: "Phase 135 complete (2026-10-13); next Phase 136"
+last_updated: "2026-10-13T18:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,15 +19,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 133 (AI Contract, Shared Package, SSYNC-F6 Fix & Spikes)
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 136 (Structural & Edit Ops) next
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 134 complete — next: 135 (can start now; 134 and 135 are disjoint)
+Phase: 135 complete — next: 136 (Structural & Edit Ops; depends on 134 + 135, both done)
 Plan: —
-Status: Phase 134 complete (10/10 plans, operator-approved 2026-10-12; gap plan 134-10 closed GAP-134-01/02)
-Last activity: 2026-10-12 — Phase 135 context gathered (ai:use for admin+designer; recent-turns+summary memory; full-answer audit 90d; caps 30/h)
+Status: Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
+Last activity: 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -48,12 +48,21 @@ Last activity: 2026-10-12 — Phase 135 context gathered (ai:use for admin+desig
 
 **Phase 133 outcomes (2026-10-09):** SSYNC-F6 column guard landed (residuals in `133-COLUMN-AUDIT.md`); `packages/shared` contract + AI env config done. Spikes approved (`133-SPIKES.md`): S1 ad-hoc dv path viable, no fallback; S2 SSE over POST (nginx deferred to 137); S3 subset = bar, line, pie, table, bignumber, records, map (AI adds/edits heatmap layers only; AI-F12 defers the rest); S7 fully app-side SQL guard, tag/find/cancel for jobs.
 
+**Phase 135 outcomes (2026-10-13):** Server side of the AI loop is in place behind `POST /api/ai/ask` (SSE) + `/api/ai/config`. (1) `ai:use` permission (admin + designer by default) with the full RBAC ripple (catalog/seed/migration specs, web mirror, "AI" group on the Roles page); the server returns 403 without it. (2) One gateway, shape → allow-list → permission → reference → live schema, rechecking permissions per op. D-16 semantics: session-only structural changes are allowed for any `ai:use` user who can view the dashboard; edit rights are enforced at Keep (Phase 141). A rejected or failed answer emits zero ops (atomic buffered ops). (3) Providers: OpenAI-compatible adapter (Gemini quirks: thought_signature replay, no streamed `index`, body-only `retryDelay`), Claude adapter unit-tested against doc fixtures only (NOT live-verified, AI-F11), and the `AI_TOOL_MODE=json` action-plan fallback. (4) Schema-only access by default is proven with a canary egress matrix; a key-sentinel matrix proves the key is never in logs, SSE, config, audit or errors; tests never touch a real provider. (5) One `ai_audit` row per answer (no row values, 90-day retention sweep). Caps: steps per answer, 30 answers per user per hour, an optional per-deployment day cap, and a 20 s 429 retry budget, each with exact user-facing messages. (6) **S6 verdict:** Gemini `gemini-3-flash-preview` = native tool calling, **provisional**. 19 clean trials (one short of the 20-trial bar) because the free-tier daily quota (20 requests/day/model) ran out mid-run; every clean measurement passed (100 % valid calls, multi-turn 2/2). `AI_TOOL_MODE=json` stays the fallback. Ollama untested. The spike's original `json (best effort)` verdict was a scoring artefact, fixed red-first (bb693c7). The operator also ran `AI_MODEL=Antigravity` (a product name, not a model ID); that run is recorded as invalid.
+
+**New debt / follow-ups from Phase 135:**
+- AIGOV-V20-01 is **Partial**: the server refusal and the Roles-page grant are done; "without ai:use a user cannot use or add the AI widget" must be built and verified with the widget in Phase 137.
+- S6 needs a re-run with ≥ 20 clean trials to make Gemini native final (paid key, or `--runs 3` across two quota days). Gemini 3 needs `AI_TIMEOUT_MS ≥ 120000`: the first call timed out at the 60 s default.
+- `packages/server/.env.example` still shows `AI_MODEL=gemini-2.5-flash` and `AI_TIMEOUT_MS=60000` with no Gemini-3 note. Update it to the tested model ID and the timeout advice.
+- Optional: add a recorded Gemini daily-quota 429 body and a no-index streamed tool call as adapter fixtures (both cases are already handled).
+- Free-tier capacity: one ask uses several requests, so 137/142 must surface the daily-cap refusal clearly.
+
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next: `/gsd:plan-phase 135` (Phase 134 done).**
+**Next: `/gsd:plan-phase 136` (Phases 134 and 135 done).**
 
 **Open blockers:** none.
 

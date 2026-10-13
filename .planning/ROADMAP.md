@@ -50,7 +50,7 @@
 
 - [x] **Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes** — close the column-interpolation hole; shared zod contract; AI env validated at startup; spikes S1/S2/S3/S7 decided
 - [x] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
-- [ ] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
+- [x] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
 - [ ] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
 - [ ] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
 - [ ] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
@@ -125,20 +125,21 @@ Plans:
 4. Each answer writes an audit record with no row values; exceeding the step or hourly cap returns a message saying why.
 5. The Claude adapter passes unit tests against recorded fixtures and is documented as not live-verified; tests never call a real provider or read the dev key.
 **Plans:** 12 plans (6 waves)
+**Completed 2026-10-13:** 12/12 plans. S6: Gemini `gemini-3-flash-preview` = native tool calling (provisional, 19 clean trials, free-tier daily quota cut the run; see 135-SPIKES.md); Claude adapter unit-tested only, NOT live-verified; AIGOV-V20-01 widget-side gate deferred to 137.
 
 Plans:
-- [ ] 135-01-PLAN.md — `ai:use` permission + full RBAC ripple (server catalog/seed/specs, web mirror, "AI" group, Roles page) [W1]
-- [ ] 135-02-PLAN.md — Contracts: shared AskRequestSchema (D-17), AI cap/history/tool-mode config + env blanking, provider/tool types, SSE parser, egress choke point, AI test kit [W1]
-- [ ] 135-03-PLAN.md — ai_audit table, SQLite-derived caps with exact D-15 messages, retention sweep wired after startExportSweep [W1]
-- [ ] 135-04-PLAN.md — OpenAI-compatible adapter (hand-written fixtures, Gemini quirks) + D-14 retry budget [W2]
-- [ ] 135-05-PLAN.md — Claude adapter (doc fixtures, NOT live-verified) + JSON action-plan fallback decorator [W2]
-- [ ] 135-06-PLAN.md — Gateway (shape → allow-list → permission → reference → live schema; D-16 semantics) + shadow + user-credentialed live schema [W2]
-- [ ] 135-07-PLAN.md — Tool registry: read tools (access-filtered), validate-only mutate tools, flat schemas, schema-mode query gate [W2]
-- [ ] 135-08-PLAN.md — Context builder: snapshot projection, system prompt, bounded history with answer text (D-05/06/17) [W2]
-- [ ] 135-09-PLAN.md — Agent loop: atomic buffered ops, step cap, 429 retry, cancel/timeout/session re-check + scripted/recording providers [W3]
-- [ ] 135-10-PLAN.md — /api/ai/ask (SSE) + /api/ai/config, provider factory, ai:use 403, caps 429, one audit row per answer [W4]
-- [ ] 135-11-PLAN.md — End-to-end proofs: schema-mode canary egress matrix + key-sentinel matrix with positive controls [W5]
-- [ ] 135-12-PLAN.md — S6 spike (operator-run checkpoint), tested-models matrix, provider docs, phase bookkeeping [W6]
+- [x] 135-01-PLAN.md — `ai:use` permission + full RBAC ripple (server catalog/seed/specs, web mirror, "AI" group, Roles page) [W1]
+- [x] 135-02-PLAN.md — Contracts: shared AskRequestSchema (D-17), AI cap/history/tool-mode config + env blanking, provider/tool types, SSE parser, egress choke point, AI test kit [W1]
+- [x] 135-03-PLAN.md — ai_audit table, SQLite-derived caps with exact D-15 messages, retention sweep wired after startExportSweep [W1]
+- [x] 135-04-PLAN.md — OpenAI-compatible adapter (hand-written fixtures, Gemini quirks) + D-14 retry budget [W2]
+- [x] 135-05-PLAN.md — Claude adapter (doc fixtures, NOT live-verified) + JSON action-plan fallback decorator [W2]
+- [x] 135-06-PLAN.md — Gateway (shape → allow-list → permission → reference → live schema; D-16 semantics) + shadow + user-credentialed live schema [W2]
+- [x] 135-07-PLAN.md — Tool registry: read tools (access-filtered), validate-only mutate tools, flat schemas, schema-mode query gate [W2]
+- [x] 135-08-PLAN.md — Context builder: snapshot projection, system prompt, bounded history with answer text (D-05/06/17) [W2]
+- [x] 135-09-PLAN.md — Agent loop: atomic buffered ops, step cap, 429 retry, cancel/timeout/session re-check + scripted/recording providers [W3]
+- [x] 135-10-PLAN.md — /api/ai/ask (SSE) + /api/ai/config, provider factory, ai:use 403, caps 429, one audit row per answer [W4]
+- [x] 135-11-PLAN.md — End-to-end proofs: schema-mode canary egress matrix + key-sentinel matrix with positive controls [W5]
+- [x] 135-12-PLAN.md — S6 spike (operator-run checkpoint), tested-models matrix, provider docs, phase bookkeeping [W6]
 
 ### Phase 136: Structural & Edit Ops
 **Goal:** The AI can add, remove and edit visualizations and map layers and place them sensibly, with every change validated against the live schema.
@@ -237,7 +238,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 133. AI Contract, Shared Package, SSYNC-F6 Fix & Spikes | 10/10 | Complete | 2026-10-09 |
 | 134. Session Layer Engine | 10/10 | Complete | 2026-10-12 |
-| 135. Server Gateway, Agent Loop, Providers & Governance Core | 0/? | Not started | - |
+| 135. Server Gateway, Agent Loop, Providers & Governance Core | 12/12 | Complete | 2026-10-13 |
 | 136. Structural & Edit Ops | 0/? | Not started | - |
 | 137. AI Widget & Streaming UI | 0/? | Not started | - |
 | 138. AI Filters | 0/? | Not started | - |
