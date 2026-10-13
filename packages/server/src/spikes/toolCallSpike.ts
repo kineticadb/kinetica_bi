@@ -30,6 +30,14 @@
  * SAFETY: prompts are synthetic and use only the inline demo.nyctaxi-style schema below (no real data - the Gemini
  * free tier may train on prompts). Only the endpoint origin, model and "key set / not set" are ever printed.
  * 429s are honoured (Retry-After / retryDelay), counted and reported - never hidden. Imports nothing from db/env/index/Express.
+ *
+ * SCORING: trials that end in a transport/quota/request error (429, 5xx, timeout/abort, network, 400/401/403) never
+ * reached the model and are EXCLUDED from the quality figures (reported as excludedTrials); the >= 20-trial rule counts
+ * clean trials only (fewer -> "inconclusive (N clean trials)"; all request errors -> INVALID RUN).
+ * EARLY STOP: the run ends (partial output still written) after 3 consecutive 400s, or on a 429 that signals an
+ * exhausted DAILY quota (quota id contains "PerDay" or retry delay > 1 h; Gemini free tier is ~20 requests/day/model).
+ * AI_MODEL must be the model ID (e.g. gemini-3-flash-preview), not a product/display name. Gemini 3 "thinking"
+ * models can exceed the 60 s default on a cold first call - use AI_TIMEOUT_MS=120000 or more.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -46,9 +54,12 @@ import { createShadow } from "../lib/ai/shadow";
 import type { DashboardView, LiveSchemaPort, LiveTableInfo, ToolContext } from "../lib/ai/tools/types";
 import {
   aggregateSpikeRuns,
+  createEarlyStopGuard,
   createPacer,
   formatMatrixRow,
+  INVALID_RUN_VERDICT,
   MATRIX_HEADER,
+  parse429Body,
   sanitizeRecording,
   verdictFor,
   type SpikeCall,
@@ -105,13 +116,14 @@ export function parseSpikeArgs(argv: string[]): SpikeArgs | { error: string } {
 }
 
 // ---------- wire observation (tee of the adapter's fetch) ----------
-type Wire = { index: boolean[]; id: boolean[]; extra: boolean; fragmented: boolean; retryAfterHeader: boolean; retryDelayMs?: number; badRequest?: string; usage: boolean; pending: Promise<void>[] };
+type Wire = { index: boolean[]; id: boolean[]; extra: boolean; fragmented: boolean; retryAfterHeader: boolean; retryDelayMs?: number; quotaId?: string; badRequest?: string; usage: boolean; pending: Promise<void>[] };
 const freshWire = (): Wire => ({ index: [], id: [], extra: false, fragmented: false, retryAfterHeader: false, usage: false, pending: [] });
 
 function inspectBody(w: Wire, status: number, text: string): void {
   if (status === 429) {
-    const m = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(text);
-    if (m) w.retryDelayMs = Math.round(parseFloat(m[1]) * 1000);
+    const q = parse429Body(text);
+    if (q.retryDelayMs !== undefined) w.retryDelayMs = q.retryDelayMs;
+    if (q.quotaId !== undefined) w.quotaId = q.quotaId;
     return;
   }
   if (status === 400) { w.badRequest = text.slice(0, 300); return; }
@@ -188,6 +200,7 @@ const SCENARIOS: Scenario[] = [
 type Ctx = {
   provider: LlmProvider; reg: ToolRegistry; wire: () => Wire; resetWire: () => void;
   pacer: { wait(): Promise<void> }; sleep: (ms: number) => Promise<void>; timeoutMs: number; notes: Notes;
+  guard: ReturnType<typeof createEarlyStopGuard>;
 };
 type Notes = { usagePresent: number; fragmentedStreams: number; schemaRejections: string[]; errorKinds: Record<string, number> };
 
@@ -221,12 +234,19 @@ async function oneStep(ctx: Ctx, messages: OutboundMessage[], pace = true): Prom
     if (w.fragmented) ctx.notes.fragmentedStreams++;
     if (w.badRequest && ctx.notes.schemaRejections.length < 5) ctx.notes.schemaRejections.push(w.badRequest);
     if (out.error) ctx.notes.errorKinds[out.error.kind] = (ctx.notes.errorKinds[out.error.kind] ?? 0) + 1;
+    const stepDelay = w.retryDelayMs ?? retryDelayMs;
+    const stop = ctx.guard.observe({
+      ...(out.error ? { kind: out.error.kind } : {}),
+      ...(out.error?.status !== undefined ? { status: out.error.status } : {}),
+      ...(out.error?.kind === "rate_limited" && stepDelay !== undefined ? { retryDelayMs: stepDelay } : {}),
+      ...(out.error?.kind === "rate_limited" && w.quotaId !== undefined ? { quotaId: w.quotaId } : {}),
+    });
     if (out.error?.kind === "rate_limited") {
       rateLimited++;
       retryAfterHeader = retryAfterHeader || w.retryAfterHeader;
       if (w.retryDelayMs !== undefined) retryDelayMs = Math.max(retryDelayMs ?? 0, w.retryDelayMs);
       const wait = out.error && retryDelayMs !== undefined ? retryDelayMs : 15_000 * (attempt + 1);
-      if (attempt < 3 && wait <= 180_000) {
+      if (!stop && attempt < 3 && wait <= 180_000) {
         console.log(`[s6] 429 from provider (suggested delay ${Math.round(wait / 1000)}s) - waiting, then retrying`);
         await ctx.sleep(wait + 500);
         continue;
@@ -346,6 +366,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
   const ctx: Ctx = {
     provider, reg, wire: () => wire, resetWire: () => { wire = freshWire(); },
     pacer: createPacer({ rpm: args.rpm, now: Date.now, sleep }), sleep, timeoutMs: config.timeoutMs, notes,
+    guard: createEarlyStopGuard(),
   };
 
   const runs: SpikeRun[] = [];
@@ -355,10 +376,14 @@ export async function main(argv: string[], env: Record<string, string | undefine
         const run = await runScenario(ctx, s);
         runs.push(run);
         console.log(`[s6] run ${r}/${args.runs} scenario ${s.n} (${s.label}): calls=${run.calls.map((c) => c.name).join(",") || "none"} finish=${run.finish}${run.error ? ` ERROR=${run.error.kind}${run.error.status ? `/${run.error.status}` : ""}` : ""} ${Math.round(run.latencyMs / 1000)}s`);
+        if (ctx.guard.stopped()) break;
       }
+      if (ctx.guard.stopped()) break;
     }
+    const stopped = ctx.guard.stopped();
+    if (stopped) console.log(`[s6] STOPPING EARLY: ${stopped}. Writing the partial results gathered so far.`);
 
-    if (args.burst > 0) {
+    if (!stopped && args.burst > 0) {
       console.log(`[s6] burst: ${args.burst} un-paced calls (provokes 429)`);
       const delays: number[] = [];
       let n429 = 0;
@@ -370,7 +395,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
       console.log(`[s6] burst result: 429s=${n429} retryAfterHeader=${hdr} delaysMs=${JSON.stringify(delays)}`);
     }
 
-    if (args.raw) {
+    if (!ctx.guard.stopped() && args.raw) {
       await ctx.pacer.wait();
       const spec = reg.specs.find((t) => t.name === "list_tables")!;
       const res = await fetch(`${config.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
@@ -398,17 +423,20 @@ export async function main(argv: string[], env: Record<string, string | undefine
   const verdict = verdictFor(agg);
   const decision =
     verdict === "native" ? `AI_TOOL_MODE=native for ${config.model}`
-    : verdict === "insufficient trials" ? `insufficient trials (${agg.trials} < 20): re-run with more --runs; default stays AI_TOOL_MODE=native`
+    : verdict === INVALID_RUN_VERDICT ? `${INVALID_RUN_VERDICT}: every trial failed with a request error - no verdict`
+    : verdict.startsWith("inconclusive") ? `${verdict}: ${agg.excludedTrials.count} trial(s) excluded (${JSON.stringify(agg.excludedTrials.byKind)}); re-run for >= 20 clean trials; default stays AI_TOOL_MODE=native`
     : `AI_TOOL_MODE=json (best effort) for ${config.model}`;
 
-  const result = { endpoint: origin.origin, model: config.model, mode, stream: args.stream, date, aggregate: agg, perScenario, notes, matrixRow: row, decision };
+  const stoppedEarly = ctx.guard.stopped();
+  const result = { endpoint: origin.origin, model: config.model, mode, stream: args.stream, date, ...(stoppedEarly ? { stoppedEarly } : {}), aggregate: agg, perScenario, notes, matrixRow: row, decision };
   if (args.out) await writeFile(args.out, JSON.stringify(result, null, 2));
   console.log("\n[s6] METRICS");
   console.log(JSON.stringify({ aggregate: agg, notes }, null, 2));
   console.log("\n[s6] MATRIX ROW (paste this back)");
   console.log(MATRIX_HEADER);
   console.log(row);
-  console.log(`\n[s6] decision: ${decision}`);
+  console.log(`\n[s6] clean trials=${agg.cleanTrials}/${agg.trials} excluded=${agg.excludedTrials.count} ${JSON.stringify(agg.excludedTrials.byKind)}`);
+  console.log(`[s6] decision: ${decision}`);
   return 0;
 }
 

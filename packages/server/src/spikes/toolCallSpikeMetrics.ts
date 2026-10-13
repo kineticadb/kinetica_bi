@@ -40,7 +40,14 @@ export type SpikeRun = {
 };
 
 export type SpikeAggregate = {
+  /** every trial, including ones that never reached the model */
   trials: number;
+  /** trials scored for model quality (no transport/quota/request error) - the >= 20 rule counts these */
+  cleanTrials: number;
+  /** trials excluded from the validity / text-instead / second-turn / latency figures, by error kind */
+  excludedTrials: { count: number; byKind: Record<string, number> };
+  /** excluded trials whose error was a request error (4xx other than 429: bad model id, bad URL, auth) */
+  requestErrorTrials: number;
   calls: number;
   validCallPct: number;
   malformedPct: number;
@@ -62,6 +69,21 @@ export type SpikeAggregate = {
   errors: Record<string, number>;
 };
 
+/**
+ * Error kinds that say nothing about the model's tool-calling quality: quota/rate limits, transport failures,
+ * timeouts/aborts, provider 5xx, and request errors (bad AI_MODEL / AI_BASE_URL / key). Trials ending in one of
+ * these are EXCLUDED from the quality denominators and reported separately. `protocol` (malformed stream/response)
+ * is deliberately NOT here - it is a model/adapter failure and stays in the denominator.
+ */
+export const EXCLUDED_ERROR_KINDS: ReadonlySet<string> = new Set([
+  "rate_limited", "overloaded", "network", "timeout", "aborted", "auth", "bad_request",
+]);
+const REQUEST_ERROR_KINDS: ReadonlySet<string> = new Set(["auth", "bad_request"]);
+export const MIN_CLEAN_TRIALS = 20;
+export const INVALID_RUN_VERDICT = "INVALID RUN (check AI_MODEL / AI_BASE_URL)";
+
+const isExcluded = (r: SpikeRun): boolean => r.error !== undefined && EXCLUDED_ERROR_KINDS.has(r.error.kind);
+
 const pct = (n: number, d: number): number => (d === 0 ? 0 : Math.round((n / d) * 1000) / 10);
 
 /** nearest-rank percentile on an unsorted list */
@@ -78,7 +100,11 @@ const tri = (vals: (boolean | undefined)[]): "yes" | "no" | "n/a" => {
   return seen.every(Boolean) ? "yes" : "no";
 };
 
-export function aggregateSpikeRuns(runs: readonly SpikeRun[]): SpikeAggregate {
+export function aggregateSpikeRuns(allRuns: readonly SpikeRun[]): SpikeAggregate {
+  const excluded = allRuns.filter(isExcluded);
+  const runs = allRuns.filter((r) => !isExcluded(r)); // quality figures below use clean trials only
+  const excludedByKind: Record<string, number> = {};
+  for (const r of excluded) excludedByKind[r.error!.kind] = (excludedByKind[r.error!.kind] ?? 0) + 1;
   const allCalls = runs.flatMap((r) => r.calls);
   const validCalls = allCalls.filter((c) => c.known && c.jsonOk && c.zodOk && c.gatewayOk).length;
   const malformed = allCalls.filter((c) => c.known && !(c.jsonOk && c.zodOk && c.gatewayOk)).length;
@@ -100,13 +126,16 @@ export function aggregateSpikeRuns(runs: readonly SpikeRun[]): SpikeAggregate {
   const finishReasons: Record<string, number> = {};
   for (const r of runs) finishReasons[r.finish] = (finishReasons[r.finish] ?? 0) + 1;
   const errors: Record<string, number> = {};
-  for (const r of runs) if (r.error) errors[r.error.kind] = (errors[r.error.kind] ?? 0) + 1;
+  for (const r of allRuns) if (r.error) errors[r.error.kind] = (errors[r.error.kind] ?? 0) + 1;
 
-  const delays = runs.map((r) => r.retryDelayMs).filter((d): d is number => d !== undefined);
+  const delays = allRuns.map((r) => r.retryDelayMs).filter((d): d is number => d !== undefined);
   const lat = runs.map((r) => r.latencyMs);
 
   return {
-    trials: runs.length,
+    trials: allRuns.length,
+    cleanTrials: runs.length,
+    excludedTrials: { count: excluded.length, byKind: excludedByKind },
+    requestErrorTrials: excluded.filter((r) => REQUEST_ERROR_KINDS.has(r.error!.kind)).length,
     calls: allCalls.length,
     validCallPct: pct(validCalls, allCalls.length),
     malformedPct: pct(malformed, allCalls.length),
@@ -125,8 +154,8 @@ export function aggregateSpikeRuns(runs: readonly SpikeRun[]): SpikeAggregate {
     idPresent: tri(runs.map((r) => r.idPresent)),
     extraContentSeen: runs.some((r) => r.extraContentSeen === true),
     rateLimit: {
-      count: runs.reduce((n, r) => n + r.rateLimited, 0),
-      retryAfterHeaderCount: runs.filter((r) => r.retryAfterHeader === true).length,
+      count: allRuns.reduce((n, r) => n + r.rateLimited, 0),
+      retryAfterHeaderCount: allRuns.filter((r) => r.retryAfterHeader === true).length,
       maxRetryDelayMs: delays.length === 0 ? 0 : Math.max(...delays),
       over20sCount: delays.filter((d) => d > 20_000).length,
     },
@@ -138,7 +167,8 @@ export const MATRIX_HEADER =
   "| provider | model | date | stream | tool valid% | malformed% | parallel% | 2nd-turn ok | index present | 429 delay>20s | verdict |";
 
 export function verdictFor(a: SpikeAggregate): string {
-  if (a.trials < 20) return "insufficient trials";
+  if (a.trials > 0 && a.requestErrorTrials === a.trials) return INVALID_RUN_VERDICT;
+  if (a.cleanTrials < MIN_CLEAN_TRIALS) return `inconclusive (${a.cleanTrials} clean trials)`;
   const repairsFine = a.repairAttempted === 0 || a.repairOk === a.repairAttempted; // at most one bounce per run is ever sent
   const secondTurn = a.secondTurnRuns > 0 && a.secondTurnOk === a.secondTurnRuns;
   return a.validCallPct >= 90 && repairsFine && secondTurn ? "native" : "json (best effort)";
@@ -198,4 +228,47 @@ export function sanitizeRecording<T>(input: T, ...secrets: (string | undefined)[
     return v;
   };
   return walk(input) as T;
+}
+
+/** Extracts the provider-suggested retry delay and quota id from a Gemini-style 429 body (RetryInfo / QuotaFailure). */
+export function parse429Body(text: string): { retryDelayMs?: number; quotaId?: string } {
+  const out: { retryDelayMs?: number; quotaId?: string } = {};
+  const d = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(text);
+  if (d) out.retryDelayMs = Math.round(parseFloat(d[1]) * 1000);
+  const q = /"quotaId"\s*:\s*"([^"]+)"/.exec(text);
+  if (q) out.quotaId = q[1];
+  return out;
+}
+
+export type StepOutcome = { kind?: string; status?: number; retryDelayMs?: number; quotaId?: string };
+export const MAX_CONSECUTIVE_BAD_REQUESTS = 3;
+export const DAILY_QUOTA_DELAY_MS = 60 * 60 * 1000;
+
+/**
+ * Decides when the spike should stop instead of burning more requests: after 3 consecutive 400s (the request itself
+ * is wrong - e.g. AI_MODEL is a display name, not a model id), or on a 429 that signals an exhausted DAILY quota
+ * (quota id contains "PerDay", or the suggested delay is over an hour). observe() returns the stop reason once tripped.
+ */
+export function createEarlyStopGuard(): { observe(o: StepOutcome): string | null; stopped(): string | null } {
+  let consecutive400 = 0;
+  let reason: string | null = null;
+  return {
+    observe(o) {
+      if (reason) return reason;
+      const is400 = o.status === 400 || (o.kind === "bad_request" && o.status === undefined);
+      consecutive400 = is400 ? consecutive400 + 1 : 0;
+      if (consecutive400 >= MAX_CONSECUTIVE_BAD_REQUESTS) {
+        reason = `${MAX_CONSECUTIVE_BAD_REQUESTS} consecutive 400 (bad request) responses - check AI_MODEL is a model id (not a display name) and AI_BASE_URL`;
+      } else if (o.kind === "rate_limited" || o.status === 429) {
+        const perDay = o.quotaId !== undefined && o.quotaId.includes("PerDay");
+        const long = o.retryDelayMs !== undefined && o.retryDelayMs > DAILY_QUOTA_DELAY_MS;
+        if (perDay || long) {
+          const delay = o.retryDelayMs !== undefined ? ` (retry in ~${Math.round(o.retryDelayMs / 60_000)} min)` : "";
+          reason = `daily quota exhausted${o.quotaId ? ` [${o.quotaId}]` : ""}${delay} - re-run after the quota resets`;
+        }
+      }
+      return reason;
+    },
+    stopped: () => reason,
+  };
 }
