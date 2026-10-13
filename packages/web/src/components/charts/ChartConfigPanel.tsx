@@ -7,7 +7,6 @@ import type { DynamicViewRow, WidgetDto } from "../../api/client";
 import { FilterSelectionPanel } from "./FilterSelectionPanel";
 import type { FilterSelectionConfig } from "../../types/filterSelection";
 import { useAuthStore } from "../../store/auth";
-import { whereCustomWhere } from "../../lib/customWhere";
 import {
   resolveMetricExpr,
   isCustomSelection,
@@ -17,24 +16,9 @@ import {
   isOrphanedMetric,
 } from "../../lib/customMetricSql";
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
-import { isMultiColumnBarGroupBy } from "../../lib/barGroupedSeries";
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 import { AGGREGATIONS } from "../../lib/aggregationLabels";
-import { buildBucketExpr } from "../../lib/heatmapBucket";
-
-/**
- * Heatmap "Result limit" ladder.
- *
- * The shared ladder tops out at 500 and defaults to 100, which counts GROUPS.
- * A heatmap row is one (x,y) INTERSECTION, so 7 days x 24 hours is already 168
- * and the shared default silently drops cells, leaving holes that read as
- * missing data. Heatmap therefore gets its own ladder, defaulting to the cap.
- *
- * Live UAT finding: this used to be a hardcoded override of the operator's
- * choice while the "Result limit" control was still rendered, so the field
- * showed 100 while the SQL said 5000 and changing it did nothing.
- */
-const HEATMAP_LIMITS = [250, 500, 1000, 2500, HEATMAP_CELL_LIMIT];
+import { buildChartSql, HEATMAP_LIMITS } from "../../lib/chartSql";
 
 type TableInfo = {
   id: number;
@@ -366,143 +350,17 @@ const ChartConfigPanel = ({
   const generatedSql = useMemo(() => {
     const table = draft.table as string;
     if (!table) return "";
-
-    // Phase 98-02 (VIZSQL-V119-02): compute WHERE clause for non-empty customWhere.
-    // whereCustomWhere returns ' WHERE (<predicate>)' or '' for empty/absent — byte-identical.
-    const cw = whereCustomWhere(draft.customWhere as string | undefined);
-
-    // Records-table style: SELECT [cols] FROM table ORDER BY sortField DIR
-    // (pagination LIMIT/OFFSET applied at render time, not stored in widget config)
-    if (!usesAggregation) {
-      const colsRaw = ((draft.columns as string) || "").split(",").map((c) => c.trim()).filter(Boolean);
-      const safeCols = colsRaw.filter((c) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(c));
-      const colsClause = safeCols.length > 0 ? safeCols.join(", ") : "*";
-      const sortField = (draft.sortField as string) || "";
-      const sortDir = ((draft.sortDirection as string) || "asc").toUpperCase() === "DESC" ? "DESC" : "ASC";
-      const orderBy = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(sortField) ? ` ORDER BY ${sortField} ${sortDir}` : "";
-      return `SELECT ${colsClause} FROM ${table}${cw}${orderBy}`;
-    }
-
-    // Aggregated chart style
-    const metricColumn = draft.metricColumn as string;
-    const aggregation = draft.aggregation as string;
-    const groupByColumn = draft.groupByColumn as string;
-
-    // Phase 100 (METRIC-V119-04): resolve the metric expression for both variants.
-    // metricId is set by Plan 03's picker; absent → real-column path (byte-identical).
-    const metricId = draft.metricId as number | undefined;
-    const tableId = selectedTable?.id;
-    const customMode = isCustomSelection(metricId);
-
-    // Scalar variant (bignumber): SELECT AGG(metric) AS value FROM table — no GROUP BY.
-    // Requires metricColumn + aggregation only (real); or a resolved custom expression.
-    if (!requiresGroupBy) {
-      if (customMode) {
-        // Custom selection: resolve from store; fall back to placeholder if orphaned.
-        const metricExpr = resolveMetricExpr(metricId, "", tableId);
-        if (!metricExpr) return `SELECT * FROM ${table} LIMIT 100`;
-        return `SELECT ${metricExpr} AS value FROM ${table}${cw}`;
-      }
-      if (!metricColumn || !aggregation) {
-        return `SELECT * FROM ${table} LIMIT 100`;
-      }
-      const aggExpr = aggregation === "COUNT_DISTINCT"
-        ? `COUNT(DISTINCT ${metricColumn})`
-        : `${aggregation}(${metricColumn})`;
-      return `SELECT ${aggExpr} AS value FROM ${table}${cw}`;
-    }
-
-    // Grouped variant (bar / line / pie / scatter / table):
-    // SELECT groupBy, AGG(metric) AS value FROM table GROUP BY groupBy ORDER BY value DESC
-
-    // Phase 102 (BARGRP-V119-01): multi-column GROUP BY for bar charts.
-    // Guard: isMultiColumnBarGroupBy checks Array.isArray(groupByColumns) && length >= 2.
-    // When false, execution falls through to the EXISTING single-column branches unchanged
-    // — that is the byte-identical backward-compat path (BARGRP-V119-04).
-    if (isMultiColumnBarGroupBy(draft)) {
-      const cols = (draft.groupByColumns as string[]).filter(Boolean);
-      const colsClause = cols.join(", ");
-      // Metric expr: reuse the SAME resolution as the single-column path (custom vs real).
-      const multiMetricExpr = customMode
-        ? resolveMetricExpr(metricId, "", tableId)
-        : (aggregation === "COUNT_DISTINCT" ? `COUNT(DISTINCT ${metricColumn})` : `${aggregation}(${metricColumn})`);
-      if (!colsClause || !multiMetricExpr || (!customMode && (!metricColumn || !aggregation))) {
-        return `SELECT * FROM ${table} LIMIT 100`;
-      }
-      const multiSortDir = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
-      const ALLOWED_LIMITS_M = [5, 10, 25, 50, 100, 250, 500];
-      const rawLimitM = Number(draft.limit);
-      const baseLimit = ALLOWED_LIMITS_M.includes(rawLimitM) ? rawLimitM : 100;
-      // Bar expands categories × series so it needs a generous LIMIT (config.limit ×
-      // maxBarGroupBySeriesCap × 2, read from auth store at save time). The Data Table renders
-      // one row per group tuple, so it just uses the plain "Result limit".
-      // A heatmap needs one row per (x,y) INTERSECTION, so it validates the
-      // operator's choice against its OWN ladder (which defaults to the cap)
-      // rather than the shared group ladder. ORDER BY value DESC is retained so
-      // an over-cap grid keeps its hottest cells; AggregatedWidgetRenderer bumps this
-      // trailing LIMIT by one at fetch time to detect real truncation (Phase 127),
-      // so it must stay the LAST clause.
-      const heatmapLimit = HEATMAP_LIMITS.includes(rawLimitM)
-        ? rawLimitM
-        : HEATMAP_CELL_LIMIT;
-      // Phase 132: a multi-series line expands categories x series like bar (else it is starved at
-      // LIMIT 100 and shows false gaps). Only with >= 2 NON-BLANK columns: ["region", ""] stays
-      // the byte-identical single-column SQL.
-      const sqlLimit = (isBar || (isLine && cols.length >= 2))
-        ? baseLimit * useAuthStore.getState().maxBarGroupBySeriesCap * 2
-        : isHeatmap
-          ? heatmapLimit
-          : baseLimit;
-      // Heatmap axis bucketing: a raw timestamp axis makes every instant its own
-      // one-cell row. Each axis column may carry a bucket, applied ONLY when the
-      // column is actually temporal — a bucket left set after switching to a text
-      // column must not emit DATE_TRUNC over a string. The expression is aliased
-      // back to the raw column name so the row key still matches
-      // config.groupByColumns; GROUP BY repeats the EXPRESSION, never the alias.
-      if (isHeatmap) {
-        const bucketKeys = [draft.xBucket, draft.yBucket];
-        const selectParts: string[] = [];
-        const groupParts: string[] = [];
-        cols.forEach((col, idx) => {
-          const isTemporal =
-            inferDataTypeFromColumn(col, columnTypeMap) === "datetime";
-          const expr = isTemporal ? buildBucketExpr(col, bucketKeys[idx]) : null;
-          selectParts.push(expr ? `${expr} AS ${col}` : col);
-          groupParts.push(expr ?? col);
-        });
-        return (
-          `SELECT ${selectParts.join(", ")}, ${multiMetricExpr} AS value ` +
-          `FROM ${table}${cw} GROUP BY ${groupParts.join(", ")} ` +
-          `ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`
-        );
-      }
-      // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
-      return `SELECT ${colsClause}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
-    }
-
-    if (customMode) {
-      // Custom selection: groupByColumn still required; metricExpr from store.
-      if (!groupByColumn) return `SELECT * FROM ${table} LIMIT 100`;
-      const metricExpr = resolveMetricExpr(metricId, "", tableId);
-      if (!metricExpr) return `SELECT * FROM ${table} LIMIT 100`;
-      const groupSortDirC = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
-      const ALLOWED_LIMITS_C = [5, 10, 25, 50, 100, 250, 500];
-      const rawLimitC = Number(draft.limit);
-      const groupLimitC = ALLOWED_LIMITS_C.includes(rawLimitC) ? rawLimitC : 100;
-      return `SELECT ${groupByColumn}, ${metricExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDirC} LIMIT ${groupLimitC}`;
-    }
-    if (!metricColumn || !aggregation || !groupByColumn) {
-      return `SELECT * FROM ${table} LIMIT 100`;
-    }
-    const aggExpr = aggregation === "COUNT_DISTINCT"
-      ? `COUNT(DISTINCT ${metricColumn})`
-      : `${aggregation}(${metricColumn})`;
-    // Operator-configurable sort direction + result limit (defaults DESC / 100).
-    const groupSortDir = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
-    const ALLOWED_LIMITS = [5, 10, 25, 50, 100, 250, 500];
-    const rawLimit = Number(draft.limit);
-    const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
-    return `SELECT ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
+    // Shared generator (lib/chartSql): the AI derive step calls the same function.
+    return buildChartSql({
+      widgetType,
+      table,
+      tableId: selectedTable?.id,
+      draft,
+      flags: { usesAggregation, requiresGroupBy },
+      columnTypeMap,
+      maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
+      resolveMetricExpr,
+    });
   }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
