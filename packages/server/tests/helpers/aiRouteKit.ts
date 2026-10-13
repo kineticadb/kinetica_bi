@@ -144,7 +144,7 @@ export const addWidgetArgs = (tableId: number, over: Record<string, unknown> = {
   type: "bar",
   title: "Trips by zone",
   tableId,
-  config: { metricColumn: "fare", groupByColumn: "zone" },
+  config: { metric: "fare", aggregation: "sum", groupByColumn: "zone" },
   ...over,
 });
 

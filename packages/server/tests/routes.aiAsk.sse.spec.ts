@@ -84,7 +84,7 @@ describe("POST /api/ai/ask streaming", () => {
     const results = evs.filter((e) => e.event === "result");
     expect(results).toHaveLength(1);
     const r = results[0].data;
-    expect(r.ops).toEqual([{ op: "add_widget", tempId: -5, type: "bar", title: "Trips by zone", config: { metricColumn: "fare", groupByColumn: "zone", tableId: table.id } }]);
+    expect(r.ops).toEqual([{ op: "add_widget", tempId: -5, type: "bar", title: "Trips by zone", config: { metric: "fare", aggregation: "sum", groupByColumn: "zone", tableId: table.id }, layout: { x: 18, y: 0, w: 18, h: 30 } }]); // layout: gateway-stamped placement (D-07)
     expect(r.skipped.map((s: any) => s.stage)).toEqual(["shape", "allow_list", "live_schema", "reference"]);
     expect(r.text).toBe("Added it.");
     expect(evs.at(-1)).toMatchObject({ event: "done", data: { outcome: "ok" } });

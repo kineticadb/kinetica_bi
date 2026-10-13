@@ -16,7 +16,7 @@ const DONE_TOOLS: LlmEvent = { type: "done", finish: "tool_calls" };
 const DONE: LlmEvent = { type: "done", finish: "stop" };
 const turn = (...calls: LlmEvent[]): LlmEvent[] => [...calls, DONE_TOOLS];
 const final = (t: string): LlmEvent[] => [{ type: "text_delta", text: t }, DONE];
-const addW = (id: string, tempId = -1, col = "fare_amount") => call(id, "add_widget", { tempId, type: "bar", title: "T", tableId: 7, config: { metricColumn: col } });
+const addW = (id: string, tempId = -1, col = "fare_amount") => call(id, "add_widget", { tempId, type: "bar", title: "T", tableId: 7, config: { metric: col, aggregation: "sum", groupByColumn: "vendor_id" } });
 const describeT = (id: string) => call(id, "describe_table", { tableId: 7 });
 
 function setup(steps: ScriptStep[], o: { maxToolSteps?: number; timeoutMs?: number; extraTools?: ReadTool[]; deps?: Partial<AgentLoopDeps>; perms?: ReadonlySet<string> } = {}) {
