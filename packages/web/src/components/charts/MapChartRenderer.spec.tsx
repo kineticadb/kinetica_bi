@@ -6915,3 +6915,118 @@ describe("Phase 134 session layer read path (map)", () => {
     expect(allImageWmsInstances.length).toBe(wmsBefore);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Phase 136 — AI-shaped heatmap layers on BOTH buildWmsParams sites  */
+/* ------------------------------------------------------------------ */
+
+describe("Phase 136 AI heatmap layers on both buildWmsParams sites", () => {
+  const hmConfig = (over: Record<string, unknown> = {}) => ({
+    renderMode: "heatmap",
+    spatialMode: "latlon",
+    latColumn: "pickup_latitude",
+    lonColumn: "pickup_longitude",
+    colormap: "plasma",
+    reverseColormap: false,
+    blurRadius: 8,
+    valueColumn: "fare_amount",
+    visible: true,
+    name: "Pickups",
+    ...over,
+  });
+  const hmLayer = (over: Partial<DashboardLayerDto> = {}, cfg: Record<string, unknown> = {}) =>
+    makeLayer({ id: 31, position: 0, table_id: 10, config: hmConfig(cfg) as any, ...over });
+  const ctorParams = async () => {
+    const Ctor = (await import("ol/source/ImageWMS")).default as any;
+    return Ctor.mock.calls.map((c: any[]) => c[0].params);
+  };
+
+  beforeEach(() => {
+    allImageWmsInstances.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it("HMAP-1: saved heatmap layer constructs ImageWMS with style params and VAL_ATTR", async () => {
+    _layersState.layers = [hmLayer()];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const all = await ctorParams();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all[0]).toMatchObject({
+      STYLES: "heatmap",
+      COLORMAP: "plasma",
+      BLUR_RADIUS: "8",
+      REVERSE_COLORMAP: "FALSE",
+      VAL_ATTR: "fare_amount",
+      LAYERS: "public.t10",
+    });
+  });
+
+  it("HMAP-2: negative session-id heatmap layer renders with the same params", async () => {
+    _layersState.layers = [hmLayer({ id: -7 })];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const all = await ctorParams();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all[0]).toMatchObject({
+      STYLES: "heatmap",
+      COLORMAP: "plasma",
+      BLUR_RADIUS: "8",
+      REVERSE_COLORMAP: "FALSE",
+      VAL_ATTR: "fare_amount",
+      LAYERS: "public.t10",
+    });
+  });
+
+  it("HMAP-3: a restyle reaches the update effect's updateParams", async () => {
+    _layersState.layers = [hmLayer()];
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => {});
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const src = allImageWmsInstances[0];
+    src.updateParams.mockClear();
+    _layersState.layers = [hmLayer({}, { colormap: "viridis", blurRadius: 12 })];
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const calls = src.updateParams.mock.calls.map((c: any[]) => c[0]);
+    expect(calls.some((p: any) => p.COLORMAP === "viridis" && p.BLUR_RADIUS === "12")).toBe(true);
+  });
+
+  it("HMAP-4: legacy heatmap layer without valueColumn has no VAL_ATTR", async () => {
+    _layersState.layers = [hmLayer({}, { valueColumn: undefined })];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const all = await ctorParams();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all[0].STYLES).toBe("heatmap"); // positive control: layer reached the builder
+    expect(all[0].VAL_ATTR).toBeUndefined();
+  });
+
+  it("HMAP-5: a heatmap layer whose table_id is not a dashboard table constructs no ImageWMS", async () => {
+    _layersState.layers = [hmLayer({ table_id: 999 })];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    expect(allImageWmsInstances.length).toBe(0);
+  });
+
+  it("HMAP-6: clearing the weight overwrites the stale VAL_ATTR with undefined", async () => {
+    _layersState.layers = [hmLayer()];
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => {});
+    const src = allImageWmsInstances[0];
+    src.updateParams.mockClear();
+    _layersState.layers = [hmLayer({}, { valueColumn: undefined })];
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    expect(src.updateParams).toHaveBeenCalled();
+    const arg = src.updateParams.mock.calls[src.updateParams.mock.calls.length - 1][0];
+    expect(Object.prototype.hasOwnProperty.call(arg, "VAL_ATTR")).toBe(true);
+    expect(arg.VAL_ATTR).toBeUndefined();
+  });
+});
