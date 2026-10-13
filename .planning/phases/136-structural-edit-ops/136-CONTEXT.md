@@ -68,6 +68,15 @@ Out of this phase:
 - **D-20 Rights:** session-only ops are allowed for any `ai:use` user (135 D-16), with per-op checks for view and table/column access. Edit rights are enforced at Keep (141).
 - **D-21 Layer column checks:** a layer `patch` today gets the allow-list check but no column-existence check (135 verification info item). Add live-schema column checks for heatmap layer ops (weight column, geometry/lat-lon).
 
+### Added after research (2026-10-13)
+- **D-22 Only tables associated with the dashboard in 136.** AI `add_widget` and `add_layer` (and table-bound edits) may use only tables already associated with this dashboard.
+  - For a table the user **can access** that isn't on the dashboard, the AI refuses plainly: "That table isn't on this dashboard; add it in dashboard settings first."
+  - For a table the user **cannot access**, the reply looks the same as "not found" (D-17).
+  - `list_tables`/`describe_table` may still look at other accessible tables (135 D-07), e.g. to answer questions.
+  - Associating a table in the session is deferred.
+- **D-23 Positive config catalogue (security, from research):** the gateway must accept only known config keys per widget type (a positive allow-list, not a denylist). `sql`, `drillDownColumn` and `drillDownColumnType` are **never** accepted from the model. The web fold strips them, and the app regenerates them with the extracted `buildChartSql`/`deriveChartConfig` (D-01).
+  - Reason: `POST /api/sql` runs whatever `config.sql` holds, as the user. Today `add_widget` config is checked only by a denylist that doesn't block `sql`.
+
 ### Claude's Discretion
 - Op and tool payload shapes: extending `add_widget`/`add_layer` and adding layout ops such as `move_widget` / `resize_widget` or a single `set_layout`. Must stay inside the shared `AiOp` contract and the strict-schema style.
 - The compatible-type matrix details (D-02), per-type default sizes (D-08), the palette and ramp vocabulary names (D-03, D-10), and how "closest name" is computed (D-15).
@@ -146,6 +155,7 @@ Out of this phase:
 
 - The clickable Yes/No confirmation for removing saved content, and the clickable map choice: Phase 137 (AIWID-V20-06 clarification choices). This phase builds the gate and state.
 - Restyling raster, class-break and track layers: AI-F12.
+- The AI associating a new table with the dashboard in the session (D-22): later phase or backlog.
 - Persistent "don't ask again" removal approval per user or dashboard: rejected for now (per-conversation chosen). Revisit only if the operator asks.
 
 </deferred>
