@@ -19,11 +19,12 @@ import {
   validateActionPatch,
   getFieldLocation,
   validateLayerSnapshot,
+  getWidgetAllowListSchemas,
 } from "./actionAllowList";
 
 describe("ALLOW_LIST_VERSION", () => {
-  it('is "v3" (Phase 133: AI-path temp ids + AI_BLOCKED_CONFIG_KEYS)', () => {
-    expect(ALLOW_LIST_VERSION).toBe("v3");
+  it('is "v4" (Phase 136: allow-list keyed by real widget types)', () => {
+    expect(ALLOW_LIST_VERSION).toBe("v4");
   });
 
   it("ALB-AI1: customWhere is AI-blocked and rejected by validateActionPatch", () => {
@@ -67,8 +68,8 @@ describe("getFieldLocation — widget fields", () => {
   });
 
   it("widget/chart fields are located in widget.config", () => {
-    expect(getFieldLocation("widget", "chart", "metric")).toBe("widget.config");
-    expect(getFieldLocation("widget", "chart", "aggregation")).toBe("widget.config");
+    expect(getFieldLocation("widget", "bar", "metric")).toBe("widget.config");
+    expect(getFieldLocation("widget", "bar", "aggregation")).toBe("widget.config");
   });
 
   it("widget/records fields are located in widget.config", () => {
@@ -129,14 +130,14 @@ describe("validateActionPatch — positive cases", () => {
   });
 
   it("accepts a valid chart patch with metric field", () => {
-    const result = validateActionPatch("widget", "chart", {
+    const result = validateActionPatch("widget", "bar", {
       metric: "revenue",
     });
     expect(result.valid).toBe(true);
   });
 
   it("accepts a valid chart patch with aggregation enum value", () => {
-    const result = validateActionPatch("widget", "chart", {
+    const result = validateActionPatch("widget", "bar", {
       aggregation: "sum",
     });
     expect(result.valid).toBe(true);
@@ -217,7 +218,7 @@ describe("validateActionPatch — rejection cases", () => {
   });
 
   it("rejects a chart patch where aggregation is not in the allowed enum", () => {
-    const result = validateActionPatch("widget", "chart", {
+    const result = validateActionPatch("widget", "bar", {
       aggregation: "INVALID_AGG",
     });
     expect(result.valid).toBe(false);
@@ -248,7 +249,7 @@ describe("validateActionPatch — rejection cases", () => {
   });
 
   it("rejects a patch containing meta key 'type'", () => {
-    const result = validateActionPatch("widget", "chart", {
+    const result = validateActionPatch("widget", "bar", {
       type: "map",
     });
     expect(result.valid).toBe(false);
@@ -453,5 +454,47 @@ describe("validateLayerSnapshot — layer-appearance denylist (60.1)", () => {
   it("validateActionPatch('widget', 'map', { show_popup: true }) still returns valid:true (widget path intact)", () => {
     const result = validateActionPatch("widget", "map", { show_popup: true });
     expect(result.valid).toBe(true);
+  });
+});
+
+describe("Phase 136 v4 real-type keys", () => {
+  const CHART_TYPES = ["bar", "line", "pie", "table", "bignumber"];
+  it.each(CHART_TYPES)("%s accepts metric + aggregation", (t) => {
+    expect(validateActionPatch("widget", t, { metric: "x", aggregation: "sum" }).valid).toBe(true);
+  });
+  it.each(CHART_TYPES)("%s rejects a bad aggregation", (t) => {
+    expect(validateActionPatch("widget", t, { aggregation: "INVALID_AGG" }).valid).toBe(false);
+  });
+  it("dead chart key is invalid", () => {
+    const r = validateActionPatch("widget", "chart", { metric: "x" });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reasons.join(" ")).toContain("no allow-list for target");
+  });
+  it("bar full positive control", () => {
+    expect(
+      validateActionPatch("widget", "bar", {
+        metric: "fare_amount", aggregation: "count_distinct", groupByColumn: "vendor_id",
+        sortDir: "ASC", limit: 25, color: "teal", showLegend: false,
+        xAxisLabel: "x", yAxisLabel: "y", yFieldLabel: "v",
+      }).valid,
+    ).toBe(true);
+  });
+  it.each([
+    { limit: 7 }, { color: "#ff0000" }, { sortDir: "up" }, { metric: "a b" },
+  ])("bar rejects %j", (patch) => {
+    expect(validateActionPatch("widget", "bar", patch).valid).toBe(false);
+  });
+  it("bignumber accepts label/subLabel, rejects groupByColumn", () => {
+    expect(validateActionPatch("widget", "bignumber", { label: "a", subLabel: "b" }).valid).toBe(true);
+    expect(validateActionPatch("widget", "bignumber", { groupByColumn: "g" }).valid).toBe(false);
+  });
+  it("pie and line reject xAxisLabel; table rejects showLegend", () => {
+    expect(validateActionPatch("widget", "pie", { xAxisLabel: "x" }).valid).toBe(false);
+    expect(validateActionPatch("widget", "line", { xAxisLabel: "x" }).valid).toBe(false);
+    expect(validateActionPatch("widget", "table", { showLegend: true }).valid).toBe(false);
+  });
+  it("getWidgetAllowListSchemas returns schemas or null", () => {
+    expect(Object.keys(getWidgetAllowListSchemas("bar")!)).toContain("metric");
+    expect(getWidgetAllowListSchemas("chart")).toBeNull();
   });
 });

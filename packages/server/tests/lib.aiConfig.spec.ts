@@ -121,7 +121,7 @@ describe("parseAiConfig", () => {
   });
 
   it("AICFG-12: contract version in log", () => {
-    expect(formatAiConfigLog(parseAiConfig(OLLAMA))).toContain("contract=v3");
+    expect(formatAiConfigLog(parseAiConfig(OLLAMA))).toContain("contract=v4");
   });
 });
 

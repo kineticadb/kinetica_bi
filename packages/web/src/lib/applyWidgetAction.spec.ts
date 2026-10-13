@@ -114,7 +114,7 @@ describe("applyWidgetAction — applied (widget)", () => {
     const result = applyWidgetAction(
       // chart widget — need chart lookups
       { target: { kind: "widget", id: 2 }, configPatch: { metric: "col_a" } },
-      makeLookups({ widgets: [makeWidget({ id: 2, type: "chart", config: {} }) ] }),
+      makeLookups({ widgets: [makeWidget({ id: 2, type: "bar", config: {} }) ] }),
       CONTROL_ID
     );
     expect(result.status).toBe("applied");
@@ -287,7 +287,7 @@ describe("applyWidgetAction — rejected", () => {
     const result = applyWidgetAction(
       // aggregation must be one of the allowed enum values
       { target: { kind: "widget", id: 1 }, configPatch: { aggregation: "median" } },
-      makeLookups({ widgets: [makeWidget({ id: 1, type: "chart" })] }),
+      makeLookups({ widgets: [makeWidget({ id: 1, type: "bar" })] }),
       CONTROL_ID
     );
     expect(result.status).toBe("rejected");

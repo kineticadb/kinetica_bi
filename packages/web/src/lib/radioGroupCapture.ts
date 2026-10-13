@@ -45,7 +45,12 @@ export const LAYER_CAPTURE_FIELDS = [
  */
 export const WIDGET_CAPTURE_FIELDS: Record<string, readonly string[]> = {
   map: ["show_popup", "show_scale_bar", "show_fullscreen"],
-  chart: ["metric", "aggregation"],
+  // D-19: keyed by real types; 136-07 maps metric -> metricColumn and normalises aggregation case
+  bar: ["metric", "aggregation"],
+  line: ["metric", "aggregation"],
+  pie: ["metric", "aggregation"],
+  table: ["metric", "aggregation"],
+  bignumber: ["metric", "aggregation"],
   records: ["page_size"],
 };
 

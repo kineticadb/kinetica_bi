@@ -210,11 +210,11 @@ describe("captureAllowListedSubset — widget target (widget.config)", () => {
     expect(result).toEqual({});
   });
 
-  it("captures metric and aggregation from chart widget.config", () => {
-    const widget = makeWidget("chart", { metric: "revenue", aggregation: "sum" });
+  it("captures metric and aggregation from bar widget.config", () => {
+    const widget = makeWidget("bar", { metric: "revenue", aggregation: "sum" });
     const result = captureAllowListedSubset({
       target: { kind: "widget", id: 5 },
-      widgetType: "chart",
+      widgetType: "bar",
       widget,
     });
     expect(result.metric).toBe("revenue");

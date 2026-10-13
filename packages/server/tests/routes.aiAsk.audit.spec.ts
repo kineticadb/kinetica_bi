@@ -101,7 +101,7 @@ describe("one audit row per answer", () => {
     expect(changes.rejected[0].reasons).toEqual(["widget 999 does not exist"]);
     expect(row.provider).toBe("openai-compatible");
     expect(row.model).toBe("test-model");
-    expect(row.allow_list_version).toBe("v3");
+    expect(row.allow_list_version).toBe("v4");
     expect(row.data_access).toBe("schema");
     expect(row.input_tokens).toBe(16);
     expect(row.output_tokens).toBe(10);

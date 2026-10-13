@@ -2,6 +2,8 @@
 /**
  * Phase 58 Plan 01 / Phase 58.1 Plan 01 — Versioned allow-list for the widget-action engine.
  *
+ * v4 (Phase 136): WIDGET_ALLOW_LIST keyed by real widget types; dead "chart" key removed (TD-V20-ALLOWLIST-KEYS)
+ *
  * Phase 58.1 corrections (v2 contract):
  *   - ALLOW_LIST_VERSION bumped to "v2" (field names + location structure changed)
  *   - Layer field name corrected: camelCase renderMode is the REAL key read by wmsUrlBuilder.ts
@@ -28,7 +30,7 @@ import type { WidgetActionTarget } from "./widgetAction";
 // Version
 // ---------------------------------------------------------------------------
 
-export const ALLOW_LIST_VERSION = "v3" as const;
+export const ALLOW_LIST_VERSION = "v4" as const;
 
 /** Keys an AI-originated op may NEVER write, regardless of allow-list (AISAFE-V20-04: no raw SQL from the model). */
 export const AI_BLOCKED_CONFIG_KEYS = ["customWhere"] as const;
@@ -90,7 +92,7 @@ type FieldDescriptors = Record<string, FieldDescriptor>;
  * Aggregation enum for chart widgets.
  * Conservative list of standard aggregation functions.
  */
-const CHART_AGGREGATIONS = [
+export const CHART_AGGREGATIONS = [
   "sum",
   "avg",
   "min",
@@ -98,6 +100,34 @@ const CHART_AGGREGATIONS = [
   "count",
   "count_distinct",
 ] as const;
+
+/** Single definition of an AI-supplied column/identifier (aiCatalog and aiOp import this). */
+export const AiIdentifierSchema = z.string().max(128).regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+
+/** Closed palette vocabulary (mirrors AURORA_CHART_PALETTE names). No hex/rgb/var strings. */
+export const AI_PALETTE_NAMES = ["violet", "sky", "teal", "amber", "pink", "lime"] as const;
+
+export const AI_CHART_LIMITS = [5, 10, 25, 50, 100, 250, 500] as const;
+
+const F = {
+  metric: AiIdentifierSchema,
+  aggregation: z.enum(CHART_AGGREGATIONS),
+  groupByColumn: AiIdentifierSchema,
+  sortDir: z.enum(["ASC", "DESC"]),
+  limit: z
+    .number()
+    .int()
+    .refine((n) => (AI_CHART_LIMITS as readonly number[]).includes(n), "limit must be one of 5,10,25,50,100,250,500"),
+  color: z.enum(AI_PALETTE_NAMES),
+  showLegend: z.boolean(),
+  label: z.string().max(80),
+};
+
+function wc(keys: Record<string, z.ZodTypeAny>): FieldDescriptors {
+  const out: FieldDescriptors = {};
+  for (const k of Object.keys(keys)) out[k] = { schema: keys[k], location: "widget.config" };
+  return out;
+}
 
 /**
  * Widget kind — keyed by widget type (e.g. "map", "chart", "records").
@@ -112,12 +142,27 @@ const WIDGET_ALLOW_LIST: Record<string, FieldDescriptors> = {
     // Whether fullscreen button is visible
     show_fullscreen: { schema: z.boolean(), location: "widget.config" },
   },
-  chart: {
-    // The metric column for the chart (safe string; column name)
-    metric: { schema: z.string(), location: "widget.config" },
-    // The aggregation function applied to the metric
-    aggregation: { schema: z.enum(CHART_AGGREGATIONS), location: "widget.config" },
-  },
+  // D-19: keyed by real widget types (metric persisted name; web seam maps to metricColumn)
+  bar: wc({
+    metric: F.metric, aggregation: F.aggregation, groupByColumn: F.groupByColumn, sortDir: F.sortDir,
+    limit: F.limit, color: F.color, showLegend: F.showLegend,
+    xAxisLabel: F.label, yAxisLabel: F.label, yFieldLabel: F.label,
+  }),
+  line: wc({
+    metric: F.metric, aggregation: F.aggregation, groupByColumn: F.groupByColumn, sortDir: F.sortDir,
+    limit: F.limit, color: F.color, showLegend: F.showLegend, yFieldLabel: F.label,
+  }),
+  pie: wc({
+    metric: F.metric, aggregation: F.aggregation, groupByColumn: F.groupByColumn, sortDir: F.sortDir,
+    limit: F.limit, color: F.color, showLegend: F.showLegend,
+  }),
+  table: wc({
+    metric: F.metric, aggregation: F.aggregation, groupByColumn: F.groupByColumn, sortDir: F.sortDir,
+    limit: F.limit, color: F.color,
+  }),
+  bignumber: wc({
+    metric: F.metric, aggregation: F.aggregation, color: F.color, label: F.label, subLabel: F.label,
+  }),
   records: {
     // Page size for the records table
     page_size: { schema: z.number().int().positive(), location: "widget.config" },
@@ -174,9 +219,20 @@ function resolveAllowList(
   if (kind === "dynamicView") return DYNAMIC_VIEW_ALLOW_LIST;
   if (kind === "widget") {
     if (!widgetType) return null;
-    return WIDGET_ALLOW_LIST[widgetType] ?? null;
+    return Object.prototype.hasOwnProperty.call(WIDGET_ALLOW_LIST, widgetType)
+      ? WIDGET_ALLOW_LIST[widgetType]
+      : null;
   }
   return null;
+}
+
+/** Field schemas (no locations) for a widget type, or null when the type has no allow-list. */
+export function getWidgetAllowListSchemas(type: string): Record<string, z.ZodTypeAny> | null {
+  const list = Object.prototype.hasOwnProperty.call(WIDGET_ALLOW_LIST, type) ? WIDGET_ALLOW_LIST[type] : undefined;
+  if (!list) return null;
+  const out: Record<string, z.ZodTypeAny> = {};
+  for (const k of Object.keys(list)) out[k] = list[k].schema;
+  return out;
 }
 
 // ---------------------------------------------------------------------------
