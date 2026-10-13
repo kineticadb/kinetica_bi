@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 135 complete (2026-10-13); next Phase 136"
+stopped_at: "Phase 136 context gathered (2026-10-13); next plan-phase 136"
 last_updated: "2026-10-13T18:00:00.000Z"
 progress:
   total_phases: 6
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards star
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 135 complete — next: 136 (Structural & Edit Ops; depends on 134 + 135, both done)
+Phase: 136 (Structural & Edit Ops) — context gathered 2026-10-13 (136-CONTEXT.md D-01..D-21); next: plan
 Plan: —
 Status: Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
 Last activity: 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
@@ -62,7 +62,7 @@ Last activity: 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini nat
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next: `/gsd:plan-phase 136` (Phases 134 and 135 done).**
+**Next: `/gsd:plan-phase 136` (context gathered 2026-10-13: `.planning/phases/136-structural-edit-ops/136-CONTEXT.md`).**
 
 **Open blockers:** none.
 
