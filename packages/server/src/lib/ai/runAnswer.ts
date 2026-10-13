@@ -98,6 +98,8 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           liveSchema,
           getPermissions: (u) => getEffectivePermissions(u),
           canViewDashboard: (u, id) => canViewDashboard(u, id),
+          dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
+          approvals: body.approvals,
         },
         dataAccess: config.dataAccess,
         maxToolSteps: config.maxToolSteps,

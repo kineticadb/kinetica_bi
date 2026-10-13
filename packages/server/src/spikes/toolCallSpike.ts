@@ -267,6 +267,7 @@ async function runScenario(ctx: Ctx, s: Scenario): Promise<SpikeRun> {
     liveSchema,
     getPermissions: () => new Set(["ai:use"]),
     canViewDashboard: () => true,
+    dashboardTableIds: () => [1, 2],
   };
   const run: SpikeRun = { scenario: s.n, expect: s.expect, calls: [], text: "", finish: "other", latencyMs: 0, rateLimited: 0 };
   const messages: OutboundMessage[] = [{ role: "user", parts: [part.user(s.prompt)] }];

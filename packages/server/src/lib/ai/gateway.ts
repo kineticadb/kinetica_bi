@@ -28,6 +28,10 @@ export type GatewayDeps = {
   liveSchema: LiveSchemaPort;
   getPermissions: (u: string) => ReadonlySet<string>;
   canViewDashboard: (u: string, dashboardId: number) => boolean;
+  /** Tables associated with the dashboard (D-22). */
+  dashboardTableIds: () => readonly number[];
+  /** D-06: UX approval for removing saved content. */
+  approvals?: { removeSaved?: boolean };
 };
 
 const fail = (stage: GatewayStage, reasons: string[]): GatewayResult => ({ ok: false, stage, reasons });

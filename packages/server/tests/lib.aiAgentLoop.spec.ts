@@ -35,7 +35,7 @@ function setup(steps: ScriptStep[], o: { maxToolSteps?: number; timeoutMs?: numb
   const shadow = createShadow({ widgets: [{ id: 42, type: "map", title: "Trips", tableId: 7 }], layers: [], dynamicViews: [], filters: [] });
   const input: AgentLoopInput = {
     system: [part.system("sys")], messages: [{ role: "user", parts: [part.user("q")] }], registry, toolCtx,
-    gateway: { username: "ann", dashboardId: 1, shadow, liveSchema, getPermissions: () => o.perms ?? new Set(["dashboards:view", "ai:use"]), canViewDashboard: () => true },
+    gateway: { username: "ann", dashboardId: 1, shadow, liveSchema, getPermissions: () => o.perms ?? new Set(["dashboards:view", "ai:use"]), canViewDashboard: () => true, dashboardTableIds: () => [7] },
     dataAccess: "schema", maxToolSteps: o.maxToolSteps ?? 10, timeoutMs: o.timeoutMs ?? 60_000,
   };
   const events: AiProgressEvent[] = [];
