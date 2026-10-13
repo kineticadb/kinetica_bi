@@ -2,3 +2,5 @@ export * from "./widgetAction";
 export * from "./actionAllowList";
 export * from "./aiOp";
 export * from "./aiAsk";
+export * from "./layout";
+export * from "./aiCatalog";
