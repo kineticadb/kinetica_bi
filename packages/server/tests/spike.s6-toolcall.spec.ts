@@ -3,16 +3,22 @@
  * Pure metric/pacing/sanitiser logic only. The live run (src/spikes/toolCallSpike.ts) is operator-run; no network here.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   aggregateSpikeRuns,
   formatMatrixRow,
   createPacer,
   sanitizeRecording,
+  createEarlyStopGuard,
+  parse429Body,
+  verdictFor,
   MATRIX_HEADER,
   type SpikeAggregate,
   type SpikeRun,
 } from "../src/spikes/toolCallSpikeMetrics";
-import { forbidProviderNetwork, KEY_SENTINEL } from "./helpers/aiTestKit";
+import { captureConsole, FAKE_PROVIDER_BASE_URL, forbidProviderNetwork, KEY_SENTINEL } from "./helpers/aiTestKit";
 
 const good = { known: true, jsonOk: true, zodOk: true, gatewayOk: true };
 const run = (o: Partial<SpikeRun> & { calls: SpikeRun["calls"] }): SpikeRun => ({
@@ -92,8 +98,8 @@ describe("S6-2 formatMatrixRow", () => {
   it("verdict native needs valid>=90% over >=20 trials with second turn ok", () => {
     expect(cells(row(aggregateSpikeRuns(mk(20))))[10]).toBe("native");
   });
-  it("fewer than 20 trials is insufficient even when everything is valid", () => {
-    expect(cells(row(aggregateSpikeRuns(mk(19))))[10]).toBe("insufficient trials");
+  it("fewer than 20 (clean) trials is inconclusive even when everything is valid", () => {
+    expect(cells(row(aggregateSpikeRuns(mk(19))))[10]).toBe("inconclusive (19 clean trials)");
   });
   it("valid below 90% falls back to json (best effort)", () => {
     const bad = mk(20).map((r, i) => (i < 3 ? { ...r, calls: [{ name: "list_tables", ...good, zodOk: false }] } : r)); // 85% valid
@@ -170,5 +176,166 @@ describe("S6-5 importing the spike runs nothing", () => {
     const mod = await import("../src/spikes/toolCallSpike");
     expect(typeof mod.main).toBe("function");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---- S6-6..S6-9: operator run 2026-10-13 showed quota/transport errors being scored as model failures ----
+const rl = (o: Partial<SpikeRun> = {}): SpikeRun =>
+  run({ calls: [], finish: "other", rateLimited: 1, retryDelayMs: 29_911_000, error: { kind: "rate_limited", status: 429 }, ...o });
+
+/** Shape of the 2026-10-13 Gemini run: 19 clean trials + 15 daily-quota 429s + 1 first-call abort. */
+function operatorLikeRuns(): SpikeRun[] {
+  const clean: SpikeRun[] = Array.from({ length: 19 }, (_, i) =>
+    i < 2
+      ? run({ scenario: 6, calls: [{ name: "list_tables", ...good }], secondTurnOk: true })
+      : i < 4
+        ? run({ scenario: 5, calls: [], text: "Bar charts compare categories.", finish: "stop", expect: "none" })
+        : run({ calls: [{ name: "list_tables", ...good }] }),
+  );
+  const errored: SpikeRun[] = [
+    ...Array.from({ length: 12 }, () => rl()),
+    rl({ scenario: 6, secondTurnOk: false }),
+    rl({ scenario: 6, secondTurnOk: false }),
+    rl({ scenario: 6, secondTurnOk: false }),
+    run({ calls: [], finish: "other", latencyMs: 60_000, error: { kind: "aborted" } }),
+  ];
+  return [...clean, ...errored];
+}
+
+describe("S6-6 transport/quota-errored trials are excluded from the model-quality denominators", () => {
+  const a = aggregateSpikeRuns(operatorLikeRuns());
+  it("reports clean vs excluded trials separately", () => {
+    expect(a.trials).toBe(35);
+    expect(a.cleanTrials).toBe(19);
+    expect(a.excludedTrials).toEqual({ count: 16, byKind: { rate_limited: 15, aborted: 1 } });
+  });
+  it("text-instead-of-tool and second-turn use clean trials only", () => {
+    expect(a.textInsteadOfToolPct).toBe(0); // the 15 errored tool-expected trials made no call, but that is quota, not the model
+    expect(a.secondTurnRuns).toBe(2);
+    expect(a.secondTurnOk).toBe(2);
+  });
+  it("calls made inside an errored trial (multi-step cut off by a 429) do not count toward validity", () => {
+    const mixed = [
+      ...operatorLikeRuns(),
+      rl({ calls: [{ name: "add_widget", ...good, zodOk: false }] }),
+    ];
+    const m = aggregateSpikeRuns(mixed);
+    expect(m.validCallPct).toBe(100);
+    expect(m.malformedPct).toBe(0);
+    expect(m.excludedTrials.count).toBe(17);
+  });
+  it("429 statistics still count every trial (they are reported, never hidden)", () => {
+    expect(a.rateLimit.count).toBe(15);
+    expect(a.rateLimit.over20sCount).toBe(15);
+    expect(a.errors).toEqual({ rate_limited: 15, aborted: 1 });
+  });
+  it("a protocol error is a model/adapter failure and stays in the denominator", () => {
+    const p = aggregateSpikeRuns([run({ calls: [], finish: "other", error: { kind: "protocol" } })]);
+    expect(p.cleanTrials).toBe(1);
+    expect(p.textInsteadOfToolPct).toBe(100);
+  });
+});
+
+describe("S6-7 verdicts on a clean-trial basis", () => {
+  const cells = (s: string) => s.split("|").slice(1, -1).map((c) => c.trim());
+  it("19 clean trials + quota errors is inconclusive, NOT json (best effort)", () => {
+    const a = aggregateSpikeRuns(operatorLikeRuns());
+    expect(verdictFor(a)).toBe("inconclusive (19 clean trials)");
+    const c = cells(formatMatrixRow({ provider: "gemini", model: "gemini-3-flash-preview", date: "2026-10-13", stream: "true", agg: a }));
+    expect(c[7]).toBe("ok"); // 2nd-turn: 2/2 clean
+    expect(c[9]).toBe("15/15");
+    expect(c[10]).toBe("inconclusive (19 clean trials)");
+  });
+  it("20 clean trials plus rate-limited ones is native", () => {
+    const runs = [...operatorLikeRuns(), run({ calls: [{ name: "list_tables", ...good }] })];
+    expect(verdictFor(aggregateSpikeRuns(runs))).toBe("native");
+  });
+  it("every trial failing with a request error (bad model id / URL) is an INVALID RUN", () => {
+    const bad = (k: string, s: number) => run({ calls: [], finish: "other", error: { kind: k, status: s } });
+    expect(verdictFor(aggregateSpikeRuns([bad("bad_request", 400), bad("bad_request", 400), bad("bad_request", 400)]))).toBe(
+      "INVALID RUN (check AI_MODEL / AI_BASE_URL)",
+    );
+    expect(verdictFor(aggregateSpikeRuns(Array.from({ length: 35 }, () => bad("auth", 401))))).toBe("INVALID RUN (check AI_MODEL / AI_BASE_URL)");
+  });
+  it("a mix of request errors and clean trials is not an invalid run", () => {
+    const runs = [run({ calls: [], finish: "other", error: { kind: "bad_request", status: 400 } }), run({ calls: [{ name: "list_tables", ...good }] })];
+    expect(verdictFor(aggregateSpikeRuns(runs))).toBe("inconclusive (1 clean trials)");
+  });
+});
+
+describe("S6-8 early-stop guard and 429 body parsing", () => {
+  it("stops after 3 consecutive 400s; a success in between resets the count", () => {
+    const g = createEarlyStopGuard();
+    expect(g.observe({ kind: "bad_request", status: 400 })).toBeNull();
+    expect(g.observe({ kind: "bad_request", status: 400 })).toBeNull();
+    expect(g.observe({})).toBeNull();
+    expect(g.observe({ kind: "bad_request", status: 400 })).toBeNull();
+    expect(g.observe({ kind: "bad_request", status: 400 })).toBeNull();
+    const r = g.observe({ kind: "bad_request", status: 400 });
+    expect(r).toMatch(/3 consecutive 400/);
+    expect(g.stopped()).toBe(r);
+  });
+  it("stops on a daily-quota 429 (quota id contains PerDay) even with a short delay", () => {
+    const g = createEarlyStopGuard();
+    expect(g.observe({ kind: "rate_limited", status: 429, retryDelayMs: 5_000, quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" })).toMatch(/daily quota/i);
+  });
+  it("stops on a 429 whose retry delay exceeds one hour", () => {
+    const g = createEarlyStopGuard();
+    expect(g.observe({ kind: "rate_limited", status: 429, retryDelayMs: 29_911_000 })).toMatch(/daily quota/i);
+  });
+  it("does not stop on a per-minute 429 with a short delay", () => {
+    const g = createEarlyStopGuard();
+    expect(g.observe({ kind: "rate_limited", status: 429, retryDelayMs: 34_000, quotaId: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier" })).toBeNull();
+    expect(g.stopped()).toBeNull();
+  });
+  it("parse429Body extracts retryDelay and quotaId from a Gemini RESOURCE_EXHAUSTED body", () => {
+    const body = JSON.stringify([{ error: { code: 429, status: "RESOURCE_EXHAUSTED", details: [
+      { "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier", quotaValue: "20" }] },
+      { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "29911s" },
+    ] } }], null, 2);
+    expect(parse429Body(body)).toEqual({ retryDelayMs: 29_911_000, quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" });
+    expect(parse429Body("not json")).toEqual({});
+  });
+});
+
+describe("S6-9 the spike stops early and writes partial output (scripted fetch, no network)", () => {
+  let dir = "";
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+  const env = { AI_ENABLED: "true", AI_PROVIDER: "openai-compatible", AI_BASE_URL: FAKE_PROVIDER_BASE_URL, AI_MODEL: "m-1", AI_API_KEY: KEY_SENTINEL };
+  async function runMain(respond: () => Response): Promise<{ calls: number; out: any; log: string }> {
+    dir = await mkdtemp(join(tmpdir(), "s6-spec-"));
+    let calls = 0;
+    forbidProviderNetwork(async () => { calls++; return respond(); }, { allowHosts: ["provider.test"] });
+    const con = captureConsole();
+    try {
+      const { main } = await import("../src/spikes/toolCallSpike");
+      const code = await main(["--runs", "2", "--rpm", "60000", "--out", join(dir, "out.json")], env);
+      expect(code).toBe(0);
+    } finally {
+      con.restore();
+    }
+    return { calls, out: JSON.parse(await readFile(join(dir, "out.json"), "utf8")), log: con.text() };
+  }
+  it("3 consecutive 400s (e.g. AI_MODEL is a display name) stop the run with INVALID RUN", async () => {
+    const r = await runMain(() => new Response(JSON.stringify([{ error: { code: 400, message: "unexpected model name format" } }]), { status: 400 }));
+    expect(r.calls).toBe(3);
+    expect(r.out.stoppedEarly).toMatch(/3 consecutive 400/);
+    expect(r.out.matrixRow).toContain("INVALID RUN (check AI_MODEL / AI_BASE_URL)");
+    expect(r.log).toMatch(/stopping early/i);
+    expect(r.log).not.toContain(KEY_SENTINEL);
+  });
+  it("a daily-quota 429 stops immediately instead of burning the remaining scenarios", async () => {
+    const body = JSON.stringify([{ error: { code: 429, details: [
+      { violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] },
+      { retryDelay: "29911s" },
+    ] } }]);
+    const r = await runMain(() => new Response(body, { status: 429 }));
+    expect(r.calls).toBe(1);
+    expect(r.out.stoppedEarly).toMatch(/daily quota/i);
+    expect(r.out.aggregate.excludedTrials.count).toBe(1);
+    expect(r.out.matrixRow).toContain("inconclusive (0 clean trials)");
   });
 });
