@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { evaluateTurn, foldSession } from "./foldSession";
+import { addLayerOp } from "../../test/aiSessionHarness";
 import { EMPTY_DERIVED } from "./constants";
 import type { SessionBaseline, TurnEntry } from "./types";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
@@ -72,7 +73,7 @@ describe("evaluateTurn", () => {
     expect(b.result).toMatchObject({ status: "skipped", reason: "patch_rejected" });
   });
   it("EVAL-6: add_layer only on map widgets", () => {
-    const [a, b] = turn([{ op: "add_layer", tempId: -2, widgetId: 50 }, { op: "add_layer", tempId: -3, widgetId: 42 }]);
+    const [a, b] = turn([addLayerOp(-2, 50), addLayerOp(-3, 42)]);
     expect(a.result).toMatchObject({ status: "skipped", reason: "target_not_found" });
     expect(b.result.status).toBe("applied");
   });
@@ -121,7 +122,7 @@ describe("foldSession", () => {
     expect(d.removedWidgetIds.has(-1)).toBe(false);
   });
   it("FOLD-5: add_layer extends explicit includedLayerIds only", () => {
-    const t = turn([{ op: "add_layer", tempId: -2, widgetId: 43 }, { op: "add_layer", tempId: -3, widgetId: 42 }]);
+    const t = turn([addLayerOp(-2, 43), addLayerOp(-3, 42)]);
     const d = foldSession(baseline, t);
     expect(d.contribution.widget[43].includedLayerIds).toEqual([7, -2]);
     expect(d.contribution.widget[42]).toBeUndefined();

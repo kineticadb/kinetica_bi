@@ -38,7 +38,7 @@ export function applyOpToShadow(s: ShadowState, op: AiOp): void {
       s.widgets.delete(op.id);
       return;
     case "add_layer":
-      s.layers.set(op.tempId, { widgetId: op.widgetId });
+      s.layers.set(op.tempId, { widgetId: op.widgetId, tableId: op.tableId });
       s.usedTempIds.add(op.tempId);
       return;
     case "remove_layer":
@@ -85,5 +85,13 @@ export function describeOp(op: AiOp, s: ShadowState): string {
       return `Applied filter from widget ${op.widgetId}`;
     case "clear_filter":
       return op.widgetId === undefined ? "Cleared filters" : `Cleared filter from widget ${op.widgetId}`;
+    case "set_layout":
+      return `Rearranged ${op.items.length} widget(s)`;
+    case "change_widget_type": {
+      const w = s.widgets.get(op.id);
+      return `Changed ${w ? `"${w.title}"` : `widget ${op.id}`} to a ${op.type} chart`;
+    }
+    case "set_widget_title":
+      return `Renamed widget ${op.id}`;
   }
 }

@@ -112,6 +112,10 @@ function evaluateOne(sim: Sim, rawOp: unknown): TurnEntry {
     case "add_dynamic_view":
     case "remove_dynamic_view":
       return done(skip("unsupported_in_134"));
+    case "set_layout":
+    case "change_widget_type":
+    case "set_widget_title":
+      return done(skip("unsupported_in_134")); // 136-08 implements these
     case "add_widget":
       return done(sim.usedTemp.has(op.tempId) ? skip("duplicate_temp_id") : { status: "applied" });
     case "add_layer":

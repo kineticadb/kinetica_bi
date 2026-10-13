@@ -19,6 +19,7 @@ const SnapWidget = z
     type: z.string().min(1).max(50),
     title: Name,
     tableId: z.number().int().positive().optional(),
+    dynamicViewId: SnapId.optional(),
     layout: z
       .object({
         x: z.number().int().min(0).max(1000),
@@ -98,8 +99,19 @@ export const AskRequestSchema = z
       })
       .strict(),
     turns: z.array(AskTurnSchema).max(50),
+    // D-06: UX approval for removing saved entities; not a security boundary (edit rights enforced at Keep, 141).
+    approvals: z.object({ removeSaved: z.boolean() }).strict().optional(),
   })
   .strict();
 
 export type AskRequest = z.infer<typeof AskRequestSchema>;
 export type AskTurn = z.infer<typeof AskTurnSchema>;
+
+export const AiClarificationSchema = z
+  .object({
+    kind: z.enum(["confirm_remove", "choose_map"]),
+    question: z.string().max(300),
+    options: z.array(z.object({ id: z.string().max(50), label: z.string().max(200) }).strict()).min(1).max(10),
+  })
+  .strict();
+export type AiClarification = z.infer<typeof AiClarificationSchema>;

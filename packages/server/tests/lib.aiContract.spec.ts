@@ -11,7 +11,7 @@ describe("aiContract (shared seam)", () => {
   it("AIC-3 contract version is v4", () => {
     expect(AI_CONTRACT_VERSION).toBe("v4");
   });
-  it("AIC-4 has 9 op kinds", () => {
-    expect(AI_OP_KINDS.length).toBe(9);
+  it("AIC-4 has 12 op kinds", () => {
+    expect(AI_OP_KINDS.length).toBe(12);
   });
 });

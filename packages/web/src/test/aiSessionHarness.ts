@@ -36,7 +36,9 @@ export const patchWidgetOp = (id: number, configPatch: Record<string, unknown>) 
 export const patchLayerOp = (id: number, configPatch: Record<string, unknown>) => ({
   op: "patch", action: { target: { kind: "layer", id }, configPatch },
 });
-export const addLayerOp = (tempId: number, widgetId: number) => ({ op: "add_layer", tempId, widgetId });
+export const addLayerOp = (tempId: number, widgetId: number) => ({
+  op: "add_layer", tempId, widgetId, tableId: 1, renderMode: "heatmap", spatialMode: "latlon", latColumn: "lat", lonColumn: "lon",
+});
 export const removeLayerOp = (id: number) => ({ op: "remove_layer", id });
 
 export function runTurns(baseline: SessionBaseline, opLists: unknown[][]) {

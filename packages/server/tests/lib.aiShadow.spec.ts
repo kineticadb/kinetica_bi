@@ -28,7 +28,7 @@ describe("shadow state", () => {
     applyOpToShadow(s, { op: "add_widget", tempId: -1, type: "bar", title: "New", config: { tableId: 7 } });
     expect(s.widgets.get(-1)).toEqual({ type: "bar", title: "New", tableId: 7 });
     expect(s.usedTempIds.has(-1)).toBe(true);
-    applyOpToShadow(s, { op: "add_layer", tempId: -2, widgetId: 42 });
+    applyOpToShadow(s, { op: "add_layer", tempId: -2, widgetId: 42, tableId: 1, renderMode: "heatmap", spatialMode: "latlon", latColumn: "lat", lonColumn: "lon" });
     expect(s.layers.has(-2)).toBe(true);
     applyOpToShadow(s, { op: "add_dynamic_view", tempId: -4 });
     expect(s.dynamicViews.has(-4)).toBe(true);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AskRequestSchema, AI_WIDGET_TYPES } from "./aiAsk";
+import { AskRequestSchema, AI_WIDGET_TYPES, AiClarificationSchema } from "./aiAsk";
 
 const base = () => ({
   dashboardId: 3,
@@ -54,5 +54,24 @@ describe("AskRequestSchema", () => {
 
   it("ASK-5: approved widget subset", () => {
     expect([...AI_WIDGET_TYPES]).toEqual(["bar", "line", "pie", "table", "bignumber", "records", "map"]);
+  });
+});
+
+describe("Phase 136 ask contract", () => {
+  it("ASK6-1: approvals flag", () => {
+    expect(ok({ ...base(), approvals: { removeSaved: true } })).toBe(true);
+    expect(ok({ ...base(), approvals: { removeSaved: true, other: 1 } })).toBe(false);
+    expect(ok(base())).toBe(true);
+  });
+  it("ASK6-2: SnapWidget dynamicViewId", () => {
+    const w = { id: 1, type: "map", title: "t", dynamicViewId: 5 };
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, widgets: [w] } })).toBe(true);
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, widgets: [{ ...w, dynamicViewId: 0 }] } })).toBe(false);
+  });
+  it("ASK6-3: AiClarificationSchema", () => {
+    const o = [{ id: "1", label: "Map A" }];
+    expect(AiClarificationSchema.safeParse({ kind: "confirm_remove", question: "Remove?", options: o }).success).toBe(true);
+    expect(AiClarificationSchema.safeParse({ kind: "choose_map", question: "Which?", options: o }).success).toBe(true);
+    expect(AiClarificationSchema.safeParse({ kind: "other", question: "?", options: o }).success).toBe(false);
   });
 });
