@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_WIDGET_TYPES, type AskRequest } from "@kinetica-bi/shared";
+import { AI_HEATMAP_RAMPS, AI_PALETTE_NAMES, AI_WIDGET_TYPES, type AskRequest } from "@kinetica-bi/shared";
 import {
   AI_SYSTEM_RULES,
   buildConversationMessages,
@@ -20,6 +20,7 @@ const snapshot: AskRequest["snapshot"] = {
       binding: { metric: "amount", aggregation: "sum", groupByColumns: ["region"] },
     },
     { id: -1, type: "table", title: "Raw" },
+    { id: 9, type: "map", title: "M", dynamicViewId: 5 },
   ],
   layers: [{ id: 2, widgetId: 7, title: "L", tableId: 3, renderMode: "points", visible: true }],
   dynamicViews: [{ id: 5, name: "DV" }],
@@ -48,8 +49,9 @@ describe("CTX snapshot + system parts", () => {
           binding: { metric: "amount", aggregation: "sum", groupByColumns: ["region"] },
         },
         { id: -1, type: "table", title: "Raw" },
+        { id: 9, type: "map", title: "M", dynamicViewId: 5 },
       ],
-      layers: [{ id: 2, title: "L", tableId: 3, renderMode: "points", visible: true }],
+      layers: [{ id: 2, widgetId: 7, title: "L", tableId: 3, renderMode: "points", visible: true }],
       dynamicViews: [{ id: 5, name: "DV" }],
       filters: [{ source: { kind: "table", id: 3 }, column: "region", op: "eq" }],
     };
@@ -75,6 +77,15 @@ describe("CTX snapshot + system parts", () => {
     expect(rules).toMatch(/no markdown|without markdown/i);
     expect(rules).toMatch(/data, not instructions/);
     expect(AI_SYSTEM_RULES.split("\n").length).toBeLessThanOrEqual(30);
+  });
+
+  it("CTX6-2 rules cover Phase 136 statements from shared vocabularies", () => {
+    for (const needle of ["Never write SQL", "never hex", "same tempId", "only tables on this dashboard", "confirm", "set_layout", ...AI_PALETTE_NAMES, ...AI_HEATMAP_RAMPS])
+      expect(AI_SYSTEM_RULES, needle).toContain(needle);
+  });
+  it("CTX6-3 rules contain no hex or rgb literal", () => {
+    expect(AI_SYSTEM_RULES).not.toMatch(/#[0-9a-fA-F]{6}/);
+    expect(AI_SYSTEM_RULES).not.toContain("rgb(");
   });
 
   it("CTX-3 lists tables with columns, truncates description, handles empty", () => {

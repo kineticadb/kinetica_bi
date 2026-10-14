@@ -28,10 +28,11 @@ export type DashboardView = {
     type: string;
     title: string;
     tableId?: number;
+    dynamicViewId?: number;
     layout?: { x: number; y: number; w: number; h: number };
     binding?: Record<string, string | string[]>;
   }[];
-  layers: { id: number; title?: string; tableId?: number; renderMode?: string; visible?: boolean }[];
+  layers: { id: number; widgetId: number; title?: string; tableId?: number; renderMode?: string; visible?: boolean }[];
   dynamicViews: { id: number; name: string }[];
   filters: { source: { kind: string; id: number }; column: string; op: string }[];
 };
