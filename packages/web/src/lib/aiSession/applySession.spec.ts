@@ -47,3 +47,31 @@ describe("applySession", () => {
     expect(hasSessionChanges(patchOnly)).toBe(true);
   });
 });
+
+describe("applySession phase 136", () => {
+  it("APPLYS6-1: widgetMeta applies type/title/config to saved widgets, ref-stable when empty", () => {
+    const sw = [w(11), w(12)];
+    const d = derived({
+      widgetMeta: { 12: { type: "line", title: "Fares", config: { sql: "S2" } } },
+      appliedOpCount: 1,
+    });
+    const out = applySessionToWidgets(sw, d);
+    expect(out[0]).toBe(sw[0]);
+    expect(out[1]).toMatchObject({ id: 12, type: "line", title: "Fares", config: { sql: "S2" } });
+    expect(applySessionToWidgets(sw, EMPTY_DERIVED)).toBe(sw);
+  });
+  it("APPLYS6-2: temp layer visibility applies to negative ids only, ref-stable when empty", () => {
+    const sl = [l(7), l(-3), l(-4)];
+    const out = applySessionToLayers(sl, derived({ appliedOpCount: 1, addedLayers: [] }), { [-3]: false });
+    expect(out[1].config.visible).toBe(false);
+    expect(out[0]).toBe(sl[0]);
+    expect(out[2]).toBe(sl[2]);
+    expect(applySessionToLayers(sl, EMPTY_DERIVED, {})).toBe(sl);
+    expect(applySessionToLayers(sl, EMPTY_DERIVED, { 7: false })).toBe(sl);
+  });
+  it("APPLYS6-3: hasSessionChanges covers layout, widgetMeta and aiEditedLayerIds", () => {
+    expect(hasSessionChanges(derived({ layout: { 1: { x: 0, y: 0, w: 6, h: 6 } } }))).toBe(true);
+    expect(hasSessionChanges(derived({ widgetMeta: { 1: { title: "t" } } }))).toBe(true);
+    expect(hasSessionChanges(derived({ aiEditedLayerIds: new Set([7]) }))).toBe(true);
+  });
+});

@@ -16,4 +16,8 @@ export const EMPTY_DERIVED: SessionDerived = Object.freeze({
   removedLayerIds: new Set<number>(),
   contribution: { widget: {}, layer: {}, dynamicView: {} },
   appliedOpCount: 0,
+  layout: Object.freeze({}),
+  aiEditedWidgetIds: new Set<number>(),
+  aiEditedLayerIds: new Set<number>(),
+  widgetMeta: Object.freeze({}),
 });

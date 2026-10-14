@@ -260,5 +260,9 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
     removedLayerIds,
     contribution,
     appliedOpCount: applied,
+    layout: {},
+    aiEditedWidgetIds: new Set<number>(),
+    aiEditedLayerIds: new Set<number>(),
+    widgetMeta: {},
   };
 }

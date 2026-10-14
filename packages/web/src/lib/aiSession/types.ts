@@ -13,7 +13,12 @@ export type SkipReason =
   | "target_not_found"
   | "duplicate_temp_id"
   | "patch_rejected"
-  | "unsupported_in_134";
+  | "unsupported_in_134"
+  | "needs_confirmation"
+  | "config_rejected"
+  | "unsupported_target"
+  | "layout_rejected"
+  | "table_not_on_dashboard";
 export type OpResult = { status: "applied" } | { status: "skipped"; reason: SkipReason; detail?: string };
 export type TurnEntry = { raw: unknown; op: AiOp | null; result: OpResult };
 export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number };
@@ -23,7 +28,12 @@ export type SessionBaseline = {
   widgets: readonly WidgetDto[];
   layers: readonly DashboardLayerDto[];
   dynamicViewIds: readonly number[];
+  /** Dashboard tables (136); absent = table checks skipped. */
+  tables?: readonly { id: number; schema: string; name: string; columns: Record<string, string> }[];
+  maxBarGroupBySeriesCap?: number;
 };
+export type EvaluateOptions = { removalApproved?: boolean };
+export type SessionWidgetMeta = { type?: string; title?: string; config?: Record<string, unknown> };
 export type SessionContribution = {
   widget: Record<number, Record<string, unknown>>;
   layer: Record<number, Record<string, unknown>>;
@@ -36,5 +46,9 @@ export type SessionDerived = {
   removedLayerIds: ReadonlySet<number>;
   contribution: SessionContribution;
   appliedOpCount: number;
+  layout: Readonly<Record<number, SessionRect>>;
+  aiEditedWidgetIds: ReadonlySet<number>;
+  aiEditedLayerIds: ReadonlySet<number>;
+  widgetMeta: Readonly<Record<number, SessionWidgetMeta>>;
 };
 export type SessionRect = { x: number; y: number; w: number; h: number };
