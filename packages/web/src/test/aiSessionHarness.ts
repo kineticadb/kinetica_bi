@@ -22,13 +22,28 @@ export function baselineFixture(
   return {
     dashboardId: o.dashboardId ?? 1,
     widgets: o.widgets ?? [mapWidget(42), mapWidget(43, { includedLayerIds: [7] }), recordsWidget(50)],
-    layers: o.layers ?? [savedLayer(7), savedLayer(8)],
+    layers: o.layers ?? [savedLayer(7, { config: { renderMode: "heatmap" } }), savedLayer(8)],
     dynamicViewIds: o.dynamicViewIds ?? [90],
+    tables: [
+      { id: 5, schema: "demo", name: "trips", columns: { vendor_id: "string", fare_amount: "double", payment_type: "string", lat: "double", lon: "double" } },
+      { id: 1, schema: "demo", name: "pts", columns: { lat: "double", lon: "double" } },
+    ],
+    maxBarGroupBySeriesCap: 12,
   };
 }
 export const addWidgetOp = (tempId: number, type = "records", title = "AI widget", config: Record<string, unknown> = {}) => ({
   op: "add_widget", tempId, type, title, config,
 });
+export const addChartOp = (
+  tempId: number,
+  type: string,
+  title: string,
+  config: Record<string, unknown>,
+  layout?: { x: number; y: number; w: number; h: number },
+) => ({ op: "add_widget", tempId, type, title, config, ...(layout ? { layout } : {}) });
+export const setLayoutOp = (items: { id: number; x: number; y: number; w: number; h: number }[]) => ({ op: "set_layout", items });
+export const changeTypeOp = (id: number, type: string) => ({ op: "change_widget_type", id, type });
+export const setTitleOp = (id: number, title: string) => ({ op: "set_widget_title", id, title });
 export const removeWidgetOp = (id: number) => ({ op: "remove_widget", id });
 export const patchWidgetOp = (id: number, configPatch: Record<string, unknown>) => ({
   op: "patch", action: { target: { kind: "widget", id }, configPatch },

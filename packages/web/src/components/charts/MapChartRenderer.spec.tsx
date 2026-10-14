@@ -6887,31 +6887,55 @@ describe("Phase 134 session layer read path (map)", () => {
     expect(blocks()).toBe(2);
   });
 
-  it("AIREAD-MAP-2: an AI-added placeholder layer (table_id 0) renders without a WMS source, inside a DashboardContext", async () => {
+  const wrapMap = () => (
+    <DashboardContextProvider dashboardId={1} widgets={[]} dynamicViews={[]} retryDynamicView={() => {}}>
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />
+    </DashboardContextProvider>
+  );
+
+  it("AIREAD-MAP-2: an AI-added heatmap layer on a dashboard table renders a WMS source, inside a DashboardContext", async () => {
     const h = await import("../../test/aiSessionHarness");
     _layersState.layers = [makeLayer({ id: 7, position: 0, table_id: 10 })];
-    const wrap = () => (
-      <DashboardContextProvider dashboardId={1} widgets={[]} dynamicViews={[]} retryDynamicView={() => {}}>
-        <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />
-      </DashboardContextProvider>
-    );
-    const { rerender } = render(wrap());
+    const { rerender } = render(wrapMap());
     await act(async () => {});
     // Positive control: the saved layer issued exactly one WMS source and one legend row.
     const wmsBefore = allImageWmsInstances.length;
     expect(wmsBefore).toBeGreaterThanOrEqual(1);
     expect(blocks()).toBe(1);
 
+    const baseline = {
+      ...h.baselineFixture({ layers: [h.savedLayer(7)] }),
+      tables: [{ id: 10, schema: "public", name: "t10", columns: { lat: "double", lon: "double" } }],
+    };
+    act(() => {
+      h.runTurns(baseline, [[{ ...h.addLayerOp(-2, 42), tableId: 10 }]]);
+    });
+    rerender(wrapMap());
+    await act(async () => {});
+    expect(blocks()).toBe(2);
+    // Phase 136: the AI layer carries the dashboard table id and a complete heatmap config, so it
+    // issues its own WMS request (one more ImageWMS with the heatmap style).
+    expect(allImageWmsInstances.length).toBe(wmsBefore + 1);
+    const Ctor = (await import("ol/source/ImageWMS")).default as any;
+    const styles = Ctor.mock.calls.map((c: any[]) => c[0].params.STYLES);
+    expect(styles).toContain("heatmap");
+  });
+
+  it("AIREAD-MAP-3: an AI-added layer on a table the map does not know creates no WMS source", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    _layersState.layers = [makeLayer({ id: 7, position: 0, table_id: 10 })];
+    const { rerender } = render(wrapMap());
+    await act(async () => {});
+    const wmsBefore = allImageWmsInstances.length;
+    expect(wmsBefore).toBeGreaterThanOrEqual(1); // positive control
+    // table 1 is on the session baseline but absent from the map's `tables` prop
     const baseline = h.baselineFixture({ layers: [h.savedLayer(7)] });
     act(() => {
       h.runTurns(baseline, [[h.addLayerOp(-2, 42)]]);
     });
-    rerender(wrap());
+    rerender(wrapMap());
     await act(async () => {});
-    // The placeholder is PRESENT in the legend (the session layer is read)...
     expect(blocks()).toBe(2);
-    expect(blockNames().length).toBe(2);
-    // ...but is not issued a WMS request (source-validity auto-hide, table_id 0).
     expect(allImageWmsInstances.length).toBe(wmsBefore);
   });
 });

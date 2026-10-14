@@ -42,7 +42,7 @@ describe("devHarness feedback (GAP-134-02)", () => {
   const build = () => {
     h().addWidget("records", "AI 1");
     h().patchWidget(42, { show_scale_bar: true });
-    h().addWidget("bignumber", "AI 2");
+    h().addWidget("records", "AI 2");
   };
 
   it("HFB-1: position row shows cursor, turn count and visible AI widgets after a build", () => {

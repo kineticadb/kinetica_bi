@@ -122,7 +122,7 @@ describe("aiSessionStore", () => {
 describe("two-store rebuild (AISES-V20-02, D-11)", () => {
   const wa = () => useWidgetActionStore.getState();
   const t1 = () => [patchWidgetOp(42, { show_popup: true }), patchLayerOp(7, { opacity: 0.4 })];
-  const t2 = () => [patchWidgetOp(42, { show_scale_bar: true }), patchLayerOp(7, { renderMode: "heatmap" })];
+  const t2 = () => [patchWidgetOp(42, { show_scale_bar: true }), patchLayerOp(7, { colormap: "plasma" })];
 
   it("AISTORE-HAZARD: raw per-source writes replace wholesale (why the AI source is rebuilt from the log)", () => {
     wa().setControlContribution(0, { widget: { 42: { show_popup: true } }, layer: {}, dynamicView: {} });
@@ -134,7 +134,7 @@ describe("two-store rebuild (AISES-V20-02, D-11)", () => {
     runTurns(baseline, [t1(), t2()]);
     expect(wa().widgetOverrides[42]).toMatchObject({ show_popup: true, show_scale_bar: true });
     const cfg = (wa().layerOverrides[7] as { config?: Record<string, unknown> }).config;
-    expect(cfg).toMatchObject({ opacity: 0.4, renderMode: "heatmap" });
+    expect(cfg).toMatchObject({ opacity: 0.4, colormap: "plasma" });
   });
 
   it("AISTORE-REVERT-OVERLAY: revert rebuilds overlays from the prefix", () => {

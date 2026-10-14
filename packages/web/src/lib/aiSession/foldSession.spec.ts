@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { evaluateTurn, foldSession } from "./foldSession";
-import { addLayerOp } from "../../test/aiSessionHarness";
+import { evaluateTurn, foldSession, makeSessionWidget } from "./foldSession";
+import { addLayerOp, addChartOp, setLayoutOp, changeTypeOp, setTitleOp, baselineFixture, savedLayer } from "../../test/aiSessionHarness";
+import { paletteColor } from "../aiPalette";
 import { EMPTY_DERIVED } from "./constants";
 import type { SessionBaseline, TurnEntry } from "./types";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
@@ -23,7 +24,7 @@ const l = (id: number): DashboardLayerDto => ({
 const baseline: SessionBaseline = deepFreeze({
   dashboardId: 1,
   widgets: [w(42, "map"), w(43, "map", { includedLayerIds: [7] }), w(50, "records")],
-  layers: [l(7), l(8)],
+  layers: [{ ...l(7), config: { renderMode: "heatmap" } }, l(8)],
   dynamicViewIds: [90],
 });
 const patch = (kind: string, id: number, configPatch: Record<string, unknown>) => ({
@@ -87,10 +88,12 @@ describe("foldSession", () => {
     expect(d.contribution.widget[42]).toEqual({ show_popup: true, show_scale_bar: true });
   });
   it("FOLD-2: layer patches deep-merge, track_config top-level", () => {
-    const t1 = turn([patch("layer", 7, { opacity: 0.5, track_config: "x" })]);
-    const t2 = turn([patch("layer", 7, { renderMode: "heatmap" })], t1);
+    // 136: layer patches are the strict AI list (no track_config / renderMode any more); the
+    // deep-merge across turns is what this still proves.
+    const t1 = turn([patch("layer", 7, { opacity: 0.5, name: "x" })]);
+    const t2 = turn([patch("layer", 7, { colormap: "plasma" })], t1);
     const d = foldSession(baseline, [...t1, ...t2]);
-    expect(d.contribution.layer[7]).toEqual({ track_config: "x", config: { opacity: 0.5, renderMode: "heatmap" } });
+    expect(d.contribution.layer[7]).toEqual({ config: { opacity: 0.5, name: "x", colormap: "plasma" } });
   });
   it("FOLD-3: patch on temp widget merges into the added entity", () => {
     const t = turn([
@@ -126,7 +129,7 @@ describe("foldSession", () => {
     const d = foldSession(baseline, t);
     expect(d.contribution.widget[43].includedLayerIds).toEqual([7, -2]);
     expect(d.contribution.widget[42]).toBeUndefined();
-    expect(d.addedLayers[0]).toMatchObject({ id: -2, table_id: 0, layer_type: "KineticaWms" });
+    expect(d.addedLayers[0]).toMatchObject({ id: -2, table_id: 1, layer_type: "KineticaWms" });
   });
   it("FOLD-6: skipped ignored; appliedOpCount counts applied", () => {
     const t = turn([patch("widget", 42, { show_popup: true }), { op: "remove_widget", id: 999 }]);
@@ -143,5 +146,158 @@ describe("foldSession", () => {
     const full = foldSession(baseline, [...t1, ...t2]);
     expect(p1).not.toEqual(full);
     expect(p1).toEqual(foldSession(baseline, turn([patch("widget", 42, { show_popup: true })])));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Phase 136 (136-08): structural ops
+// ---------------------------------------------------------------------------------------------
+describe("Phase 136 fold", () => {
+  const b6 = (): SessionBaseline => {
+    const f = baselineFixture({
+      widgets: [
+        { ...w(12, "bar", { tableId: 5, table: "demo.trips", metricColumn: "fare_amount", aggregation: "SUM", groupByColumn: "vendor_id", sql: "S1", layout: { x: 0, y: 0, w: 18, h: 24 } }) },
+        { ...w(42, "map", { layout: { x: 18, y: 0, w: 18, h: 24 } }) },
+        { ...w(50, "records", { layout: { x: 0, y: 24, w: 18, h: 24 } }) },
+        { ...w(60, "bar", { tableId: 5, dynamicViewId: 9, layout: { x: 18, y: 24, w: 18, h: 24 } }) },
+      ],
+      layers: [savedLayer(7, { config: { renderMode: "heatmap" } }), savedLayer(8, { config: { renderMode: "raster" } })],
+    });
+    return f;
+  };
+  const baseline6 = b6();
+  const t6 = (ops: unknown[], prior: TurnEntry[] = []) => evaluateTurn(baseline6, prior, ops);
+  const barOp = (tempId = -1, extra: Record<string, unknown> = {}) =>
+    addChartOp(tempId, "bar", "Fares", { tableId: 5, metric: "fare_amount", aggregation: "avg", groupByColumn: "vendor_id", color: "teal", limit: 10, ...extra }, { x: 0, y: 60, w: 18, h: 30 });
+  const reason = (e: TurnEntry) => (e.result as { reason?: string }).reason;
+
+  it("FOLD6-1: add_widget generates sql/table/drill/palette colour; no metric key", () => {
+    const d = foldSession(baseline6, t6([barOp()]));
+    const c = d.addedWidgets[0].config;
+    expect(c).toMatchObject({
+      table: "demo.trips", tableId: 5, metricColumn: "fare_amount", aggregation: "AVG",
+      sql: "SELECT vendor_id, AVG(fare_amount) AS value FROM demo.trips GROUP BY vendor_id ORDER BY value DESC LIMIT 10",
+      drillDownColumn: "vendor_id", color: paletteColor("teal"), layout: { x: 0, y: 60, w: 18, h: 30 },
+    });
+    expect("metric" in c).toBe(false);
+    expect("metricId" in c).toBe(false);
+  });
+
+  it("FOLD6-2: hostile config is rejected, and the strip holds independently of evaluate", () => {
+    for (const bad of [
+      { sql: "DROP TABLE x" }, { customWhere: "1=1" }, { drillDownColumn: "evil" },
+      { dynamicViewId: 3 }, { metricId: 4 },
+    ]) {
+      const [e] = t6([barOp(-1, bad)]);
+      expect(reason(e)).toBe("config_rejected");
+    }
+    // Direct call: skip evaluate entirely (positive control for the strip step).
+    const hostile = { op: "add_widget" as const, tempId: -1, type: "bar", title: "t", layout: undefined, config: {
+      tableId: 5, metric: "fare_amount", aggregation: "avg", groupByColumn: "vendor_id", limit: 10,
+      sql: "DROP TABLE x", customWhere: "1=1", drillDownColumn: "evil", dynamicViewId: 3, metricId: 4, tableRef: "evil.t", table: "evil.t",
+    } };
+    const c = makeSessionWidget(hostile, baseline6).config;
+    expect(c.sql).toBe("SELECT vendor_id, AVG(fare_amount) AS value FROM demo.trips GROUP BY vendor_id ORDER BY value DESC LIMIT 10");
+    expect(c.customWhere).toBeUndefined();
+    expect(c.drillDownColumn).toBe("vendor_id");
+    expect(c.dynamicViewId).toBeUndefined();
+    expect(c.metricId).toBeUndefined();
+    expect(c.tableRef).toBeUndefined();
+    expect(c.table).toBe("demo.trips");
+  });
+
+  it("FOLD6-3: tables outside the dashboard are table_not_on_dashboard", () => {
+    const [a, b] = t6([barOp(-1, { tableId: 6 }), addLayerOp(-2, 42)].map((o, i) => (i === 1 ? { ...o, tableId: 6 } : o)));
+    expect(reason(a)).toBe("table_not_on_dashboard");
+    expect(reason(b)).toBe("table_not_on_dashboard");
+  });
+
+  it("FOLD6-4: add_layer builds a complete heatmap layer on the dashboard table", () => {
+    const op = { ...addLayerOp(-4, 42), tableId: 5, style: { colormap: "plasma", opacity: 0.5 } };
+    const d = foldSession(baseline6, t6([op]));
+    expect(d.addedLayers[0]).toMatchObject({ id: -4, table_id: 5 });
+    expect(d.addedLayers[0].config).toMatchObject({ renderMode: "heatmap", colormap: "plasma", POINTOPACITY: 50, latColumn: "lat" });
+    const [bad] = t6([{ ...op, widgetId: 50 }]);
+    expect(reason(bad)).toBe("target_not_found");
+  });
+
+  it("FOLD6-6: patch on a temp widget re-derives; patch on a saved widget flags it", () => {
+    const t1 = t6([barOp()]);
+    const t2 = t6([{ op: "patch", action: { target: { kind: "widget", id: -1 }, configPatch: { aggregation: "max" } } }], t1);
+    const c = foldSession(baseline6, [...t1, ...t2]).addedWidgets[0].config;
+    expect(c.aggregation).toBe("MAX");
+    expect(c.sql).toContain("MAX(fare_amount)");
+    const d = foldSession(baseline6, t6([patch("widget", 12, { metric: "fare_amount" })]));
+    expect(d.contribution.widget[12]).toEqual({ metric: "fare_amount" });
+    expect(d.aiEditedWidgetIds.has(12)).toBe(true);
+  });
+
+  it("FOLD6-7: layer patches use the strict heatmap list", () => {
+    const es = t6([
+      patch("layer", 7, { colormap: "viridis" }), patch("layer", 8, { colormap: "viridis" }), patch("layer", 8, { visible: false }),
+    ]);
+    expect(es[0].result.status).toBe("applied");
+    expect(reason(es[1])).toBe("unsupported_target");
+    expect(es[2].result.status).toBe("applied");
+    const d = foldSession(baseline6, es);
+    expect(d.aiEditedLayerIds.has(7)).toBe(true);
+    const t1 = t6([{ ...addLayerOp(-4, 42), tableId: 5 }]);
+    const t2 = t6([patch("layer", -4, { opacity: 0.25 }), patch("layer", -4, { latColumn: "x" })], t1);
+    expect(reason(t2[1])).toBe("patch_rejected");
+    expect(foldSession(baseline6, [...t1, ...t2]).addedLayers[0].config.POINTOPACITY).toBe(25);
+  });
+
+  it("FOLD6-8: set_layout overrides positions in derived.layout and flags saved ids", () => {
+    const es = t6([setLayoutOp([{ id: 42, x: 0, y: 48, w: 18, h: 30 }, { id: 50, x: 18, y: 48, w: 18, h: 30 }])]);
+    const d = foldSession(baseline6, es);
+    expect(d.layout[42]).toEqual({ x: 0, y: 48, w: 18, h: 30 });
+    expect(d.layout[50]).toEqual({ x: 18, y: 48, w: 18, h: 30 });
+    expect(d.aiEditedWidgetIds.has(42) && d.aiEditedWidgetIds.has(50)).toBe(true);
+    expect(reason(t6([setLayoutOp([{ id: 42, x: 0, y: 0, w: 18, h: 30 }, { id: 50, x: 6, y: 0, w: 18, h: 30 }])])[0])).toBe("layout_rejected");
+    expect(reason(t6([setLayoutOp([{ id: 42, x: 0, y: 0, w: 18, h: 30 }])])[0])).toBe("layout_rejected"); // overlaps unmoved 12
+    expect(reason(t6([setLayoutOp([{ id: 999, x: 0, y: 0, w: 18, h: 30 }])])[0])).toBe("target_not_found");
+  });
+
+  it("FOLD6-9: change_widget_type retypes saved and temp widgets; records is unsupported", () => {
+    const t1 = t6([changeTypeOp(12, "line")]);
+    expect(foldSession(baseline6, t1).widgetMeta[12].type).toBe("line");
+    expect(foldSession(baseline6, t1).widgetMeta[12].config?.sql).toContain("GROUP BY vendor_id");
+    const t2 = t6([patch("widget", 12, { xAxisLabel: "x" })], t1);
+    expect(reason(t2[0])).toBe("patch_rejected");
+    expect(reason(t6([changeTypeOp(50, "bar")])[0])).toBe("unsupported_target");
+    const t3 = t6([barOp(), changeTypeOp(-1, "pie")]);
+    expect(t3[1].result.status).toBe("applied");
+    expect(foldSession(baseline6, t3).addedWidgets[0].type).toBe("pie");
+  });
+
+  it("FOLD6-10: set_widget_title", () => {
+    expect(foldSession(baseline6, t6([setTitleOp(12, "New")])).widgetMeta[12].title).toBe("New");
+    expect(foldSession(baseline6, t6([barOp(), setTitleOp(-1, "T2")])).addedWidgets[0].title).toBe("T2");
+  });
+
+  it("FOLD6-11: dynamic-view bound widgets are unsupported_target", () => {
+    expect(reason(t6([patch("widget", 60, { limit: 10 })])[0])).toBe("unsupported_target");
+  });
+
+  it("FOLD6-12: undo (prefix fold) drops layout, meta and flags of the dropped turn", () => {
+    const t1 = t6([patch("widget", 12, { metric: "fare_amount" })]);
+    const t2 = t6([setLayoutOp([{ id: 42, x: 0, y: 48, w: 18, h: 30 }]), setTitleOp(12, "New")], t1);
+    const prefix = foldSession(baseline6, t1);
+    expect(prefix.layout[42]).toBeUndefined();
+    expect(prefix.widgetMeta[12]).toBeUndefined();
+    expect(prefix.aiEditedWidgetIds.has(42)).toBe(false);
+    expect(foldSession(baseline6, [...t1, ...t2]).layout[42]).toBeDefined();
+  });
+
+  it("FOLD6-13: a map and its heatmap layer in one turn", () => {
+    const es = t6([
+      { op: "add_widget", tempId: -1, type: "map", title: "Trips map", config: {} },
+      { ...addLayerOp(-2, -1), tableId: 5 },
+    ]);
+    expect(es.map((e) => e.result.status)).toEqual(["applied", "applied"]);
+    const d = foldSession(baseline6, es);
+    expect(d.addedWidgets[0].config).toHaveProperty("basemapLight");
+    expect(d.addedWidgets[0].config).toHaveProperty("basemapDark");
+    expect(d.addedLayers[0].table_id).toBe(5);
   });
 });
