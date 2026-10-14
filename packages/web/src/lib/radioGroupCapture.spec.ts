@@ -211,7 +211,7 @@ describe("captureAllowListedSubset — widget target (widget.config)", () => {
   });
 
   it("captures metric and aggregation from bar widget.config", () => {
-    const widget = makeWidget("bar", { metric: "revenue", aggregation: "sum" });
+    const widget = makeWidget("bar", { metricColumn: "revenue", aggregation: "SUM" });
     const result = captureAllowListedSubset({
       target: { kind: "widget", id: 5 },
       widgetType: "bar",
@@ -235,6 +235,19 @@ describe("captureAllowListedSubset — widget target (widget.config)", () => {
 // ---------------------------------------------------------------------------
 // No allow-listed fields present → returns empty patch
 // ---------------------------------------------------------------------------
+
+describe("SEAM — capture reverse transforms", () => {
+  it("SEAM-8: bar capture reads saved metricColumn + UPPERCASE aggregation and emits allow-list names", () => {
+    const widget = makeWidget("bar", { metricColumn: "fare", aggregation: "SUM" });
+    expect(captureAllowListedSubset({ target: { kind: "widget", id: 5 }, widgetType: "bar", widget })).toEqual({
+      metric: "fare", aggregation: "sum",
+    });
+  });
+  it("SEAM-9: layer capture derives opacity 0-1 from POINTOPACITY 0-100", () => {
+    const layer = makeLayer({ config: { POINTOPACITY: 40 } });
+    expect(captureAllowListedSubset({ target: { kind: "layer", id: 1 }, layer })).toEqual({ opacity: 0.4 });
+  });
+});
 
 describe("captureAllowListedSubset — empty patch edge cases", () => {
   it("returns empty patch when layer has no allow-listed fields in config", () => {

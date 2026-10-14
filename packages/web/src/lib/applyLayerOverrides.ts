@@ -24,6 +24,17 @@
 
 import type { DashboardLayerDto } from "../api/client";
 
+/**
+ * D-19 / TD-V20-ALLOWLIST-KEYS: the allow-list `opacity` (0-1) is what the map and legend read as
+ * config.POINTOPACITY (0-100). `pointOpacity` is the raster WMS param and is never touched.
+ * Returns the same reference when there is no opacity.
+ */
+export function translateLayerOverlay(cfgPatch: Record<string, unknown>): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(cfgPatch, "opacity")) return cfgPatch;
+  const { opacity, ...rest } = cfgPatch;
+  return typeof opacity === "number" ? { ...rest, POINTOPACITY: Math.round(opacity * 100) } : rest;
+}
+
 export function applyLayerOverrides(
   layers: DashboardLayerDto[],
   layerOverrides: Record<number, Record<string, unknown>>,
@@ -37,7 +48,7 @@ export function applyLayerOverrides(
       [key: string]: unknown;
     };
     return cfgPatch
-      ? { ...l, ...topLevel, config: { ...(l.config as Record<string, unknown>), ...cfgPatch } }
+      ? { ...l, ...topLevel, config: { ...(l.config as Record<string, unknown>), ...translateLayerOverlay(cfgPatch) } }
       : { ...l, ...topLevel };
   });
 }

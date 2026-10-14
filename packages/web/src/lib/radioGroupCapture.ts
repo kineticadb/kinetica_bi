@@ -22,6 +22,12 @@ import { WIDGET_OVERLAY_KEY_MAP } from "./widgetOverlayKeys";
 import type { WidgetActionTarget } from "./widgetAction";
 import type { DashboardLayerDto, WidgetDto } from "../api/client";
 
+/** D-19: saved aggregation is UPPERCASE; the allow-list enum is lowercase. */
+export const WIDGET_CAPTURE_VALUE_TRANSFORMS: Record<string, (v: unknown) => unknown> = {
+  aggregation: (v) => String(v).toLowerCase(),
+};
+const CHART_CAPTURE_TYPES = new Set(["bar", "line", "pie", "table", "bignumber"]);
+
 // ---------------------------------------------------------------------------
 // Candidate field name lists per target kind
 // ---------------------------------------------------------------------------
@@ -109,7 +115,12 @@ export function captureAllowListedSubset(args: {
 
     if (location === "layer.config") {
       // Nested in layer.config blob (renderMode / visible / opacity)
-      value = (layer?.config as Record<string, unknown> | undefined)?.[field];
+      const lc = layer?.config as Record<string, unknown> | undefined;
+      value = lc?.[field];
+      // D-19: opacity is stored as POINTOPACITY 0-100 by LayersModal
+      if (field === "opacity" && value === undefined && typeof lc?.POINTOPACITY === "number") {
+        value = lc.POINTOPACITY / 100;
+      }
     } else if (location === "layer") {
       // TOP-LEVEL DashboardLayerDto field (track_config / cb_config)
       value = (layer as Record<string, unknown> | undefined)?.[field];
@@ -120,6 +131,9 @@ export function captureAllowListedSubset(args: {
         // infoEnabled / showScaleBar / showFullscreenButton / pageSize.
         const realKey = WIDGET_OVERLAY_KEY_MAP[widgetType ?? ""]?.[field] ?? field;
         value = (widget?.config as Record<string, unknown> | undefined)?.[realKey];
+        if (value != null && CHART_CAPTURE_TYPES.has(widgetType ?? "") && WIDGET_CAPTURE_VALUE_TRANSFORMS[field]) {
+          value = WIDGET_CAPTURE_VALUE_TRANSFORMS[field](value);
+        }
       } else if (target.kind === "dynamicView") {
         // DynamicView rows have no config blob — read from supplied dynamicViewConfig
         value = dynamicViewConfig?.[field];
