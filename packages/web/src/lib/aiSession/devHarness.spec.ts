@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { installAiDevHarness } from "./devHarness";
-import { useAiSessionStore } from "../../store/aiSessionStore";
+import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { baselineFixture, mapWidget, recordsWidget, savedLayer } from "../../test/aiSessionHarness";
 
@@ -228,5 +228,70 @@ describe("devHarness Phase 136 ops (HARN6)", () => {
     const map = useAiSessionStore.getState().derived.addedWidgets.find((w) => w.id === mapId)!;
     expect(map.config.basemapLight).toBeDefined();
     expect(map.config.basemapDark).toBeDefined();
+  });
+});
+
+describe("devHarness chat helpers (137-10)", () => {
+  const baselineH = baselineFixture();
+  let uninstall: () => void;
+  const h = () => window.__kbiAiHarness!;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useAiSessionStore.getState().reset();
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    uninstall = installAiDevHarness(
+      {
+        applyTurn: (input) => useAiSessionStore.getState().applyTurn(input, baselineH),
+        setCursor: (i) => useAiSessionStore.getState().setCursor(i, baselineH),
+        discard: () => useAiSessionStore.getState().reset(),
+      },
+      () => baselineH.widgets,
+    );
+  });
+  afterEach(() => {
+    uninstall();
+    useAiSessionStore.getState().reset();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("HARN7-1: chatTurn adds an ok turn with clarifications and follow-ups, no ops applied", () => {
+    const clar = { kind: "choose_option" as const, question: "Which total do you mean?", options: [{ id: "1", label: "Fare" }, { id: "2", label: "Tip" }] };
+    h().chatTurn("Which total?", "Which total do you mean?", { clarifications: [clar], followUps: ["Show by month"] });
+    const t = useAiSessionStore.getState().turns;
+    expect(t).toHaveLength(1);
+    expect(t[0].chat?.status).toBe("ok");
+    expect(t[0].chat?.followUps).toEqual(["Show by month"]);
+    expect(t[0].chat?.clarifications?.[0].question).toBe("Which total do you mean?");
+    expect(t[0].entries).toHaveLength(0);
+  });
+
+  it("HARN7-2: error and cancelled turns are recorded and do not lock editing", () => {
+    h().chatTurn("q", "", { status: "error", message: "The AI provider could not complete this answer. Try again.", retryable: true });
+    h().chatTurn("q", "", { status: "cancelled" });
+    const t = useAiSessionStore.getState().turns;
+    expect(t.map((x) => x.chat?.status)).toEqual(["error", "cancelled"]);
+    expect(t[0].chat?.retryable).toBe(true);
+    expect(hasUnsavedAiChanges()).toBe(false);
+  });
+
+  it("HARN7-3: fakeRun runs then goes idle, never fetching", () => {
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    h().fakeRun("Adding a chart…", 15000);
+    expect(useAiSessionStore.getState().run.status).toBe("running");
+    expect(useAiSessionStore.getState().run.line).toBe("Adding a chart…");
+    vi.advanceTimersByTime(15000);
+    expect(useAiSessionStore.getState().run.status).toBe("idle");
+    expect(f).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("HARN7-4: help mentions chatTurn and fakeRun", () => {
+    h().help();
+    const out = String((console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1)?.[0]);
+    expect(out).toContain("chatTurn");
+    expect(out).toContain("fakeRun");
   });
 });

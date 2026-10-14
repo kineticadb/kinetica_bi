@@ -3,6 +3,7 @@
 // scripted AI turns from the browser console. Phase 137's AI widget replaces it as the real driver.
 import type { WidgetDto } from "../../api/client";
 import { resolveHeatmapHost, layersOfMap, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS } from "@kinetica-bi/shared";
+import type { AiClarification } from "@kinetica-bi/shared";
 import type { TurnInput, TurnEntry } from "./types";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
@@ -27,6 +28,17 @@ type HeatmapSpec = {
   style?: Record<string, unknown>;
 };
 
+type ChatTurnOpts = {
+  ops?: unknown[];
+  status?: "ok" | "error" | "cancelled";
+  followUps?: string[];
+  clarifications?: AiClarification[];
+  skipped?: { label: string; stage: string; reasons: string[] }[];
+  pickedChoice?: { clarificationIndex: number; optionId: string };
+  message?: string;
+  retryable?: boolean;
+};
+
 type Harness = {
   approveRemoval(): void;
   addChart(type: string, title: string, tableId?: number, fields?: Record<string, unknown>): Result;
@@ -42,6 +54,8 @@ type Harness = {
   addWidget(type?: string, title?: string, config?: Record<string, unknown>): { turnId: string; entries: TurnEntry[] };
   removeWidget(id: number): { turnId: string; entries: TurnEntry[] };
   patchWidget(id: number, configPatch: Record<string, unknown>): { turnId: string; entries: TurnEntry[] };
+  chatTurn(prompt: string, answer: string, opts?: ChatTurnOpts): Result;
+  fakeRun(line?: string, ms?: number): void;
   revert(index: number): void;
   forward(index: number): void;
   discard(): void;
@@ -152,6 +166,31 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
       run([{ op: "add_widget", tempId: useAiSessionStore.getState().allocateTempId(), type, title, config }]),
     removeWidget: (id) => run([{ op: "remove_widget", id }]),
     patchWidget: (id, configPatch) => run([{ op: "patch", action: { target: { kind: "widget", id }, configPatch } }]),
+    // 137-10: render chat states without any provider request.
+    chatTurn: (prompt, answer, opts = {}) => {
+      const res = actions.applyTurn({
+        prompt,
+        answer,
+        ops: opts.ops ?? [],
+        chat: {
+          status: opts.status ?? "ok",
+          followUps: opts.followUps,
+          clarifications: opts.clarifications,
+          skipped: opts.skipped,
+          pickedChoice: opts.pickedChoice,
+          message: opts.message,
+          retryable: opts.retryable,
+        },
+      });
+      reportPosition("chatTurn");
+      return res;
+    },
+    fakeRun: (line = "Thinking…", ms = 15000) => {
+      const st = useAiSessionStore.getState();
+      st.startRun("(harness) fake question");
+      st.updateRun(line);
+      setTimeout(() => useAiSessionStore.getState().endRun(), ms);
+    },
     // -1 = the saved dashboard; N = state after turn N
     revert: (index) => {
       actions.setCursor(index);
@@ -186,6 +225,8 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
           "  setLayerVisible(layerId, bool)   removeLayer(layerId)   approveRemoval() (then repeat a saved-content removal)",
           `  chart colour names: ${AI_PALETTE_NAMES.join(", ")}`,
           `  heatmap ramps: ${AI_HEATMAP_RAMPS.join(", ")}`,
+          "  chatTurn(prompt, answer, {followUps, clarifications, pickedChoice, status:'ok'|'error'|'cancelled', message, retryable, ops})  (no provider call)",
+          "  fakeRun(line, ms)  shows the running status line for ms (no provider call; Cancel does nothing here)",
           "  turn(ops[], prompt)   revert(i)/forward(i) (-1 = saved dashboard)   discard()   state()",
           "  map widgets accept show_popup / show_scale_bar / show_fullscreen; records accept page_size",
           "  e.g. patchWidget(<mapId>, { show_scale_bar: true })  (false equals the default, so it shows no change)",
