@@ -1,6 +1,6 @@
 # 136-12 Operator UAT steps (deferred)
 
-**Status:** deferred 2026-10-14 — operator had no Kinetica access. Run these before closing Phase 136.
+**Status:** deferred 2026-10-14 (no Kinetica access); RUN 2026-10-14 by Claude driving the operator's signed-in Chrome over CDP (dashboard 12) — results in 136-12-UAT-RESULTS.md. Fixed here after that run: API base, resource-timing buffer, tile lookup. Run these before closing Phase 136.
 Plan 136-12 Task 1 (WMS `VAL_ATTR` tile check) and Task 2 (visual/layout/undo check) are both covered here.
 Task 3 (bookkeeping + SUMMARY) runs after the operator replies.
 
@@ -15,8 +15,8 @@ All steps run in the browser console. No cURL, no cookies leave the browser.
 ```js
 const h = __kbiAiHarness; h.help();
 const urls = performance.getEntriesByType("resource").map(e => e.name);
-const base = new URL(urls.find(u => u.includes("/api/"))).origin;
-const dashId = urls.map(u => u.match(/\/api\/dashboards\/(\d+)\/layers/)).filter(Boolean).pop()[1];
+const base = "http://localhost:4000"; // API_BASE in dev (VITE_API_URL if set)
+const dashId = new URLSearchParams(location.search).get("dashboard") ?? urls.map(u => u.match(/\/api\/dashboards\/(\d+)\/layers/)).filter(Boolean).pop()?.[1];
 const get = (p) => fetch(base + p, { credentials: "include" }).then(r => r.json());
 const layers = (await get(`/api/dashboards/${dashId}/layers`)).data;
 console.table(layers.map(l => ({ layerId: l.id, tableId: l.table_id, mode: l.config.renderMode, lat: l.config.latColumn, lon: l.config.lonColumn })));
@@ -28,6 +28,7 @@ If `__kbiAiHarness` is undefined, you are not on a dashboard page or not on the 
 
 ## Step 2: add the AI heatmap (replace the placeholder values)
 ```js
+performance.setResourceTimingBufferSize(5000); performance.clearResourceTimings(); // the browser stops recording after 250 requests; map tiles fill that fast
 const r = h.addHeatmap({ tableId: 12, spatialMode: "latlon", latColumn: "pickup_latitude", lonColumn: "pickup_longitude", style: { colormap: "plasma", blurRadius: 8, valueColumn: "fare_amount" }, name: "AI heat" });
 const aiLayerId = r?.entries[0].op.tempId; aiLayerId;
 ```
@@ -37,7 +38,7 @@ Expected: a console table with `add_layer` and `applied`, a negative number (the
 
 ## Step 3: tile check (VAL_ATTR weighted vs control)
 ```js
-const tileUrl = performance.getEntriesByType("resource").map(e => e.name).filter(u => u.includes("/api/wms") && u.includes("VAL_ATTR=")).pop();
+const tileUrl = performance.getEntriesByType("resource").filter(e => e.initiatorType === "xmlhttprequest").map(e => e.name).filter(u => u.includes("/api/wms") && u.includes("VAL_ATTR=")).pop();
 for (const [label, url] of [["weighted", tileUrl], ["control", tileUrl.replace(/([?&])VAL_ATTR=[^&]*&?/, "$1")]]) {
   const res = await fetch(url, { credentials: "include" }); const blob = await res.blob();
   console.log(label, res.status, blob.type, blob.size);
