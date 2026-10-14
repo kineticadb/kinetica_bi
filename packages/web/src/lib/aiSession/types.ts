@@ -5,7 +5,7 @@
 // dashboard is never mutated, so revert/forward is "fold a different prefix" and Discard is
 // "drop the log". D-01's inverse/snapshot data is satisfied by replayability; inverses would be
 // dead code and a bug surface.
-import type { AiOp } from "@kinetica-bi/shared";
+import type { AiOp, AiClarification, AskSkipped } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 
 export type SkipReason =
@@ -21,8 +21,20 @@ export type SkipReason =
   | "table_not_on_dashboard";
 export type OpResult = { status: "applied" } | { status: "skipped"; reason: SkipReason; detail?: string };
 export type TurnEntry = { raw: unknown; op: AiOp | null; result: OpResult };
-export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number };
-export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[] };
+export type TurnChat = {
+  status: "ok" | "error" | "cancelled";
+  answerId?: number;
+  followUps?: string[]; // server trailer; UI falls back to local templates when empty (D-20)
+  clarifications?: AiClarification[];
+  pickedChoice?: { clarificationIndex: number; optionId: string }; // D-14: greyed + ticked
+  skipped?: AskSkipped[];
+  applied?: string[];
+  errorCode?: string;
+  message?: string; // D-09 inline note: the server's exact text
+  retryable?: boolean;
+};
+export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number; chat?: TurnChat };
+export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[]; chat?: TurnChat };
 export type SessionBaseline = {
   dashboardId: number;
   widgets: readonly WidgetDto[];

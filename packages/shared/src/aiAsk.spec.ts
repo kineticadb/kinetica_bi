@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AskRequestSchema, AI_WIDGET_TYPES, AiClarificationSchema } from "./aiAsk";
+import { AskRequestSchema, AI_WIDGET_TYPES, AiClarificationSchema, AskResultEventSchema } from "./aiAsk";
 
 const base = () => ({
   dashboardId: 3,
@@ -73,5 +73,23 @@ describe("Phase 136 ask contract", () => {
     expect(AiClarificationSchema.safeParse({ kind: "confirm_remove", question: "Remove?", options: o }).success).toBe(true);
     expect(AiClarificationSchema.safeParse({ kind: "choose_map", question: "Which?", options: o }).success).toBe(true);
     expect(AiClarificationSchema.safeParse({ kind: "other", question: "?", options: o }).success).toBe(false);
+  });
+});
+
+describe("Phase 137 result contract", () => {
+  const o = [{ id: "a", label: "A" }, { id: "b", label: "B" }];
+  const res = () => ({ answerId: 1, text: "x", ops: [], skipped: [], clarifications: [], followUps: ["a", "b"], applied: ['Added bar "T"'] });
+  it("ASKC-1: choose_option kind", () => {
+    expect(AiClarificationSchema.safeParse({ kind: "choose_option", question: "?", options: o }).success).toBe(true);
+    expect(AiClarificationSchema.safeParse({ kind: "pick", question: "?", options: o }).success).toBe(false);
+  });
+  it("ASKC-2: AskResultEventSchema", () => {
+    expect(AskResultEventSchema.safeParse(res()).success).toBe(true);
+    expect(AskResultEventSchema.safeParse({ ...res(), extra: 1 }).success).toBe(false);
+    expect(AskResultEventSchema.safeParse({ ...res(), followUps: ["a", "b", "c", "d"] }).success).toBe(false);
+    expect(AskResultEventSchema.safeParse({ ...res(), followUps: ["x".repeat(121)] }).success).toBe(false);
+  });
+  it("ASKC-3: AI_WIDGET_TYPES excludes ai", () => {
+    expect((AI_WIDGET_TYPES as readonly string[]).includes("ai")).toBe(false);
   });
 });

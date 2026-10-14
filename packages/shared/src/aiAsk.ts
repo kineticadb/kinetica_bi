@@ -109,9 +109,35 @@ export type AskTurn = z.infer<typeof AskTurnSchema>;
 
 export const AiClarificationSchema = z
   .object({
-    kind: z.enum(["confirm_remove", "choose_map"]),
+    // choose_option (137 D-20): an ambiguous question; options come from the reply trailer
+    kind: z.enum(["confirm_remove", "choose_map", "choose_option"]),
     question: z.string().max(300),
     options: z.array(z.object({ id: z.string().max(50), label: z.string().max(200) }).strict()).min(1).max(10),
   })
   .strict();
 export type AiClarification = z.infer<typeof AiClarificationSchema>;
+
+export const AI_FOLLOWUP_MAX = 3;
+export const AI_FOLLOWUP_MAX_CHARS = 120;
+export const AskSkippedSchema = z
+  .object({ label: z.string().max(200), stage: z.string().max(50), reasons: z.array(z.string().max(500)).max(10) })
+  .strict();
+export const AskResultEventSchema = z
+  .object({
+    answerId: z.number().int(),
+    text: z.string(),
+    ops: z.array(z.unknown()),
+    skipped: z.array(AskSkippedSchema),
+    clarifications: z.array(AiClarificationSchema),
+    followUps: z.array(z.string().min(1).max(AI_FOLLOWUP_MAX_CHARS)).max(AI_FOLLOWUP_MAX),
+    applied: z.array(z.string().max(300)),
+  })
+  .strict();
+export type AskResultEvent = z.infer<typeof AskResultEventSchema>;
+export type AskSkipped = z.infer<typeof AskSkippedSchema>;
+export type AskStreamEvent =
+  | { event: "status"; data: { phase: "thinking" | "tool" | "waiting_provider"; label: string; seconds?: number } }
+  | { event: "step"; data: { n: number; tool: string; label: string } }
+  | { event: "result"; data: AskResultEvent }
+  | { event: "error"; data: { code: string; message: string } }
+  | { event: "done"; data: { answerId: number; outcome: string; steps: number } };
