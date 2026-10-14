@@ -993,6 +993,14 @@ export const createApp = async (): Promise<express.Express> => {
     return res.send(JSON.stringify(payload, null, 2));
   });
 
+  // 137 (AIGOV-V20-01): adding the AI Assistant widget needs "Use AI"; the UI gate alone is not enough.
+  const denyAiWidget = (req: Request, res: Response): boolean => {
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (getEffectivePermissions(username).has(PERMISSIONS.AI_USE)) return false;
+    res.status(403).json({ error: "You need the Use AI permission to add the AI assistant.", code: "PERMISSION_DENIED", permission: PERMISSIONS.AI_USE });
+    return true;
+  };
+
   app.post("/api/dashboards/:id/widgets", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
@@ -1000,6 +1008,7 @@ export const createApp = async (): Promise<express.Express> => {
     if (!input?.title || !input?.type) {
       return res.status(400).json({ error: "Widget requires 'title' and 'type'." });
     }
+    if (input.type === ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
     const widget = createWidget(dashboardId, {
       title: input.title,
       type: input.type,
@@ -1011,6 +1020,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.patch("/api/widgets/:id", ...requirePermission(PERMISSIONS.WIDGETS_CONFIGURE), (req, res) => {
     const id = Number(req.params.id);
+    if (req.body?.type === "ai" && getWidget(id) && getWidget(id)!.type !== ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
     const updated = updateWidget(id, req.body);
     if (!updated) return res.status(404).json({ error: "Widget not found." });
     return res.json(updated);
