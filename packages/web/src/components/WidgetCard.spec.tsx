@@ -10,6 +10,8 @@
 // here); the badge components are left real (lightweight, safe with default-empty stores).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { useAiSessionStore } from "../store/aiSessionStore";
+import { baselineFixture, recordsWidget, setTitleOp } from "../test/aiSessionHarness";
 import { render, screen, act } from "@testing-library/react";
 import { WidgetCard } from "./WidgetCard";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
@@ -55,6 +57,7 @@ beforeEach(() => {
   useFilterHighlightStore.getState().reset();
   useFilterStore.getState().reset();
   widgetRenderCalls.length = 0;
+  useAiSessionStore.getState().reset();
 });
 
 describe("WidgetCard — re-render isolation (HIGH risk regression)", () => {
@@ -235,5 +238,36 @@ describe("WidgetCard — calendar badge coalesce (Phase 109.2, FSCOPE-V120-05)",
 
     // No filterSelection persisted -> accept-all default (unchanged, no coalesce) -> no badge.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("WidgetCard — AI badge (Phase 136 D-05)", () => {
+  const bl = () => baselineFixture({ widgets: [recordsWidget(50), recordsWidget(51)], layers: [], dynamicViewIds: [] });
+  const edit = () => act(() => {
+    useAiSessionStore.getState().applyTurn({ prompt: "t", ops: [setTitleOp(50, "Renamed")] }, bl());
+  });
+
+  it("UI6-1: an AI-edited saved widget renders 'AI edited' in a widget-filter-badge", () => {
+    render(<WidgetCard widget={makeWidget(50)} {...baseProps} />);
+    expect(screen.queryByText("AI edited")).toBeNull();
+    edit();
+    const badge = screen.getByText("AI edited");
+    expect(badge.className).toBe("widget-filter-badge");
+  });
+
+  it("UI6-2: a negative id renders 'AI added'; a saved unedited widget renders neither", () => {
+    render(<><WidgetCard widget={makeWidget(-1)} {...baseProps} /><WidgetCard widget={makeWidget(51)} {...baseProps} /></>);
+    expect(screen.getAllByText("AI added")).toHaveLength(1);
+    expect(screen.queryByText("AI edited")).toBeNull();
+  });
+
+  it("UI6-3: the badge disappears on reset and siblings do not re-render when another card is flagged", () => {
+    render(<><WidgetCard widget={makeWidget(50)} {...baseProps} /><WidgetCard widget={makeWidget(51)} {...baseProps} /></>);
+    const before = renderCallsFor(51);
+    edit();
+    expect(screen.getByText("AI edited")).toBeTruthy();
+    expect(renderCallsFor(51)).toBe(before);
+    act(() => useAiSessionStore.getState().reset());
+    expect(screen.queryByText("AI edited")).toBeNull();
   });
 });

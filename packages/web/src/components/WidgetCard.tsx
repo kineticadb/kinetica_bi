@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faGear, faClone } from "@fortawesome/free-solid-svg-icons";
 import type { TableDto, WidgetDto, DashboardLayerDto } from "../api/client";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
+import { useAiSessionStore, selectAiEditedWidgetIds } from "../store/aiSessionStore";
 import WidgetRenderer from "./charts/WidgetRenderer";
 import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
@@ -125,6 +126,8 @@ function WidgetCardImpl(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerRef, w.id]);
 
+  const aiEdited = useAiSessionStore((s) => selectAiEditedWidgetIds(s).has(w.id));
+
   return (
     <div
       {...rest}
@@ -134,6 +137,8 @@ function WidgetCardImpl(
     >
       <div className="widget-header">
         <span className="widget-drag-handle widget-title">{w.title}</span>
+        {/* Phase 136 D-05: minimal flag display; Phase 137 owns the final highlight/badge visuals. */}
+        {w.id < 0 ? <span className="widget-filter-badge">AI added</span> : aiEdited ? <span className="widget-filter-badge">AI edited</span> : null}
         {w.type === "map" ? (
           <MapFilteringBadge tableIds={mapTableIds} />
         ) : (
