@@ -384,3 +384,48 @@ describe("checkAiOp gateway (phase 136, clarifications/layers/layout)", () => {
     expect(r).toMatchObject({ ok: true, op: { op: "add_layer", widgetId: -1 } });
   });
 });
+
+// ---------------------------------------------------------------- Phase 137 (GW7-)
+const AI_MSG = "the AI assistant widget can't be changed";
+const snap7 = () => ({
+  widgets: [
+    { id: 5, type: "ai", title: "Ask AI", layout: { x: 0, y: 0, w: 12, h: 40 } },
+    { id: 1, type: "bar", title: "Revenue", tableId: 5, layout: { x: 12, y: 0, w: 12, h: 30 } },
+  ],
+  layers: [], dynamicViews: [], filters: [],
+});
+describe("checkAiOp gateway (phase 137, AI widget is untouchable)", () => {
+  it("GW7-1: patch targeting the AI widget is refused at the reference stage", async () => {
+    const r = await run(mk6(snap7()), patch, pat("widget", 5, { title: "x" }));
+    expect(r).toMatchObject({ ok: false, stage: "reference" });
+    if (!r.ok) expect(r.reasons).toContain(AI_MSG);
+  });
+
+  it.each([
+    ["remove_widget", { op: "remove_widget", id: 5 }],
+    ["change_widget_type", { op: "change_widget_type", id: 5, type: "line" }],
+    ["set_widget_title", { op: "set_widget_title", id: 5, title: "x" }],
+  ])("GW7-2: %s on the AI widget is refused", async (_n, o) => {
+    const r = await run(mk6(snap7(), APPR), rawOp, raw(o));
+    expect(r).toMatchObject({ ok: false, stage: "reference" });
+    if (!r.ok) expect(r.reasons).toContain(AI_MSG);
+  });
+
+  it("GW7-3: set_layout including the AI widget is refused; other widgets still pass", async () => {
+    const r = await run(mk6(snap7()), rawOp, raw({ op: "set_layout", items: [{ id: 5, x: 0, y: 0, w: 12, h: 40 }] }));
+    expect(r).toMatchObject({ ok: false, stage: "reference" });
+    if (!r.ok) expect(r.reasons).toContain(AI_MSG);
+    const ok = await run(mk6(snap7()), rawOp, raw({ op: "set_layout", items: [{ id: 1, x: 12, y: 30, w: 12, h: 30 }] }));
+    expect(ok.ok).toBe(true);
+  });
+
+  it("GW7-4: placement of a new widget avoids the AI widget rect (guard)", async () => {
+    const only = { ...snap7(), widgets: [snap7().widgets[0]] };
+    const r = await run(mk6(only), addWidget, add());
+    expect(r.ok).toBe(true);
+    if (r.ok && r.op.op === "add_widget") {
+      const l = r.op.layout!;
+      expect(rectsOverlap(l, { x: 0, y: 0, w: 12, h: 40 })).toBe(false);
+    }
+  });
+});

@@ -81,6 +81,8 @@ function nearest(name: string, cols: string[]): string[] {
 type ColRef = { name: string; numeric: boolean };
 const strs = (v: unknown): string[] => (typeof v === "string" && v ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x !== "") : []);
 
+const AI_WIDGET_LOCKED = "the AI assistant widget can't be changed";
+
 /** Column references an op makes, with whether each must be numeric. (collectColumnRefs in lib/columnRefs.ts is unrelated.) */
 function opColumnRefs(op: AiOp, shadow: ShadowState): { tableId: number | undefined; refs: ColRef[]; probe: boolean } | undefined {
   const fromRec = (rec: Record<string, unknown>): ColRef[] => {
@@ -248,6 +250,14 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       },
     });
   };
+  // 137: the AI Assistant widget (type "ai") is in the snapshot for placement/overlap but is never AI-editable.
+  const isAiWidget = (id: number) => shadow.widgets.get(id)?.type === "ai";
+  const lockedId =
+    op.op === "patch" && op.action.target.kind === "widget" && isAiWidget(op.action.target.id) ? op.action.target.id
+    : (op.op === "remove_widget" || op.op === "change_widget_type" || op.op === "set_widget_title") && isAiWidget(op.id) ? op.id
+    : op.op === "set_layout" ? op.items.find((it) => isAiWidget(it.id))?.id
+    : undefined;
+  if (lockedId !== undefined) return f("reference", [AI_WIDGET_LOCKED], `ref:widget:${lockedId}`);
   if (op.op === "patch") {
     const { kind, id } = op.action.target;
     const exists = kind === "widget" ? shadow.widgets.has(id) : kind === "layer" ? shadow.layers.has(id) : kind === "dynamicView" ? shadow.dynamicViews.has(id) : true;
