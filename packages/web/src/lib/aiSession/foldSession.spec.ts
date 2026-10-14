@@ -3,6 +3,8 @@ import { evaluateTurn, foldSession, makeSessionWidget } from "./foldSession";
 import { addLayerOp, addChartOp, setLayoutOp, changeTypeOp, setTitleOp, baselineFixture, savedLayer } from "../../test/aiSessionHarness";
 import { paletteColor } from "../aiPalette";
 import { EMPTY_DERIVED } from "./constants";
+import { computeChangeCounts } from "./changeCounts";
+import { patchLayerOp, removeLayerOp, mapWidget as mapW } from "../../test/aiSessionHarness";
 import type { SessionBaseline, TurnEntry } from "./types";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 
@@ -333,5 +335,77 @@ describe("FOLD7: AI assistant widget is untouchable", () => {
     expect(es[5].result.status).toBe("applied");
     const ok = evaluateTurn(b7, [], [{ op: "set_layout", items: [{ id: 50, x: 24, y: 200, w: 8, h: 8 }] }]);
     expect(ok[0].result.status).toBe("applied");
+  });
+});
+
+describe("HOST7 / KPI7 (137-07 Task 3, 136-12 UAT findings 2 + 3)", () => {
+  const b3: SessionBaseline = {
+    dashboardId: 1,
+    widgets: [mapW(117, { includedLayerIds: [23] }), mapW(118, { includedLayerIds: [99] }), mapW(119, {}), w(60, "bar", { tableId: 1, metricColumn: "fare_amount", aggregation: "SUM", groupByColumn: "vendor" })],
+    layers: [savedLayer(23, { config: { renderMode: "heatmap" }, table_id: 1 }), savedLayer(99, { config: { renderMode: "heatmap" }, table_id: 1 })],
+    dynamicViewIds: [],
+    tables: [{ id: 1, schema: "demo", name: "trips", columns: { fare_amount: "double", vendor: "string", lat: "double", lon: "double" } }],
+    maxBarGroupBySeriesCap: 12,
+  };
+  const fold3 = (ops: unknown[], approved = false) =>
+    foldSession(b3, evaluateTurn(b3, [], ops, { removalApproved: approved }));
+  const ids = (s: ReadonlySet<number>) => [...s].sort((a, b) => a - b);
+  const kpi = (extra: Record<string, unknown> = {}) => ({
+    op: "add_widget", tempId: -1, type: "bignumber", title: "Fares",
+    config: { tableId: 1, metric: "fare_amount", aggregation: "sum", ...extra },
+  });
+
+  it("HOST7-1: a saved layer patch marks the maps that show it, not aiEditedWidgetIds", () => {
+    const d = fold3([patchLayerOp(23, { colormap: "magma" })]);
+    expect(ids(d.aiLayerHostWidgetIds)).toEqual([117, 119]);
+    expect(d.aiEditedWidgetIds.size).toBe(0);
+    expect(ids(d.aiEditedLayerIds)).toEqual([23]);
+  });
+  it("HOST7-2: add_layer then patch the temp layer keeps the host marked", () => {
+    const d = fold3([addLayerOp(-1, 117), patchLayerOp(-1, { colormap: "inferno" })]);
+    expect(ids(d.aiLayerHostWidgetIds)).toEqual([117, 119]);
+  });
+  it("HOST7-3: removing a saved layer marks its hosts", () => {
+    expect(ids(fold3([removeLayerOp(23)], true).aiLayerHostWidgetIds)).toEqual([117, 119]);
+  });
+  it("HOST7-4: removed hosts and temp maps are excluded; empty entries give an empty set", () => {
+    const d = fold3([patchLayerOp(23, { colormap: "magma" }), { op: "remove_widget", id: 117 }], true);
+    expect(ids(d.aiLayerHostWidgetIds)).toEqual([119]);
+    const t = fold3([{ op: "add_widget", tempId: -5, type: "map", title: "M", config: {} }, { ...addLayerOp(-6, -5), tableId: 1 }]);
+    expect(t.aiLayerHostWidgetIds.has(-5)).toBe(false);
+    expect(foldSession(b3, []).aiLayerHostWidgetIds.size).toBe(0);
+  });
+  it("HOST7-5: each layer change is counted once in the bar counts", () => {
+    const counts = (ops: unknown[], approved = false) => {
+      const c = computeChangeCounts(fold3(ops, approved), b3);
+      return { added: c.added, edited: c.edited, removed: c.removed };
+    };
+    expect(counts([patchLayerOp(23, { colormap: "magma" })])).toEqual({ added: 0, edited: 1, removed: 0 });
+    expect(counts([addLayerOp(-1, 117)])).toEqual({ added: 1, edited: 0, removed: 0 });
+    expect(counts([removeLayerOp(23)], true)).toEqual({ added: 0, edited: 0, removed: 1 });
+  });
+
+  it("KPI7-1: an AI-added big number without a label shows '<Aggregation> of <column>'", () => {
+    expect(fold3([kpi()]).addedWidgets[0].config.label).toBe("Sum of fare_amount");
+  });
+  it("KPI7-2: an AI-supplied label is kept", () => {
+    expect(fold3([kpi({ label: "Total fares" })]).addedWidgets[0].config.label).toBe("Total fares");
+  });
+  it("KPI7-3: a metric/aggregation patch re-derives an auto label but keeps an AI one", () => {
+    const patchAvg = { op: "patch", action: { target: { kind: "widget", id: -1 }, configPatch: { aggregation: "avg" } } };
+    expect(fold3([kpi(), patchAvg]).addedWidgets[0].config.label).toBe("Average of fare_amount");
+    expect(fold3([kpi({ label: "Total fares" }), patchAvg]).addedWidgets[0].config.label).toBe("Total fares");
+  });
+  it("KPI7-4: change_widget_type to bignumber gets the default label", () => {
+    // The shared op schema only swaps to bar/line/pie today (AI_CHART_SWAP_TYPES), so evaluateTurn
+    // would skip these; feed applied entries straight to the fold to prove the defensive branch.
+    const applied = (op: unknown): TurnEntry => ({ raw: op, op: op as TurnEntry["op"], result: { status: "applied" } });
+    const bar = { op: "add_widget", tempId: -2, type: "bar", title: "B", config: { tableId: 1, metric: "fare_amount", aggregation: "sum", groupByColumn: "vendor" } };
+    const temp = foldSession(b3, [applied(bar), applied(changeTypeOp(-2, "bignumber"))]);
+    expect(temp.addedWidgets[0].config.label).toBe("Sum of fare_amount");
+    const saved = foldSession(b3, [applied(changeTypeOp(60, "bignumber"))]);
+    expect(saved.widgetMeta[60].config?.label).toBe("Sum of fare_amount");
+    const other = foldSession(b3, [applied(changeTypeOp(60, "line"))]);
+    expect(other.widgetMeta[60].config).not.toHaveProperty("label");
   });
 });

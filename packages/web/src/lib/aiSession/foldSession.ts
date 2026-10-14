@@ -5,6 +5,7 @@ import { translateWidgetOverlay, overlayTouchesChartSql } from "../widgetOverlay
 import { translateLayerOverlay } from "../applyLayerOverrides";
 import { deriveChartConfig } from "../chartSql";
 import { AI_WIDGET_DEFAULTS } from "../aiWidgetDefaults";
+import { aggregationLabel } from "../aggregationLabels";
 import { makeAiHeatmapLayerConfig } from "../layerDefaults";
 import {
   parseAiOp,
@@ -16,6 +17,7 @@ import {
   resolveRect,
   AI_CHART_SWAP_TYPES,
 } from "@kinetica-bi/shared";
+import { layersOfMap } from "@kinetica-bi/shared";
 import type { AiOp, AiWidgetType } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import { splitLayerSnapshot } from "../applyWidgetAction";
@@ -70,6 +72,24 @@ function deriveInto(type: string, cfg: Cfg, baseline: SessionBaseline): Cfg {
   return d ? { ...cfg, ...d } : cfg;
 }
 
+/**
+ * 137 (136-12 UAT): BigNumberRenderer falls back to the SQL alias `value`; same `<Agg> of <column>`
+ * convention as resolveLineMetricTitle. `label` is in the D-23 bignumber catalogue, so an
+ * AI-supplied label always wins.
+ */
+function defaultBigNumberLabel(cfg: Cfg): string | undefined {
+  const agg = cfg.aggregation;
+  const col = cfg.metricColumn;
+  if (typeof agg !== "string" || agg === "" || typeof col !== "string" || col === "") return undefined;
+  return `${aggregationLabel(agg.toUpperCase())} of ${col}`;
+}
+const hasLabel = (cfg: Cfg) => typeof cfg.label === "string" && cfg.label !== "";
+function withDefaultBigNumberLabel(cfg: Cfg): Cfg {
+  if (hasLabel(cfg)) return cfg;
+  const label = defaultBigNumberLabel(cfg);
+  return label === undefined ? cfg : { ...cfg, label };
+}
+
 /** The AI never supplies SQL: strip, apply defaults, translate to renderer keys, derive (D-01/D-23). */
 export function makeSessionWidget(op: AddWidgetOp, baseline: SessionBaseline): WidgetDto {
   const { tableId, ...fields } = strip(op.config);
@@ -83,6 +103,7 @@ export function makeSessionWidget(op: AddWidgetOp, baseline: SessionBaseline): W
     config.table = `${t.schema}.${t.name}`;
     config = deriveInto(op.type, config, baseline);
   }
+  if (op.type === "bignumber") config = withDefaultBigNumberLabel(config);
   if (op.layout) config.layout = { ...op.layout };
   return {
     id: op.tempId,
@@ -415,6 +436,13 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
             delete translated.metricId;
             let config: Cfg = { ...temp.config, ...translated };
             if (overlayTouchesChartSql(translated)) config = deriveInto(temp.type, config, baseline);
+            if (temp.type === "bignumber" && !("label" in translated)) {
+              const auto = !hasLabel(temp.config) || temp.config.label === defaultBigNumberLabel(temp.config);
+              if (auto) {
+                const label = defaultBigNumberLabel(config);
+                if (label !== undefined) config = { ...config, label };
+              }
+            }
             addedWidgets.set(target.id, { ...temp, config });
           } else {
             contribution.widget[target.id] = { ...contribution.widget[target.id], ...configPatch };
@@ -448,7 +476,8 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
         const temp = addedWidgets.get(op.id);
         const defaults = AI_WIDGET_DEFAULTS[op.type as AiWidgetType]?.config ?? {};
         if (temp) {
-          const config = deriveInto(op.type, { ...defaults, ...temp.config }, baseline);
+          let config = deriveInto(op.type, { ...defaults, ...temp.config }, baseline);
+          if ((op.type as string) === "bignumber") config = withDefaultBigNumberLabel(config);
           addedWidgets.set(op.id, { ...temp, type: op.type, config });
         } else {
           const savedCfg = savedWidgets.get(op.id)?.config ?? {};
@@ -461,6 +490,10 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
           const derived = deriveInto(op.type, { ...missingDefaults, ...merged }, baseline);
           const config: Cfg = { ...missingDefaults };
           for (const k of ["sql", "drillDownColumn", "drillDownColumnType"]) if (k in derived) config[k] = derived[k];
+          if ((op.type as string) === "bignumber") {
+            const label = hasLabel(merged) ? undefined : defaultBigNumberLabel(merged);
+            if (label !== undefined) config.label = label;
+          }
           widgetMeta[op.id] = { ...widgetMeta[op.id], type: op.type, config: { ...prev, ...config } };
           flagWidget(op.id);
         }
@@ -481,6 +514,22 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
   }
 
   if (applied === 0) return EMPTY_DERIVED;
+
+  // 137 (136-12 UAT finding 3): saved, non-removed maps that show an AI-added/edited/removed layer.
+  // Drives the pill only; deliberately NOT merged into aiEditedWidgetIds (each change counts once).
+  const changedLayerIds = new Set<number>([...aiEditedLayerIds, ...removedLayerIds, ...addedLayers.keys()]);
+  const allLayers = [...baseline.layers, ...addedLayers.values()];
+  const aiLayerHostWidgetIds = new Set<number>();
+  if (changedLayerIds.size > 0) {
+    for (const wd of baseline.widgets) {
+      if (wd.type !== "map" || removedWidgetIds.has(wd.id)) continue;
+      const eff = contribution.widget[wd.id]?.includedLayerIds;
+      const includedLayerIds = Array.isArray(eff) ? eff : wd.config.includedLayerIds;
+      if (layersOfMap({ config: { includedLayerIds } }, allLayers).some((l) => changedLayerIds.has(l.id))) {
+        aiLayerHostWidgetIds.add(wd.id);
+      }
+    }
+  }
   return {
     addedWidgets: [...addedWidgets.values()],
     removedWidgetIds,
@@ -491,6 +540,7 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
     layout,
     aiEditedWidgetIds,
     aiEditedLayerIds,
+    aiLayerHostWidgetIds,
     widgetMeta,
   };
 }

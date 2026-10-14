@@ -61,6 +61,8 @@ export type SessionDerived = {
   layout: Readonly<Record<number, SessionRect>>;
   aiEditedWidgetIds: ReadonlySet<number>;
   aiEditedLayerIds: ReadonlySet<number>;
+  /** 137 (136-12 UAT): saved, non-removed maps that show an AI-added/edited/removed layer. Drives the pill and nothing else; NOT counted in the bar (each change counts once, as the layer). */
+  aiLayerHostWidgetIds: ReadonlySet<number>;
   widgetMeta: Readonly<Record<number, SessionWidgetMeta>>;
 };
 export type SessionRect = { x: number; y: number; w: number; h: number };

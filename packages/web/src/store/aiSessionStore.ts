@@ -230,6 +230,14 @@ export function selectAiEditedWidgetIds(s: AiSessionState): ReadonlySet<number> 
   return s.derived.aiEditedWidgetIds;
 }
 
+/**
+ * 137 (136-12 UAT finding 3): the "AI edited" pill shows for a widget the AI edited directly OR a
+ * map whose layers the AI added/edited/removed. Counts in the bar use aiEditedWidgetIds only.
+ */
+export function selectShowsAiEditedPill(s: AiSessionState, id: number): boolean {
+  return s.derived.aiEditedWidgetIds.has(id) || s.derived.aiLayerHostWidgetIds.has(id);
+}
+
 export function hasUnsavedAiChanges(): boolean {
   return selectHasUnsavedAiChanges(useAiSessionStore.getState());
 }

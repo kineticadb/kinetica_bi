@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useAiSessionStore, selectHasUnsavedAiChanges } from "./aiSessionStore";
-import { baselineFixture } from "../test/aiSessionHarness";
+import { useAiSessionStore, selectHasUnsavedAiChanges, selectShowsAiEditedPill } from "./aiSessionStore";
+import { baselineFixture, mapWidget, savedLayer, patchLayerOp, setTitleOp } from "../test/aiSessionHarness";
 
 const st = () => useAiSessionStore.getState();
 const baseline = baselineFixture();
@@ -54,5 +54,20 @@ describe("aiSessionStore chat/run slices (137-07)", () => {
     const before = st().turns;
     st().markChoicePicked(5, { clarificationIndex: 0, optionId: "yes" });
     expect(st().turns).toBe(before);
+  });
+
+  it("HOST7-6: selectShowsAiEditedPill covers layer-host maps and direct edits", () => {
+    const b = baselineFixture({
+      widgets: [mapWidget(117, { includedLayerIds: [23] }), mapWidget(118, { includedLayerIds: [99] })],
+      layers: [savedLayer(23, { config: { renderMode: "heatmap" } }), savedLayer(99, { config: { renderMode: "heatmap" } })],
+    });
+    st().applyTurn({ prompt: "p", ops: [patchLayerOp(23, { colormap: "magma" })] }, b);
+    expect(selectShowsAiEditedPill(st(), 117)).toBe(true);
+    expect(selectShowsAiEditedPill(st(), 118)).toBe(false);
+    st().applyTurn({ prompt: "p2", ops: [setTitleOp(118, "New")] }, b);
+    expect(selectShowsAiEditedPill(st(), 118)).toBe(true);
+    st().setCursor(-1, b);
+    expect(selectShowsAiEditedPill(st(), 117)).toBe(false);
+    expect(selectShowsAiEditedPill(st(), 118)).toBe(false);
   });
 });

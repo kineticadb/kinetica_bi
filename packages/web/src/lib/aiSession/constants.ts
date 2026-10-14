@@ -19,6 +19,7 @@ export const EMPTY_DERIVED: SessionDerived = Object.freeze({
   layout: Object.freeze({}),
   aiEditedWidgetIds: new Set<number>(),
   aiEditedLayerIds: new Set<number>(),
+  aiLayerHostWidgetIds: new Set<number>(),
   widgetMeta: Object.freeze({}),
 });
 
