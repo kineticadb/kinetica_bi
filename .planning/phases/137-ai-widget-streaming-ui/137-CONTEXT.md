@@ -59,6 +59,9 @@ Out of scope: saving (Keep persistence) is Phase 141; filters 138; dynamic views
 - **D-18 Highlights:** the "AI added"/"AI edited" pills stay until Keep/Discard; **widgets (and layers' map widgets) changed by the latest answer also get an accent outline that fades after ~3 s**. Tokens only (`var(--accent)` / `color-mix`), no hex, no rgba overlays; light and dark checked by the operator.
 - **D-19 Removed items:** the bar shows a **"N removed" count; hovering it lists the removed names**; the AI's answer text also says what it removed. Revert brings them back. Counts cover widgets and layers (added / edited / removed).
 
+### Decisions added after research (2026-10-14)
+- **D-20 Follow-ups and ambiguity choices come from a short structured trailer in the AI's reply**, parsed out server-side (no new tool, **no extra provider request**). Contract additions: `result.followUps`, `result.applied`, and a `choose_option` clarification kind alongside `confirm_remove` / `choose_map`. If a model omits or garbles the trailer, the widget falls back to **template follow-ups** built from the dashboard tables (same local templates as D-01). Live adherence (Gemini/Ollama) is only checked in Phase 142 UAT. (Operator chose this over a dedicated tool call to save free-tier quota.)
+
 ### Claude's Discretion
 - SSE client implementation (fetch + reader over POST), request assembly (snapshot, history, approvals) from `packages/shared/src/aiAsk.ts`, and wiring `result.ops` into `applyTurn`.
 - Widget type registration (`ai` / "AI Assistant" chart definition), how the small-tile one-line result is worded, drawer details (portalled, full-screen below a narrow breakpoint).
