@@ -79,4 +79,15 @@ describe("live schema port", () => {
     await p.describe(7); await p.describe(7);
     expect(fail).toHaveBeenCalledTimes(2);
   });
+
+  it("LS-SIG-1: signal and tag are threaded into the sql options; an aborted probe is {ok:false}", async () => {
+    const ac = new AbortController();
+    const { sql, port } = mk({ signal: ac.signal, tag: "req-1" });
+    await port().describe(7);
+    expect(sql).toHaveBeenCalledWith(principal, expect.any(String), expect.objectContaining({ signal: ac.signal, tag: "req-1" }));
+    __clearLiveSchemaCacheForTest();
+    const aborted = vi.fn(async () => { throw Object.assign(new Error("aborted"), { name: "AbortError" }); });
+    const p = createLiveSchema({ username: "ann", principal: () => principal, getTable: () => table() as never, sql: aborted as never, signal: ac.signal });
+    expect(await p.describe(7)).toEqual({ ok: false });
+  });
 });

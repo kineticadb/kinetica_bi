@@ -32,6 +32,10 @@ export function createLiveSchema(opts: {
   sql?: typeof kineticaSql;
   ttlMs?: number;
   now?: () => number;
+  /** Aborts an in-flight probe request (HTTP only); the answer's abort signal. */
+  signal?: AbortSignal;
+  /** The answer's request id: tags probe SQL so its Kinetica job can be cancelled. */
+  tag?: string;
 }): LiveSchemaPort {
   const getTable = opts.getTable ?? dbGetTable;
   const sql = opts.sql ?? kineticaSql;
@@ -66,7 +70,7 @@ export function createLiveSchema(opts: {
       const hit = cache.get(key);
       if (hit) return build(hit);
       try {
-        const res = await sql(opts.principal(), buildViewColumnsProbeSql(from), { route: "AI describe_table", op: "DISCOVERY" });
+        const res = await sql(opts.principal(), buildViewColumnsProbeSql(from), { route: "AI describe_table", op: "DISCOVERY", signal: opts.signal, tag: opts.tag });
         const names = parseProbeColumns(res);
         cache.set(key, names);
         return build(names);

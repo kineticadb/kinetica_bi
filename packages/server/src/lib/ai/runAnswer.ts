@@ -63,7 +63,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
 
   try {
     const principal = () => principalForSession(sid);
-    const liveSchema = createLiveSchema({ username, principal });
+    const liveSchema = createLiveSchema({ username, principal, signal: input.signal, tag: input.requestId });
 
     const dashboardTables: LiveTableInfo[] = [];
     for (const t of listDashboardTables(input.dashboard.id)) {

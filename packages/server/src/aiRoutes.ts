@@ -10,6 +10,8 @@
  * Order: permission -> config -> size -> body -> dashboard viewable -> in-flight -> caps/audit admit -> stream.
  * Everything before the stream is JSON; once headers are sent every failure is an SSE `error` event.
  * Exactly one ai_audit row is finalized per admitted answer.
+ * W1 (137-02): a hard deadline (AI_TIMEOUT_MS + grace) always releases the lock; Cancel/deadline also cancel the
+ * answer's tagged Kinetica jobs.
  */
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
@@ -24,11 +26,20 @@ import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getDashboard } from "./db";
 import { runAnswer } from "./lib/ai/runAnswer";
 import { createSseWriter } from "./lib/ai/sseWriter";
+import { AI_USER_MESSAGES } from "./lib/ai/agentLoop";
+import { cancelKineticaJobsByTag } from "./lib/kineticaJobs";
+import { principalForSession } from "./lib/exportRunner";
 
 const DEFAULT_HEARTBEAT_MS = 15_000;
 let heartbeatOverride: number | null = null;
 export function __setAiHeartbeatMsForTest(ms: number | null): void {
   heartbeatOverride = ms;
+}
+
+const DEFAULT_GRACE_MS = 5_000;
+let graceOverride: number | null = null;
+export function __setAiGraceMsForTest(ms: number | null): void {
+  graceOverride = ms;
 }
 
 /** lowercased username -> controller of the answer currently running for that user (one at a time). */
@@ -100,13 +111,41 @@ export function registerAiRoutes(app: Express): void {
     const started = Date.now();
     const ac = new AbortController();
     inflight.set(key, ac);
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      if (inflight.get(key) === ac) inflight.delete(key);
+    };
+    let finalized = false;
+    const finalizeOnce = (f: FinalizeInput): void => {
+      if (finalized) return;
+      finalized = true;
+      try {
+        finalizeAiAnswer(f);
+      } catch (err) {
+        console.error("[ai] audit finalize failed", err instanceof Error ? err.message : "unknown");
+      }
+    };
+    // Aborting the HTTP request does not stop a Kinetica job; cancel the answer's tagged jobs (best effort).
+    const cancelJobs = (): void => {
+      try {
+        void cancelKineticaJobsByTag(principalForSession(sidOf(req)), requestId).catch(() => {});
+      } catch {
+        /* session already gone: nothing to cancel with */
+      }
+    };
     // S2 C4: the abort signal is the RESPONSE's close, not the request's.
     res.on("close", () => {
-      if (!res.writableEnded) ac.abort();
+      if (!res.writableEnded) {
+        ac.abort();
+        cancelJobs();
+      }
     });
 
     let fin: FinalizeInput | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
+    let hardTimer: NodeJS.Timeout | undefined;
     try {
       res.status(200);
       res.setHeader("Content-Type", "text/event-stream");
@@ -116,26 +155,53 @@ export function registerAiRoutes(app: Express): void {
       const sse = createSseWriter(res);
       heartbeat = setInterval(() => sse.comment("ping"), heartbeatOverride ?? DEFAULT_HEARTBEAT_MS);
       heartbeat.unref();
-      fin = await runAnswer({
-        sid: sidOf(req),
-        username,
-        auditId: admit.auditId,
-        requestId,
-        body,
-        dashboard: { id: dashboard.id, title: dashboard.name },
-        config,
-        signal: ac.signal,
-        sse,
+      // Started before runAnswer so a hung pre-loop Kinetica probe is covered too.
+      const hardDeadline = new Promise<"deadline">((resolve) => {
+        hardTimer = setTimeout(() => resolve("deadline"), config.timeoutMs + (graceOverride ?? DEFAULT_GRACE_MS));
+        hardTimer.unref();
       });
+      const outcome = await Promise.race([
+        runAnswer({
+          sid: sidOf(req),
+          username,
+          auditId: admit.auditId,
+          requestId,
+          body,
+          dashboard: { id: dashboard.id, title: dashboard.name },
+          config,
+          signal: ac.signal,
+          sse,
+        }),
+        hardDeadline,
+      ]);
+      if (outcome === "deadline") {
+        ac.abort();
+        cancelJobs();
+        release();
+        sse.send("error", { code: "AI_TIMEOUT", message: AI_USER_MESSAGES.timeout });
+        finalizeOnce({
+          auditId: admit.auditId,
+          outcome: "provider_error",
+          detail: "timeout",
+          steps: 0,
+          tools: [],
+          changes: { applied: [], rejected: [] },
+          durationMs: Date.now() - started,
+        });
+        res.end();
+      } else {
+        fin = outcome;
+      }
     } catch {
       // runAnswer never throws; this covers a failure while setting up the stream itself.
       try {
         createSseWriter(res).send("error", { code: "AI_INTERNAL", message: "Something went wrong while answering. Nothing was changed." });
       } catch { /* socket gone */ }
     } finally {
+      if (hardTimer) clearTimeout(hardTimer);
       if (heartbeat) clearInterval(heartbeat);
-      inflight.delete(key);
-      const toFinalize: FinalizeInput =
+      release();
+      finalizeOnce(
         fin ?? {
           auditId: admit.auditId,
           outcome: ac.signal.aborted ? "cancelled" : "provider_error",
@@ -144,12 +210,8 @@ export function registerAiRoutes(app: Express): void {
           tools: [],
           changes: { applied: [], rejected: [] },
           durationMs: Date.now() - started,
-        };
-      try {
-        finalizeAiAnswer(toFinalize);
-      } catch (err) {
-        console.error("[ai] audit finalize failed", err instanceof Error ? err.message : "unknown");
-      }
+        },
+      );
       if (!res.writableEnded) res.end();
     }
     return undefined;
