@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { seedDesignerStore } from "../test/seedAuthStore";
 import { useAiSessionStore } from "../store/aiSessionStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
-import { baselineFixture, addWidgetOp, removeWidgetOp } from "../test/aiSessionHarness";
+import { baselineFixture, addWidgetOp, addChartOp, removeWidgetOp, setLayoutOp } from "../test/aiSessionHarness";
 
 vi.mock("react-grid-layout", async (orig) => {
   const actual = await orig<typeof import("react-grid-layout")>();
@@ -139,15 +139,16 @@ const mk = (id: number, x: number) => ({
   created_at: "2026-07-09T00:00:00Z", updated_at: "2026-07-09T00:00:00Z",
 });
 const saved = [mk(11, 0), mk(12, 18)];
+const barCfg = { tableId: 5, metric: "fare_amount", aggregation: "avg", groupByColumn: "vendor_id", limit: 10 };
 const gp = () => (globalThis as any).__gridProps;
 const items = () => gp().layouts.lg as any[];
 const baseline = () => baselineFixture({ widgets: saved as any, layers: [], dynamicViewIds: [], dashboardId });
 const turn = (ops: unknown[]) =>
   act(() => { useAiSessionStore.getState().applyTurn({ prompt: "t", ops }, baseline()); });
 
-const openDashboard = async () => {
+const openDashboard = async (tables: unknown[] = []) => {
   (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
-  (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue(tables);
   (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue(saved);
   const utils = render(<DashboardsPage onViewChange={() => {}} />);
@@ -202,7 +203,64 @@ describe("DashboardsPage AI session layer (Phase 134 Plan 05)", () => {
     await openDashboard();
     turn([addWidgetOp(-1, "records", "AI records")]);
     const ai = items().find((i) => i.i === "-1");
-    expect(ai).toMatchObject({ x: 0, y: 24, w: 18, h: 24 });
+    expect(ai).toMatchObject({ x: 0, y: 24, w: 36, h: 36 });
+  });
+
+  it("DPL6-1: an AI widget without layout fills the first gap; two never overlap", async () => {
+    (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue([saved[0]]);
+    (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
+    render(<DashboardsPage onViewChange={() => {}} />);
+    await screen.findByText(dashboard.name);
+    await userEvent.click(await screen.findByRole("button", { name: /^open$/i }));
+    await screen.findByText("Saved 11");
+    const b1 = { ...baseline(), widgets: [saved[0]] as any };
+    act(() => { useAiSessionStore.getState().applyTurn({ prompt: "t", ops: [addWidgetOp(-1, "bar", "A", barCfg), addWidgetOp(-2, "bar", "B", barCfg)] }, b1); });
+    const a = items().find((i) => i.i === "-1");
+    const b = items().find((i) => i.i === "-2");
+    expect(a).toMatchObject({ x: 18, y: 0, w: 18, h: 30 });
+    const overlap = (p: any, q: any) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+    expect(overlap(a, b)).toBe(false);
+    for (const it of items().filter((i) => i.i !== "-1" && i.i !== "-2")) expect(overlap(a, it)).toBe(false);
+    for (const it of items().filter((i) => i.i !== "-2")) expect(overlap(b, it)).toBe(false);
+  });
+
+  it("DPL6-2: set_layout moves a saved widget in the session only", async () => {
+    await openDashboard();
+    turn([setLayoutOp([{ id: 11, x: 18, y: 40, w: 18, h: 24 }])]);
+    const it11 = items().find((i) => i.i === "11");
+    expect(it11).toMatchObject({ x: 18, y: 40, w: 18, h: 24, static: true });
+    act(() => gp().onLayoutChange(items()));
+    expect(updateWidget).not.toHaveBeenCalled();
+  });
+
+  it("DPL6-3: drag beats the op rect; a later set_layout beats the drag", async () => {
+    await openDashboard();
+    turn([addChartOp(-1, "records", "AI r", {}, { x: 0, y: 24, w: 12, h: 12 })]);
+    expect(items().find((i) => i.i === "-1")).toMatchObject({ x: 0, y: 24, w: 12, h: 12 });
+    act(() => gp().onLayoutChange(items().map((i) => (i.i === "-1" ? { ...i, x: 6, y: 50, w: 12, h: 12 } : i))));
+    expect(items().find((i) => i.i === "-1")).toMatchObject({ x: 6, y: 50, w: 12, h: 12 });
+    turn([setLayoutOp([{ id: -1, x: 0, y: 30, w: 12, h: 12 }])]);
+    expect(items().find((i) => i.i === "-1")).toMatchObject({ x: 0, y: 30, w: 12, h: 12 });
+  });
+
+  it("DPL6-4: the page baseline carries tables and the cap so AI bars get generated SQL", async () => {
+    await openDashboard([
+      { id: 5, schema: "demo", name: "trips", columns: { vendor_id: "string", fare_amount: "double" }, created_at: "", updated_at: "" },
+    ]);
+    // Drive the turn with the PAGE's own baseline via the dev harness actions.
+    await waitFor(() => expect((window as any).__kbiAiHarness).toBeDefined());
+    act(() => {
+      (window as any).__kbiAiHarness.addWidget("bar", "AI bar", barCfg);
+    });
+    const added = useAiSessionStore.getState().derived.addedWidgets;
+    expect((added[0]?.config as any)?.sql).toMatch(/^SELECT /);
+  });
+
+  it("DPL6-5: unlocked layout changes still persist saved geometry", async () => {
+    await openDashboard();
+    act(() => gp().onLayoutChange(items().map((i) => (i.i === "12" ? { ...i, y: 40 } : i))));
+    expect(updateWidget).toHaveBeenCalledTimes(1);
+    expect((updateWidget as any).mock.calls[0][0]).toBe(12);
   });
 
   it("AISESS-5: reset restores saved widgets and layout exactly", async () => {

@@ -75,6 +75,8 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
+import { resolveRect, placeWidget, AI_DEFAULT_SIZE, AI_MIN_W, AI_MIN_H, type GridRect } from "@kinetica-bi/shared";
+import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
 import { useAiSessionStore, selectHasUnsavedAiChanges, hasUnsavedAiChanges } from "../store/aiSessionStore";
 import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/07)
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
@@ -586,18 +588,12 @@ const getVisualizationTypes = () =>
     .filter((ct) => ct.addable !== false)
     .map((ct) => ({ value: ct.type, label: ct.label, icon: ct.icon }));
 
-const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
-  const saved = widget.config?.layout as Partial<LayoutItem> | undefined;
-  return {
-    i: String(widget.id),
-    x: saved?.x ?? (index % 2) * 18,
-    y: saved?.y ?? Math.floor(index / 2) * 24,
-    w: saved?.w ?? 18,
-    h: saved?.h ?? 24,
-    minW: 6,
-    minH: 6,
-  };
-};
+const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => ({
+  i: String(widget.id),
+  ...resolveRect(widget.config?.layout as Partial<GridRect> | undefined, index),
+  minW: AI_MIN_W,
+  minH: AI_MIN_H,
+});
 
 const DashboardOpen = ({
   dashboard,
@@ -698,21 +694,25 @@ const DashboardOpen = ({
   const effectiveWidgets = useMemo(() => applySessionToWidgets(widgets, sessionDerived), [widgets, sessionDerived]);
   // Saved items keep their SAVED index for the fallback position (an AI removal must not shift
   // the others) and are `static` while AI changes are unsaved (D-13). AI items use session
-  // geometry, then config.layout, then a minimal "below all content" placement.
-  // Phase 134 minimal placement; Phase 136 replaces with D-14 gap-fill + per-type sizing.
+  // geometry (user drag), then derived.layout (AI set_layout), then config.layout, then placement.
+  // Phase 136 (D-07/D-08): AI overrides via derived.layout; new AI widgets gap-fill with per-type sizes (shared placeWidget).
   const layouts = useMemo(() => {
-    const savedItems = widgets.map((w, i) => getWidgetLayout(w, i));
-    const out: LayoutItem[] = savedItems
+    const out: LayoutItem[] = widgets
+      .map((w, i) => getWidgetLayout(w, i))
       .filter((it) => !sessionDerived.removedWidgetIds.has(Number(it.i)))
-      .map((it) => (editLocked ? { ...it, static: true } : it));
-    let bottom = savedItems.reduce((m, it) => Math.max(m, it.y + it.h), 0);
+      .map((it) => {
+        const o = sessionDerived.layout[Number(it.i)];
+        const item = o ? { ...it, ...o } : it;
+        return editLocked ? { ...item, static: true } : item;
+      });
     for (const w of sessionDerived.addedWidgets) {
-      const g = sessionGeometry[w.id];
+      const g = sessionGeometry[w.id] ?? sessionDerived.layout[w.id];
       const c = w.config?.layout as Partial<LayoutItem> | undefined;
       const full = c && [c.x, c.y, c.w, c.h].every((n) => typeof n === "number");
-      const rect = g ?? (full ? { x: c!.x!, y: c!.y!, w: c!.w!, h: c!.h! } : { x: 0, y: bottom, w: 18, h: 24 });
-      bottom = Math.max(bottom, rect.y + rect.h);
-      out.push({ i: String(w.id), ...rect, minW: 6, minH: 6 });
+      const rect: GridRect = g ?? (full
+        ? { x: c!.x!, y: c!.y!, w: c!.w!, h: c!.h! }
+        : placeWidget(out, (AI_DEFAULT_SIZE as Record<string, { w: number; h: number }>)[w.type] ?? { w: 18, h: 24 }));
+      out.push({ i: String(w.id), x: rect.x, y: rect.y, w: rect.w, h: rect.h, minW: AI_MIN_W, minH: AI_MIN_H });
     }
     return out;
   }, [widgets, sessionDerived, sessionGeometry, editLocked]);
@@ -847,6 +847,8 @@ const DashboardOpen = ({
     widgets,
     layers: savedLayers,
     dynamicViewIds: dynamicViews.map((dv) => dv.id),
+    tables: associatedTables.map((t) => ({ id: t.id, schema: t.schema, name: t.name, columns: t.columns })),
+    maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
   };
   const aiActions = useAiSessionActions(() => aiBaselineRef.current!);
   useEffect(() => {
@@ -1339,37 +1341,8 @@ const DashboardOpen = ({
       return;
     }
     const defaultTableId = associatedTables[0].id;
-    // Defaults MUST match the field names that `buildWmsParams` and the form
-    // controls read (camelCase, e.g. `pointOpacity` — NOT `POINTOPACITY`). The
-    // previous defaults used `POINTOPACITY` (the on-wire WMS param name),
-    // which buildWmsParams' `config.pointOpacity` check ignored — so a freshly
-    // created layer's first tile request omitted POINTOPACITY entirely, and
-    // Kinetica fell back to its own default (visually different from what the
-    // form showed). Operator workaround: drag the slider once to set
-    // `pointOpacity` in the correct case, then the tile re-rendered.
-    //
-    // Also explicitly seed style fields the form falls back to via `??`/`||`
-    // (pointShape, shapeFillColor, shapeLineColor, shapeLineWidth,
-    // antialiasing). Form fallbacks only affect the rendered SELECT/INPUT
-    // value — they don't write into config, so the WMS URL omits those params
-    // until the operator touches the control. Seeding here ensures the first
-    // tile fetch already includes everything the form claims is the default.
-    const defaultConfig = {
-      renderMode: "raster",
-      spatialMode: "latlon",
-      colormap: "viridis",
-      reverseColormap: false,
-      // 8-char AARRGGBB: FF (opaque) + 3B82F6 (blue). Stored without '#' for the WMS URL.
-      pointColor: "FF3B82F6",
-      pointSize: 5,
-      pointOpacity: 100,
-      pointShape: "circle",
-      shapeFillColor: "FFFF3838",
-      shapeLineColor: "FF000000",
-      shapeLineWidth: 1,
-      antialiasing: false,
-      visible: true,
-    };
+    // Defaults live in lib/layerDefaults (single source shared with the AI heatmap builder).
+    const defaultConfig = { ...DEFAULT_LAYER_CONFIG };
     try {
       const created = await createLayer(dashboard.id, { table_id: defaultTableId, config: defaultConfig });
       useDashboardLayersStore.getState().addLayer(created);
