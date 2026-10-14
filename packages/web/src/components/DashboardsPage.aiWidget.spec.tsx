@@ -123,8 +123,30 @@ vi.mock("../api/client", async (importOriginal) => {
   };
 });
 
+// DPAI-6/7 capture points: the `ai` prop DashboardsPage hands the provider, and cancelAsk call order.
+const captured: { ai: any } = { ai: null };
+vi.mock("./DashboardContext", async (orig) => {
+  const actual = await orig<typeof import("./DashboardContext")>();
+  return {
+    ...actual,
+    DashboardContextProvider: (p: any) => {
+      captured.ai = p.ai;
+      return <actual.DashboardContextProvider {...p} />;
+    },
+  };
+});
+const cancelLog: number[] = [];
+vi.mock("../lib/aiSession/askRunner", async (orig) => {
+  const actual = await orig<typeof import("../lib/aiSession/askRunner")>();
+  return {
+    ...actual,
+    // appliedOpCount > 0 at call time proves cancelAsk ran BEFORE the session reset.
+    cancelAsk: vi.fn(() => { cancelLog.push(useAiSessionStore.getState().derived.appliedOpCount); }),
+  };
+});
 vi.mock("../lib/aiSession/aiAvailability", () => ({ useAiConfigured: vi.fn(() => true) }));
 import { useAiConfigured } from "../lib/aiSession/aiAvailability";
+import { AskRequestSchema } from "@kinetica-bi/shared";
 import { registerAllChartTypes } from "./charts/definitions";
 import DashboardsPage from "./DashboardsPage";
 import {
@@ -240,5 +262,46 @@ describe("DashboardsPage AI widget wiring (Phase 137 Plan 11)", () => {
     expect(useToastStore.getState().toasts.some((t: any) => t.message === "You need the Use AI permission to add the AI assistant.")).toBe(true);
     await userEvent.click(screen.getAllByLabelText("Duplicate widget")[0]);
     await waitFor(() => expect(createWidget).toHaveBeenCalledTimes(1));
+  });
+
+  it("DPAI-5: the Keep/Discard bar mounts outside the header and before the grid; the old config-hint lock notice is gone", async () => {
+    await openDashboard();
+    expect(document.querySelector(".ai-change-bar")).toBeNull();
+    turn();
+    await screen.findByText("AI records");
+    const bar = document.querySelector(".ai-change-bar")!;
+    expect(bar).toBeTruthy();
+    expect(bar.closest(".dashboard-open-header")).toBeNull();
+    const grid = screen.getByTestId("grid");
+    expect(bar.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(Array.from(document.querySelectorAll(".config-hint")).some((e) => /editing is locked/i.test(e.textContent ?? ""))).toBe(false);
+  });
+
+  it("DPAI-6: the shared AskContext carries the saved baseline and an effective, schema-valid snapshot", async () => {
+    const w = [...saved, aiWidget];
+    await openDashboard(w);
+    turn(w);
+    await screen.findByText("AI records");
+    const ctx = captured.ai;
+    expect(ctx.dashboardId).toBe(dashboardId);
+    expect(ctx.getBaseline().widgets.map((x: any) => x.id)).toEqual([11, 12, 21]);
+    const snap = ctx.getSnapshot();
+    expect(AskRequestSchema.shape.snapshot.safeParse(snap).success).toBe(true);
+    const ai = snap.widgets.find((x: any) => x.id === 21);
+    expect(ai.type).toBe("ai");
+    expect(ai.layout).toEqual({ x: 0, y: 24, w: 12, h: 40 });
+    expect(snap.widgets.some((x: any) => x.id === -1)).toBe(true);
+    expect(Array.isArray(ctx.tables)).toBe(true);
+  });
+
+  it("DPAI-7: unmounting the dashboard cancels a running ask before the session resets", async () => {
+    const utils = await openDashboard();
+    turn();
+    await screen.findByText("AI records");
+    cancelLog.length = 0;
+    utils.unmount();
+    expect(cancelLog).toHaveLength(1);
+    expect(cancelLog[0]).toBeGreaterThan(0); // session still populated when cancelAsk ran
+    expect(useAiSessionStore.getState().derived.appliedOpCount).toBe(0); // and reset afterwards
   });
 });

@@ -84,6 +84,9 @@ import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
 import { useAiSessionActions } from "../hooks/useAiSessionActions";
 import type { SessionBaseline } from "../lib/aiSession/types";
+import { AiChangeBar } from "./AiChangeBar";
+import { cancelAsk, type AskContext } from "../lib/aiSession/askRunner";
+import { buildAskSnapshot, type AskRect } from "../lib/aiSession/buildAskRequest";
 import { useEffectiveLayers } from "../hooks/useEffectiveLayers";
 import { applySessionToWidgets } from "../lib/aiSession/applySession";
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
@@ -843,6 +846,8 @@ const DashboardOpen = ({
       useMapCurrentViewStore.getState().reset();
       // Phase 134 (AISES-V20-07): 14th store — AI session layer; in-memory only, cleared on
       // leave/switch. Idempotent; reads nothing from closures (StrictMode-safe).
+      // 137: abort a running ask first so its late result cannot land after reset (runner also checks epoch).
+      cancelAsk();
       useAiSessionStore.getState().reset();
     };
   }, [dashboard.id]);
@@ -859,6 +864,26 @@ const DashboardOpen = ({
     maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
   };
   const aiActions = useAiSessionActions(() => aiBaselineRef.current!);
+  // 137: ONE AskContext for every AI widget. Latest values live in a ref so the object is stable
+  // per dashboard; the snapshot is the EFFECTIVE dashboard (saved + session, incl. layout).
+  const aiSnapRef = useRef({ effectiveWidgets, layouts, layers, dynamicViews, associatedTables });
+  aiSnapRef.current = { effectiveWidgets, layouts, layers, dynamicViews, associatedTables };
+  const aiAskContext = useMemo<AskContext>(() => ({
+    dashboardId: dashboard.id,
+    getBaseline: () => aiBaselineRef.current!,
+    getSnapshot: () => {
+      const c = aiSnapRef.current;
+      const byId: Record<number, AskRect> = {};
+      for (const it of c.layouts) byId[Number(it.i)] = { x: it.x, y: it.y, w: it.w, h: it.h };
+      return buildAskSnapshot({
+        widgets: c.effectiveWidgets,
+        layouts: byId,
+        layers: c.layers,
+        dynamicViews: c.dynamicViews.map((d) => ({ id: d.id, name: d.name })),
+      });
+    },
+    get tables() { return aiSnapRef.current.associatedTables; },
+  }), [dashboard.id]);
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     let uninstall: (() => void) | undefined;
@@ -1504,11 +1529,6 @@ const DashboardOpen = ({
             Settings
           </button>
         )}
-        {editLocked && (
-          <span className="config-hint" role="status">
-            Unsaved AI changes: editing is locked until they are kept or discarded.
-          </span>
-        )}
         <button className="ghost-sm" onClick={() => requestLeave(onBack)}>Back</button>
       </div>
     </>
@@ -1527,6 +1547,7 @@ const DashboardOpen = ({
       retryDynamicView={retryDynamicView}
       applyWidgetAction={applyAction}
       applyWidgetActions={applyActions}
+      ai={aiAskContext}
     >
       <div
         ref={containerRef as React.RefObject<HTMLDivElement>}
@@ -1590,6 +1611,9 @@ const DashboardOpen = ({
       {topbarSlotEl
         ? createPortal(dashboardHeader, topbarSlotEl)
         : <div className="dashboard-open-header">{dashboardHeader}</div>}
+
+      {/* 137 D-15: full-width Keep/Discard bar, outside the (possibly portalled) header. */}
+      <AiChangeBar savedWidgets={widgets} savedLayers={savedLayers} />
 
       {error && <div className="error">{error}</div>}
       {(tablesQuery.error || widgetsQuery.error || viewsQuery.error) && (() => {
