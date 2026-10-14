@@ -151,8 +151,25 @@ describe("Phase 135 caps / history / tool mode", () => {
 
   it("CAPS-3: log line carries the new settings and never the key", () => {
     const line = formatAiConfigLog(parseAiConfig({ ...OLLAMA, AI_API_KEY: "sk-test-LOGKEY" }))!;
-    expect(line).toContain("capPerHour=30 capPerDay=off historyTurns=6 toolMode=native");
+    expect(line).toContain("capPerHour=30 capPerDay=off historyTurns=6 maxNewWidgets=6 toolMode=native");
     expect(line).toContain("key=set"); // positive control: the key WAS configured
     expect(line).not.toContain("sk-test-LOGKEY");
+  });
+});
+
+describe("Phase 136 new-widget cap", () => {
+  it("AICFG6-1: AI_MAX_NEW_WIDGETS default, override, range", () => {
+    const d = parseAiConfig(OLLAMA);
+    if (!d.enabled) throw new Error("expected enabled");
+    expect(d.config.maxNewWidgets).toBe(6);
+    const o = parseAiConfig({ ...OLLAMA, AI_MAX_NEW_WIDGETS: "12" });
+    if (!o.enabled) throw new Error("expected enabled");
+    expect(o.config.maxNewWidgets).toBe(12);
+    for (const bad of ["0", "31", "x"]) {
+      expect(errorsOf({ ...OLLAMA, AI_MAX_NEW_WIDGETS: bad })).toContain("AI_MAX_NEW_WIDGETS must be an integer from 1 to 30");
+    }
+  });
+  it("AICFG6-2: log line carries maxNewWidgets", () => {
+    expect(formatAiConfigLog(parseAiConfig(OLLAMA))).toContain("maxNewWidgets=6");
   });
 });

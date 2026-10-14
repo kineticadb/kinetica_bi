@@ -3,14 +3,14 @@ import { forbidProviderNetwork, ProviderNetworkForbidden } from "./helpers/aiTes
 
 const NAMES = [
   "AI_ENABLED", "AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY", "AI_DATA_ACCESS", "AI_MAX_TOOL_STEPS", "AI_TIMEOUT_MS",
-  "AI_MAX_ANSWERS_PER_USER_PER_HOUR", "AI_MAX_ANSWERS_PER_DAY", "AI_HISTORY_TURNS", "AI_TOOL_MODE", "AI_AUDIT_RETENTION_DAYS",
+  "AI_MAX_ANSWERS_PER_USER_PER_HOUR", "AI_MAX_ANSWERS_PER_DAY", "AI_HISTORY_TURNS", "AI_TOOL_MODE", "AI_AUDIT_RETENTION_DAYS", "AI_MAX_NEW_WIDGETS",
 ];
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AI test isolation", () => {
   it("NET-1: every AI_* env name is blanked by setup", () => {
-    expect(NAMES).toHaveLength(13);
+    expect(NAMES).toHaveLength(14);
     for (const n of NAMES) expect(process.env[n], n).toBe("");
   });
 

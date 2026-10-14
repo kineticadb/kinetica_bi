@@ -15,6 +15,7 @@ export type AiConfig = {
   maxAnswersPerDay: number; // whole deployment, rolling 24 h; 0 = off (D-13)
   historyTurns: number; // recent exchanges sent in full (D-05)
   toolMode: AiToolMode;
+  maxNewWidgets: number; // D-09: new widgets per answer
   readonly apiKey?: string;
 };
 export type AiConfigResult =
@@ -93,19 +94,21 @@ export function parseAiConfig(env: Env): AiConfigResult {
   if (maxAnswersPerDay === null) errors.push("AI_MAX_ANSWERS_PER_DAY must be an integer from 0 to 1000000");
   const historyTurns = parseIntInRange(val(env, "AI_HISTORY_TURNS"), 6, 1, 20);
   if (historyTurns === null) errors.push("AI_HISTORY_TURNS must be an integer from 1 to 20");
+  const maxNewWidgets = parseIntInRange(val(env, "AI_MAX_NEW_WIDGETS"), 6, 1, 30);
+  if (maxNewWidgets === null) errors.push("AI_MAX_NEW_WIDGETS must be an integer from 1 to 30");
   const toolModeRaw = val(env, "AI_TOOL_MODE");
   let toolMode: AiToolMode = "native";
   if (toolModeRaw === "native" || toolModeRaw === "json") toolMode = toolModeRaw;
   else if (toolModeRaw !== "") errors.push("AI_TOOL_MODE must be 'native' or 'json'");
 
   if (errors.length > 0 || provider === null || maxToolSteps === null || timeoutMs === null ||
-    maxAnswersPerUserPerHour === null || maxAnswersPerDay === null || historyTurns === null) {
+    maxAnswersPerUserPerHour === null || maxAnswersPerDay === null || historyTurns === null || maxNewWidgets === null) {
     return { enabled: false, reason: "invalid", errors };
   }
 
   const config: AiConfig = {
     provider, baseUrl, model, dataAccess, maxToolSteps, timeoutMs,
-    maxAnswersPerUserPerHour, maxAnswersPerDay, historyTurns, toolMode,
+    maxAnswersPerUserPerHour, maxAnswersPerDay, historyTurns, toolMode, maxNewWidgets,
   };
   if (key !== "") Object.defineProperty(config, "apiKey", { value: key, enumerable: false, writable: false });
   return { enabled: true, config };
@@ -119,7 +122,7 @@ export function formatAiConfigLog(result: AiConfigResult): string | null {
       `dataAccess=${c.dataAccess} maxToolSteps=${c.maxToolSteps} timeoutMs=${c.timeoutMs} ` +
       `capPerHour=${c.maxAnswersPerUserPerHour === 0 ? "off" : c.maxAnswersPerUserPerHour} ` +
       `capPerDay=${c.maxAnswersPerDay === 0 ? "off" : c.maxAnswersPerDay} ` +
-      `historyTurns=${c.historyTurns} toolMode=${c.toolMode} ` +
+      `historyTurns=${c.historyTurns} maxNewWidgets=${c.maxNewWidgets} toolMode=${c.toolMode} ` +
       `key=${c.apiKey ? "set" : "not set"} contract=${AI_CONTRACT_VERSION}`
     );
   }
