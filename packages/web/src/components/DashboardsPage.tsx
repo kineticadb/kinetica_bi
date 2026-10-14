@@ -77,6 +77,8 @@ import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
 import { resolveRect, placeWidget, AI_DEFAULT_SIZE, AI_MIN_W, AI_MIN_H, type GridRect } from "@kinetica-bi/shared";
 import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
+import { useAiConfigured } from "../lib/aiSession/aiAvailability";
+import { AI_ASSISTANT_TYPE, AI_ASSISTANT_DEFAULT_SIZE } from "../lib/aiSession/constants";
 import { useAiSessionStore, selectHasUnsavedAiChanges, hasUnsavedAiChanges } from "../store/aiSessionStore";
 import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/07)
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
@@ -581,8 +583,10 @@ const DashboardCreate = ({
   );
 };
 
-const getVisualizationTypes = () =>
+const getVisualizationTypes = (canUseAi: boolean) =>
   getAllChartTypes()
+    // 137 (AIGOV-V20-01): the AI Assistant is listed only for ai:use users on an AI-enabled server.
+    .filter((ct) => canUseAi || ct.type !== AI_ASSISTANT_TYPE)
     // Hide non-functional / retired types (addable:false) from the add-visualization picker.
     // They stay registered so any pre-existing widget of that type still renders.
     .filter((ct) => ct.addable !== false)
@@ -619,6 +623,10 @@ const DashboardOpen = ({
   const [widgets, setWidgets] = useState<WidgetDto[]>([]);
   const [showTableModal, setShowTableModal] = useState(false);
   const [showVizModal, setShowVizModal] = useState(false);
+  // 137: fetch availability only when the picker is open and the user may use AI.
+  const canUseAiPerm = hasPermission(PERMISSIONS.AI_USE);
+  const aiConfigured = useAiConfigured(canUseAiPerm && showVizModal);
+  const canUseAi = canUseAiPerm && aiConfigured === true;
   const [showLayersModal, setShowLayersModal] = useState(false);
   const [showDynamicViewsModal, setShowDynamicViewsModal] = useState(false);  // Phase 34 (DV-V16-08)
   const [showSettingsModal, setShowSettingsModal] = useState(false);  // Phase 110 (FSET-V120-01)
@@ -1172,6 +1180,7 @@ const DashboardOpen = ({
 
   const handleAddVisualization = (type: string) => {
     if (isAiEditLocked()) return;
+    if (type === AI_ASSISTANT_TYPE && !canUseAi) return;
     const chartDef = getChartType(type);
     const label = chartDef?.label ?? type;
     const defaults = chartDef?.defaultConfig ?? {};
@@ -1184,7 +1193,7 @@ const DashboardOpen = ({
     createWidget(dashboard.id, {
       title: label,
       type,
-      config: { ...defaults, layout: { x: 0, y: nextY, w: 18, h: 24 } }
+      config: { ...defaults, layout: { x: 0, y: nextY, ...(type === AI_ASSISTANT_TYPE ? AI_ASSISTANT_DEFAULT_SIZE : { w: 18, h: 24 }) } }
     })
       .then((widget) => {
         setWidgets((prev) => [...prev, widget]);
@@ -1199,6 +1208,11 @@ const DashboardOpen = ({
   // copy below all existing widgets so it never overlaps its source.
   const handleDuplicateWidget = useCallback((source: WidgetDto) => {
     if (isAiEditLocked()) return;
+    // 137 (AIGOV-V20-01): read at call time so the callback deps do not change.
+    if (source.type === AI_ASSISTANT_TYPE && !useAuthStore.getState().hasPermission(PERMISSIONS.AI_USE)) {
+      useToastStore.getState().showToast("You need the Use AI permission to add the AI assistant.", "error");
+      return;
+    }
     const nextY = widgets.length > 0
       ? Math.max(...widgets.map((w, i) => {
           const l = getWidgetLayout(w, i);
@@ -1781,6 +1795,7 @@ const DashboardOpen = ({
       {showVizModal && (
         <VisualizationPickerModal
           onSelect={handleAddVisualization}
+          canUseAi={canUseAi}
           onClose={() => setShowVizModal(false)}
         />
       )}
@@ -1839,12 +1854,14 @@ const LOCK_TOOLTIP = "Keep or discard the AI changes first";
 
 const VisualizationPickerModal = ({
   onSelect,
+  canUseAi,
   onClose
 }: {
   onSelect: (type: string) => void;
+  canUseAi: boolean;
   onClose: () => void;
 }) => {
-  const vizTypes = getVisualizationTypes();
+  const vizTypes = getVisualizationTypes(canUseAi);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
