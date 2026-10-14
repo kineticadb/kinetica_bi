@@ -1,0 +1,105 @@
+/* 137-08: AI chat. Tokens only (no hex, no rgba). Legibility in light/dark is verified by the operator (137-12). */
+.ai-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+.ai-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.ai-chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ai-chat-turn--ahead {
+  opacity: 0.55;
+}
+
+.ai-chat-bubble {
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.ai-chat-bubble--user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.ai-chat-bubble--ai {
+  align-self: flex-start;
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.ai-chat-bubble--error {
+  border-color: var(--danger);
+}
+
+.ai-chat-note {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+}
+
+.ai-chat-choices,
+.ai-chat-followups,
+.ai-chat-turn-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-self: flex-start;
+  align-items: center;
+}
+
+.ai-chat-status {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.ai-chat-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.ai-chat-input {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.ai-chat-textarea {
+  flex: 1;
+  resize: none;
+  min-height: 0;
+  max-height: calc(4 * 1.4em + var(--space-4));
+  overflow-y: auto;
+  font: inherit;
+}
