@@ -9,6 +9,7 @@ import DataFilterRenderer from "./DataFilterRenderer";
 import RadioGroupRenderer from "./RadioGroupRenderer";
 import TimelineRenderer from "./TimelineRenderer";
 import CalendarRenderer from "./CalendarRenderer";
+import { AiWidgetRenderer } from "./AiWidgetRenderer";
 import HeatmapRenderer from "./HeatmapRenderer";
 import NumericLineRenderer from "./NumericLineRenderer";
 import {
@@ -427,6 +428,9 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // lifecycle (no materializeFilter / dropFilterView) — AggregatedWidgetRenderer is
     // NOT called, preserving the sole-materialize-trigger invariant.
     body = <CalendarRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "ai") {
+    // Phase 137 (AIWID-V20-01): AI Assistant short-circuits BEFORE AggregatedWidgetRenderer (no SQL, no filters).
+    body = <AiWidgetRenderer widget={effectiveWidget} />;
   } else {
     body = <AggregatedWidgetRenderer widget={effectiveWidget} />;
   }
