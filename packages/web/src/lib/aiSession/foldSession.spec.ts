@@ -30,7 +30,8 @@ const baseline: SessionBaseline = deepFreeze({
 const patch = (kind: string, id: number, configPatch: Record<string, unknown>) => ({
   op: "patch", action: { target: { kind, id }, configPatch },
 });
-const turn = (ops: unknown[], prior: TurnEntry[] = []) => evaluateTurn(baseline, prior, ops);
+const turn = (ops: unknown[], prior: TurnEntry[] = [], opts: { removalApproved?: boolean } = {}) =>
+  evaluateTurn(baseline, prior, ops, opts);
 
 describe("evaluateTurn", () => {
   it("EVAL-1: invalid op is skipped with detail, never throws", () => {
@@ -50,7 +51,7 @@ describe("evaluateTurn", () => {
     const es = turn([
       patch("widget", 999, { show_popup: true }), { op: "remove_widget", id: 999 }, { op: "remove_layer", id: 999 },
       { op: "remove_widget", id: 50 }, patch("widget", 50, { page_size: 10 }),
-    ]);
+    ], [], { removalApproved: true }); // D-06: saved removal approved; this test is about target lookup
     expect(es.slice(0, 3).map((e) => (e.result as { reason?: string }).reason)).toEqual([
       "target_not_found", "target_not_found", "target_not_found",
     ]);
@@ -117,7 +118,7 @@ describe("foldSession", () => {
     const t = turn([
       patch("widget", 42, { show_popup: true }), { op: "remove_widget", id: 42 },
       { op: "add_widget", tempId: -1, type: "records", title: "t", config: {} }, { op: "remove_widget", id: -1 },
-    ]);
+    ], [], { removalApproved: true }); // D-06: saved removal approved; this test is about fold mechanics
     const d = foldSession(baseline, t);
     expect(d.removedWidgetIds.has(42)).toBe(true);
     expect(d.contribution.widget[42]).toBeUndefined();
@@ -299,5 +300,18 @@ describe("Phase 136 fold", () => {
     expect(d.addedWidgets[0].config).toHaveProperty("basemapLight");
     expect(d.addedWidgets[0].config).toHaveProperty("basemapDark");
     expect(d.addedLayers[0].table_id).toBe(5);
+  });
+
+  it("FOLD6-5: removing saved content needs approval; temp content and missing ids do not", () => {
+    const rm = [{ op: "remove_widget", id: 12 }];
+    expect(reason(t6(rm)[0])).toBe("needs_confirmation");
+    expect(reason(t6([{ op: "remove_layer", id: 7 }])[0])).toBe("needs_confirmation");
+    expect(evaluateTurn(baseline6, [], rm, { removalApproved: true })[0].result.status).toBe("applied");
+    expect(evaluateTurn(baseline6, [], [{ op: "remove_layer", id: 7 }], { removalApproved: true })[0].result.status).toBe("applied");
+    const es = t6([barOp(), { op: "remove_widget", id: -1 }]);
+    expect(es.map((e) => e.result.status)).toEqual(["applied", "applied"]);
+    expect(reason(t6([{ op: "remove_widget", id: 999 }])[0])).toBe("target_not_found");
+    // approval does not make the gate a no-op for a missing id (removalApproved: true still reports not found)
+    expect(reason(evaluateTurn(baseline6, [], [{ op: "remove_widget", id: 999 }], { removalApproved: true })[0])).toBe("target_not_found");
   });
 });

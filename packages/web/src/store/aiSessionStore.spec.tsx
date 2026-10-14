@@ -4,10 +4,10 @@ import { useWidgetActionStore } from "./widgetActionStore";
 import fs from "node:fs";
 import path from "node:path";
 import * as client from "../api/client";
-import { useAiSessionStore, hasUnsavedAiChanges } from "./aiSessionStore";
+import { useAiSessionStore, hasUnsavedAiChanges, selectAiEditedWidgetIds } from "./aiSessionStore";
 import { EMPTY_DERIVED, SESSION_TURN_CAP } from "../lib/aiSession/constants";
 import {
-  baselineFixture, addWidgetOp, removeWidgetOp, patchWidgetOp, addLayerOp, runTurns, patchLayerOp,
+  baselineFixture, addWidgetOp, removeWidgetOp, patchWidgetOp, addLayerOp, runTurns, patchLayerOp, setLayoutOp, changeTypeOp,
 } from "../test/aiSessionHarness";
 
 vi.mock("../api/client", async (orig) => {
@@ -41,6 +41,7 @@ describe("aiSessionStore", () => {
   });
 
   it("AISTORE-2: no api/client calls and no storage writes", () => {
+    st().approveRemoval(); // D-06: saved removal approved for this conversation
     runTurns(baseline, [[addWidgetOp(-1)], [removeWidgetOp(50)], [addWidgetOp(-2)]]);
     st().setCursor(0, baseline);
     st().reset();
@@ -52,6 +53,7 @@ describe("aiSessionStore", () => {
   });
 
   it("AISTORE-3: revert and forward", () => {
+    st().approveRemoval(); // D-06: saved removal approved for this conversation
     runTurns(baseline, [[addWidgetOp(-1)], [removeWidgetOp(50)], [addWidgetOp(-2)]]);
     st().setCursor(0, baseline);
     expect(st().derived.addedWidgets.map((w) => w.id)).toEqual([-1]);
@@ -65,6 +67,7 @@ describe("aiSessionStore", () => {
   });
 
   it("AISTORE-4: new turn while reverted drops later turns and prunes geometry", () => {
+    st().approveRemoval(); // D-06: saved removal approved for this conversation
     runTurns(baseline, [[addWidgetOp(-1)], [removeWidgetOp(50)], [addWidgetOp(-2)]]);
     st().setGeometry(-1, { x: 0, y: 0, w: 1, h: 1 });
     st().setGeometry(-2, { x: 1, y: 1, w: 1, h: 1 });
@@ -177,5 +180,48 @@ describe("two-store rebuild (AISES-V20-02, D-11)", () => {
     await act(async () => {});
     expect(seen.length).toBeGreaterThan(0);
     expect(seen).not.toContainEqual([1, 0]);
+  });
+});
+
+describe("Phase 136 store: removal approval, layout geometry, AI-edited selector", () => {
+  beforeEach(() => st().reset());
+  afterEach(() => st().reset());
+
+  it("STORE6-1: saved removal is skipped until approveRemoval; reset clears the approval", () => {
+    expect(st().removalApproved).toBe(false);
+    const [t1] = runTurns(baseline, [[removeWidgetOp(50)]]);
+    expect(t1.entries[0].result).toMatchObject({ status: "skipped", reason: "needs_confirmation" });
+    expect(st().derived.removedWidgetIds.size).toBe(0);
+    st().approveRemoval();
+    expect(st().removalApproved).toBe(true);
+    const [t2] = runTurns(baseline, [[removeWidgetOp(50)]]);
+    expect(t2.entries[0].result.status).toBe("applied");
+    expect(st().derived.removedWidgetIds.has(50)).toBe(true);
+    st().reset();
+    expect(st().removalApproved).toBe(false);
+  });
+
+  it("STORE6-2: an applied set_layout clears drag geometry for the moved ids only", () => {
+    runTurns(baseline, [[addWidgetOp(-1), addWidgetOp(-2)]]);
+    st().setGeometry(-1, { x: 0, y: 0, w: 6, h: 6 });
+    st().setGeometry(-2, { x: 6, y: 0, w: 6, h: 6 });
+    runTurns(baseline, [[setLayoutOp([{ id: -1, x: 0, y: 100, w: 18, h: 30 }])]]);
+    expect(st().geometry[-1]).toBeUndefined();
+    expect(st().geometry[-2]).toEqual({ x: 6, y: 0, w: 6, h: 6 });
+    // a REJECTED set_layout (overlap) leaves geometry alone
+    st().setGeometry(-1, { x: 0, y: 0, w: 6, h: 6 });
+    runTurns(baseline, [[setLayoutOp([{ id: -1, x: 0, y: 0, w: 18, h: 30 }, { id: -2, x: 6, y: 0, w: 18, h: 30 }])]]);
+    expect(st().geometry[-1]).toBeDefined();
+  });
+
+  it("STORE6-4: selectAiEditedWidgetIds follows the cursor", () => {
+    expect(selectAiEditedWidgetIds(st()).size).toBe(0);
+    runTurns(baseline, [[changeTypeOp(42, "pie"), patchWidgetOp(50, { page_size: 10 })]]);
+    runTurns(baseline, [[patchWidgetOp(50, { page_size: 10 })]]);
+    expect(selectAiEditedWidgetIds(st()).has(50)).toBe(true);
+    st().setCursor(-1, baseline);
+    expect(selectAiEditedWidgetIds(st()).size).toBe(0);
+    st().setCursor(1, baseline);
+    expect(selectAiEditedWidgetIds(st()).has(50)).toBe(true);
   });
 });

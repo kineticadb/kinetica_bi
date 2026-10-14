@@ -13,6 +13,10 @@
  * AI_SOURCE_ID. widgetActionStore.setControlContribution REPLACES a source's contribution
  * wholesale, so writing per turn would erase earlier turns' patches on the same target.
  *
+ * Removal approval (136 D-06): `removalApproved` is per conversation. It starts false, is set by
+ * `approveRemoval()` and cleared by `reset()` (Keep / Discard / dashboard switch / leave), and
+ * reload clears memory (134 D-04). It is UX, not security: Keep enforces edit rights (141).
+ *
  * Cap (D-06): the oldest turn is squashed into baseEntries (never shift()-ed away) because
  * later turns may depend on its ops.
  */
@@ -31,6 +35,8 @@ type AiSessionState = {
   nextTempId: number;
   geometry: Record<number, SessionRect>;
   derived: SessionDerived;
+  removalApproved: boolean;
+  approveRemoval(): void;
   pendingLeave: { proceed: () => void } | null;
   applyTurn(input: TurnInput, baseline: SessionBaseline): { turnId: string; entries: TurnEntry[] };
   setCursor(index: number, baseline: SessionBaseline): void;
@@ -82,6 +88,7 @@ const initial = {
   cursor: -1,
   geometry: {} as Record<number, SessionRect>,
   derived: EMPTY_DERIVED,
+  removalApproved: false,
   pendingLeave: null as { proceed: () => void } | null,
 };
 
@@ -94,7 +101,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const s = get();
     const kept = s.turns.slice(0, s.cursor + 1);
     const prior = [...s.baseEntries, ...kept.flatMap((t) => t.entries)];
-    const entries = evaluateTurn(baseline, prior, input.ops);
+    const entries = evaluateTurn(baseline, prior, input.ops, { removalApproved: s.removalApproved });
     const turn: Turn = {
       id: `turn-${++turnSeq}`,
       prompt: input.prompt,
@@ -115,7 +122,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const nextTempId = Math.min(s.nextTempId, minTempId(all) - 1);
     const live = addedTempIds(all);
     const geometry: Record<number, SessionRect> = {};
-    for (const [k, v] of Object.entries(s.geometry)) if (live.has(Number(k))) geometry[Number(k)] = v;
+    // Pitfall 4: an applied set_layout owns its ids' positions, so a stale user drag must not shadow it.
+    const moved = new Set<number>();
+    for (const e of entries) {
+      if (e.result.status === "applied" && e.op?.op === "set_layout") for (const it of e.op.items) moved.add(it.id);
+    }
+    for (const [k, v] of Object.entries(s.geometry)) if (live.has(Number(k)) && !moved.has(Number(k))) geometry[Number(k)] = v;
     const derived = foldSession(baseline, all);
     set({ dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived });
     writeAiContribution(derived);
@@ -148,6 +160,8 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     return id;
   },
 
+  approveRemoval: () => set({ removalApproved: true }),
+
   setPendingLeave: (p) => set({ pendingLeave: p }),
 }));
 
@@ -156,6 +170,11 @@ const isApplied = (e: TurnEntry) => e.result.status === "applied";
 /** True once any op has applied, regardless of cursor (Pitfall 5); op-less turns do not count (D-17). */
 export function selectHasUnsavedAiChanges(s: AiSessionState): boolean {
   return s.baseEntries.some(isApplied) || s.turns.some((t) => t.entries.some(isApplied));
+}
+
+/** Saved widgets the AI edited, retyped, renamed or moved at the current cursor. */
+export function selectAiEditedWidgetIds(s: AiSessionState): ReadonlySet<number> {
+  return s.derived.aiEditedWidgetIds;
 }
 
 export function hasUnsavedAiChanges(): boolean {

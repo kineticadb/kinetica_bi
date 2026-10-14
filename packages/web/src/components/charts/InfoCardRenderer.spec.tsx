@@ -438,6 +438,7 @@ describe("Phase 134 session layer read path (info card)", () => {
     expect(optionValues()).toEqual(["7", "8"]); // positive control
 
     act(() => {
+      useAiSessionStore.getState().approveRemoval(); // D-06: saved removal approved for this conversation
       h.runTurns(h.baselineFixture({ layers: [h.savedLayer(7), h.savedLayer(8)] }), [[h.removeLayerOp(7)]]);
     });
     expect(optionValues()).toEqual(["8"]);

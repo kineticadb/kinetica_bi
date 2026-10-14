@@ -208,6 +208,7 @@ describe("DashboardsPage AI session layer (Phase 134 Plan 05)", () => {
   it("AISESS-5: reset restores saved widgets and layout exactly", async () => {
     await openDashboard();
     const before = JSON.parse(JSON.stringify(items()));
+    act(() => useAiSessionStore.getState().approveRemoval()); // D-06: saved removal approved for this conversation
     turn([addWidgetOp(-1, "records", "AI records"), removeWidgetOp(12)]);
     expect(screen.queryByText("Saved 12")).toBeNull();
     act(() => useAiSessionStore.getState().reset());

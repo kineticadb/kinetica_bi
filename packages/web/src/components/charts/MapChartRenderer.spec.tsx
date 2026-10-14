@@ -6875,6 +6875,7 @@ describe("Phase 134 session layer read path (map)", () => {
 
     const baseline = h.baselineFixture({ layers: [h.savedLayer(7), h.savedLayer(8)] });
     act(() => {
+      useAiSessionStore.getState().approveRemoval(); // D-06: saved removal approved for this conversation
       h.runTurns(baseline, [[h.removeLayerOp(7)]]);
     });
     rerender(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);

@@ -218,7 +218,7 @@ function buildSim(baseline: SessionBaseline, prior: readonly TurnEntry[]): Sim {
   return sim;
 }
 
-function evaluateOne(sim: Sim, rawOp: unknown, _opts: EvaluateOptions): TurnEntry {
+function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry {
   const parsed = parseAiOp(rawOp);
   if (!parsed.ok) return { raw: rawOp, op: null, result: skip("invalid_op", parsed.errors.join("; ")) };
   const op = parsed.op;
@@ -246,10 +246,16 @@ function evaluateOne(sim: Sim, rawOp: unknown, _opts: EvaluateOptions): TurnEntr
       if (sim.widgets.get(op.widgetId)?.type !== "map") return done(skip("target_not_found", `no map widget ${op.widgetId}`));
       if (!tableOk(op.tableId)) return done(skip("table_not_on_dashboard"));
       return done({ status: "applied" });
+    // D-06: existence first, then the ask-once gate for SAVED content (id > 0). AI-added (negative)
+    // content is removed without asking.
     case "remove_widget":
-      return done(sim.widgets.has(op.id) ? { status: "applied" } : skip("target_not_found"));
+      if (!sim.widgets.has(op.id)) return done(skip("target_not_found"));
+      if (op.id > 0 && !opts.removalApproved) return done(skip("needs_confirmation"));
+      return done({ status: "applied" });
     case "remove_layer":
-      return done(sim.layers.has(op.id) ? { status: "applied" } : skip("target_not_found"));
+      if (!sim.layers.has(op.id)) return done(skip("target_not_found"));
+      if (op.id > 0 && !opts.removalApproved) return done(skip("needs_confirmation"));
+      return done({ status: "applied" });
     case "patch": {
       const { target, configPatch } = op.action;
       if (target.kind === "layer") {

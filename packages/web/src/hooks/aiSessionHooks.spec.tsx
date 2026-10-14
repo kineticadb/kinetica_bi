@@ -29,6 +29,7 @@ describe("ai session hooks", () => {
     const { result } = renderHook(() => useEffectiveLayers());
     expect(result.current).toBe(saved);
     act(() => {
+      useAiSessionStore.getState().approveRemoval(); // D-06: saved removal approved for this conversation
       useAiSessionStore.getState().applyTurn({ prompt: "p", ops: [removeLayerOp(7), addLayerOp(-2, 42)] }, baseline);
     });
     expect(result.current.map((l) => l.id)).toEqual([8, -2]);
