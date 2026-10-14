@@ -21,3 +21,13 @@ export const EMPTY_DERIVED: SessionDerived = Object.freeze({
   aiEditedLayerIds: new Set<number>(),
   widgetMeta: Object.freeze({}),
 });
+
+/** 137: the AI Assistant widget type. Never in shared AI_WIDGET_TYPES (the AI cannot add it). */
+export const AI_ASSISTANT_TYPE = "ai";
+/** D-03: a newly added AI widget is 12 x 40 (inline chat from the start). */
+export const AI_ASSISTANT_DEFAULT_SIZE = Object.freeze({ w: 12, h: 40 });
+/** D-02: small-tile layout when under 12 columns OR under 24 rows (36-column grid, config.layout). */
+export const AI_SMALL_TILE = Object.freeze({ minW: 12, minH: 24 });
+export const isSmallAiTile = (r: { w: number; h: number }): boolean => r.w < AI_SMALL_TILE.minW || r.h < AI_SMALL_TILE.minH;
+/** D-18: fading outline duration. */
+export const AI_HIGHLIGHT_MS = 3000;
