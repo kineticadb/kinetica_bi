@@ -17,6 +17,9 @@
  * `approveRemoval()` and cleared by `reset()` (Keep / Discard / dashboard switch / leave), and
  * reload clears memory (134 D-04). It is UX, not security: Keep enforces edit rights (141).
  *
+ * 137: run/draft/highlight are shared by every AI widget on the dashboard (D-10); epoch lets the
+ * runner drop a late result after reset().
+ *
  * Cap (D-06): the oldest turn is squashed into baseEntries (never shift()-ed away) because
  * later turns may depend on its ops.
  */
@@ -26,7 +29,10 @@ import { AI_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/
 import { evaluateTurn, foldSession } from "../lib/aiSession/foldSession";
 import { useWidgetActionStore } from "./widgetActionStore";
 
-type AiSessionState = {
+export type AiRun = { status: "idle" | "running"; question: string; startedAt: number; line: string; waitSeconds?: number };
+const IDLE_RUN: AiRun = { status: "idle", question: "", startedAt: 0, line: "" };
+
+export type AiSessionState = {
   dashboardId: number | null;
   baseEntries: TurnEntry[];
   droppedCount: number;
@@ -37,6 +43,16 @@ type AiSessionState = {
   derived: SessionDerived;
   removalApproved: boolean;
   approveRemoval(): void;
+  run: AiRun;
+  draft: string;
+  epoch: number;
+  highlight: { ids: number[]; nonce: number };
+  startRun(question: string): void;
+  updateRun(line: string, waitSeconds?: number): void;
+  endRun(): void;
+  setDraft(text: string): void;
+  setHighlight(ids: number[]): void;
+  markChoicePicked(turnIndex: number, pick: { clarificationIndex: number; optionId: string }): void;
   /** 136 D-13/134 D-16: session-only visibility for AI-added (negative id) layers. */
   tempLayerVisibility: Record<number, boolean>;
   setTempLayerVisible(id: number, visible: boolean): void;
@@ -101,6 +117,9 @@ const initial = {
   geometry: {} as Record<number, SessionRect>,
   derived: EMPTY_DERIVED,
   removalApproved: false,
+  run: IDLE_RUN,
+  draft: "",
+  highlight: { ids: [] as number[], nonce: 0 },
   tempLayerVisibility: {} as Record<number, boolean>,
   pendingLeave: null as { proceed: () => void } | null,
 };
@@ -108,6 +127,7 @@ const initial = {
 export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   ...initial,
   nextTempId: -1,
+  epoch: 0,
 
   applyTurn: (input, baseline) => {
     if (get().dashboardId !== null && baseline.dashboardId !== get().dashboardId) get().reset();
@@ -121,6 +141,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       answer: input.answer ?? "",
       entries,
       createdAt: Date.now(),
+      ...(input.chat ? { chat: input.chat } : {}),
     };
     let turns = [...kept, turn];
     let baseEntries = s.baseEntries;
@@ -156,7 +177,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   reset: () => {
-    set({ ...initial, nextTempId: get().nextTempId });
+    set({ ...initial, nextTempId: get().nextTempId, epoch: get().epoch + 1 });
     useWidgetActionStore.getState().clearControl(AI_SOURCE_ID);
   },
 
@@ -174,6 +195,20 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   approveRemoval: () => set({ removalApproved: true }),
+
+  startRun: (question) => set({ run: { status: "running", question, startedAt: Date.now(), line: "Thinking…" } }),
+  updateRun: (line, waitSeconds) => set((s) => ({ run: { ...s.run, line, waitSeconds } })),
+  endRun: () => set({ run: IDLE_RUN }),
+  setDraft: (text) => set({ draft: text }),
+  setHighlight: (ids) => set((s) => ({ highlight: { ids, nonce: s.highlight.nonce + 1 } })),
+  markChoicePicked: (turnIndex, pick) =>
+    set((s) => {
+      const t = s.turns[turnIndex];
+      if (!t) return s;
+      const turns = s.turns.slice();
+      turns[turnIndex] = { ...t, chat: { status: "ok", ...t.chat, pickedChoice: pick } };
+      return { turns };
+    }),
 
   setTempLayerVisible: (id, visible) => {
     if (id >= 0) return;

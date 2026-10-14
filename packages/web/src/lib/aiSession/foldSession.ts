@@ -227,6 +227,14 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
     if (result.status === "applied") simApply(sim, op);
     return { raw: rawOp, op, result };
   };
+  // 137: defence in depth; the gateway refuses these too (137-01). The AI Assistant widget is never AI-editable.
+  const isAi = (id: number) => sim.widgets.get(id)?.type === "ai";
+  const aiTarget =
+    op.op === "patch" ? (op.action.target.kind === "widget" && isAi(op.action.target.id))
+    : op.op === "remove_widget" || op.op === "change_widget_type" || op.op === "set_widget_title" ? isAi(op.id)
+    : op.op === "set_layout" ? op.items.some((it) => isAi(it.id))
+    : false;
+  if (aiTarget) return done(skip("unsupported_target", "AI assistant widget"));
   const tableOk = (id: unknown) => id === undefined || sim.tableIds === null || (typeof id === "number" && sim.tableIds.has(id));
   switch (op.op) {
     case "apply_filter":

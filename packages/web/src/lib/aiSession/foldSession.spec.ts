@@ -315,3 +315,23 @@ describe("Phase 136 fold", () => {
     expect(reason(evaluateTurn(baseline6, [], [{ op: "remove_widget", id: 999 }], { removalApproved: true })[0])).toBe("target_not_found");
   });
 });
+
+describe("FOLD7: AI assistant widget is untouchable", () => {
+  const b7: SessionBaseline = { ...baseline, widgets: [...baseline.widgets, w(9, "ai")] };
+  it("FOLD7-1: ops targeting an ai widget are skipped with unsupported_target", () => {
+    const es = evaluateTurn(b7, [], [
+      patch("widget", 9, { title: "x" }),
+      { op: "remove_widget", id: 9 },
+      { op: "change_widget_type", id: 9, type: "bar" },
+      { op: "set_widget_title", id: 9, title: "T" },
+      { op: "set_layout", items: [{ id: 9, x: 0, y: 0, w: 12, h: 40 }] },
+      { op: "set_widget_title", id: 50, title: "ok" },
+    ], { removalApproved: true });
+    for (const e of es.slice(0, 5)) {
+      expect(e.result).toMatchObject({ status: "skipped", reason: "unsupported_target", detail: "AI assistant widget" });
+    }
+    expect(es[5].result.status).toBe("applied");
+    const ok = evaluateTurn(b7, [], [{ op: "set_layout", items: [{ id: 50, x: 24, y: 200, w: 8, h: 8 }] }]);
+    expect(ok[0].result.status).toBe("applied");
+  });
+});
