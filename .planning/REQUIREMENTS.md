@@ -30,17 +30,17 @@
 
 ### Dashboard actions
 
-- [ ] **AIACT-V20-01**: The AI can add a visualization.
-- [ ] **AIACT-V20-02**: The AI can remove a visualization.
-- [ ] **AIACT-V20-03**: The AI can edit an existing visualization's settings (chart type, metric, group-by, sort; colors only via theme tokens, never hex).
-- [ ] **AIACT-V20-04**: The AI can add a heatmap map layer (other layer types: AI-F12).
-- [ ] **AIACT-V20-05**: The AI can remove a map layer.
-- [ ] **AIACT-V20-06**: The AI can edit a heatmap map layer's style (other layer types: AI-F12).
+- [x] **AIACT-V20-01**: The AI can add a visualization.
+- [x] **AIACT-V20-02**: The AI can remove a visualization.
+- [x] **AIACT-V20-03**: The AI can edit an existing visualization's settings (chart type, metric, group-by, sort; colors only via theme tokens, never hex).
+- [x] **AIACT-V20-04**: The AI can add a heatmap map layer (other layer types: AI-F12).
+- [x] **AIACT-V20-05**: The AI can remove a map layer.
+- [x] **AIACT-V20-06**: The AI can edit a heatmap map layer's style (other layer types: AI-F12).
 - [ ] **AIACT-V20-07**: The AI can add a session-only dynamic view and point widgets or layers at it; map tiles follow.
 - [ ] **AIACT-V20-08**: The AI can remove a dynamic view.
 - [ ] **AIACT-V20-09**: The AI can apply and clear filters through the existing filter path; charts, records tables and map tiles narrow exactly as they would after a click.
-- [ ] **AIACT-V20-10**: The AI places new widgets sensibly in the layout and can resize or reorder widgets.
-- [ ] **AIACT-V20-11**: A reference to a table or column that does not exist is repaired (at most 2 attempts) or refused — never applied.
+- [x] **AIACT-V20-10**: The AI places new widgets sensibly in the layout and can resize or reorder widgets.
+- [x] **AIACT-V20-11**: A reference to a table or column that does not exist is repaired (at most 2 attempts) or refused — never applied.
 
 ### Session layer
 
@@ -122,17 +122,17 @@ Which phases cover which requirements.
 | AIWID-V20-05 | Phase 137 | Pending |
 | AIWID-V20-06 | Phase 137 | Pending |
 | AIWID-V20-07 | Phase 137 | Pending |
-| AIACT-V20-01 | Phase 136 | Pending |
-| AIACT-V20-02 | Phase 136 | Pending |
-| AIACT-V20-03 | Phase 136 | Pending |
-| AIACT-V20-04 | Phase 136 | Pending |
-| AIACT-V20-05 | Phase 136 | Pending |
-| AIACT-V20-06 | Phase 136 | Pending |
+| AIACT-V20-01 | Phase 136 | Complete |
+| AIACT-V20-02 | Phase 136 | Complete |
+| AIACT-V20-03 | Phase 136 | Complete |
+| AIACT-V20-04 | Phase 136 | Complete |
+| AIACT-V20-05 | Phase 136 | Complete |
+| AIACT-V20-06 | Phase 136 | Complete |
 | AIACT-V20-07 | Phase 139 | Pending |
 | AIACT-V20-08 | Phase 139 | Pending |
 | AIACT-V20-09 | Phase 138 | Pending |
-| AIACT-V20-10 | Phase 136 | Pending |
-| AIACT-V20-11 | Phase 136 | Pending |
+| AIACT-V20-10 | Phase 136 | Complete |
+| AIACT-V20-11 | Phase 136 | Complete |
 | AISES-V20-01 | Phase 134 | Complete |
 | AISES-V20-02 | Phase 134 | Complete |
 | AISES-V20-03 | Phase 134 | Complete |
@@ -161,4 +161,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*
+*Last updated: 2026-10-14 — Phase 136 complete: AIACT-V20-01/02/03/04/05/06/10/11 Complete (automated proofs + operator UAT 2026-10-14: VAL_ATTR tiles, light/dark, layout, removal approval, undo; legend "AI heat" row and layer-edit highlight on the host map carried to Phase 137 under AIWID-V20-06). Previously 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*

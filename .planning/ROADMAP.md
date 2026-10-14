@@ -51,7 +51,7 @@
 - [x] **Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes** — close the column-interpolation hole; shared zod contract; AI env validated at startup; spikes S1/S2/S3/S7 decided
 - [x] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
 - [x] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
-- [ ] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
+- [x] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
 - [ ] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
 - [ ] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
 - [ ] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
@@ -158,21 +158,22 @@ Plans:
 
 **Map test plan (operator, 2026-10-09):** automated — validator round-trip against the operator's real saved map/heatmap-layer configs + invalid cases, and buildWmsParams snapshot for AI heatmap layers on BOTH MapChartRenderer sites; operator-run — WMS GetMap render check (HTTP 200 image/png, non-blank) like spike S1.4; human-verify — light/dark visual. Optional later: claude-in-chrome screenshots (no new dependency).
 **Scope note (operator, 2026-10-09):** v2.0 AI widget subset is bar, line, pie, table, bignumber, records and map; the AI adds/edits heatmap map layers only (others: AI-F12). Map widget and heatmap layer config get hand-written validators in this phase.
+**Completed 2026-10-14:** 12/12 plans (+ fix 5233a6e, radio capture skips "" values). Operator UAT approved 2026-10-14 (run by Claude in the operator's signed-in Chrome, `136-12-UAT-RESULTS.md`): VAL_ATTR accepted by Kinetica and visibly changes the render (weighted and control tiles both 200 image/png with heat); default blur 5 matches Kinetica; light/dark pills, 9/18/36-col sizes with no overlap, set_layout, map + heatmap on a map-less dashboard, removal approval and undo all PASS. Carried to 137: legend "AI heat" row/eye (137-12 visual), AI bignumber label "value", layer-only edits not highlighting the host map (AIWID-V20-06). TD-V20-ALLOWLIST-KEYS resolved.
 **Plans:** 12 plans (6 waves)
 
 Plans:
-- [ ] 136-01-PLAN.md — Shared contract: allow-list v4 keyed by real widget types, positive AI config catalogue, palette/ramp vocabularies, grid layout math, new ops (set_layout, change_widget_type, set_widget_title, heatmap add_layer), approvals + clarification shape; all ripple specs [W1]
-- [ ] 136-02-PLAN.md — Heatmap render path: valueColumn -> VAL_ATTR, editor "Value column" control, HMAP specs on both MapChartRenderer buildWmsParams sites [W1]
-- [ ] 136-03-PLAN.md — Web generation libs: extracted buildChartSql (byte-identical), deriveChartConfig with hardening, palette map, AI widget defaults, heatmap layer defaults, drift specs [W2]
-- [ ] 136-04-PLAN.md — Gateway: catalogue, dashboard-tables-only (D-22), refusals (D-02/D-04/dv), removal clarification (D-06), map host (D-11/D-12), layer column checks (D-21), placement + layout, non-disclosing hints, refKey/slot [W2]
-- [ ] 136-05-PLAN.md — Flat typed mutate tools (12) + system rules; layer map ids in the dashboard view [W3]
-- [ ] 136-06-PLAN.md — Agent loop: W2 fix (per-reference counting), AI_MAX_NEW_WIDGETS cap, clarifications + skipped on the SSE result [W4]
-- [ ] 136-07-PLAN.md — Web overlay seam (TD-V20-ALLOWLIST-KEYS): key/value translation, SQL regeneration in WidgetRenderer, opacity -> POINTOPACITY, radio canary [W3]
-- [ ] 136-08-PLAN.md — Session fold + store: all Phase 136 ops, removal approval, generated SQL, rendering heatmap layers, layout overrides, AI-edited flags [W4]
-- [ ] 136-09-PLAN.md — Scripted end-to-end proofs (server loop + route SSE) and real saved-config round-trip [W5]
-- [ ] 136-10-PLAN.md — DashboardsPage gap-fill placement + AI layout overrides + baseline tables; minimal AI badge [W5]
-- [ ] 136-11-PLAN.md — DEV harness for all ops incl. approveRemoval; session-only eye for AI layers; client end-to-end with undo [W5]
-- [ ] 136-12-PLAN.md — Operator GetMap (with/without VAL_ATTR), light/dark + layout human-verify, optional single live ask, bookkeeping [W6]
+- [x] 136-01-PLAN.md — Shared contract: allow-list v4 keyed by real widget types, positive AI config catalogue, palette/ramp vocabularies, grid layout math, new ops (set_layout, change_widget_type, set_widget_title, heatmap add_layer), approvals + clarification shape; all ripple specs [W1]
+- [x] 136-02-PLAN.md — Heatmap render path: valueColumn -> VAL_ATTR, editor "Value column" control, HMAP specs on both MapChartRenderer buildWmsParams sites [W1]
+- [x] 136-03-PLAN.md — Web generation libs: extracted buildChartSql (byte-identical), deriveChartConfig with hardening, palette map, AI widget defaults, heatmap layer defaults, drift specs [W2]
+- [x] 136-04-PLAN.md — Gateway: catalogue, dashboard-tables-only (D-22), refusals (D-02/D-04/dv), removal clarification (D-06), map host (D-11/D-12), layer column checks (D-21), placement + layout, non-disclosing hints, refKey/slot [W2]
+- [x] 136-05-PLAN.md — Flat typed mutate tools (12) + system rules; layer map ids in the dashboard view [W3]
+- [x] 136-06-PLAN.md — Agent loop: W2 fix (per-reference counting), AI_MAX_NEW_WIDGETS cap, clarifications + skipped on the SSE result [W4]
+- [x] 136-07-PLAN.md — Web overlay seam (TD-V20-ALLOWLIST-KEYS): key/value translation, SQL regeneration in WidgetRenderer, opacity -> POINTOPACITY, radio canary [W3]
+- [x] 136-08-PLAN.md — Session fold + store: all Phase 136 ops, removal approval, generated SQL, rendering heatmap layers, layout overrides, AI-edited flags [W4]
+- [x] 136-09-PLAN.md — Scripted end-to-end proofs (server loop + route SSE) and real saved-config round-trip [W5]
+- [x] 136-10-PLAN.md — DashboardsPage gap-fill placement + AI layout overrides + baseline tables; minimal AI badge [W5]
+- [x] 136-11-PLAN.md — DEV harness for all ops incl. approveRemoval; session-only eye for AI layers; client end-to-end with undo [W5]
+- [x] 136-12-PLAN.md — Operator GetMap (with/without VAL_ATTR), light/dark + layout human-verify, optional single live ask, bookkeeping [W6]
 
 ### Phase 137: AI Widget & Streaming UI
 **Goal:** Users ask questions in an AI widget that keeps a full chat conversation and watch the dashboard answer, with progress, cancel, follow-ups, clarification, highlights, a per-answer "Revert dashboard to this state" button and a Keep/Discard bar.
@@ -270,7 +271,7 @@ Plans:
 | 133. AI Contract, Shared Package, SSYNC-F6 Fix & Spikes | 10/10 | Complete | 2026-10-09 |
 | 134. Session Layer Engine | 10/10 | Complete | 2026-10-12 |
 | 135. Server Gateway, Agent Loop, Providers & Governance Core | 12/12 | Complete | 2026-10-13 |
-| 136. Structural & Edit Ops | 0/? | Not started | - |
+| 136. Structural & Edit Ops | 12/12 | Complete | 2026-10-14 |
 | 137. AI Widget & Streaming UI | 0/? | Not started | - |
 | 138. AI Filters | 0/? | Not started | - |
 | 139. Session-Only Dynamic Views | 0/? | Not started | - |

@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 137 context gathered (2026-10-14); next plan-phase 137. 136-12 operator UAT still deferred (136-12-UAT-STEPS.md); 136 verified human_needed"
-last_updated: "2026-10-14T00:00:00.000Z"
+stopped_at: "Phase 136 complete (2026-10-14; 136-12 operator UAT approved). Phase 137 planned (12 plans, 5 waves); next execute-phase 137"
+last_updated: "2026-10-14T20:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,16 +19,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 136 (Structural & Edit Ops) next
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 137 (AI Widget & Streaming UI) next
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 136 (Structural & Edit Ops) — plans 01-11 executed + fix 5233a6e, all gates green
-Plan: 136-12 PAUSED 2026-10-14 — operator UAT (Task 1 VAL_ATTR tile check, Task 2 visual) deferred: no Kinetica access. Exact console steps: `phases/136-structural-edit-ops/136-12-UAT-STEPS.md`. On reply: 136-12 Task 3 bookkeeping + SUMMARY (also record: S6 stale vs 12-tool set, shape-key fix moved to 137, Keep must call reset() in 141). 136 verifier already ran 2026-10-14: human_needed, 4/4 automated (`136-VERIFICATION.md`).
-Next: Phase 137 (AI Widget & Streaming UI) — context gathered 2026-10-14 (`phases/137-ai-widget-streaming-ui/137-CONTEXT.md` D-01..D-19); next: plan-phase 137
-Status: Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
-Last activity: 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
+Phase: 136 (Structural & Edit Ops) — COMPLETE 2026-10-14 (12/12 plans + fix 5233a6e; all gates green; 136-12 operator UAT approved 2026-10-14, results in `phases/136-structural-edit-ops/136-12-UAT-RESULTS.md`)
+Plan: 136-12 complete — Task 1 VAL_ATTR tile check PASS, Task 2 visual/layout/undo PASS (run by Claude in the operator's signed-in Chrome; operator approved). Bookkeeping + `136-12-SUMMARY.md` done.
+Next: Phase 137 (AI Widget & Streaming UI) — planned 2026-10-14: 12 plans in 5 waves (`phases/137-ai-widget-streaming-ui/137-*-PLAN.md`); next: `/gsd:execute-phase 137`
+Status: Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
+Last activity: 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -58,12 +58,23 @@ Last activity: 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini nat
 - Optional: add a recorded Gemini daily-quota 429 body and a no-index streamed tool call as adapter fixtures (both cases are already handled).
 - Free-tier capacity: one ask uses several requests, so 137/142 must surface the daily-cap refusal clearly.
 
+**Phase 136 outcomes (2026-10-14):** The AI can add, remove and edit visualizations and heatmap map layers and lay them out, all validated server-side and applied as session ops (still fed only by the DEV harness until Phase 137 wires SSE to the fold). (1) Contract: allow-list v4 keyed by real widget types plus a positive AI config catalogue (bar, line, pie, table, bignumber, records, map), named palette/ramp vocabularies (no hex reaches the model or the ops), shared grid layout math, new ops `set_layout`, `change_widget_type`, `set_widget_title` and heatmap `add_layer`, removal approvals and the clarification shape (136-01). (2) Chart SQL is generated, not frozen: `buildChartSql` extracted byte-identically, `deriveChartConfig` regenerates SQL for SQL-affecting overlays on saved and AI widgets (136-03, 136-07). (3) Gateway: catalogue, dashboard-tables-only (D-22), refusals, map host selection, heatmap layer column checks (D-21), placement stamping and layout validation, non-disclosing column hints (136-04); 12 flat typed mutate tools + system rules (136-05). (4) W2 fixed: repair counting per reference/slot (a repaired reference leaves nothing in `skipped`); `AI_MAX_NEW_WIDGETS` cap (D-09); the SSE result now carries `skipped: {label, stage, reasons}[]` and `clarifications: {kind, question, options}[]` (136-06). (5) D-06 removal: the first removal of saved content is skipped as `needs_confirmation`; `approveRemoval()` in `aiSessionStore` sets `removalApproved` for the conversation; Discard and reload re-arm the ask (136-08). (6) Heatmap `valueColumn` -> WMS `VAL_ATTR` on BOTH MapChartRenderer `buildWmsParams` sites, plus a "Value column" editor control (136-02). Operator tile check: weighted and control tiles both 200 image/png with visible heat, VAL_ATTR visibly changes the render; Kinetica's default blur is 5 (tiles byte-identical), matching the AI default — no action. (7) Layout: per-type default sizes (KPI 9, bar 18, records 36 cols), gap-fill then below, AI layout overrides, "AI added" / "AI edited" pills (136-10); session-only eye for AI layers and the full DEV harness (136-11). (8) TD-V20-ALLOWLIST-KEYS RESOLVED: key/value translation seam, SQL regeneration, layer opacity -> POINTOPACITY, radio controls proven by canary. Behaviour change: radio capture now skips empty-string values (fix 5233a6e, RT6-5), so saved custom-metric charts no longer capture an invalid `metric: ""`. (9) Real saved map/heatmap/chart configs round-trip the validators (136-09). Operator UAT (2026-10-14, Claude driving the operator's signed-in Chrome, approved): heatmap add/restyle (AI and saved) PASS, session eye PASS, pills legible in light and dark, sizes 9/18/36 with no overlap, `set_layout` swap PASS, map + heatmap on a map-less dashboard with correct light/dark basemaps PASS, removal asks once / again after discard PASS, revert/forward/discard/reload persists nothing PASS.
+
+**New debt / follow-ups from Phase 136:**
+- Shape-key repair-counter defect (136 verifier): shape failures share the `<tool>:shape:?` key and are never cleared on success, so a repaired shape failure stays in `skipped`. Fixed red-first in **137-01** (prerequisite for 137 rendering `skipped`).
+- S6 Gemini spike verdict is **stale**: measured against the pre-136 tool set; 136-05 replaced it with 12 flat typed tools. Re-run the spike (it uses the live registry/rules/gateway) before or at Phase 142, combined with the >= 20 clean-trial re-run.
+- Phase 141 Keep MUST call `useAiSessionStore.getState().reset()` so `removalApproved` clears (Discard and reload already do).
+- Phase 137 must render `clarifications` and `skipped` from the SSE result and send `approvals.removeSaved` from `removalApproved`; its snapshot builder must use `layersOfMap` and emit `dynamicViewId`; `SessionBaseline.tables` must keep being passed or AI-added widget table checks are skipped.
+- Carried to 137 (operator approved routing): (a) the legend "AI heat" row and legend eye were not exercised (test map 117 has the legend panel off) -> 137-12 visual check on a map with the legend enabled; (b) an AI-added bignumber shows the label "value" (better default such as "Sum of fare_amount") -> 137; (c) layer-only AI edits do not badge/highlight the host map (AIWID-V20-06 covers widgets AND layers) -> 137 highlight work.
+- Operator size tuning of per-type default sizes remains open if real use shows them wrong (UAT found them acceptable).
+- Pre-existing noise: actionEngine canary spec logs "reading 'then'" TypeErrors from the records renderer mock (not a failure).
+
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next: `/gsd:plan-phase 136` (context gathered 2026-10-13: `.planning/phases/136-structural-edit-ops/136-CONTEXT.md`).**
+**Next:** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. Phase 137 planned (12 plans, 5 waves); next `/gsd:execute-phase 137`.
 
 **Open blockers:** none.
 
