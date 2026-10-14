@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 136 plans 01-11 executed; 136-12 operator UAT deferred (no Kinetica access) — steps in 136-12-UAT-STEPS.md"
+stopped_at: "Phase 137 context gathered (2026-10-14); next plan-phase 137. 136-12 operator UAT still deferred (136-12-UAT-STEPS.md); 136 verified human_needed"
 last_updated: "2026-10-14T00:00:00.000Z"
 progress:
   total_phases: 6
@@ -25,7 +25,8 @@ See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards star
 
 Milestone: v2.0 AI-Driven Dashboards
 Phase: 136 (Structural & Edit Ops) — plans 01-11 executed + fix 5233a6e, all gates green
-Plan: 136-12 PAUSED 2026-10-14 — operator UAT (Task 1 VAL_ATTR tile check, Task 2 visual) deferred: no Kinetica access. Exact console steps: `phases/136-structural-edit-ops/136-12-UAT-STEPS.md`. On reply: 136-12 Task 3 bookkeeping + SUMMARY, then the 136 verifier.
+Plan: 136-12 PAUSED 2026-10-14 — operator UAT (Task 1 VAL_ATTR tile check, Task 2 visual) deferred: no Kinetica access. Exact console steps: `phases/136-structural-edit-ops/136-12-UAT-STEPS.md`. On reply: 136-12 Task 3 bookkeeping + SUMMARY (also record: S6 stale vs 12-tool set, shape-key fix moved to 137, Keep must call reset() in 141). 136 verifier already ran 2026-10-14: human_needed, 4/4 automated (`136-VERIFICATION.md`).
+Next: Phase 137 (AI Widget & Streaming UI) — context gathered 2026-10-14 (`phases/137-ai-widget-streaming-ui/137-CONTEXT.md` D-01..D-19); next: plan-phase 137
 Status: Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
 Last activity: 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
