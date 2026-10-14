@@ -43,6 +43,7 @@ import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { applyWidgetActions } from "../../lib/applyWidgetAction";
 import ScaleLine from "ol/control/ScaleLine";
 import FullScreen from "ol/control/FullScreen";
+import ImageLayer from "ol/layer/Image";
 import * as clientModule from "../../api/client";
 
 /* ------------------------------------------------------------------ */
@@ -844,5 +845,65 @@ describe("OVK — allow-listed widget keys change the RENDERED widget", () => {
     });
     const sqls = runSqlSpy.mock.calls.map((c) => String(c[0]));
     expect(sqls.some((q) => /LIMIT 50 OFFSET/.test(q))).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  SEAM canary (136-07, Pitfall 11): v1.11 radio controls now take    */
+/*  effect for chart metric/aggregation and layer opacity. BEHAVIOUR   */
+/*  CHANGE: these allow-listed fields were silent no-ops before.       */
+/* ------------------------------------------------------------------ */
+
+describe("SEAM canary — radio contributions reach chart SQL and layer opacity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lastMapInstance = null;
+  });
+
+  it("SEAM-15: a radio-style {metric, aggregation} contribution re-runs bar SQL with MAX(fare_amount) without remount", async () => {
+    const runSqlSpy = vi.mocked(clientModule.runSql).mockResolvedValue({ column_headers: [], column_datatypes: [] } as any);
+    const { default: WidgetRenderer } = await import("./WidgetRenderer");
+    const widget = makeWidget({
+      id: 30,
+      type: "bar",
+      config: {
+        tableId: 5, table: "demo.trips", metricColumn: "tip", aggregation: "SUM", groupByColumn: "vendor_id",
+        sortDir: "DESC", limit: 10,
+        sql: "SELECT vendor_id, SUM(tip) AS value FROM demo.trips GROUP BY vendor_id ORDER BY value DESC LIMIT 10",
+      },
+    });
+    const tbls = [{ id: 5, schema: "demo", name: "trips", columns: { vendor_id: "string", tip: "double", fare_amount: "double" } }] as unknown as TableDto[];
+    await act(async () => {
+      render(
+        <DashboardContextProvider dashboardId={1} widgets={[widget]} dynamicViews={[]} retryDynamicView={() => {}}>
+          <WidgetRenderer widget={widget} tables={tbls} />
+        </DashboardContextProvider>,
+      );
+    });
+    const before = runSqlSpy.mock.calls.length;
+    await act(async () => {
+      applyWidgetActions(
+        [{ target: { kind: "widget", id: 30 }, configPatch: { metric: "fare_amount", aggregation: "max" } } as any],
+        { widgets: [widget], layers: [], dynamicViewIds: [] },
+        CANARY_CONTROL_ID,
+      );
+    });
+    const sqls = runSqlSpy.mock.calls.slice(before).map((c) => String(c[0]));
+    expect(sqls.some((q) => q.includes("MAX(fare_amount)"))).toBe(true);
+  });
+
+  it("SEAM-16: a layer {config:{opacity:0.5}} contribution reaches the map as POINTOPACITY 50 (setOpacity 0.5)", async () => {
+    useDashboardLayersStore.getState().setLayers([makeLayer({ id: 105 })]);
+    const { default: MapChartRenderer } = await import("./MapChartRenderer");
+    await act(async () => {
+      render(<MapChartRenderer widget={makeMapWidget({ includedLayerIds: [105] })} tables={defaultTables} />);
+    });
+    await act(async () => {
+      useWidgetActionStore.getState().setControlContribution(CANARY_CONTROL_ID, {
+        layer: { 105: { config: { opacity: 0.5 } } },
+      });
+    });
+    const opacities = (ImageLayer as any).mock.instances.flatMap((i: any) => i.setOpacity.mock.calls.map((c: any[]) => c[0]));
+    expect(opacities).toContain(0.5);
   });
 });
