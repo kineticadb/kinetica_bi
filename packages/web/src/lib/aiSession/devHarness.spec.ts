@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { installAiDevHarness } from "./devHarness";
 import { useAiSessionStore } from "../../store/aiSessionStore";
-import { baselineFixture } from "../../test/aiSessionHarness";
+import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { baselineFixture, mapWidget, recordsWidget, savedLayer } from "../../test/aiSessionHarness";
 
 const baseline = baselineFixture();
 type Row = Record<string, unknown>;
@@ -94,5 +95,138 @@ describe("devHarness feedback (GAP-134-02)", () => {
     const out = (logSpy.mock.calls as unknown[][]).map((c) => String(c[0])).join("\n");
     expect(out).toContain("Turn indices include patch turns");
     expect(out).toContain("show_scale_bar: true");
+  });
+});
+
+describe("devHarness Phase 136 ops (HARN6)", () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let uninstall: () => void;
+  const h = () => window.__kbiAiHarness!;
+  const ops = (i = -1) => {
+    const t = useAiSessionStore.getState().turns;
+    const turn = t[i < 0 ? t.length + i : i];
+    return turn.entries.map((e) => (e.op as { op: string } | null)?.op);
+  };
+  const install = (bl: ReturnType<typeof baselineFixture>) => {
+    uninstall?.();
+    uninstall = installAiDevHarness(
+      {
+        applyTurn: (input) => useAiSessionStore.getState().applyTurn(input, bl),
+        setCursor: (i) => useAiSessionStore.getState().setCursor(i, bl),
+        discard: () => useAiSessionStore.getState().reset(),
+      },
+      () => bl.widgets,
+    );
+  };
+  const chartFields = { metric: "fare_amount", aggregation: "avg", groupByColumn: "vendor_id", color: "teal" };
+
+  beforeEach(() => {
+    useAiSessionStore.getState().reset();
+    useDashboardLayersStore.getState().setLayers([]);
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    install(baselineFixture());
+  });
+  afterEach(() => {
+    uninstall();
+    useAiSessionStore.getState().reset();
+    useDashboardLayersStore.getState().setLayers([]);
+    vi.restoreAllMocks();
+  });
+
+  it("HARN6-1: addChart applies one add_widget turn with a negative tempId", () => {
+    const res = h().addChart("bar", "Fares", 5, chartFields);
+    expect(res.entries).toHaveLength(1);
+    expect(res.entries[0].result.status).toBe("applied");
+    expect((res.entries[0].op as { tempId: number }).tempId).toBeLessThan(0);
+    expect(useAiSessionStore.getState().derived.addedWidgets).toHaveLength(1);
+  });
+
+  it("HARN6-2: editChart / changeType / renameWidget / setLayout each yield one matching op", () => {
+    const id = (h().addChart("bar", "Fares", 5, chartFields).entries[0].op as { tempId: number }).tempId;
+    h().editChart(id, { aggregation: "max" });
+    expect(ops()).toEqual(["patch"]);
+    h().changeType(id, "line");
+    expect(ops()).toEqual(["change_widget_type"]);
+    h().renameWidget(id, "x");
+    expect(ops()).toEqual(["set_widget_title"]);
+    h().setLayout([{ id, x: 0, y: 100, w: 18, h: 30 }]);
+    expect(ops()).toEqual(["set_layout"]);
+    expect(useAiSessionStore.getState().turns.every((t) => t.entries[0].result.status === "applied")).toBe(true);
+  });
+
+  it("HARN6-3: saved removal needs approveRemoval(); discard resets approval", () => {
+    const first = h().removeWidget(50);
+    expect(first.entries[0].result).toMatchObject({ status: "skipped", reason: "needs_confirmation" });
+    const out = (logSpy.mock.calls as unknown[][]).map((c) => String(c[0])).join("\n");
+    expect(out).toContain("approveRemoval()");
+    h().approveRemoval();
+    expect((h().state() as { removalApproved: boolean }).removalApproved).toBe(true);
+    expect(h().removeWidget(50).entries[0].result.status).toBe("applied");
+    h().discard();
+    expect((h().state() as { removalApproved: boolean }).removalApproved).toBe(false);
+  });
+
+  const heat = { tableId: 5, spatialMode: "latlon" as const, latColumn: "lat", lonColumn: "lon", style: { colormap: "plasma" as const } };
+
+  it("HARN6-4: addHeatmap host resolution, edit, visibility and removal", () => {
+    // two maps, neither hosting table 5 -> ask: no turn
+    expect(h().addHeatmap(heat)).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    expect(useAiSessionStore.getState().turns).toHaveLength(0);
+    // exactly one map hosts table 5
+    const bl = baselineFixture({
+      widgets: [mapWidget(42, { includedLayerIds: [7] }), mapWidget(43, { includedLayerIds: [8] }), recordsWidget(50)],
+    });
+    useDashboardLayersStore.getState().setLayers([savedLayer(7, { table_id: 5 }), savedLayer(8, { table_id: 1 })]);
+    install(bl);
+    const res = h().addHeatmap(heat)!;
+    expect(res.entries[0].result.status).toBe("applied");
+    expect((res.entries[0].op as { widgetId: number }).widgetId).toBe(42);
+    const layerId = (res.entries[0].op as { tempId: number }).tempId;
+    h().editHeatmap(layerId, { blurRadius: 12 });
+    expect(ops()).toEqual(["patch"]);
+    expect(useAiSessionStore.getState().turns.at(-1)!.entries[0].result.status).toBe("applied");
+    const before = useAiSessionStore.getState().turns.length;
+    h().setLayerVisible(layerId, false);
+    expect(useAiSessionStore.getState().tempLayerVisibility[layerId]).toBe(false);
+    expect(useAiSessionStore.getState().turns).toHaveLength(before);
+    h().setLayerVisible(7, false);
+    expect(ops()).toEqual(["patch"]);
+    h().removeLayer(layerId);
+    expect(ops()).toEqual(["remove_layer"]);
+    expect(useAiSessionStore.getState().derived.addedLayers).toHaveLength(0);
+  });
+
+  it("HARN6-5: help() lists methods, palette names and ramps, and keeps turn numbering", () => {
+    h().help();
+    const out = (logSpy.mock.calls as unknown[][]).map((c) => String(c[0])).join("\n");
+    for (const m of ["addChart", "editChart", "changeType", "renameWidget", "setLayout", "addHeatmap", "editHeatmap", "setLayerVisible", "removeLayer", "approveRemoval"]) {
+      expect(out).toContain(m);
+    }
+    expect(out).toContain("violet");
+    expect(out).toContain("YlOrRd");
+    expect(out).toContain("Turn indices include patch turns");
+  });
+
+  it("HARN6-6: state() exposes removalApproved, aiEditedWidgetIds and layout", () => {
+    const st = h().state() as Record<string, unknown>;
+    expect(st.removalApproved).toBe(false);
+    expect(Array.isArray(st.aiEditedWidgetIds)).toBe(true);
+    expect(st.layout).toEqual({});
+  });
+
+  it("HARN6-9: no map on the dashboard: addChart map then addHeatmap resolves to the new temp map (D-12)", () => {
+    install(baselineFixture({ widgets: [recordsWidget(50)], layers: [] }));
+    expect(h().addHeatmap(heat)).toBeNull();
+    const mapId = (h().addChart("map", "Trips map").entries[0].op as { tempId: number }).tempId;
+    const res = h().addHeatmap({ tableId: 5, spatialMode: "latlon", latColumn: "lat", lonColumn: "lon" })!;
+    expect(res.entries[0].result.status).toBe("applied");
+    expect((res.entries[0].op as { widgetId: number }).widgetId).toBe(mapId);
+    const map = useAiSessionStore.getState().derived.addedWidgets.find((w) => w.id === mapId)!;
+    expect(map.config.basemapLight).toBeDefined();
+    expect(map.config.basemapDark).toBeDefined();
   });
 });

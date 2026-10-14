@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, act, renderHook } from "@testing-library/react";
+import { useEffectiveLayers } from "../hooks/useEffectiveLayers";
 import { useWidgetActionStore } from "./widgetActionStore";
 import fs from "node:fs";
 import path from "node:path";
@@ -223,5 +224,30 @@ describe("Phase 136 store: removal approval, layout geometry, AI-edited selector
     expect(selectAiEditedWidgetIds(st()).size).toBe(0);
     st().setCursor(1, baseline);
     expect(selectAiEditedWidgetIds(st()).has(50)).toBe(true);
+  });
+});
+
+describe("Phase 136 store: session-only temp layer visibility", () => {
+  beforeEach(() => st().reset());
+  afterEach(() => st().reset());
+
+  it("HARN6-8: flag stored for negative ids only, cleared by reset, pruned with the layer, applied by useEffectiveLayers", () => {
+    runTurns(baseline, [[addLayerOp(-4, 42)]]);
+    st().setTempLayerVisible(-4, false);
+    st().setTempLayerVisible(7, false);
+    expect(st().tempLayerVisibility).toEqual({ [-4]: false });
+    const { result } = renderHook(() => useEffectiveLayers());
+    const l4 = result.current.find((l) => l.id === -4)!;
+    expect((l4.config as Record<string, unknown>).visible).toBe(false);
+    // revert past the add: the layer is gone, so its flag is pruned
+    st().setCursor(-1, baseline);
+    expect(st().tempLayerVisibility).toEqual({});
+    st().setCursor(0, baseline);
+    expect(st().tempLayerVisibility).toEqual({});
+    st().setTempLayerVisible(-4, false);
+    runTurns(baseline, [[removeWidgetOp(-99)]]); // skipped turn, layer still live
+    expect(st().tempLayerVisibility).toEqual({ [-4]: false });
+    st().reset();
+    expect(st().tempLayerVisibility).toEqual({});
   });
 });

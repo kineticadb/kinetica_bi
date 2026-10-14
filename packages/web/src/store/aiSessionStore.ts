@@ -37,6 +37,9 @@ type AiSessionState = {
   derived: SessionDerived;
   removalApproved: boolean;
   approveRemoval(): void;
+  /** 136 D-13/134 D-16: session-only visibility for AI-added (negative id) layers. */
+  tempLayerVisibility: Record<number, boolean>;
+  setTempLayerVisible(id: number, visible: boolean): void;
   pendingLeave: { proceed: () => void } | null;
   applyTurn(input: TurnInput, baseline: SessionBaseline): { turnId: string; entries: TurnEntry[] };
   setCursor(index: number, baseline: SessionBaseline): void;
@@ -80,6 +83,15 @@ function addedTempIds(entries: TurnEntry[]): Set<number> {
   return s;
 }
 
+function pruneTempVisibility(vis: Record<number, boolean>, d: SessionDerived): Record<number, boolean> {
+  const live = new Set(d.addedLayers.map((l) => l.id));
+  const keys = Object.keys(vis);
+  if (keys.every((k) => live.has(Number(k)))) return vis;
+  const out: Record<number, boolean> = {};
+  for (const k of keys) if (live.has(Number(k))) out[Number(k)] = vis[Number(k)];
+  return out;
+}
+
 const initial = {
   dashboardId: null as number | null,
   baseEntries: [] as TurnEntry[],
@@ -89,6 +101,7 @@ const initial = {
   geometry: {} as Record<number, SessionRect>,
   derived: EMPTY_DERIVED,
   removalApproved: false,
+  tempLayerVisibility: {} as Record<number, boolean>,
   pendingLeave: null as { proceed: () => void } | null,
 };
 
@@ -129,7 +142,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     }
     for (const [k, v] of Object.entries(s.geometry)) if (live.has(Number(k)) && !moved.has(Number(k))) geometry[Number(k)] = v;
     const derived = foldSession(baseline, all);
-    set({ dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived });
+    set({ dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
     return { turnId: turn.id, entries };
   },
@@ -138,7 +151,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const s = get();
     const cursor = Math.max(-1, Math.min(index, s.turns.length - 1));
     const derived = foldSession(baseline, prefixEntries(s.baseEntries, s.turns, cursor));
-    set({ cursor, derived });
+    set({ cursor, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
   },
 
@@ -161,6 +174,11 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   approveRemoval: () => set({ removalApproved: true }),
+
+  setTempLayerVisible: (id, visible) => {
+    if (id >= 0) return;
+    set((s) => ({ tempLayerVisibility: { ...s.tempLayerVisibility, [id]: visible } }));
+  },
 
   setPendingLeave: (p) => set({ pendingLeave: p }),
 }));

@@ -2,8 +2,11 @@
 // the branch (and this module) is eliminated from production bundles. Lets the operator drive
 // scripted AI turns from the browser console. Phase 137's AI widget replaces it as the real driver.
 import type { WidgetDto } from "../../api/client";
+import { resolveHeatmapHost, layersOfMap, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS } from "@kinetica-bi/shared";
 import type { TurnInput, TurnEntry } from "./types";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
+import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { applySessionToLayers, applySessionToWidgets } from "./applySession";
 
 type Actions = {
   applyTurn(input: TurnInput): { turnId: string; entries: TurnEntry[] };
@@ -11,7 +14,30 @@ type Actions = {
   discard(): void;
 };
 
+type Result = { turnId: string; entries: TurnEntry[] };
+type Rect = { id: number; x: number; y: number; w: number; h: number };
+type HeatmapSpec = {
+  tableId: number;
+  spatialMode: "latlon" | "wkt" | "wkb";
+  latColumn?: string;
+  lonColumn?: string;
+  wktColumn?: string;
+  wkbColumn?: string;
+  name?: string;
+  style?: Record<string, unknown>;
+};
+
 type Harness = {
+  approveRemoval(): void;
+  addChart(type: string, title: string, tableId?: number, fields?: Record<string, unknown>): Result;
+  editChart(id: number, fields: Record<string, unknown>): Result;
+  changeType(id: number, type: string): Result;
+  renameWidget(id: number, title: string): Result;
+  setLayout(items: Rect[]): Result;
+  addHeatmap(spec: HeatmapSpec, mapId?: number): Result | null;
+  editHeatmap(layerId: number, style: Record<string, unknown>): Result;
+  setLayerVisible(layerId: number, visible: boolean): Result | void;
+  removeLayer(layerId: number): Result;
   turn(ops: unknown[], prompt?: string): { turnId: string; entries: TurnEntry[] };
   addWidget(type?: string, title?: string, config?: Record<string, unknown>): { turnId: string; entries: TurnEntry[] };
   removeWidget(id: number): { turnId: string; entries: TurnEntry[] };
@@ -59,10 +85,68 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
   const run = (ops: unknown[], prompt = "harness turn") => {
     const res = actions.applyTurn({ prompt, ops });
     console.table(res.entries.map((e) => ({ op: (e.op as { op?: string } | null)?.op ?? "?", ...e.result })));
+    if (res.entries.some((e) => e.result.status === "skipped" && e.result.reason === "needs_confirmation")) {
+      console.log(
+        "Removing saved content needs confirmation: run __kbiAiHarness.approveRemoval() then repeat (Phase 137 shows Yes/No buttons).",
+      );
+    }
     reportPosition("turn");
     return res;
   };
+  const nextId = () => useAiSessionStore.getState().allocateTempId();
+  const patchOp = (kind: "widget" | "layer", id: number, configPatch: Record<string, unknown>) => ({
+    op: "patch",
+    action: { target: { kind, id }, configPatch },
+  });
+  // Same host rule as the gateway (D-11/D-12), over saved + session maps and layers.
+  const resolveHost = (tableId: number): number | null => {
+    const d = useAiSessionStore.getState().derived;
+    const widgets = applySessionToWidgets([...getSavedWidgets()], d);
+    const layers = applySessionToLayers(useDashboardLayersStore.getState().layers, d);
+    const maps = widgets.filter((w) => w.type === "map");
+    const hostLayers = maps.flatMap((m) =>
+      layersOfMap(m, layers).map((l) => ({ id: l.id, widgetId: m.id, tableId: l.table_id })),
+    );
+    const host = resolveHeatmapHost({ maps: maps.map((m) => ({ id: m.id, title: m.title })), layers: hostLayers, tableId });
+    if (host.kind === "use") return host.widgetId;
+    if (host.kind === "add_map") console.warn("No map on this dashboard: add a map widget first, e.g. addChart('map', 'Trips map').");
+    else console.warn("More than one candidate map; pass mapId as the second argument:", host.options);
+    return null;
+  };
   const harness: Harness = {
+    approveRemoval: () => {
+      useAiSessionStore.getState().approveRemoval();
+      console.log("Removal of saved content approved for this session; repeat the removal call.");
+    },
+    addChart: (type, title, tableId, fields = {}) =>
+      run([
+        {
+          op: "add_widget",
+          tempId: nextId(),
+          type,
+          title,
+          config: { ...fields, ...(tableId !== undefined ? { tableId } : {}) },
+        },
+      ]),
+    editChart: (id, fields) => run([patchOp("widget", id, fields)]),
+    changeType: (id, type) => run([{ op: "change_widget_type", id, type }]),
+    renameWidget: (id, title) => run([{ op: "set_widget_title", id, title }]),
+    setLayout: (items) => run([{ op: "set_layout", items }]),
+    addHeatmap: (spec, mapId) => {
+      const widgetId = mapId ?? resolveHost(spec.tableId);
+      if (widgetId === null) return null;
+      return run([{ op: "add_layer", tempId: nextId(), widgetId, renderMode: "heatmap", ...spec }]);
+    },
+    editHeatmap: (layerId, style) => run([patchOp("layer", layerId, style)]),
+    setLayerVisible: (layerId, visible) => {
+      if (layerId < 0) {
+        useAiSessionStore.getState().setTempLayerVisible(layerId, visible);
+        reportPosition(`setLayerVisible(${layerId}, ${visible})`);
+        return;
+      }
+      return run([patchOp("layer", layerId, { visible })]);
+    },
+    removeLayer: (layerId) => run([{ op: "remove_layer", id: layerId }]),
     turn: run,
     addWidget: (type = "records", title = "AI widget", config = {}) =>
       run([{ op: "add_widget", tempId: useAiSessionStore.getState().allocateTempId(), type, title, config }]),
@@ -86,6 +170,9 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
         droppedCount: s.droppedCount,
         hasUnsavedAiChanges: hasUnsavedAiChanges(),
         geometry: s.geometry,
+        removalApproved: s.removalApproved,
+        aiEditedWidgetIds: [...s.derived.aiEditedWidgetIds],
+        layout: s.derived.layout,
       };
     },
     help: () => {
@@ -94,6 +181,11 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
         [
           "__kbiAiHarness (DEV only)",
           "  addWidget(type='records', title, config)   removeWidget(id)   patchWidget(id, configPatch)",
+          "  addChart(type, title, tableId, {metric, aggregation, groupByColumn, color, ...})   editChart(id, fields)   changeType(id, 'bar'|'line'|'pie')   renameWidget(id, title)",
+          "  setLayout([{id,x,y,w,h}])   addHeatmap({tableId, spatialMode, latColumn, lonColumn, style}, mapId?)   editHeatmap(layerId, {colormap, blurRadius, opacity, valueColumn, name})",
+          "  setLayerVisible(layerId, bool)   removeLayer(layerId)   approveRemoval() (then repeat a saved-content removal)",
+          `  chart colour names: ${AI_PALETTE_NAMES.join(", ")}`,
+          `  heatmap ramps: ${AI_HEATMAP_RAMPS.join(", ")}`,
           "  turn(ops[], prompt)   revert(i)/forward(i) (-1 = saved dashboard)   discard()   state()",
           "  map widgets accept show_popup / show_scale_bar / show_fullscreen; records accept page_size",
           "  e.g. patchWidget(<mapId>, { show_scale_bar: true })  (false equals the default, so it shows no change)",

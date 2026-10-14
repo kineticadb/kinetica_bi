@@ -13,5 +13,6 @@ import { applySessionToLayers } from "../lib/aiSession/applySession";
 export function useEffectiveLayers(): DashboardLayerDto[] {
   const saved = useDashboardLayersStore((s) => s.layers);
   const derived = useAiSessionStore((s) => s.derived);
-  return useMemo(() => applySessionToLayers(saved, derived), [saved, derived]);
+  const tempVisibility = useAiSessionStore((s) => s.tempLayerVisibility);
+  return useMemo(() => applySessionToLayers(saved, derived, tempVisibility), [saved, derived, tempVisibility]);
 }

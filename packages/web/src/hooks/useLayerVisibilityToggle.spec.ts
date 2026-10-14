@@ -126,3 +126,29 @@ describe("useLayerVisibilityToggle - Phase 134 D-16 (AI session vs eye toggle)",
     expect((layer.config as Record<string, unknown>).visible).toBe(true);
   });
 });
+
+describe("useLayerVisibilityToggle - Phase 136 (session-only eye for AI layers)", () => {
+  beforeEach(() => {
+    updateLayerApi.mockReset();
+    useAiSessionStore.getState().reset();
+  });
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(
+      DashboardContextProvider,
+      { dashboardId: 1, widgets: [], dynamicViews: [], retryDynamicView: () => {}, children },
+    );
+
+  it("HARN6-7: toggling a temp layer writes the session flag, never the API or the saved store", () => {
+    act(() => {
+      useAiSessionStore.getState().applyTurn({ prompt: "p", ops: [addLayerOp(-4, 42)] }, baselineFixture());
+    });
+    const before = useDashboardLayersStore.getState().layers;
+    const { result } = renderHook(() => useLayerVisibilityToggle(), { wrapper });
+    act(() => result.current(-4, false));
+    expect(useAiSessionStore.getState().tempLayerVisibility[-4]).toBe(false);
+    act(() => result.current(-4, true));
+    expect(useAiSessionStore.getState().tempLayerVisibility[-4]).toBe(true);
+    expect(updateLayerApi).not.toHaveBeenCalled();
+    expect(useDashboardLayersStore.getState().layers).toBe(before);
+  });
+});

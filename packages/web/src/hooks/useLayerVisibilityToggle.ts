@@ -23,6 +23,7 @@ import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useDashboardContextOptional } from "../components/DashboardContext";
 import { useToastStore } from "../store/toast";
+import { useAiSessionStore } from "../store/aiSessionStore";
 
 export function useLayerVisibilityToggle(): (
   layerId: number,
@@ -33,7 +34,11 @@ export function useLayerVisibilityToggle(): (
 
   return useCallback(
     (layerId: number, nextVisible: boolean) => {
-      if (layerId < 0) return; // Phase 134 D-16: AI temp layers are session-only; never reach the saved store or apiUpdateLayer. Visibility of AI layers is wired in Phase 136.
+      // Phase 136 (D-13, 134 D-16): AI temp layers toggle in the session only; never the saved store or apiUpdateLayer.
+      if (layerId < 0) {
+        useAiSessionStore.getState().setTempLayerVisible(layerId, nextVisible);
+        return;
+      }
       const layer = useDashboardLayersStore
         .getState()
         .layers.find((l) => l.id === layerId);
