@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { WidgetDto, DynamicViewRow } from "../api/client";
 import type { WidgetAction, WidgetActionResult } from "../lib/widgetAction";
 import type { WidgetActionsResult } from "../lib/applyWidgetAction";
+import type { AskContext } from "../lib/aiSession/askRunner";
 
 /**
  * Phase 15 + Phase 30 + Phase 35.
@@ -82,6 +83,8 @@ export type DashboardContextValue = {
    * Use for RadioGroupRenderer select dispatch.
    */
   applyWidgetActions: (actions: WidgetAction[], controlId: number) => WidgetActionsResult;
+  /** 137: accessor the AI Assistant widget uses to ask. Provided by DashboardsPage (137-11); undefined = widget shows "unavailable". */
+  ai?: AskContext;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -119,6 +122,7 @@ export const DashboardContextProvider = ({
   retryDynamicView,
   applyWidgetAction = noopApplyWidgetAction,
   applyWidgetActions = noopApplyWidgetActions,
+  ai,
   children,
 }: {
   dashboardId: number;
@@ -129,6 +133,8 @@ export const DashboardContextProvider = ({
   applyWidgetAction?: (action: WidgetAction, controlId: number) => WidgetActionResult;
   /** Phase 60.2 (RADIOMULTI-V111-01): optional — defaults to a safe no-op. */
   applyWidgetActions?: (actions: WidgetAction[], controlId: number) => WidgetActionsResult;
+  /** 137: optional AI ask accessor. */
+  ai?: AskContext;
   children: ReactNode;
 }) => {
   // Memoize so consumers don't see a new context object identity on every
@@ -141,9 +147,10 @@ export const DashboardContextProvider = ({
       retryDynamicView,
       applyWidgetAction,
       applyWidgetActions,
+      ai,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction, applyWidgetActions],
+    [dashboardId, widgets, dynamicViews, retryDynamicView, applyWidgetAction, applyWidgetActions, ai],
   );
   return (
     <DashboardContext.Provider value={value}>
