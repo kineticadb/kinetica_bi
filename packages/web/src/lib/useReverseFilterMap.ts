@@ -36,6 +36,7 @@ const NON_TRIGGER_TYPES = new Set([
   "legend",
   "datafilter",
   "radiogroup",
+  "ai", // 137: AI Assistant widget runs no SQL
   // "timeline" / "numericline" / "calendar" REMOVED (Phase 109.2 — FSCOPE-V120-05): these three
   // widgets are combo-store CONSUMERS and need a scoped vizToHash binding, same as bar/pie/table.
   // Must mirror useCombinationOrchestrator.ts's NON_TRIGGER_TYPES exactly (a mismatch is the

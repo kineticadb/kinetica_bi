@@ -23,6 +23,7 @@ import registerTimeline from "./timeline";
 import registerNumericLine from "./numericline";
 import registerRadioGroup from "./radio-group";
 import registerCalendar from "./calendar";
+import registerAi from "./ai";
 
 export function registerAllChartTypes() {
   registerBar();
@@ -41,4 +42,5 @@ export function registerAllChartTypes() {
   registerNumericLine();    // Numeric Line Chart — numeric-X, interval-binned, multi-metric
   registerRadioGroup();     // Phase 59 (RADIO-V111-01): Radio Group control widget
   registerCalendar();       // Phase 66 (CAL-V113-01): Calendar Heatmap widget
+  registerAi();             // Phase 137 (AIWID-V20-01): AI Assistant widget
 }

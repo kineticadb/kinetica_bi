@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { registerAllChartTypes } from "./definitions";
 import { getAllChartTypes, getChartType } from "./registry";
 
@@ -51,5 +53,23 @@ describe("chart-type registry — addable flag (add-visualization picker)", () =
     expect(hm?.usesAggregation).toBe(true);
     expect(hm?.requiresGroupBy).toBe(true);
     expect(hm?.usesDataSource).not.toBe(false);
+  });
+
+  it("REG-AI-1: ai chart type is registered, SQL-free and addable", () => {
+    const d = getChartType("ai");
+    expect(d?.label).toBe("AI Assistant");
+    expect(d?.usesAggregation).toBe(false);
+    expect(d?.usesDataSource).toBe(false);
+    expect(d?.supportsDrillDown).toBe(false);
+    expect(d?.fields).toEqual([]);
+    expect(d?.addable).not.toBe(false);
+  });
+
+  it("REG-AI-2: both NON_TRIGGER_TYPES sets contain ai", () => {
+    for (const f of ["../../hooks/useCombinationOrchestrator.ts", "../../lib/useReverseFilterMap.ts"]) {
+      const src = readFileSync(resolve(__dirname, f), "utf8");
+      const block = src.match(/const NON_TRIGGER_TYPES = new Set\(\[([\s\S]*?)\]\);/);
+      expect(block?.[1]).toContain('"ai"');
+    }
   });
 });

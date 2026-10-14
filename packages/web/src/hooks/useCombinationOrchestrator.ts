@@ -84,6 +84,7 @@ const NON_TRIGGER_TYPES = new Set([
   "legend",
   "datafilter",
   "radiogroup",
+  "ai", // 137: AI Assistant widget runs no SQL
   // "timeline" / "numericline" / "calendar" REMOVED (Phase 109.2 — FSCOPE-V120-05): these three
   // widgets are combo-store CONSUMERS (they read vizToHash — see TimelineRenderer.tsx,
   // NumericLineRenderer.tsx, CalendarRenderer.tsx post-109.2 read path) and need a scoped
