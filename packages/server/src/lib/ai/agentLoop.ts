@@ -269,6 +269,10 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
           if (g.op.op === "add_widget") addedWidgets++;
           const slot = opSlot(g.op);
           if (slot !== undefined) unresolvedBySlot.delete(slot);
+          // 136 shape-key defect: a slotless shape failure is keyed `${tool}:shape:?`; a later success by the same tool repairs it.
+          const shapeKey = `${tool.name}:shape:?`;
+          unresolvedBySlot.delete(shapeKey);
+          attemptsByRef.delete(shapeKey);
           tools.push({ name: tool.name, ...(parsedOk ? { args: parsedArgs } : {}), result: "ok" });
           answer([part.config("OK: " + g.label)]);
           deps.emit({ type: "step", n: steps, tool: tool.name, label: g.label });

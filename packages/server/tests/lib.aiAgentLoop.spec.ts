@@ -265,6 +265,19 @@ describe("Phase 136 repair counting, cap, clarifications", () => {
     expect(s.describe).toHaveBeenCalledTimes(4);
   });
 
+  it("W2-5 shape failure then repaired leaves skipped empty and ops 1", async () => {
+    const s = setup([turn(call("a", "add_widget", { type: "bar" })), turn(addW("b", -1)), final("Added.")]);
+    const r = await run(s);
+    expect(r.ops).toHaveLength(1);
+    expect(r.skipped).toEqual([]);
+  });
+
+  it("W2-6 a later distinct malformed call after a success gets first-attempt guidance", async () => {
+    const s = setup([turn(call("a", "add_widget", { type: "bar" })), turn(addW("c", -1)), turn(call("b", "add_widget", { type: "pie" })), final("done")]);
+    await run(s);
+    expect(toolText(s, 3, "b")).not.toContain("Do not retry");
+  });
+
   it("CAP6-1 the 7th add_widget is skipped with stage cap and never reaches the gateway", async () => {
     const adds = [1, 2, 3, 4, 5, 6, 7].map((i) => addW(`a${i}`, -i));
     const s = setup([turn(...adds, rename("p")), final("done")]);

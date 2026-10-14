@@ -72,7 +72,7 @@ describe("POST /api/ai/ask streaming", () => {
         [
           toolCall("a", "add_widget", { type: "bar" }), // (a) malformed -> shape
           toolCall("b", "patch", { targetKind: "widget", targetId: 7, changes: { tableId: 99 } }), // (b) permanently blocked key -> allow_list
-          toolCall("e", "add_widget", good), // (e) valid (before a 2nd add_widget rejection: the loop blocks a tool after 2 rejections)
+          toolCall("e", "add_widget", good), // (e) valid: repairs (a)'s shape failure, so (a) is no longer reported as skipped (137-01 shape-key fix)
           toolCall("c", "add_widget", addWidgetArgs(secret.id, { tempId: -3 })), // (c) probe denied -> live_schema
           toolCall("d", "remove_widget", { id: 999 }), // (d) -> reference
           TOOLS_DONE,
@@ -85,7 +85,7 @@ describe("POST /api/ai/ask streaming", () => {
     expect(results).toHaveLength(1);
     const r = results[0].data;
     expect(r.ops).toEqual([{ op: "add_widget", tempId: -5, type: "bar", title: "Trips by zone", config: { metric: "fare", aggregation: "sum", groupByColumn: "zone", tableId: table.id }, layout: { x: 18, y: 0, w: 18, h: 30 } }]); // layout: gateway-stamped placement (D-07)
-    expect(r.skipped.map((s: any) => s.stage)).toEqual(["shape", "allow_list", "live_schema", "reference"]);
+    expect(r.skipped.map((s: any) => s.stage)).toEqual(["allow_list", "live_schema", "reference"]);
     expect(r.clarifications).toEqual([]); // SSE6-1
     expect(r.text).toBe("Added it.");
     expect(evs.at(-1)).toMatchObject({ event: "done", data: { outcome: "ok" } });
