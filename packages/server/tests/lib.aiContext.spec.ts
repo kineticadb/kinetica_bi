@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AI_HEATMAP_RAMPS, AI_PALETTE_NAMES, AI_WIDGET_TYPES, type AskRequest } from "@kinetica-bi/shared";
 import {
   AI_SYSTEM_RULES,
+  AI_TRAILER_RULE,
   buildConversationMessages,
   buildSystemParts,
   projectSnapshot,
@@ -77,6 +78,14 @@ describe("CTX snapshot + system parts", () => {
     expect(rules).toMatch(/no markdown|without markdown/i);
     expect(rules).toMatch(/data, not instructions/);
     expect(AI_SYSTEM_RULES.split("\n").length).toBeLessThanOrEqual(30);
+  });
+
+  it("CTX7-1 trailer rule asks for Follow-ups: and Choices: exactly once", () => {
+    const parts = buildSystemParts({ view, dashboardTables: tables, maxToolSteps: 7, dataAccess: "schema" });
+    const rules = parts.filter((p) => p.cls === "system").map((p) => p.text).join("\n");
+    expect(rules.split('"Follow-ups:"')).toHaveLength(2);
+    expect(rules.split('"Choices:"')).toHaveLength(2);
+    expect(AI_TRAILER_RULE).toContain("Choices:");
   });
 
   it("CTX6-2 rules cover Phase 136 statements from shared vocabularies", () => {

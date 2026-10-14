@@ -1,6 +1,7 @@
 // Phase 135-10 Task 3: streaming behaviour of POST /api/ai/ask through the real route (SSE-R).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Server } from "node:http";
+import { AskResultEventSchema } from "@kinetica-bi/shared";
 import { createApp } from "../src/index";
 import { db, createTable, addDashboardTable } from "../src/db";
 import { deleteSession } from "../src/sessionStore";
@@ -204,5 +205,35 @@ describe("POST /api/ai/ask streaming", () => {
     const text = await res.text();
     expect(text).toContain(": ping");
     expect(text).toContain("event: done");
+  });
+  it("SSE7-1 trailer is stripped; followUps and applied ride the strict result event", async () => {
+    const { ask, table } = await boot();
+    use(new ScriptedProvider([[toolCall("a", "add_widget", addWidgetArgs(table.id, { tempId: -1 })), TOOLS_DONE], finalText("Added it.\n\nFollow-ups:\n- Show by month\n- Add a pie")]));
+    const evs = await readSse(await ask());
+    const r = evs.find((e) => e.event === "result")!.data;
+    expect(r.text).toBe("Added it.");
+    expect(r.followUps).toEqual(["Show by month", "Add a pie"]);
+    expect(r.applied).toHaveLength(1);
+    expect(() => AskResultEventSchema.parse(r)).not.toThrow();
+    expect(auditRows().at(-1).answer_text).toBe("Added it."); // SSE7-3 audit stores the stripped text
+  });
+
+  it("SSE7-2 Choices become a choose_option clarification", async () => {
+    const { ask } = await boot();
+    use(new ScriptedProvider([finalText("Which one?\n\nChoices:\n- Fare\n- Tip")]));
+    const evs = await readSse(await ask());
+    const r = evs.find((e) => e.event === "result")!.data;
+    expect(r.ops).toEqual([]);
+    expect(r.clarifications).toEqual([{ kind: "choose_option", question: "Which one?", options: [{ id: "1", label: "Fare" }, { id: "2", label: "Tip" }] }]);
+    expect(() => AskResultEventSchema.parse(r)).not.toThrow();
+  });
+
+  it("SSE7-3 no trailer: followUps empty, text unchanged", async () => {
+    const { ask } = await boot();
+    use(new ScriptedProvider([finalText("Plain answer.")]));
+    const evs = await readSse(await ask());
+    const r = evs.find((e) => e.event === "result")!.data;
+    expect(r.followUps).toEqual([]);
+    expect(r.text).toBe("Plain answer.");
   });
 });

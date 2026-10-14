@@ -1,5 +1,5 @@
 // Phase 135-10: one admitted ask -> streamed SSE events + the FinalizeInput for the audit row. Never throws.
-// Events: status / step / result (ONLY on outcome ok, once) / error / done. Nothing from a non-ok answer is applied.
+// Events: status / step / result {answerId,text,ops,skipped,clarifications,followUps,applied} (ONLY on outcome ok, once) / error / done. Nothing from a non-ok answer is applied.
 import type { AskRequest } from "@kinetica-bi/shared";
 import { listDashboardTables, listTables } from "../../db";
 import type { AiConfig } from "../aiConfig";
@@ -10,6 +10,7 @@ import { principalForSession, SessionEndedError } from "../exportRunner";
 import { AI_USER_MESSAGES, runAgentLoop, type AgentLoopResult } from "./agentLoop";
 import { buildConversationMessages, buildSystemParts, projectSnapshot } from "./context";
 import { createLiveSchema } from "./liveSchema";
+import { parseReplyTrailer, toChoiceClarification } from "./replyTrailer";
 import { getAiProviderFactory } from "./providers";
 import { defaultSleep } from "./retry";
 import { createShadow } from "./shadow";
@@ -123,8 +124,11 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
 
     usage = result.usage;
     steps = result.steps;
-    if (result.outcome === "ok") {
-      sse.send("result", { answerId: input.auditId, text: result.text, ops: result.ops, skipped: result.skipped, clarifications: result.clarifications });
+    const trailer = result.outcome === "ok" ? parseReplyTrailer(result.text) : null;
+    if (result.outcome === "ok" && trailer) {
+      const choice = toChoiceClarification(trailer.text, trailer.choices);
+      const clarifications = choice && !result.clarifications.some((c) => c.kind === "choose_option") ? [...result.clarifications, choice] : result.clarifications;
+      sse.send("result", { answerId: input.auditId, text: trailer.text, ops: result.ops, skipped: result.skipped, clarifications, followUps: trailer.followUps, applied: result.applied });
     } else {
       const code = errorCodeFor(result);
       sse.send("error", { code, message: result.message ?? FALLBACK_MESSAGE[code] });
@@ -133,7 +137,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       auditId: input.auditId,
       outcome: result.outcome,
       ...(result.detail !== undefined ? { detail: result.detail } : {}),
-      answerText: result.text,
+      answerText: trailer ? trailer.text : result.text,
       steps: result.steps,
       ...(result.usage.inputTokens !== undefined ? { inputTokens: result.usage.inputTokens } : {}),
       ...(result.usage.outputTokens !== undefined ? { outputTokens: result.usage.outputTokens } : {}),
