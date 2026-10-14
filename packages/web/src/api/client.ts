@@ -5,6 +5,7 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
+import type { AskRequest } from "@kinetica-bi/shared";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -2067,4 +2068,20 @@ export const preflightExportDownload = async (
     // non-JSON body: keep fallback
   }
   return { ok: false, status: r.status, message };
+};
+
+/** 137: SSE over POST. Returns the raw Response; callers must check `ok` before reading the stream. Never retried. */
+export const askAi = (body: AskRequest, signal: AbortSignal): Promise<Response> =>
+  apiFetch(`${API_BASE}/api/ai/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+export const getAiConfig = async (): Promise<{ enabled: boolean }> => {
+  const r = await apiFetch(`${API_BASE}/api/ai/config`);
+  if (!r.ok) return { enabled: false };
+  const j = (await r.json()) as { enabled?: unknown };
+  return { enabled: j.enabled === true };
 };
