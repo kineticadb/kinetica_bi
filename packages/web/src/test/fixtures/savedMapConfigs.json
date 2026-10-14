@@ -1,0 +1,1674 @@
+{
+  "_source": "read-only export of packages/server/data/kinetica.db, Phase 136 map test plan",
+  "heatmapLayers": [
+    {
+      "id": 4,
+      "table_id": 1,
+      "config": {
+        "renderMode": "heatmap",
+        "spatialMode": "latlon",
+        "colormap": "plasma",
+        "reverseColormap": false,
+        "pointColor": "FF3B82F6",
+        "pointSize": 5,
+        "pointOpacity": 100,
+        "pointShape": "circle",
+        "shapeFillColor": "FFFF3838",
+        "shapeLineColor": "FF000000",
+        "shapeLineWidth": 1,
+        "antialiasing": false,
+        "visible": false,
+        "latColumn": "pickup_latitude",
+        "lonColumn": "pickup_longitude",
+        "__autoSuggestActive": false,
+        "wktColumn": "",
+        "wkbColumn": "",
+        "name": "Heatmap NYC Taxi",
+        "minZoom": 1
+      }
+    },
+    {
+      "id": 11,
+      "table_id": 4,
+      "config": {
+        "renderMode": "heatmap",
+        "spatialMode": "latlon",
+        "colormap": "viridis",
+        "reverseColormap": false,
+        "pointColor": "FF3B82F6",
+        "pointSize": 5,
+        "pointOpacity": 100,
+        "pointShape": "circle",
+        "shapeFillColor": "FFFF3838",
+        "shapeLineColor": "FF000000",
+        "shapeLineWidth": 1,
+        "antialiasing": false,
+        "visible": true,
+        "latColumn": "latitude",
+        "lonColumn": "longitude",
+        "name": "Assets"
+      }
+    },
+    {
+      "id": 22,
+      "table_id": 1,
+      "config": {
+        "renderMode": "heatmap",
+        "spatialMode": "latlon",
+        "colormap": "viridis",
+        "reverseColormap": false,
+        "pointColor": "FF3B82F6",
+        "pointSize": 5,
+        "pointOpacity": 100,
+        "pointShape": "circle",
+        "shapeFillColor": "FFFF3838",
+        "shapeLineColor": "FF000000",
+        "shapeLineWidth": 1,
+        "antialiasing": false,
+        "visible": true,
+        "latColumn": "pickup_latitude",
+        "lonColumn": "pickup_longitude"
+      }
+    }
+  ],
+  "widgets": [
+    {
+      "id": 1,
+      "type": "map",
+      "config": {
+        "title": "Mapfffafsdf",
+        "basemapLight": "osm",
+        "basemapDark": "osm",
+        "spatialTargets": [
+          {
+            "tableId": 1,
+            "spatialMode": "latlon",
+            "lonCol": "pickup_longitude",
+            "latCol": "pickup_latitude"
+          },
+          {
+            "tableId": 3,
+            "spatialMode": "latlon",
+            "lonCol": "X",
+            "latCol": "Y"
+          }
+        ],
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "legendPanelEnabled": true,
+        "infoRadiusPx": 9,
+        "showScaleBar": true,
+        "showFullscreenButton": true,
+        "basemapCssDark": "filter: grayscale(0.9) invert(1) brightness(0.95) contrast(0.85);",
+        "basemapCssLight": "filter: grayscale(0.9) brightness(0.95) contrast(0.85);",
+        "defaultView": {
+          "center": [
+            -8235024.054245652,
+            4998409.006197706
+          ],
+          "zoom": 7.320557083887943
+        },
+        "syncViewport": true,
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 20,
+          "h": 41
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "groupByColumns": [],
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "table": "demo.nyctaxi",
+        "metricColumn": "fare_amount",
+        "aggregation": "AVG",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 20,
+          "y": 17,
+          "w": 15,
+          "h": 16
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "osm",
+        "basemapDark": "dark",
+        "legendPanelEnabled": true,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "spatialTargets": [
+          {
+            "tableId": 1,
+            "spatialMode": "latlon",
+            "lonCol": "pickup_longitude",
+            "latCol": "pickup_latitude"
+          }
+        ],
+        "infoRadiusPx": 8,
+        "showScaleBar": true,
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 28,
+          "h": 45
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "pie",
+      "config": {
+        "innerRadius": 0,
+        "padAngle": 2,
+        "showLabels": true,
+        "color1": "#22c55e",
+        "color2": "#38bdf8",
+        "color3": "#a855f7",
+        "color4": "#f59e0b",
+        "color5": "#f97316",
+        "color6": "#ef4444",
+        "showLegend": true,
+        "showTooltip": true,
+        "table": "demo.nyctaxi",
+        "metricColumn": "tip_amount",
+        "aggregation": "SUM",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 8,
+          "y": 45,
+          "w": 3,
+          "h": 6
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "voyager",
+        "basemapDark": "dark",
+        "legendPanelEnabled": true,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "spatialTargets": [
+          {
+            "tableId": 4,
+            "spatialMode": "latlon",
+            "lonCol": "longitude",
+            "latCol": "latitude"
+          }
+        ],
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 7
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "bignumber",
+      "config": {
+        "label": "",
+        "subLabel": "",
+        "format": "compact",
+        "decimals": 0,
+        "prefix": "",
+        "suffix": "",
+        "color": "#22c55e",
+        "colorRules": [],
+        "showDelta": false,
+        "deltaField": "",
+        "table": "vaipr.vaipr_location_exposure",
+        "dynamicViewId": 1,
+        "metricColumn": "GR_ExpLim",
+        "aggregation": "SUM",
+        "groupByColumn": "",
+        "sql": "<redacted>",
+        "tableId": 4,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "layout": {
+          "x": 6,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "bignumber",
+      "config": {
+        "label": "",
+        "subLabel": "",
+        "format": "compact",
+        "decimals": 0,
+        "prefix": "",
+        "suffix": "",
+        "color": "#22c55e",
+        "colorRules": [],
+        "showDelta": false,
+        "deltaField": "",
+        "table": "vaipr.vaipr_location",
+        "dynamicViewId": 2,
+        "metricColumn": "GR_ExpLim",
+        "aggregation": "SUM",
+        "groupByColumn": "",
+        "sql": "<redacted>",
+        "tableId": 4,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "layout": {
+          "x": 6,
+          "y": 2,
+          "w": 2,
+          "h": 2
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "pie",
+      "config": {
+        "innerRadius": 0,
+        "padAngle": 2,
+        "showLabels": true,
+        "color1": "#22c55e",
+        "color2": "#38bdf8",
+        "color3": "#a855f7",
+        "color4": "#f59e0b",
+        "color5": "#f97316",
+        "color6": "#ef4444",
+        "showLegend": true,
+        "showTooltip": true,
+        "layout": {
+          "x": 6,
+          "y": 4,
+          "w": 2,
+          "h": 3
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "pie",
+      "config": {
+        "innerRadius": 0,
+        "padAngle": 2,
+        "showLabels": true,
+        "color1": "#22c55e",
+        "color2": "#38bdf8",
+        "color3": "#a855f7",
+        "color4": "#f59e0b",
+        "color5": "#f97316",
+        "color6": "#ef4444",
+        "showLegend": true,
+        "showTooltip": true,
+        "table": "demo.nyctaxi",
+        "dynamicViewId": 3,
+        "metricColumn": "tip_amount",
+        "aggregation": "SUM",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 10,
+          "y": 51,
+          "w": 2,
+          "h": 3
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "table": "demo.nyctaxi",
+        "dynamicViewId": 3,
+        "metricColumn": "passenger_count",
+        "aggregation": "SUM",
+        "groupByColumn": "payment_type",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "payment_type",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 6,
+          "y": 45,
+          "w": 2,
+          "h": 4
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "voyager",
+        "basemapDark": "dark",
+        "infoRadiusPx": 7,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "infoPopupWidthPx": 250,
+        "legendPanelEnabled": true,
+        "spatialTargets": [
+          {
+            "tableId": 6,
+            "spatialMode": "latlon",
+            "lonCol": "Location_Longitude",
+            "latCol": "Location_Latitude"
+          }
+        ],
+        "layout": {
+          "x": 19,
+          "y": 7,
+          "w": 17,
+          "h": 40
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#0c923d",
+        "barRadius": 1,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "telecom.demodata",
+        "metricColumn": "QOS_UploadThroughput",
+        "aggregation": "AVG",
+        "groupByColumn": "Location_City",
+        "limit": 25,
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Location_City",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 9,
+          "y": 27,
+          "w": 10,
+          "h": 20
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#7b21c4",
+        "barRadius": 2,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": {
+          "kind": "si",
+          "decimals": 1
+        },
+        "table": "telecom.demodata",
+        "metricColumn": "QOS_DownloadThroughput",
+        "aggregation": "AVG",
+        "groupByColumn": "Location_City",
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Location_City",
+        "drillDownColumnType": "string",
+        "limit": 10,
+        "layout": {
+          "x": 9,
+          "y": 16,
+          "w": 10,
+          "h": 11
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "table",
+      "config": {
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "compact": false,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "table": "demo.nyctaxi",
+        "metricColumn": "fare_amount",
+        "aggregation": "SUM",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 49,
+          "w": 6,
+          "h": 4
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "config": {
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "compact": true,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "table": "telecom.demodata",
+        "metricColumn": "Device_YearReleased",
+        "aggregation": "SUM",
+        "groupByColumn": "Device_Manufacturer",
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Device_Manufacturer",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 19,
+          "y": 47,
+          "w": 12,
+          "h": 13
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "telecom.demodata",
+        "dynamicViewId": 4,
+        "metricColumn": "QOS_UploadThroughput",
+        "aggregation": "AVG",
+        "groupByColumn": "Location_City",
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Location_City",
+        "drillDownColumnType": "string",
+        "limit": 25,
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 12,
+          "y": 47,
+          "w": 7,
+          "h": 18
+        }
+      }
+    },
+    {
+      "id": 38,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "telecom.demodata",
+        "dynamicViewId": 4,
+        "metricColumn": "QOS_UploadThroughput",
+        "aggregation": "AVG",
+        "groupByColumn": "Location_City",
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Location_City",
+        "drillDownColumnType": "string",
+        "limit": 25,
+        "layout": {
+          "x": 12,
+          "y": 65,
+          "w": 7,
+          "h": 17
+        }
+      }
+    },
+    {
+      "id": 39,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "telecom.demodata",
+        "dynamicViewId": 4,
+        "metricColumn": "QOS_DownloadThroughput",
+        "aggregation": "AVG",
+        "groupByColumn": "Location_City",
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Location_City",
+        "drillDownColumnType": "string",
+        "limit": 25,
+        "layout": {
+          "x": 12,
+          "y": 82,
+          "w": 7,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 40,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "telecom.demodata",
+        "metricColumn": "Device_Speed",
+        "aggregation": "AVG",
+        "groupByColumn": "Location_City",
+        "sql": "<redacted>",
+        "tableId": 6,
+        "drillDownColumn": "Location_City",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 0,
+          "y": 47,
+          "w": 11,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "voyager",
+        "basemapDark": "dark",
+        "spatialTargets": [
+          {
+            "tableId": 1,
+            "spatialMode": "latlon",
+            "lonCol": "pickup_longitude",
+            "latCol": "pickup_latitude"
+          }
+        ],
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "legendPanelEnabled": true,
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 18,
+          "h": 24
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "demo.nyctaxi",
+        "metricColumn": "trip_distance",
+        "aggregation": "AVG",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 18,
+          "y": 0,
+          "w": 9,
+          "h": 19
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "demo.nyctaxi",
+        "metricColumn": "fare_amount",
+        "aggregation": "AVG",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 27,
+          "y": 0,
+          "w": 8,
+          "h": 19
+        }
+      }
+    },
+    {
+      "id": 44,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "demo.nyctaxi",
+        "metricColumn": "trip_distance",
+        "aggregation": "AVG",
+        "groupByColumn": "store_and_fwd_flag",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "store_and_fwd_flag",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 18,
+          "y": 19,
+          "w": 9,
+          "h": 16
+        }
+      }
+    },
+    {
+      "id": 45,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "table": "demo.nyctaxi",
+        "metricColumn": "tip_amount",
+        "aggregation": "AVG",
+        "groupByColumn": "payment_type",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "payment_type",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 27,
+          "y": 19,
+          "w": 8,
+          "h": 16
+        }
+      }
+    },
+    {
+      "id": 47,
+      "type": "table",
+      "config": {
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "compact": true,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "ts_result_month",
+        "aggregation": "COUNT",
+        "groupByColumn": "technology",
+        "sql": "<redacted>",
+        "tableId": 7,
+        "drillDownColumn": "technology",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 6,
+          "y": 0,
+          "w": 7,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 48,
+      "type": "table",
+      "config": {
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "compact": true,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "ts_result_day",
+        "aggregation": "COUNT",
+        "groupByColumn": "city_name",
+        "sql": "<redacted>",
+        "tableId": 7,
+        "drillDownColumn": "city_name",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 13,
+          "y": 0,
+          "w": 7,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 49,
+      "type": "table",
+      "config": {
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "compact": true,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "table": "ookla_dash.mobile_time_only_k_vs1",
+        "metricColumn": "ts_result_month",
+        "aggregation": "COUNT",
+        "groupByColumn": "cluster",
+        "sql": "<redacted>",
+        "tableId": 7,
+        "drillDownColumn": "cluster",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 20,
+          "y": 0,
+          "w": 7,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 53,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "voyager",
+        "basemapDark": "dark",
+        "layout": {
+          "x": 13,
+          "y": 14,
+          "w": 18,
+          "h": 24
+        }
+      }
+    },
+    {
+      "id": 58,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "striped": true,
+        "columns": "",
+        "pageSize": 25,
+        "showRowNumbers": true,
+        "sortField": "",
+        "sortDirection": "desc",
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "ts_result_day",
+        "aggregation": "COUNT",
+        "groupByColumn": "technology",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "technology",
+        "drillDownColumnType": "string",
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 0,
+          "y": 12,
+          "w": 6,
+          "h": 12
+        }
+      }
+    },
+    {
+      "id": 60,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 12,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "emirate",
+          "operator"
+        ],
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "",
+        "aggregation": "AVG",
+        "groupByColumn": "emirate",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "emirate",
+        "drillDownColumnType": "string",
+        "metricId": 1,
+        "layout": {
+          "x": 0,
+          "y": 62,
+          "w": 6,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 61,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "voyager",
+        "basemapDark": "dark",
+        "legendPanelEnabled": true,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "showScaleBar": true,
+        "includedLayerIds": [
+          16
+        ],
+        "syncViewport": true,
+        "spatialTargets": [
+          {
+            "tableId": 8,
+            "spatialMode": "latlon",
+            "lonCol": "attr_location_longitude",
+            "latCol": "attr_location_latitude"
+          }
+        ],
+        "layout": {
+          "x": 0,
+          "y": 177,
+          "w": 6,
+          "h": 40
+        }
+      }
+    },
+    {
+      "id": 69,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "pageSize": 25,
+        "striped": true,
+        "columns": "emirate",
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "ts_result_month",
+        "aggregation": "COUNT",
+        "groupByColumn": "emirate",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "emirate",
+        "drillDownColumnType": "string",
+        "limit": 100,
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 0,
+          "y": 24,
+          "w": 6,
+          "h": 12
+        }
+      }
+    },
+    {
+      "id": 70,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "columns": "",
+        "pageSize": 25,
+        "striped": true,
+        "showRowNumbers": false,
+        "sortField": "",
+        "sortDirection": "asc",
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "ts_result_month",
+        "aggregation": "COUNT",
+        "groupByColumn": "cluster",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "cluster",
+        "drillDownColumnType": "string",
+        "limit": 100,
+        "filterSelection": "<redacted>",
+        "layout": {
+          "x": 0,
+          "y": 36,
+          "w": 6,
+          "h": 12
+        }
+      }
+    },
+    {
+      "id": 72,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "table": "ookla_dash.data_coverage_voice_k_vs6",
+        "metricColumn": "attr_latitude",
+        "aggregation": "COUNT",
+        "groupByColumn": "Operator",
+        "sql": "<redacted>",
+        "tableId": 9,
+        "drillDownColumn": "Operator",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 290,
+          "w": 6,
+          "h": 11
+        }
+      }
+    },
+    {
+      "id": 73,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "groupByColumns": [],
+        "table": "ookla_dash.data_coverage_voice_k_vs6",
+        "metricColumn": "attr_latitude",
+        "aggregation": "COUNT",
+        "groupByColumn": "Network",
+        "sql": "<redacted>",
+        "tableId": 9,
+        "drillDownColumn": "Network",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 301,
+          "w": 6,
+          "h": 13
+        }
+      }
+    },
+    {
+      "id": 74,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "Call_Dropped",
+          "Network_Blocked_Call"
+        ],
+        "table": "ookla_dash.data_coverage_voice_k_vs6",
+        "metricColumn": "Latitude",
+        "aggregation": "COUNT",
+        "groupByColumn": "Call_Dropped",
+        "sql": "<redacted>",
+        "tableId": 9,
+        "drillDownColumn": "Call_Dropped",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 332,
+          "w": 6,
+          "h": 12
+        }
+      }
+    },
+    {
+      "id": 82,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 12,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "emirate",
+          "operator"
+        ],
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "",
+        "aggregation": "AVG",
+        "groupByColumn": "emirate",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "emirate",
+        "drillDownColumnType": "string",
+        "metricId": 1,
+        "layout": {
+          "x": 0,
+          "y": 104,
+          "w": 6,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 84,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 12,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "cluster",
+          "operator"
+        ],
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "",
+        "aggregation": "AVG",
+        "groupByColumn": "cluster",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "cluster",
+        "drillDownColumnType": "string",
+        "metricId": 1,
+        "layout": {
+          "x": 0,
+          "y": 76,
+          "w": 6,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 85,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 12,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "cluster",
+          "operator"
+        ],
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "",
+        "aggregation": "AVG",
+        "groupByColumn": "cluster",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "cluster",
+        "drillDownColumnType": "string",
+        "metricId": 1,
+        "layout": {
+          "x": 0,
+          "y": 118,
+          "w": 6,
+          "h": 14
+        }
+      }
+    },
+    {
+      "id": 88,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "voyager",
+        "basemapDark": "dark",
+        "legendPanelEnabled": true,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "showScaleBar": true,
+        "includedLayerIds": [
+          17
+        ],
+        "syncViewport": true,
+        "layout": {
+          "x": 0,
+          "y": 263,
+          "w": 6,
+          "h": 27
+        }
+      }
+    },
+    {
+      "id": 90,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 12,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "emirate",
+          "operator"
+        ],
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "val_latency_min_ms",
+        "aggregation": "AVG",
+        "groupByColumn": "emirate",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "emirate",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 147,
+          "w": 6,
+          "h": 15
+        }
+      }
+    },
+    {
+      "id": 91,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": true,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 12,
+        "stacked": false,
+        "showLegend": false,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "cluster",
+          "operator"
+        ],
+        "table": "ookla_dash.new_mobile_base_k_vs2",
+        "metricColumn": "val_latency_min_ms",
+        "aggregation": "AVG",
+        "groupByColumn": "cluster",
+        "sql": "<redacted>",
+        "tableId": 8,
+        "drillDownColumn": "cluster",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 162,
+          "w": 6,
+          "h": 15
+        }
+      }
+    },
+    {
+      "id": 93,
+      "type": "line",
+      "config": {
+        "yFieldLabel": "",
+        "color": "#38bdf8",
+        "strokeWidth": 2,
+        "curved": true,
+        "showDots": true,
+        "fillArea": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "customWhere": "<redacted>",
+        "layout": {
+          "x": 0,
+          "y": 344,
+          "w": 6,
+          "h": 24
+        }
+      }
+    },
+    {
+      "id": 94,
+      "type": "pie",
+      "config": {
+        "innerRadius": 0,
+        "padAngle": 2,
+        "showLabels": true,
+        "color1": "#22c55e",
+        "color2": "#38bdf8",
+        "color3": "#a855f7",
+        "color4": "#f59e0b",
+        "color5": "#f97316",
+        "color6": "#ef4444",
+        "showLegend": true,
+        "showTooltip": true,
+        "customWhere": "<redacted>",
+        "layout": {
+          "x": 0,
+          "y": 368,
+          "w": 6,
+          "h": 24
+        }
+      }
+    },
+    {
+      "id": 95,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "groupByColumns": [],
+        "layout": {
+          "x": 0,
+          "y": 392,
+          "w": 6,
+          "h": 24
+        }
+      }
+    },
+    {
+      "id": 101,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 0,
+        "stacked": true,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "vendor_id",
+          "payment_type"
+        ],
+        "table": "demo.nyctaxi",
+        "metricColumn": "",
+        "aggregation": "SUM",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "metricId": 9,
+        "layout": {
+          "x": 0,
+          "y": 41,
+          "w": 11,
+          "h": 23
+        }
+      }
+    },
+    {
+      "id": 102,
+      "type": "line",
+      "config": {
+        "yFieldLabel": "",
+        "color": "#38bdf8",
+        "strokeWidth": 2,
+        "curved": true,
+        "showDots": true,
+        "fillArea": true,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "customWhere": "<redacted>",
+        "table": "demo.nyctaxi",
+        "metricColumn": "pickup_latitude",
+        "aggregation": "SUM",
+        "groupByColumn": "",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "layout": {
+          "x": 11,
+          "y": 41,
+          "w": 9,
+          "h": 23
+        }
+      }
+    },
+    {
+      "id": 103,
+      "type": "bar",
+      "config": {
+        "yFieldLabel": "",
+        "xAxisLabel": "",
+        "yAxisLabel": "",
+        "horizontal": false,
+        "color": "#22c55e",
+        "barRadius": 4,
+        "minBarSize": 0,
+        "stacked": false,
+        "showLegend": true,
+        "showGrid": true,
+        "showTooltip": true,
+        "showValueLabels": false,
+        "yAxisFormat": null,
+        "yAxisScale": "",
+        "customWhere": "<redacted>",
+        "groupByColumns": [],
+        "table": "demo.nyctaxi",
+        "dynamicViewId": 6,
+        "metricColumn": "avg_passenger_count",
+        "aggregation": "SUM",
+        "groupByColumn": "",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "layout": {
+          "x": 27,
+          "y": 0,
+          "w": 8,
+          "h": 17
+        }
+      }
+    },
+    {
+      "id": 105,
+      "type": "pie",
+      "config": {
+        "innerRadius": 0,
+        "padAngle": 2,
+        "showLabels": true,
+        "color1": "#22c55e",
+        "color2": "#38bdf8",
+        "color3": "#a855f7",
+        "color4": "#f59e0b",
+        "color5": "#f97316",
+        "color6": "#ef4444",
+        "showLegend": true,
+        "showTooltip": true,
+        "customWhere": "<redacted>",
+        "table": "demo.nyctaxi",
+        "metricColumn": "passenger_count",
+        "aggregation": "SUM",
+        "groupByColumn": "payment_type",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "payment_type",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 20,
+          "y": 0,
+          "w": 7,
+          "h": 17
+        }
+      }
+    },
+    {
+      "id": 113,
+      "type": "table",
+      "config": {
+        "compact": true,
+        "showValueBars": true,
+        "barColor": "#8b5cf6",
+        "customWhere": "<redacted>",
+        "groupByColumns": [
+          "vendor_id"
+        ],
+        "table": "demo.nyctaxi",
+        "metricColumn": "passenger_count",
+        "aggregation": "SUM",
+        "groupByColumn": "vendor_id",
+        "sql": "<redacted>",
+        "tableId": 1,
+        "drillDownColumn": "vendor_id",
+        "drillDownColumnType": "string",
+        "layout": {
+          "x": 0,
+          "y": 0,
+          "w": 18,
+          "h": 17
+        }
+      }
+    },
+    {
+      "id": 115,
+      "type": "map",
+      "config": {
+        "title": "Map",
+        "basemapLight": "osm",
+        "basemapDark": "osm",
+        "drillDownColumn": "",
+        "drillDownColumnType": "null",
+        "basemapCssLight": "filter: grayscale(0.9) brightness(0.95) contrast(0.85);",
+        "layout": {
+          "x": 18,
+          "y": 0,
+          "w": 18,
+          "h": 24
+        }
+      }
+    },
+    {
+      "id": 116,
+      "type": "pie",
+      "config": {
+        "innerRadius": 0,
+        "padAngle": 2,
+        "showLabels": true,
+        "color1": "#22c55e",
+        "color2": "#38bdf8",
+        "color3": "#a855f7",
+        "color4": "#f59e0b",
+        "color5": "#f97316",
+        "color6": "#ef4444",
+        "showLegend": true,
+        "showTooltip": true,
+        "customWhere": "<redacted>",
+        "layout": {
+          "x": 18,
+          "y": 24,
+          "w": 9,
+          "h": 16
+        }
+      }
+    }
+  ]
+}
