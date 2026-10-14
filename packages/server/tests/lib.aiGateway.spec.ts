@@ -396,7 +396,7 @@ const snap7 = () => ({
 });
 describe("checkAiOp gateway (phase 137, AI widget is untouchable)", () => {
   it("GW7-1: patch targeting the AI widget is refused at the reference stage", async () => {
-    const r = await run(mk6(snap7()), patch, pat("widget", 5, { title: "x" }));
+    const r = await run(mk6(snap7()), patch, pat("widget", 5, { show_popup: true }));
     expect(r).toMatchObject({ ok: false, stage: "reference" });
     if (!r.ok) expect(r.reasons).toContain(AI_MSG);
   });
