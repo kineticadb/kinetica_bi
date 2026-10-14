@@ -3,7 +3,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faGear, faClone } from "@fortawesome/free-solid-svg-icons";
 import type { TableDto, WidgetDto, DashboardLayerDto } from "../api/client";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
-import { useAiSessionStore, selectAiEditedWidgetIds } from "../store/aiSessionStore";
+import { useAiSessionStore, selectShowsAiEditedPill } from "../store/aiSessionStore";
+import { AI_HIGHLIGHT_MS } from "../lib/aiSession/constants";
 import WidgetRenderer from "./charts/WidgetRenderer";
 import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
@@ -126,14 +127,33 @@ function WidgetCardImpl(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerRef, w.id]);
 
-  const aiEdited = useAiSessionStore((s) => selectAiEditedWidgetIds(s).has(w.id));
+  const aiEdited = useAiSessionStore((s) => selectShowsAiEditedPill(s, w.id));
+
+  // 137 D-18: nonce-keyed accent outline for widgets changed by the latest AI answer (fades ~3 s).
+  const aiNonce = useAiSessionStore((s) => (s.highlight.ids.includes(w.id) ? s.highlight.nonce : 0));
+  const [aiChanged, setAiChanged] = useState(false);
+  const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (aiNonce === 0) {
+      setAiChanged(false);
+      return;
+    }
+    setAiChanged(false);
+    void cardRef.current?.offsetWidth;
+    setAiChanged(true);
+    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    aiTimerRef.current = setTimeout(() => setAiChanged(false), AI_HIGHLIGHT_MS);
+    return () => {
+      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    };
+  }, [aiNonce]);
 
   return (
     <div
       {...rest}
       ref={mergeRefs(cardRef, forwardedRef)}
       style={style}
-      className={`widget-card${className ? ` ${className}` : ""}${isHighlighted ? " widget-card--highlighted" : ""}${flashOn ? " widget-card--flashing" : ""}`}
+      className={`widget-card${className ? ` ${className}` : ""}${isHighlighted ? " widget-card--highlighted" : ""}${flashOn ? " widget-card--flashing" : ""}${aiChanged ? " widget-card--ai-changed" : ""}`}
     >
       <div className="widget-header">
         <span className="widget-drag-handle widget-title">{w.title}</span>

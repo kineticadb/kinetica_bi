@@ -721,6 +721,28 @@ a {
   cursor: help;
 }
 
+/* Phase 137 (D-18): widgets changed by the latest AI answer get an accent outline that fades over ~3 s. Tokens only. */
+.widget-card--ai-changed {
+  animation: widget-ai-fade 3s ease-out 1 forwards;
+}
+@keyframes widget-ai-fade {
+  0% {
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+  }
+  70% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent), var(--shadow);
+  }
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 0%, transparent), var(--shadow);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .widget-card--ai-changed {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+  }
+}
+
 /* Phase 108 (FSCOPE-V120-01): applies-to line + expander inside the panel chip. */
 .filter-panel-chip-applies {
   display: flex;
