@@ -104,6 +104,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
         dataAccess: config.dataAccess,
         maxToolSteps: config.maxToolSteps,
         timeoutMs: config.timeoutMs,
+        maxNewWidgets: config.maxNewWidgets,
       },
       {
         provider,
@@ -123,7 +124,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     usage = result.usage;
     steps = result.steps;
     if (result.outcome === "ok") {
-      sse.send("result", { answerId: input.auditId, text: result.text, ops: result.ops, skipped: result.rejected });
+      sse.send("result", { answerId: input.auditId, text: result.text, ops: result.ops, skipped: result.skipped, clarifications: result.clarifications });
     } else {
       const code = errorCodeFor(result);
       sse.send("error", { code, message: result.message ?? FALLBACK_MESSAGE[code] });

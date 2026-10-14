@@ -2,7 +2,7 @@
 // go through the validation gateway. Validated ops are BUFFERED and surfaced only when the whole answer succeeds
 // (D-14 atomic apply): a cap, provider error, 429 give-up, timeout, cancel or ended session yields ZERO ops.
 // Timing is injected (now/sleep). Errors shown to the model/user are fixed strings, never upstream text.
-import type { AiOp } from "@kinetica-bi/shared";
+import type { AiClarification, AiOp } from "@kinetica-bi/shared";
 import type { AiDataAccess } from "../aiConfig";
 import { SessionEndedError } from "../exportRunner";
 import { formatStepCapMessage, type AiOutcome, type AiToolAuditEntry } from "../aiAudit";
@@ -36,6 +36,7 @@ export type AgentLoopInput = {
   dataAccess: AiDataAccess;
   maxToolSteps: number;
   timeoutMs: number;
+  maxNewWidgets: number; // D-09: add_widget calls applied per answer
 };
 export type AgentLoopDeps = {
   provider: LlmProvider;
@@ -53,13 +54,40 @@ export type AgentLoopResult = {
   text: string;
   ops: AiOp[];
   applied: string[];
-  rejected: { label: string; stage: GatewayStage; reasons: string[] }[];
+  rejected: { label: string; stage: GatewayStage; reasons: string[] }[]; // audit: every gateway failure, labelled by tool name
+  skipped: SkippedEntry[]; // unresolved failures (per slot), cap hits and pending confirmations, human labels
+  clarifications: AiClarification[];
   tools: AiToolAuditEntry[];
   steps: number;
   usage: { inputTokens?: number; outputTokens?: number };
 };
 
-const MAX_REJECTIONS_PER_TOOL = 2;
+export type SkippedEntry = { label: string; stage: GatewayStage; reasons: string[] };
+
+/** The slot an accepted op occupies; mirrors the gateway's failure `slot` so a repair clears the earlier failure. */
+function opSlot(op: AiOp): string | undefined {
+  switch (op.op) {
+    case "add_widget":
+    case "add_layer":
+    case "add_dynamic_view":
+      return `new:${op.tempId}`;
+    case "patch":
+      return `${op.action.target.kind === "dynamicView" ? "dv" : op.action.target.kind}:${op.action.target.id}`;
+    case "remove_widget":
+    case "change_widget_type":
+    case "set_widget_title":
+      return `widget:${op.id}`;
+    case "remove_layer":
+      return `layer:${op.id}`;
+    case "remove_dynamic_view":
+      return `dv:${op.id}`;
+    case "set_layout":
+      return "layout";
+    default:
+      return undefined;
+  }
+}
+
 class Stop extends Error {
   constructor(readonly outcome: AiOutcome, readonly detail: string, readonly message2?: string) {
     super(detail);
@@ -85,7 +113,12 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
   (timer as { unref?: () => void }).unref?.();
   const signal = AbortSignal.any([deps.signal, deadlineCtl.signal]);
   const budget = createRetryBudget(deps.retryBudgetMs);
-  const rejections = new Map<string, number>();
+  // D-18: repair attempts are counted per BAD REFERENCE (never per tool name), so earlier failures never block a valid call.
+  const attemptsByRef = new Map<string, number>();
+  const unresolvedBySlot = new Map<string, SkippedEntry>();
+  const extraSkipped: SkippedEntry[] = [];
+  const clarifications: AiClarification[] = [];
+  let addedWidgets = 0;
   const convo: OutboundMessage[] = [...input.messages];
 
   const guard = (): void => {
@@ -219,25 +252,49 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
         }
 
         // mutate tool
-        if ((rejections.get(tool.name) ?? 0) >= MAX_REJECTIONS_PER_TOOL) {
-          const msg = `Not executed: too many invalid attempts for ${tool.name}.`;
-          tools.push({ name: tool.name, ...(parsedOk ? { args: parsedArgs } : {}), result: "rejected", reasons: [msg] });
-          answer([part.config(msg)], true);
-          deps.emit({ type: "step", n: steps, tool: tool.name, label: msg });
+        if (tool.name === "add_widget" && addedWidgets >= input.maxNewWidgets) {
+          const reason = `limit of ${input.maxNewWidgets} new widgets per answer reached`;
+          const a = (parsedOk ? parsedArgs : {}) as { type?: unknown; title?: unknown };
+          const label = typeof a.type === "string" && typeof a.title === "string" ? `Add ${a.type} "${a.title}"` : `Add widget (${tool.name})`;
+          extraSkipped.push({ label, stage: "cap", reasons: [reason] });
+          tools.push({ name: tool.name, ...(parsedOk ? { args: parsedArgs } : {}), result: "rejected", stage: "cap", reasons: [reason] });
+          answer([part.config(`Not executed: ${reason}; do not add more widgets in this answer. Tell the user which ones were not added.`)], true);
+          deps.emit({ type: "step", n: steps, tool: tool.name, label: tool.name });
           continue;
         }
         const g = await checkAiOp(gateway, tool, call.argsJson);
         if (g.ok) {
           bufferedOps.push(g.op);
           applied.push(g.label);
+          if (g.op.op === "add_widget") addedWidgets++;
+          const slot = opSlot(g.op);
+          if (slot !== undefined) unresolvedBySlot.delete(slot);
           tools.push({ name: tool.name, ...(parsedOk ? { args: parsedArgs } : {}), result: "ok" });
           answer([part.config("OK: " + g.label)]);
           deps.emit({ type: "step", n: steps, tool: tool.name, label: g.label });
-        } else {
-          rejections.set(tool.name, (rejections.get(tool.name) ?? 0) + 1);
-          rejected.push({ label: tool.name, stage: g.stage, reasons: g.reasons });
+        } else if (g.stage === "clarification" && g.clarification) {
+          const c = g.clarification;
+          if (!clarifications.some((x) => x.kind === c.kind && x.question === c.question)) {
+            clarifications.push(c);
+            extraSkipped.push({ label: g.label ?? tool.name, stage: "clarification", reasons: ["needs confirmation"] });
+          }
           tools.push({ name: tool.name, ...(parsedOk ? { args: parsedArgs } : {}), result: "rejected", stage: g.stage, reasons: g.reasons });
-          answer([part.config(g.reasons.join("; "))], true);
+          answer([part.config(`Asked the user to confirm; do not repeat this call; end your reply by asking: ${c.question}`)], true);
+          deps.emit({ type: "step", n: steps, tool: tool.name, label: tool.name });
+        } else {
+          const key = g.refKey ?? `${tool.name}:${g.stage}:${g.slot ?? "?"}`;
+          const n = (attemptsByRef.get(key) ?? 0) + 1;
+          attemptsByRef.set(key, n);
+          rejected.push({ label: tool.name, stage: g.stage, reasons: g.reasons });
+          unresolvedBySlot.set(g.slot ?? key, { label: g.label ?? tool.name, stage: g.stage, reasons: g.reasons });
+          tools.push({ name: tool.name, ...(parsedOk ? { args: parsedArgs } : {}), result: "rejected", stage: g.stage, reasons: g.reasons });
+          const msg =
+            n === 1
+              ? g.reasons.join("; ")
+              : n === 2
+                ? `${g.reasons.join("; ")} Do not retry this; tell the user it was skipped and what is available.`
+                : "Not executed: already refused twice; do not retry. Tell the user it was skipped.";
+          answer([part.config(msg)], true);
           deps.emit({ type: "step", n: steps, tool: tool.name, label: tool.name });
         }
       }
@@ -271,6 +328,8 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
     ops,
     applied: outcome === "ok" ? applied : [],
     rejected,
+    skipped: outcome === "ok" ? [...unresolvedBySlot.values(), ...extraSkipped] : [],
+    clarifications: outcome === "ok" ? clarifications : [],
     tools,
     steps,
     usage,
