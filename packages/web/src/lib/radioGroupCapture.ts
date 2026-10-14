@@ -79,7 +79,7 @@ export const DYNAMICVIEW_CAPTURE_FIELDS = ["enabled"] as const;
  *      - "layer"         → layer?.[field]  (top-level DTO field, e.g. track_config/cb_config)
  *      - "widget.config" → widget?.config?.[field] (for kind "widget")
  *                          dynamicViewConfig?.[field] (for kind "dynamicView")
- *   3. Include in patch if value is not undefined AND not null (no value to snapshot).
+ *   3. Include in patch if value is not undefined, null or "" (no value to snapshot).
  *
  * Returns a Record<string, unknown> whose keys are the REAL allow-listed field names
  * (renderMode camelCase, cb_config / track_config snake as defined in the allow-list).
@@ -140,8 +140,9 @@ export function captureAllowListedSubset(args: {
       }
     }
 
-    // Include only if a real value exists (null or undefined → skip; no value to snapshot)
-    if (value !== undefined && value !== null) {
+    // Include only if a real value exists (null, undefined or "" → skip; no value to snapshot).
+    // "" occurs for saved custom-metric charts (metricColumn "") and is not a valid allow-list value.
+    if (value !== undefined && value !== null && value !== "") {
       patch[field] = value;
     }
   }

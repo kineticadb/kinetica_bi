@@ -92,16 +92,15 @@ describe("saved config round-trip (real exported configs)", () => {
       const patch = captureAllowListedSubset({ target: { kind: "widget", id: w.id }, widgetType: w.type, widget: asWidget(w) });
       if ("metric" in patch || "aggregation" in patch) withMetric++;
       const res = validateActionPatch("widget", w.type, patch);
-      if (patch.metric === "") {
-        // GAP (136-09): saved charts with metricColumn "" (custom-SQL / metricId widgets) capture metric:"" which the
-        // allow-list rejects. Pinned here so the gap is visible; remove this branch when capture skips empty strings.
+      // Saved charts with metricColumn "" (custom-SQL / metricId widgets) have no metric to snapshot:
+      // capture must omit it rather than emit metric:"" (which the allow-list rejects).
+      if (w.config.metricColumn === "") {
         emptyMetric.push(w.id);
-        expect(res).toEqual({ valid: false, reasons: ["invalid value for metric: Invalid"] });
-      } else {
-        expect(res, `${w.type} ${w.id} ${JSON.stringify(patch)}`).toEqual({ valid: true });
+        expect("metric" in patch, `${w.type} ${w.id} captured an empty metric`).toBe(false);
       }
+      expect(res, `${w.type} ${w.id} ${JSON.stringify(patch)}`).toEqual({ valid: true });
     }
-    expect(emptyMetric.length).toBe(charts.filter((w) => w.config.metricColumn === "").length);
+    expect(emptyMetric.length).toBeGreaterThan(0); // the real fixture does contain empty-metric charts
     expect(withMetric).toBeGreaterThan(0); // the capture really read metric/aggregation, not an empty patch
   });
 
