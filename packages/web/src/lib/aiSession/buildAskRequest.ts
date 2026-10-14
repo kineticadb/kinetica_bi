@@ -1,0 +1,117 @@
+// 137: pure builder for the POST /api/ai/ask body. Structure only - never row or filter values
+// (AIGOV-V20-02). The binding key set is CLOSED: no other widget config key is ever copied.
+import { layersOfMap, type AskRequest } from "@kinetica-bi/shared";
+import type { WidgetDto, DashboardLayerDto } from "../../api/client";
+import type { Turn } from "./types";
+
+export type AskRect = { x: number; y: number; w: number; h: number };
+
+const MAX_BODY_BYTES = 60_000; // under ASK_REQUEST_MAX_BYTES (65_536) with headroom
+const RECENT_ANSWER_TURNS = 8;
+const RECENT_ANSWER_CHARS = 1500;
+
+const str = (v: unknown, max = 200): string | undefined => (typeof v === "string" ? v.slice(0, max) : undefined);
+const clamp = (n: number) => Math.min(1000, Math.max(0, Math.round(n)));
+const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
+
+function bindingOf(config: Record<string, unknown>): NonNullable<AskRequest["snapshot"]["widgets"][number]["binding"]> | undefined {
+  const b: Record<string, unknown> = {};
+  for (const k of ["metric", "aggregation", "dimension", "metricColumn", "groupByColumn"] as const) {
+    const v = str(config[k]);
+    if (v !== undefined) b[k] = v;
+  }
+  if (Array.isArray(config.groupByColumns)) {
+    b.groupByColumns = config.groupByColumns
+      .filter((x): x is string => typeof x === "string")
+      .slice(0, 20)
+      .map((x) => x.slice(0, 200));
+  }
+  return Object.keys(b).length > 0 ? b : undefined;
+}
+
+export function buildAskSnapshot(input: {
+  widgets: readonly WidgetDto[];
+  layouts: Readonly<Record<number, AskRect>>;
+  layers: readonly DashboardLayerDto[];
+  dynamicViews: readonly { id: number; name: string }[];
+}): AskRequest["snapshot"] {
+  const widgets = input.widgets.slice(0, 100).map((w) => {
+    const cfg = (w.config ?? {}) as Record<string, unknown>;
+    const out: AskRequest["snapshot"]["widgets"][number] = { id: w.id, type: w.type, title: (w.title ?? "").slice(0, 200) };
+    if (isInt(cfg.tableId) && cfg.tableId > 0) out.tableId = cfg.tableId;
+    if (isInt(cfg.dynamicViewId) && cfg.dynamicViewId !== 0) out.dynamicViewId = cfg.dynamicViewId;
+    const r = input.layouts[w.id];
+    if (r) out.layout = { x: clamp(r.x), y: clamp(r.y), w: clamp(r.w), h: clamp(r.h) };
+    const binding = bindingOf(cfg);
+    if (binding) out.binding = binding;
+    return out;
+  });
+
+  const maps = input.widgets.filter((w) => w.type === "map");
+  const layers: AskRequest["snapshot"]["layers"] = [];
+  for (const l of input.layers) {
+    const host = maps.find((m) => layersOfMap(m, input.layers).some((x) => x.id === l.id));
+    if (!host) continue;
+    const cfg = (l.config ?? {}) as Record<string, unknown>;
+    const out: AskRequest["snapshot"]["layers"][number] = { id: l.id, widgetId: host.id };
+    const title = str(cfg.name) ?? str(cfg.title);
+    if (title !== undefined) out.title = title;
+    if (isInt(l.table_id) && l.table_id > 0) out.tableId = l.table_id;
+    const rm = str(cfg.renderMode, 50);
+    if (rm !== undefined) out.renderMode = rm;
+    if (typeof cfg.visible === "boolean") out.visible = cfg.visible;
+    layers.push(out);
+    if (layers.length >= 50) break;
+  }
+
+  return {
+    widgets,
+    layers,
+    dynamicViews: input.dynamicViews.slice(0, 20).map((d) => ({ id: d.id, name: d.name.slice(0, 200) })),
+    filters: [], // 138 wires filters
+  };
+}
+
+export function buildAskTurns(turns: readonly Turn[], cursor: number): AskRequest["turns"] {
+  const kept = turns.slice(0, cursor + 1).filter((t) => !t.chat || t.chat.status === "ok");
+  const firstRecent = Math.max(0, kept.length - RECENT_ANSWER_TURNS);
+  return kept.map((t, i) => {
+    const changes: AskRequest["turns"][number]["changes"] = [];
+    for (const label of t.chat?.applied ?? []) changes.push({ label: label.slice(0, 200), status: "applied" });
+    for (const s of t.chat?.skipped ?? []) {
+      const reason = s.reasons[0];
+      changes.push({
+        label: s.label.slice(0, 200),
+        status: "skipped",
+        ...(reason !== undefined ? { reason: reason.slice(0, 200) } : {}),
+      });
+    }
+    return {
+      question: t.prompt.slice(0, 2000),
+      answer: i >= firstRecent ? t.answer.slice(0, RECENT_ANSWER_CHARS) : "",
+      changes: changes.slice(0, 30),
+    };
+  });
+}
+
+export function buildAskRequest(input: {
+  dashboardId: number;
+  question: string;
+  snapshot: AskRequest["snapshot"];
+  turns: readonly Turn[];
+  cursor: number;
+  removalApproved: boolean;
+}): AskRequest {
+  const turns = buildAskTurns(input.turns, input.cursor).slice(-50);
+  const make = (): AskRequest => ({
+    dashboardId: input.dashboardId,
+    question: input.question.trim().slice(0, 2000),
+    snapshot: input.snapshot,
+    turns,
+    ...(input.removalApproved ? { approvals: { removeSaved: true } } : {}),
+  });
+  const enc = new TextEncoder();
+  // Drop the OLDEST turn until the body fits under the cap.
+  while (turns.length > 0 && enc.encode(JSON.stringify(make())).length >= MAX_BODY_BYTES) turns.shift();
+  return make();
+}
