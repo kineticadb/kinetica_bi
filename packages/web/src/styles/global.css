@@ -700,6 +700,27 @@ a {
   }
 }
 
+/* Phase 137 (D-15/D-19): unsaved AI changes bar. Tokens only. */
+.ai-change-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-solid));
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.ai-change-bar-text {
+  min-width: 0;
+}
+.ai-change-bar-removed {
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
 /* Phase 108 (FSCOPE-V120-01): applies-to line + expander inside the panel chip. */
 .filter-panel-chip-applies {
   display: flex;
