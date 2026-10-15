@@ -162,7 +162,7 @@ describe("AI tools", () => {
   });
   it("TL-7 tool names", () => {
     expect(READ_TOOLS.map((t: ReadTool) => t.name)).toEqual(["get_dashboard", "list_tables", "describe_table"]);
-    expect(MUTATE_TOOLS.map((t: MutateTool) => t.name)).toEqual(["add_widget", "edit_widget", "rename_widget", "change_widget_type", "set_layout", "add_heatmap_layer", "edit_heatmap_layer", "set_layer_visibility", "patch", "remove_widget", "remove_layer", "remove_dynamic_view"]);
+    expect(MUTATE_TOOLS.map((t: MutateTool) => t.name)).toEqual(["add_widget", "edit_widget", "rename_widget", "change_widget_type", "set_layout", "add_heatmap_layer", "edit_heatmap_layer", "set_layer_visibility", "patch", "apply_filter", "clear_filter", "remove_widget", "remove_layer", "remove_dynamic_view"]);
   });
 });
 
