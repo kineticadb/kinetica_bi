@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useAiSessionStore } from "../store/aiSessionStore";
-import { baselineFixture, addWidgetOp, setTitleOp, removeWidgetOp, recordsWidget } from "../test/aiSessionHarness";
+import { applyFilterRaw, baselineFixture, addWidgetOp, setTitleOp, removeWidgetOp, recordsWidget } from "../test/aiSessionHarness";
 
 const order: string[] = [];
 vi.mock("../lib/aiSession/askRunner", () => ({ cancelAsk: () => order.push("cancel") }));
@@ -22,6 +22,12 @@ describe("AiChangeBar", () => {
   it("BAR7-1: nothing applied renders nothing", () => {
     render(bar());
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("LOCKF-8: a filter-only answer renders no bar", () => {
+    apply([applyFilterRaw({ kind: "table", id: 5 }, "payment_type")]);
+    const { container } = render(bar());
+    expect(container.innerHTML).toBe("");
   });
 
   it("BAR7-2: counts text, locked phrase, removed names title", () => {

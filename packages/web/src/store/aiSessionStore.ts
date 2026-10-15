@@ -24,13 +24,24 @@
  * later turns may depend on its ops.
  */
 import { create } from "zustand";
-import type { Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect } from "../lib/aiSession/types";
+import type {
+  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef,
+} from "../lib/aiSession/types";
 import { AI_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
-import { evaluateTurn, foldSession } from "../lib/aiSession/foldSession";
+import { evaluateTurn, foldSession, isFilterOp } from "../lib/aiSession/foldSession";
 import { useWidgetActionStore } from "./widgetActionStore";
 
 export type AiRun = { status: "idle" | "running"; question: string; startedAt: number; line: string; waitSeconds?: number };
 const IDLE_RUN: AiRun = { status: "idle", question: "", startedAt: 0, line: "" };
+
+/** 138: the AI filter applier (lib/aiOps, outside the engine) registers here so Revert/Forward can restore per-column filter state. Default none. */
+export type AiFilterSink = {
+  onCursorMove(from: number, to: number, turns: readonly Turn[], baseEntries: readonly TurnEntry[]): void;
+};
+let aiFilterSink: AiFilterSink | null = null;
+export function setAiFilterSink(sink: AiFilterSink | null): void {
+  aiFilterSink = sink;
+}
 
 export type AiSessionState = {
   dashboardId: number | null;
@@ -53,6 +64,10 @@ export type AiSessionState = {
   setDraft(text: string): void;
   setHighlight(ids: number[]): void;
   markChoicePicked(turnIndex: number, pick: { clarificationIndex: number; optionId: string }): void;
+  /** 138: store what a filter op changed so Revert/Forward/Discard can invert it per column. */
+  attachEntryFilterDeltas(turnId: string, entryIndex: number, deltas: FilterDelta[]): void;
+  /** 138: display-only answer notes (never sent to the provider) + D-17 empty-result offers. */
+  appendFilterNotes(turnId: string, notes: string[], emptyFilters?: { source: FilterSourceRef; column: string }[]): void;
   /** 136 D-13/134 D-16: session-only visibility for AI-added (negative id) layers. */
   tempLayerVisibility: Record<number, boolean>;
   setTempLayerVisible(id: number, visible: boolean): void;
@@ -134,7 +149,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const s = get();
     const kept = s.turns.slice(0, s.cursor + 1);
     const prior = [...s.baseEntries, ...kept.flatMap((t) => t.entries)];
-    const entries = evaluateTurn(baseline, prior, input.ops, { removalApproved: s.removalApproved });
+    const entries = evaluateTurn(baseline, prior, input.ops, { removalApproved: s.removalApproved, currentFilters: input.currentFilters });
     const turn: Turn = {
       id: `turn-${++turnSeq}`,
       prompt: input.prompt,
@@ -170,10 +185,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
 
   setCursor: (index, baseline) => {
     const s = get();
+    const from = s.cursor;
     const cursor = Math.max(-1, Math.min(index, s.turns.length - 1));
     const derived = foldSession(baseline, prefixEntries(s.baseEntries, s.turns, cursor));
     set({ cursor, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
+    if (from !== cursor) aiFilterSink?.onCursorMove(from, cursor, s.turns, s.baseEntries);
   },
 
   reset: () => {
@@ -210,6 +227,36 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       return { turns };
     }),
 
+  attachEntryFilterDeltas: (turnId, entryIndex, deltas) =>
+    set((s) => {
+      const ti = s.turns.findIndex((t) => t.id === turnId);
+      const t = s.turns[ti];
+      if (!t || !t.entries[entryIndex]) return s;
+      const entries = t.entries.slice();
+      entries[entryIndex] = { ...entries[entryIndex], filterDeltas: deltas };
+      const turns = s.turns.slice();
+      turns[ti] = { ...t, entries };
+      return { turns };
+    }),
+
+  appendFilterNotes: (turnId, notes, emptyFilters) =>
+    set((s) => {
+      const ti = s.turns.findIndex((t) => t.id === turnId);
+      const t = s.turns[ti];
+      if (!t) return s;
+      const turns = s.turns.slice();
+      turns[ti] = {
+        ...t,
+        chat: {
+          status: "ok",
+          ...t.chat,
+          filterNotes: [...(t.chat?.filterNotes ?? []), ...notes],
+          ...(emptyFilters?.length ? { emptyFilters: [...(t.chat?.emptyFilters ?? []), ...emptyFilters] } : {}),
+        },
+      };
+      return { turns };
+    }),
+
   setTempLayerVisible: (id, visible) => {
     if (id >= 0) return;
     set((s) => ({ tempLayerVisibility: { ...s.tempLayerVisibility, [id]: visible } }));
@@ -218,9 +265,9 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   setPendingLeave: (p) => set({ pendingLeave: p }),
 }));
 
-const isApplied = (e: TurnEntry) => e.result.status === "applied";
+const isApplied = (e: TurnEntry) => e.result.status === "applied" && !isFilterOp(e.op); // 138 D-09: filter-only answers never lock, show the bar or arm the leave warning
 
-/** True once any op has applied, regardless of cursor (Pitfall 5); op-less turns do not count (D-17). */
+/** True once any non-filter op has applied, regardless of cursor (Pitfall 5); op-less turns do not count (D-17); filter ops are excluded (D-09). */
 export function selectHasUnsavedAiChanges(s: AiSessionState): boolean {
   return s.baseEntries.some(isApplied) || s.turns.some((t) => t.entries.some(isApplied));
 }
