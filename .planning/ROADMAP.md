@@ -215,7 +215,16 @@ Plans:
 2. Undo restores the prior per-source filter state; filter badges read `filterCombinationStore`.
 3. A filter on a nonexistent column is refused, and the per-table filter cap holds.
 4. Map tiles visibly narrow against real Kinetica (operator human-verify).
-**Plans:** TBD
+**Plans:** 8 plans in 5 waves
+Plans:
+- [ ] 138-01-PLAN.md — Shared contract: source-keyed apply_filter/clear_filter, aiFilter.ts (cap 25, coercion, value-free reasons), snapshot filters max 300 [W1]
+- [ ] 138-02-PLAN.md — Server: shadow filter map, gateway checks (ambiguity choose_option, column/type, cap, temp dv), flat tools, prompt rules, scripted e2e [W2]
+- [ ] 138-03-PLAN.md — Web session: fold evaluation, filter-only answers never lock (D-09), entry deltas, cursor sink, value-free snapshot filters [W2]
+- [ ] 138-04-PLAN.md — ActiveFilter.aiApplied + "AI" chip tag (top bar + panel), drift guards [W2]
+- [ ] 138-05-PLAN.md — aiFilterApplier (click actions only), per-column undo/redo/discard, click-equivalence orchestrator proof [W3]
+- [ ] 138-06-PLAN.md — applyAiTurn (outline, notes, zero-row check) wired into askRunner, session actions and Discard [W4]
+- [ ] 138-07-PLAN.md — Chat filter notes + "Clear this filter", chip call sites, snapshot wiring, DEV harness filter/clearFilter/highlight/filterState [W4]
+- [ ] 138-08-PLAN.md — Gates, operator light/dark human-verify incl. SC4 real map tiles (quota-free), bookkeeping by hand [W5]
 
 ### Phase 139: Session-Only Dynamic Views
 **Goal:** The AI can create and remove session-only dynamic views from a structured description, and their temporary Kinetica views never outlive the session.
