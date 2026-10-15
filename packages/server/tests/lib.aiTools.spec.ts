@@ -1,3 +1,4 @@
+import { parseAiOp } from "@kinetica-bi/shared";
 import { describe, it, expect } from "vitest";
 import { z } from "zod/v4";
 import { READ_TOOLS, LIST_TABLES_CAP, LIST_TABLES_CONCURRENCY } from "../src/lib/ai/tools/read";
@@ -162,5 +163,29 @@ describe("AI tools", () => {
   it("TL-7 tool names", () => {
     expect(READ_TOOLS.map((t: ReadTool) => t.name)).toEqual(["get_dashboard", "list_tables", "describe_table"]);
     expect(MUTATE_TOOLS.map((t: MutateTool) => t.name)).toEqual(["add_widget", "edit_widget", "rename_widget", "change_widget_type", "set_layout", "add_heatmap_layer", "edit_heatmap_layer", "set_layer_visibility", "patch", "remove_widget", "remove_layer", "remove_dynamic_view"]);
+  });
+});
+
+describe("filter tools (138)", () => {
+  const af = () => byName(MUTATE_TOOLS, "apply_filter");
+  const cf = () => byName(MUTATE_TOOLS, "clear_filter");
+  it("TOOLF-1 apply_filter source", () => {
+    expect(af().toOp({ column: "payment_type", value: "Credit" })).toEqual({ op: "apply_filter", filters: [{ column: "payment_type", operator: "eq", value: "Credit" }] });
+    expect(af().toOp({ column: "payment_type", value: "Credit", tableId: 5 })).toMatchObject({ source: { kind: "table", id: 5 } });
+    expect(af().toOp({ column: "payment_type", value: "Credit", dynamicViewId: 90 })).toMatchObject({ source: { kind: "dynamicView", id: 90 } });
+    expect(parseAiOp(af().toOp({ column: "c", value: "v", tableId: 5, dynamicViewId: 90 })).ok).toBe(false);
+  });
+  it("TOOLF-2 operators", () => {
+    expect(af().toOp({ column: "c", operator: "in", values: ["a", "b"] })).toMatchObject({ filters: [{ value: ["a", "b"] }] });
+    expect(af().toOp({ column: "c", operator: "between", from: "1", to: "5" })).toMatchObject({ filters: [{ value: ["1", "5"] }] });
+    const half = af().toOp({ column: "c", operator: "between", from: "1" }) as { filters: Record<string, unknown>[] };
+    expect("value" in half.filters[0]).toBe(false);
+    expect(af().toOp({ column: "c", operator: "isNull" })).toMatchObject({ filters: [{ value: null }] });
+  });
+  it("TOOLF-3 clear_filter", () => {
+    expect(cf().toOp({})).toEqual({ op: "clear_filter" });
+    expect(cf().toOp({ tableId: 5 })).toEqual({ op: "clear_filter", source: { kind: "table", id: 5 } });
+    expect(cf().toOp({ tableId: 5, column: "vendor_id" })).toEqual({ op: "clear_filter", source: { kind: "table", id: 5 }, column: "vendor_id" });
+    expect(cf().toOp({ column: "vendor_id" })).toEqual({ op: "clear_filter", column: "vendor_id" });
   });
 });

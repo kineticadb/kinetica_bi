@@ -1,7 +1,7 @@
 // Phase 135-10: one admitted ask -> streamed SSE events + the FinalizeInput for the audit row. Never throws.
 // Events: status / step / result {answerId,text,ops,skipped,clarifications,followUps,applied} (ONLY on outcome ok, once) / error / done. Nothing from a non-ok answer is applied.
 import type { AskRequest } from "@kinetica-bi/shared";
-import { listDashboardTables, listTables } from "../../db";
+import { getDashboardDynamicView, listDashboardTables, listTables } from "../../db";
 import type { AiConfig } from "../aiConfig";
 import type { FinalizeInput } from "../aiAudit";
 import { canViewDashboard } from "../dashboardAccessDb";
@@ -101,6 +101,10 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           canViewDashboard: (u, id) => canViewDashboard(u, id),
           dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
           approvals: body.approvals,
+          dynamicViewInfo: (id) => {
+            const r = getDashboardDynamicView(id);
+            return r && r.dashboard_id === input.dashboard.id ? { name: r.name, columns: r.columns_json ?? null } : undefined;
+          },
         },
         dataAccess: config.dataAccess,
         maxToolSteps: config.maxToolSteps,

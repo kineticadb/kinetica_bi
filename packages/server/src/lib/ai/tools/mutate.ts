@@ -229,6 +229,59 @@ const patch: MutateTool = {
     return { op: "patch", action: { target: { kind: a.targetKind, id: a.targetId }, configPatch: a.changes } };
   },
 };
+const applyFilterArgs = z.object({
+  tableId: z.number().int().positive().optional(),
+  dynamicViewId: z.number().int().positive().optional(),
+  column: z.string().max(128),
+  operator: z.enum(["eq", "in", "between", "isNull"]).optional(),
+  value: z.string().max(200).optional(),
+  values: z.array(z.string().max(200)).max(100).optional(),
+  from: z.string().max(200).optional(),
+  to: z.string().max(200).optional(),
+});
+const clearFilterArgs = z.object({
+  tableId: z.number().int().positive().optional(),
+  dynamicViewId: z.number().int().positive().optional(),
+  column: z.string().max(128).optional(),
+});
+const applyFilter: MutateTool = {
+  kind: "mutate",
+  name: "apply_filter",
+  description:
+    "Filter the dashboard like a click: every chart, records table and map layer on that table (or saved dynamic view) narrows. Omit tableId and dynamicViewId unless the user named a table or chart. Filtering an already-filtered column replaces its filter. operator: eq (value), in (values), between (from, to), isNull (no value).",
+  args: applyFilterArgs,
+  toOp(args) {
+    const a = applyFilterArgs.parse(args);
+    const operator = a.operator ?? "eq";
+    const value =
+      operator === "in" ? a.values
+      : operator === "between" ? (a.from !== undefined && a.to !== undefined ? [a.from, a.to] : undefined)
+      : operator === "isNull" ? null
+      : a.value;
+    const item = defined({ column: a.column, operator, value });
+    const out: Record<string, unknown> = { op: "apply_filter", filters: [item] };
+    if (a.tableId !== undefined) out.source = { kind: "table", id: a.tableId };
+    else if (a.dynamicViewId !== undefined) out.source = { kind: "dynamicView", id: a.dynamicViewId };
+    // both ids: the stray key makes the strict op schema reject the call (the model must pick one)
+    if (a.tableId !== undefined && a.dynamicViewId !== undefined) out.dynamicViewId = a.dynamicViewId;
+    return out;
+  },
+};
+const clearFilter: MutateTool = {
+  kind: "mutate",
+  name: "clear_filter",
+  description: "Clear filters. No arguments clears every filter on the dashboard, the user's included. tableId or dynamicViewId clears that source; add column to clear one column.",
+  args: clearFilterArgs,
+  toOp(args) {
+    const a = clearFilterArgs.parse(args);
+    const out: Record<string, unknown> = { op: "clear_filter" };
+    if (a.tableId !== undefined) out.source = { kind: "table", id: a.tableId };
+    else if (a.dynamicViewId !== undefined) out.source = { kind: "dynamicView", id: a.dynamicViewId };
+    if (a.column !== undefined) out.column = a.column;
+    if (a.tableId !== undefined && a.dynamicViewId !== undefined) out.dynamicViewId = a.dynamicViewId;
+    return out;
+  },
+};
 const remover = (op: "remove_widget" | "remove_layer" | "remove_dynamic_view", what: string, extra = ""): MutateTool => ({
   kind: "mutate",
   name: op,
@@ -249,6 +302,8 @@ export const MUTATE_TOOLS: readonly MutateTool[] = [
   editHeatmapLayer,
   setLayerVisibility,
   patch,
+  applyFilter,
+  clearFilter,
   remover("remove_widget", "widget", " Removing a saved widget may need the user's confirmation."),
   remover("remove_layer", "layer"),
   remover("remove_dynamic_view", "dynamic view"),
