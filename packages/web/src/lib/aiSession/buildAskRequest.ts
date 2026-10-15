@@ -1,5 +1,5 @@
 // 137: pure builder for the POST /api/ai/ask body. Structure only - never row or filter values
-// (AIGOV-V20-02). The binding key set is CLOSED: no other widget config key is ever copied.
+// (AIGOV-V20-02). Filters are reported as source + column + operator names only. The binding key set is CLOSED: no other widget config key is ever copied.
 import { layersOfMap, type AskRequest } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import type { Turn } from "./types";
@@ -29,11 +29,41 @@ function bindingOf(config: Record<string, unknown>): NonNullable<AskRequest["sna
   return Object.keys(b).length > 0 ? b : undefined;
 }
 
+/** Structural: ActiveFilter objects fit. The filter value is NEVER read. */
+type SnapshotFilterLike = { column: string; operator?: string; dataType?: string };
+
+function snapshotFilters(
+  f: { filters: Readonly<Record<number, readonly SnapshotFilterLike[]>>; dvFilters: Readonly<Record<number, readonly SnapshotFilterLike[]>> } | undefined,
+): AskRequest["snapshot"]["filters"] {
+  if (!f) return [];
+  const out: AskRequest["snapshot"]["filters"] = [];
+  const add = (kind: "table" | "dynamicView", rec: Readonly<Record<number, readonly SnapshotFilterLike[]>>) => {
+    for (const [k, list] of Object.entries(rec)) {
+      const id = Number(k);
+      if (!Number.isInteger(id) || (kind === "table" ? id <= 0 : id === 0)) continue;
+      for (const x of list) {
+        out.push({
+          source: { kind, id },
+          column: x.column.slice(0, 200),
+          op: x.dataType === "null" ? "isNull" : (x.operator ?? "eq"),
+        });
+      }
+    }
+  };
+  add("table", f.filters);
+  add("dynamicView", f.dvFilters);
+  return out.slice(0, 300);
+}
+
 export function buildAskSnapshot(input: {
   widgets: readonly WidgetDto[];
   layouts: Readonly<Record<number, AskRect>>;
   layers: readonly DashboardLayerDto[];
   dynamicViews: readonly { id: number; name: string }[];
+  filters?: {
+    filters: Readonly<Record<number, readonly SnapshotFilterLike[]>>;
+    dvFilters: Readonly<Record<number, readonly SnapshotFilterLike[]>>;
+  };
 }): AskRequest["snapshot"] {
   const widgets = input.widgets.slice(0, 100).map((w) => {
     const cfg = (w.config ?? {}) as Record<string, unknown>;
@@ -68,7 +98,7 @@ export function buildAskSnapshot(input: {
     widgets,
     layers,
     dynamicViews: input.dynamicViews.slice(0, 20).map((d) => ({ id: d.id, name: d.name.slice(0, 200) })),
-    filters: [], // 138 wires filters
+    filters: snapshotFilters(input.filters),
   };
 }
 

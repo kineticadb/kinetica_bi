@@ -82,3 +82,43 @@ describe("buildAskRequest", () => {
     expect(req().snapshot.filters).toEqual([]);
   });
 });
+
+describe("ask snapshot filters (138)", () => {
+  const base = { widgets, layouts, layers: [], dynamicViews: [] };
+  it("SNAPF-1: names and operators only, never values", () => {
+    const snapshot = buildAskSnapshot({
+      ...base,
+      filters: {
+        filters: { 5: [{ column: "payment_type", value: "SECRETVAL_77", dataType: "string", addedAt: 1 } as never] },
+        dvFilters: { 90: [{ column: "zone", operator: "in", value: ["a"], dataType: "string", addedAt: 1 } as never] },
+      },
+    });
+    expect(snapshot.filters).toEqual([
+      { source: { kind: "table", id: 5 }, column: "payment_type", op: "eq" },
+      { source: { kind: "dynamicView", id: 90 }, column: "zone", op: "in" },
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain("SECRETVAL_77");
+    const body = buildAskRequest({ dashboardId: 1, question: "q", snapshot, turns: [], cursor: -1, removalApproved: false });
+    expect(AskRequestSchema.safeParse(body).success).toBe(true);
+  });
+  it("SNAPF-2: null filter is isNull; between kept", () => {
+    const snapshot = buildAskSnapshot({
+      ...base,
+      filters: {
+        filters: { 5: [{ column: "tip", dataType: "null" }, { column: "fare", operator: "between", dataType: "number" }] },
+        dvFilters: {},
+      },
+    });
+    expect(snapshot.filters.map((f) => f.op)).toEqual(["isNull", "between"]);
+  });
+  it("SNAPF-3: capped at 300", () => {
+    const mk = (n: number) => Array.from({ length: n }, (_, i) => ({ column: `c${i}`, dataType: "string" }));
+    const snapshot = buildAskSnapshot({ ...base, filters: { filters: { 1: mk(160), 2: mk(160) }, dvFilters: {} } });
+    expect(snapshot.filters).toHaveLength(300);
+  });
+  it("SNAPF-4: omitted filters is []; client filter notes are never sent back", () => {
+    expect(buildAskSnapshot(base).filters).toEqual([]);
+    const t = turn(1, { status: "ok", filterNotes: ["Filtered trips to payment_type = SECRETVAL_77 (2 widgets)."] });
+    expect(JSON.stringify(buildAskTurns([t], 0))).not.toContain("SECRETVAL_77");
+  });
+});
