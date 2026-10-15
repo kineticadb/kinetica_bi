@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { TARGET_KINDS } from "./widgetAction";
 import { AiIdentifierSchema } from "./actionAllowList";
+import { AiFilterSourceSchema, AiFilterItemSchema, checkAiFilterItem } from "./aiFilter";
 import { AI_CHART_SWAP_TYPES, AiHeatmapStyleSchema } from "./aiCatalog";
 
 export const AI_OP_KINDS = [
@@ -79,9 +80,10 @@ export const AiOpSchema = z.discriminatedUnion("op", [
   // structured spec added in Phase 139
   z.object({ op: z.literal("add_dynamic_view"), tempId: AiTempIdSchema }).strict(),
   z.object({ op: z.literal("remove_dynamic_view"), id: AiRefIdSchema }).strict(),
-  // filter payload added in Phase 138
-  z.object({ op: z.literal("apply_filter"), widgetId: AiRefIdSchema }).strict(),
-  z.object({ op: z.literal("clear_filter"), widgetId: AiRefIdSchema.optional() }).strict(),
+  // Phase 138: source-keyed filters (D-01). A table filter narrows every widget/layer on that table, like a click.
+  z.object({ op: z.literal("apply_filter"), source: AiFilterSourceSchema, filters: z.array(AiFilterItemSchema).min(1).max(10) }).strict(),
+  // no source = clear every column filter on the dashboard (D-07); source only = that source; source + column = one column
+  z.object({ op: z.literal("clear_filter"), source: AiFilterSourceSchema.optional(), column: AiIdentifierSchema.optional() }).strict(),
   z
     .object({
       op: z.literal("set_layout"),
@@ -104,6 +106,19 @@ export function parseAiOp(raw: unknown): { ok: true; op: AiOp } | { ok: false; e
         : (["wkbColumn"] as const);
       const errors = need.filter((c) => op[c] === undefined).map((c) => `${c} is required for spatialMode ${op.spatialMode}`);
       if (errors.length > 0) return { ok: false, errors };
+    }
+    if (op.op === "apply_filter") {
+      const errors: string[] = [];
+      const seen = new Set<string>();
+      op.filters.forEach((f, i) => {
+        for (const e of checkAiFilterItem(f)) errors.push(`filters.${i}.value: ${e}`);
+        if (seen.has(f.column)) errors.push(`filters: column ${f.column} appears twice`);
+        seen.add(f.column);
+      });
+      if (errors.length > 0) return { ok: false, errors };
+    }
+    if (op.op === "clear_filter" && op.column !== undefined && op.source === undefined) {
+      return { ok: false, errors: ["column: column needs a source"] };
     }
     return { ok: true, op };
   }

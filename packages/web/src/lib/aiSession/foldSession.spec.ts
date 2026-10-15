@@ -44,7 +44,7 @@ describe("evaluateTurn", () => {
   });
   it("EVAL-2: later-phase kinds are unsupported_in_134", () => {
     const es = turn([
-      { op: "apply_filter", widgetId: 42 }, { op: "clear_filter" },
+      { op: "apply_filter", source: { kind: "table", id: 5 }, filters: [{ column: "payment_type", operator: "eq", value: "Cash" }] }, { op: "clear_filter" },
       { op: "add_dynamic_view", tempId: -9 }, { op: "remove_dynamic_view", id: 90 },
     ]);
     for (const e of es) expect(e.result).toMatchObject({ status: "skipped", reason: "unsupported_in_134" });

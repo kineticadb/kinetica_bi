@@ -114,3 +114,30 @@ describe("Phase 136 ops", () => {
     expect(hits).toEqual([]);
   });
 });
+
+describe("Phase 138 filter ops", () => {
+  const src = { kind: "table", id: 5 };
+  const f = { column: "payment_type", operator: "eq", value: "Credit" };
+  it("AF1-9: apply_filter shape", () => {
+    expect(parseAiOp({ op: "apply_filter", source: src, filters: [f] }).ok).toBe(true);
+    expect(parseAiOp({ op: "apply_filter", widgetId: 42 }).ok).toBe(false);
+    expect(parseAiOp({ op: "apply_filter", source: src, filters: [] }).ok).toBe(false);
+    const many = Array.from({ length: 11 }, (_, i) => ({ column: `c${i}`, operator: "eq", value: "x" }));
+    expect(parseAiOp({ op: "apply_filter", source: src, filters: many }).ok).toBe(false);
+    const dup = parseAiOp({ op: "apply_filter", source: src, filters: [f, f] });
+    expect(dup.ok).toBe(false);
+    if (!dup.ok) expect(dup.errors.some((e) => e.includes("payment_type"))).toBe(true);
+    const bad = parseAiOp({ op: "apply_filter", source: src, filters: [{ column: "a", operator: "in", value: "x" }] });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.some((e) => e.startsWith("filters.0"))).toBe(true);
+  });
+  it("AF1-10: clear_filter shape", () => {
+    expect(parseAiOp({ op: "clear_filter" }).ok).toBe(true);
+    expect(parseAiOp({ op: "clear_filter", source: { kind: "dynamicView", id: 90 } }).ok).toBe(true);
+    expect(parseAiOp({ op: "clear_filter", source: src, column: "vendor_id" }).ok).toBe(true);
+    const r = parseAiOp({ op: "clear_filter", column: "vendor_id" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.join(" ")).toContain("column needs a source");
+    expect(parseAiOp({ op: "clear_filter", widgetId: 42 }).ok).toBe(false);
+  });
+});

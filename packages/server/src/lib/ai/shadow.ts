@@ -163,9 +163,12 @@ export function describeOp(op: AiOp, s: ShadowState): string {
     case "remove_dynamic_view":
       return `Removed dynamic view ${op.id}`;
     case "apply_filter":
-      return `Applied filter from widget ${op.widgetId}`;
+      return `Filtered ${filterSrc(op.source)} on ${op.filters.map((f) => f.column).join(", ")}`;
     case "clear_filter":
-      return op.widgetId === undefined ? "Cleared filters" : `Cleared filter from widget ${op.widgetId}`;
+      if (op.source === undefined) return "Cleared all filters";
+      return op.column === undefined
+        ? `Cleared the filters on ${filterSrc(op.source)}`
+        : `Cleared the ${op.column} filter on ${filterSrc(op.source)}`;
     case "set_layout":
       return `Rearranged ${op.items.length} widgets`;
     case "change_widget_type": {
@@ -178,6 +181,8 @@ export function describeOp(op: AiOp, s: ShadowState): string {
     }
   }
 }
+
+const filterSrc = (s: { kind: string; id: number }) => (s.kind === "table" ? `table ${s.id}` : `dynamic view ${s.id}`);
 
 /** Label for a SKIPPED op (change log): what the model tried. Titles and ids only. */
 export function describeIntent(op: AiOp, s: ShadowState): string {
@@ -205,9 +210,12 @@ export function describeIntent(op: AiOp, s: ShadowState): string {
     case "remove_dynamic_view":
       return `Remove dynamic view ${op.id}`;
     case "apply_filter":
-      return `Apply filter from widget ${wt(op.widgetId)}`;
+      return `Filter ${filterSrc(op.source)} on ${op.filters.map((f) => f.column).join(", ")}`;
     case "clear_filter":
-      return op.widgetId === undefined ? "Clear filters" : `Clear filter from widget ${wt(op.widgetId)}`;
+      if (op.source === undefined) return "Clear all filters";
+      return op.column === undefined
+        ? `Clear the filters on ${filterSrc(op.source)}`
+        : `Clear the ${op.column} filter on ${filterSrc(op.source)}`;
     case "set_layout":
       return "Rearrange widgets";
     case "change_widget_type":

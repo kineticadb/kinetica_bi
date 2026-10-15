@@ -93,3 +93,13 @@ describe("Phase 137 result contract", () => {
     expect((AI_WIDGET_TYPES as readonly string[]).includes("ai")).toBe(false);
   });
 });
+
+describe("Phase 138 snapshot filter cap", () => {
+  it("AF1-11: 300 filters parse, 301 fail, value still rejected", () => {
+    const f = { source: { kind: "table", id: 1 }, column: "c", op: "eq" };
+    const withF = (n: number) => ({ ...base(), snapshot: { ...base().snapshot, filters: Array.from({ length: n }, () => f) } });
+    expect(ok(withF(300))).toBe(true);
+    expect(ok(withF(301))).toBe(false);
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, filters: [{ ...f, value: "s" }] } })).toBe(false);
+  });
+});

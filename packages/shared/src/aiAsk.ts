@@ -95,7 +95,8 @@ export const AskRequestSchema = z
         widgets: z.array(SnapWidget).max(100),
         layers: z.array(SnapLayer).max(50),
         dynamicViews: z.array(SnapDv).max(20),
-        filters: z.array(SnapFilter).max(50),
+        // 25 per source x tables + dynamic views; still names/operators only, never values
+        filters: z.array(SnapFilter).max(300),
       })
       .strict(),
     turns: z.array(AskTurnSchema).max(50),
