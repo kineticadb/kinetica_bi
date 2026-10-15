@@ -38,6 +38,15 @@ performance.getEntriesByType("resource").map(e => e.name).filter(n => n.includes
 ```
 New tile URLs must reference a combination view (not the base table) and the visible points/heat must thin out.
 
+## Harness quick reference (`h` is `const h = __kbiAiHarness`)
+```js
+__kbiAiHarness.filter("table", <tableId>, "<category col>", "eq", "<value>")
+__kbiAiHarness.filter("table", <tableId>, "<numeric col>", "between", ["0", "10"])
+__kbiAiHarness.filter("dynamicView", <dvId>, "<dv column>", "eq", "<value>")
+__kbiAiHarness.clearFilter("table", <tableId>, "<category col>")
+__kbiAiHarness.filterState()   // filters + AI deltas + lock state
+```
+
 ## Verify
 Do every visual step in LIGHT and then DARK mode. Steps 1-8 make NO provider request. `const h = __kbiAiHarness; h.help();` first. Start each step from a clean session (`h.discard()`) unless it says otherwise.
 
