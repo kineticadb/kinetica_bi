@@ -30,3 +30,18 @@
 
 ## Cleanup
 AI widget 119 deleted (204); map 117 `legendPanelEnabled` removed again (config keys back to title/basemapLight/basemapDark/layout); harness session discarded. Dashboard 12 = widgets 117, 118.
+
+## Fixes (2026-10-15, commit 81117b2) — re-verified in the same Chrome, light + dark
+| Issue | Fix | Re-check |
+|---|---|---|
+| 1 choices not greyed | `.ai-chat-choices .ghost-sm:disabled` opacity 0.5; picked one 0.8 + accent border | ✓ both themes |
+| 2 question twice | choice label hidden when it equals the answer bubble (UAT12-1/2) | ✓ |
+| 3 clarification clutter | no local template follow-ups on clarification turns; no Revert when the turn changed nothing (UAT12-1) | ✓ |
+| 4 drawer centred | `.modal-overlay.ai-drawer-overlay { place-items: stretch end }` + slide-in (`--duration-base`, off under reduced motion) | ✓ drawer x 864–1344 of 1344 |
+| 5 Send overflow | textarea / tile input `min-width: 0`; empty box stays one line; tile row centred; one-line placeholder | ✓ Send right 484 < tile 503 |
+| 6 bar copy | "… 0 removed. Editing is locked …"; no hover target at 0 (UAT12-3) | ✓ |
+| 7 leave copy | "Saving AI changes is coming soon." replaces "Keep them first" (UAT12-4 in AIDLG-3) | ✓ |
+
+New tests fail on the pre-fix components (UAT12-1, UAT12-3, AIDLG-3) and pass after. Gates: web tsc OK; theme-guard 172/172; full web vitest (--maxWorkers=4) green apart from the theme-guard px/ms literal, fixed before commit.
+Not checked: drawer below 900 px; no-access user view; multi-widget run-state sync (unit-tested in AiChat CHAT spec).
+Test AI widget 120 deleted (204); dashboard 12 = 117, 118.
