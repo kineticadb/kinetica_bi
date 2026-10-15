@@ -242,3 +242,20 @@ describe("FilterPanelRail", () => {
     expect(onExpand).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("FilterPanel AI tag", () => {
+  it("CHIPAI-8: aiApplied chips render the AI tag, others do not", () => {
+    const groups: FilterPanelGroupData[] = [
+      {
+        title: "trips",
+        chips: [
+          { text: "a = 1", removeAriaLabel: "rm a", onRemove: vi.fn(), aiApplied: true },
+          { text: "b = 2", removeAriaLabel: "rm b", onRemove: vi.fn() },
+        ],
+        onClearAll: vi.fn(),
+      },
+    ];
+    render(<FilterPanel tableGroups={groups} dvGroups={[]} count={2} onCollapse={vi.fn()} onClearAllFilters={vi.fn()} />);
+    expect(document.querySelectorAll(".widget-filter-badge")).toHaveLength(1);
+  });
+});

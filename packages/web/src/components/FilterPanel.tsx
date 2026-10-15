@@ -36,6 +36,7 @@ export type FilterPanelChip = {
   onClearHighlight?: () => void;
   onActivate?: () => void;
   onActivateWidget?: (widgetId: number) => void;
+  aiApplied?: boolean; // 138 D-14: forwarded to FilterChip's AI tag
 };
 
 export type FilterPanelGroupData = {
@@ -92,6 +93,7 @@ function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
               onClearHighlight={chip.onClearHighlight}
               onActivate={chip.onActivate}
               onActivateWidget={chip.onActivateWidget}
+              aiApplied={chip.aiApplied}
             />
           ))}
         </div>

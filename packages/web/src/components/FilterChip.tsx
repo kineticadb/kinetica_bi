@@ -22,6 +22,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronDown, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import type { WidgetApplyEntry } from "../lib/computeReverseFilterMap";
 
+export const AI_FILTER_PROVENANCE = "from AI assistant";
+
 export type FilterChipProps = {
   text: string;
   removeAriaLabel: string;
@@ -34,6 +36,7 @@ export type FilterChipProps = {
   onClearHighlight?: () => void; // onMouseLeave/onBlur -> clearHighlighted()
   onActivate?: () => void; // click "applies to N widgets" -> scroll topmost + flash all
   onActivateWidget?: (widgetId: number) => void; // expanded row click -> scroll+flash one
+  aiApplied?: boolean; // 138 D-14: small "AI" tag (existing widget-filter-badge class)
 };
 
 export function FilterChip({
@@ -47,15 +50,21 @@ export function FilterChip({
   onClearHighlight,
   onActivate,
   onActivateWidget,
+  aiApplied,
 }: FilterChipProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (variant === "topbar") {
-    // Verbatim copy of the existing DashboardsPage.tsx chip subtree — do not
-    // restructure. `provenance` is intentionally unused in this branch (parity).
+    // Byte-identical for non-AI chips; the AI tag is a conditional sibling.
+    // `provenance` is intentionally unused in this branch (parity).
     return (
       <span className="filter-bar-chip">
         {text}
+        {aiApplied && (
+          <span className="widget-filter-badge" title="Applied by the AI assistant">
+            AI
+          </span>
+        )}
         <button
           type="button"
           className="filter-bar-chip-dismiss"
@@ -69,6 +78,7 @@ export function FilterChip({
   }
 
   const n = appliesTo?.length ?? 0;
+  const prov = provenance ?? (aiApplied ? AI_FILTER_PROVENANCE : undefined);
 
   return (
     <div
@@ -82,6 +92,11 @@ export function FilterChip({
         <span className="filter-panel-chip-value" title={text}>
           {text}
         </span>
+        {aiApplied && (
+          <span className="widget-filter-badge" title="Applied by the AI assistant">
+            AI
+          </span>
+        )}
         <button
           type="button"
           className="filter-bar-chip-dismiss"
@@ -94,7 +109,7 @@ export function FilterChip({
           <FontAwesomeIcon icon={faXmark} />
         </button>
       </div>
-      {provenance && <span className="filter-panel-chip-provenance">{provenance}</span>}
+      {prov && <span className="filter-panel-chip-provenance">{prov}</span>}
       {appliesTo && (
         <div className="filter-panel-chip-applies">
           <button
