@@ -891,7 +891,7 @@ const DashboardOpen = ({
     let uninstall: (() => void) | undefined;
     let cancelled = false;
     void import("../lib/aiSession/devHarness").then((m) => {
-      if (!cancelled) uninstall = m.installAiDevHarness(aiActions, () => aiBaselineRef.current?.widgets ?? []);
+      if (!cancelled) uninstall = m.installAiDevHarness(aiActions, () => aiBaselineRef.current?.widgets ?? [], () => aiBaselineRef.current?.tables ?? []);
     });
     return () => {
       cancelled = true;

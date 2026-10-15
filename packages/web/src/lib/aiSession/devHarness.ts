@@ -2,8 +2,17 @@
 // the branch (and this module) is eliminated from production bundles. Lets the operator drive
 // scripted AI turns from the browser console. Phase 137's AI widget replaces it as the real driver.
 import type { WidgetDto } from "../../api/client";
-import { resolveHeatmapHost, layersOfMap, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS } from "@kinetica-bi/shared";
-import type { AiClarification } from "@kinetica-bi/shared";
+import {
+  resolveHeatmapHost,
+  layersOfMap,
+  AI_PALETTE_NAMES,
+  AI_HEATMAP_RAMPS,
+  coerceAiFilterItem,
+  checkAiFilterItem,
+  aiFilterSourceKey,
+} from "@kinetica-bi/shared";
+import type { AiClarification, AiFilterItem } from "@kinetica-bi/shared";
+import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
 import type { TurnInput, TurnEntry } from "./types";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
@@ -60,6 +69,10 @@ type Harness = {
   forward(index: number): void;
   discard(): void;
   state(): unknown;
+  filter(kind: "table" | "dynamicView", id: number, column: string, operator?: "eq" | "in" | "between" | "isNull", value?: unknown): Result | null;
+  clearFilter(kind?: "table" | "dynamicView", id?: number, column?: string): Result;
+  highlight(ids: number[]): void;
+  filterState(): unknown;
   help(): void;
 };
 
@@ -69,7 +82,11 @@ declare global {
   }
 }
 
-export function installAiDevHarness(actions: Actions, getSavedWidgets: () => readonly WidgetDto[]): () => void {
+export function installAiDevHarness(
+  actions: Actions,
+  getSavedWidgets: () => readonly WidgetDto[],
+  getTables: () => readonly { id: number; columns: Record<string, string> }[] = () => [],
+): () => void {
   // GAP-134-02: tell the operator where the session is after every move. Turn indices include
   // patch-only turns (invisible), so print the cursor, turn count, turn list and visible AI widgets.
   const reportPosition = (action: string): void => {
@@ -214,6 +231,72 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
         layout: s.derived.layout,
       };
     },
+    // 138: filters go through actions.applyTurn (the real apply path: deltas, outline, notes, zero-row check).
+    filter: (kind, id, column, operator, value) => {
+      const op = operator ?? "eq";
+      const item = { column, operator: op, ...(op === "isNull" ? {} : { value }) } as AiFilterItem;
+      let coerced: AiFilterItem | null = null;
+      let reason = "";
+      if (kind === "table") {
+        const r = coerceAiFilterItem(item, getTables().find((t) => t.id === id)?.columns[column]);
+        if (r.ok) coerced = r.item;
+        else reason = r.reason;
+      } else {
+        // No column types for dynamic views: numbers stay numbers, strings stay strings.
+        const isNum = (v: unknown) => typeof v === "number";
+        const numeric = isNum(item.value) || (Array.isArray(item.value) && item.value.length > 0 && item.value.every(isNum));
+        if (numeric) {
+          const errs = checkAiFilterItem(item);
+          if (errs.length === 0) coerced = { ...item, dataType: "number" };
+          else reason = errs[0];
+        } else {
+          const r = coerceAiFilterItem(item, undefined);
+          if (r.ok) coerced = r.item;
+          else reason = r.reason;
+        }
+      }
+      if (!coerced) {
+        console.warn(`filter refused: ${reason}`);
+        return null;
+      }
+      return run([{ op: "apply_filter", source: { kind, id }, filters: [coerced] }], `filter ${column}`);
+    },
+    clearFilter: (kind, id, column) =>
+      run(
+        [
+          {
+            op: "clear_filter",
+            ...(kind !== undefined && id !== undefined ? { source: { kind, id } } : {}),
+            ...(column ? { column } : {}),
+          },
+        ],
+        "clear filters",
+      ),
+    highlight: (ids) => useAiSessionStore.getState().setHighlight(ids),
+    filterState: () => {
+      const fs = useFilterStore.getState();
+      const st = useAiSessionStore.getState();
+      const view = (list: ActiveFilter[]) =>
+        list.map((f) => ({
+          column: f.column,
+          operator: f.operator ?? (f.dataType === "null" ? "isNull" : "eq"),
+          value: f.value,
+          aiApplied: !!f.aiApplied,
+        }));
+      const filters: Record<string, ReturnType<typeof view>> = {};
+      for (const [id, list] of Object.entries(fs.filters)) {
+        if (list.length > 0) filters[aiFilterSourceKey({ kind: "table", id: Number(id) })] = view(list);
+      }
+      for (const [id, list] of Object.entries(fs.dvFilters)) {
+        if (list.length > 0) filters[aiFilterSourceKey({ kind: "dynamicView", id: Number(id) })] = view(list);
+      }
+      return {
+        filters,
+        cursor: st.cursor,
+        hasUnsavedAiChanges: hasUnsavedAiChanges(),
+        turnsWithFilterDeltas: st.turns.filter((t) => t.entries.some((e) => (e.filterDeltas?.length ?? 0) > 0)).length,
+      };
+    },
     help: () => {
       const saved = getSavedWidgets().map((w) => `${w.id}:${w.type}`).join(", ") || "(none)";
       console.log(
@@ -227,6 +310,9 @@ export function installAiDevHarness(actions: Actions, getSavedWidgets: () => rea
           `  heatmap ramps: ${AI_HEATMAP_RAMPS.join(", ")}`,
           "  chatTurn(prompt, answer, {followUps, clarifications, pickedChoice, status:'ok'|'error'|'cancelled', message, retryable, ops})  (no provider call)",
           "  fakeRun(line, ms)  shows the running status line for ms (no provider call; Cancel does nothing here)",
+          "  filter(kind 'table'|'dynamicView', id, column, op 'eq'|'in'|'between'|'isNull', value)  e.g. filter('table', 5, 'payment_type', 'eq', 'Credit'); in: [..]; between: [from, to]",
+          "  clearFilter()  (all)   clearFilter(kind, id)   clearFilter(kind, id, column)",
+          "  highlight([widgetIds])  flash the AI outline   filterState()  filters + AI deltas + lock state",
           "  turn(ops[], prompt)   revert(i)/forward(i) (-1 = saved dashboard)   discard()   state()",
           "  map widgets accept show_popup / show_scale_bar / show_fullscreen; records accept page_size",
           "  e.g. patchWidget(<mapId>, { show_scale_bar: true })  (false equals the default, so it shows no change)",

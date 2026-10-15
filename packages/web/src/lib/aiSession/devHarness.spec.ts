@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { installAiDevHarness } from "./devHarness";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { useFilterStore } from "../../store/filterStore";
 import { baselineFixture, mapWidget, recordsWidget, savedLayer } from "../../test/aiSessionHarness";
 
 const baseline = baselineFixture();
@@ -293,5 +294,98 @@ describe("devHarness chat helpers (137-10)", () => {
     const out = String((console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1)?.[0]);
     expect(out).toContain("chatTurn");
     expect(out).toContain("fakeRun");
+  });
+});
+
+describe("filter helpers (138)", () => {
+  const apply = vi.fn((input: unknown) => ({ turnId: "t", entries: [] as never[], input }));
+  let uninstall: () => void;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  const h = () => window.__kbiAiHarness!;
+  const lastOps = () => (apply.mock.calls[apply.mock.calls.length - 1][0] as { ops: unknown[] }).ops;
+
+  beforeEach(() => {
+    apply.mockClear();
+    useAiSessionStore.getState().reset();
+    useFilterStore.getState().reset();
+    vi.spyOn(console, "table").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    uninstall = installAiDevHarness(
+      { applyTurn: apply as never, setCursor: () => {}, discard: () => {} },
+      () => baseline.widgets,
+      () => [{ id: 5, columns: { fare_amount: "double", payment_type: "varchar(16)", vendor_id: "int" } }],
+    );
+  });
+  afterEach(() => {
+    uninstall();
+    useAiSessionStore.getState().reset();
+    useFilterStore.getState().reset();
+    vi.restoreAllMocks();
+  });
+
+  it("HARNF-1: filter applies a coerced typed op through applyTurn", () => {
+    h().filter("table", 5, "fare_amount", "between", ["1", "5"]);
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(lastOps()).toEqual([
+      { op: "apply_filter", source: { kind: "table", id: 5 }, filters: [{ column: "fare_amount", operator: "between", value: [1, 5], dataType: "number" }] },
+    ]);
+    h().filter("table", 5, "payment_type", undefined, "Credit");
+    expect(lastOps()).toEqual([
+      { op: "apply_filter", source: { kind: "table", id: 5 }, filters: [{ column: "payment_type", operator: "eq", value: "Credit", dataType: "string" }] },
+    ]);
+  });
+
+  it("HARNF-2: a value that does not fit the column type is refused with a warning", () => {
+    expect(h().filter("table", 5, "fare_amount", "eq", "abc")).toBeNull();
+    expect(apply).not.toHaveBeenCalled();
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("fare_amount");
+  });
+
+  it("HARNF-3: clearFilter all / one column", () => {
+    h().clearFilter();
+    expect(lastOps()).toEqual([{ op: "clear_filter" }]);
+    h().clearFilter("table", 5, "vendor_id");
+    expect(lastOps()).toEqual([{ op: "clear_filter", source: { kind: "table", id: 5 }, column: "vendor_id" }]);
+  });
+
+  it("HARNF-4: highlight triggers the outline directly", () => {
+    const before = useAiSessionStore.getState().highlight.nonce;
+    h().highlight([42, 50]);
+    const hl = useAiSessionStore.getState().highlight;
+    expect(hl.ids).toEqual([42, 50]);
+    expect(hl.nonce).toBeGreaterThan(before);
+  });
+
+  it("HARNF-5: filterState lists filters per source with AI marker plus lock info", () => {
+    useFilterStore.getState().addFilter(5, { column: "payment_type", value: "Credit", dataType: "string", addedAt: 1, aiApplied: true });
+    useFilterStore.getState().addDvFilter(90, { column: "fare", value: 5, dataType: "number", addedAt: 2 });
+    const st = h().filterState() as {
+      filters: Record<string, Row[]>;
+      cursor: number;
+      hasUnsavedAiChanges: boolean;
+      turnsWithFilterDeltas: number;
+    };
+    expect(st.filters["table:5"]).toEqual([{ column: "payment_type", operator: "eq", value: "Credit", aiApplied: true }]);
+    expect(st.filters["dynamicView:90"]).toEqual([{ column: "fare", operator: "eq", value: 5, aiApplied: false }]);
+    expect(st.cursor).toBe(-1);
+    expect(st.hasUnsavedAiChanges).toBe(false);
+    expect(st.turnsWithFilterDeltas).toBe(0);
+  });
+
+  it("HARNF-6: dynamic view filters keep numbers numeric and strings as strings", () => {
+    h().filter("dynamicView", 90, "fare", "eq", 5);
+    expect(lastOps()).toEqual([
+      { op: "apply_filter", source: { kind: "dynamicView", id: 90 }, filters: [{ column: "fare", operator: "eq", value: 5, dataType: "number" }] },
+    ]);
+    h().filter("dynamicView", 90, "zone", "eq", "East");
+    expect((lastOps()[0] as { filters: Row[] }).filters[0]).toEqual({ column: "zone", operator: "eq", value: "East", dataType: "string" });
+  });
+
+  it("HARNF-7: help lists the filter helpers", () => {
+    h().help();
+    const text = String(logSpy.mock.calls[logSpy.mock.calls.length - 1][0]);
+    for (const k of ["filter(", "clearFilter(", "highlight(", "filterState()"]) expect(text).toContain(k);
   });
 });
