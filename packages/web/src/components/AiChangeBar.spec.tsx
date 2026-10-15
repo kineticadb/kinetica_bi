@@ -35,6 +35,14 @@ describe("AiChangeBar", () => {
     expect(screen.getByText("1 removed").getAttribute("title")).toBe("Revenue");
   });
 
+  it("UAT12-3: 0 removed has no hover target; a full stop precedes the locked phrase", () => {
+    apply([addWidgetOp(-1)]);
+    render(bar());
+    const s = screen.getByRole("status");
+    expect(s.querySelector(".ai-change-bar-removed")).toBeNull();
+    expect(s.textContent).toMatch(/0 removed\. Editing is locked/);
+  });
+
   it("BAR7-3: cursor -1 still shows the bar", () => {
     apply([addWidgetOp(-1)]);
     act(() => useAiSessionStore.getState().setCursor(-1, baseline()));

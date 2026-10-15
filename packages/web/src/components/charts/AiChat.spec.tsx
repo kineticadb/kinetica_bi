@@ -181,4 +181,22 @@ describe("AiChat", () => {
     expect(await within(screen.getByTestId("a")).findByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(within(screen.getByTestId("b")).getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
+
+  it("UAT12-1: clarification shows its question once, no template follow-ups, no Revert when nothing changed", () => {
+    const clar = { kind: "choose_option" as const, question: "Which total?", options: [{ id: "1", label: "Fare" }, { id: "2", label: "Tip" }] };
+    seed([turn(0, "Show the total", "Which total?", { status: "ok", followUps: [], clarifications: [clar] })]);
+    render(<AiChat ctx={ctx} variant="inline" />);
+    expect(screen.getAllByText("Which total?")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Show total fare_amount by payment_type" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revert dashboard to this state" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Fare" })).toBeTruthy();
+  });
+
+  it("UAT12-2: a differently worded choice question keeps its label; AI follow-ups still show", () => {
+    const clar = { kind: "choose_option" as const, question: "Pick one", options: [{ id: "1", label: "Fare" }] };
+    seed([turn(0, "Show the total", "I can show two totals.", { status: "ok", followUps: ["Show by month"], clarifications: [clar] })]);
+    render(<AiChat ctx={ctx} variant="inline" />);
+    expect(screen.getByText("Pick one")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show by month" })).toBeTruthy();
+  });
 });

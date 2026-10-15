@@ -37,6 +37,8 @@ describe("AiLeaveDialog", () => {
     expect(fn).not.toHaveBeenCalled();
     const dlg = screen.getByRole("dialog", { name: "You have unsaved AI changes" });
     expect(dlg.closest(".modal-overlay")!.parentElement).toBe(document.body);
+    // UAT12-4: Keep is disabled until Phase 141, so the copy must not tell the user to keep first
+    expect(dlg.textContent).not.toMatch(/Keep them first/);
   });
 
   it("AIDLG-4: Stay closes, no proceed, turns intact", () => {

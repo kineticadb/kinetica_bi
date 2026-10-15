@@ -97,6 +97,7 @@
 
 .ai-chat-textarea {
   flex: 1;
+  min-width: 0; /* 137-12 UAT: let it shrink so Send stays inside a narrow tile */
   resize: none;
   min-height: 0;
   max-height: calc(4 * 1.4em + var(--space-4));
@@ -108,10 +109,19 @@
 .ai-widget { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .ai-widget--small { gap: var(--space-1); padding: var(--space-1); }
 .ai-widget-notice { padding: var(--space-3); font-size: var(--text-sm); }
-.ai-tile-bar { display: flex; align-items: flex-end; gap: var(--space-1); }
-.ai-tile-bar .ai-chat-input { flex: 1; padding: 0; border-top: none; }
+.ai-tile-bar { display: flex; align-items: center; gap: var(--space-1); }
+.ai-tile-bar .ai-chat-input { align-items: center; }
+.ai-tile-bar .ai-chat-textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-tile-bar .ai-chat-input { flex: 1; min-width: 0; padding: 0; border-top: none; }
 .ai-tile-last { font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ai-drawer-overlay { justify-items: end; align-items: stretch; place-items: stretch end; }
-.ai-drawer { width: min(480px, 100vw); height: 100vh; display: flex; flex-direction: column; background: var(--panel-solid); border-left: 1px solid var(--border); box-shadow: var(--shadow); }
+/* 137-12 UAT: two classes so this beats global.css .modal-overlay { place-items: center } (same specificity, later in the cascade). */
+.modal-overlay.ai-drawer-overlay { place-items: stretch end; }
+.ai-drawer { width: min(480px, 100vw); height: 100vh; display: flex; flex-direction: column; background: var(--panel-solid); border-left: 1px solid var(--border); box-shadow: var(--shadow); animation: ai-drawer-in var(--duration-base) ease-out; }
+@keyframes ai-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .ai-drawer { animation: none; } }
 .ai-drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 @media (max-width: 900px) { .ai-drawer { width: 100vw; border-left: none; } }
+
+/* 137-12 UAT: answered (disabled) choices read as greyed out; the picked one stays legible. */
+.ai-chat-choices .ghost-sm:disabled { opacity: 0.5; cursor: default; }
+.ai-chat-choices .ghost-sm:disabled[aria-pressed="true"] { opacity: 0.8; border-color: var(--accent); }

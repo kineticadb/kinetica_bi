@@ -35,9 +35,14 @@ export function AiChangeBar({
         ) : (
           <>
             Unsaved AI changes: {added} added · {edited} edited ·{" "}
-            <span className="ai-change-bar-removed" title={removedNames.join(", ") || undefined}>
-              {removed} removed
-            </span>
+            {removed > 0 ? (
+              <span className="ai-change-bar-removed" title={removedNames.join(", ") || undefined}>
+                {removed} removed
+              </span>
+            ) : (
+              "0 removed"
+            )}
+            .
           </>
         )}{" "}
         {AI_CHAT_COPY.lockedSuffix}

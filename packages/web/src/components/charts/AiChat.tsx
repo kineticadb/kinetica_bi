@@ -44,6 +44,11 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
+    // 137-12 UAT: an empty box stays one line (Chrome's scrollHeight counts a wrapped placeholder).
+    if (!draft) {
+      el.style.height = "";
+      return;
+    }
     el.style.height = "auto";
     const lh = parseFloat(getComputedStyle(el).lineHeight) || 20;
     el.style.height = `${Math.min(el.scrollHeight, 4 * lh)}px`;
@@ -125,8 +130,17 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
           const status = turn.chat?.status ?? "ok";
           const chat = turn.chat;
           const isLast = i === turns.length - 1;
+          const hasChoices = (chat?.clarifications ?? []).length > 0;
+          // 137-12 UAT: a clarification shows only the AI's own follow-ups (no local templates) and,
+          // when it changed nothing, no Revert — the choices are the next step.
           const followUps =
-            chat?.followUps && chat.followUps.length > 0 ? chat.followUps : buildTemplateFollowUps(ctx.tables, turn.prompt);
+            chat?.followUps && chat.followUps.length > 0
+              ? chat.followUps
+              : hasChoices
+                ? []
+                : buildTemplateFollowUps(ctx.tables, turn.prompt);
+          const changedSomething = turn.entries.some((e) => e.result.status === "applied");
+          const showRevert = !hasChoices || changedSomething;
           return (
             <div key={turn.id} className={`ai-chat-turn${i > cursor ? " ai-chat-turn--ahead" : ""}`}>
               <div className="ai-chat-bubble ai-chat-bubble--user">{turn.prompt}</div>
@@ -146,7 +160,8 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                     const enabled = isLast && !chat?.pickedChoice && !running;
                     return (
                       <div key={ci} className="ai-chat-choices">
-                        <span className="muted">{c.question}</span>
+                        {/* 137-12 UAT: the answer bubble usually already asks the question */}
+                        {c.question.trim() !== turn.answer.trim() && <span className="muted">{c.question}</span>}
                         {c.options.map((o) => (
                           <button
                             key={o.id}
@@ -172,23 +187,27 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                       </div>
                     );
                   })}
-                  <div className="ai-chat-followups">
-                    {followUps.slice(0, MAX_FOLLOWUPS).map((f) => (
-                      <button key={f} type="button" className="ghost-sm" disabled={running} onClick={() => void runAsk(ctx, f)}>
-                        {f}
+                  {followUps.length > 0 && (
+                    <div className="ai-chat-followups">
+                      {followUps.slice(0, MAX_FOLLOWUPS).map((f) => (
+                        <button key={f} type="button" className="ghost-sm" disabled={running} onClick={() => void runAsk(ctx, f)}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showRevert && (
+                    <div className="ai-chat-turn-actions">
+                      <button
+                        type="button"
+                        className="ghost-sm"
+                        disabled={i === cursor || running}
+                        onClick={() => useAiSessionStore.getState().setCursor(i, ctx.getBaseline())}
+                      >
+                        {AI_CHAT_COPY.revert}
                       </button>
-                    ))}
-                  </div>
-                  <div className="ai-chat-turn-actions">
-                    <button
-                      type="button"
-                      className="ghost-sm"
-                      disabled={i === cursor || running}
-                      onClick={() => useAiSessionStore.getState().setCursor(i, ctx.getBaseline())}
-                    >
-                      {AI_CHAT_COPY.revert}
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </>
               )}
               {status === "cancelled" && <div className="ai-chat-note muted">{AI_CHAT_COPY.cancelled}</div>}

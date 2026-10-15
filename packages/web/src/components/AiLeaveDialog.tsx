@@ -51,7 +51,7 @@ export default function AiLeaveDialog() {
         </div>
         <div className="modal-body">
           <p>
-            Leaving will discard the changes the AI made to this dashboard. Keep them first if you want to save them.
+            Leaving will discard the changes the AI made to this dashboard. Saving AI changes is coming soon.
           </p>
           <div className="ds-actions">
             <button ref={stayRef} type="button" className="btn-primary btn-sm" onClick={stay}>
