@@ -18,6 +18,7 @@ import {
   AI_CHART_SWAP_TYPES,
 } from "@kinetica-bi/shared";
 import { layersOfMap } from "@kinetica-bi/shared";
+import { aiFilterSourceKey, AI_FILTER_CAP_PER_TABLE } from "@kinetica-bi/shared";
 import type { AiOp, AiWidgetType } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import { splitLayerSnapshot } from "../applyWidgetAction";
@@ -146,6 +147,11 @@ export function makeSessionLayer(op: AddLayerOp, baseline: SessionBaseline, posi
   };
 }
 
+/** 138 D-09: filter ops are view state; the fold and the lock selector ignore them. */
+export function isFilterOp(op: AiOp | null | undefined): boolean {
+  return op?.op === "apply_filter" || op?.op === "clear_filter";
+}
+
 const skip = (reason: Exclude<OpResult, { status: "applied" }>["reason"], detail?: string): OpResult =>
   detail === undefined ? { status: "skipped", reason } : { status: "skipped", reason, detail };
 
@@ -156,6 +162,8 @@ type Sim = {
   dvs: Set<number>;
   usedTemp: Set<number>;
   tableIds: Set<number> | null; // null: baseline.tables absent, table checks skipped
+  tableColumns: Map<number, Readonly<Record<string, string>>> | null;
+  filters: Map<string, Set<string>>; // seeded from opts.currentFilters at apply time, never from prior entries
 };
 
 function groupColCount(cfg: Cfg): number {
@@ -230,6 +238,8 @@ function buildSim(baseline: SessionBaseline, prior: readonly TurnEntry[]): Sim {
     dvs: new Set(baseline.dynamicViewIds),
     usedTemp: new Set(),
     tableIds: baseline.tables ? new Set(baseline.tables.map((t) => t.id)) : null,
+    tableColumns: baseline.tables ? new Map(baseline.tables.map((t) => [t.id, t.columns])) : null,
+    filters: new Map(),
   };
   for (const e of prior) {
     if (!e.op) continue;
@@ -258,8 +268,47 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
   if (aiTarget) return done(skip("unsupported_target", "AI assistant widget"));
   const tableOk = (id: unknown) => id === undefined || sim.tableIds === null || (typeof id === "number" && sim.tableIds.has(id));
   switch (op.op) {
-    case "apply_filter":
-    case "clear_filter":
+    case "apply_filter": {
+      const src = op.source;
+      const key = aiFilterSourceKey(src);
+      if (src.kind === "table") {
+        if (!tableOk(src.id)) return done(skip("table_not_on_dashboard"));
+        const cols = sim.tableColumns?.get(src.id);
+        if (cols) {
+          const missing = op.filters.find((f) => !(f.column in cols));
+          if (missing) return done(skip("column_not_found", missing.column));
+        }
+      } else {
+        if (src.id < 0) return done(skip("unsupported_target", "AI-created dynamic views can't be filtered yet"));
+        if (!sim.dvs.has(src.id)) return done(skip("target_not_found"));
+      }
+      const have = sim.filters.get(key) ?? new Set<string>();
+      const fresh = new Set(op.filters.map((f) => f.column).filter((c) => !have.has(c)));
+      if (have.size + fresh.size > AI_FILTER_CAP_PER_TABLE) return done(skip("filter_cap", `${have.size} filters`));
+      sim.filters.set(key, new Set([...have, ...fresh]));
+      return done({ status: "applied" });
+    }
+    case "clear_filter": {
+      const src = op.source;
+      if (!src) {
+        sim.filters.clear();
+        return done({ status: "applied" });
+      }
+      const key = aiFilterSourceKey(src);
+      if (src.kind === "table") {
+        if (!tableOk(src.id)) return done(skip("table_not_on_dashboard"));
+      } else {
+        if (src.id < 0) return done(skip("unsupported_target", "AI-created dynamic views can't be filtered yet"));
+        if (!sim.dvs.has(src.id)) return done(skip("target_not_found"));
+      }
+      if (op.column !== undefined) {
+        if (!sim.filters.get(key)?.has(op.column)) return done(skip("target_not_found", `no filter on ${op.column}`));
+        sim.filters.get(key)!.delete(op.column);
+      } else {
+        sim.filters.delete(key);
+      }
+      return done({ status: "applied" });
+    }
     case "add_dynamic_view":
     case "remove_dynamic_view":
       return done(skip("unsupported_in_134"));
@@ -343,6 +392,7 @@ export function evaluateTurn(
   opts: EvaluateOptions = {},
 ): TurnEntry[] {
   const sim = buildSim(baseline, prior);
+  for (const [k, names] of Object.entries(opts.currentFilters ?? {})) sim.filters.set(k, new Set(names));
   return rawOps.map((r) => {
     try {
       return evaluateOne(sim, r, opts);
@@ -385,6 +435,7 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
 
   for (const e of entries) {
     if (e.result.status !== "applied" || !e.op) continue;
+    if (isFilterOp(e.op)) continue; // 138 D-09: filters are view state, never derived/counted
     applied++;
     const op = e.op;
     switch (op.op) {

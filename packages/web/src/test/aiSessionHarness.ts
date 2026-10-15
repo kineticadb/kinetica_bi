@@ -59,3 +59,19 @@ export const removeLayerOp = (id: number) => ({ op: "remove_layer", id });
 export function runTurns(baseline: SessionBaseline, opLists: unknown[][]) {
   return opLists.map((ops, i) => useAiSessionStore.getState().applyTurn({ prompt: `turn ${i + 1}`, ops }, baseline));
 }
+
+export const applyFilterRaw = (
+  source: { kind: "table" | "dynamicView"; id: number },
+  column: string,
+  value: unknown = "Cash",
+  operator = "eq",
+) => ({
+  op: "apply_filter",
+  source,
+  filters: [{ column, operator, ...(operator === "isNull" ? {} : { value }) }],
+});
+export const clearFilterRaw = (source?: { kind: "table" | "dynamicView"; id: number }, column?: string) => ({
+  op: "clear_filter",
+  ...(source ? { source } : {}),
+  ...(column ? { column } : {}),
+});

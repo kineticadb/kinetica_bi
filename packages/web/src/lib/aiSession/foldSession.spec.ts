@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { evaluateTurn, foldSession, makeSessionWidget } from "./foldSession";
+import { applyFilterRaw, clearFilterRaw } from "../../test/aiSessionHarness";
 import { addLayerOp, addChartOp, setLayoutOp, changeTypeOp, setTitleOp, baselineFixture, savedLayer } from "../../test/aiSessionHarness";
 import { paletteColor } from "../aiPalette";
 import { EMPTY_DERIVED } from "./constants";
@@ -43,10 +44,7 @@ describe("evaluateTurn", () => {
     expect((e.result as { detail?: string }).detail).toBeTruthy();
   });
   it("EVAL-2: later-phase kinds are unsupported_in_134", () => {
-    const es = turn([
-      { op: "apply_filter", source: { kind: "table", id: 5 }, filters: [{ column: "payment_type", operator: "eq", value: "Cash" }] }, { op: "clear_filter" },
-      { op: "add_dynamic_view", tempId: -9 }, { op: "remove_dynamic_view", id: 90 },
-    ]);
+    const es = turn([{ op: "add_dynamic_view", tempId: -9 }, { op: "remove_dynamic_view", id: 90 }]);
     for (const e of es) expect(e.result).toMatchObject({ status: "skipped", reason: "unsupported_in_134" });
   });
   it("EVAL-3: missing targets are target_not_found; prior-turn temp target applies", () => {
@@ -407,5 +405,61 @@ describe("HOST7 / KPI7 (137-07 Task 3, 136-12 UAT findings 2 + 3)", () => {
     expect(saved.widgetMeta[60].config?.label).toBe("Sum of fare_amount");
     const other = foldSession(b3, [applied(changeTypeOp(60, "line"))]);
     expect(other.widgetMeta[60].config).not.toHaveProperty("label");
+  });
+});
+
+describe("filter ops (138)", () => {
+  const bl = baselineFixture();
+  const T5 = { kind: "table" as const, id: 5 };
+  const fturn = (ops: unknown[], currentFilters?: Record<string, string[]>, prior: TurnEntry[] = []) =>
+    evaluateTurn(bl, prior, ops, { currentFilters });
+  const reason = (e: TurnEntry) => (e.result as { reason?: string }).reason;
+  const names = (n: number) => Array.from({ length: n }, (_, i) => `c${i + 1}`);
+
+  it("FOLDF-1: applied filter is never counted or derived", () => {
+    const es = fturn([applyFilterRaw(T5, "payment_type")]);
+    expect(es[0].result.status).toBe("applied");
+    const d = foldSession(bl, es);
+    expect(d.appliedOpCount).toBe(0);
+    expect(d.addedWidgets).toEqual(EMPTY_DERIVED.addedWidgets);
+    expect(d.removedWidgetIds).toEqual(EMPTY_DERIVED.removedWidgetIds);
+    expect(d.contribution).toEqual(EMPTY_DERIVED.contribution);
+    expect(d.aiEditedWidgetIds).toEqual(EMPTY_DERIVED.aiEditedWidgetIds);
+  });
+  it("FOLDF-2: table not on dashboard", () => {
+    expect(reason(fturn([applyFilterRaw({ kind: "table", id: 77 }, "payment_type")])[0])).toBe("table_not_on_dashboard");
+  });
+  it("FOLDF-3: unknown column", () => {
+    const [e] = fturn([applyFilterRaw(T5, "nope")]);
+    expect(e.result).toEqual({ status: "skipped", reason: "column_not_found", detail: "nope" });
+  });
+  it("FOLDF-4: cap refuses a new column, replace is fine", () => {
+    const cur = { "table:5": [...names(24), "payment_type"] };
+    const es = fturn([applyFilterRaw(T5, "vendor_id"), applyFilterRaw(T5, "payment_type")], cur);
+    expect(reason(es[0])).toBe("filter_cap");
+    expect(es[1].result.status).toBe("applied");
+  });
+  it("FOLDF-5: cap counts earlier ops in the same turn", () => {
+    const es = fturn([applyFilterRaw(T5, "vendor_id"), applyFilterRaw(T5, "fare_amount")], { "table:5": names(24) });
+    expect(es[0].result.status).toBe("applied");
+    expect(reason(es[1])).toBe("filter_cap");
+  });
+  it("FOLDF-6: dynamic view sources", () => {
+    expect(fturn([applyFilterRaw({ kind: "dynamicView", id: 90 }, "zone")])[0].result.status).toBe("applied");
+    expect(reason(fturn([applyFilterRaw({ kind: "dynamicView", id: -3 }, "zone")])[0])).toBe("unsupported_target");
+    expect(reason(fturn([applyFilterRaw({ kind: "dynamicView", id: 91 }, "zone")])[0])).toBe("target_not_found");
+  });
+  it("FOLDF-7: clear_filter checks", () => {
+    const cur = { "table:5": ["payment_type"] };
+    expect(reason(fturn([clearFilterRaw(T5, "vendor_id")], cur)[0])).toBe("target_not_found");
+    expect(fturn([clearFilterRaw()], cur)[0].result.status).toBe("applied");
+    expect(reason(fturn([clearFilterRaw({ kind: "table", id: 77 })], cur)[0])).toBe("table_not_on_dashboard");
+    expect(fturn([clearFilterRaw(T5, "payment_type")], cur)[0].result.status).toBe("applied");
+  });
+  it("FOLDF-8: prior applied filter entries do not seed the cap; currentFilters is authoritative", () => {
+    const prior = fturn([applyFilterRaw(T5, "payment_type")]);
+    expect(prior[0].result.status).toBe("applied");
+    const es = fturn([applyFilterRaw(T5, "vendor_id")], { "table:5": names(24) }, prior);
+    expect(es[0].result.status).toBe("applied");
   });
 });

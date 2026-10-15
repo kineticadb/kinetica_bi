@@ -5,8 +5,15 @@
 // dashboard is never mutated, so revert/forward is "fold a different prefix" and Discard is
 // "drop the log". D-01's inverse/snapshot data is satisfied by replayability; inverses would be
 // dead code and a bug surface.
-import type { AiOp, AiClarification, AskSkipped } from "@kinetica-bi/shared";
+import type { AiOp, AiClarification, AskSkipped, AiFilterSource } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
+import type { ActiveFilter } from "../../store/filterStore";
+
+export type FilterSourceRef = AiFilterSource;
+/** 138: what one applied filter op changed in filterStore, per source+column. before/after are the exact store objects (identity matters to the reverse filter map). */
+export type FilterDelta = { source: FilterSourceRef; column: string; before: ActiveFilter | null; after: ActiveFilter | null };
+/** "table:5" -> filtered column names, read from filterStore at APPLY time (not ask time). */
+export type CurrentFilterColumns = Readonly<Record<string, readonly string[]>>;
 
 export type SkipReason =
   | "invalid_op"
@@ -18,9 +25,17 @@ export type SkipReason =
   | "config_rejected"
   | "unsupported_target"
   | "layout_rejected"
-  | "table_not_on_dashboard";
+  | "table_not_on_dashboard"
+  | "column_not_found"
+  | "filter_cap";
 export type OpResult = { status: "applied" } | { status: "skipped"; reason: SkipReason; detail?: string };
-export type TurnEntry = { raw: unknown; op: AiOp | null; result: OpResult };
+export type TurnEntry = {
+  raw: unknown;
+  op: AiOp | null;
+  result: OpResult;
+  /** 138: on the entry (not a side map) so the 50-turn squash carries it. */
+  filterDeltas?: FilterDelta[];
+};
 export type TurnChat = {
   status: "ok" | "error" | "cancelled";
   answerId?: number;
@@ -32,9 +47,11 @@ export type TurnChat = {
   errorCode?: string;
   message?: string; // D-09 inline note: the server's exact text
   retryable?: boolean;
+  filterNotes?: string[]; // display only, never sent to the provider
+  emptyFilters?: { source: FilterSourceRef; column: string }[]; // D-17 "matched no rows" offers
 };
 export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number; chat?: TurnChat };
-export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[]; chat?: TurnChat };
+export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[]; chat?: TurnChat; currentFilters?: CurrentFilterColumns };
 export type SessionBaseline = {
   dashboardId: number;
   widgets: readonly WidgetDto[];
@@ -43,8 +60,10 @@ export type SessionBaseline = {
   /** Dashboard tables (136); absent = table checks skipped. */
   tables?: readonly { id: number; schema: string; name: string; columns: Record<string, string> }[];
   maxBarGroupBySeriesCap?: number;
+  /** 138: saved dynamic view names, for answer wording. */
+  dynamicViewNames?: Readonly<Record<number, string>>;
 };
-export type EvaluateOptions = { removalApproved?: boolean };
+export type EvaluateOptions = { removalApproved?: boolean; currentFilters?: CurrentFilterColumns };
 export type SessionWidgetMeta = { type?: string; title?: string; config?: Record<string, unknown> };
 export type SessionContribution = {
   widget: Record<number, Record<string, unknown>>;
