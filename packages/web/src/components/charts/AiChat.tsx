@@ -6,6 +6,9 @@ import { useAiSessionStore } from "../../store/aiSessionStore";
 import { runAsk, cancelAsk, choiceQuestion, type AskContext } from "../../lib/aiSession/askRunner";
 import { AI_CHAT_COPY, formatElapsed, describeSkipped } from "../../lib/aiSession/chatText";
 import { buildStarterQuestions, buildTemplateFollowUps } from "../../lib/aiSession/starterQuestions";
+import { useFilterStore } from "../../store/filterStore";
+import { currentFilter, clearFilterAsUser } from "../../lib/aiOps/aiFilterApplier";
+import { AI_FILTER_COPY } from "../../lib/aiOps/aiFilterCopy";
 import "./AiWidget.css";
 
 const MAX_LEN = 2000;
@@ -102,6 +105,8 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
   const cursor = useAiSessionStore((s) => s.cursor);
   const run = useAiSessionStore((s) => s.run);
   const running = run.status === "running";
+  // 138: re-render the zero-row clear offer when filters change (primitive selector).
+  useFilterStore((s) => s.filterVersion);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -147,6 +152,26 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
               {status === "ok" && (
                 <>
                   <div className="ai-chat-bubble ai-chat-bubble--ai">{turn.answer}</div>
+                  {(chat?.filterNotes ?? []).map((n, ni) => (
+                    <div key={`fn-${ni}`} className="ai-chat-note muted">
+                      {n}
+                    </div>
+                  ))}
+                  {(chat?.emptyFilters ?? [])
+                    .filter((e) => currentFilter(e.source, e.column) !== null)
+                    .map((e) => (
+                      <div key={`ef-${e.source.kind}-${e.source.id}-${e.column}`} className="ai-chat-turn-actions">
+                        <button
+                          type="button"
+                          className="ghost-sm"
+                          aria-label={`Clear the ${e.column} filter`}
+                          disabled={running}
+                          onClick={() => clearFilterAsUser(e.source, e.column)}
+                        >
+                          {AI_FILTER_COPY.clearThisFilter}
+                        </button>
+                      </div>
+                    ))}
                   {(chat?.skipped ?? []).map((s, si) => {
                     const t = describeSkipped(s);
                     return t ? (

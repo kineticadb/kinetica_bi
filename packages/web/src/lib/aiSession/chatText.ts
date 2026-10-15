@@ -31,6 +31,8 @@ export const TOOL_PROGRESS: Record<string, string> = {
   get_dashboard: "Reading the dashboard…",
   list_tables: "Looking at the tables…",
   describe_table: "Reading the table columns…",
+  apply_filter: "Applying a filter…",
+  clear_filter: "Clearing filters…",
 };
 
 export const TOOL_NOUN: Record<string, string> = {
@@ -46,6 +48,8 @@ export const TOOL_NOUN: Record<string, string> = {
   remove_widget: "remove a widget",
   remove_layer: "remove a layer",
   remove_dynamic_view: "remove a dynamic view",
+  apply_filter: "apply a filter",
+  clear_filter: "clear a filter",
 };
 
 // Structural types: shared AskStreamEvent / AskSkipped are assignable to these.

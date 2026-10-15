@@ -13,6 +13,7 @@ import type { AskContext } from "../../lib/aiSession/askRunner";
 import { useAiSessionStore } from "../../store/aiSessionStore";
 import type { Turn, TurnChat } from "../../lib/aiSession/types";
 import { AiChat, AiAskBox } from "./AiChat";
+import { useFilterStore } from "../../store/filterStore";
 
 const baseline = { dashboardId: 1, widgets: [], layers: [], dynamicViewIds: [] };
 const ctx: AskContext = {
@@ -198,5 +199,50 @@ describe("AiChat", () => {
     render(<AiChat ctx={ctx} variant="inline" />);
     expect(screen.getByText("Pick one")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show by month" })).toBeTruthy();
+  });
+
+  describe("filter notes and clear offer (138)", () => {
+    const empty = [{ source: { kind: "table" as const, id: 5 }, column: "payment_type" }];
+    beforeEach(() => {
+      useFilterStore.setState({ filters: {}, dvFilters: {} });
+    });
+
+    it("CHATF-1: filterNotes render in order as ai-chat-note muted, after the answer", () => {
+      seed([turn(0, "q", "ANSWER", { status: "ok", followUps: [], filterNotes: ["Note one.", "Note two."] })]);
+      const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+      const notes = Array.from(container.querySelectorAll(".ai-chat-note.muted")).map((n) => n.textContent);
+      expect(notes).toEqual(["Note one.", "Note two."]);
+      const answer = screen.getByText("ANSWER");
+      const n1 = screen.getByText("Note one.");
+      expect(answer.compareDocumentPosition(n1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("CHATF-2: zero-row clear offer removes the filter and disappears", async () => {
+      useFilterStore.getState().addFilter(5, { column: "payment_type", value: "Credit", dataType: "string", addedAt: 1 });
+      seed([turn(0, "q", "a", { status: "ok", followUps: [], emptyFilters: empty })]);
+      const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+      const btn = screen.getByRole("button", { name: "Clear the payment_type filter" });
+      expect(btn.className).toContain("ghost-sm");
+      expect(btn.textContent).toBe("Clear this filter");
+      expect(btn.closest(".ai-chat-turn-actions")).toBeTruthy();
+      await userEvent.click(btn);
+      expect(useFilterStore.getState().filters[5] ?? []).toEqual([]);
+      expect(screen.queryByRole("button", { name: "Clear the payment_type filter" })).toBeNull();
+      expect(container.textContent).not.toContain("Clear this filter");
+    });
+
+    it("CHATF-3: no clear offer when the filter is already gone", () => {
+      seed([turn(0, "q", "a", { status: "ok", followUps: [], emptyFilters: empty })]);
+      render(<AiChat ctx={ctx} variant="inline" />);
+      expect(screen.queryByRole("button", { name: "Clear the payment_type filter" })).toBeNull();
+    });
+
+    it("CHATF-4: a filter-only applied turn shows Revert", () => {
+      const t = turn(0, "q", "a", { status: "ok", followUps: [], clarifications: [{ kind: "choose_option", question: "Which?", options: [{ id: "a", label: "A" }] } as never] });
+      t.entries = [{ raw: {}, op: null, result: { status: "applied" } }];
+      seed([t]);
+      render(<AiChat ctx={ctx} variant="inline" />);
+      expect(screen.getByRole("button", { name: "Revert dashboard to this state" })).toBeTruthy();
+    });
   });
 });

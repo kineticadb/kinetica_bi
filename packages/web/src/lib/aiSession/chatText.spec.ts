@@ -21,4 +21,9 @@ describe("chatText", () => {
     expect(describeSkipped({ label: 'Add bar "T"', stage: "shape", reasons: ["bad"] })).toBe('Couldn\'t do: Add bar "T" (bad)');
     expect(describeSkipped({ label: "unknown_tool", stage: "shape", reasons: [] })).toBe("Couldn't do: make a change");
   });
+  it("CHATF-5: filter tool copy", () => {
+    expect(friendlyProgressLabel({ event: "step", data: { n: 1, tool: "apply_filter", label: "x" } })).toBe("Applying a filter…");
+    expect(friendlyProgressLabel({ event: "step", data: { n: 1, tool: "clear_filter", label: "x" } })).toBe("Clearing filters…");
+    expect(describeSkipped({ label: "apply_filter", stage: "cap", reasons: ["too many"] })).toContain("apply a filter");
+  });
 });
