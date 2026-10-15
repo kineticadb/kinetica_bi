@@ -39,6 +39,7 @@ Out of scope: AI-created dynamic views (139), query mode (140), saving anything 
 - **D-14 Filter chips:** AI-applied filters appear as normal chips (removable the usual way) with a small "AI" tag. The tag goes away once the user edits/replaces that chip.
 - **D-15 Outline, no pill:** every widget and map layer host that narrowed gets the Phase 137 fading accent outline. No "AI edited" pill (the widget itself didn't change).
 - **D-16 Answer wording:** says what was filtered and how many widgets narrowed, and notes filters still on, e.g. "Filtered trips to payment_type = Credit (5 widgets). Your vendor_id filter is still on."
+- **D-18 Widgets with their own filter selection (allow-list) are skipped, and the answer says so** (added 2026-10-15 after plan check). AI filters carry no source widget, so a widget set to take filters only from chosen widgets does not narrow — this respects the designer's setup and is the one accepted exception to D-01's "exactly like a click". Never fabricate a `sourceWidgetId`. The answer adds a note such as "2 widgets with their own filter selection were not filtered." Those widgets get no outline and are not in the "N widgets" count.
 - **D-17 Zero matches:** the filter is applied (as a click would) and the user is told it matched no rows, with an offer to clear it. Widgets show their normal empty state.
 
 ### Claude's Discretion
