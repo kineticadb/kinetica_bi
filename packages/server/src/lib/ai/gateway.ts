@@ -3,6 +3,9 @@
 // Reasons are built from fixed text, paths, ids and column NAMES only - never rejected argument values or upstream error text.
 import {
   AI_CHART_SWAP_TYPES,
+  AI_FILTER_CAP_PER_TABLE,
+  aiFilterSourceKey,
+  coerceAiFilterItem,
   AI_DEFAULT_SIZE,
   isAiNumericColumnType,
   parseAiOp,
@@ -13,6 +16,8 @@ import {
   validateAiLayerPatch,
   validateLayout,
   type AiClarification,
+  type AiFilterItem,
+  type AiFilterSource,
   type AiOp,
   type AiWidgetType,
 } from "@kinetica-bi/shared";
@@ -38,6 +43,8 @@ export type GatewayDeps = {
   dashboardTableIds: () => readonly number[];
   /** D-06: UX approval for removing saved content. */
   approvals?: { removeSaved?: boolean };
+  /** 138: a saved dynamic view on THIS dashboard (name + stored columns; pre-check only, /api/filter/materialize probes authoritatively). undefined = not on this dashboard. */
+  dynamicViewInfo?: (dvId: number) => { name: string; columns: { name: string; type?: string }[] | null } | undefined;
 };
 
 type FailExtras = { refKey?: string; slot?: string; label?: string; clarification?: AiClarification };
@@ -189,6 +196,71 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       });
     }
   }
+  // 138 D-02: a filter op with no source resolves to the one dashboard source that has the column, or asks.
+  const filterColumn =
+    isRec(candidate) && candidate.source === undefined
+      ? candidate.op === "apply_filter" && Array.isArray(candidate.filters) && isRec(candidate.filters[0]) && typeof candidate.filters[0].column === "string"
+        ? candidate.filters[0].column
+        : candidate.op === "clear_filter" && typeof candidate.column === "string"
+          ? candidate.column
+          : undefined
+      : undefined;
+  if (isRec(candidate) && filterColumn !== undefined) {
+    // permission first, so nothing is probed for a user without ai:use (same texts as stage c)
+    const label = candidate.op === "apply_filter" ? `Filter on ${filterColumn}` : `Clear the ${filterColumn} filter`;
+    if (!deps.getPermissions(deps.username).has(AI_USE)) return fail("permission", ["the AI assistant is not enabled for this user"], { label });
+    if (!deps.canViewDashboard(deps.username, deps.dashboardId)) return fail("permission", ["this dashboard is not available"], { label });
+    const tableLabel = (t: { schema: string; name: string }) => (t.schema ? `${t.schema}.${t.name}` : t.name);
+    type Cand = { kind: "table" | "dynamicView"; id: number; label: string };
+    const cands: Cand[] = [];
+    let union: string[] = [];
+    if (candidate.op === "apply_filter") {
+      for (const id of deps.dashboardTableIds()) {
+        const d = await deps.liveSchema.describe(id);
+        if (!d.ok) continue;
+        const names = d.table.columns.map((c) => c.name);
+        union = union.concat(names);
+        if (names.includes(filterColumn)) cands.push({ kind: "table", id, label: tableLabel(d.table) });
+      }
+      for (const id of shadow.dynamicViews) {
+        if (id <= 0) continue;
+        const info = deps.dynamicViewInfo?.(id);
+        const names = (info?.columns ?? []).map((c) => c.name);
+        union = union.concat(names);
+        if (info && names.includes(filterColumn)) cands.push({ kind: "dynamicView", id, label: info.name });
+      }
+    } else {
+      for (const [key, set] of shadow.filterCols) {
+        if (!set.has(filterColumn)) continue;
+        const [kind, rawId] = key.split(":");
+        const id = Number(rawId);
+        if (kind === "table") {
+          const d = await deps.liveSchema.describe(id);
+          cands.push({ kind: "table", id, label: d.ok ? tableLabel(d.table) : `table ${id}` });
+        } else {
+          cands.push({ kind: "dynamicView", id, label: deps.dynamicViewInfo?.(id)?.name ?? `dynamic view ${id}` });
+        }
+      }
+    }
+    if (cands.length === 1) candidate.source = { kind: cands[0].kind, id: cands[0].id };
+    else if (cands.length > 1) {
+      return fail("clarification", [candidate.op === "apply_filter" ? "the column is on more than one table; ask the user which one" : "that column is filtered on more than one table; ask the user which one"], {
+        label,
+        clarification: {
+          kind: "choose_option",
+          question: candidate.op === "apply_filter" ? `Which table should I filter by ${filterColumn}?` : `Which table's ${filterColumn} filter should I clear?`,
+          options: cands.map((c) => ({ id: `${c.kind}:${c.id}`, label: c.label })),
+        },
+      });
+    } else if (candidate.op === "apply_filter") {
+      const near = nearest(filterColumn, union);
+      return fail("live_schema", [
+        `column \`${filterColumn}\` not found on any table on this dashboard` + (near.length ? `; did you mean ${near.map((n) => `\`${n}\``).join(", ")}?` : ""),
+      ], { label });
+    } else {
+      return fail("reference", [`no filter on \`${filterColumn}\``], { label });
+    }
+  }
   const p = parseAiOp(candidate);
   if (!p.ok) return fail("shape", p.errors);
   const op: AiOp = p.op;
@@ -310,6 +382,76 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       }
     }
   }
+
+  // 138: filter ops (apply_filter / clear_filter) validate against the dashboard sources + live schema and return here.
+  if (op.op === "apply_filter" || op.op === "clear_filter") {
+    const srcWord = (src: AiFilterSource) => (src.kind === "table" ? "table" : "dynamic view");
+    /** stage d for a source: table on dashboard, or a saved dv on this dashboard (AI temp dvs wait for Phase 139). */
+    const sourceRule = async (src: AiFilterSource): Promise<GatewayResult | undefined> => {
+      if (src.kind === "table") return tableRule(src.id);
+      if (src.id < 0) return f("reference", ["dynamic views created by the AI can't be filtered yet"], `ref:dynamicView:${src.id}`);
+      if (!shadow.dynamicViews.has(src.id) || deps.dynamicViewInfo?.(src.id) === undefined) return missing("dynamicView", src.id, "dynamic view");
+      return undefined;
+    };
+    if (op.op === "clear_filter") {
+      if (op.source === undefined) {
+        if (![...shadow.filterCols.values()].some((set) => set.size > 0)) return f("reference", ["there are no filters to clear"]);
+      } else {
+        const r = await sourceRule(op.source);
+        if (r) return r;
+        const have = shadow.filterCols.get(aiFilterSourceKey(op.source));
+        if (!have || have.size === 0) return f("reference", [`no filters on ${srcWord(op.source)} ${op.source.id}`]);
+        if (op.column !== undefined && !have.has(op.column)) return f("reference", [`no filter on \`${op.column}\``]);
+      }
+    } else {
+      const src = op.source;
+      const r = await sourceRule(src);
+      if (r) return r;
+      let cols: { name: string; type?: string }[] | null;
+      let where: string;
+      if (src.kind === "table") {
+        const d = await deps.liveSchema.describe(src.id);
+        if (!d.ok) return f("live_schema", [`table ${src.id} is not available`], `table:${src.id}`);
+        cols = d.table.columns;
+        where = `table ${d.table.schema ? `${d.table.schema}.` : ""}${d.table.name}`;
+      } else {
+        const info = deps.dynamicViewInfo?.(src.id);
+        cols = info?.columns ?? null;
+        where = `dynamic view ${info?.name ?? src.id}`;
+      }
+      const names = cols?.map((c) => c.name);
+      const reasons: string[] = [];
+      let refKey: string | undefined;
+      const typed: AiFilterItem[] = [];
+      for (const item of op.filters) {
+        const col = cols?.find((c) => c.name === item.column);
+        if (names && !col) {
+          const near = src.kind === "table" ? nearest(item.column, names) : [];
+          reasons.push(`column \`${item.column}\` not found on ${where}` + (near.length ? `; did you mean ${near.map((n) => `\`${n}\``).join(", ")}?` : ""));
+          refKey ??= `col:${src.id}:${item.column}`;
+          continue;
+        }
+        const c = coerceAiFilterItem(item, col?.type);
+        if (c.ok) typed.push(c.item);
+        else {
+          reasons.push(c.reason);
+          refKey ??= `col:${src.id}:${item.column}`;
+        }
+      }
+      if (reasons.length) return f("live_schema", reasons, refKey);
+      op.filters = typed;
+      // D-08: refuse the WHOLE op past the cap; replacing an already-filtered column never adds to the count.
+      const have = shadow.filterCols.get(aiFilterSourceKey(src)) ?? new Set<string>();
+      const fresh = new Set(op.filters.map((q) => q.column).filter((c) => !have.has(c)));
+      if (have.size + fresh.size > AI_FILTER_CAP_PER_TABLE) {
+        return f("cap", [`the ${srcWord(src)} already has ${have.size} filters (limit ${AI_FILTER_CAP_PER_TABLE}); clear some first`]);
+      }
+    }
+    const label = describeOp(op, shadow);
+    applyOpToShadow(shadow, op);
+    return { ok: true, op, label };
+  }
+
 
   // e. live_schema
   const cr = opColumnRefs(op, shadow);

@@ -1,7 +1,7 @@
 // Phase 135: in-memory shadow of the dashboard as the AI edits it this turn. The gateway checks references against
 // it so op N+1 can target what op N created/removed. Never persisted; titles/ids only.
 // Phase 136: also carries rects (placement/layout checks), saved-vs-temp flags (D-06), layer render modes/tables.
-import { AI_DEFAULT_SIZE, placeWidget, resolveRect, type AiOp, type AiWidgetType, type AskRequest, type GridRect } from "@kinetica-bi/shared";
+import { AI_DEFAULT_SIZE, aiFilterSourceKey, placeWidget, resolveRect, type AiOp, type AiWidgetType, type AskRequest, type GridRect } from "@kinetica-bi/shared";
 
 export type ShadowWidget = {
   type: string;
@@ -19,6 +19,8 @@ export type ShadowState = {
   layers: Map<number, ShadowLayer>;
   dynamicViews: Set<number>;
   usedTempIds: Set<number>;
+  /** 138: filtered column names per source key ("table:5"); seeded from the snapshot, updated by filter ops. */
+  filterCols: Map<string, Set<string>>;
 };
 
 function groupCount(b: { groupByColumns?: unknown; groupByColumn?: unknown } | undefined): number {
@@ -28,7 +30,7 @@ function groupCount(b: { groupByColumns?: unknown; groupByColumn?: unknown } | u
 }
 
 export function createShadow(snapshot: AskRequest["snapshot"]): ShadowState {
-  const s: ShadowState = { widgets: new Map(), layers: new Map(), dynamicViews: new Set(), usedTempIds: new Set() };
+  const s: ShadowState = { widgets: new Map(), layers: new Map(), dynamicViews: new Set(), usedTempIds: new Set(), filterCols: new Map() };
   let savedIndex = 0;
   snapshot.widgets.forEach((w, i) => {
     const saved = w.id > 0;
@@ -59,6 +61,12 @@ export function createShadow(snapshot: AskRequest["snapshot"]): ShadowState {
   for (const d of snapshot.dynamicViews) {
     s.dynamicViews.add(d.id);
     if (d.id < 0) s.usedTempIds.add(d.id);
+  }
+  for (const f of snapshot.filters) {
+    const k = `${f.source.kind}:${f.source.id}`;
+    const set = s.filterCols.get(k) ?? new Set<string>();
+    set.add(f.column);
+    s.filterCols.set(k, set);
   }
   return s;
 }
@@ -124,8 +132,30 @@ export function applyOpToShadow(s: ShadowState, op: AiOp): void {
       if (w) w.title = op.title;
       return;
     }
+    case "apply_filter": {
+      const k = aiFilterSourceKey(op.source);
+      const set = s.filterCols.get(k) ?? new Set<string>();
+      for (const f of op.filters) set.add(f.column);
+      s.filterCols.set(k, set);
+      return;
+    }
+    case "clear_filter": {
+      if (op.source === undefined) {
+        s.filterCols.clear();
+        return;
+      }
+      const k = aiFilterSourceKey(op.source);
+      if (op.column === undefined) {
+        s.filterCols.delete(k);
+        return;
+      }
+      const set = s.filterCols.get(k);
+      set?.delete(op.column);
+      if (set && set.size === 0) s.filterCols.delete(k);
+      return;
+    }
     default:
-      return; // patch / filters: no structural change
+      return; // patch: no structural change
   }
 }
 
