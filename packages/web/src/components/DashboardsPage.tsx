@@ -860,6 +860,7 @@ const DashboardOpen = ({
     widgets,
     layers: savedLayers,
     dynamicViewIds: dynamicViews.map((dv) => dv.id),
+    dynamicViewNames: Object.fromEntries(dynamicViews.map((dv) => [dv.id, dv.name])),
     tables: associatedTables.map((t) => ({ id: t.id, schema: t.schema, name: t.name, columns: t.columns })),
     maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
   };
@@ -880,6 +881,7 @@ const DashboardOpen = ({
         layouts: byId,
         layers: c.layers,
         dynamicViews: c.dynamicViews.map((d) => ({ id: d.id, name: d.name })),
+        filters: useFilterStore.getState(),
       });
     },
     get tables() { return aiSnapRef.current.associatedTables; },
@@ -1113,6 +1115,7 @@ const DashboardOpen = ({
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeFilter(tableId, f.column),
           provenance: resolveProvenance(f.sourceWidgetId, effectiveWidgets),
+          aiApplied: f.aiApplied,
           appliesTo: appliesByFilter.get(f) ?? [],
           onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
           onClearHighlight: clearHl,
@@ -1135,6 +1138,7 @@ const DashboardOpen = ({
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeDvFilter(dvId, f.column),
           provenance: resolveProvenance(f.sourceWidgetId, effectiveWidgets),
+          aiApplied: f.aiApplied,
           appliesTo: appliesByFilter.get(f) ?? [],
           onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
           onClearHighlight: clearHl,
@@ -1689,6 +1693,7 @@ const DashboardOpen = ({
                           text={buildChipText(f.column, f.value, f.dataType, f.operator)}
                           removeAriaLabel={`Remove filter ${f.column}`}
                           onRemove={() => useFilterStore.getState().removeFilter(tableId, f.column)}
+                          aiApplied={f.aiApplied}
                         />
                       ))}
                       {/* Phase 30 (CHIP-V15-01): spatial chips — one per shape, same row, same chip class. */}
@@ -1764,6 +1769,7 @@ const DashboardOpen = ({
                         text={buildChipText(f.column, f.value, f.dataType, f.operator)}
                         removeAriaLabel={`Remove filter ${f.column}`}
                         onRemove={() => useFilterStore.getState().removeDvFilter(dvId, f.column)}
+                        aiApplied={f.aiApplied}
                       />
                     ))}
                   </div>
