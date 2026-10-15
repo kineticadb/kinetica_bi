@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 137 complete (2026-10-15; 137-12 operator UAT run light+dark, 7 visual issues fixed in 81117b2). Next: discuss/plan Phase 138 (AI Filters)"
+stopped_at: "Phase 138 context gathered (2026-10-15, 138-CONTEXT.md D-01..D-17). Next: /gsd:plan-phase 138"
 last_updated: "2026-10-15T20:00:00.000Z"
 progress:
   total_phases: 6
@@ -89,7 +89,7 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next:** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. ~~`/gsd:execute-phase 137`~~ done; Phase 137 complete 2026-10-15. Next: `/gsd:discuss-phase 138` (AI Filters).
+**Next:** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. ~~`/gsd:execute-phase 137`~~ done; Phase 137 complete 2026-10-15. ~~`/gsd:discuss-phase 138`~~ done 2026-10-15 (`138-CONTEXT.md`, D-01..D-17: whole-source filters like a click, ask on ambiguous column, replace same column / stack others, filter-only answers do not lock or show the bar, per-column undo, "AI" chip tag + outline). Next: `/gsd:plan-phase 138`.
 
 **Open blockers:** none.
 
