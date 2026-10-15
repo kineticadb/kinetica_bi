@@ -29,7 +29,7 @@ describe("aiSessionStore filter ops (138)", () => {
     const b = baselineFixture();
     st().applyTurn({ prompt: "x", ops: [addWidgetOp(-1), applyFilterRaw(T5, "payment_type")] }, b);
     expect(hasUnsavedAiChanges()).toBe(true);
-    const c = computeChangeCounts(st().derived, b.widgets, b.layers);
+    const c = computeChangeCounts(st().derived, { widgets: b.widgets, layers: b.layers });
     expect(c).toMatchObject({ added: 1, edited: 0, removed: 0 });
   });
 
