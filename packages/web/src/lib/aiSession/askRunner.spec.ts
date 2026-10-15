@@ -4,6 +4,13 @@ import { useAiSessionStore, selectHasUnsavedAiChanges } from "../../store/aiSess
 import { useToastStore } from "../../store/toast";
 import { baselineFixture, mapWidget, savedLayer, addWidgetOp, addLayerOp, patchLayerOp, removeLayerOp } from "../../test/aiSessionHarness";
 import { AI_CHAT_COPY } from "./chatText";
+import { useFilterStore } from "../../store/filterStore";
+import { recordsWidget, applyFilterRaw } from "../../test/aiSessionHarness";
+
+vi.mock("../aiOps/aiFilterZeroRows", () => ({
+  checkZeroRowFilters: vi.fn().mockResolvedValue(undefined),
+  readFirstCount: vi.fn(),
+}));
 
 const enc = new TextEncoder();
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -179,5 +186,24 @@ describe("askRunner", () => {
     await runAsk(mkCtx(), "t3");
     expect(st().turns[2].entries[0].result.status).toBe("applied");
     expect(st().highlight.ids).toContain(117);
+  });
+
+  it("RUNF-1 (138-06): a streamed apply_filter narrows filterStore with deltas, notes and outline", async () => {
+    useFilterStore.getState().reset();
+    baseline = baselineFixture({ widgets: [mapWidget(42), recordsWidget(50, { tableId: 5 })], layers: [savedLayer(7)] });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        result({ text: "Done.", ops: [applyFilterRaw({ kind: "table", id: 5 }, "payment_type", "Credit")] }),
+        frame("done", { answerId: 1, outcome: "ok", steps: 1 }),
+      ]),
+    );
+    await runAsk(mkCtx(), "only credit");
+    const f = useFilterStore.getState().filters[5];
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ column: "payment_type", value: "Credit", aiApplied: true });
+    expect(st().turns[0].entries[0].filterDeltas).toHaveLength(1);
+    expect(st().turns[0].chat?.filterNotes?.[0]).toBe("Filtered trips to payment_type = 'Credit' (2 widgets).");
+    expect(st().turns[0].answer).toBe("Done.");
+    expect([...st().highlight.ids].sort((a, b) => a - b)).toEqual([42, 50]);
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useAiSessionStore } from "../store/aiSessionStore";
+import { discardAiSession } from "../lib/aiOps/aiFilterEffects";
 import { cancelAsk } from "../lib/aiSession/askRunner";
 import { AI_CHAT_COPY } from "../lib/aiSession/chatText";
 
@@ -21,7 +21,7 @@ export default function AiDiscardDialog({ onClose }: { onClose: () => void }) {
 
   const discard = () => {
     cancelAsk();
-    useAiSessionStore.getState().reset();
+    discardAiSession();
     onClose();
   };
 

@@ -2,17 +2,16 @@
 // Asks start ONLY from user handlers (click/Enter), never from effects: StrictMode double-invokes
 // effects and would POST twice (quota).
 //
-// Ops are applied only from a `result` event, atomically, through applyTurn. Error, cancel and a
+// Ops are applied only from a `result` event, atomically, through applyAiTurn. Error, cancel and a
 // lost connection apply zero ops. A late result after reset() (Discard / dashboard switch) is
 // dropped by the epoch check.
 import type { AiClarification, AskRequest, AskResultEvent } from "@kinetica-bi/shared";
-import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import { useAiSessionStore } from "../../store/aiSessionStore";
 import { useToastStore } from "../../store/toast";
 import { streamAsk, AskHttpError, AI_CONNECTION_LOST } from "./askStream";
 import { buildAskRequest } from "./buildAskRequest";
 import { friendlyProgressLabel, AI_CHAT_COPY } from "./chatText";
-import { changedWidgetIds } from "./changeCounts";
+import { applyAiTurn } from "../aiOps/applyAiTurn";
 import type { StarterTable } from "./starterQuestions";
 import type { SessionBaseline, TurnChat } from "./types";
 
@@ -44,10 +43,8 @@ export function cancelAsk(): void {
 }
 
 function applyResult(ctx: AskContext, question: string, r: AskResultEvent): void {
-  const store = useAiSessionStore.getState();
-  const baseline = ctx.getBaseline();
-  const pre = store.derived;
-  const { entries } = store.applyTurn(
+  // 138: one apply path shared with the DEV harness (session turn + filters + deltas + outline + notes).
+  applyAiTurn(
     {
       prompt: question,
       answer: r.text,
@@ -61,26 +58,8 @@ function applyResult(ctx: AskContext, question: string, r: AskResultEvent): void
         applied: r.applied ?? [],
       },
     },
-    baseline,
+    ctx.getBaseline(),
   );
-  const post = useAiSessionStore.getState().derived;
-  // 136-12 UAT finding 3: use EFFECTIVE includedLayerIds (saved list overridden by the session
-  // contribution, before and after this answer) and every layer that existed before or after,
-  // so editing/removing an AI-added layer still finds its host map.
-  const effIds = (id: number): unknown[] | undefined => {
-    const a = pre.contribution.widget[id]?.includedLayerIds;
-    const b = post.contribution.widget[id]?.includedLayerIds;
-    const ids = [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])];
-    return ids.length > 0 ? [...new Set(ids)] : undefined;
-  };
-  const widgets: WidgetDto[] = baseline.widgets.map((w) => {
-    const inc = effIds(w.id);
-    return inc ? { ...w, config: { ...w.config, includedLayerIds: inc } } : w;
-  });
-  widgets.push(...post.addedWidgets);
-  const layers = new Map<number, DashboardLayerDto>();
-  for (const l of [...baseline.layers, ...pre.addedLayers, ...post.addedLayers]) layers.set(l.id, l);
-  useAiSessionStore.getState().setHighlight(changedWidgetIds(entries, { widgets, layers: [...layers.values()] }));
 }
 
 function recordError(baseline: SessionBaseline, question: string, err: { code: string; message: string }, status?: number): void {
