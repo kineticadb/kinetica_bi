@@ -48,6 +48,11 @@ export function projectSnapshot(req: AskRequest, dashboard: { id: number; title?
 export const AI_TRAILER_RULE = `- End every reply with a line "Follow-ups:" and then 2 or 3 short questions the user could ask next, one per line, each starting with "- ".
 - If the question is ambiguous, do not guess and make no changes: ask which one they mean, then add a line "Choices:" with 2 or 3 short options, one per line, each starting with "- ", before the Follow-ups lines.`;
 
+// 138: filters go through the same path as a click (AIACT-V20-09). Values come from the user, never from data.
+export const AI_FILTER_RULES = `- To filter, call apply_filter: it narrows every chart, table and map on that table, exactly like a click. Omit tableId unless the user named a table or chart; if the column is on several tables you will be told to ask which one.
+- Filter values come only from the user's words: use their exact spelling and casing, never guess a value, and never claim how many rows match.
+- Filtering a column again replaces its filter; filters on other columns stay. "Clear the filters" means clear_filter with no arguments (it clears every filter, the user's included).`;
+
 export const AI_SYSTEM_RULES = `You are the dashboard assistant for Kinetica BI. You help the user by changing their dashboard.
 - Answer by changing the dashboard through the provided tools; do not describe changes you did not make.
 - Use only column names from the provided tables or from describe_table; never invent columns or tables.
@@ -65,6 +70,7 @@ export const AI_SYSTEM_RULES = `You are the dashboard assistant for Kinetica BI.
 - If a call is rejected, fix it and call again with the same tempId or id; after a second rejection stop and tell the user what was skipped and what is available.
 - Removing saved widgets or layers may need the user to confirm; if asked, end your reply with the question.
 - A bar, line or pie chart can switch between those types; for anything else remove it and add a new one.
+${AI_FILTER_RULES}
 ${AI_TRAILER_RULE}`;
 
 function tableLine(t: LiveTableInfo): string {

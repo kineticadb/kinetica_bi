@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AI_HEATMAP_RAMPS, AI_PALETTE_NAMES, AI_WIDGET_TYPES, type AskRequest } from "@kinetica-bi/shared";
 import {
+  AI_FILTER_RULES,
   AI_SYSTEM_RULES,
   AI_TRAILER_RULE,
   buildConversationMessages,
@@ -91,6 +92,11 @@ describe("CTX snapshot + system parts", () => {
   it("CTX6-2 rules cover Phase 136 statements from shared vocabularies", () => {
     for (const needle of ["Never write SQL", "never hex", "same tempId", "only tables on this dashboard", "confirm", "set_layout", ...AI_PALETTE_NAMES, ...AI_HEATMAP_RAMPS])
       expect(AI_SYSTEM_RULES, needle).toContain(needle);
+  });
+  it("CTXF-1 filter rules appear once, in the capped prompt", () => {
+    for (const needle of ["Omit tableId unless the user named a table", "never guess a value", "clear_filter with no arguments"]) expect(AI_FILTER_RULES, needle).toContain(needle);
+    expect(AI_SYSTEM_RULES.split(AI_FILTER_RULES)).toHaveLength(2);
+    expect(AI_SYSTEM_RULES.split("\n").length).toBeLessThanOrEqual(30);
   });
   it("CTX6-3 rules contain no hex or rgb literal", () => {
     expect(AI_SYSTEM_RULES).not.toMatch(/#[0-9a-fA-F]{6}/);
