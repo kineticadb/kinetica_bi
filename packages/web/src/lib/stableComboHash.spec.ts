@@ -200,3 +200,12 @@ describe("comboShortHash", () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe("stableComboHash aiApplied neutrality", () => {
+  it("CHIPAI-3: aiApplied / addedAt / sourceWidgetId do not change the hash", () => {
+    const click = mk("pay", "Credit", "eq", 1, 7);
+    const ai: ActiveFilter = { ...mk("pay", "Credit", "eq", 99), aiApplied: true };
+    expect(stableComboHash("table", 3, [ai])).toBe(stableComboHash("table", 3, [click]));
+    expect(stableComboHash("dv", 3, [ai])).toBe(stableComboHash("dv", 3, [click]));
+  });
+});

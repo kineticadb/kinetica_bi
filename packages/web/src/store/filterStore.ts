@@ -36,6 +36,7 @@ export type ActiveFilter = {
   // is reserved for future symmetry.
   operator?: "eq" | "in" | "between" | "isNull";
   sourceWidgetId?: number; // optional — Phase 10's DRILL-04 highlight uses it; tests skip it
+  aiApplied?: boolean; // 138 D-14: set only by the AI filter applier; drives the chip "AI" tag. Ignored by stableComboHash and the server where-clause, so an AI filter and the equal click filter share one combination view.
   addedAt: number;         // Date.now() at addFilter time
 };
 
