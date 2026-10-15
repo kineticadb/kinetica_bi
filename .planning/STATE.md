@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 136 complete (2026-10-14; 136-12 operator UAT approved). Phase 137 planned (12 plans, 5 waves); next execute-phase 137"
-last_updated: "2026-10-14T20:00:00.000Z"
+stopped_at: "Phase 137 complete (2026-10-15; 137-12 operator UAT run light+dark, 7 visual issues fixed in 81117b2). Next: discuss/plan Phase 138 (AI Filters)"
+last_updated: "2026-10-15T20:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,16 +19,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 137 (AI Widget & Streaming UI) next
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 138 (AI Filters) next
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 136 (Structural & Edit Ops) — COMPLETE 2026-10-14 (12/12 plans + fix 5233a6e; all gates green; 136-12 operator UAT approved 2026-10-14, results in `phases/136-structural-edit-ops/136-12-UAT-RESULTS.md`)
-Plan: 136-12 complete — Task 1 VAL_ATTR tile check PASS, Task 2 visual/layout/undo PASS (run by Claude in the operator's signed-in Chrome; operator approved). Bookkeeping + `136-12-SUMMARY.md` done.
-Next: Phase 137 (AI Widget & Streaming UI) — planned 2026-10-14: 12 plans in 5 waves (`phases/137-ai-widget-streaming-ui/137-*-PLAN.md`); next: `/gsd:execute-phase 137`
-Status: Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
-Last activity: 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
+Phase: 137 (AI Widget & Streaming UI) — COMPLETE 2026-10-15 (12/12 plans + UAT fix 81117b2; all gates green; 137-12 operator UAT run 2026-10-15 in light and dark, results in `phases/137-ai-widget-streaming-ui/137-12-UAT-RESULTS.md`)
+Previous phase: 136 (Structural & Edit Ops) — COMPLETE 2026-10-14 (12/12 plans + fix 5233a6e; all gates green; 136-12 operator UAT approved 2026-10-14, results in `phases/136-structural-edit-ops/136-12-UAT-RESULTS.md`)
+Plan: 137-12 complete — gates green, operator UAT steps 1-8 PASS light+dark (7 visual issues fixed in 81117b2, re-verified), step 8 = yes (disabled Keep acceptable until 141), step 9 live ask skipped. Bookkeeping + `137-12-SUMMARY.md` done.
+Previous plan: 136-12 complete — Task 1 VAL_ATTR tile check PASS, Task 2 visual/layout/undo PASS (run by Claude in the operator's signed-in Chrome; operator approved). Bookkeeping + `136-12-SUMMARY.md` done.
+Next: Phase 138 (AI Filters) — not yet discussed/planned; next: `/gsd:discuss-phase 138` (or `/gsd:plan-phase 138`)
+Status: Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
+Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness only, no provider request), UAT fixes 81117b2, Phase 137 bookkeeping. Previously 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
 - **Previous milestone:** v1.26 Large Exports & Fixes shipped 2026-10-08 and merged; tag `v1.26.0` on origin. Archived in `milestones/v1.26-*`.
@@ -69,12 +71,25 @@ Last activity: 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, lig
 - Operator size tuning of per-type default sizes remains open if real use shows them wrong (UAT found them acceptable).
 - Pre-existing noise: actionEngine canary spec logs "reading 'then'" TypeErrors from the records renderer mock (not a failure).
 
+**Phase 137 outcomes (2026-10-15):** Users can ask in an AI Assistant widget and watch the dashboard answer. (1) Widget: "AI Assistant" chart type (`ai`), added at 12x40 from the picker only with `ai:use` and AI enabled on the server; a large tile (>= 12 cols and >= 24 rows) shows the chat inline, a smaller one shows an ask bar + History + one-line last result and opens the shared conversation in a body-portalled, right-anchored drawer (full-width under 900 px) (137-05, 137-10, 137-11). (2) Chat: one shared conversation per dashboard; bubbles, starter questions, progress line with spinner and elapsed seconds, Cancel, inline errors with Retry, "Cancelled, nothing changed", clarification choices (picked one ticked, older greyed), follow-ups, per-answer "Revert dashboard to this state" (137-08). (3) Ask runner: SSE over POST, one ask at a time, epoch guard against late results, run/draft/highlight store slices, fold guard for the `ai` widget (137-04, 137-07). (4) Follow-ups and choices come from a short reply trailer ("Follow-ups:", "Choices:") parsed server-side into `result.followUps` and a `choose_option` clarification, with local template follow-ups as fallback (D-20, 137-06). (5) Change bar: full-width "Unsaved AI changes" strip with added/edited/removed counts (removed names on hover), Keep disabled until 141 with a tooltip, portalled Discard confirm; changed widgets get a ~3 s fading accent outline; a layer-only edit gives the host map the "AI edited" pill and outline, counted once; AI big numbers read "Sum of <column>" (137-07, 137-09). (6) W1: the route hard deadline (AI_TIMEOUT_MS + grace) always releases the per-user AI lock; Kinetica probes take the answer's abort signal and a `/* kbi-ai:<requestId> */` tag; Cancel and the deadline best-effort cancel tagged jobs via show/alter jobs (137-02). (7) S2: exact-match `location = /api/ai/ask` nginx block (buffering/cache/gzip off, 300 s idle), red-first text spec + `nginx -t` OK (137-03). (8) Shape-key repair defect fixed red-first (W2-5/W2-6; SSE-R2 expected stages updated); the gateway refuses every op that targets an AI widget; the server refuses widget create/retype to `ai` without `ai:use` (137-01). Operator UAT (2026-10-15, Claude driving the operator's signed-in Chrome, harness only, light and dark): steps 1-8 PASS after 7 visual issues were fixed in 81117b2 and re-verified; 136-12 carry-overs (KPI label, host-map highlight, Layers-panel "AI heat" row + eye) PASS; step 8 = yes (disabled Keep acceptable until 141); step 9 live ask skipped. Requirements: AIWID-V20-01/02/03/04/06/07, AISES-V20-04 and AIGOV-V20-01 Complete; AIWID-V20-05 Partial.
+
+**New debt / follow-ups from Phase 137:**
+- AIWID-V20-05 is **Partial**: live model adherence to the reply trailer (Follow-ups / Choices) is unverified on Gemini and Ollama -> Phase 142 UAT. The web falls back to local template follow-ups when the trailer is missing.
+- S6 Gemini spike verdict is still **stale** against the 12-tool set (and the new trailer rule): re-run before or at Phase 142 together with the >= 20 clean-trial re-run.
+- Phase 141 Keep MUST call `useAiSessionStore.getState().reset()` (clears `removalApproved`), and must enable the Keep button and restore the leave-dialog "Keep them first" wording (137-12 UAT changed it to "Saving AI changes is coming soon.").
+- Accepted residual: dashboard import can carry `ai` widgets; a viewer without `ai:use` sees only the no-access notice.
+- Kinetica job cancel is unobservable live for the LIMIT 0 schema probes (they finish too fast); the tag/find/cancel machinery is unit-tested and is what Phase 140 query tools must use.
+- Not eyeballed in 137-12 UAT (unit-tested only): drawer full-screen below 900 px, the no-access user's widget view, multi-widget run-state sync. S2 live check through the docker image on :8080 (status line updates during an ask) not run.
+- 137-12 UAT steps-file gap: the DEV harness never sets the AI highlight (only `askRunner` does); steps 5/5b checked the outline by calling `setHighlight` / `changedWidgetIds` directly. Add a harness helper if this check is repeated (142).
+- KPI7-4 note (137-07): the fold's bignumber branch for `change_widget_type` is unreachable today (shared schema allows swaps to bar/line/pie only); revisit if the swap set widens.
+- Pre-existing noise: theme-guard px/ms literal check caught a literal in the 81117b2 slide-in before commit; use duration tokens (`--duration-base`) in AI CSS.
+
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next:** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. Phase 137 planned (12 plans, 5 waves); next `/gsd:execute-phase 137`.
+**Next:** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. ~~`/gsd:execute-phase 137`~~ done; Phase 137 complete 2026-10-15. Next: `/gsd:discuss-phase 138` (AI Filters).
 
 **Open blockers:** none.
 

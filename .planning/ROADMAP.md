@@ -52,7 +52,7 @@
 - [x] **Phase 134: Session Layer Engine (client, no LLM)** — per-user op log, effective-list merge, per-answer undo, discard/reload revert
 - [x] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
 - [x] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
-- [ ] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
+- [x] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
 - [ ] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
 - [ ] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
 - [ ] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
@@ -190,18 +190,20 @@ Plans:
 **Carry-forward (135 verification, 2026-10-13):** (W1) the per-user in-flight AI lock is released only after the answer finishes; a provider that ignores abort, or a hung Kinetica probe (no abort/timeout, ~300 s undici default), can hold AI_BUSY. Add a route-level hard deadline that always releases the lock, and give the Kinetica probes an abort signal. Kinetica job tagging/cancel for user Cancel is also in scope here (see memory: abort does not cancel jobs).
 **Plans:** 12 plans in 5 waves
 Plans:
-- [ ] 137-01-PLAN.md — Shape-key defect fix red-first (W2-5/W2-6, SSE-R2 updated); gateway refuses ops on the AI widget; server ai:use guard on widget create/retype [W1]
-- [ ] 137-02-PLAN.md — W1: route hard deadline always releases the lock; abortable + tagged Kinetica probes; tag/find/cancel jobs on Cancel/deadline [W1]
-- [ ] 137-03-PLAN.md — S2: nginx `location = /api/ai/ask` streaming block + red-first textual spec (+ optional nginx -t) [W1]
-- [ ] 137-04-PLAN.md — Shared result contract (followUps, applied, choose_option); web SSE-over-POST client, AI availability hook, pure request builder [W1]
-- [ ] 137-05-PLAN.md — Pure helpers: starter questions + fallback follow-ups, chat copy/labels, change counts + changed ids, size constants; "ai" chart type registered [W1]
-- [ ] 137-06-PLAN.md — D-20 server: reply-trailer parser, prompt rule, result.followUps/applied/choose_option [W2]
-- [ ] 137-07-PLAN.md — Store run/draft/epoch/highlight + chat on turns; ask runner (one at a time, cancel, errors, choices); fold guard; DashboardContext ai accessor [W2]
-- [ ] 137-08-PLAN.md — AiChat: bubbles, empty state, ask box, progress/cancel, errors, choices, follow-ups, per-answer Revert; AiWidget.css [W3]
-- [ ] 137-09-PLAN.md — Keep/Discard bar + portalled Discard confirm; fading accent outline on changed widgets [W3]
-- [ ] 137-10-PLAN.md — AiWidgetRenderer (gates, inline vs small tile) + portalled drawer; WidgetRenderer branch; DEV harness chatTurn/fakeRun [W4]
-- [ ] 137-11-PLAN.md — DashboardsPage: picker gate + 12x40 add, duplicate gate, bar mount, shared AskContext, cancel on leave [W4]
-- [ ] 137-12-PLAN.md — Gates, operator light/dark human-verify (quota-free; live ask optional), bookkeeping by hand [W5]
+- [x] 137-01-PLAN.md — Shape-key defect fix red-first (W2-5/W2-6, SSE-R2 updated); gateway refuses ops on the AI widget; server ai:use guard on widget create/retype [W1]
+- [x] 137-02-PLAN.md — W1: route hard deadline always releases the lock; abortable + tagged Kinetica probes; tag/find/cancel jobs on Cancel/deadline [W1]
+- [x] 137-03-PLAN.md — S2: nginx `location = /api/ai/ask` streaming block + red-first textual spec (+ optional nginx -t) [W1]
+- [x] 137-04-PLAN.md — Shared result contract (followUps, applied, choose_option); web SSE-over-POST client, AI availability hook, pure request builder [W1]
+- [x] 137-05-PLAN.md — Pure helpers: starter questions + fallback follow-ups, chat copy/labels, change counts + changed ids, size constants; "ai" chart type registered [W1]
+- [x] 137-06-PLAN.md — D-20 server: reply-trailer parser, prompt rule, result.followUps/applied/choose_option [W2]
+- [x] 137-07-PLAN.md — Store run/draft/epoch/highlight + chat on turns; ask runner (one at a time, cancel, errors, choices); fold guard; DashboardContext ai accessor [W2]
+- [x] 137-08-PLAN.md — AiChat: bubbles, empty state, ask box, progress/cancel, errors, choices, follow-ups, per-answer Revert; AiWidget.css [W3]
+- [x] 137-09-PLAN.md — Keep/Discard bar + portalled Discard confirm; fading accent outline on changed widgets [W3]
+- [x] 137-10-PLAN.md — AiWidgetRenderer (gates, inline vs small tile) + portalled drawer; WidgetRenderer branch; DEV harness chatTurn/fakeRun [W4]
+- [x] 137-11-PLAN.md — DashboardsPage: picker gate + 12x40 add, duplicate gate, bar mount, shared AskContext, cancel on leave [W4]
+- [x] 137-12-PLAN.md — Gates, operator light/dark human-verify (quota-free; live ask optional), bookkeeping by hand [W5]
+
+**Completed 2026-10-15:** 12/12 plans (+ UAT fix 81117b2). Operator UAT 2026-10-15 (run by Claude in the operator's signed-in Chrome, `137-12-UAT-RESULTS.md`), light and dark, harness only (no provider request): steps 1-8 PASS after 7 visual issues were fixed in 81117b2 and re-verified (older choices greyed, question not shown twice, no follow-ups/Revert on clarification turns, drawer right-anchored with slide-in, Send inside the small tile, bar and leave-dialog copy); 136-12 carry-overs PASS (KPI "Sum of fare_amount", layer-only edit highlights the host map with +1 edited, Layers-panel "AI heat" row + eye). Step 8: operator accepted a visible-but-disabled Keep for AISES-V20-04 (Keep enabled in 141). Step 9 live ask skipped, so AIWID-V20-05 stays Partial (live trailer adherence in 142). Not eyeballed: drawer below 900 px, no-access user view, multi-widget run sync (all unit-tested). S2: `location = /api/ai/ask` nginx streaming block, red-first text spec + `nginx -t` OK (live status-line check through :8080 not run). W1: route hard deadline always releases the AI lock; probes abortable and tagged, tag/find/cancel on Cancel/deadline. Shape-key repair fix red-first (W2-5/W2-6, SSE-R2 updated). AIGOV-V20-01 closed (widget gate UI + server create/patch guard).
 
 ### Phase 138: AI Filters
 **Goal:** The AI applies and clears filters through the same path a click uses, so charts, records tables and map tiles narrow consistently.
@@ -272,7 +274,7 @@ Plans:
 | 134. Session Layer Engine | 10/10 | Complete | 2026-10-12 |
 | 135. Server Gateway, Agent Loop, Providers & Governance Core | 12/12 | Complete | 2026-10-13 |
 | 136. Structural & Edit Ops | 12/12 | Complete | 2026-10-14 |
-| 137. AI Widget & Streaming UI | 0/? | Not started | - |
+| 137. AI Widget & Streaming UI | 12/12 | Complete | 2026-10-15 |
 | 138. AI Filters | 0/? | Not started | - |
 | 139. Session-Only Dynamic Views | 0/? | Not started | - |
 | 140. Query Data-Access Mode & Injection Hardening | 0/? | Not started | - |

@@ -20,13 +20,13 @@
 
 ### AI widget
 
-- [ ] **AIWID-V20-01**: A designer can add an AI widget to a dashboard. Its presentation follows the tile's size (no Compact/Full setting): a large tile shows the chat inline; a small tile shows an ask bar + history icon + a one-line result of the last answer, and the full conversation opens in a portalled drawer (full-screen on narrow screens). *(Changed 2026-10-12, Phase 134 discussion — was a designer-chosen Compact/Full mode.)*
-- [ ] **AIWID-V20-02**: A user types a question in the AI widget; the dashboard changes to answer it AND the widget keeps a full chat conversation (the user's prompts and the AI's full answers). All AI widgets on a dashboard share one conversation. *(Changed 2026-10-12 — was "no chat transcript".)*
-- [ ] **AIWID-V20-03**: Each AI answer in the conversation shows its full plain-text answer (not shortened), 2–3 clickable follow-up questions (clicking one asks it), and a **"Revert dashboard to this state"** button. *(Changed 2026-10-12 — was a short explanation in Full mode only.)*
-- [ ] **AIWID-V20-04**: The widget shows progress while the AI works, and the user can cancel. Only one answer runs at a time per widget.
+- [x] **AIWID-V20-01**: A designer can add an AI widget to a dashboard. Its presentation follows the tile's size (no Compact/Full setting): a large tile shows the chat inline; a small tile shows an ask bar + history icon + a one-line result of the last answer, and the full conversation opens in a portalled drawer (full-screen on narrow screens). *(Changed 2026-10-12, Phase 134 discussion — was a designer-chosen Compact/Full mode.)*
+- [x] **AIWID-V20-02**: A user types a question in the AI widget; the dashboard changes to answer it AND the widget keeps a full chat conversation (the user's prompts and the AI's full answers). All AI widgets on a dashboard share one conversation. *(Changed 2026-10-12 — was "no chat transcript".)*
+- [x] **AIWID-V20-03**: Each AI answer in the conversation shows its full plain-text answer (not shortened), 2–3 clickable follow-up questions (clicking one asks it), and a **"Revert dashboard to this state"** button. *(Changed 2026-10-12 — was a short explanation in Full mode only.)*
+- [x] **AIWID-V20-04**: The widget shows progress while the AI works, and the user can cancel. Only one answer runs at a time per widget.
 - [ ] **AIWID-V20-05**: When a question is ambiguous, the widget offers 2–3 clickable choices instead of the AI guessing.
-- [ ] **AIWID-V20-06**: Widgets and layers the AI added or changed are visibly highlighted.
-- [ ] **AIWID-V20-07**: If the AI fails, is capped or is rate-limited (e.g. provider quota exceeded), the user sees a clear message and the dashboard is left unchanged.
+- [x] **AIWID-V20-06**: Widgets and layers the AI added or changed are visibly highlighted.
+- [x] **AIWID-V20-07**: If the AI fails, is capped or is rate-limited (e.g. provider quota exceeded), the user sees a clear message and the dashboard is left unchanged.
 
 ### Dashboard actions
 
@@ -47,7 +47,7 @@
 - [x] **AISES-V20-01**: The changes from one answer apply together and immediately, and only the asking user sees them.
 - [x] **AISES-V20-02**: A second answer builds on the first; no earlier AI change is lost.
 - [x] **AISES-V20-03**: The user can revert the dashboard to the state after any earlier AI answer (and jump forward again to a later one); asking a new question after reverting replaces the later answers. Keep clears the history. *(Changed 2026-10-12 — was undo one answer at a time.)*
-- [ ] **AISES-V20-04**: A visible indicator shows the dashboard has unsaved AI changes (with counts), with Keep and Discard.
+- [x] **AISES-V20-04**: A visible indicator shows the dashboard has unsaved AI changes (with counts), with Keep and Discard.
 - [ ] **AISES-V20-05**: Keep saves the added, changed and removed widgets, layers and dynamic views into the dashboard in one all-or-nothing step, only for a user with edit rights (otherwise Keep is not offered). Filters are not saved, and the user is told so.
 - [ ] **AISES-V20-06**: If someone else changed the dashboard since the AI session began, Keep refuses with a clear message rather than overwriting.
 - [x] **AISES-V20-07**: Discard, or reloading the page, restores the saved dashboard exactly.
@@ -67,7 +67,7 @@
 
 ### Governance
 
-- [ ] **AIGOV-V20-01**: An admin grants a **"Use AI"** permission to roles. Without it, a user cannot use or add the AI widget, and the server refuses AI requests.
+- [x] **AIGOV-V20-01**: An admin grants a **"Use AI"** permission to roles. Without it, a user cannot use or add the AI widget, and the server refuses AI requests.
 - [x] **AIGOV-V20-02**: An admin sets AI data access through env: **schema** (default — the AI sees table structure and dashboard config; no row value ever reaches the provider, proven with a planted value) or **query** (the AI may also run queries).
 - [ ] **AIGOV-V20-03**: In query mode, AI queries are single read-only SELECT statements, run as the user with their own Kinetica credentials and a row cap; anything else is refused.
 - [x] **AIGOV-V20-04**: Every AI answer is logged — who asked, on which dashboard, the question, the tools run, the changes applied or rejected, and the outcome — with no row values.
@@ -115,13 +115,13 @@ Which phases cover which requirements.
 | AISAFE-V20-04 | Phase 139 | Pending |
 | AISAFE-V20-05 | Phase 140 | Pending |
 | AISAFE-V20-06 | Phase 139 | Pending |
-| AIWID-V20-01 | Phase 137 | Pending |
-| AIWID-V20-02 | Phase 137 | Pending |
-| AIWID-V20-03 | Phase 137 | Pending |
-| AIWID-V20-04 | Phase 137 | Pending |
-| AIWID-V20-05 | Phase 137 | Pending |
-| AIWID-V20-06 | Phase 137 | Pending |
-| AIWID-V20-07 | Phase 137 | Pending |
+| AIWID-V20-01 | Phase 137 | Complete (operator UAT 2026-10-15 light+dark: picker add at 12x40, inline chat, small tile + right-anchored portalled drawer after fix 81117b2; drawer below 900 px not eyeballed, CSS media rule) |
+| AIWID-V20-02 | Phase 137 | Complete (operator UAT 2026-10-15: conversation bubbles, auto-scroll, shared store; multi-widget sync unit-tested only) |
+| AIWID-V20-03 | Phase 137 | Complete (operator UAT 2026-10-15 step 2: full answers, follow-ups, per-answer Revert; trailer follow-ups server-tested, live adherence in 142) |
+| AIWID-V20-04 | Phase 137 | Complete (operator UAT 2026-10-15 step 3: spinner + elapsed, Send -> Cancel; one-at-a-time + cancel unit-tested; W1 deadline; S2 nginx block) |
+| AIWID-V20-05 | Phase 137 | Partial (choices UI + choose_option contract done; live model adherence verified in Phase 142 UAT) |
+| AIWID-V20-06 | Phase 137 | Complete (operator UAT 2026-10-15 steps 5/5b/5c: fading outline, pills, layer-only edit highlights the host map, Layers-panel AI row) |
+| AIWID-V20-07 | Phase 137 | Complete (inline error + Retry operator-checked 2026-10-15; cap/quota/429 messages and unchanged dashboard unit-tested) |
 | AIACT-V20-01 | Phase 136 | Complete |
 | AIACT-V20-02 | Phase 136 | Complete |
 | AIACT-V20-03 | Phase 136 | Complete |
@@ -136,7 +136,7 @@ Which phases cover which requirements.
 | AISES-V20-01 | Phase 134 | Complete |
 | AISES-V20-02 | Phase 134 | Complete |
 | AISES-V20-03 | Phase 134 | Complete |
-| AISES-V20-04 | Phase 137 | Pending |
+| AISES-V20-04 | Phase 137 | Complete (operator UAT 2026-10-15: bar with counts + Discard; operator accepted a visible-but-disabled Keep for this phase, Keep enabled in Phase 141) |
 | AISES-V20-05 | Phase 141 | Pending |
 | AISES-V20-06 | Phase 141 | Pending |
 | AISES-V20-07 | Phase 134 | Complete |
@@ -147,7 +147,7 @@ Which phases cover which requirements.
 | AIPRV-V20-03 | Phase 142 | Pending |
 | AIPRV-V20-04 | Phase 135 | Complete |
 | AIPRV-V20-05 | Phase 135 | Complete |
-| AIGOV-V20-01 | Phase 135 | Partial (server refusal + Roles-page grant done in 135; "cannot use or add the AI widget" gate lands with the widget, Phase 137) |
+| AIGOV-V20-01 | Phase 135 | Complete (server refusal + Roles grant in 135; widget use/add gate UI + server create/patch guard in 137; no-access widget view unit-tested, not operator-viewed) |
 | AIGOV-V20-02 | Phase 135 | Complete |
 | AIGOV-V20-03 | Phase 140 | Pending |
 | AIGOV-V20-04 | Phase 135 | Complete |
@@ -161,4 +161,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-14 — Phase 136 complete: AIACT-V20-01/02/03/04/05/06/10/11 Complete (automated proofs + operator UAT 2026-10-14: VAL_ATTR tiles, light/dark, layout, removal approval, undo; legend "AI heat" row and layer-edit highlight on the host map carried to Phase 137 under AIWID-V20-06). Previously 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*
+*Last updated: 2026-10-15 — Phase 137 complete: AIWID-V20-01/02/03/04/06/07, AISES-V20-04 and AIGOV-V20-01 Complete (automated proofs + operator UAT 2026-10-15 driven by Claude in the operator's Chrome, light and dark, 7 visual issues fixed in 81117b2 and re-verified; operator accepted a disabled Keep for AISES-V20-04 until Phase 141). AIWID-V20-05 Partial (no live ask was run; choices verified via harness only, live model adherence in Phase 142 UAT). Previously 2026-10-14 — Phase 136 complete: AIACT-V20-01/02/03/04/05/06/10/11 Complete (automated proofs + operator UAT 2026-10-14: VAL_ATTR tiles, light/dark, layout, removal approval, undo; legend "AI heat" row and layer-edit highlight on the host map carried to Phase 137 under AIWID-V20-06). Previously 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*

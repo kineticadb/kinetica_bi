@@ -749,9 +749,10 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 | v1.26: compression `.zip` (own streaming ZIP64 writer), not `.csv.gz` | The operator's macOS Archive Utility refuses every `.gz`; an earlier OS-byte "fix" was a wrong diagnosis and was reverted | ✓ Shipped v1.26 Phase 131 (CONTEXT D-07a) — no new dependency; legacy `.csv.gz` still served/cleaned |
 | v1.26: formatted export values via a server port of the client formatter (`d3-format` server dependency) | Formatted output must match what the user sees; a parity spec guards the port | ✓ Shipped v1.26 Phase 131 — the one exception to "no new npm dependency" |
 | v1.26: Line Chart gets the bar's Group By builder (column 1 = required X, ascending); Numeric Line Chart kept | Reuse the chart-type-agnostic pivot libs; the operator compared with the Timeline chart and found Numeric Line already covers numeric/multi-metric | ✓ Shipped v1.26 Phase 132 — no-X legacy line shows a prompt; Line vs Numeric Line merge deferred |
+| v2.0 (137): follow-ups and ambiguity choices come from a short reply trailer parsed server-side, with local template follow-ups as fallback | No extra tool call and no extra provider request on a free tier of 20 requests/day/model (D-20, operator choice) | — Pending (live adherence checked in 142) |
 
 ---
-*Last updated: 2026-10-08 — v2.0 AI-Driven Dashboards started (`/gsd:new-milestone`).*
+*Last updated: 2026-10-15 — v2.0 Phase 137 complete; Key Decisions row added for the reply-trailer follow-ups/choices (D-20). Previously 2026-10-08 — v2.0 AI-Driven Dashboards started (`/gsd:new-milestone`).*
 
 *Previous: 2026-10-08 — v1.26 Large Exports & Fixes SHIPPED (`/gsd:complete-milestone`, bookkeeping by hand). 6 phases (127-132), 41 plans; 21/21 requirements; web vitest 203 files / 4434 tests, web+server tsc clean, theme-guard 158/158, server test-gate GATE PASSED. Operator-verified against real Kinetica (131 V1-V13 + Z1-Z5, 132 V1-V9). Audit `tech_debt`, no blockers. Next milestone not yet defined.*
 
