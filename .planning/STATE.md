@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 138 context gathered (2026-10-15, 138-CONTEXT.md D-01..D-17). Next: /gsd:plan-phase 138"
-last_updated: "2026-10-15T20:00:00.000Z"
+stopped_at: "Phase 138 complete (8/8, 2026-10-16); operator UAT approved, AIACT-V20-09 Complete. Next: Phase 139 discuss/plan"
+last_updated: "2026-10-16T12:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 138 (AI Filters) next
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 138 (AI Filters) complete; Phase 139 (Session-Only Dynamic Views) next
 
 ## Current Position
 
@@ -28,7 +28,8 @@ Phase: 137 (AI Widget & Streaming UI) — COMPLETE 2026-10-15 (12/12 plans + UAT
 Previous phase: 136 (Structural & Edit Ops) — COMPLETE 2026-10-14 (12/12 plans + fix 5233a6e; all gates green; 136-12 operator UAT approved 2026-10-14, results in `phases/136-structural-edit-ops/136-12-UAT-RESULTS.md`)
 Plan: 137-12 complete — gates green, operator UAT steps 1-8 PASS light+dark (7 visual issues fixed in 81117b2, re-verified), step 8 = yes (disabled Keep acceptable until 141), step 9 live ask skipped. Bookkeeping + `137-12-SUMMARY.md` done.
 Previous plan: 136-12 complete — Task 1 VAL_ATTR tile check PASS, Task 2 visual/layout/undo PASS (run by Claude in the operator's signed-in Chrome; operator approved). Bookkeeping + `136-12-SUMMARY.md` done.
-Next: Phase 138 (AI Filters) — not yet discussed/planned; next: `/gsd:discuss-phase 138` (or `/gsd:plan-phase 138`)
+Phase 138 (AI Filters) — COMPLETE 2026-10-16 (8/8 plans; gates green; 138-08 operator UAT steps 1-8b PASS light+dark incl. SC4 real map tiles, step 9 skipped; results in `phases/138-ai-filters/138-08-UAT-RESULTS.md`)
+Next: Phase 139 (Session-Only Dynamic Views) — `/gsd:discuss-phase 139` (or `/gsd:plan-phase 139`)
 Status: Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
 Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness only, no provider request), UAT fixes 81117b2, Phase 137 bookkeeping. Previously 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
@@ -83,6 +84,20 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - 137-12 UAT steps-file gap: the DEV harness never sets the AI highlight (only `askRunner` does); steps 5/5b checked the outline by calling `setHighlight` / `changedWidgetIds` directly. Add a harness helper if this check is repeated (142).
 - KPI7-4 note (137-07): the fold's bignumber branch for `change_widget_type` is unreachable today (shared schema allows swaps to bar/line/pie only); revisit if the swap set widens.
 - Pre-existing noise: theme-guard px/ms literal check caught a literal in the 81117b2 slide-in before commit; use duration tokens (`--duration-base`) in AI CSS.
+
+**Phase 138 outcomes (2026-10-16):** The AI can apply and clear filters through the click path. (1) Source-keyed `apply_filter`/`clear_filter` ops (table or dynamic view) validated by the gateway: column existence and type, per-source cap of 25, typed value coercion, and an ambiguity question via `choose_option` when a column exists on two tables. (2) A client applier outside the action engine calls the same `filterStore` actions as a click, so charts, records and map tiles narrow identically (operator proof: the AI filter and a hand click produce the identical combination view name against real Kinetica). (3) Undo is per source+column deltas on session entries plus a cursor sink and `discardAiSession`; revert is guarded by "still what the AI set" so a user's later manual filters are never clobbered (D-11). (4) Filter-only answers do not lock editing, show the Unsaved bar or trigger the leave dialog (D-09); mixed turns still do. (5) Chips carry an "AI" tag (top bar + panel, "from AI assistant"); narrowed widgets and map hosts get the fading outline; no "AI edited" pill. (6) D-18: widgets with their own filter selection (allow-lists / restricted scope) are skipped and named in a chat note. (7) Chat notes live in a display-only field ("Filtered X to ... (N widgets)", "Cleared all filters", "matched no rows" + "Clear this filter"); the zero-row check is a COUNT through `runSql` over the combination view. (8) DEV harness `filter()`/`clearFilter()`/`highlight()`/`filterState()`. Operator UAT 2026-10-16 (Claude driving the operator's Chrome, light and dark, no provider request): steps 1-8b PASS; AIACT-V20-09 Complete.
+
+**New debt / follow-ups from Phase 138:**
+- D-13: the Keep confirmation must say "filters are not saved" (Phase 141); Keep still disabled until then.
+- Live model adherence to the filter prompt rules (exact value casing, omit tableId, Choices trailer for ambiguity) is unverified (step 9 skipped) -> Phase 142 live UAT.
+- Scoped widgets (`filterSelection` allow-lists / restricted layer `filter_scope`) ignore AI filters by design (Pitfall 2); they are named in a chat note.
+- Zero-row check is skipped when drawn shapes fold into the combination hash.
+- The dv column pre-check uses stored `columns_json`; the materialize probe is the backstop.
+- AI temp dynamic views are not filterable until Phase 139.
+- **UAT observation 1 (todo `todos/pending/2026-10-16-ai-filter-dark-map-blank-intermittent.md`, area map):** intermittent blank map in dark mode after an AI filter (3 times in a row, then 8 dark runs did not reproduce; never in light; resize did not recover). Cause unknown -> `/gsd:debug`.
+- **UAT observation 2 (todo `todos/pending/2026-10-16-ai-filter-clear-button-styling.md`, area ui):** "Clear this filter" (`ghost-sm`) looks identical to the follow-up buttons below it; give it distinct styling/placement using existing classes, check light and dark.
+- UAT observation 3 (note only): harness `filter()`/`clearFilter()` render an empty answer bubble (harness sends no answer text).
+- Not eyeballed: drawn-shape survival on clear-all; dark mode for UAT steps 4 and 5 (light only).
 
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.

@@ -750,6 +750,7 @@ All four P1 architectural spikes resolved. Server-side `POST + DELETE /api/filte
 | v1.26: formatted export values via a server port of the client formatter (`d3-format` server dependency) | Formatted output must match what the user sees; a parity spec guards the port | ✓ Shipped v1.26 Phase 131 — the one exception to "no new npm dependency" |
 | v1.26: Line Chart gets the bar's Group By builder (column 1 = required X, ascending); Numeric Line Chart kept | Reuse the chart-type-agnostic pivot libs; the operator compared with the Timeline chart and found Numeric Line already covers numeric/multi-metric | ✓ Shipped v1.26 Phase 132 — no-X legacy line shows a prompt; Line vs Numeric Line merge deferred |
 | v2.0 (137): follow-ups and ambiguity choices come from a short reply trailer parsed server-side, with local template follow-ups as fallback | No extra tool call and no extra provider request on a free tier of 20 requests/day/model (D-20, operator choice) | — Pending (live adherence checked in 142) |
+| v2.0 (138): AI filters reuse the click path (filterStore actions) via an applier outside the action engine; undo is per source+column deltas guarded by "still what the AI set" | Same narrowing as a click for charts, records and map tiles; a user's later manual filters are never clobbered (D-11) | — Pending (live adherence checked in 142) |
 
 ---
 *Last updated: 2026-10-15 — v2.0 Phase 137 complete; Key Decisions row added for the reply-trailer follow-ups/choices (D-20). Previously 2026-10-08 — v2.0 AI-Driven Dashboards started (`/gsd:new-milestone`).*

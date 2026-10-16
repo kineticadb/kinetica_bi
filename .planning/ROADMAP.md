@@ -53,7 +53,7 @@
 - [x] **Phase 135: Server Gateway, Agent Loop, Providers & Governance Core** — one gateway, agent loop, adapters, schema-only access, "Use AI" permission, audit, caps
 - [x] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
 - [x] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
-- [ ] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
+- [x] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
 - [ ] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
 - [ ] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
 - [ ] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
@@ -217,14 +217,16 @@ Plans:
 4. Map tiles visibly narrow against real Kinetica (operator human-verify).
 **Plans:** 8 plans in 5 waves
 Plans:
-- [ ] 138-01-PLAN.md — Shared contract: source-keyed apply_filter/clear_filter, aiFilter.ts (cap 25, coercion, value-free reasons), snapshot filters max 300 [W1]
-- [ ] 138-02-PLAN.md — Server: shadow filter map, gateway checks (ambiguity choose_option, column/type, cap, temp dv), flat tools, prompt rules, scripted e2e [W2]
-- [ ] 138-03-PLAN.md — Web session: fold evaluation, filter-only answers never lock (D-09), entry deltas, cursor sink, value-free snapshot filters [W2]
-- [ ] 138-04-PLAN.md — ActiveFilter.aiApplied + "AI" chip tag (top bar + panel), drift guards [W2]
-- [ ] 138-05-PLAN.md — aiFilterApplier (click actions only), per-column undo/redo/discard, click-equivalence orchestrator proof [W3]
-- [ ] 138-06-PLAN.md — applyAiTurn (outline, notes, zero-row check) wired into askRunner, session actions and Discard [W4]
-- [ ] 138-07-PLAN.md — Chat filter notes + "Clear this filter", chip call sites, snapshot wiring, DEV harness filter/clearFilter/highlight/filterState [W4]
-- [ ] 138-08-PLAN.md — Gates, operator light/dark human-verify incl. SC4 real map tiles (quota-free), bookkeeping by hand [W5]
+- [x] 138-01-PLAN.md — Shared contract: source-keyed apply_filter/clear_filter, aiFilter.ts (cap 25, coercion, value-free reasons), snapshot filters max 300 [W1]
+- [x] 138-02-PLAN.md — Server: shadow filter map, gateway checks (ambiguity choose_option, column/type, cap, temp dv), flat tools, prompt rules, scripted e2e [W2]
+- [x] 138-03-PLAN.md — Web session: fold evaluation, filter-only answers never lock (D-09), entry deltas, cursor sink, value-free snapshot filters [W2]
+- [x] 138-04-PLAN.md — ActiveFilter.aiApplied + "AI" chip tag (top bar + panel), drift guards [W2]
+- [x] 138-05-PLAN.md — aiFilterApplier (click actions only), per-column undo/redo/discard, click-equivalence orchestrator proof [W3]
+- [x] 138-06-PLAN.md — applyAiTurn (outline, notes, zero-row check) wired into askRunner, session actions and Discard [W4]
+- [x] 138-07-PLAN.md — Chat filter notes + "Clear this filter", chip call sites, snapshot wiring, DEV harness filter/clearFilter/highlight/filterState [W4]
+- [x] 138-08-PLAN.md — Gates, operator light/dark human-verify incl. SC4 real map tiles (quota-free), bookkeeping by hand [W5]
+
+**Completed 2026-10-16:** 8/8 plans. Operator UAT 2026-10-16 (run by Claude in the operator's signed-in Chrome, `138-08-UAT-RESULTS.md`), light and dark, real Kinetica, harness only (no provider request): steps 1-8b PASS. SC4: an AI filter narrows the bar and the map tiles via a combination view whose name is IDENTICAL to a hand click (click-equivalence proof). Gateway refusals (unknown column, cap, ambiguity question) covered by automated specs; per-column revert/forward/discard, AI chip tag, outline, zero-row notes with "Clear this filter" and the D-18 scoped-widget note verified live. Step 9 live ask skipped (live model adherence in Phase 142). Follow-ups: intermittent blank dark-mode map after an AI filter (todo, needs debug); "Clear this filter" looks like the follow-up buttons (todo).
 
 ### Phase 139: Session-Only Dynamic Views
 **Goal:** The AI can create and remove session-only dynamic views from a structured description, and their temporary Kinetica views never outlive the session.
@@ -284,7 +286,7 @@ Plans:
 | 135. Server Gateway, Agent Loop, Providers & Governance Core | 12/12 | Complete | 2026-10-13 |
 | 136. Structural & Edit Ops | 12/12 | Complete | 2026-10-14 |
 | 137. AI Widget & Streaming UI | 12/12 | Complete | 2026-10-15 |
-| 138. AI Filters | 0/? | Not started | - |
+| 138. AI Filters | 8/8 | Complete | 2026-10-16 |
 | 139. Session-Only Dynamic Views | 0/? | Not started | - |
 | 140. Query Data-Access Mode & Injection Hardening | 0/? | Not started | - |
 | 141. Keep (Persist AI Changes) | 0/? | Not started | - |
