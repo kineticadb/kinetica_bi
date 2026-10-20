@@ -281,7 +281,8 @@ const App = () => {
       const dynamicViews = useDynamicViewStore.getState().views;
       for (const idStr of Object.keys(dynamicViews)) {
         const dvId = Number(idStr);
-        if (dynamicViews[dvId]?.status === "materialized") {
+        // 139: AI views have negative ids; explicit logout drops them server-side (139-06), dropDynamicView would 404.
+        if (dvId > 0 && dynamicViews[dvId]?.status === "materialized") {
           dropDynamicView(dvId).catch(() => {});
         }
       }

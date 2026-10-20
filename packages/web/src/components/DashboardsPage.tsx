@@ -25,6 +25,7 @@ import {
   type ImportReportDto,  // Phase 121 (DXIM-V124-10)
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
+import { toSessionDvRows } from "../lib/aiDv/sessionDvRows";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
 import { useViewKeepAlive } from "../hooks/useViewKeepAlive";  // Phase 78 (TTLKEEP-V115-01)
 import { useCombinationOrchestrator } from "../hooks/useCombinationOrchestrator";  // Phase 90 (COMBO-V118-01/03)
@@ -586,6 +587,19 @@ const DashboardCreate = ({
   );
 };
 
+/** 139: columns_json arrives parsed or as a JSON string (DynamicViewRow note); returns names/types only. */
+function normalizeDvColumns(v: unknown): { name: string; type: string }[] | null {
+  let arr: unknown = v;
+  if (typeof v === "string") {
+    try { arr = JSON.parse(v); } catch { return null; }
+  }
+  if (!Array.isArray(arr)) return null;
+  const out = arr
+    .filter((c): c is { name: string; type: string } => !!c && typeof (c as { name?: unknown }).name === "string" && typeof (c as { type?: unknown }).type === "string")
+    .map((c) => ({ name: c.name, type: c.type }));
+  return out.length > 0 ? out : null;
+}
+
 const getVisualizationTypes = (canUseAi: boolean) =>
   getAllChartTypes()
     // 137 (AIGOV-V20-01): the AI Assistant is listed only for ai:use users on an AI-enabled server.
@@ -665,7 +679,17 @@ const DashboardOpen = ({
   // LayersModal. Phase 35 Plan 05: `retry` is now threaded through
   // DashboardContext so renderers' error-state Retry button can re-fire the
   // cascade for a specific dynamic-view id.
-  const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id, widgets);
+  // 139: session selectors sit above the chain — AI views fold into its single merge point.
+  const sessionDerived = useAiSessionStore((s) => s.derived);
+  const dvNonce = useAiSessionStore((s) => s.dvNonce);
+  const dvGen = useAiSessionStore((s) => s.dvGen);
+  const dvColumns = useAiSessionStore((s) => s.dvColumns);
+  const sessionDvRows = useMemo(
+    () => toSessionDvRows(sessionDerived.addedDynamicViews, { dashboardId: dashboard.id, nonce: dvNonce, gen: dvGen, columns: dvColumns, tables: associatedTables }),
+    [sessionDerived.addedDynamicViews, dashboard.id, dvNonce, dvGen, dvColumns, associatedTables],
+  );
+  // 139: single merge point — saved minus session-removed, plus AI session views (negative ids).
+  const { dynamicViews, savedDynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id, widgets, sessionDvRows, sessionDerived.removedDynamicViewIds);
 
   // Phase 78 (TTLKEEP-V115-01): dashboard-level keep-alive — fires a lightweight READ touch
   // against each live materialized view (filter-views + dynamic-views) ~ttlKeepaliveLeadMinutes
@@ -700,7 +724,6 @@ const DashboardOpen = ({
   const canConfigure    = rawCanConfigure && !editLocked;
   const canDynamicViews = rawCanDynamicViews && !editLocked;
   const canLayers       = rawCanLayers && !editLocked;
-  const sessionDerived = useAiSessionStore((s) => s.derived);
   const sessionGeometry = useAiSessionStore((s) => s.geometry);
   const effectiveWidgets = useMemo(() => applySessionToWidgets(widgets, sessionDerived), [widgets, sessionDerived]);
   // Saved items keep their SAVED index for the fallback position (an AI removal must not shift
@@ -811,7 +834,8 @@ const DashboardOpen = ({
       const dynamicViews = useDynamicViewStore.getState().views;
       for (const idStr of Object.keys(dynamicViews)) {
         const dvId = Number(idStr);
-        if (dynamicViews[dvId]?.status === "materialized") {
+        // 139: negative ids are AI views; the aiDv lifecycle sink drops them on reset (dropDynamicView would 404).
+        if (dvId > 0 && dynamicViews[dvId]?.status === "materialized") {
           dropDynamicView(dvId).catch(() => {});
         }
       }
@@ -859,8 +883,11 @@ const DashboardOpen = ({
     dashboardId: dashboard.id,
     widgets,
     layers: savedLayers,
-    dynamicViewIds: dynamicViews.map((dv) => dv.id),
-    dynamicViewNames: Object.fromEntries(dynamicViews.map((dv) => [dv.id, dv.name])),
+    // 139: SAVED views only, so the session fold is never fed its own output.
+    dynamicViewIds: savedDynamicViews.map((dv) => dv.id),
+    dynamicViewNames: Object.fromEntries(savedDynamicViews.map((dv) => [dv.id, dv.name])),
+    dynamicViewSources: Object.fromEntries(savedDynamicViews.map((dv) => [dv.id, dv.source_table_id])),
+    dynamicViewColumns: Object.fromEntries(savedDynamicViews.flatMap((dv) => { const c = normalizeDvColumns(dv.columns_json); return c ? [[dv.id, c] as const] : []; })),
     tables: associatedTables.map((t) => ({ id: t.id, schema: t.schema, name: t.name, columns: t.columns })),
     maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
   };
@@ -880,7 +907,10 @@ const DashboardOpen = ({
         widgets: c.effectiveWidgets,
         layouts: byId,
         layers: c.layers,
-        dynamicViews: c.dynamicViews.map((d) => ({ id: d.id, name: d.name })),
+        dynamicViews: c.dynamicViews.map((d) => {
+          const cols = normalizeDvColumns(d.columns_json);
+          return { id: d.id, name: d.name, baseTableId: d.source_table_id, ...(d.aggregated !== undefined ? { aggregated: d.aggregated } : {}), ...(cols ? { columns: cols } : {}) };
+        }),
         filters: useFilterStore.getState(),
       });
     },
