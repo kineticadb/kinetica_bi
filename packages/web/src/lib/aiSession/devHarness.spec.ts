@@ -3,7 +3,15 @@ import { installAiDevHarness } from "./devHarness";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
 import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
 import { useFilterStore } from "../../store/filterStore";
+import { useDynamicViewStore } from "../../store/dynamicViewStore";
+import * as clientModule from "../../api/client";
 import { baselineFixture, mapWidget, recordsWidget, savedLayer } from "../../test/aiSessionHarness";
+
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  runSql: vi.fn(),
+  listAiDynamicViews: vi.fn(),
+}));
 
 const baseline = baselineFixture();
 type Row = Record<string, unknown>;
@@ -387,5 +395,132 @@ describe("filter helpers (138)", () => {
     h().help();
     const text = String(logSpy.mock.calls[logSpy.mock.calls.length - 1][0]);
     for (const k of ["filter(", "clearFilter(", "highlight(", "filterState()"]) expect(text).toContain(k);
+  });
+});
+
+describe("AI dynamic view helpers (139-13)", () => {
+  const apply = vi.fn((input: unknown) => ({ turnId: "t", entries: [] as never[], input }));
+  let uninstall: () => void;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let tableSpy: ReturnType<typeof vi.spyOn>;
+  const h = () => window.__kbiAiHarness!;
+  const lastOps = () => (apply.mock.calls[apply.mock.calls.length - 1][0] as { ops: unknown[] }).ops;
+  const spec = { baseTableId: 5, groupBy: [{ column: "pickup_datetime", bucket: "hour" as const, as: "pickup_hour" }], aggregates: [{ fn: "count" as const, as: "trips" }] };
+  const KNAME = "_kbi_ai_ualice_s01234567_n0a1b2c3d_3";
+
+  beforeEach(() => {
+    apply.mockClear();
+    vi.mocked(clientModule.runSql).mockReset();
+    vi.mocked(clientModule.listAiDynamicViews).mockReset();
+    useAiSessionStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+    tableSpy = vi.spyOn(console, "table").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("no network in specs"));
+    uninstall = installAiDevHarness({ applyTurn: apply as never, setCursor: () => {}, discard: () => {} }, () => baseline.widgets);
+  });
+  afterEach(() => {
+    uninstall();
+    useAiSessionStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+    vi.restoreAllMocks();
+  });
+
+  it("HARNDV-1: addDynamicView applies ONE add_dynamic_view turn with an allocated negative tempId; explicit tempId honoured", () => {
+    const r = h().addDynamicView("Trips by hour", spec);
+    expect(r.turnId).toBe("t");
+    expect(apply).toHaveBeenCalledTimes(1);
+    const op = lastOps()[0] as { op: string; tempId: number; name: string; spec: unknown; aggregated: boolean };
+    expect(op).toMatchObject({ op: "add_dynamic_view", name: "Trips by hour", spec, aggregated: true });
+    expect(op.tempId).toBeLessThan(0);
+    h().addDynamicView("Other", spec, -77);
+    expect((lastOps()[0] as { tempId: number }).tempId).toBe(-77);
+  });
+
+  it("HARNDV-2: bindWidget / bindLayer patch dynamicViewId; addChartOnView adds ONE widget with no tableId", () => {
+    h().bindWidget(42, -3);
+    expect(lastOps()).toEqual([{ op: "patch", action: { target: { kind: "widget", id: 42 }, configPatch: { dynamicViewId: -3 } } }]);
+    h().bindLayer(70, -3);
+    expect(lastOps()).toEqual([{ op: "patch", action: { target: { kind: "layer", id: 70 }, configPatch: { dynamicViewId: -3 } } }]);
+    h().addChartOnView("bar", "Trips by hour", -3, { metric: "trips", aggregation: "sum", groupByColumn: "pickup_hour" });
+    const ops = lastOps() as { op: string; config: Record<string, unknown> }[];
+    expect(ops).toHaveLength(1);
+    expect(ops[0].op).toBe("add_widget");
+    expect(ops[0].config).toEqual({ dynamicViewId: -3, metric: "trips", aggregation: "sum", groupByColumn: "pickup_hour" });
+    expect(ops[0].config).not.toHaveProperty("tableId");
+  });
+
+  it("HARNDV-3: removeDynamicView emits a remove op; the saved-id reminder comes from needs_confirmation; help states no repoint", () => {
+    h().removeDynamicView(-3);
+    expect(lastOps()).toEqual([{ op: "remove_dynamic_view", id: -3 }]);
+    apply.mockReturnValueOnce({
+      turnId: "t",
+      entries: [{ raw: null, op: { op: "remove_dynamic_view", id: 90 }, result: { status: "skipped", reason: "needs_confirmation" } }] as never[],
+    } as never);
+    h().removeDynamicView(90);
+    expect(String(logSpy.mock.calls.map((c: unknown[]) => c[0]).join("\n"))).toContain("approveRemoval()");
+    h().help();
+    expect(String(logSpy.mock.calls.at(-1)?.[0])).toContain("harness removal does not repoint dependents");
+  });
+
+  it("HARNDV-4: aiViews tables each session view with status, reason and Kinetica name", () => {
+    const store = useAiSessionStore.getState();
+    // Real store path: apply through the store so derived.addedDynamicViews is populated.
+    uninstall();
+    uninstall = installAiDevHarness(
+      { applyTurn: (input) => store.applyTurn(input, baseline), setCursor: () => {}, discard: () => {} },
+      () => baseline.widgets,
+    );
+    // Column names must exist on baseline table 5 for the fold to accept the op.
+    h().addDynamicView("Trips by hour", { baseTableId: 5, groupBy: [{ column: "payment_type" }], aggregates: [{ fn: "count", as: "trips" }] }, -3);
+    useDynamicViewStore.getState().setView(-3, { viewName: KNAME, status: "over_threshold", reason: "exceeds_max_records" });
+    tableSpy.mockClear();
+    h().aiViews();
+    const rows = tableSpy.mock.calls.at(-1)?.[0] as Record<string, unknown>[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: -3, name: "Trips by hour", gen: 0, status: "over_threshold", reason: "exceeds_max_records", kineticaName: KNAME, aggregated: true });
+  });
+
+  it("HARNDV-5: listAiViews tables names; peekAiView runs SELECT ... LIMIT 5 on the store's name; unknown/non-materialized -> message, no request", async () => {
+    vi.mocked(clientModule.listAiDynamicViews).mockResolvedValue({ views: [KNAME] });
+    await h().listAiViews();
+    expect(tableSpy.mock.calls.at(-1)?.[0]).toEqual([{ kineticaName: KNAME }]);
+
+    await h().peekAiView(-3);
+    expect(clientModule.runSql).not.toHaveBeenCalled();
+    expect(String(logSpy.mock.calls.at(-1)?.[0])).toContain("unknown");
+    useDynamicViewStore.getState().setView(-3, { viewName: KNAME, status: "pending" });
+    await h().peekAiView(-3);
+    expect(clientModule.runSql).not.toHaveBeenCalled();
+    expect(String(logSpy.mock.calls.at(-1)?.[0])).toContain("pending");
+
+    useDynamicViewStore.getState().setView(-3, { viewName: KNAME, status: "materialized", expiresAt: Date.now() + 60_000 });
+    vi.mocked(clientModule.runSql).mockResolvedValue({ column_headers: ["trips"], column_datatypes: ["long"] });
+    await h().peekAiView(-3);
+    expect(clientModule.runSql).toHaveBeenCalledWith(`SELECT * FROM ${KNAME} LIMIT 5`);
+    expect(logSpy.mock.calls.at(-1)?.[1]).toEqual({ column_headers: ["trips"], column_datatypes: ["long"] });
+  });
+
+  it("HARNDV-6: help lists all eight commands, an hour-bucket example with APPROX median note, and the D-26 reminder", () => {
+    h().help();
+    const text = String(logSpy.mock.calls.at(-1)?.[0]);
+    for (const k of ["addDynamicView(", "bindWidget(", "bindLayer(", "addChartOnView(", "removeDynamicView(", "aiViews()", "listAiViews()", "peekAiView("]) {
+      expect(text).toContain(k);
+    }
+    expect(text).toContain("bucket: 'hour'");
+    expect(text).toContain("APPROX");
+    expect(text).toContain("record the Kinetica version first");
+  });
+
+  it("HARNDV-7: no harness command contacts the materialize route (they only append ops)", async () => {
+    h().addDynamicView("Trips by hour", spec, -3);
+    h().bindWidget(42, -3);
+    h().bindLayer(70, -3);
+    h().addChartOnView("bar", "t", -3);
+    h().removeDynamicView(-3);
+    h().aiViews();
+    await h().peekAiView(-3);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(clientModule.runSql).not.toHaveBeenCalled();
   });
 });

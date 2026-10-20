@@ -1,7 +1,7 @@
 // DEV ONLY. Loaded through an `import.meta.env.DEV`-gated dynamic import in DashboardsPage, so
 // the branch (and this module) is eliminated from production bundles. Lets the operator drive
 // scripted AI turns from the browser console. Phase 137's AI widget replaces it as the real driver.
-import type { WidgetDto } from "../../api/client";
+import { runSql, listAiDynamicViews, type WidgetDto } from "../../api/client";
 import {
   resolveHeatmapHost,
   layersOfMap,
@@ -10,8 +10,10 @@ import {
   coerceAiFilterItem,
   checkAiFilterItem,
   aiFilterSourceKey,
+  aiDvIsAggregated,
 } from "@kinetica-bi/shared";
-import type { AiClarification, AiFilterItem } from "@kinetica-bi/shared";
+import type { AiClarification, AiFilterItem, AiDvSpec } from "@kinetica-bi/shared";
+import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
 import type { TurnInput, TurnEntry } from "./types";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../../store/aiSessionStore";
@@ -73,6 +75,15 @@ type Harness = {
   clearFilter(kind?: "table" | "dynamicView", id?: number, column?: string): Result;
   highlight(ids: number[]): void;
   filterState(): unknown;
+  // 139 (D-26): AI dynamic views, driven without any provider request.
+  addDynamicView(name: string, spec: AiDvSpec, tempId?: number): Result;
+  bindWidget(widgetId: number, dvId: number): Result;
+  bindLayer(layerId: number, dvId: number): Result;
+  addChartOnView(type: string, title: string, dvId: number, fields?: Record<string, unknown>): Result;
+  removeDynamicView(id: number): Result;
+  aiViews(): void;
+  listAiViews(): Promise<void>;
+  peekAiView(tempId: number): Promise<void>;
   help(): void;
 };
 
@@ -297,6 +308,45 @@ export function installAiDevHarness(
         turnsWithFilterDeltas: st.turns.filter((t) => t.entries.some((e) => (e.filterDeltas?.length ?? 0) > 0)).length,
       };
     },
+    // 139: every command only appends ops through run() -> actions.applyTurn; the materialize chain does the rest.
+    addDynamicView: (name, spec, tempId) =>
+      run(
+        [{ op: "add_dynamic_view", tempId: tempId ?? nextId(), name, spec, aggregated: aiDvIsAggregated(spec) }],
+        `add view ${name}`,
+      ),
+    bindWidget: (widgetId, dvId) => run([patchOp("widget", widgetId, { dynamicViewId: dvId })], `bind widget ${widgetId}`),
+    bindLayer: (layerId, dvId) => run([patchOp("layer", layerId, { dynamicViewId: dvId })], `bind layer ${layerId}`),
+    addChartOnView: (type, title, dvId, fields = {}) =>
+      run([{ op: "add_widget", tempId: nextId(), type, title, config: { ...fields, dynamicViewId: dvId } }], `chart on view ${dvId}`),
+    removeDynamicView: (id) => run([{ op: "remove_dynamic_view", id }], `remove view ${id}`),
+    aiViews: () => {
+      const st = useAiSessionStore.getState();
+      const dvs = useDynamicViewStore.getState().views;
+      console.table(
+        st.derived.addedDynamicViews.map((v) => ({
+          id: v.id,
+          name: v.name,
+          gen: st.dvGen[v.id] ?? 0,
+          status: dvs[v.id]?.status ?? "(none)",
+          reason: dvs[v.id]?.reason ?? "",
+          kineticaName: dvs[v.id]?.viewName ?? "",
+          aggregated: v.aggregated,
+        })),
+      );
+    },
+    listAiViews: async () => {
+      const res = await listAiDynamicViews();
+      console.table(res.views.map((name) => ({ kineticaName: name })));
+    },
+    peekAiView: async (tempId) => {
+      const entry = useDynamicViewStore.getState().views[tempId];
+      if (!entry || entry.status !== "materialized" || !entry.viewName) {
+        console.log(`peekAiView(${tempId}): view is ${entry ? entry.status : "unknown"}; nothing to peek (needs a materialized view).`);
+        return;
+      }
+      const raw = await runSql(`SELECT * FROM ${entry.viewName} LIMIT 5`);
+      console.log(`peekAiView(${tempId}) ${entry.viewName}:`, raw);
+    },
     help: () => {
       const saved = getSavedWidgets().map((w) => `${w.id}:${w.type}`).join(", ") || "(none)";
       console.log(
@@ -313,6 +363,11 @@ export function installAiDevHarness(
           "  filter(kind 'table'|'dynamicView', id, column, op 'eq'|'in'|'between'|'isNull', value)  e.g. filter('table', 5, 'payment_type', 'eq', 'Credit'); in: [..]; between: [from, to]",
           "  clearFilter()  (all)   clearFilter(kind, id)   clearFilter(kind, id, column)",
           "  highlight([widgetIds])  flash the AI outline   filterState()  filters + AI deltas + lock state",
+          "  D-26: record the Kinetica version first (SELECT version / admin show) before the AI view UAT.",
+          "  addDynamicView(name, spec, tempId?)   e.g. addDynamicView('Trips by hour', {baseTableId: 5, groupBy: [{column: 'pickup_datetime', bucket: 'hour', as: 'pickup_hour'}], aggregates: [{fn: 'count', as: 'trips'}, {fn: 'median', column: 'fare_amount', as: 'med_fare'}]})  (median is APPROX)",
+          "  bindWidget(widgetId, dvId)   bindLayer(layerId, dvId)   addChartOnView(type, title, dvId, {metric, aggregation, groupByColumn})",
+          "  removeDynamicView(id)  (harness removal does not repoint dependents; use chatTurn with a stamped remove op to test repoint; saved ids need approveRemoval())",
+          "  aiViews()  session views + status + Kinetica names   listAiViews()  the caller's AI views as Kinetica reports them   peekAiView(tempId)  5 rows + types",
           "  turn(ops[], prompt)   revert(i)/forward(i) (-1 = saved dashboard)   discard()   state()",
           "  map widgets accept show_popup / show_scale_bar / show_fullscreen; records accept page_size",
           "  e.g. patchWidget(<mapId>, { show_scale_bar: true })  (false equals the default, so it shows no change)",
