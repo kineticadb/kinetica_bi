@@ -5,7 +5,7 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
-import type { AskRequest, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest } from "@kinetica-bi/shared";
+import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest } from "@kinetica-bi/shared";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -948,6 +948,9 @@ export type MaterializeFilterArgs = {
   // server rejects dynamicViewId + spatial together with 400 (mutually exclusive in
   // practice). Flows through automatically via JSON.stringify(args) below.
   dynamicViewId?: number;
+  /** 139 D-23: required for an AI view (negative dynamicViewId). */
+  aiNonce?: string;
+  aiGen?: number;
   // ActiveFilter shape is duplicated server-side at packages/server/src/lib/whereClause.ts:35-42
   // to keep the server module frontend-import-free. Field-shape parity is the contract —
   // any change to the client ActiveFilter MUST be mirrored in whereClause.ts atomically.
@@ -1295,6 +1298,10 @@ export type DynamicViewRow = {
   columns_json: { name: string; type: string }[] | string | null;
   created_at: string;
   updated_at: string;
+  /** 139 D-03: server-derived (GROUP BY / DISTINCT / LIMIT n); undefined = false. */
+  aggregated?: boolean;
+  /** 139: present only on AI session rows (negative id). */
+  ai?: { nonce: string; gen: number; spec: AiDvSpec; baseLabel: string; suggestColumn?: { name: string; kind: "date" | "string" } };
 };
 
 /** Preview response column metadata — name + Kinetica column datatype string. */
