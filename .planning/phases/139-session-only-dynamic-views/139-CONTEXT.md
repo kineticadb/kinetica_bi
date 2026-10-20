@@ -50,6 +50,15 @@ Out of scope: editing an existing view in place (add/remove only), query mode / 
 - **D-19 Add/remove only, no `edit_dynamic_view` op.** "Change it" = add new view + repoint + remove old, within one answer.
 - **D-20 Labelling:** a readable display name from the spec (e.g. "Trips by hour") plus an "AI" tag, like the AI filter chips, wherever the view name shows (widget source label, filter badges, the locked Dynamic Views list). The server-chosen Kinetica name is never shown.
 
+### Post-research decisions (operator, 2026-10-20, after 139-RESEARCH.md)
+- **D-21 Joined tables after Keep: accept the difference.** A session AI view reads joined tables through their current filter view (D-07); a saved view only substitutes `{view}` for the base, so after Keep the join reads the raw tables. Accepted for now and **logged as a known difference** for Phase 141 / later (do not build per-joined-table filter tokens in this phase).
+- **D-22 Widgetless filtered joined table: defer, read raw.** Only joined tables that already have a filter view are read filtered; no extra orchestrator viz keys to create filter views for widgetless tables.
+- **D-23 Drill clicks on AI-view widgets filter them like a saved view.** In scope: add a session-view (`dynamicViewId < 0`, registry-backed) branch to dv filtering so a click narrows an AI view exactly like a saved one (no 404, no ignoring the click). Filter badges read `filterCombinationStore`.
+- **D-24 Rebind via edit ops.** `edit_widget` / `edit_layer` may set the view binding (`config.dynamicViewId` / top-level `dynamic_view_id`) to an AI or saved view whose columns fit, validated like add (columns checked against the view's columns). "Change a view" = add new view → rebind dependents → remove old view, in one answer. This narrows the `dynamic_view_id` data-binding block in `actionAllowList.ts` for AI ops only, with validation. D-17's auto-repoint to the base table stays as the remove-time fallback.
+- **D-25 Removing a SAVED dynamic view follows 136 D-06** (ask once per conversation before removing saved content; same approval flag). Removing an AI-created view needs no confirmation.
+- **D-26 Record the live Kinetica version** in the first UAT step; research verified functions against 7.2 docs (APPROX_MEDIAN / APPROX_PERCENTILE, DATE_TRUNC). If it isn't 7.2.x, re-check those.
+- Median/percentile are **approximate** (`APPROX_MEDIAN`, `APPROX_PERCENTILE`); answer copy and tool descriptions must say so. D-09 stands with that caveat.
+
 ### Carried forward (not re-asked)
 - S1 (133): ad-hoc inline materialize as a non-admin user works; no `dashboard_dynamic_views` row; dv column source = `SELECT * FROM <view> LIMIT 0`.
 - S7 (133): grants don't limit the user; all limits are app-side.
