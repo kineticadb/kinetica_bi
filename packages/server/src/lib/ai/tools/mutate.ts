@@ -237,7 +237,7 @@ const patch: MutateTool = {
 };
 const applyFilterArgs = z.object({
   tableId: z.number().int().positive().optional(),
-  dynamicViewId: z.number().int().positive().optional(),
+  dynamicViewId: z.number().int().refine((n) => n !== 0, "dynamicViewId must be non-zero (negative = AI view this session)").optional(),
   column: z.string().max(128),
   operator: z.enum(["eq", "in", "between", "isNull"]).optional(),
   value: z.string().max(200).optional(),
@@ -247,7 +247,7 @@ const applyFilterArgs = z.object({
 });
 const clearFilterArgs = z.object({
   tableId: z.number().int().positive().optional(),
-  dynamicViewId: z.number().int().positive().optional(),
+  dynamicViewId: z.number().int().refine((n) => n !== 0, "dynamicViewId must be non-zero (negative = AI view this session)").optional(),
   column: z.string().max(128).optional(),
 });
 const applyFilter: MutateTool = {
