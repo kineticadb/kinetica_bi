@@ -54,7 +54,7 @@
 - [x] **Phase 136: Structural & Edit Ops** — AI adds/removes/edits visualizations and map layers and lays them out
 - [x] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
 - [x] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
-- [ ] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
+- [x] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
 - [ ] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
 - [ ] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
 - [ ] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
@@ -240,20 +240,22 @@ Plans:
 4. Removing a view repoints or removes its dependents with no dangling references.
 **Plans:** 14 plans in 6 waves
 Plans:
-- [ ] 139-01-PLAN.md — Shared contract: structured AiDvSpec (no SQL field), checks, materialize/drop request, add/remove_dynamic_view + add_layer.dynamicViewId, value-free snapshot extensions, D-17 dependents planner [W1]
-- [ ] 139-02-PLAN.md — Server D-02/D-03 for saved views: lib/dvThreshold (source gate + tagged output preflight for aggregated templates), list `aggregated` flag, tag/signal in createOrReplaceMaterialized [W1]
-- [ ] 139-03-PLAN.md — Server foundation: AI_DV_* env, server-chosen tab-safe names (aiDvName), ai_session_views registry, dropViewsForSid, sweepAiViewsOnBoot (TTL-only gap logged) [W1]
-- [ ] 139-04-PLAN.md — compileAiDvSpec: live-schema validation, quoted alias-qualified SQL, APPROX_MEDIAN/PERCENTILE, DATE_TRUNC, joinRefs, Keep-compatible {view} template [W2]
-- [ ] 139-05-PLAN.md — Ad-hoc routes: POST /api/ai/dynamic-view/materialize (cap, joined filter views, tagged/cancellable preflight, registry, deadline), drop, list [W3]
-- [ ] 139-06-PLAN.md — Server lifecycle: logout drops AI views before deleteSession, boot sweep before listen, D-23 negative-dv branch in /api/filter/materialize (_dvn names) [W4]
-- [ ] 139-07-PLAN.md — Gateway + shadow: add/remove_dynamic_view (cap, live schema, compile + stamp, dependents repoint/drop, D-25 ask-once), AI views filterable (D-23) [W3]
-- [ ] 139-08-PLAN.md — Web fold: session views, removal repoint/drop in one entry, D-24 rebind, dv binding on add, no-dangling property test, change counts [W2]
-- [ ] 139-09-PLAN.md — Web lifecycle: per-tab nonce + generations, dv sink, DROP on undo/remove/discard/switch, API client calls, value-free snapshot fields [W3]
-- [ ] 139-10-PLAN.md — Gateway binding/rebind against view columns, add_dynamic_view tool + dynamicViewId args, AI_DV_RULES, runAnswer limits, scripted e2e [W4]
-- [ ] 139-11-PLAN.md — Web chain: merge session rows, ad-hoc materialize branch (join/gen tokens, pending drops), aggregated fast-path skip, D-05 note + follow-up, orchestrator aiNonce (D-23) [W4]
-- [ ] 139-12-PLAN.md — DashboardsPage/App wiring (single merge point, saved-only baseline, id>0 DROP guards), D-20 AI tag on view names, change-bar counts [W5]
-- [ ] 139-13-PLAN.md — Regression specs: both MapChartRenderer buildWmsParams sites + WidgetRenderer with negative dv ids; DEV harness view commands (quota-free UAT) [W5]
-- [ ] 139-14-PLAN.md — Gates, operator light/dark UAT (Kinetica version, U1-U9, real tiles both map sites, lifecycle listing incl. logout/restart, cap, removal), AISAFE-V20-04 joins amendment, bookkeeping by hand [W6]
+- [x] 139-01-PLAN.md — Shared contract: structured AiDvSpec (no SQL field), checks, materialize/drop request, add/remove_dynamic_view + add_layer.dynamicViewId, value-free snapshot extensions, D-17 dependents planner [W1]
+- [x] 139-02-PLAN.md — Server D-02/D-03 for saved views: lib/dvThreshold (source gate + tagged output preflight for aggregated templates), list `aggregated` flag, tag/signal in createOrReplaceMaterialized [W1]
+- [x] 139-03-PLAN.md — Server foundation: AI_DV_* env, server-chosen tab-safe names (aiDvName), ai_session_views registry, dropViewsForSid, sweepAiViewsOnBoot (TTL-only gap logged) [W1]
+- [x] 139-04-PLAN.md — compileAiDvSpec: live-schema validation, quoted alias-qualified SQL, APPROX_MEDIAN/PERCENTILE, DATE_TRUNC, joinRefs, Keep-compatible {view} template [W2]
+- [x] 139-05-PLAN.md — Ad-hoc routes: POST /api/ai/dynamic-view/materialize (cap, joined filter views, tagged/cancellable preflight, registry, deadline), drop, list [W3]
+- [x] 139-06-PLAN.md — Server lifecycle: logout drops AI views before deleteSession, boot sweep before listen, D-23 negative-dv branch in /api/filter/materialize (_dvn names) [W4]
+- [x] 139-07-PLAN.md — Gateway + shadow: add/remove_dynamic_view (cap, live schema, compile + stamp, dependents repoint/drop, D-25 ask-once), AI views filterable (D-23) [W3]
+- [x] 139-08-PLAN.md — Web fold: session views, removal repoint/drop in one entry, D-24 rebind, dv binding on add, no-dangling property test, change counts [W2]
+- [x] 139-09-PLAN.md — Web lifecycle: per-tab nonce + generations, dv sink, DROP on undo/remove/discard/switch, API client calls, value-free snapshot fields [W3]
+- [x] 139-10-PLAN.md — Gateway binding/rebind against view columns, add_dynamic_view tool + dynamicViewId args, AI_DV_RULES, runAnswer limits, scripted e2e [W4]
+- [x] 139-11-PLAN.md — Web chain: merge session rows, ad-hoc materialize branch (join/gen tokens, pending drops), aggregated fast-path skip, D-05 note + follow-up, orchestrator aiNonce (D-23) [W4]
+- [x] 139-12-PLAN.md — DashboardsPage/App wiring (single merge point, saved-only baseline, id>0 DROP guards), D-20 AI tag on view names, change-bar counts [W5]
+- [x] 139-13-PLAN.md — Regression specs: both MapChartRenderer buildWmsParams sites + WidgetRenderer with negative dv ids; DEV harness view commands (quota-free UAT) [W5]
+- [x] 139-14-PLAN.md — Gates, operator light/dark UAT (Kinetica version, U1-U9, real tiles both map sites, lifecycle listing incl. logout/restart, cap, removal), AISAFE-V20-04 joins amendment, bookkeeping by hand [W6]
+
+**Completed 2026-10-20:** 14/14 plans. Operator UAT 2026-10-20 (run by Claude in the operator's signed-in Chrome, `139-14-UAT-RESULTS.md`), Kinetica 7.2.3.12, light and dark, harness only (no provider request): median/percentile/DATE_TRUNC views build; real WMS tiles follow an AI view at BOTH `buildWmsParams` sites; drill filters on AI-view bars work; removal repoint/drop with one-Revert restore; lifecycle verified by listing views in Kinetica (undo, discard, dashboard switch, logout, restart all empty; cap refuses the 6th). UAT fix 2cef90c (dv-bound widgets never bind to a table filter combination). Deferred to Phase 142: join preflight-cancel and join-through-filter-view live checks (no joinable table pair on dashboard 12), live ask (step 12). Open minor: undone AI view leaves a "dynamic view -101" chip; brief unfiltered flash on redo.
 
 ### Phase 140: Query Data-Access Mode & Injection Hardening
 **Goal:** In query mode the AI can run only guarded read-only queries as the user, and poisoned inputs cannot push it past the gateway.
@@ -302,7 +304,7 @@ Plans:
 | 136. Structural & Edit Ops | 12/12 | Complete | 2026-10-14 |
 | 137. AI Widget & Streaming UI | 12/12 | Complete | 2026-10-15 |
 | 138. AI Filters | 8/8 | Complete | 2026-10-16 |
-| 139. Session-Only Dynamic Views | 0/? | Not started | - |
+| 139. Session-Only Dynamic Views | 14/14 | Complete | 2026-10-20 |
 | 140. Query Data-Access Mode & Injection Hardening | 0/? | Not started | - |
 | 141. Keep (Persist AI Changes) | 0/? | Not started | - |
 | 142. Generate, Audit Viewer & Live Provider Proofs | 0/? | Not started | - |

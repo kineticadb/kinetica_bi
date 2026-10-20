@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 139 planned (2026-10-20): research + 14 plans in 6 waves, plan check passed. Next: /gsd:execute-phase 139"
-last_updated: "2026-10-20T12:00:00.000Z"
+stopped_at: "Completed 139-14-PLAN.md (2026-10-20): Phase 139 complete (14/14), operator UAT recorded, bookkeeping done. Next: /gsd:discuss-phase 140"
+last_updated: "2026-10-20T21:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,7 +19,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 138 (AI Filters) complete; Phase 139 (Session-Only Dynamic Views) next
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 139 (Session-Only Dynamic Views) complete; Phase 140 (Query Data-Access Mode & Injection Hardening) next
 
 ## Current Position
 
@@ -29,7 +29,8 @@ Previous phase: 136 (Structural & Edit Ops) — COMPLETE 2026-10-14 (12/12 plans
 Plan: 137-12 complete — gates green, operator UAT steps 1-8 PASS light+dark (7 visual issues fixed in 81117b2, re-verified), step 8 = yes (disabled Keep acceptable until 141), step 9 live ask skipped. Bookkeeping + `137-12-SUMMARY.md` done.
 Previous plan: 136-12 complete — Task 1 VAL_ATTR tile check PASS, Task 2 visual/layout/undo PASS (run by Claude in the operator's signed-in Chrome; operator approved). Bookkeeping + `136-12-SUMMARY.md` done.
 Phase 138 (AI Filters) — COMPLETE 2026-10-16 (8/8 plans; gates green; 138-08 operator UAT steps 1-8b PASS light+dark incl. SC4 real map tiles, step 9 skipped; results in `phases/138-ai-filters/138-08-UAT-RESULTS.md`)
-Next: Phase 139 (Session-Only Dynamic Views) — context + research + 14 plans (6 waves) 2026-10-20, plan check passed → `/gsd:execute-phase 139`
+Phase 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans; gates green; 139-14 operator UAT run by Claude in the operator's Chrome against Kinetica 7.2.3.12, light and dark, steps 0-7 and 9-11 PASS, step 8/8b deferred to 142, step 12 skipped; fix 2cef90c; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
+Next: Phase 140 (Query Data-Access Mode & Injection Hardening) → `/gsd:discuss-phase 140`
 Status: Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
 Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness only, no provider request), UAT fixes 81117b2, Phase 137 bookkeeping. Previously 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
@@ -99,12 +100,32 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - UAT observation 3 (note only): harness `filter()`/`clearFilter()` render an empty answer bubble (harness sends no answer text).
 - Not eyeballed: drawn-shape survival on clear-all; dark mode for UAT steps 4 and 5 (light only).
 
+**Phase 139 outcomes (2026-10-20):** The AI can create and remove session-only dynamic views, and their Kinetica views never outlive the session. (1) Structured `AiDvSpec` (table, joins, columns, filters, grouping, aggregates, sort, limit; no SQL field) is validated against the live schema and compiled server-side with quoted identifiers, APPROX_MEDIAN/APPROX_PERCENTILE and DATE_TRUNC, into a Keep-compatible `{view}` template (139-01, 139-04). (2) Ad-hoc routes `POST /api/ai/dynamic-view/materialize|drop` + `GET .../list` under server-chosen `_kbi_ai_u<user>_s<sid8>_n<nonce>_<id>[_g<gen>]` names, a per-session cap of 5, a tagged/cancellable preflight, an SQLite `ai_session_views` registry (139-03, 139-05). (3) D-02/D-03: aggregated views whose output is small build UNFILTERED on a large table, for saved views too; row views over the threshold wait for a filter with a muted note and follow-up (139-02, 139-11). (4) Lifecycle: client DROP on undo, remove, discard and dashboard switch; server DROP on logout (before `deleteSession`) and a boot sweep before listen (139-06, 139-09). (5) Gateway add/remove_dynamic_view with stamped repoint/drop of dependents in one revertable entry, D-24 rebind, D-25 ask-once for saved-view removal, AI views filterable (D-23 `_dvn` filter views) (139-07, 139-08, 139-10). (6) Web chain merges session views, binds widgets and layers (both `buildWmsParams` sites), "AI" tag on view names, change-bar counts, DEV harness commands (139-11..13). (7) Gap fixes 6a26b22, 4b688a9, fb38e93, a23ef71. Operator UAT (2026-10-20, Claude driving the operator's Chrome, harness only, no provider request, Kinetica 7.2.3.12): APPROX median/p90 and DATE_TRUNC (hour/week/day; week starts Sunday; bucket type datetime) work in a GROUP BY MV; real WMS tiles follow an AI view at both map sites (initial render and after a filter change); drill filters on AI-view bars work; removal repoint/drop with one-Revert restore; lifecycle verified by listing views in Kinetica (undo, discard, dashboard switch, logout 3 s after build, restart boot sweep dropped 2, all left none; cap refuses the 6th). UAT fix 2cef90c: dv-bound widgets never bind to a table filter combination (a pending AI/saved view bar no longer queries the base filter view; pre-existing since Phase 94). Requirements: AIACT-V20-07, AIACT-V20-08, AISAFE-V20-04 (amended to include joins, D-07) and AISAFE-V20-06 Complete.
+
+**New debt / follow-ups from Phase 139:**
+- UAT step 8/8b DEFERRED to Phase 142 (operator decision): join preflight cancel (`AI_DV_PREFLIGHT_TIMEOUT_MS` + a deliberately expensive join on a shared Kinetica) and join through a filter view (INNER + LEFT) were not run live because dashboard 12 has one table and no registered table shares a join key with demo.nyctaxi. Re-run both on a real fact+dimension pair in 142's live UAT. Unit/e2e coverage (CMP, AIDV, RDV, E2EDV) stands.
+- UAT issue 2 (minor, open): while an AI view is undone, its hand drill filter stays as a top-bar chip labelled "dynamic view -101" (name unresolvable). Restores correctly on redo.
+- UAT issue 3 (cosmetic, open): on redo the bar briefly queries the unfiltered `_g1` view before the dv filter view is rebuilt; possible momentary flash of unfiltered data.
+- D-21 known difference: after Keep a saved view's joins read the raw tables (session AI views read joined tables' filter views); Phase 141 must show or log it.
+- D-22 deferred: joined tables with a filter but no widget on them are read raw (no extra orchestrator viz keys).
+- Phase 141 Keep persists `{name, source_table_id: spec.baseTableId, template_sql: compiled template, max_records, columns_json}` via the existing create route and must call `useAiSessionStore.getState().reset()` (drops AI views) after save.
+- TTL-only cleanup gap: views of expired/deleted sessions, expired OIDC tokens, or views never registered (crash before the registry row) fall back to the DEFAULT_VIEW_TTL_MINUTES TTL. UAT 7a-7e observed no TTL-only remainder; 7g (tab-close TTL) not run.
+- Observation, not fixed: the client filter-view/combination DROP loops cannot drop on explicit logout (the session is already gone, they get 401) and rely on the TTL. This is about filter views, not AI views (AI views are dropped server-side on logout).
+- Median/percentile are approximate (APPROX_*), labelled in tool text.
+- Dev-.env leak failures in server specs auth.routes (password-mode `/me` authMode) and bootstrap ("AUTH_OIDC_ISSUER_URL is missing") appear only when `packages/server/.env` is present; they fail identically on pre-phase commit 4536a0c. OIDC "Issuer is not a constructor" failures are pre-existing too.
+- Non-discriminating plan greps were reported in 139-01/03/04/07/08/09/10 SUMMARYs (title/symbol-count criteria); specs and the UAT were the proof.
+- Copy follow-ups: the "Filter ... to the last 30 days" suggestion is date-agnostic (returns 0 rows on the 2009 nyctaxi data); the cap message "you already have 5 session views (limit 5); remove one first" starts lowercase.
+- Not eyeballed: model-driven D-25 ask UI, live model adherence to the dynamic-view prompt rules (step 12 skipped; dev env `AI_MODEL=Antigravity` is invalid) -> 142; dark mode for steps 5c, 6, 6b, 9, 10.
+- Shared remote: `origin` is shared; fetch at session start and branch the next milestone off merged master.
+
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.
 - TD-V20-EXPORT-CANCEL: `cancelExport` (`exportRunner.ts:272`) only aborts the client; fix via tag/find/cancel (`/admin/alter/jobs`). Low priority.
 - Kinetica job-cancel design (tag/find/cancel) is mandatory for Phases 137 and 140.
 
-**Next:** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. ~~`/gsd:execute-phase 137`~~ done; Phase 137 complete 2026-10-15. ~~`/gsd:discuss-phase 138`~~ done 2026-10-15 (`138-CONTEXT.md`, D-01..D-17: whole-source filters like a click, ask on ambiguous column, replace same column / stack others, filter-only answers do not lock or show the bar, per-column undo, "AI" chip tag + outline). Next: `/gsd:plan-phase 138`.
+**Next (updated 2026-10-20):** Phase 139 complete. Next: `/gsd:discuss-phase 140`.
+
+**Next (historical):** ~~`/gsd:plan-phase 136`~~ done; Phase 136 complete 2026-10-14. ~~`/gsd:execute-phase 137`~~ done; Phase 137 complete 2026-10-15. ~~`/gsd:discuss-phase 138`~~ done 2026-10-15 (`138-CONTEXT.md`, D-01..D-17: whole-source filters like a click, ask on ambiguous column, replace same column / stack others, filter-only answers do not lock or show the bar, per-column undo, "AI" chip tag + outline). Next: `/gsd:plan-phase 138`.
 
 **Open blockers:** none.
 
