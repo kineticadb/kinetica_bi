@@ -85,9 +85,11 @@ describe("checkAiOp gateway", () => {
     else expect(pr).toMatchObject({ ok: false, stage: "allow_list" });
     expect(await stage(rawOp, `{"op":"add_widget","tempId":-1,"type":"bar","title":"T","config":{"tableId":7,"constructor":1}}`)).toBe("allow_list");
     expect(await stage(addWidget, proto)).toMatch(/ok|allow_list/); // fake tool's zod may drop the key; hostile-key proof is the rawOp pair above
-    // 139 D-24: config.dynamicViewId is no longer an allow_list rejection (dv-binding carve-out). NOTE for 139-10: the gateway does not yet resolve the dv id
-    // for add_widget, so an unknown id (3) currently passes ("ok"); 139-10 (binding ops) must refuse it at stage "reference" and update this assertion.
-    expect(await stage(addWidget, add({ config: { dynamicViewId: 3 } }))).toBe("ok");
+    // 139 D-24: config.dynamicViewId is not an allow_list rejection; an unknown/inaccessible view id (fixture has only dv 90) is refused at "reference" (139-10).
+    expect(await stage(addWidget, add({ tableId: undefined, config: { dynamicViewId: 3 } }))).toBe("reference");
+    // the stage alone is not discriminating (a missing tableId is also "reference"); pin the reason to the unknown view
+    const unknownDv = await checkAiOp(mk(), addWidget, add({ tableId: undefined, config: { dynamicViewId: 3 } }));
+    expect(unknownDv.ok ? [] : unknownDv.reasons).toEqual(["dynamic view 3 does not exist"]);
     expect(await stage(patch, pat("widget", 42, { show_popup: "yes" }))).toBe("allow_list");
     expect(await stage(patch, pat("layer", 70, { table_id: 3 }))).toBe("allow_list");
     expect(await stage(patch, pat("widget", 43, { anything: 1 }))).toBe("allow_list");

@@ -189,6 +189,11 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     return i ? { name: i.name, ...(i.sourceTableId !== undefined ? { baseTableId: i.sourceTableId } : {}), columns: i.columns } : undefined;
   };
   const candidate = tool.toOp(parsed.data);
+  // 139 D-24: an add_layer bound to a view without a tableId takes the view's base table.
+  if (isRec(candidate) && candidate.op === "add_layer" && typeof candidate.dynamicViewId === "number" && candidate.tableId === undefined) {
+    const b = dvMeta(candidate.dynamicViewId)?.baseTableId;
+    if (b !== undefined) candidate.tableId = b;
+  }
   // D-11/D-12: an add_layer without a map id resolves to the dashboard's (or this answer's new) map, or asks.
   if (isRec(candidate) && candidate.op === "add_layer" && candidate.widgetId === undefined && typeof candidate.tableId === "number") {
     const hostX: FailExtras = {
@@ -286,8 +291,38 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     return f("shape", ["nothing to change; pass at least one setting"]);
   }
 
+  // 139 D-24: a patch carrying dynamicViewId on a widget/layer is a REBIND and must stand alone.
+  const isRebind =
+    op.op === "patch" &&
+    (op.action.target.kind === "widget" || op.action.target.kind === "layer") &&
+    Object.prototype.hasOwnProperty.call(op.action.configPatch, "dynamicViewId");
+  const rebindView = isRebind && op.op === "patch" ? op.action.configPatch.dynamicViewId : undefined;
+  /** Columns of a view vs the names an op reads. null columns (saved view, unknown) skip the pre-check. */
+  const viewRefs = (vid: number, refs: ColRef[]): GatewayResult | undefined => {
+    const meta = dvMeta(vid);
+    if (!meta || !meta.columns) return undefined;
+    const names = meta.columns.map((c) => c.name);
+    const reasons: string[] = [];
+    let refKey: string | undefined;
+    for (const c of refs) {
+      const key = `col:${vid}:${c.name}`;
+      if (!names.includes(c.name)) {
+        const near = nearest(c.name, names);
+        reasons.push(`column \`${c.name}\` not found on dynamic view ${meta.name}` + (near.length ? `; did you mean ${near.map((n) => `\`${n}\``).join(", ")}?` : ""));
+        refKey ??= key;
+      } else if (c.numeric && isAiNumericColumnType(meta.columns.find((q) => q.name === c.name)?.type) === false) {
+        reasons.push(`column ${c.name} is not numeric`);
+        refKey ??= key;
+      }
+    }
+    return reasons.length ? f("live_schema", reasons, refKey) : undefined;
+  };
+
   // b. allow_list
-  if (op.op === "add_widget") {
+  if (isRebind && op.op === "patch") {
+    if (Object.keys(op.action.configPatch).length !== 1) return f("allow_list", ["change the view binding on its own, then send other settings in a separate edit"]);
+    if (!(typeof rebindView === "number" && Number.isInteger(rebindView) && rebindView !== 0)) return f("allow_list", ["invalid value for dynamicViewId"]);
+  } else if (op.op === "add_widget") {
     const v = validateAiWidgetConfig(op.type, op.config);
     if (!v.valid) return f("allow_list", v.reasons);
   } else if (op.op === "patch") {
@@ -349,7 +384,9 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     const { kind, id } = op.action.target;
     const exists = kind === "widget" ? shadow.widgets.has(id) : kind === "layer" ? shadow.layers.has(id) : kind === "dynamicView" ? shadow.dynamicViews.has(id) : true;
     if (!exists) return missing(kind, id);
-    if (kind === "widget" && shadow.widgets.get(id)?.dynamicViewId !== undefined) return f("reference", [DV_BOUND], `ref:widget:${id}`);
+    if (isRebind && typeof rebindView === "number") {
+      if (!shadow.dynamicViews.has(rebindView) || !dvMeta(rebindView)) return missing("dynamicView", rebindView, "dynamic view");
+    } else if (kind === "widget" && shadow.widgets.get(id)?.dynamicViewId !== undefined) return f("reference", [DV_BOUND], `ref:widget:${id}`);
   } else if (op.op === "remove_widget") {
     const w = shadow.widgets.get(op.id);
     if (!w) return missing("widget", op.id);
@@ -382,12 +419,22 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       const host = shadow.widgets.get(op.widgetId);
       if (!host) return missing("widget", op.widgetId);
       if (host.type !== "map") return f("reference", [`widget ${op.widgetId} is not a map`], `ref:widget:${op.widgetId}`);
+      if (op.dynamicViewId !== undefined) {
+        if (!shadow.dynamicViews.has(op.dynamicViewId) || !dvMeta(op.dynamicViewId)) return missing("dynamicView", op.dynamicViewId, "dynamic view");
+        const b = dvMeta(op.dynamicViewId)?.baseTableId;
+        if (b !== undefined && b !== op.tableId) return f("reference", [`the view is built on table ${b}; use tableId ${b}`], `table:${op.tableId}`);
+      }
       const r = await tableRule(op.tableId);
       if (r) return r;
     }
     if (op.op === "add_widget") {
       const t = (op.config as Record<string, unknown>).tableId;
-      if (op.type === "map") {
+      const dv = (op.config as Record<string, unknown>).dynamicViewId;
+      if (typeof dv === "number") {
+        if (op.type === "map") return f("reference", ["map widgets can't use a dynamic view"]);
+        if (t !== undefined) return f("reference", ["pass tableId or dynamicViewId, not both"]);
+        if (!shadow.dynamicViews.has(dv) || !dvMeta(dv)) return missing("dynamicView", dv, "dynamic view");
+      } else if (op.type === "map") {
         if (t !== undefined) return f("reference", ["map widgets have no table"]);
       } else if (typeof t !== "number") {
         return f("reference", [`tableId is required for ${op.type}`]);
@@ -554,7 +601,30 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
   }
 
   // e. live_schema
-  const cr = opColumnRefs(op, shadow);
+  // 139 D-24: bound/rebound widgets and layers are checked against the VIEW's columns, not a table.
+  if (isRebind && op.op === "patch" && typeof rebindView === "number") {
+    const t = op.action.target;
+    const ent = t.kind === "widget" ? shadow.widgets.get(t.id) : shadow.layers.get(t.id);
+    const bad = viewRefs(rebindView, (ent?.refCols ?? []).map((name) => ({ name, numeric: false })));
+    if (bad) return bad;
+    const vn = dvMeta(rebindView)?.name ?? String(rebindView);
+    const label =
+      t.kind === "widget"
+        ? `Pointed "${shadow.widgets.get(t.id)?.title ?? t.id}" at dynamic view "${vn}"`
+        : `Pointed layer ${shadow.layers.get(t.id)?.title ? `"${shadow.layers.get(t.id)!.title}"` : t.id} at dynamic view "${vn}"`;
+    applyOpToShadow(shadow, op);
+    return { ok: true, op, label };
+  }
+  const boundView =
+    op.op === "add_widget" && typeof (op.config as Record<string, unknown>).dynamicViewId === "number" ? ((op.config as Record<string, unknown>).dynamicViewId as number)
+    : op.op === "add_layer" ? op.dynamicViewId
+    : undefined;
+  const cr = boundView !== undefined ? undefined : opColumnRefs(op, shadow);
+  if (boundView !== undefined) {
+    const refs = opColumnRefs(op, shadow)?.refs ?? [];
+    const bad = viewRefs(boundView, refs);
+    if (bad) return bad;
+  }
   if (cr && (cr.probe || cr.refs.length > 0)) {
     if (cr.tableId === undefined) return f("live_schema", ["table is not available"]);
     const d = await deps.liveSchema.describe(cr.tableId);
