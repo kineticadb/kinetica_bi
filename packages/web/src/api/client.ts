@@ -5,7 +5,7 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
-import type { AskRequest } from "@kinetica-bi/shared";
+import type { AskRequest, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest } from "@kinetica-bi/shared";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -1474,6 +1474,40 @@ export const dropDynamicView = async (
     await throwForStatus(response, "Failed to drop dynamic view");
   }
   return response.json() as Promise<{ dropped: true }>;
+};
+
+/** 139: POST /api/ai/dynamic-view/materialize — the server re-validates + compiles the spec and chooses the name. */
+export const materializeAiDynamicView = async (
+  body: AiDvMaterializeRequest,
+  signal?: AbortSignal,
+): Promise<AiDvMaterializeResponse> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/dynamic-view/materialize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to build the AI view");
+  return response.json() as Promise<AiDvMaterializeResponse>;
+};
+
+/** 139: idempotent DROP of one AI view (own user+session only, server-built name). keepalive so leave/close still sends it. */
+export const dropAiDynamicView = async (body: AiDvDropRequest): Promise<{ dropped: true }> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/dynamic-view/drop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    keepalive: true,
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to drop the AI view");
+  return response.json() as Promise<{ dropped: true }>;
+};
+
+/** 139: verification aid (UAT): the caller's AI views as Kinetica lists them. */
+export const listAiDynamicViews = async (): Promise<{ views: string[] }> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/dynamic-view/list`);
+  if (!response.ok) await throwForStatus(response, "Failed to list AI views");
+  return response.json() as Promise<{ views: string[] }>;
 };
 
 // ---------------------------------------------------------------------------

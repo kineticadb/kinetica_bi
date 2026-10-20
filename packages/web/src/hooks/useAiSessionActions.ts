@@ -3,6 +3,7 @@ import type { SessionBaseline, TurnInput, TurnEntry } from "../lib/aiSession/typ
 import { useAiSessionStore } from "../store/aiSessionStore";
 import { applyAiTurn } from "../lib/aiOps/applyAiTurn";
 import { installAiFilterEffects, discardAiSession } from "../lib/aiOps/aiFilterEffects";
+import { installAiDvEffects } from "../lib/aiDv/aiDvLifecycle";
 
 /**
  * Baseline-bound session entry point shared by the dev harness (134-05) and the AI widget (137).
@@ -20,6 +21,7 @@ export function useAiSessionActions(getBaseline: () => SessionBaseline): {
   return useMemo(
     () => {
       installAiFilterEffects();
+      installAiDvEffects();
       return {
         applyTurn: (input: TurnInput) => applyAiTurn(input, ref.current()),
         setCursor: (i: number) => useAiSessionStore.getState().setCursor(i, ref.current()),
