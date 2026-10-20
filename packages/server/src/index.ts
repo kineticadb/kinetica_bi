@@ -157,6 +157,7 @@ import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboa
 // type detection, jsdom DOM environment, DOMPurify SVG sanitization.
 import { registerExportRoutes } from "./exportRoutes";
 import { registerAiRoutes } from "./aiRoutes";
+import { registerAiDvRoutes } from "./aiDvRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -1295,6 +1296,8 @@ export const createApp = async (): Promise<express.Express> => {
   registerExportRoutes(app);
   // v2.0 Phase 135: AI routes (POST /api/ai/ask requires ai:use; GET /api/ai/config requireAuth).
   registerAiRoutes(app);
+  // v2.0 Phase 139: ad-hoc AI dynamic views (materialize/drop/list); session-only, registry-backed.
+  registerAiDvRoutes(app, { requireConfig, wrap: asyncHandler, ttlMinutes: DEFAULT_VIEW_TTL_MINUTES, viewColumnsCache });
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.
