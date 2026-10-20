@@ -1327,6 +1327,9 @@ export const createApp = async (): Promise<express.Express> => {
       // When present → the dv path (filter the dv's OWN materialized view). When
       // absent → the existing table path, byte-unchanged.
       dynamicViewId?: number;
+      // 139 D-23: a NEGATIVE dynamicViewId is an AI session view; the registry name is rebuilt server-side from these + the caller's user/sid.
+      aiNonce?: string;
+      aiGen?: number;
       filters?: ActiveFilter[];
       spatialFilters?: SpatialFilter[];
       spatialTarget?: SpatialTarget;
@@ -1340,6 +1343,8 @@ export const createApp = async (): Promise<express.Express> => {
       dashboardId,
       tableId,
       dynamicViewId,
+      aiNonce,
+      aiGen,
       filters = [],
       spatialFilters,
       spatialTarget,
@@ -1378,17 +1383,46 @@ export const createApp = async (): Promise<express.Express> => {
           error: "filters must be non-empty on the dynamic-view path (use DELETE to clear).",
         });
       }
-      // dv row must exist AND belong to dashboardId (same-dashboard scoping).
-      const dvRow = getDashboardDynamicView(dynamicViewId as number);
-      if (!dvRow || dvRow.dashboard_id !== dashboardId) {
-        return res.status(404).json({ error: "Dynamic view not found." });
-      }
       const dvAuthedReq = req as AuthedRequest;
-      const dvViewName = buildDynamicViewName({
-        userId: dvAuthedReq.user!.creds.username,
-        dashboardId,
-        dynamicViewId: dynamicViewId as number,
-      });
+      let dvViewName: string;
+      let dvLabel: string;
+      if ((dynamicViewId as number) < 0) {
+        // 139 D-23: AI session view. Name rebuilt from the caller's own user+sid (never client-supplied), resolved via the registry.
+        const gen = aiGen ?? 0;
+        if (typeof aiNonce !== "string" || !/^[a-f0-9]{8}$/.test(aiNonce) || !Number.isInteger(gen) || gen < 0 || gen > 999) {
+          return res.status(400).json({ error: "aiNonce is required for an AI dynamic view." });
+        }
+        let aiName: string;
+        try {
+          aiName = buildAiDynamicViewName({
+            username: dvAuthedReq.user!.creds.username,
+            sid: dvAuthedReq.user!.sid,
+            nonce: aiNonce,
+            tempId: dynamicViewId as number,
+            gen,
+          });
+        } catch {
+          return res.status(400).json({ error: "aiNonce is required for an AI dynamic view." });
+        }
+        const aiRow = getAiSessionView(aiName);
+        if (!aiRow || aiRow.dashboardId !== dashboardId) {
+          return res.status(404).json({ error: "Dynamic view not found." });
+        }
+        dvViewName = aiName;
+        dvLabel = `AI view ${dynamicViewId}`;
+      } else {
+        // dv row must exist AND belong to dashboardId (same-dashboard scoping).
+        const dvRow = getDashboardDynamicView(dynamicViewId as number);
+        if (!dvRow || dvRow.dashboard_id !== dashboardId) {
+          return res.status(404).json({ error: "Dynamic view not found." });
+        }
+        dvViewName = buildDynamicViewName({
+          userId: dvAuthedReq.user!.creds.username,
+          dashboardId,
+          dynamicViewId: dynamicViewId as number,
+        });
+        dvLabel = dvRow.name;
+      }
       const dvFilterViewName = buildFilterViewName({
         username: dvAuthedReq.user!.creds.username,
         sessionId: dvAuthedReq.user!.sid,
@@ -1406,7 +1440,7 @@ export const createApp = async (): Promise<express.Express> => {
         dvColumns = parseProbeColumns(probe);
         if (dvColumns.length > 0) viewColumnsCache.set(dvViewName, dvColumns);
       }
-      assertColumnsExist(dvColumns, dvFiltersArr.map((f) => (f as { column?: unknown }).column), `dynamic view "${dvRow.name}"`);
+      assertColumnsExist(dvColumns, dvFiltersArr.map((f) => (f as { column?: unknown }).column), `dynamic view "${dvLabel}"`);
       const dvWhereClause = buildServerWhereClause(dvFiltersArr);
       // FROM the dv's OWN materialized view. If that view isn't materialized yet,
       // Kinetica's "object not found" bubbles through asyncHandler → errorMiddleware

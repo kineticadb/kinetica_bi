@@ -110,6 +110,8 @@ export type FilterViewNameArgs = {
  * `_tundefined`). When `dynamicViewId` is absent the output is byte-identical
  * to the original table-path form (back-compat regression-locked).
  *
+ * 139 D-23: AI session views (negative ids) use `_dvn<abs>`; a `-` is not a valid identifier character.
+ *
  * Pure / deterministic: same input always produces the same output.
  * No Date.now, no random, no env reads.
  */
@@ -123,7 +125,9 @@ export function buildFilterViewName(args: FilterViewNameArgs): string {
   const s = args.sessionId.slice(0, 8);
   const segment =
     args.dynamicViewId !== undefined
-      ? `dv${args.dynamicViewId}`
+      ? args.dynamicViewId < 0
+        ? `dvn${Math.abs(args.dynamicViewId)}`
+        : `dv${args.dynamicViewId}`
       : `t${args.tableId}`;
   const base = `_kbi_filt_u${u}_d${args.dashboardId}_${segment}_s${s}`;
   if (args.combinationKey !== undefined && args.combinationKey !== "") {
