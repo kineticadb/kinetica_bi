@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards star
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 137 (AI Widget & Streaming UI) — COMPLETE 2026-10-15 (12/12 plans + UAT fix 81117b2; all gates green; 137-12 operator UAT run 2026-10-15 in light and dark, results in `phases/137-ai-widget-streaming-ui/137-12-UAT-RESULTS.md`)
-Previous phase: 136 (Structural & Edit Ops) — COMPLETE 2026-10-14 (12/12 plans + fix 5233a6e; all gates green; 136-12 operator UAT approved 2026-10-14, results in `phases/136-structural-edit-ops/136-12-UAT-RESULTS.md`)
-Plan: 137-12 complete — gates green, operator UAT steps 1-8 PASS light+dark (7 visual issues fixed in 81117b2, re-verified), step 8 = yes (disabled Keep acceptable until 141), step 9 live ask skipped. Bookkeeping + `137-12-SUMMARY.md` done.
-Previous plan: 136-12 complete — Task 1 VAL_ATTR tile check PASS, Task 2 visual/layout/undo PASS (run by Claude in the operator's signed-in Chrome; operator approved). Bookkeeping + `136-12-SUMMARY.md` done.
+Phase: 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans + gap fixes 6a26b22/4b688a9/fb38e93/a23ef71 + UAT fix 2cef90c; gates green; 139-14 operator UAT run by Claude in the operator's Chrome, light+dark; step 8/8b deferred to 142; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
+Previous phase: 138 (AI Filters) — COMPLETE 2026-10-16 (8/8 plans; 138-08 UAT results in `phases/138-ai-filters/138-08-UAT-RESULTS.md`)
+Plan: 139-14 complete — full gates green, operator UAT 0-7 and 9-11 PASS (Kinetica 7.2.3.12), step 12 skipped (invalid AI_MODEL in dev). Bookkeeping + `139-14-SUMMARY.md` done.
+Previous plan: 138-08 complete — operator UAT steps 1-8b PASS light+dark.
 Phase 138 (AI Filters) — COMPLETE 2026-10-16 (8/8 plans; gates green; 138-08 operator UAT steps 1-8b PASS light+dark incl. SC4 real map tiles, step 9 skipped; results in `phases/138-ai-filters/138-08-UAT-RESULTS.md`)
 Phase 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans; gates green; 139-14 operator UAT run by Claude in the operator's Chrome against Kinetica 7.2.3.12, light and dark, steps 0-7 and 9-11 PASS, step 8/8b deferred to 142, step 12 skipped; fix 2cef90c; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
 Next: Phase 140 (Query Data-Access Mode & Injection Hardening) → `/gsd:discuss-phase 140`
-Status: Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12 plans; S6 run by the operator 2026-10-13). Phase 134 complete (10/10, 2026-10-12)
+Status: Phase 139 complete (14/14, 2026-10-20). Phase 138 complete (8/8, 2026-10-16). Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12). Phase 134 complete (10/10, 2026-10-12)
 Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness only, no provider request), UAT fixes 81117b2, Phase 137 bookkeeping. Previously 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
