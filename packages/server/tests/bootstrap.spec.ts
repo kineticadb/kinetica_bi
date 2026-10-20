@@ -73,6 +73,14 @@ describe("bootstrap gate (Phase 3 EADDRINUSE regression)", () => {
     expect(src.match(/reconcileExportsOnBoot\(\)/g)?.length).toBe(1);
   });
 
+  it("AIDV-boot: await sweepAiViewsOnBoot() runs once inside the NODE_ENV gate, after reconcileExportsOnBoot() and before app.listen", () => {
+    const src = readFileSync(resolve(__dirname, "../src/index.ts"), "utf-8");
+    expect(
+      /if\s*\(\s*process\.env\.NODE_ENV\s*!==\s*"test"\s*\)\s*\{[\s\S]*?reconcileExportsOnBoot\(\);[\s\S]*?await sweepAiViewsOnBoot\([^)]*\);[\s\S]*?app\.listen/.test(src),
+    ).toBe(true);
+    expect(src.match(/await sweepAiViewsOnBoot\(/g)?.length).toBe(1);
+  });
+
   it("AIAUDIT-boot: startAiAuditSweep() is called once, after startExportSweep(), inside the NODE_ENV gate", () => {
     const src = readFileSync(resolve(__dirname, "../src/index.ts"), "utf-8");
     expect(

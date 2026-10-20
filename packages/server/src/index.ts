@@ -64,6 +64,8 @@ import {
   KineticaUpstreamError,
 } from "./kineticaErrors";
 import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
+import { dropViewsForSid, sweepAiViewsOnBoot, getAiSessionView } from "./lib/aiSessionViews";
+import { buildAiDynamicViewName } from "./lib/aiDvName";
 import { startAiAuditSweep } from "./lib/aiAudit";
 import { getExportLimits } from "./lib/exportCaps";
 import { loadAiConfig } from "./lib/aiConfig";
@@ -450,10 +452,13 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json({ user: { username, roles: rp.roles, permissions: rp.permissions } });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     // Best-effort: extract sid even if cookie is malformed; idempotent delete.
     const decoded = decodeAndVerifyJwt(req);
     if (decoded?.sid) {
+      // 139 (AISAFE-V20-06): drop this session's AI views AS the user BEFORE the session row (and its credentials) is
+      // deleted. The client cannot do it: its DROP calls run after this response clears the cookie. Bounded; never fails logout.
+      try { await dropViewsForSid(decoded.sid, { timeoutMs: 3000 }); } catch { /* swallow */ }
       try { deleteSession(decoded.sid); } catch { /* swallow — logout never fails */ }
     }
     clearSessionCookie(res);
@@ -3438,6 +3443,8 @@ if (process.env.NODE_ENV !== "test") {
       // Phase 130 D-05/D-07: reconcile export jobs/files ONCE, before accepting traffic. Never inside createApp():
       // every route spec and the routes smoke call createApp() while their own exports may be in flight.
       reconcileExportsOnBoot();
+      // Phase 139 D-16: drop AI session views left by the previous process (as their users, via stored sessions); the rest fall back to the TTL. Bounded, never throws.
+      await sweepAiViewsOnBoot({ timeoutMs: 10000 });
       app.listen(port, () => {
         console.log(`Kinetica BI backend running on http://localhost:${port}`);
       });
