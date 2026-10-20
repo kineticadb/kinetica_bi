@@ -884,3 +884,33 @@ describe("DVCOMBO-SPC chain — spatial draws on the source table", () => {
     expect(materializeDynamicView).not.toHaveBeenCalled();
   });
 });
+
+describe("useDynamicViewMaterializeChain aggregated fast-path skip (139-11, D-02/D-03)", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ status: "authenticated", user: { username: "u1", roles: [], permissions: [] }, error: null, reason: null, authMode: "password" });
+    (listDynamicViews as Mock).mockReset();
+    (materializeDynamicView as Mock).mockReset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useFilterCombinationStore.getState().reset();
+    useDynamicViewStore.getState().reset();
+  });
+
+  it("CHAINDV-A1: a capped aggregated view with no filter reaches the server (no key)", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({ dynamic_views: [{ ...makeRow({ id: 7, source_table_id: 4 }), aggregated: true }] });
+    (materializeDynamicView as Mock).mockResolvedValue({ status: "materialized", view_name: "v7", row_count: 1, expires_at: 9_999_999_999 });
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(materializeDynamicView).toHaveBeenCalledTimes(1));
+    expect((materializeDynamicView as Mock).mock.calls[0][0]).toBe(7);
+    expect((materializeDynamicView as Mock).mock.calls[0][2]).toBeUndefined();
+  });
+
+  it("CHAINDV-A2: aggregated false/undefined keeps the local fast-path", async () => {
+    (listDynamicViews as Mock).mockResolvedValue({
+      dynamic_views: [{ ...makeRow({ id: 7, source_table_id: 4 }), aggregated: false }, makeRow({ id: 8, source_table_id: 4 })],
+    });
+    renderHook(() => useDynamicViewMaterializeChain(42));
+    await waitFor(() => expect(useDynamicViewStore.getState().views[8]?.reason).toBe("no_filter"));
+    expect(useDynamicViewStore.getState().views[7]?.reason).toBe("no_filter");
+    expect(materializeDynamicView).not.toHaveBeenCalled();
+  });
+});
