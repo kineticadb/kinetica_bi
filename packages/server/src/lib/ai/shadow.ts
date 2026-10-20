@@ -1,7 +1,7 @@
 // Phase 135: in-memory shadow of the dashboard as the AI edits it this turn. The gateway checks references against
 // it so op N+1 can target what op N created/removed. Never persisted; titles/ids only.
 // Phase 136: also carries rects (placement/layout checks), saved-vs-temp flags (D-06), layer render modes/tables.
-import { AI_DEFAULT_SIZE, aiFilterSourceKey, placeWidget, resolveRect, type AiOp, type AiWidgetType, type AskRequest, type GridRect } from "@kinetica-bi/shared";
+import { AI_DEFAULT_SIZE, aiFilterSourceKey, aiLayerColumnRefs, aiWidgetColumnRefs, placeWidget, resolveRect, type AiOp, type AiWidgetType, type AskRequest, type GridRect } from "@kinetica-bi/shared";
 
 export type ShadowWidget = {
   type: string;
@@ -11,13 +11,18 @@ export type ShadowWidget = {
   saved: boolean;
   dynamicViewId?: number;
   groupByCount: number;
+  /** 139: column names this widget's binding reads (for dependent planning when its view is removed). */
+  refCols: string[];
 };
-export type ShadowLayer = { widgetId: number; tableId?: number; renderMode?: string; title?: string; saved: boolean };
+export type ShadowLayer = { widgetId: number; tableId?: number; renderMode?: string; title?: string; saved: boolean; dynamicViewId?: number; refCols: string[] };
+/** 139: what the gateway knows about a view (saved views carry only the name). */
+export type ShadowDvInfo = { name: string; baseTableId?: number; columns?: { name: string; type?: string }[]; aggregated?: boolean };
 
 export type ShadowState = {
   widgets: Map<number, ShadowWidget>;
   layers: Map<number, ShadowLayer>;
   dynamicViews: Set<number>;
+  dvInfo: Map<number, ShadowDvInfo>;
   usedTempIds: Set<number>;
   /** 138: filtered column names per source key ("table:5"); seeded from the snapshot, updated by filter ops. */
   filterCols: Map<string, Set<string>>;
@@ -30,7 +35,7 @@ function groupCount(b: { groupByColumns?: unknown; groupByColumn?: unknown } | u
 }
 
 export function createShadow(snapshot: AskRequest["snapshot"]): ShadowState {
-  const s: ShadowState = { widgets: new Map(), layers: new Map(), dynamicViews: new Set(), usedTempIds: new Set(), filterCols: new Map() };
+  const s: ShadowState = { widgets: new Map(), layers: new Map(), dynamicViews: new Set(), dvInfo: new Map(), usedTempIds: new Set(), filterCols: new Map() };
   let savedIndex = 0;
   snapshot.widgets.forEach((w, i) => {
     const saved = w.id > 0;
@@ -45,6 +50,7 @@ export function createShadow(snapshot: AskRequest["snapshot"]): ShadowState {
       saved,
       ...(w.dynamicViewId !== undefined ? { dynamicViewId: w.dynamicViewId } : {}),
       groupByCount: groupCount(w.binding),
+      refCols: aiWidgetColumnRefs((w.binding ?? {}) as Record<string, unknown>),
     });
     if (w.id < 0) s.usedTempIds.add(w.id);
   });
@@ -55,11 +61,19 @@ export function createShadow(snapshot: AskRequest["snapshot"]): ShadowState {
       ...(l.renderMode !== undefined ? { renderMode: l.renderMode } : {}),
       ...(l.title !== undefined ? { title: l.title } : {}),
       saved: l.id > 0,
+      ...(l.dynamicViewId !== undefined ? { dynamicViewId: l.dynamicViewId } : {}),
+      refCols: [...(l.columns ?? [])],
     });
     if (l.id < 0) s.usedTempIds.add(l.id);
   }
   for (const d of snapshot.dynamicViews) {
     s.dynamicViews.add(d.id);
+    s.dvInfo.set(d.id, {
+      name: d.name,
+      ...(d.baseTableId !== undefined ? { baseTableId: d.baseTableId } : {}),
+      ...(d.aggregated !== undefined ? { aggregated: d.aggregated } : {}),
+      ...(d.columns !== undefined ? { columns: d.columns } : {}),
+    });
     if (d.id < 0) s.usedTempIds.add(d.id);
   }
   for (const f of snapshot.filters) {
@@ -82,13 +96,18 @@ export function applyOpToShadow(s: ShadowState, op: AiOp): void {
       const tableId = cfg.tableId;
       const size = AI_DEFAULT_SIZE[op.type as AiWidgetType] ?? { w: 18, h: 24 };
       const rect = op.layout ?? placeWidget(shadowRects(s), size);
+      const dvId = typeof cfg.dynamicViewId === "number" ? cfg.dynamicViewId : undefined;
+      const dvBase = dvId !== undefined ? s.dvInfo.get(dvId)?.baseTableId : undefined;
+      const tid = dvBase ?? (typeof tableId === "number" ? tableId : undefined);
       s.widgets.set(op.tempId, {
         type: op.type,
         title: op.title,
-        ...(typeof tableId === "number" ? { tableId } : {}),
+        ...(tid !== undefined ? { tableId: tid } : {}),
         rect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h },
         saved: false,
+        ...(dvId !== undefined ? { dynamicViewId: dvId } : {}),
         groupByCount: groupCount(cfg),
+        refCols: aiWidgetColumnRefs(cfg),
       });
       s.usedTempIds.add(op.tempId);
       return;
@@ -103,6 +122,8 @@ export function applyOpToShadow(s: ShadowState, op: AiOp): void {
         renderMode: "heatmap",
         ...(op.name ? { title: op.name } : {}),
         saved: false,
+        ...(op.dynamicViewId !== undefined ? { dynamicViewId: op.dynamicViewId } : {}),
+        refCols: aiLayerColumnRefs({ latColumn: op.latColumn, lonColumn: op.lonColumn, wktColumn: op.wktColumn, wkbColumn: op.wkbColumn, valueColumn: op.style?.valueColumn }),
       });
       s.usedTempIds.add(op.tempId);
       return;
@@ -112,10 +133,44 @@ export function applyOpToShadow(s: ShadowState, op: AiOp): void {
     case "add_dynamic_view":
       s.dynamicViews.add(op.tempId);
       s.usedTempIds.add(op.tempId);
+      s.dvInfo.set(op.tempId, {
+        name: op.name,
+        baseTableId: op.spec.baseTableId,
+        ...(op.columns ? { columns: op.columns } : {}),
+        ...(op.aggregated !== undefined ? { aggregated: op.aggregated } : {}),
+      });
       return;
     case "remove_dynamic_view":
       s.dynamicViews.delete(op.id);
+      s.dvInfo.delete(op.id);
+      if (op.repoint) {
+        for (const id of op.repoint.widgetIds) {
+          const w = s.widgets.get(id);
+          if (!w) continue;
+          delete w.dynamicViewId;
+          w.tableId = op.repoint.tableId;
+        }
+        for (const id of op.repoint.layerIds) {
+          const l = s.layers.get(id);
+          if (!l) continue;
+          delete l.dynamicViewId;
+          l.tableId = op.repoint.tableId;
+        }
+      }
+      for (const id of op.drop?.widgetIds ?? []) s.widgets.delete(id);
+      for (const id of op.drop?.layerIds ?? []) s.layers.delete(id);
       return;
+    case "patch": {
+      const dvId = op.action.configPatch.dynamicViewId;
+      if (typeof dvId !== "number") return;
+      const base = s.dvInfo.get(dvId)?.baseTableId;
+      const t = op.action.target;
+      const ent = t.kind === "widget" ? s.widgets.get(t.id) : t.kind === "layer" ? s.layers.get(t.id) : undefined;
+      if (!ent) return;
+      ent.dynamicViewId = dvId;
+      if (base !== undefined) ent.tableId = base;
+      return;
+    }
     case "set_layout":
       for (const it of op.items) {
         const w = s.widgets.get(it.id);
@@ -155,7 +210,7 @@ export function applyOpToShadow(s: ShadowState, op: AiOp): void {
       return;
     }
     default:
-      return; // patch: no structural change
+      return;
   }
 }
 
@@ -189,9 +244,18 @@ export function describeOp(op: AiOp, s: ShadowState): string {
     case "remove_layer":
       return `Removed layer ${op.id}`;
     case "add_dynamic_view":
-      return "Added dynamic view";
-    case "remove_dynamic_view":
-      return `Removed dynamic view ${op.id}`;
+      return `Added dynamic view "${op.name}"`;
+    case "remove_dynamic_view": {
+      const base = `Removed dynamic view ${dvName(op.id, s)}`;
+      const parts: string[] = [];
+      const wt = (id: number) => (s.widgets.get(id) ? `"${s.widgets.get(id)!.title}"` : `widget ${id}`);
+      const lt = (id: number) => (s.layers.get(id)?.title ? `layer "${s.layers.get(id)!.title}"` : `layer ${id}`);
+      const re = [...(op.repoint?.widgetIds ?? []).map(wt), ...(op.repoint?.layerIds ?? []).map(lt)];
+      const dr = [...(op.drop?.widgetIds ?? []).map(wt), ...(op.drop?.layerIds ?? []).map(lt)];
+      if (re.length) parts.push(`repointed ${andList(re)} to its table`);
+      if (dr.length) parts.push(`removed ${andList(dr)}`);
+      return parts.length ? `${base}; ${parts.join("; ")}` : base;
+    }
     case "apply_filter":
       return `Filtered ${filterSrc(op.source)} on ${op.filters.map((f) => f.column).join(", ")}`;
     case "clear_filter":
@@ -211,6 +275,12 @@ export function describeOp(op: AiOp, s: ShadowState): string {
     }
   }
 }
+
+const andList = (xs: string[]): string => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const dvName = (id: number, s: ShadowState): string => {
+  const n = s.dvInfo.get(id)?.name;
+  return n ? `"${n}"` : String(id);
+};
 
 const filterSrc = (s: { kind: string; id: number }) => (s.kind === "table" ? `table ${s.id}` : `dynamic view ${s.id}`);
 
@@ -236,9 +306,9 @@ export function describeIntent(op: AiOp, s: ShadowState): string {
       return l?.title ? `Remove layer "${l.title}"` : `Remove layer ${op.id}`;
     }
     case "add_dynamic_view":
-      return "Add dynamic view";
+      return `Add dynamic view "${op.name}"`;
     case "remove_dynamic_view":
-      return `Remove dynamic view ${op.id}`;
+      return `Remove dynamic view ${dvName(op.id, s)}`;
     case "apply_filter":
       return `Filter ${filterSrc(op.source)} on ${op.filters.map((f) => f.column).join(", ")}`;
     case "clear_filter":
