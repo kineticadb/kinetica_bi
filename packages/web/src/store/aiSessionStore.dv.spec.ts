@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { useAiSessionStore, setAiDvSink } from "./aiSessionStore";
 import { AI_FOLLOWUP_MAX, AI_FOLLOWUP_MAX_CHARS } from "@kinetica-bi/shared";
 import { baselineFixture, addWidgetOp } from "../test/aiSessionHarness";
@@ -96,7 +97,7 @@ describe("aiSessionStore dv seam (139)", () => {
   });
 
   it("STOREDV-7: store has no runtime api/client import", () => {
-    const src = readFileSync(new URL("./aiSessionStore.ts", import.meta.url), "utf8");
+    const src = readFileSync(resolve(process.cwd(), "src/store/aiSessionStore.ts"), "utf8");
     const bad = src.split("\n").filter((l) => /from "\.\.\/api\/client"/.test(l) && !/^import type/.test(l.trim()));
     expect(bad).toEqual([]);
   });
