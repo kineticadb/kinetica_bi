@@ -16,6 +16,10 @@ export type AiConfig = {
   historyTurns: number; // recent exchanges sent in full (D-05)
   toolMode: AiToolMode;
   maxNewWidgets: number; // D-09: new widgets per answer
+  dvMaxRecords: number; // 139 D-04 ceiling; a view may ask for less, never more
+  dvMaxJoins: number; // 139 D-07
+  dvMaxPerSession: number; // 139 D-14 (AI views, not their filter re-materializations)
+  dvPreflightTimeoutMs: number; // 139 D-08 server deadline for preflight + CREATE
   readonly apiKey?: string;
 };
 export type AiConfigResult =
@@ -96,19 +100,29 @@ export function parseAiConfig(env: Env): AiConfigResult {
   if (historyTurns === null) errors.push("AI_HISTORY_TURNS must be an integer from 1 to 20");
   const maxNewWidgets = parseIntInRange(val(env, "AI_MAX_NEW_WIDGETS"), 6, 1, 30);
   if (maxNewWidgets === null) errors.push("AI_MAX_NEW_WIDGETS must be an integer from 1 to 30");
+  const dvMaxRecords = parseIntInRange(val(env, "AI_DV_MAX_RECORDS"), 100000, 1, 10000000);
+  if (dvMaxRecords === null) errors.push("AI_DV_MAX_RECORDS must be an integer from 1 to 10000000");
+  const dvMaxJoins = parseIntInRange(val(env, "AI_DV_MAX_JOINS"), 2, 0, 4);
+  if (dvMaxJoins === null) errors.push("AI_DV_MAX_JOINS must be an integer from 0 to 4");
+  const dvMaxPerSession = parseIntInRange(val(env, "AI_DV_MAX_PER_SESSION"), 5, 1, 20);
+  if (dvMaxPerSession === null) errors.push("AI_DV_MAX_PER_SESSION must be an integer from 1 to 20");
+  const dvPreflightTimeoutMs = parseIntInRange(val(env, "AI_DV_PREFLIGHT_TIMEOUT_MS"), 30000, 1000, 600000);
+  if (dvPreflightTimeoutMs === null) errors.push("AI_DV_PREFLIGHT_TIMEOUT_MS must be an integer from 1000 to 600000");
   const toolModeRaw = val(env, "AI_TOOL_MODE");
   let toolMode: AiToolMode = "native";
   if (toolModeRaw === "native" || toolModeRaw === "json") toolMode = toolModeRaw;
   else if (toolModeRaw !== "") errors.push("AI_TOOL_MODE must be 'native' or 'json'");
 
   if (errors.length > 0 || provider === null || maxToolSteps === null || timeoutMs === null ||
-    maxAnswersPerUserPerHour === null || maxAnswersPerDay === null || historyTurns === null || maxNewWidgets === null) {
+    maxAnswersPerUserPerHour === null || maxAnswersPerDay === null || historyTurns === null || maxNewWidgets === null ||
+    dvMaxRecords === null || dvMaxJoins === null || dvMaxPerSession === null || dvPreflightTimeoutMs === null) {
     return { enabled: false, reason: "invalid", errors };
   }
 
   const config: AiConfig = {
     provider, baseUrl, model, dataAccess, maxToolSteps, timeoutMs,
     maxAnswersPerUserPerHour, maxAnswersPerDay, historyTurns, toolMode, maxNewWidgets,
+    dvMaxRecords, dvMaxJoins, dvMaxPerSession, dvPreflightTimeoutMs,
   };
   if (key !== "") Object.defineProperty(config, "apiKey", { value: key, enumerable: false, writable: false });
   return { enabled: true, config };
@@ -123,6 +137,7 @@ export function formatAiConfigLog(result: AiConfigResult): string | null {
       `capPerHour=${c.maxAnswersPerUserPerHour === 0 ? "off" : c.maxAnswersPerUserPerHour} ` +
       `capPerDay=${c.maxAnswersPerDay === 0 ? "off" : c.maxAnswersPerDay} ` +
       `historyTurns=${c.historyTurns} maxNewWidgets=${c.maxNewWidgets} toolMode=${c.toolMode} ` +
+      `dvMaxRecords=${c.dvMaxRecords} dvMaxJoins=${c.dvMaxJoins} dvMaxPerSession=${c.dvMaxPerSession} ` +
       `key=${c.apiKey ? "set" : "not set"} contract=${AI_CONTRACT_VERSION}`
     );
   }

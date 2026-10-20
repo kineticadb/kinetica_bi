@@ -50,6 +50,11 @@ process.env.AI_TOOL_MODE = "";
 process.env.AI_AUDIT_RETENTION_DAYS = "";
 // Phase 136: D-09 new-widget cap (same leak guard)
 process.env.AI_MAX_NEW_WIDGETS = "";
+// Phase 139: AI dynamic-view limits (same leak guard)
+process.env.AI_DV_MAX_RECORDS = "";
+process.env.AI_DV_MAX_JOINS = "";
+process.env.AI_DV_MAX_PER_SESSION = "";
+process.env.AI_DV_PREFLIGHT_TIMEOUT_MS = "";
 
 beforeEach(() => {
   // Clear any global fetch stub between tests.

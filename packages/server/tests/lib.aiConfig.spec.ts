@@ -173,3 +173,36 @@ describe("Phase 136 new-widget cap", () => {
     expect(formatAiConfigLog(parseAiConfig(OLLAMA))).toContain("maxNewWidgets=6");
   });
 });
+
+describe("Phase 139 AI dynamic-view limits", () => {
+  const cfg = (extra: Record<string, string> = {}) => {
+    const r = parseAiConfig({ ...OLLAMA, ...extra });
+    if (!r.enabled) throw new Error("expected enabled");
+    return r.config;
+  };
+  it("CFGDV-1: defaults", () => {
+    const c = cfg();
+    expect([c.dvMaxRecords, c.dvMaxJoins, c.dvMaxPerSession, c.dvPreflightTimeoutMs]).toEqual([100000, 2, 5, 30000]);
+  });
+  it("CFGDV-2: overrides", () => {
+    expect(cfg({ AI_DV_MAX_RECORDS: "5000" }).dvMaxRecords).toBe(5000);
+    expect(cfg({ AI_DV_MAX_JOINS: "0" }).dvMaxJoins).toBe(0);
+    expect(cfg({ AI_DV_MAX_JOINS: "4" }).dvMaxJoins).toBe(4);
+    expect(cfg({ AI_DV_MAX_PER_SESSION: "1" }).dvMaxPerSession).toBe(1);
+    expect(cfg({ AI_DV_MAX_PER_SESSION: "20" }).dvMaxPerSession).toBe(20);
+    expect(cfg({ AI_DV_PREFLIGHT_TIMEOUT_MS: "2000" }).dvPreflightTimeoutMs).toBe(2000);
+  });
+  it("CFGDV-3: range errors disable AI", () => {
+    const m = "AI_DV_MAX_RECORDS must be an integer from 1 to 10000000";
+    for (const v of ["0", "abc", "10000001"]) expect(errorsOf({ ...OLLAMA, AI_DV_MAX_RECORDS: v })).toContain(m);
+    expect(errorsOf({ ...OLLAMA, AI_DV_MAX_JOINS: "5" })).toContain("AI_DV_MAX_JOINS must be an integer from 0 to 4");
+    for (const v of ["0", "21"]) expect(errorsOf({ ...OLLAMA, AI_DV_MAX_PER_SESSION: v })).toContain("AI_DV_MAX_PER_SESSION must be an integer from 1 to 20");
+    expect(errorsOf({ ...OLLAMA, AI_DV_PREFLIGHT_TIMEOUT_MS: "999" })).toContain("AI_DV_PREFLIGHT_TIMEOUT_MS must be an integer from 1000 to 600000");
+    expect(parseAiConfig({ ...OLLAMA, AI_DV_MAX_JOINS: "5" })).toMatchObject({ enabled: false, reason: "invalid" });
+  });
+  it("CFGDV-4: log line", () => {
+    const line = formatAiConfigLog(parseAiConfig(OLLAMA))!;
+    expect(line).toContain("dvMaxRecords=100000 dvMaxJoins=2 dvMaxPerSession=5");
+    expect(line).toContain("capPerHour=30 capPerDay=off historyTurns=6 maxNewWidgets=6 toolMode=native");
+  });
+});
