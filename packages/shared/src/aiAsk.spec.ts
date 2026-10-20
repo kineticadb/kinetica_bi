@@ -103,3 +103,26 @@ describe("Phase 138 snapshot filter cap", () => {
     expect(ok({ ...base(), snapshot: { ...base().snapshot, filters: [{ ...f, value: "s" }] } })).toBe(false);
   });
 });
+
+describe("Phase 139 snapshot extensions", () => {
+  const w = { id: 1, type: "bar", title: "t" };
+  it("SNAPDV-1 dv entry with structure only", () => {
+    const dv = { id: -3, name: "Trips by hour", baseTableId: 5, aggregated: true, columns: [{ name: "trips", type: "long" }] };
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, dynamicViews: [dv] } })).toBe(true);
+  });
+  it("SNAPDV-2 dv entry cannot carry spec/filters/template_sql", () => {
+    for (const k of ["spec", "filters", "template_sql"]) {
+      const dv = { id: -3, name: "n", [k]: {} };
+      expect(ok({ ...base(), snapshot: { ...base().snapshot, dynamicViews: [dv] } })).toBe(false);
+    }
+  });
+  it("SNAPDV-3 widget binding columns + sortField", () => {
+    const widgets = [{ ...w, binding: { columns: ["a", "b"], sortField: "a" } }];
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, widgets } })).toBe(true);
+  });
+  it("SNAPDV-4 layer dynamicViewId + columns; no value key", () => {
+    const layer = { id: 2, widgetId: 1, dynamicViewId: -3, columns: ["lat", "lon"] };
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, layers: [layer] } })).toBe(true);
+    expect(ok({ ...base(), snapshot: { ...base().snapshot, layers: [{ ...layer, value: "x" }] } })).toBe(false);
+  });
+});

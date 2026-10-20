@@ -85,3 +85,22 @@ describe("aiCatalog", () => {
     expect([...AI_PALETTE_NAMES]).toEqual(["violet", "sky", "teal", "amber", "pink", "lime"]);
   });
 });
+
+describe("Phase 139 dynamicViewId carve-out", () => {
+  it("CATDV-1 tableId unchanged", () => {
+    expect(validateAiWidgetConfig("bar", { ...BAR, tableId: 5 }).valid).toBe(true);
+  });
+  it("CATDV-2 valid dynamicViewId", () => {
+    expect(validateAiWidgetConfig("bar", { dynamicViewId: -3, metric: "trips", aggregation: "sum", groupByColumn: "pickup_hour" }).valid).toBe(true);
+  });
+  it("CATDV-3 invalid dynamicViewId and snake_case still rejected", () => {
+    for (const v of [0, "x"]) {
+      const r = validateAiWidgetConfig("bar", { ...BAR, dynamicViewId: v });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.reasons.join("|")).toContain("invalid value for dynamicViewId");
+    }
+    const r = validateAiWidgetConfig("bar", { ...BAR, dynamic_view_id: -3 });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reasons).toContain('config key "dynamic_view_id" is not allowed for bar');
+  });
+});

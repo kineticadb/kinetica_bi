@@ -38,6 +38,9 @@ const SnapWidget = z
         metricColumn: Name,
         groupByColumn: Name,
         groupByColumns: z.array(Name).max(20),
+        // 139: names only; a view's spec (which holds filter values) is never in the snapshot
+        columns: z.array(Name).max(50),
+        sortField: Name,
       })
       .partial()
       .strict()
@@ -53,10 +56,21 @@ const SnapLayer = z
     tableId: z.number().int().positive().optional(),
     renderMode: z.string().max(50).optional(),
     visible: z.boolean().optional(),
+    dynamicViewId: SnapId.optional(),
+    columns: z.array(Name).max(5).optional(), // spatial + value column names
   })
   .strict();
 
-const SnapDv = z.object({ id: SnapId, name: Name }).strict();
+// 139: names/types only; a view's spec (which holds filter values) is never in the snapshot
+const SnapDv = z
+  .object({
+    id: SnapId,
+    name: Name,
+    baseTableId: z.number().int().positive().optional(),
+    aggregated: z.boolean().optional(),
+    columns: z.array(z.object({ name: Name, type: z.string().max(50) }).strict()).max(70).optional(),
+  })
+  .strict();
 
 // Filter values are viewer data; schema mode must never see them (AIGOV-V20-02). No value field, by design.
 const SnapFilter = z

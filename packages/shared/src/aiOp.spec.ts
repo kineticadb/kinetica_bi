@@ -141,3 +141,46 @@ describe("Phase 138 filter ops", () => {
     expect(parseAiOp({ op: "clear_filter", widgetId: 42 }).ok).toBe(false);
   });
 });
+
+describe("Phase 139 dynamic view ops", () => {
+  const spec = {
+    baseTableId: 5,
+    groupBy: [{ column: "pickup_datetime", bucket: "hour", as: "pickup_hour" }],
+    aggregates: [{ fn: "count", as: "trips" }],
+  };
+  const addDv = (extra: Record<string, unknown> = {}) => ({ op: "add_dynamic_view", tempId: -3, name: "Trips by hour", spec, ...extra });
+  it("DVOP-1: name + spec required", () => {
+    expect(parseAiOp(addDv()).ok).toBe(true);
+    expect(parseAiOp({ op: "add_dynamic_view", tempId: -3 }).ok).toBe(false);
+    expect(parseAiOp(addDv({ name: "" })).ok).toBe(false);
+    expect(parseAiOp(addDv({ name: "x".repeat(81) })).ok).toBe(false);
+  });
+  it("DVOP-2: cross-field spec failure is reported with a spec: prefix", () => {
+    const r = parseAiOp(addDv({ spec: { ...spec, columns: [{ column: "a" }] } }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]).toMatch(/^spec: use columns for a row view/);
+  });
+  it("DVOP-3: gateway-stamped fields", () => {
+    expect(parseAiOp(addDv({ columns: [{ name: "trips", type: "long" }], maxRecords: 100000, aggregated: true })).ok).toBe(true);
+    expect(parseAiOp(addDv({ columns: [{ name: "x;y", type: "long" }] })).ok).toBe(false);
+  });
+  it("DVOP-4: remove_dynamic_view dependents", () => {
+    expect(parseAiOp({ op: "remove_dynamic_view", id: -3 }).ok).toBe(true);
+    const full = {
+      op: "remove_dynamic_view", id: -3,
+      repoint: { tableId: 5, widgetIds: [42, -7], layerIds: [] },
+      drop: { widgetIds: [], layerIds: [-9] },
+    };
+    expect(parseAiOp(full).ok).toBe(true);
+    expect(parseAiOp({ ...full, repoint: { tableId: 0, widgetIds: [], layerIds: [] } }).ok).toBe(false);
+    expect(parseAiOp({ op: "remove_dynamic_view", id: -3, sql: "x" }).ok).toBe(false);
+  });
+  it("DVOP-5: add_layer dynamicViewId", () => {
+    const layer = { op: "add_layer", tempId: -4, widgetId: -2, tableId: 5, renderMode: "heatmap", spatialMode: "latlon", latColumn: "lat", lonColumn: "lon" };
+    expect(parseAiOp({ ...layer, dynamicViewId: -3 }).ok).toBe(true);
+    expect(parseAiOp({ ...layer, dynamicViewId: 0 }).ok).toBe(false);
+  });
+  it("DVOP-6: no new op kind", () => {
+    expect(AI_OP_KINDS.length).toBe(12);
+  });
+});

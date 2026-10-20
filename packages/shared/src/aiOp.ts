@@ -1,9 +1,11 @@
 // Phase 133: minimal AI op contract. Payloads are .strict() so later phases (136/138/139) extend them deliberately. No raw SQL field exists or may be added (AISAFE-V20-04).
+// Phase 139 filled the dynamic-view payloads; still no SQL field.
 import { z } from "zod";
 import { TARGET_KINDS } from "./widgetAction";
 import { AiIdentifierSchema } from "./actionAllowList";
 import { AiFilterSourceSchema, AiFilterItemSchema, checkAiFilterItem } from "./aiFilter";
 import { AI_CHART_SWAP_TYPES, AiHeatmapStyleSchema } from "./aiCatalog";
+import { AiDvSpecSchema, AiDvOutputColumnSchema, checkAiDvSpec, AI_DV_NAME_MAX } from "./aiDynamicView";
 
 export const AI_OP_KINDS = [
   "patch",
@@ -74,12 +76,34 @@ export const AiOpSchema = z.discriminatedUnion("op", [
       wkbColumn: AiIdentifierSchema.optional(),
       name: z.string().trim().min(1).max(100).optional(),
       style: AiHeatmapStyleSchema.optional(),
+      dynamicViewId: AiRefIdSchema.optional(), // D-24: bind the layer to an AI or saved view
     })
     .strict(),
   z.object({ op: z.literal("remove_layer"), id: AiRefIdSchema }).strict(),
-  // structured spec added in Phase 139
-  z.object({ op: z.literal("add_dynamic_view"), tempId: AiTempIdSchema }).strict(),
-  z.object({ op: z.literal("remove_dynamic_view"), id: AiRefIdSchema }).strict(),
+  z
+    .object({
+      op: z.literal("add_dynamic_view"),
+      tempId: AiTempIdSchema,
+      name: z.string().trim().min(1).max(AI_DV_NAME_MAX), // display name (D-20); the Kinetica name is server-chosen
+      spec: AiDvSpecSchema,
+      // gateway stamps these (like add_widget.layout); never model-supplied in practice
+      columns: z.array(AiDvOutputColumnSchema).max(70).optional(),
+      maxRecords: z.number().int().positive().optional(),
+      aggregated: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("remove_dynamic_view"),
+      id: AiRefIdSchema,
+      // D-17: gateway-stamped dependents; one undo restores all of it
+      repoint: z
+        .object({ tableId: z.number().int().positive(), widgetIds: z.array(AiRefIdSchema).max(100), layerIds: z.array(AiRefIdSchema).max(50) })
+        .strict()
+        .optional(),
+      drop: z.object({ widgetIds: z.array(AiRefIdSchema).max(100), layerIds: z.array(AiRefIdSchema).max(50) }).strict().optional(),
+    })
+    .strict(),
   // Phase 138: source-keyed filters (D-01). A table filter narrows every widget/layer on that table, like a click.
   z.object({ op: z.literal("apply_filter"), source: AiFilterSourceSchema, filters: z.array(AiFilterItemSchema).min(1).max(10) }).strict(),
   // no source = clear every column filter on the dashboard (D-07); source only = that source; source + column = one column
@@ -105,6 +129,10 @@ export function parseAiOp(raw: unknown): { ok: true; op: AiOp } | { ok: false; e
         : op.spatialMode === "wkt" ? (["wktColumn"] as const)
         : (["wkbColumn"] as const);
       const errors = need.filter((c) => op[c] === undefined).map((c) => `${c} is required for spatialMode ${op.spatialMode}`);
+      if (errors.length > 0) return { ok: false, errors };
+    }
+    if (op.op === "add_dynamic_view") {
+      const errors = checkAiDvSpec(op.spec).map((e) => `spec: ${e}`);
       if (errors.length > 0) return { ok: false, errors };
     }
     if (op.op === "apply_filter") {

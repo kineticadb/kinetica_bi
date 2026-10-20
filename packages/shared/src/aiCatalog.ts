@@ -49,7 +49,7 @@ export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.Z
 
 export type AiValidation = { valid: true } | { valid: false; reasons: string[] };
 
-/** Reasons never contain the rejected value. `tableId` is the one ignored key (checked at the gateway). */
+/** Reasons never contain the rejected value. `tableId` and `dynamicViewId` (D-24) are the ignored binding keys, checked at the gateway. */
 export function validateAiWidgetConfig(type: string, config: Record<string, unknown>): AiValidation {
   if (!Object.prototype.hasOwnProperty.call(AI_WIDGET_CONFIG, type)) {
     return { valid: false, reasons: [`widget type "${type}" is not supported`] };
@@ -58,6 +58,11 @@ export function validateAiWidgetConfig(type: string, config: Record<string, unkn
   const reasons: string[] = [];
   const keys = Object.keys(config);
   for (const k of keys) {
+    if (k === "dynamicViewId") {
+      const v = config[k];
+      if (!(typeof v === "number" && Number.isInteger(v) && v !== 0)) reasons.push("invalid value for dynamicViewId");
+      continue;
+    }
     if (k === "tableId") continue;
     const schema = Object.prototype.hasOwnProperty.call(cat.fields, k) ? cat.fields[k] : undefined;
     if (!schema) {
