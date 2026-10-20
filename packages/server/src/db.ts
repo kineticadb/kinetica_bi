@@ -243,6 +243,20 @@ const SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS idx_ai_audit_ts ON ai_audit (ts_ms);
   CREATE INDEX IF NOT EXISTS idx_ai_audit_user_ts ON ai_audit (username, ts_ms);
 
+  -- v2.0 Phase 139 (AISAFE-V20-06, D-14/D-16): live AI session dynamic views. Names/ids only - never credentials or the
+  -- view definition (its filters hold user values). Powers the per-session cap, the logout drop and the boot sweep.
+  CREATE TABLE IF NOT EXISTS ai_session_views (
+    view_name TEXT PRIMARY KEY,
+    sid TEXT NOT NULL,
+    username TEXT NOT NULL,
+    dashboard_id INTEGER NOT NULL,
+    nonce TEXT NOT NULL,
+    temp_id INTEGER NOT NULL,
+    gen INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_session_views_sid ON ai_session_views (sid);
+
   -- v1.10 Phase 55 (ACCESS-V110-02): per-dashboard view-access grants. App-local
   -- visibility layer (Kinetica creds remain the data authority). Single table with a
   -- grantee_type discriminator covers BOTH user grants (lowercased free-form username —
