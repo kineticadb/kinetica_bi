@@ -89,7 +89,7 @@ describe("gateway: filters (138)", () => {
     const gone = await run(mk({ dynamicViewInfo: () => undefined }, s), apply("payment_type", "x", dv));
     expect(reasons(gone)).toContain("dynamic view 90 does not exist");
     const temp = await run(mk({ dynamicViewInfo: info }, s), apply("payment_type", "x", { kind: "dynamicView", id: -3 }));
-    expect(reasons(temp)).toContain("dynamic views created by the AI can't be filtered yet");
+    expect(reasons(temp)).toContain("dynamic view -3 does not exist"); // 139 D-23: AI views are filterable once they exist in the shadow
   });
 
   it("GWF-7: cap refuses whole, replace allowed", async () => {

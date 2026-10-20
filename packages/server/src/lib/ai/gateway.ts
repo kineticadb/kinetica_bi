@@ -7,6 +7,8 @@ import {
   aiFilterSourceKey,
   coerceAiFilterItem,
   AI_DEFAULT_SIZE,
+  AI_COLUMN_BINDING_KEYS as SHARED_BINDING_KEYS,
+  planDvDependents,
   isAiNumericColumnType,
   parseAiOp,
   placeWidget,
@@ -21,6 +23,7 @@ import {
   type AiOp,
   type AiWidgetType,
 } from "@kinetica-bi/shared";
+import { validateAiDvSpec, compileAiDvSpec, type AiDvTable } from "../aiDvCompile";
 import type { GatewayResult, GatewayStage, LiveSchemaPort, MutateTool } from "./tools/types";
 import { applyOpToShadow, describeIntent, describeOp, shadowRects, type ShadowState } from "./shadow";
 
@@ -30,7 +33,7 @@ const AI_USE = "ai:use";
 /** Config keys the bar/line/pie/table/bignumber/records renderers read as COLUMN NAMES
  *  (packages/web/src/components/charts/WidgetRenderer.tsx:1057-1068 metricColumn/groupByColumn/groupByColumns;
  *   :1383-1384, :1693-1694, :1850-1851, :1968-1977 same keys). `metric`/`dimension` are snapshot-binding names only; no renderer reads them from config. */
-export const AI_COLUMN_BINDING_KEYS: readonly string[] = ["metric", "metricColumn", "groupByColumn", "groupByColumns"];
+export const AI_COLUMN_BINDING_KEYS: readonly string[] = SHARED_BINDING_KEYS;
 
 export type GatewayDeps = {
   username: string;
@@ -44,7 +47,9 @@ export type GatewayDeps = {
   /** D-06: UX approval for removing saved content. */
   approvals?: { removeSaved?: boolean };
   /** 138: a saved dynamic view on THIS dashboard (name + stored columns; pre-check only, /api/filter/materialize probes authoritatively). undefined = not on this dashboard. */
-  dynamicViewInfo?: (dvId: number) => { name: string; columns: { name: string; type?: string }[] | null } | undefined;
+  dynamicViewInfo?: (dvId: number) => { name: string; columns: { name: string; type?: string }[] | null; sourceTableId?: number } | undefined;
+  /** 139: AI dynamic-view limits from AiConfig; defaults when absent. */
+  aiDv?: { maxRecords: number; maxJoins: number; maxPerSession: number };
 };
 
 type FailExtras = { refKey?: string; slot?: string; label?: string; clarification?: AiClarification };
@@ -172,6 +177,17 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     return fail("shape", parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`));
   }
   const shadow = deps.shadow;
+  const dvLimits = { maxRecords: deps.aiDv?.maxRecords ?? 100000, maxJoins: deps.aiDv?.maxJoins ?? 2 };
+  const dvMaxPerSession = deps.aiDv?.maxPerSession ?? 5;
+  /** Name/base/columns of a view: AI (negative) from the shadow, saved from the dashboard lookup. columns null = unknown. */
+  const dvMeta = (id: number): { name: string; baseTableId?: number; columns: { name: string; type?: string }[] | null } | undefined => {
+    if (id < 0) {
+      const i = shadow.dvInfo.get(id);
+      return i ? { name: i.name, ...(i.baseTableId !== undefined ? { baseTableId: i.baseTableId } : {}), columns: i.columns ?? null } : undefined;
+    }
+    const i = deps.dynamicViewInfo?.(id);
+    return i ? { name: i.name, ...(i.sourceTableId !== undefined ? { baseTableId: i.sourceTableId } : {}), columns: i.columns } : undefined;
+  };
   const candidate = tool.toOp(parsed.data);
   // D-11/D-12: an add_layer without a map id resolves to the dashboard's (or this answer's new) map, or asks.
   if (isRec(candidate) && candidate.op === "add_layer" && candidate.widgetId === undefined && typeof candidate.tableId === "number") {
@@ -223,8 +239,7 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
         if (names.includes(filterColumn)) cands.push({ kind: "table", id, label: tableLabel(d.table) });
       }
       for (const id of shadow.dynamicViews) {
-        if (id <= 0) continue;
-        const info = deps.dynamicViewInfo?.(id);
+        const info = dvMeta(id);
         const names = (info?.columns ?? []).map((c) => c.name);
         union = union.concat(names);
         if (info && names.includes(filterColumn)) cands.push({ kind: "dynamicView", id, label: info.name });
@@ -238,7 +253,7 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
           const d = await deps.liveSchema.describe(id);
           cands.push({ kind: "table", id, label: d.ok ? tableLabel(d.table) : `table ${id}` });
         } else {
-          cands.push({ kind: "dynamicView", id, label: deps.dynamicViewInfo?.(id)?.name ?? `dynamic view ${id}` });
+          cands.push({ kind: "dynamicView", id, label: dvMeta(id)?.name ?? `dynamic view ${id}` });
         }
       }
     }
@@ -386,11 +401,10 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
   // 138: filter ops (apply_filter / clear_filter) validate against the dashboard sources + live schema and return here.
   if (op.op === "apply_filter" || op.op === "clear_filter") {
     const srcWord = (src: AiFilterSource) => (src.kind === "table" ? "table" : "dynamic view");
-    /** stage d for a source: table on dashboard, or a saved dv on this dashboard (AI temp dvs wait for Phase 139). */
+    /** stage d for a source: table on dashboard, or a view (saved on this dashboard, or AI-created this session). */
     const sourceRule = async (src: AiFilterSource): Promise<GatewayResult | undefined> => {
       if (src.kind === "table") return tableRule(src.id);
-      if (src.id < 0) return f("reference", ["dynamic views created by the AI can't be filtered yet"], `ref:dynamicView:${src.id}`);
-      if (!shadow.dynamicViews.has(src.id) || deps.dynamicViewInfo?.(src.id) === undefined) return missing("dynamicView", src.id, "dynamic view");
+      if (!shadow.dynamicViews.has(src.id) || dvMeta(src.id) === undefined) return missing("dynamicView", src.id, "dynamic view");
       return undefined;
     };
     if (op.op === "clear_filter") {
@@ -415,7 +429,7 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
         cols = d.table.columns;
         where = `table ${d.table.schema ? `${d.table.schema}.` : ""}${d.table.name}`;
       } else {
-        const info = deps.dynamicViewInfo?.(src.id);
+        const info = dvMeta(src.id);
         cols = info?.columns ?? null;
         where = `dynamic view ${info?.name ?? src.id}`;
       }
@@ -452,6 +466,92 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     return { ok: true, op, label };
   }
 
+
+  // 139: add_dynamic_view - structured spec checked against live columns AS THE USER, then compiled; returns here.
+  if (op.op === "add_dynamic_view") {
+    const spec = op.spec;
+    if (spec.joins && spec.joins.length > dvLimits.maxJoins) return f("cap", [`a view can join at most ${dvLimits.maxJoins} tables`]);
+    for (const tid of [spec.baseTableId, ...(spec.joins ?? []).map((j) => j.tableId)]) {
+      const r = await tableRule(tid);
+      if (r) return r;
+    }
+    const sessionCount = [...shadow.dynamicViews].filter((id) => id < 0).length;
+    if (sessionCount >= dvMaxPerSession) {
+      return f("cap", [`you already have ${sessionCount} session views (limit ${dvMaxPerSession}); remove one first`]);
+    }
+    const tables: AiDvTable[] = [];
+    for (const tid of [spec.baseTableId, ...(spec.joins ?? []).map((j) => j.tableId)]) {
+      const d = await deps.liveSchema.describe(tid);
+      if (!d.ok) return f("live_schema", [`table ${tid} is not available`], `table:${tid}`);
+      tables.push({ tableId: tid, ref: d.table.schema ? `${d.table.schema}.${d.table.name}` : d.table.name, columns: d.table.columns });
+    }
+    const v = validateAiDvSpec(spec, tables, dvLimits);
+    if (!v.ok) {
+      let refKey: string | undefined;
+      const reasons = v.reasons.map((r) => {
+        const m = v.missing.find((q) => r === `column \`${q.column}\` not found on ${tables.find((t) => t.tableId === q.tableId)?.ref}`);
+        if (!m) return r;
+        refKey ??= `col:${m.tableId}:${m.column}`;
+        const near = nearest(m.column, (tables.find((t) => t.tableId === m.tableId)?.columns ?? []).map((c) => c.name));
+        return r + (near.length ? `; did you mean ${near.map((n) => `\`${n}\``).join(", ")}?` : "");
+      });
+      return f("live_schema", reasons, refKey);
+    }
+    const c = compileAiDvSpec(spec, tables, dvLimits);
+    op.columns = c.columns;
+    op.maxRecords = c.maxRecords;
+    op.aggregated = c.aggregated;
+    const label = describeOp(op, shadow);
+    applyOpToShadow(shadow, op);
+    return { ok: true, op, label };
+  }
+
+  // 139: remove_dynamic_view stamps its dependents (repoint to the base table when every referenced column exists there, else drop).
+  if (op.op === "remove_dynamic_view") {
+    const meta = dvMeta(op.id);
+    const name = meta?.name ?? `dynamic view ${op.id}`;
+    const ask = confirmRemove(op.id, `the saved dynamic view "${name}"`);
+    if (ask) return ask;
+    let baseColumns: string[] = [];
+    let baseKnown = false;
+    if (meta?.baseTableId !== undefined) {
+      const d = await deps.liveSchema.describe(meta.baseTableId);
+      if (d.ok) {
+        baseKnown = true;
+        baseColumns = d.table.columns.map((c) => c.name);
+      }
+    }
+    const plan = planDvDependents({
+      widgets: [...shadow.widgets.entries()].filter(([, w]) => w.dynamicViewId === op.id).map(([id, w]) => ({ id, type: w.type, refs: w.refCols })),
+      layers: [...shadow.layers.entries()].filter(([, l]) => l.dynamicViewId === op.id).map(([id, l]) => ({ id, refs: l.refCols })),
+      baseColumns,
+    });
+    if (!baseKnown) {
+      // no live base table to repoint to: every dependent goes (shadow order)
+      plan.drop.widgetIds = [...shadow.widgets.entries()].filter(([, w]) => w.dynamicViewId === op.id).map(([id]) => id);
+      plan.drop.layerIds = [...shadow.layers.entries()].filter(([, l]) => l.dynamicViewId === op.id).map(([id]) => id);
+      plan.repoint.widgetIds = [];
+      plan.repoint.layerIds = [];
+    }
+    if (baseKnown && meta?.baseTableId !== undefined && (plan.repoint.widgetIds.length > 0 || plan.repoint.layerIds.length > 0)) {
+      op.repoint = { tableId: meta.baseTableId, ...plan.repoint };
+    }
+    if (plan.drop.widgetIds.length > 0 || plan.drop.layerIds.length > 0) op.drop = plan.drop;
+    const savedDropped = plan.drop.widgetIds.filter((id) => id > 0).length + plan.drop.layerIds.filter((id) => id > 0).length;
+    if (savedDropped > 0 && deps.approvals?.removeSaved !== true) {
+      return fail("clarification", ["removing saved content needs the user's approval"], {
+        ...x,
+        clarification: {
+          kind: "confirm_remove",
+          question: `Remove the dynamic view "${name}" and ${savedDropped} saved ${savedDropped === 1 ? "item that uses" : "items that use"} it?`,
+          options: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }],
+        },
+      });
+    }
+    const label = describeOp(op, shadow);
+    applyOpToShadow(shadow, op);
+    return { ok: true, op, label };
+  }
 
   // e. live_schema
   const cr = opColumnRefs(op, shadow);
