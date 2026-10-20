@@ -1,6 +1,6 @@
 // 137: pure builder for the POST /api/ai/ask body. Structure only - never row or filter values
 // (AIGOV-V20-02). Filters are reported as source + column + operator names only. The binding key set is CLOSED: no other widget config key is ever copied.
-import { layersOfMap, type AskRequest } from "@kinetica-bi/shared";
+import { layersOfMap, aiLayerColumnRefs, type AskRequest } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import type { Turn } from "./types";
 
@@ -16,7 +16,7 @@ const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInt
 
 function bindingOf(config: Record<string, unknown>): NonNullable<AskRequest["snapshot"]["widgets"][number]["binding"]> | undefined {
   const b: Record<string, unknown> = {};
-  for (const k of ["metric", "aggregation", "dimension", "metricColumn", "groupByColumn"] as const) {
+  for (const k of ["metric", "aggregation", "dimension", "metricColumn", "groupByColumn", "sortField"] as const) {
     const v = str(config[k]);
     if (v !== undefined) b[k] = v;
   }
@@ -26,6 +26,18 @@ function bindingOf(config: Record<string, unknown>): NonNullable<AskRequest["sna
       .slice(0, 20)
       .map((x) => x.slice(0, 200));
   }
+  // 139: records columns (array, or a comma-separated string) - names only
+  const rawCols = Array.isArray(config.columns)
+    ? config.columns
+    : typeof config.columns === "string"
+      ? config.columns.split(",")
+      : [];
+  const cols = rawCols
+    .filter((x): x is string => typeof x === "string")
+    .map((x) => x.trim().slice(0, 200))
+    .filter((x) => x.length > 0)
+    .slice(0, 50);
+  if (cols.length > 0) b.columns = cols;
   return Object.keys(b).length > 0 ? b : undefined;
 }
 
@@ -59,7 +71,8 @@ export function buildAskSnapshot(input: {
   widgets: readonly WidgetDto[];
   layouts: Readonly<Record<number, AskRect>>;
   layers: readonly DashboardLayerDto[];
-  dynamicViews: readonly { id: number; name: string }[];
+  // 139: only these whitelisted keys are read; a caller's extra fields (e.g. the spec, which holds filter values) are IGNORED.
+  dynamicViews: readonly { id: number; name: string; baseTableId?: number; aggregated?: boolean; columns?: readonly { name: string; type: string }[] }[];
   filters?: {
     filters: Readonly<Record<number, readonly SnapshotFilterLike[]>>;
     dvFilters: Readonly<Record<number, readonly SnapshotFilterLike[]>>;
@@ -90,6 +103,10 @@ export function buildAskSnapshot(input: {
     const rm = str(cfg.renderMode, 50);
     if (rm !== undefined) out.renderMode = rm;
     if (typeof cfg.visible === "boolean") out.visible = cfg.visible;
+    const dvId = (l as { dynamic_view_id?: unknown }).dynamic_view_id;
+    if (isInt(dvId) && dvId !== 0) out.dynamicViewId = dvId;
+    const refs = aiLayerColumnRefs(cfg);
+    if (refs.length) out.columns = refs.slice(0, 5);
     layers.push(out);
     if (layers.length >= 50) break;
   }
@@ -97,7 +114,15 @@ export function buildAskSnapshot(input: {
   return {
     widgets,
     layers,
-    dynamicViews: input.dynamicViews.slice(0, 20).map((d) => ({ id: d.id, name: d.name.slice(0, 200) })),
+    dynamicViews: input.dynamicViews.slice(0, 20).map((d) => {
+      const out: AskRequest["snapshot"]["dynamicViews"][number] = { id: d.id, name: d.name.slice(0, 200) };
+      if (isInt(d.baseTableId) && d.baseTableId > 0) out.baseTableId = d.baseTableId;
+      if (typeof d.aggregated === "boolean") out.aggregated = d.aggregated;
+      if (Array.isArray(d.columns)) {
+        out.columns = d.columns.slice(0, 70).map((c) => ({ name: String(c.name).slice(0, 200), type: String(c.type).slice(0, 50) }));
+      }
+      return out;
+    }),
     filters: snapshotFilters(input.filters),
   };
 }

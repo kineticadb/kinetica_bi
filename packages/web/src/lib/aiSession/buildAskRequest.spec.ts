@@ -122,3 +122,57 @@ describe("ask snapshot filters (138)", () => {
     expect(JSON.stringify(buildAskTurns([t], 0))).not.toContain("SECRETVAL_77");
   });
 });
+
+describe("ask snapshot dynamic views (139)", () => {
+  const base = { widgets, layouts, layers: [] as DashboardLayerDto[] };
+  const parse = (snapshot: ReturnType<typeof buildAskSnapshot>) =>
+    AskRequestSchema.safeParse({ dashboardId: 1, question: "q", snapshot, turns: [] }).success;
+
+  it("SNAPW-1: session view carries base/aggregated/columns, never the spec or a filter value", () => {
+    const s = buildAskSnapshot({
+      ...base,
+      dynamicViews: [
+        { id: -3, name: "Trips by hour", baseTableId: 5, aggregated: true, columns: [{ name: "trips", type: "long" }],
+          spec: { filters: [{ column: "c", value: "SECRETVAL_139" }] } } as never,
+      ],
+    });
+    expect(s.dynamicViews[0]).toEqual({ id: -3, name: "Trips by hour", baseTableId: 5, aggregated: true, columns: [{ name: "trips", type: "long" }] });
+    expect("spec" in s.dynamicViews[0]).toBe(false);
+    expect(JSON.stringify(s)).not.toContain("SECRETVAL_139");
+    expect(parse(s)).toBe(true);
+  });
+
+  it("SNAPW-2: widget binding includes columns (array or comma string) and sortField", () => {
+    const s = buildAskSnapshot({
+      ...base,
+      widgets: [w(1, "records", { tableId: 7, columns: ["a", "b"], sortField: "a" }), w(2, "records", { tableId: 7, columns: "x, y ,z" })],
+      dynamicViews: [],
+    });
+    expect(s.widgets[0].binding).toEqual({ columns: ["a", "b"], sortField: "a" });
+    expect(s.widgets[1].binding).toEqual({ columns: ["x", "y", "z"] });
+    expect(parse(s)).toBe(true);
+  });
+
+  it("SNAPW-3: layer dynamic_view_id and column refs", () => {
+    const l = { ...layer(10, { latColumn: "lat", lonColumn: "lon", valueColumn: "v" }), dynamic_view_id: -3 } as unknown as DashboardLayerDto;
+    const s = buildAskSnapshot({ widgets, layouts, layers: [l], dynamicViews: [] });
+    // host map resolution: map widget 3 has no explicit layer ids, so it owns all layers
+    const out = s.layers.find((x) => x.id === 10);
+    expect(out?.dynamicViewId).toBe(-3);
+    expect(out?.columns).toEqual(expect.arrayContaining(["lat", "lon"]));
+    expect(parse(s)).toBe(true);
+  });
+
+  it("SNAPW-4: saved view without columns stays {id,name}", () => {
+    const s = buildAskSnapshot({ ...base, dynamicViews: [{ id: 4, name: "Saved" }] });
+    expect(s.dynamicViews[0]).toEqual({ id: 4, name: "Saved" });
+  });
+
+  it("SNAPW-5: 20 views x 70 columns still fits the request body guard", () => {
+    const columns = Array.from({ length: 70 }, (_, i) => ({ name: `col_${i}`, type: "string" }));
+    const dynamicViews = Array.from({ length: 20 }, (_, i) => ({ id: -(i + 1), name: `V${i}`, baseTableId: 5, aggregated: false, columns }));
+    const r = buildAskRequest({ dashboardId: 1, question: "q", snapshot: buildAskSnapshot({ ...base, dynamicViews }), turns: [turn(1)], cursor: 0, removalApproved: false });
+    expect(new TextEncoder().encode(JSON.stringify(r)).length).toBeLessThan(60_000);
+    expect(AskRequestSchema.safeParse(r).success).toBe(true);
+  });
+});
