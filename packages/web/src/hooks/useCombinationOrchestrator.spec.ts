@@ -2010,3 +2010,71 @@ describe("DVCOMBO-SP orchestrator — dv source combination includes spatial dra
     expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 139 plan 11 (D-23): AI views (negative ids) send aiNonce/aiGen on the dv filter materialize.
+// ---------------------------------------------------------------------------
+describe("Phase 139 — AI-view drill filters (ORCHDV-1..3)", () => {
+  const AI_ID = -3;
+  const aiRow = (): DynamicViewRow =>
+    ({
+      id: AI_ID, dashboard_id: DASH_ID, source_table_id: TABLE_A, name: "Trips", template_sql: "", max_records: 100000,
+      columns_json: null, created_at: "", updated_at: "", aggregated: true,
+      ai: { nonce: "0a1b2c3d", gen: 1, spec: { baseTableId: TABLE_A }, baseLabel: "demo.trips" },
+    }) as DynamicViewRow;
+  const dvFilter: ActiveFilter = { column: "status", value: "active", dataType: "string", addedAt: 1000, sourceWidgetId: 10 };
+  const setDvFilter = (id: number) =>
+    act(() => {
+      useFilterStore.setState((s) => ({ dvFilters: { ...s.dvFilters, [id]: [dvFilter] }, filterVersion: s.filterVersion + 1 }));
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_dv_v", expiresAt: 9_999_999_999 });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("ORCHDV-1: negative dv id sends aiNonce and aiGen from the session row", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: AI_ID });
+    seedDvMaterialized(AI_ID);
+    setDvFilter(AI_ID);
+    const rows = [aiRow()];
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], rows));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    expect((materializeFilter as Mock).mock.calls[0][0]).toEqual({
+      dashboardId: DASH_ID, dynamicViewId: AI_ID, filters: [dvFilter],
+      combinationKey: stableComboHash("dv", AI_ID, [dvFilter]), aiNonce: "0a1b2c3d", aiGen: 1,
+    });
+  });
+
+  it("ORCHDV-2: a positive dv id sends no aiNonce/aiGen keys", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    seedDvMaterialized(DV_ID);
+    setDvFilter(DV_ID);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    expect(Object.keys(call).sort()).toEqual(["combinationKey", "dashboardId", "dynamicViewId", "filters"]);
+  });
+
+  it("ORCHDV-3: a negative dv id with no session row sends no request and does not crash", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: AI_ID });
+    seedDvMaterialized(AI_ID);
+    setDvFilter(AI_ID);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await act(async () => { await Promise.resolve(); });
+    expect(materializeFilter).not.toHaveBeenCalled();
+    expect(useFilterCombinationStore.getState().registry[stableComboHash("dv", AI_ID, [dvFilter])]).toBeUndefined();
+  });
+});

@@ -116,6 +116,10 @@ export function useCombinationOrchestrator(
   layers: DashboardLayerDto[],   // NEW — Phase 92 (READ-V118-02)
   dynamicViews: DynamicViewRow[] = [],   // quick-261009-jg6 — dv source combinations
 ): void {
+  // 139: latest rows for the D-23 aiNonce/aiGen lookup (read at dispatch time, never a dep).
+  const dynamicViewsRef = useRef(dynamicViews);
+  dynamicViewsRef.current = dynamicViews;
+
   // --- 1. Primitive subscriptions (S-02 compliant — primitives only) ---
   const filterVersion = useFilterStore((s) => s.filterVersion);
   // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop
@@ -626,6 +630,14 @@ export function useCombinationOrchestrator(
         } else {
           // ── Phase 94: dv path ──────────────────────────────────────────
           // NO spatial args — dv path is column-only (server enforces 400 on spatial + dvId).
+          // 139 D-23: an AI view (negative id) is built server-side from its own nonce/gen; without its session
+          // row we cannot name it, so leave the entry alone (no request, nothing marked).
+          let aiArgs: { aiNonce?: string; aiGen?: number } = {};
+          if (dvId! < 0) {
+            const aiRow = dynamicViewsRef.current.find((d) => d.id === dvId);
+            if (!aiRow?.ai) continue;
+            aiArgs = { aiNonce: aiRow.ai.nonce, aiGen: aiRow.ai.gen };
+          }
           // Pitfall 6: markMaterializing SYNCHRONOUSLY before any await.
           storeActions.markMaterializing(hash, dashboardId, "dv", dvId!);
 
@@ -634,7 +646,7 @@ export function useCombinationOrchestrator(
           controllersRef.current.set(hash, ctrl);
 
           materializeFilter(
-            { dashboardId, dynamicViewId: dvId!, filters: resolved, combinationKey: hash },
+            { dashboardId, dynamicViewId: dvId!, filters: resolved, combinationKey: hash, ...aiArgs },
             ctrl.signal,
           )
             .then((res) => {
