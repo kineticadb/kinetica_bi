@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applySessionToWidgets, applySessionToLayers, hasSessionChanges } from "./applySession";
+import { applySessionToWidgets, applySessionToLayers, applySessionToDynamicViews, hasSessionChanges } from "./applySession";
 import { EMPTY_DERIVED } from "./constants";
 import type { SessionDerived } from "./types";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
@@ -73,5 +73,27 @@ describe("applySession phase 136", () => {
     expect(hasSessionChanges(derived({ layout: { 1: { x: 0, y: 0, w: 6, h: 6 } } }))).toBe(true);
     expect(hasSessionChanges(derived({ widgetMeta: { 1: { title: "t" } } }))).toBe(true);
     expect(hasSessionChanges(derived({ aiEditedLayerIds: new Set([7]) }))).toBe(true);
+  });
+});
+
+describe("applySession dynamic views (139)", () => {
+  it("APPDV-1: applySessionToDynamicViews keeps identity, or filters removed saved views", () => {
+    const saved = [{ id: 90 }, { id: 91 }];
+    expect(applySessionToDynamicViews(saved, EMPTY_DERIVED)).toBe(saved);
+    expect(applySessionToDynamicViews(saved, derived({ removedDynamicViewIds: new Set([90]) }))).toEqual([{ id: 91 }]);
+  });
+  it("APPDV-2: layerBinding rewrites only bound saved layers", () => {
+    const sl = [l(7), l(8)];
+    const out = applySessionToLayers(sl, derived({ layerBinding: { 7: { table_id: 5, dynamic_view_id: -3 } } }));
+    expect(out[0]).toMatchObject({ id: 7, table_id: 5, dynamic_view_id: -3 });
+    expect(out[1]).toBe(sl[1]);
+    expect(sl[0].dynamic_view_id).toBeNull();
+  });
+  it("APPDV-3: hasSessionChanges sees each new field alone", () => {
+    const dv = { id: -3, name: "v", spec: { baseTableId: 5 }, baseTableId: 5, columns: [], aggregated: false };
+    expect(hasSessionChanges(derived({ addedDynamicViews: [dv as never] }))).toBe(true);
+    expect(hasSessionChanges(derived({ removedDynamicViewIds: new Set([90]) }))).toBe(true);
+    expect(hasSessionChanges(derived({ layerBinding: { 7: { table_id: 5, dynamic_view_id: null } } }))).toBe(true);
+    expect(hasSessionChanges(EMPTY_DERIVED)).toBe(false);
   });
 });

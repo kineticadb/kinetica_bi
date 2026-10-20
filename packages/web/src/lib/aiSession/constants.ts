@@ -21,6 +21,9 @@ export const EMPTY_DERIVED: SessionDerived = Object.freeze({
   aiEditedLayerIds: new Set<number>(),
   aiLayerHostWidgetIds: new Set<number>(),
   widgetMeta: Object.freeze({}),
+  addedDynamicViews: [],
+  removedDynamicViewIds: new Set<number>(),
+  layerBinding: Object.freeze({}),
 });
 
 /** 137: the AI Assistant widget type. Never in shared AI_WIDGET_TYPES (the AI cannot add it). */

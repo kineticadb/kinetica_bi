@@ -16,7 +16,10 @@ export function hasSessionChanges(d: SessionDerived): boolean {
     Object.keys(d.layout).length > 0 ||
     Object.keys(d.widgetMeta).length > 0 ||
     d.aiEditedWidgetIds.size > 0 ||
-    d.aiEditedLayerIds.size > 0
+    d.aiEditedLayerIds.size > 0 ||
+    d.addedDynamicViews.length > 0 ||
+    d.removedDynamicViewIds.size > 0 ||
+    Object.keys(d.layerBinding).length > 0
   );
 }
 
@@ -42,11 +45,20 @@ export function applySessionToLayers(
   tempVisibility: Readonly<Record<number, boolean>> = {},
 ): DashboardLayerDto[] {
   const hasVis = Object.keys(tempVisibility).length > 0;
-  if (d.removedLayerIds.size === 0 && d.addedLayers.length === 0 && !hasVis) return saved;
+  const bindIds = Object.keys(d.layerBinding);
+  if (d.removedLayerIds.size === 0 && d.addedLayers.length === 0 && bindIds.length === 0 && !hasVis) return saved;
+  // 139: rebound/repointed saved layers get new top-level table_id / dynamic_view_id; the rest keep identity.
+  const bound =
+    bindIds.length === 0
+      ? saved
+      : saved.map((l) => {
+          const b = d.layerBinding[l.id];
+          return b ? { ...l, table_id: b.table_id ?? l.table_id, dynamic_view_id: b.dynamic_view_id } : l;
+        });
   const merged =
     d.removedLayerIds.size === 0 && d.addedLayers.length === 0
-      ? saved
-      : [...saved.filter((l) => !d.removedLayerIds.has(l.id)), ...d.addedLayers];
+      ? bound
+      : [...bound.filter((l) => !d.removedLayerIds.has(l.id)), ...d.addedLayers];
   if (!hasVis) return merged;
   let changed = false;
   const out = merged.map((l) => {
@@ -55,4 +67,10 @@ export function applySessionToLayers(
     return { ...l, config: { ...l.config, visible: tempVisibility[l.id] } };
   });
   return changed ? out : merged;
+}
+
+/** 139: saved dynamic views minus those removed for this session (identity when none). AI views are listed via derived.addedDynamicViews. */
+export function applySessionToDynamicViews<T extends { id: number }>(saved: T[], d: SessionDerived): T[] {
+  if (d.removedDynamicViewIds.size === 0) return saved;
+  return saved.filter((v) => !d.removedDynamicViewIds.has(v.id));
 }

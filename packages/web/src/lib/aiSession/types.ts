@@ -5,9 +5,12 @@
 // dashboard is never mutated, so revert/forward is "fold a different prefix" and Discard is
 // "drop the log". D-01's inverse/snapshot data is satisfied by replayability; inverses would be
 // dead code and a bug surface.
-import type { AiOp, AiClarification, AskSkipped, AiFilterSource } from "@kinetica-bi/shared";
+import type { AiOp, AiClarification, AskSkipped, AiFilterSource, AiDvSpec, AiDvOutputColumn } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import type { ActiveFilter } from "../../store/filterStore";
+
+/** 139: an AI-created session dynamic view (folded from add_dynamic_view). Never persisted; Keep (141) saves it as a normal dv row. */
+export type SessionDv = { id: number; name: string; spec: AiDvSpec; baseTableId: number; columns: AiDvOutputColumn[]; maxRecords?: number; aggregated: boolean };
 
 export type FilterSourceRef = AiFilterSource;
 /** 138: what one applied filter op changed in filterStore, per source+column. before/after are the exact store objects (identity matters to the reverse filter map). */
@@ -27,7 +30,8 @@ export type SkipReason =
   | "layout_rejected"
   | "table_not_on_dashboard"
   | "column_not_found"
-  | "filter_cap";
+  | "filter_cap"
+  | "dynamic_view_rejected";
 export type OpResult = { status: "applied" } | { status: "skipped"; reason: SkipReason; detail?: string };
 export type TurnEntry = {
   raw: unknown;
@@ -62,6 +66,10 @@ export type SessionBaseline = {
   maxBarGroupBySeriesCap?: number;
   /** 138: saved dynamic view names, for answer wording. */
   dynamicViewNames?: Readonly<Record<number, string>>;
+  /** 139: saved dv id -> source_table_id (rebind/repoint base). */
+  dynamicViewSources?: Readonly<Record<number, number>>;
+  /** 139: saved dv output columns (for SQL derivation of widgets bound to them). */
+  dynamicViewColumns?: Readonly<Record<number, readonly { name: string; type: string }[]>>;
 };
 export type EvaluateOptions = { removalApproved?: boolean; currentFilters?: CurrentFilterColumns };
 export type SessionWidgetMeta = { type?: string; title?: string; config?: Record<string, unknown> };
@@ -83,5 +91,11 @@ export type SessionDerived = {
   /** 137 (136-12 UAT): saved, non-removed maps that show an AI-added/edited/removed layer. Drives the pill and nothing else; NOT counted in the bar (each change counts once, as the layer). */
   aiLayerHostWidgetIds: ReadonlySet<number>;
   widgetMeta: Readonly<Record<number, SessionWidgetMeta>>;
+  /** 139: AI-created session views (never persisted). */
+  addedDynamicViews: SessionDv[];
+  /** 139: saved views removed for this session only (D-18). */
+  removedDynamicViewIds: ReadonlySet<number>;
+  /** 139: saved layers rebound/repointed this session (top-level fields). */
+  layerBinding: Readonly<Record<number, { table_id: number | null; dynamic_view_id: number | null }>>;
 };
 export type SessionRect = { x: number; y: number; w: number; h: number };

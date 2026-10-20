@@ -19,7 +19,8 @@ import {
 } from "@kinetica-bi/shared";
 import { layersOfMap } from "@kinetica-bi/shared";
 import { aiFilterSourceKey, AI_FILTER_CAP_PER_TABLE } from "@kinetica-bi/shared";
-import type { AiOp, AiWidgetType } from "@kinetica-bi/shared";
+import { aiDvIsAggregated, AI_DV_DEFAULT_MAX_RECORDS } from "@kinetica-bi/shared";
+import type { AiOp, AiWidgetType, AiDvSpec } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import { splitLayerSnapshot } from "../applyWidgetAction";
 import { EMPTY_DERIVED } from "./constants";
@@ -28,6 +29,7 @@ import type {
   OpResult,
   SessionBaseline,
   SessionDerived,
+  SessionDv,
   SessionRect,
   SessionWidgetMeta,
   TurnEntry,
@@ -92,17 +94,32 @@ function withDefaultBigNumberLabel(cfg: Cfg): Cfg {
 }
 
 /** The AI never supplies SQL: strip, apply defaults, translate to renderer keys, derive (D-01/D-23). */
-export function makeSessionWidget(op: AddWidgetOp, baseline: SessionBaseline): WidgetDto {
+export type DvBinding = { baseTableId: number | undefined; columns: readonly { name: string; type: string }[] };
+
+export function makeSessionWidget(op: AddWidgetOp, baseline: SessionBaseline, dvBinding?: DvBinding): WidgetDto {
+  // 139: dynamicViewId is honoured ONLY when the caller resolved a binding (stripped otherwise, D-23 defence in depth).
+  const dvId = dvBinding && typeof op.config.dynamicViewId === "number" ? op.config.dynamicViewId : undefined;
   const { tableId, ...fields } = strip(op.config);
   const defaults = AI_WIDGET_DEFAULTS[op.type as AiWidgetType]?.config ?? {};
   let config: Cfg = { ...defaults, ...translateWidgetOverlay(op.type, fields) };
   delete config.metricId;
   if (op.type === "records" && Array.isArray(config.columns)) config.columns = config.columns.join(", ");
-  const t = findTable(baseline, tableId);
+  const t = findTable(baseline, dvId !== undefined ? dvBinding!.baseTableId : tableId);
+  if (dvId !== undefined) config.dynamicViewId = dvId;
   if (t) {
     config.tableId = t.id;
     config.table = `${t.schema}.${t.name}`;
-    config = deriveInto(op.type, config, baseline);
+    // ChartConfigPanel dual-write convention: SQL names the base table (renderers FROM-swap to the view); column types = base + view output.
+    const derivedFrom: SessionBaseline =
+      dvId === undefined
+        ? baseline
+        : {
+            ...baseline,
+            tables: baseline.tables!.map((x) =>
+              x.id === t.id ? { ...x, columns: { ...x.columns, ...Object.fromEntries(dvBinding!.columns.map((c) => [c.name, c.type])) } } : x,
+            ),
+          };
+    config = deriveInto(op.type, config, derivedFrom);
   }
   if (op.type === "bignumber") config = withDefaultBigNumberLabel(config);
   if (op.layout) config.layout = { ...op.layout };
@@ -138,7 +155,7 @@ export function makeSessionLayer(op: AddLayerOp, baseline: SessionBaseline, posi
     info_enabled: 0,
     info_columns: null,
     info_template: null,
-    dynamic_view_id: null,
+    dynamic_view_id: op.dynamicViewId ?? null,
     cb_config: null,
     track_config: null,
     filter_scope: null,
@@ -160,6 +177,7 @@ type Sim = {
   widgets: Map<number, SimWidget>;
   layers: Map<number, { renderMode?: string; saved: boolean }>;
   dvs: Set<number>;
+  dvBase: Map<number, number>;
   usedTemp: Set<number>;
   tableIds: Set<number> | null; // null: baseline.tables absent, table checks skipped
   tableColumns: Map<number, Readonly<Record<string, string>>> | null;
@@ -170,13 +188,32 @@ function groupColCount(cfg: Cfg): number {
   return Array.isArray(cfg.groupByColumns) ? (cfg.groupByColumns as unknown[]).filter(Boolean).length : 0;
 }
 
+/** D-24: a patch whose only key is `dynamicViewId` rebinds a widget/layer to a view. */
+function isRebindPatch(configPatch: Cfg): boolean {
+  const keys = Object.keys(configPatch);
+  return keys.length === 1 && keys[0] === "dynamicViewId";
+}
+
 function simApply(sim: Sim, op: AiOp): void {
   switch (op.op) {
+    case "add_dynamic_view":
+      sim.dvs.add(op.tempId);
+      sim.dvBase.set(op.tempId, op.spec.baseTableId);
+      break;
+    case "remove_dynamic_view":
+      sim.dvs.delete(op.id);
+      for (const id of op.repoint?.widgetIds ?? []) {
+        const w = sim.widgets.get(id);
+        if (w) sim.widgets.set(id, { ...w, dvBound: false });
+      }
+      for (const id of op.drop?.widgetIds ?? []) sim.widgets.delete(id);
+      for (const id of op.drop?.layerIds ?? []) sim.layers.delete(id);
+      break;
     case "add_widget":
       sim.widgets.set(op.tempId, {
         type: op.type,
         saved: false,
-        dvBound: false,
+        dvBound: typeof op.config.dynamicViewId === "number",
         groupCols: groupColCount(op.config),
         ...(op.layout ? { rect: { ...op.layout } } : {}),
       });
@@ -203,6 +240,11 @@ function simApply(sim: Sim, op: AiOp): void {
       break;
     case "patch": {
       const { target, configPatch } = op.action;
+      if (target.kind === "widget" && isRebindPatch(configPatch)) {
+        const w = sim.widgets.get(target.id);
+        if (w) sim.widgets.set(target.id, { ...w, dvBound: true });
+        break;
+      }
       if (target.kind === "widget" && Array.isArray(configPatch.groupByColumns)) {
         const w = sim.widgets.get(target.id);
         if (w) sim.widgets.set(target.id, { ...w, groupCols: groupColCount(configPatch) });
@@ -236,6 +278,7 @@ function buildSim(baseline: SessionBaseline, prior: readonly TurnEntry[]): Sim {
       baseline.layers.map((x) => [x.id, { renderMode: (x.config as Cfg).renderMode as string | undefined, saved: true }]),
     ),
     dvs: new Set(baseline.dynamicViewIds),
+    dvBase: new Map(Object.entries(baseline.dynamicViewSources ?? {}).map(([k, v]) => [Number(k), v])),
     usedTemp: new Set(),
     tableIds: baseline.tables ? new Set(baseline.tables.map((t) => t.id)) : null,
     tableColumns: baseline.tables ? new Map(baseline.tables.map((t) => [t.id, t.columns])) : null,
@@ -247,6 +290,23 @@ function buildSim(baseline: SessionBaseline, prior: readonly TurnEntry[]): Sim {
     if (e.result.status === "applied") simApply(sim, e.op);
   }
   return sim;
+}
+
+function evalRebind(sim: Sim, configPatch: Cfg): OpResult {
+  if (!isRebindPatch(configPatch)) return skip("patch_rejected", "change the view binding on its own");
+  const v = configPatch.dynamicViewId;
+  if (typeof v !== "number" || !Number.isInteger(v) || v === 0) return skip("patch_rejected", "invalid value for dynamicViewId");
+  return sim.dvs.has(v) ? { status: "applied" } : skip("target_not_found", "no such dynamic view");
+}
+
+/** Column names the spec reads from the BASE table (from 0/absent). Joined tables are checked server-side. */
+function baseTableColumnRefs(spec: AiDvSpec): string[] {
+  const out: string[] = [];
+  for (const list of [spec.columns, spec.groupBy, spec.aggregates, spec.filters] as ({ from?: number; column?: string }[] | undefined)[]) {
+    for (const it of list ?? []) if ((it.from ?? 0) === 0 && it.column !== undefined) out.push(it.column);
+  }
+  for (const j of spec.joins ?? []) for (const k of j.on) if ((k.leftFrom ?? 0) === 0) out.push(k.left);
+  return out;
 }
 
 function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry {
@@ -279,7 +339,6 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
           if (missing) return done(skip("column_not_found", missing.column));
         }
       } else {
-        if (src.id < 0) return done(skip("unsupported_target", "AI-created dynamic views can't be filtered yet"));
         if (!sim.dvs.has(src.id)) return done(skip("target_not_found"));
       }
       const have = sim.filters.get(key) ?? new Set<string>();
@@ -298,7 +357,6 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       if (src.kind === "table") {
         if (!tableOk(src.id)) return done(skip("table_not_on_dashboard"));
       } else {
-        if (src.id < 0) return done(skip("unsupported_target", "AI-created dynamic views can't be filtered yet"));
         if (!sim.dvs.has(src.id)) return done(skip("target_not_found"));
       }
       if (op.column !== undefined) {
@@ -309,18 +367,34 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       }
       return done({ status: "applied" });
     }
-    case "add_dynamic_view":
+    case "add_dynamic_view": {
+      if (sim.usedTemp.has(op.tempId)) return done(skip("duplicate_temp_id"));
+      const spec = op.spec;
+      if (!tableOk(spec.baseTableId) || (spec.joins ?? []).some((j) => !tableOk(j.tableId))) return done(skip("table_not_on_dashboard"));
+      const baseCols = sim.tableColumns?.get(spec.baseTableId);
+      if (baseCols) {
+        for (const name of baseTableColumnRefs(spec)) if (!(name in baseCols)) return done(skip("column_not_found", name));
+      }
+      return done({ status: "applied" });
+    }
     case "remove_dynamic_view":
-      return done(skip("unsupported_in_134"));
+      if (!sim.dvs.has(op.id)) return done(skip("target_not_found"));
+      if (op.id > 0 && !opts.removalApproved) return done(skip("needs_confirmation"));
+      return done({ status: "applied" });
     case "add_widget": {
       if (sim.usedTemp.has(op.tempId)) return done(skip("duplicate_temp_id"));
       const v = validateAiWidgetConfig(op.type, op.config);
       if (!v.valid) return done(skip("config_rejected", v.reasons.join("; ")));
+      if ("dynamicViewId" in op.config) {
+        if (op.config.tableId !== undefined) return done(skip("config_rejected", "pass tableId or dynamicViewId, not both"));
+        if (typeof op.config.dynamicViewId !== "number" || !sim.dvs.has(op.config.dynamicViewId)) return done(skip("target_not_found", "no such dynamic view"));
+      }
       if (!tableOk(op.config.tableId)) return done(skip("table_not_on_dashboard"));
       return done({ status: "applied" });
     }
     case "add_layer":
       if (sim.usedTemp.has(op.tempId)) return done(skip("duplicate_temp_id"));
+      if (op.dynamicViewId !== undefined && !sim.dvs.has(op.dynamicViewId)) return done(skip("target_not_found", "no such dynamic view"));
       if (sim.widgets.get(op.widgetId)?.type !== "map") return done(skip("target_not_found", `no map widget ${op.widgetId}`));
       if (!tableOk(op.tableId)) return done(skip("table_not_on_dashboard"));
       return done({ status: "applied" });
@@ -339,6 +413,7 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       if (target.kind === "layer") {
         const lay = sim.layers.get(target.id);
         if (!lay) return done(skip("target_not_found"));
+        if ("dynamicViewId" in configPatch) return done(evalRebind(sim, configPatch));
         const v = validateAiLayerPatch(configPatch, lay.renderMode);
         if (!v.valid) {
           const onlyRestyle = v.reasons.every((r) => r === "only heatmap layers can be restyled");
@@ -349,6 +424,7 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       if (target.kind === "widget") {
         const w = sim.widgets.get(target.id);
         if (!w) return done(skip("target_not_found"));
+        if ("dynamicViewId" in configPatch) return done(evalRebind(sim, configPatch));
         if (w.dvBound) return done(skip("unsupported_target", "widget is bound to a dynamic view"));
         const v = validateActionPatch("widget", w.type, configPatch);
         if (!v.valid) return done(skip("patch_rejected", v.reasons.join("; ")));
@@ -427,10 +503,71 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
   const widgetMeta: Record<number, SessionWidgetMeta> = {};
   const aiEditedWidgetIds = new Set<number>();
   const aiEditedLayerIds = new Set<number>();
+  const addedDvs = new Map<number, SessionDv>();
+  const removedDvIds = new Set<number>();
+  const layerBinding: Record<number, { table_id: number | null; dynamic_view_id: number | null }> = {};
+  const savedLayers = new Map(baseline.layers.map((x) => [x.id, x]));
   let applied = 0;
 
   const flagWidget = (id: number) => {
     if (savedWidgets.has(id)) aiEditedWidgetIds.add(id);
+  };
+  const baseOf = (id: number): number | undefined => addedDvs.get(id)?.baseTableId ?? baseline.dynamicViewSources?.[id];
+  const dvBindingFor = (id: number): DvBinding => ({
+    baseTableId: baseOf(id),
+    columns: addedDvs.get(id)?.columns ?? baseline.dynamicViewColumns?.[id] ?? [],
+  });
+  const tableNameOf = (tableId: number | undefined): string | undefined => {
+    const t = findTable(baseline, tableId);
+    return t ? `${t.schema}.${t.name}` : undefined;
+  };
+  // Bind (dv number) or unbind (dv undefined, widgets read the base table) a widget. Saved widgets go through
+  // widgetMeta (the overlay validators strip data-binding keys); `dynamicViewId: undefined` reads as unbound.
+  const bindWidget = (id: number, dv: number | undefined, tableId: number | undefined) => {
+    const tableName = tableNameOf(tableId);
+    const binding: Cfg = {
+      dynamicViewId: dv,
+      ...(tableId !== undefined ? { tableId } : {}),
+      ...(tableName !== undefined ? { table: tableName } : {}),
+    };
+    const temp = addedWidgets.get(id);
+    if (temp) {
+      const config: Cfg = { ...temp.config, ...binding };
+      if (dv === undefined) delete config.dynamicViewId;
+      addedWidgets.set(id, { ...temp, config });
+    } else if (savedWidgets.has(id) && !removedWidgetIds.has(id)) {
+      widgetMeta[id] = { ...widgetMeta[id], config: { ...widgetMeta[id]?.config, ...binding } };
+      flagWidget(id);
+    }
+  };
+  const bindLayer = (id: number, dv: number | null, tableId: number | undefined) => {
+    const temp = addedLayers.get(id);
+    if (temp) {
+      addedLayers.set(id, { ...temp, dynamic_view_id: dv, ...(tableId !== undefined ? { table_id: tableId } : {}) });
+    } else if (savedLayers.has(id) && !removedLayerIds.has(id)) {
+      const cur = layerBinding[id]?.table_id ?? savedLayers.get(id)!.table_id;
+      layerBinding[id] = { table_id: tableId ?? cur, dynamic_view_id: dv };
+      aiEditedLayerIds.add(id);
+    }
+  };
+  const removeWidgetId = (id: number) => {
+    if (addedWidgets.has(id)) addedWidgets.delete(id);
+    else if (savedWidgets.has(id)) {
+      removedWidgetIds.add(id);
+      delete contribution.widget[id];
+      delete widgetMeta[id];
+      aiEditedWidgetIds.delete(id);
+    }
+    delete layout[id];
+  };
+  const removeLayerId = (id: number) => {
+    if (addedLayers.has(id)) addedLayers.delete(id);
+    else if (savedLayers.has(id)) {
+      removedLayerIds.add(id);
+      delete contribution.layer[id];
+      delete layerBinding[id];
+      aiEditedLayerIds.delete(id);
+    }
   };
 
   for (const e of entries) {
@@ -439,9 +576,36 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
     applied++;
     const op = e.op;
     switch (op.op) {
-      case "add_widget":
-        addedWidgets.set(op.tempId, makeSessionWidget(op, baseline));
+      case "add_dynamic_view":
+        addedDvs.set(op.tempId, {
+          id: op.tempId,
+          name: op.name,
+          spec: op.spec,
+          baseTableId: op.spec.baseTableId,
+          columns: op.columns ?? [],
+          ...(op.maxRecords !== undefined ? { maxRecords: op.maxRecords } : {}),
+          aggregated: op.aggregated ?? aiDvIsAggregated(op.spec),
+        });
         break;
+      case "remove_dynamic_view": {
+        if (addedDvs.has(op.id)) addedDvs.delete(op.id);
+        else {
+          removedDvIds.add(op.id);
+          delete contribution.dynamicView[op.id];
+        }
+        if (op.repoint) {
+          for (const id of op.repoint.widgetIds) bindWidget(id, undefined, op.repoint.tableId);
+          for (const id of op.repoint.layerIds) bindLayer(id, null, op.repoint.tableId);
+        }
+        for (const id of op.drop?.widgetIds ?? []) removeWidgetId(id);
+        for (const id of op.drop?.layerIds ?? []) removeLayerId(id);
+        break;
+      }
+      case "add_widget": {
+        const dv = typeof op.config.dynamicViewId === "number" ? op.config.dynamicViewId : undefined;
+        addedWidgets.set(op.tempId, makeSessionWidget(op, baseline, dv !== undefined ? dvBindingFor(dv) : undefined));
+        break;
+      }
       case "add_layer": {
         addedLayers.set(op.tempId, makeSessionLayer(op, baseline, baseline.layers.length + addedLayers.size));
         const hostTemp = addedWidgets.get(op.widgetId);
@@ -461,26 +625,19 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
         break;
       }
       case "remove_widget":
-        if (addedWidgets.has(op.id)) addedWidgets.delete(op.id);
-        else {
-          removedWidgetIds.add(op.id);
-          delete contribution.widget[op.id];
-          delete widgetMeta[op.id];
-          aiEditedWidgetIds.delete(op.id);
-        }
-        delete layout[op.id];
+        removeWidgetId(op.id);
         break;
       case "remove_layer":
-        if (addedLayers.has(op.id)) addedLayers.delete(op.id);
-        else {
-          removedLayerIds.add(op.id);
-          delete contribution.layer[op.id];
-          aiEditedLayerIds.delete(op.id);
-        }
+        removeLayerId(op.id);
         break;
       case "patch": {
         const { target, configPatch } = op.action;
-        if (target.kind === "widget") {
+        if ((target.kind === "widget" || target.kind === "layer") && "dynamicViewId" in configPatch) {
+          // D-24 rebind (evaluate guarantees dynamicViewId is the only key and the view exists)
+          const dv = configPatch.dynamicViewId as number;
+          if (target.kind === "widget") bindWidget(target.id, dv, baseOf(dv));
+          else bindLayer(target.id, dv, baseOf(dv));
+        } else if (target.kind === "widget") {
           const temp = addedWidgets.get(target.id);
           if (temp) {
             const translated = translateWidgetOverlay(temp.type, configPatch);
@@ -593,5 +750,8 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
     aiEditedLayerIds,
     aiLayerHostWidgetIds,
     widgetMeta,
+    addedDynamicViews: [...addedDvs.values()],
+    removedDynamicViewIds: removedDvIds,
+    layerBinding,
   };
 }

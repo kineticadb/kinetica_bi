@@ -43,9 +43,12 @@ describe("evaluateTurn", () => {
     expect(e.result).toMatchObject({ status: "skipped", reason: "invalid_op" });
     expect((e.result as { detail?: string }).detail).toBeTruthy();
   });
-  it("EVAL-2: later-phase kinds are unsupported_in_134", () => {
-    const es = turn([{ op: "add_dynamic_view", tempId: -9 }, { op: "remove_dynamic_view", id: 90 }]);
-    for (const e of es) expect(e.result).toMatchObject({ status: "skipped", reason: "unsupported_in_134" });
+  it("EVAL-2: dynamic view ops (139): a valid add applies; removing a saved view needs approval", () => {
+    const dvSpec = { baseTableId: 5, groupBy: [{ column: "payment_type" }], aggregates: [{ fn: "count", as: "trips" }] };
+    const b = { ...baseline, tables: baselineFixture().tables };
+    const es = evaluateTurn(b, [], [{ op: "add_dynamic_view", tempId: -9, name: "Trips", spec: dvSpec }, { op: "remove_dynamic_view", id: 90 }]);
+    expect(es[0].result.status).toBe("applied");
+    expect(es[1].result).toMatchObject({ status: "skipped", reason: "needs_confirmation" });
   });
   it("EVAL-3: missing targets are target_not_found; prior-turn temp target applies", () => {
     const es = turn([
@@ -446,7 +449,8 @@ describe("filter ops (138)", () => {
   });
   it("FOLDF-6: dynamic view sources", () => {
     expect(fturn([applyFilterRaw({ kind: "dynamicView", id: 90 }, "zone")])[0].result.status).toBe("applied");
-    expect(reason(fturn([applyFilterRaw({ kind: "dynamicView", id: -3 }, "zone")])[0])).toBe("unsupported_target");
+    // 139 D-23: an AI view id is filterable once it exists in the session (see foldSession.dv.spec FOLDDV-6); unknown -> not found
+    expect(reason(fturn([applyFilterRaw({ kind: "dynamicView", id: -3 }, "zone")])[0])).toBe("target_not_found");
     expect(reason(fturn([applyFilterRaw({ kind: "dynamicView", id: 91 }, "zone")])[0])).toBe("target_not_found");
   });
   it("FOLDF-7: clear_filter checks", () => {

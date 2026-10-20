@@ -69,3 +69,16 @@ describe("size constants", () => {
     expect(isSmallAiTile(AI_ASSISTANT_DEFAULT_SIZE)).toBe(false);
   });
 });
+
+describe("computeChangeCounts dynamic views (139)", () => {
+  it("CNTDV-1: counts AI views added and saved views removed, with names", () => {
+    const d: SessionDerived = {
+      ...EMPTY_DERIVED,
+      addedDynamicViews: [{ id: -3, name: "AI view", spec: { baseTableId: 5 }, baseTableId: 5, columns: [], aggregated: false }],
+      removedDynamicViewIds: new Set([90]),
+    };
+    const r = computeChangeCounts(d, { widgets: [], layers: [], dynamicViews: [{ id: 90, name: "Saved view" }] });
+    expect([r.added, r.removed]).toEqual([1, 1]);
+    expect(r.removedNames).toContain("Saved view");
+  });
+});

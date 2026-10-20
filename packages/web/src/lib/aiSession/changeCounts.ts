@@ -11,7 +11,7 @@ export type AiChangeCounts = { added: number; edited: number; removed: number; r
  */
 export function computeChangeCounts(
   derived: SessionDerived,
-  saved: { widgets: readonly WidgetDto[]; layers: readonly DashboardLayerDto[] },
+  saved: { widgets: readonly WidgetDto[]; layers: readonly DashboardLayerDto[]; dynamicViews?: readonly { id: number; name: string }[] },
 ): AiChangeCounts {
   const removedNames: string[] = [];
   for (const id of derived.removedWidgetIds) {
@@ -29,10 +29,14 @@ export function computeChangeCounts(
           : `Layer ${id}`;
     removedNames.push(name);
   }
+  for (const id of derived.removedDynamicViewIds) {
+    const v = saved.dynamicViews?.find((x) => x.id === id);
+    if (v) removedNames.push(v.name);
+  }
   return {
-    added: derived.addedWidgets.length + derived.addedLayers.length,
+    added: derived.addedWidgets.length + derived.addedLayers.length + derived.addedDynamicViews.length,
     edited: derived.aiEditedWidgetIds.size + derived.aiEditedLayerIds.size,
-    removed: derived.removedWidgetIds.size + derived.removedLayerIds.size,
+    removed: derived.removedWidgetIds.size + derived.removedLayerIds.size + derived.removedDynamicViewIds.size,
     removedNames,
   };
 }
