@@ -20,6 +20,9 @@
  * 137: run/draft/highlight are shared by every AI widget on the dashboard (D-10); epoch lets the
  * runner drop a late result after reset().
  *
+ * 139: dvNonce (per-tab, regenerated on reset) + dvGen (per-view generation) name AI views server-side;
+ * lib/aiDv registers a sink (setAiDvSink) so fold changes and resets can DROP views (the store never calls the API).
+ *
  * Cap (D-06): the oldest turn is squashed into baseEntries (never shift()-ed away) because
  * later turns may depend on its ops.
  */
@@ -30,6 +33,7 @@ import type {
 import { AI_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
 import { evaluateTurn, foldSession, isFilterOp } from "../lib/aiSession/foldSession";
 import { useWidgetActionStore } from "./widgetActionStore";
+import { AI_FOLLOWUP_MAX, AI_FOLLOWUP_MAX_CHARS, type AiDvOutputColumn } from "@kinetica-bi/shared";
 
 export type AiRun = { status: "idle" | "running"; question: string; startedAt: number; line: string; waitSeconds?: number };
 const IDLE_RUN: AiRun = { status: "idle", question: "", startedAt: 0, line: "" };
@@ -43,7 +47,26 @@ export function setAiFilterSink(sink: AiFilterSink | null): void {
   aiFilterSink = sink;
 }
 
+/** 139: lib/aiDv registers here so fold changes and resets can DROP AI views (the store never calls the API). Default none. */
+export type AiDvSink = { onDerived(derived: SessionDerived): void; onReset(): void };
+let aiDvSink: AiDvSink | null = null;
+export function setAiDvSink(sink: AiDvSink | null): void {
+  aiDvSink = sink;
+}
+const newDvNonce = (): string => {
+  const b = new Uint8Array(4);
+  crypto.getRandomValues(b);
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+};
+
 export type AiSessionState = {
+  /** 139: random per-session (per-tab) nonce for AI view names (D-16). */
+  dvNonce: string;
+  dvGen: Record<number, number>;
+  dvColumns: Record<number, AiDvOutputColumn[]>;
+  bumpDvGen(tempId: number): void;
+  setDvColumns(tempId: number, cols: AiDvOutputColumn[]): void;
+  appendFollowUps(turnId: string, followUps: string[]): void;
   dashboardId: number | null;
   baseEntries: TurnEntry[];
   droppedCount: number;
@@ -143,6 +166,28 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   ...initial,
   nextTempId: -1,
   epoch: 0,
+  dvNonce: newDvNonce(),
+  dvGen: {},
+  dvColumns: {},
+
+  bumpDvGen: (tempId) => set((s) => ({ dvGen: { ...s.dvGen, [tempId]: Math.min(999, (s.dvGen[tempId] ?? 0) + 1) } })),
+  setDvColumns: (tempId, cols) => {
+    if (tempId >= 0) return;
+    set((s) => ({ dvColumns: { ...s.dvColumns, [tempId]: cols } }));
+  },
+  appendFollowUps: (turnId, followUps) =>
+    set((s) => {
+      const ti = s.turns.findIndex((t) => t.id === turnId);
+      const t = s.turns[ti];
+      if (!t) return s;
+      const merged: string[] = [];
+      for (const f of [...(t.chat?.followUps ?? []), ...followUps.map((x) => x.slice(0, AI_FOLLOWUP_MAX_CHARS))]) {
+        if (!merged.includes(f)) merged.push(f);
+      }
+      const turns = s.turns.slice();
+      turns[ti] = { ...t, chat: { status: "ok", ...t.chat, followUps: merged.slice(0, AI_FOLLOWUP_MAX) } };
+      return { turns };
+    }),
 
   applyTurn: (input, baseline) => {
     if (get().dashboardId !== null && baseline.dashboardId !== get().dashboardId) get().reset();
@@ -180,6 +225,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const derived = foldSession(baseline, all);
     set({ dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
+    aiDvSink?.onDerived(derived);
     return { turnId: turn.id, entries };
   },
 
@@ -191,10 +237,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     set({ cursor, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
     if (from !== cursor) aiFilterSink?.onCursorMove(from, cursor, s.turns, s.baseEntries);
+    if (from !== cursor) aiDvSink?.onDerived(derived);
   },
 
   reset: () => {
-    set({ ...initial, nextTempId: get().nextTempId, epoch: get().epoch + 1 });
+    aiDvSink?.onReset();
+    set({ ...initial, nextTempId: get().nextTempId, epoch: get().epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {} });
     useWidgetActionStore.getState().clearControl(AI_SOURCE_ID);
   },
 
