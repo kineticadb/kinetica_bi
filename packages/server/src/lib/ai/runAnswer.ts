@@ -9,6 +9,7 @@ import { getEffectivePermissions } from "../rbacDb";
 import { principalForSession, SessionEndedError } from "../exportRunner";
 import { AI_USER_MESSAGES, runAgentLoop, type AgentLoopResult } from "./agentLoop";
 import { buildConversationMessages, buildSystemParts, projectSnapshot } from "./context";
+import { gatewayDvLimits } from "./dvDeps";
 import { createLiveSchema } from "./liveSchema";
 import { parseReplyTrailer, toChoiceClarification } from "./replyTrailer";
 import { getAiProviderFactory } from "./providers";
@@ -101,7 +102,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           canViewDashboard: (u, id) => canViewDashboard(u, id),
           dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
           approvals: body.approvals,
-          aiDv: { maxRecords: config.dvMaxRecords, maxJoins: config.dvMaxJoins, maxPerSession: config.dvMaxPerSession },
+          aiDv: gatewayDvLimits(config),
           dynamicViewInfo: (id) => {
             const r = getDashboardDynamicView(id);
             return r && r.dashboard_id === input.dashboard.id ? { name: r.name, columns: r.columns_json ?? null, sourceTableId: r.source_table_id } : undefined;
