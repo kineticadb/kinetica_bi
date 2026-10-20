@@ -271,6 +271,9 @@ export function useCombinationOrchestrator(
         if (!isTriggerType(w.type)) continue;
         const tableId = w.config.tableId as number | undefined;
         if (tableId === undefined) continue; // dv-bound = Phase 94 scope
+        // 139 UAT: dv-bound widgets also carry their base tableId (dual-write), so skip them here like dv-bound
+        // layers below. Otherwise, while the view rebuilds, the widget binds to the TABLE's filter view and queries it.
+        if (typeof w.config.dynamicViewId === "number") continue;
 
         const cfg = w.type === "calendar" ? coalesceCalendarFilterSelection(w.config) : (w.config.filterSelection as FilterSelectionConfig | undefined);
         const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;

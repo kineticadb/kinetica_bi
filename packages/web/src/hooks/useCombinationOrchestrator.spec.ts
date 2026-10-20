@@ -2105,3 +2105,38 @@ describe("Phase 139 — AI-view drill filters (ORCHDV-1..3)", () => {
     expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1);
   });
 });
+
+describe("139 UAT issue 1 — dv-bound widgets never bind to a TABLE combination", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_t_v", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  // Dual-write shape (ChartConfigPanel + 139 makeSessionWidget): a dv-bound widget ALSO carries its base tableId.
+  const dualWrite = (id: number, dvId: number): WidgetDto => {
+    const w = makeDvWidget({ id, dynamicViewId: dvId });
+    return { ...w, config: { ...w.config, tableId: TABLE_A } };
+  };
+
+  for (const [label, dvId] of [["AI view", -101], ["saved view", DV_ID]] as const) {
+    it(`DVTBL-1 (${label}): a base-table filter while the view is pending does not map the widget to the table's filter view`, async () => {
+      act(() => { useDynamicViewStore.setState((s) => ({ views: { ...s.views, [dvId]: { status: "pending", viewName: `_kbi_dv_${dvId}` } }, dynamicViewVersion: s.dynamicViewVersion + 1 })); });
+      useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+      renderHook(() => useCombinationOrchestrator(DASH_ID, [dualWrite(10, dvId)], [], []));
+      bumpFilterVersion();
+      advanceDebounce();
+      await act(async () => { await Promise.resolve(); });
+      const tableHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+      expect(useFilterCombinationStore.getState().vizToHash["w:10"]).not.toBe(tableHash);
+      expect((materializeFilter as Mock).mock.calls.some((c) => c[0]?.tableId === TABLE_A)).toBe(false);
+    });
+  }
+});
