@@ -532,7 +532,8 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
+    // 139 D-03: non-aggregated fixture (pins the unchanged source rule)
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100, template_sql: "SELECT * FROM {view}" });
     const { cookie } = makeSessionCookie();
 
     const res = await agent
@@ -662,7 +663,8 @@ describe("POST /api/dynamic-view/materialize — AUTH_MODE=password", () => {
 
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
-    const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
+    // 139 D-03: non-aggregated fixture (pins the unchanged source rule)
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100, template_sql: "SELECT * FROM {view}" });
     const { cookie } = makeSessionCookie();
 
     const res = await agent
@@ -1056,5 +1058,134 @@ describe("DVCOMBO server — combination_key threads into the dv filter-view loo
 
     const statements = sqlStatements(fetchMock);
     expect(statements[0]).toContain(`_c${hashKey8(KEY)}`);
+  });
+});
+
+describe("D-02/D-03 aggregated saved views (139)", () => {
+  beforeEach(() => {
+    vi.stubEnv("AUTH_MODE", "password");
+    cleanFixtures();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const post = async (agent: Awaited<ReturnType<typeof buildTestApp>>, id: number) => {
+    const { cookie } = makeSessionCookie();
+    return agent.post("/api/dynamic-view/materialize").set("Cookie", cookie).send({ dynamic_view_id: id });
+  };
+
+  it("RDV-1: filtered, source over cap, output fits -> preflight then CREATE on the filter view", async () => {
+    let n = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      n += 1;
+      if (n === 1) return respond(countResult(5000));
+      if (n === 2) return respond(countResult(40));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
+    const res = await post(agent, dv.id);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "materialized", row_count: 40 });
+    expect(res.body.view_name).toMatch(/^_kbi_dv_u/);
+    const st = sqlStatements(fetchMock);
+    expect(st.length).toBe(3);
+    expect(st[1]).toMatch(/^\/\* kbi-ai:dvp-/);
+    expect(st[1]).toContain("AS kbi_q LIMIT 101");
+    expect(st[2]).toMatch(/^\/\* kbi-ai:dvp-\S+ \*\/ CREATE OR REPLACE MATERIALIZED VIEW .* FROM _kbi_filt_u\w+ GROUP BY vendor/);
+  });
+
+  it("RDV-2: filtered, output over cap -> over_threshold/exceeds_max_records + DROP, no CREATE", async () => {
+    let n = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      n += 1;
+      if (n === 1) return respond(countResult(5000));
+      if (n === 2) return respond(countResult(101));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
+    const res = await post(agent, dv.id);
+    expect(res.body).toEqual({ status: "over_threshold", reason: "exceeds_max_records", row_count: 101 });
+    const st = sqlStatements(fetchMock);
+    expect(st[st.length - 1]).toMatch(/^DROP TABLE IF EXISTS _kbi_dv_u/);
+    expect(st.some((s) => s.includes("CREATE"))).toBe(false);
+  });
+
+  it("RDV-3: unfiltered, base over cap, output fits -> builds against the base table", async () => {
+    let n = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      n += 1;
+      if (n === 1) return respond(kineticaTableNotFound("_kbi_filt_dummy"));
+      if (n === 2) return respond(countResult(5000));
+      if (n === 3) return respond(countResult(12));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
+    const res = await post(agent, dv.id);
+    expect(res.body).toMatchObject({ status: "materialized", row_count: 12 });
+    const st = sqlStatements(fetchMock);
+    expect(st[3]).toContain("FROM ki_home.events GROUP BY vendor");
+  });
+
+  it("RDV-4: unfiltered, output over cap -> over_threshold/no_filter + DROP, no CREATE", async () => {
+    let n = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      n += 1;
+      if (n === 1) return respond(kineticaTableNotFound("_kbi_filt_dummy"));
+      if (n === 2) return respond(countResult(5000));
+      if (n === 3) return respond(countResult(500));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100 });
+    const res = await post(agent, dv.id);
+    expect(res.body).toEqual({ status: "over_threshold", reason: "no_filter", row_count: 500 });
+    const st = sqlStatements(fetchMock);
+    expect(st[st.length - 1]).toMatch(/^DROP TABLE IF EXISTS _kbi_dv_u/);
+    expect(st.some((s) => s.includes("CREATE"))).toBe(false);
+  });
+
+  it("RDV-5: non-aggregated template over cap runs NO output preflight", async () => {
+    let n = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      n += 1;
+      if (n === 1) return respond(countResult(5000));
+      return respond(kineticaOk());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const dv = seedDynamicView(dashId, tableId, { max_records: 100, template_sql: "SELECT * FROM {view}" });
+    const res = await post(agent, dv.id);
+    expect(res.body).toEqual({ status: "over_threshold", reason: "exceeds_max_records", row_count: 5000 });
+    const st = sqlStatements(fetchMock);
+    expect(st.length).toBe(2);
+    expect(st.some((s) => s.includes("kbi_q"))).toBe(false);
+  });
+
+  it("RDV-6: GET list returns derived aggregated flag", async () => {
+    const agent = await buildTestApp();
+    const { dashId, tableId } = seedFixture();
+    const a = seedDynamicView(dashId, tableId, { name: "agg" });
+    const b = seedDynamicView(dashId, tableId, { name: "plain", template_sql: "SELECT * FROM {view}" });
+    const { cookie } = makeSessionCookie();
+    const res = await agent.get(`/api/dashboards/${dashId}/dynamic-views`).set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    const byId = Object.fromEntries(res.body.dynamic_views.map((r: { id: number }) => [r.id, r]));
+    expect(byId[a.id].aggregated).toBe(true);
+    expect(byId[b.id].aggregated).toBe(false);
+    const { aggregated: _x, ...rest } = byId[a.id];
+    expect(rest).toEqual(getDashboardDynamicView(a.id));
   });
 });

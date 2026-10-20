@@ -1,7 +1,7 @@
 // env first — see env.ts: must evaluate before modules that fail-fast on env
 // at import time (sessionStore.ts SESSION_ENCRYPTION_KEY boot validation).
 import "./env";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
@@ -14,6 +14,8 @@ import {
   verifyKineticaCredentials,
   type AuthedRequest,
 } from "./auth";
+import { isTableNotFoundError, decodeCountResult, isAggregatedTemplate, decideThreshold, decideAfterPreflight, buildOutputCountSql } from "./lib/dvThreshold";
+import { cancelKineticaJobsByTag } from "./lib/kineticaJobs";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
 import { createViewColumnsCache, buildViewColumnsProbeSql, parseProbeColumns } from "./lib/viewColumns";
@@ -1753,7 +1755,8 @@ export const createApp = async (): Promise<express.Express> => {
         return res.status(404).json({ error: "Dashboard not found." });
       }
       const rows = listDashboardDynamicViews(dashboardId);
-      return res.json({ dynamic_views: rows });
+      // 139 D-03: derived (not stored) - lets the web fast-path send aggregated views to the server
+      return res.json({ dynamic_views: rows.map((r) => ({ ...r, aggregated: isAggregatedTemplate(r.template_sql) })) });
     })
   );
 
@@ -1929,29 +1932,6 @@ export const createApp = async (): Promise<express.Express> => {
   //   single SELECT 1 probe up-front to choose between filter-view and
   //   bare-table substitution.
 
-  // ---- Helper: detect "table-not-found" errors from Kinetica ---------------
-  // Same matcher used by createOrReplaceMaterialized's race-recovery path
-  // (lib/materializedView.ts § isReplaceRace). Centralising the regex here
-  // keeps the two consumers in sync.
-  const isTableNotFoundError = (err: unknown): boolean => {
-    const msg = (err as Error)?.message ?? "";
-    // Kinetica returns several distinct error codes for "object/table doesn't exist"
-    // depending on which subsystem hit the miss:
-    //   - TM/SMc:1078: Table Manager / Schema Memory miss (filter-view CREATE OR REPLACE
-    //     race; persistent table lookup).
-    //   - S/SDc:1513: Schema / Schema Database error 1513 — typical for SELECT against a
-    //     materialized-view that doesn't exist (the no-filter-yet case for Preview/
-    //     materialize probes). Surfaced as: "Object '<name>' not found (S/SDc:1513)".
-    //   - Bare "Object '<name>' not found" / "Could not find the table" prose for
-    //     defense-in-depth across Kinetica versions that may not include a code suffix.
-    return (
-      msg.includes("TM/SMc:1078") ||
-      msg.includes("S/SDc:1513") ||
-      /Could not find the table/i.test(msg) ||
-      /Object\s+'[^']*'\s+not\s+found/i.test(msg)
-    );
-  };
-
   // POST /api/dynamic-view/preview — one-shot read; does NOT create a permanent view.
   app.post(
     "/api/dynamic-view/preview",
@@ -2115,12 +2095,6 @@ export const createApp = async (): Promise<express.Express> => {
         combinationKey: dvCombinationKey,
       });
 
-      // Decode a column-major COUNT(*) result. Kinetica returns column_1: [N].
-      const decodeCount = (result: Record<string, unknown> | null): number => {
-        const col = result?.["column_1"] as unknown[] | undefined;
-        const cell = Array.isArray(col) ? col[0] : undefined;
-        return typeof cell === "number" ? cell : typeof cell === "string" ? Number(cell) : 0;
-      };
       const dropStale = () =>
         kineticaSqlHelper(authedReq, `DROP TABLE IF EXISTS ${dynamicViewName}`, {
           route: "POST /api/dynamic-view/materialize",
@@ -2140,6 +2114,9 @@ export const createApp = async (): Promise<express.Express> => {
       const baseRef = table.schema ? `${table.schema}.${table.name}` : table.name;
       let targetRef: string;
       let responseRowCount: number;
+      // 139 D-02/D-03: aggregated templates over the source cap get an output-count preflight.
+      const aggregated = isAggregatedTemplate(row.template_sql);
+      let needsPreflight = false;
 
       let filterCountResult: Record<string, unknown> | null = null;
       let filterViewExists = true;
@@ -2156,12 +2133,14 @@ export const createApp = async (): Promise<express.Express> => {
       }
 
       if (filterViewExists) {
-        const rowCount = decodeCount(filterCountResult);
+        const rowCount = decodeCountResult(filterCountResult);
         // max_records === 0 → UNLIMITED: skip the threshold entirely.
-        if (row.max_records > 0 && rowCount >= row.max_records) {
+        const d = decideThreshold({ maxRecords: row.max_records, sourceCount: rowCount, sourceKind: "filter", aggregated });
+        if (d.kind === "over") {
           await dropStale();
           return res.json({ status: "over_threshold", reason: "exceeds_max_records", row_count: rowCount });
         }
+        needsPreflight = d.kind === "preflight";
         targetRef = expectedFilterViewName;
         responseRowCount = rowCount;
       } else {
@@ -2169,7 +2148,7 @@ export const createApp = async (): Promise<express.Express> => {
         // the fallback and report row_count.
         let baseCount: number;
         try {
-          baseCount = decodeCount(
+          baseCount = decodeCountResult(
             (await kineticaSqlHelper(authedReq, `SELECT COUNT(*) FROM ${baseRef}`, {
               route: "POST /api/dynamic-view/materialize",
               op: "DYNAMIC_MATERIALIZE",
@@ -2183,10 +2162,12 @@ export const createApp = async (): Promise<express.Express> => {
           throw baseErr;
         }
         // Unlimited (0) → always use base. Otherwise only when base is under the cap.
-        if (row.max_records > 0 && baseCount >= row.max_records) {
+        const d = decideThreshold({ maxRecords: row.max_records, sourceCount: baseCount, sourceKind: "base", aggregated });
+        if (d.kind === "over") {
           await dropStale();
           return res.json({ status: "over_threshold", reason: "no_filter" });
         }
+        needsPreflight = d.kind === "preflight";
         targetRef = baseRef;
         responseRowCount = baseCount;
       }
@@ -2205,14 +2186,61 @@ export const createApp = async (): Promise<express.Express> => {
         throw err;
       }
 
-      await createOrReplaceMaterialized({
-        req: authedReq,
-        view: dynamicViewName,
-        sqlBody: substituted,
-        ttl: DEFAULT_VIEW_TTL_MINUTES,
-        route: "POST /api/dynamic-view/materialize",
-        op: "DYNAMIC_MATERIALIZE",
-      });
+      let preflightTag: string | undefined;
+      let preflightSignal: AbortSignal | undefined;
+      if (needsPreflight) {
+        const tag = `dvp-${randomUUID()}`;
+        const ac = new AbortController();
+        const onClose = () => {
+          if (!res.writableEnded) {
+            ac.abort();
+            void cancelKineticaJobsByTag(authedReq, tag);
+          }
+        };
+        res.on("close", onClose);
+        try {
+          const countRes = (await kineticaSqlHelper(authedReq, buildOutputCountSql(substituted, row.max_records), {
+            route: "POST /api/dynamic-view/materialize",
+            op: "DYNAMIC_MATERIALIZE",
+            tag,
+            signal: ac.signal,
+          })) as Record<string, unknown> | null;
+          const outputCount = decodeCountResult(countRes);
+          const after = decideAfterPreflight({
+            maxRecords: row.max_records,
+            outputCount,
+            sourceKind: filterViewExists ? "filter" : "base",
+          });
+          if (after.kind === "over") {
+            await dropStale();
+            return res.json({ status: "over_threshold", reason: after.reason, row_count: outputCount });
+          }
+          responseRowCount = outputCount;
+          preflightTag = tag;
+          preflightSignal = ac.signal;
+          await createOrReplaceMaterialized({
+            req: authedReq,
+            view: dynamicViewName,
+            sqlBody: substituted,
+            ttl: DEFAULT_VIEW_TTL_MINUTES,
+            route: "POST /api/dynamic-view/materialize",
+            op: "DYNAMIC_MATERIALIZE",
+            tag: preflightTag,
+            signal: preflightSignal,
+          });
+        } finally {
+          res.off("close", onClose);
+        }
+      } else {
+        await createOrReplaceMaterialized({
+          req: authedReq,
+          view: dynamicViewName,
+          sqlBody: substituted,
+          ttl: DEFAULT_VIEW_TTL_MINUTES,
+          route: "POST /api/dynamic-view/materialize",
+          op: "DYNAMIC_MATERIALIZE",
+        });
+      }
       viewColumnsCache.delete(dynamicViewName);
 
       const expiresAt = Date.now() + DEFAULT_VIEW_TTL_MINUTES * 60 * 1000;
