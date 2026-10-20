@@ -159,4 +159,24 @@ describe("gateway: bind widgets and layers to dynamic views (139-10)", () => {
     const text = JSON.stringify(all.map((r) => (r.ok ? r.label : r.reasons)));
     expect(text).not.toContain("SECRETVAL_139");
   });
+
+  it("BINDDV-13: rebind to a SAVED view moves the shadow widget/layer tableId to the view's source table", async () => {
+    const saved = { ...SAVED90, sourceTableId: 6, columns: [{ name: "vendor", type: "string" }] };
+    const d = mk({}, snap(), saved);
+    expect((await run(d, rebind("widget", 43, 90))).ok).toBe(true);
+    expect(d.shadow.widgets.get(43)?.tableId).toBe(6);
+    const d2 = mk({}, snap(), { ...saved, columns: [{ name: "lat" }, { name: "lon" }] });
+    expect((await run(d2, rebind("layer", 70, 90))).ok).toBe(true);
+    expect(d2.shadow.layers.get(70)?.tableId).toBe(6);
+  });
+
+  it("BINDDV-14: a follow-up layer patch in the same answer is checked against the new source table", async () => {
+    // T5 has `fare`, T6 (zones) does not. After rebinding layer 70 to a saved view built on table 6, valueColumn=fare must be refused.
+    const saved = { ...SAVED90, sourceTableId: 6, columns: [{ name: "lat" }, { name: "lon" }] };
+    const d = mk({}, snap(), saved);
+    expect((await run(d, rebind("layer", 70, 90))).ok).toBe(true);
+    const r = await run(d, { op: "patch", action: { target: { kind: "layer", id: 70 }, configPatch: { valueColumn: "fare" } } });
+    expect(r).toMatchObject({ ok: false, stage: "live_schema" });
+    expect(reasons(r)).toContain("fare");
+  });
 });

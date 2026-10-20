@@ -612,6 +612,11 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       t.kind === "widget"
         ? `Pointed "${shadow.widgets.get(t.id)?.title ?? t.id}" at dynamic view "${vn}"`
         : `Pointed layer ${shadow.layers.get(t.id)?.title ? `"${shadow.layers.get(t.id)!.title}"` : t.id} at dynamic view "${vn}"`;
+    // 139 gap B: a saved view's source table comes from the dashboard lookup, not the snapshot-built shadow; record it so
+    // applyOpToShadow moves the entity's tableId and later ops in this answer are checked against the new table.
+    const rebindBase = dvMeta(rebindView)?.baseTableId;
+    const dvi = shadow.dvInfo.get(rebindView);
+    if (rebindBase !== undefined && dvi && dvi.baseTableId === undefined) dvi.baseTableId = rebindBase;
     applyOpToShadow(shadow, op);
     return { ok: true, op, label };
   }
