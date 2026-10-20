@@ -254,7 +254,7 @@ const applyFilter: MutateTool = {
   kind: "mutate",
   name: "apply_filter",
   description:
-    "Filter the dashboard like a click: every chart, records table and map layer on that table (or saved dynamic view) narrows. Omit tableId and dynamicViewId unless the user named a table or chart. Filtering an already-filtered column replaces its filter. operator: eq (value), in (values), between (from, to), isNull (no value).",
+    "Filter the dashboard like a click: every chart, records table and map layer on that table (or dynamic view, saved or AI-created) narrows. Omit tableId and dynamicViewId unless the user named a table or chart. Filtering an already-filtered column replaces its filter. operator: eq (value), in (values), between (from, to), isNull (no value).",
   args: applyFilterArgs,
   toOp(args) {
     const a = applyFilterArgs.parse(args);
