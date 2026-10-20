@@ -258,4 +258,19 @@ describe("FilterPanel AI tag", () => {
     render(<FilterPanel tableGroups={groups} dvGroups={[]} count={2} onCollapse={vi.fn()} onClearAllFilters={vi.fn()} />);
     expect(document.querySelectorAll(".widget-filter-badge")).toHaveLength(1);
   });
+
+  it("UIDV-1: a dv group with aiTag renders the AI badge after the title; without aiTag no badge", () => {
+    const chip = { text: "region = West", removeAriaLabel: "Remove filter region", onRemove: vi.fn() };
+    const dvGroups: FilterPanelGroupData[] = [
+      { title: "Trips by type", chips: [chip], onClearAll: vi.fn(), aiTag: true },
+      { title: "Saved view", chips: [chip], onClearAll: vi.fn() },
+    ];
+    render(<FilterPanel tableGroups={[]} dvGroups={dvGroups} count={2} onCollapse={vi.fn()} onClearAllFilters={vi.fn()} />);
+    const headers = Array.from(document.querySelectorAll(".filter-panel-group-header"));
+    const badge = headers[0].querySelector(".widget-filter-badge") as HTMLElement;
+    expect(badge.textContent).toBe("AI");
+    expect(badge.getAttribute("title")).toBe("Created by the AI assistant");
+    expect(badge.previousElementSibling?.textContent).toBe("Trips by type");
+    expect(headers[1].querySelector(".widget-filter-badge")).toBeNull();
+  });
 });

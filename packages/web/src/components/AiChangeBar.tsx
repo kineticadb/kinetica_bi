@@ -12,9 +12,12 @@ import AiDiscardDialog from "./AiDiscardDialog";
 export function AiChangeBar({
   savedWidgets,
   savedLayers,
+  savedDynamicViews,
 }: {
   savedWidgets: readonly WidgetDto[];
   savedLayers: readonly DashboardLayerDto[];
+  /** 139: saved views, so a session-removed saved view is named on hover. */
+  savedDynamicViews?: readonly { id: number; name: string }[];
 }) {
   const visible = useAiSessionStore(selectHasUnsavedAiChanges);
   const derived = useAiSessionStore((s) => s.derived);
@@ -24,6 +27,7 @@ export function AiChangeBar({
   const { added, edited, removed, removedNames } = computeChangeCounts(derived, {
     widgets: savedWidgets,
     layers: savedLayers,
+    dynamicViews: savedDynamicViews,
   });
   const allZero = added + edited + removed === 0;
 

@@ -108,4 +108,14 @@ describe("AiChangeBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
   });
+
+  it("UIDV-3: counts AI views added and saved views removed, naming the removed saved view", () => {
+    useAiSessionStore.getState().approveRemoval();
+    const dvAdd = { op: "add_dynamic_view", tempId: -3, name: "Trips by type", spec: { baseTableId: 5, groupBy: [{ column: "payment_type" }], aggregates: [{ fn: "count", as: "trips" }] }, columns: [{ name: "payment_type", type: "string" }, { name: "trips", type: "long" }], aggregated: true };
+    const b = { ...baselineFixture({ widgets: [...widgets], dynamicViewIds: [90] }), dynamicViewSources: { 90: 5 }, dynamicViewNames: { 90: "Late trips" } };
+    useAiSessionStore.getState().applyTurn({ prompt: "x", ops: [dvAdd, { op: "remove_dynamic_view", id: 90 }] }, b);
+    render(<AiChangeBar savedWidgets={widgets} savedLayers={[]} savedDynamicViews={[{ id: 90, name: "Late trips" }]} />);
+    expect(screen.getByRole("status").textContent).toMatch(/1 added/);
+    expect(screen.getByText("1 removed").getAttribute("title")).toContain("Late trips");
+  });
 });

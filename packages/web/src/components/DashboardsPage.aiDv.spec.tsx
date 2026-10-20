@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { seedDesignerStore } from "../test/seedAuthStore";
 import { useAiSessionStore } from "../store/aiSessionStore";
 import { useDynamicViewStore } from "../store/dynamicViewStore";
+import { useFilterStore } from "../store/filterStore";
 import { baselineFixture } from "../test/aiSessionHarness";
 import { __resetAiDvLifecycleForTest } from "../lib/aiDv/aiDvLifecycle";
 vi.mock("react-grid-layout", async (orig) => {
@@ -257,5 +258,24 @@ describe("DashboardsPage AI dynamic views (Phase 139 Plan 12)", () => {
     expect(dropDynamicView).not.toHaveBeenCalledWith(-3);
     await waitFor(() => expect(dropAiDynamicView).toHaveBeenCalledTimes(1));
     expect((vi.mocked(dropAiDynamicView).mock.calls[0][0] as any).tempId).toBe(-3);
+  });
+
+  it("UIDV-2: a dv filter group shows the display name plus the AI tag for an AI view only; the Kinetica name never renders", async () => {
+    await openDashboard();
+    turn([addDv]);
+    await waitFor(() => expect(useDynamicViewStore.getState().views[-3]?.status).toBe("materialized"));
+    const f = { column: "payment_type", value: "cash", dataType: "string" as const, addedAt: 1 };
+    act(() => {
+      useFilterStore.getState().addDvFilter(-3, f);
+      useFilterStore.getState().addDvFilter(90, { ...f, column: "fare_amount", value: "x" });
+    });
+    const aiName = await screen.findByText("Trips by type");
+    const aiItem = aiName.closest(".filter-bar-item") as HTMLElement;
+    expect(aiItem.querySelector(":scope > .widget-filter-badge")?.textContent).toBe("AI");
+    expect(aiName.nextElementSibling?.textContent).toBe("AI");
+    const savedItem = (await screen.findByText("Late trips")).closest(".filter-bar-item") as HTMLElement;
+    expect(savedItem.querySelector(":scope > .widget-filter-badge")).toBeNull();
+    expect(document.body.textContent).not.toContain("_kbi_ai_u");
+    expect(document.body.textContent).not.toContain("ai_view_x");
   });
 });

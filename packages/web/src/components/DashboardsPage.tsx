@@ -1176,6 +1176,7 @@ const DashboardOpen = ({
           onActivateWidget: activateOne,
         })),
         onClearAll: () => useFilterStore.getState().clearDvFilters(dvId),
+        aiTag: dvId < 0, // 139 D-20
       };
     });
 
@@ -1647,7 +1648,7 @@ const DashboardOpen = ({
         : <div className="dashboard-open-header">{dashboardHeader}</div>}
 
       {/* 137 D-15: full-width Keep/Discard bar, outside the (possibly portalled) header. */}
-      <AiChangeBar savedWidgets={widgets} savedLayers={savedLayers} />
+      <AiChangeBar savedWidgets={widgets} savedLayers={savedLayers} savedDynamicViews={savedDynamicViews} />
 
       {error && <div className="error">{error}</div>}
       {(tablesQuery.error || widgetsQuery.error || viewsQuery.error) && (() => {
@@ -1791,6 +1792,9 @@ const DashboardOpen = ({
               return (
                 <div key={`dv-${dvId}`} className="filter-bar-item">
                   <span className="filter-bar-table">{dvName}</span>
+                  {dvId < 0 && (
+                    <span className="widget-filter-badge" title="Created by the AI assistant">AI</span>
+                  )}
                   <div className="filter-bar-chips">
                     {dvFilters.map((f) => (
                       <FilterChip
