@@ -186,13 +186,17 @@ export function useCombinationOrchestrator(
 
   // --- 2d. quick-261009-jg6: stable primitive key for the dashboard's dynamic views (id:sourceTable) ---
   const dvSourcesKey = useMemo(
-    () => dynamicViews.map((dv) => `${dv.id}:${dv.source_table_id}`).sort().join(","),
+    // 139 gap C: an AI view's generation is part of the key (undo/redo = new gen, new Kinetica view name) so the
+    // effect re-runs and stale `dv:-N` entries are replaced. Positive-id saved views keep the exact old key.
+    () => dynamicViews.map((dv) => (dv.id < 0 && dv.ai ? `${dv.id}:${dv.source_table_id}:g${dv.ai.gen}` : `${dv.id}:${dv.source_table_id}`)).sort().join(","),
     [dynamicViews],
   );
 
   // Hashes whose materialize failed since the last filterVersion change. Not re-fired until the
   // filter changes — otherwise the setError -> dynamicViewVersion bump -> re-tick -> re-POST loop.
   const failedHashesRef = useRef<Set<string>>(new Set());
+  // 139 gap C: last-seen generation per AI view id, to detect undo/redo between ticks.
+  const aiGenSeenRef = useRef<Map<number, number>>(new Map());
   const lastTickFilterVersionRef = useRef<number | null>(null);
 
   // --- 3. AbortController-per-hash Map (cross-hash isolation; survives re-renders) ---
@@ -225,6 +229,28 @@ export function useCombinationOrchestrator(
       if (lastTickFilterVersionRef.current !== filterState.filterVersion) {
         failedHashesRef.current.clear();
         lastTickFilterVersionRef.current = filterState.filterVersion;
+      }
+      // 139 gap C: an AI view whose generation changed (undo/redo) has a new Kinetica view, so every combination
+      // entry built on its old generation is stale. Clear them (and unbind the vizs) BEFORE hashing so STEP D
+      // re-requests with the new aiGen and STEP E re-acquires. Saved (positive) views never enter this branch.
+      for (const dv of dynamicViewsRef.current) {
+        if (dv.id >= 0 || !dv.ai) continue;
+        const seen = aiGenSeenRef.current.get(dv.id);
+        aiGenSeenRef.current.set(dv.id, dv.ai.gen);
+        if (seen === undefined || seen === dv.ai.gen) continue;
+        const st = useFilterCombinationStore.getState();
+        for (const [hash, entry] of Object.entries(st.registry)) {
+          if (entry.sourceType !== "dv" || entry.sourceId !== dv.id) continue;
+          controllersRef.current.get(hash)?.abort();
+          controllersRef.current.delete(hash);
+          failedHashesRef.current.delete(hash);
+          const oldViewName = entry.viewName;
+          useFilterCombinationStore.getState().clearEntry(hash);
+          if (oldViewName) dropCombinationView({ dashboardId, viewName: oldViewName }).catch(() => {});
+          for (const [vizKey, h] of Object.entries(useFilterCombinationStore.getState().vizToHash)) {
+            if (h === hash) useFilterCombinationStore.getState().setVizHash(vizKey, undefined);
+          }
+        }
       }
       // Shapes read imperatively — avoids stale closure + re-render storm.
       const shapes = useSpatialFilterStore.getState().shapes;

@@ -2077,4 +2077,31 @@ describe("Phase 139 — AI-view drill filters (ORCHDV-1..3)", () => {
     expect(materializeFilter).not.toHaveBeenCalled();
     expect(useFilterCombinationStore.getState().registry[stableComboHash("dv", AI_ID, [dvFilter])]).toBeUndefined();
   });
+
+  it("ORCHDV-4 (gap C): a gen change on an AI view (undo/redo) re-requests the filter view with the new aiGen and replaces the stale entry", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: AI_ID });
+    seedDvMaterialized(AI_ID);
+    setDvFilter(AI_ID);
+    const hash = stableComboHash("dv", AI_ID, [dvFilter]);
+    (materializeFilter as Mock).mockResolvedValueOnce({ viewName: "_kbi_combo_gen0", expiresAt: 9_999_999_999 });
+    (materializeFilter as Mock).mockResolvedValueOnce({ viewName: "_kbi_combo_gen1", expiresAt: 9_999_999_999 });
+    const withGen = (gen: number): DynamicViewRow => ({ ...aiRow(), ai: { ...aiRow().ai!, gen } });
+    const { rerender } = renderHook(({ rows }) => useCombinationOrchestrator(DASH_ID, [w], [], rows), { initialProps: { rows: [withGen(0)] } });
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect((materializeFilter as Mock).mock.calls[0][0]).toMatchObject({ aiGen: 0 });
+    expect(useFilterCombinationStore.getState().registry[hash]?.viewName).toBe("_kbi_combo_gen0");
+
+    // undo then redo: same id, new generation (no filter change, no filterVersion bump)
+    rerender({ rows: [withGen(1)] });
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect((materializeFilter as Mock).mock.calls[1][0]).toMatchObject({ dynamicViewId: AI_ID, aiNonce: "0a1b2c3d", aiGen: 1 });
+    expect(useFilterCombinationStore.getState().registry[hash]?.viewName).toBe("_kbi_combo_gen1");
+    expect(useFilterCombinationStore.getState().vizToHash["w:10"]).toBe(hash);
+    expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1);
+  });
 });
