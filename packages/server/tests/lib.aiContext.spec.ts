@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AI_HEATMAP_RAMPS, AI_PALETTE_NAMES, AI_WIDGET_TYPES, type AskRequest } from "@kinetica-bi/shared";
 import {
+  AI_DV_RULES,
   AI_FILTER_RULES,
   AI_SYSTEM_RULES,
   AI_TRAILER_RULE,
@@ -97,6 +98,24 @@ describe("CTX snapshot + system parts", () => {
     for (const needle of ["Omit tableId unless the user named a table", "never guess a value", "clear_filter with no arguments"]) expect(AI_FILTER_RULES, needle).toContain(needle);
     expect(AI_SYSTEM_RULES.split(AI_FILTER_RULES)).toHaveLength(2);
     expect(AI_SYSTEM_RULES.split("\n").length).toBeLessThanOrEqual(30);
+  });
+  it("CTXDV-1 dynamic view rules: three lines, once, before the filter rules", () => {
+    expect(AI_DV_RULES.split("\n")).toHaveLength(3);
+    for (const needle of ["add_dynamic_view", "never SQL", "approximate", "inner/left", "wait for a filter", "remove_dynamic_view"]) expect(AI_DV_RULES, needle).toContain(needle);
+    expect(AI_SYSTEM_RULES.split(AI_DV_RULES)).toHaveLength(2);
+    expect(AI_SYSTEM_RULES.indexOf(AI_DV_RULES)).toBeLessThan(AI_SYSTEM_RULES.indexOf(AI_FILTER_RULES));
+    expect(AI_SYSTEM_RULES.split("\n").length).toBeLessThanOrEqual(30);
+    expect(AI_DV_RULES).not.toMatch(/#[0-9a-fA-F]{6}/);
+  });
+  it("CTXDV-2 projectSnapshot keeps {id,name} for saved views and carries session view columns", () => {
+    const r = req();
+    r.snapshot.dynamicViews = [
+      { id: 90, name: "Saved" },
+      { id: -3, name: "Trips by hour", baseTableId: 5, aggregated: true, columns: [{ name: "trips", type: "long" }] },
+    ] as never;
+    const v = projectSnapshot(r, { id: 1 });
+    expect(v.dynamicViews[0]).toEqual({ id: 90, name: "Saved" });
+    expect(v.dynamicViews[1]).toEqual({ id: -3, name: "Trips by hour", baseTableId: 5, aggregated: true, columns: [{ name: "trips", type: "long" }] });
   });
   it("CTX6-3 rules contain no hex or rgb literal", () => {
     expect(AI_SYSTEM_RULES).not.toMatch(/#[0-9a-fA-F]{6}/);

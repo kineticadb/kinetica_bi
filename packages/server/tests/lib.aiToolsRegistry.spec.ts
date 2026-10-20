@@ -20,12 +20,12 @@ function findBad(node: unknown, path = ""): string[] {
 const fake = (name: string): ReadTool => ({ kind: "read", name, description: "x", args: z.object({}), run: async () => ({ parts: [] }) });
 
 describe("tool registry", () => {
-  it("REG-1 schema mode has 17 tools", () => {
+  it("REG-1 schema mode has 18 tools", () => {
     const r = buildToolRegistry({ dataAccess: "schema" });
     expect(r.tools.map((t) => t.name).sort()).toEqual(
-      ["add_heatmap_layer", "add_widget", "apply_filter", "change_widget_type", "clear_filter", "describe_table", "edit_heatmap_layer", "edit_widget", "get_dashboard", "list_tables", "patch", "remove_dynamic_view", "remove_layer", "remove_widget", "rename_widget", "set_layer_visibility", "set_layout"],
+      ["add_dynamic_view", "add_heatmap_layer", "add_widget", "apply_filter", "change_widget_type", "clear_filter", "describe_table", "edit_heatmap_layer", "edit_widget", "get_dashboard", "list_tables", "patch", "remove_dynamic_view", "remove_layer", "remove_widget", "rename_widget", "set_layer_visibility", "set_layout"],
     );
-    expect(r.specs).toHaveLength(17);
+    expect(r.specs).toHaveLength(18);
     for (const t of r.tools) expect(r.byName.get(t.name)).toBe(t);
   });
   it("REG-2 flat schemas, walker has positive control", () => {

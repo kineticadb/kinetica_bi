@@ -37,7 +37,13 @@ export function projectSnapshot(req: AskRequest, dashboard: { id: number; title?
       if (l.visible !== undefined) o.visible = l.visible;
       return o;
     }),
-    dynamicViews: s.dynamicViews.map((d) => ({ id: d.id, name: d.name })),
+    dynamicViews: s.dynamicViews.map((d) => {
+      const o: DashboardView["dynamicViews"][number] = { id: d.id, name: d.name };
+      if (d.baseTableId !== undefined) o.baseTableId = d.baseTableId;
+      if (d.aggregated !== undefined) o.aggregated = d.aggregated;
+      if (d.columns !== undefined) o.columns = d.columns.map((c) => ({ name: c.name, type: c.type }));
+      return o;
+    }),
     filters: s.filters.map((f) => ({ source: { kind: f.source.kind, id: f.source.id }, column: f.column, op: f.op })),
   };
   if (dashboard.title !== undefined) view.title = dashboard.title;
@@ -47,6 +53,11 @@ export function projectSnapshot(req: AskRequest, dashboard: { id: number; title?
 // 137 D-20: follow-ups and ambiguity choices ride in the reply text (no extra tool, no extra request).
 export const AI_TRAILER_RULE = `- End every reply with a line "Follow-ups:" and then 2 or 3 short questions the user could ask next, one per line, each starting with "- ".
 - If the question is ambiguous, do not guess and make no changes: ask which one they mean, then add a line "Choices:" with 2 or 3 short options, one per line, each starting with "- ", before the Follow-ups lines.`;
+
+// 139: structured dynamic views (AISAFE-V20-04, D-05, D-09, D-19/D-24).
+export const AI_DV_RULES = `- For a summary or a join the dashboard lacks, call add_dynamic_view (never SQL): base table, optional inner/left joins on equal columns, columns OR groupBy + aggregates, filters, sort, limit. median and percentile are approximate (about 2%).
+- A new view follows the dashboard filters like a saved one. Summaries build without filters when the result is small; row views over large tables wait for a filter, so offer one (for example "Filter to the last 30 days").
+- To change a view: add the new one, point widgets and layers at it (edit_widget / edit_heatmap_layer with dynamicViewId), then remove_dynamic_view the old one; removing a view repoints or removes what uses it.`;
 
 // 138: filters go through the same path as a click (AIACT-V20-09). Values come from the user, never from data.
 export const AI_FILTER_RULES = `- To filter, call apply_filter: it narrows every chart, table and map on that table, exactly like a click. Omit tableId unless the user named a table or chart; if the column is on several tables you will be told to ask which one.
@@ -70,6 +81,7 @@ export const AI_SYSTEM_RULES = `You are the dashboard assistant for Kinetica BI.
 - If a call is rejected, fix it and call again with the same tempId or id; after a second rejection stop and tell the user what was skipped and what is available.
 - Removing saved widgets or layers may need the user to confirm; if asked, end your reply with the question.
 - A bar, line or pie chart can switch between those types; for anything else remove it and add a new one.
+${AI_DV_RULES}
 ${AI_FILTER_RULES}
 ${AI_TRAILER_RULE}`;
 

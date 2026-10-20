@@ -33,7 +33,7 @@ export type DashboardView = {
     binding?: Record<string, string | string[]>;
   }[];
   layers: { id: number; widgetId: number; title?: string; tableId?: number; renderMode?: string; visible?: boolean }[];
-  dynamicViews: { id: number; name: string }[];
+  dynamicViews: { id: number; name: string; baseTableId?: number; aggregated?: boolean; columns?: { name: string; type: string }[] }[];
   filters: { source: { kind: string; id: number }; column: string; op: string }[];
 };
 

@@ -162,7 +162,7 @@ describe("AI tools", () => {
   });
   it("TL-7 tool names", () => {
     expect(READ_TOOLS.map((t: ReadTool) => t.name)).toEqual(["get_dashboard", "list_tables", "describe_table"]);
-    expect(MUTATE_TOOLS.map((t: MutateTool) => t.name)).toEqual(["add_widget", "edit_widget", "rename_widget", "change_widget_type", "set_layout", "add_heatmap_layer", "edit_heatmap_layer", "set_layer_visibility", "patch", "apply_filter", "clear_filter", "remove_widget", "remove_layer", "remove_dynamic_view"]);
+    expect(MUTATE_TOOLS.map((t: MutateTool) => t.name)).toEqual(["add_widget", "edit_widget", "rename_widget", "change_widget_type", "set_layout", "add_heatmap_layer", "edit_heatmap_layer", "set_layer_visibility", "patch", "apply_filter", "clear_filter", "add_dynamic_view", "remove_widget", "remove_layer", "remove_dynamic_view"]);
   });
 });
 
@@ -187,5 +187,51 @@ describe("filter tools (138)", () => {
     expect(cf().toOp({ tableId: 5 })).toEqual({ op: "clear_filter", source: { kind: "table", id: 5 } });
     expect(cf().toOp({ tableId: 5, column: "vendor_id" })).toEqual({ op: "clear_filter", source: { kind: "table", id: 5 }, column: "vendor_id" });
     expect(cf().toOp({ column: "vendor_id" })).toEqual({ op: "clear_filter", column: "vendor_id" });
+  });
+});
+
+describe("dynamic view tools (139-10)", () => {
+  const adv = () => byName(MUTATE_TOOLS, "add_dynamic_view");
+  it("TOOLDV-1 add_dynamic_view maps to a spec op", () => {
+    const args = { tempId: -1, name: "Trips by hour", baseTableId: 5, groupBy: [{ column: "pickup_datetime", bucket: "hour", as: "pickup_hour" }], aggregates: [{ fn: "count", as: "trips" }], sort: [{ by: "trips", dir: "desc" }] };
+    const op = adv().toOp(adv().args.parse(args));
+    expect(op).toEqual({ op: "add_dynamic_view", tempId: -1, name: "Trips by hour", spec: { baseTableId: 5, groupBy: args.groupBy, aggregates: args.aggregates, sort: args.sort } });
+    expect(parseAiOp(op).ok).toBe(true);
+  });
+  it("TOOLDV-2 flat filters and joins map to spec items", () => {
+    const op = (f: Record<string, unknown>) => (adv().toOp(adv().args.parse({ tempId: -1, name: "v", baseTableId: 5, columns: [{ column: "a" }], filters: [f] })) as { spec: { filters: unknown[] } }).spec.filters[0];
+    expect(op({ table: 1, column: "borough", operator: "in", values: ["Queens", "Bronx"] })).toEqual({ from: 1, column: "borough", operator: "in", value: ["Queens", "Bronx"] });
+    expect(op({ column: "n", operator: "between", low: "1", high: "5" })).toEqual({ column: "n", operator: "between", value: ["1", "5"] });
+    expect(op({ column: "n", operator: "isNull" })).toEqual({ column: "n", operator: "isNull", value: null });
+    expect(op({ column: "n", value: "x" })).toEqual({ column: "n", operator: "eq", value: "x" });
+    const j = adv().toOp(adv().args.parse({ tempId: -1, name: "v", baseTableId: 5, columns: [{ table: 1, column: "b" }], joins: [{ tableId: 6, type: "left", on: [{ leftTable: 0, left: "z", right: "id" }] }] })) as { spec: { joins: unknown[]; columns: unknown[] } };
+    expect(j.spec.joins).toEqual([{ tableId: 6, type: "left", on: [{ leftFrom: 0, left: "z", right: "id" }] }]);
+    expect(j.spec.columns).toEqual([{ from: 1, column: "b" }]);
+  });
+  it("TOOLDV-3 no free-form fields: extra keys fail the strict args schema", () => {
+    const ok = { tempId: -1, name: "v", baseTableId: 5, columns: [{ column: "a" }] };
+    expect(adv().args.safeParse(ok).success).toBe(true);
+    expect(adv().args.safeParse({ ...ok, sql: "SELECT 1" }).success).toBe(false);
+    expect(adv().args.safeParse({ ...ok, aggregates: [{ fn: "sum", column: "a", as: "s", expression: "a*2" }] }).success).toBe(false);
+    expect(adv().args.safeParse({ ...ok, joins: [{ tableId: 6, type: "cross", on: [{ left: "a", right: "b" }] }] }).success).toBe(false);
+  });
+  it("TOOLDV-4 dynamicViewId on widget and layer tools", () => {
+    const aw = byName(MUTATE_TOOLS, "add_widget");
+    expect(aw.toOp(aw.args.parse({ tempId: -2, type: "bar", title: "T", dynamicViewId: -1, metric: "trips", aggregation: "sum", groupBy: "h" }))).toMatchObject({ op: "add_widget", config: { dynamicViewId: -1 } });
+    const cfg = (aw.toOp(aw.args.parse({ tempId: -2, type: "bar", title: "T", dynamicViewId: -1 })) as { config: Record<string, unknown> }).config;
+    expect("tableId" in cfg).toBe(false);
+    const ew = byName(MUTATE_TOOLS, "edit_widget");
+    expect(ew.toOp(ew.args.parse({ id: 42, dynamicViewId: -1 }))).toEqual({ op: "patch", action: { target: { kind: "widget", id: 42 }, configPatch: { dynamicViewId: -1 } } });
+    const ah = byName(MUTATE_TOOLS, "add_heatmap_layer");
+    const layer = ah.toOp(ah.args.parse({ tempId: -3, spatialMode: "latlon", latColumn: "lat", lonColumn: "lon", dynamicViewId: -1 })) as Record<string, unknown>;
+    expect(layer.dynamicViewId).toBe(-1);
+    expect("tableId" in layer).toBe(false);
+    const eh = byName(MUTATE_TOOLS, "edit_heatmap_layer");
+    expect(eh.toOp(eh.args.parse({ id: 70, dynamicViewId: -1 }))).toEqual({ op: "patch", action: { target: { kind: "layer", id: 70 }, configPatch: { dynamicViewId: -1 } } });
+  });
+  it("TOOLDV-5 remove_dynamic_view description covers dependents and confirmation", () => {
+    const d = byName(MUTATE_TOOLS, "remove_dynamic_view").description;
+    expect(d).toContain("pointed at its table");
+    expect(d).toContain("confirmation");
   });
 });

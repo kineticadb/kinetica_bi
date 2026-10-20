@@ -101,9 +101,10 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           canViewDashboard: (u, id) => canViewDashboard(u, id),
           dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
           approvals: body.approvals,
+          aiDv: { maxRecords: config.dvMaxRecords, maxJoins: config.dvMaxJoins, maxPerSession: config.dvMaxPerSession },
           dynamicViewInfo: (id) => {
             const r = getDashboardDynamicView(id);
-            return r && r.dashboard_id === input.dashboard.id ? { name: r.name, columns: r.columns_json ?? null } : undefined;
+            return r && r.dashboard_id === input.dashboard.id ? { name: r.name, columns: r.columns_json ?? null, sourceTableId: r.source_table_id } : undefined;
           },
         },
         dataAccess: config.dataAccess,
