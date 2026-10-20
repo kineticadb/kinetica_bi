@@ -5,3 +5,4 @@ export * from "./aiAsk";
 export * from "./layout";
 export * from "./aiCatalog";
 export * from "./aiFilter";
+export * from "./aiDynamicView";
