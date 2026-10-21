@@ -5,7 +5,7 @@
 // dashboard is never mutated, so revert/forward is "fold a different prefix" and Discard is
 // "drop the log". D-01's inverse/snapshot data is satisfied by replayability; inverses would be
 // dead code and a bug surface.
-import type { AiOp, AiClarification, AskSkipped, AiFilterSource, AiDvSpec, AiDvOutputColumn } from "@kinetica-bi/shared";
+import type { AiOp, AiClarification, AskSkipped, AskQueryEntry, AiFilterSource, AiDvSpec, AiDvOutputColumn } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
 import type { ActiveFilter } from "../../store/filterStore";
 
@@ -51,6 +51,7 @@ export type TurnChat = {
   errorCode?: string;
   message?: string; // D-09 inline note: the server's exact text
   retryable?: boolean;
+  queries?: AskQueryEntry[]; // 140 D-11: display only ("Ran N queries"); never sent to the provider
   filterNotes?: string[]; // display only, never sent to the provider
   emptyFilters?: { source: FilterSourceRef; column: string }[]; // D-17 "matched no rows" offers
 };

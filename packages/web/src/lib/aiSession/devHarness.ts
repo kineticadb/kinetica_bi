@@ -12,7 +12,7 @@ import {
   aiFilterSourceKey,
   aiDvIsAggregated,
 } from "@kinetica-bi/shared";
-import type { AiClarification, AiFilterItem, AiDvSpec } from "@kinetica-bi/shared";
+import type { AiClarification, AiFilterItem, AiDvSpec, AskQueryEntry } from "@kinetica-bi/shared";
 import { useDynamicViewStore } from "../../store/dynamicViewStore";
 import { useFilterStore, type ActiveFilter } from "../../store/filterStore";
 import type { TurnInput, TurnEntry } from "./types";
@@ -48,6 +48,7 @@ type ChatTurnOpts = {
   pickedChoice?: { clarificationIndex: number; optionId: string };
   message?: string;
   retryable?: boolean;
+  queries?: AskQueryEntry[];
 };
 
 type Harness = {
@@ -208,6 +209,7 @@ export function installAiDevHarness(
           pickedChoice: opts.pickedChoice,
           message: opts.message,
           retryable: opts.retryable,
+          ...(opts.queries ? { queries: opts.queries } : {}),
         },
       });
       reportPosition("chatTurn");
@@ -359,6 +361,7 @@ export function installAiDevHarness(
           `  chart colour names: ${AI_PALETTE_NAMES.join(", ")}`,
           `  heatmap ramps: ${AI_HEATMAP_RAMPS.join(", ")}`,
           "  chatTurn(prompt, answer, {followUps, clarifications, pickedChoice, status:'ok'|'error'|'cancelled', message, retryable, ops})  (no provider call)",
+          "  chatTurn(prompt, answer, { queries: [{ sql, rowCount, outcome: 'ok'|'refused'|'timed_out'|'cancelled'|'error', reason }] })  // 140: \"Ran N queries\" list, no provider",
           "  fakeRun(line, ms)  shows the running status line for ms (no provider call; Cancel does nothing here)",
           "  filter(kind 'table'|'dynamicView', id, column, op 'eq'|'in'|'between'|'isNull', value)  e.g. filter('table', 5, 'payment_type', 'eq', 'Credit'); in: [..]; between: [from, to]",
           "  clearFilter()  (all)   clearFilter(kind, id)   clearFilter(kind, id, column)",

@@ -206,4 +206,39 @@ describe("askRunner", () => {
     expect(st().turns[0].answer).toBe("Done.");
     expect([...st().highlight.ids].sort((a, b) => a - b)).toEqual([42, 50]);
   });
+
+  const qs = [
+    { sql: "SELECT zzq_marker FROM demo.t", rowCount: 2, outcome: "ok" as const },
+    { sql: "DELETE FROM demo.t", outcome: "refused" as const, reason: "only a single SELECT is allowed" },
+  ];
+  it("ASKRQ-1: result queries land on the turn chat", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([result({ queries: qs }), frame("done", { answerId: 1, outcome: "ok", steps: 1 })]),
+    );
+    await runAsk(mkCtx(), "q1");
+    expect(st().turns[0].chat?.queries).toEqual(qs);
+  });
+
+  it("ASKRQ-2: no or empty queries leaves no queries key", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(sseResponse([result(), frame("done", { answerId: 1, outcome: "ok", steps: 1 })]))
+      .mockResolvedValueOnce(sseResponse([result({ queries: [] }), frame("done", { answerId: 2, outcome: "ok", steps: 1 })]));
+    await runAsk(mkCtx(), "q1");
+    await runAsk(mkCtx(), "q2");
+    expect(st().turns).toHaveLength(2);
+    for (const t of st().turns) expect("queries" in (t.chat ?? {})).toBe(false);
+  });
+
+  it("ASKRQ-3: queries are never sent back to the provider", async () => {
+    const f = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(sseResponse([result({ queries: qs }), frame("done", { answerId: 1, outcome: "ok", steps: 1 })]))
+      .mockResolvedValueOnce(sseResponse([result({ answerId: 2 }), frame("done", { answerId: 2, outcome: "ok", steps: 1 })]));
+    await runAsk(mkCtx(), "q1");
+    await runAsk(mkCtx(), "q2");
+    expect(f).toHaveBeenCalledTimes(2);
+    const body = String((f.mock.calls[1][1] as RequestInit).body);
+    expect(body).toContain("q1");
+    expect(body).not.toContain("zzq_marker");
+  });
 });

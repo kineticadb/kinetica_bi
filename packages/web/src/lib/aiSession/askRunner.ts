@@ -56,6 +56,7 @@ function applyResult(ctx: AskContext, question: string, r: AskResultEvent): void
         clarifications: r.clarifications,
         skipped: r.skipped,
         applied: r.applied ?? [],
+        ...(r.queries && r.queries.length > 0 ? { queries: r.queries } : {}),
       },
     },
     ctx.getBaseline(),

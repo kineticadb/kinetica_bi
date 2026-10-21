@@ -276,6 +276,15 @@ describe("devHarness chat helpers (137-10)", () => {
     expect(t[0].entries).toHaveLength(0);
   });
 
+  it("HARNQ-1: chatTurn carries an optional queries list", () => {
+    const queries = [{ sql: "SELECT 1 FROM demo.t", rowCount: 1, outcome: "ok" as const }];
+    h().chatTurn("q", "a", { queries });
+    h().chatTurn("q2", "a2");
+    const t = useAiSessionStore.getState().turns;
+    expect(t[0].chat?.queries).toEqual(queries);
+    expect("queries" in (t[1].chat ?? {})).toBe(false);
+  });
+
   it("HARN7-2: error and cancelled turns are recorded and do not lock editing", () => {
     h().chatTurn("q", "", { status: "error", message: "The AI provider could not complete this answer. Try again.", retryable: true });
     h().chatTurn("q", "", { status: "cancelled" });
