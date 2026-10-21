@@ -59,6 +59,12 @@
   font-size: var(--text-xs);
 }
 
+/* 140 D-11: long SQL lines wrap inside the chat column (no colour: theme tokens untouched) */
+.ai-chat-query {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .ai-chat-choices,
 .ai-chat-followups,
 .ai-chat-turn-actions {

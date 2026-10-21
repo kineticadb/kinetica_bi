@@ -1,4 +1,5 @@
 // 137: all user-facing copy for the AI widget/bar lives here so UI and specs share exact text.
+import type { AskQueryEntry } from "@kinetica-bi/shared";
 
 export const AI_CHAT_COPY = {
   emptyHint: "Ask about this dashboard's data",
@@ -84,4 +85,27 @@ export function describeSkipped(s: SkippedLike): string | null {
   const what = /^[a-z_]+$/.test(s.label) ? (TOOL_NOUN[s.label] ?? "make a change") : s.label;
   const reason = s.reasons[0];
   return reason ? `Couldn't do: ${what} (${reason.slice(0, 160)})` : `Couldn't do: ${what}`;
+}
+
+/** 140 D-11: toggle label under an answer that ran queries. */
+export function formatQueriesToggle(n: number): string {
+  return n === 1 ? "Ran 1 query" : `Ran ${n} queries`;
+}
+
+/** 140 D-11: plain-text outcome of one query (no result grid). */
+export function describeQueryEntry(q: AskQueryEntry): string {
+  switch (q.outcome) {
+    case "ok": {
+      const n = q.rowCount ?? 0;
+      return `${n} ${n === 1 ? "row" : "rows"}`;
+    }
+    case "refused":
+      return `refused: ${q.reason ?? "not allowed"}`;
+    case "timed_out":
+      return "timed out";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return q.reason ? `failed: ${q.reason}` : "failed";
+  }
 }

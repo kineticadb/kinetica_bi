@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAiSessionStore } from "../../store/aiSessionStore";
 import { runAsk, cancelAsk, choiceQuestion, type AskContext } from "../../lib/aiSession/askRunner";
-import { AI_CHAT_COPY, formatElapsed, describeSkipped } from "../../lib/aiSession/chatText";
+import { AI_CHAT_COPY, formatElapsed, describeSkipped, formatQueriesToggle, describeQueryEntry } from "../../lib/aiSession/chatText";
 import { buildStarterQuestions, buildTemplateFollowUps } from "../../lib/aiSession/starterQuestions";
 import { useFilterStore } from "../../store/filterStore";
 import { currentFilter, clearFilterAsUser } from "../../lib/aiOps/aiFilterApplier";
@@ -108,6 +108,16 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
   // 138: re-render the zero-row clear offer when filters change (primitive selector).
   useFilterStore((s) => s.filterVersion);
   const logRef = useRef<HTMLDivElement>(null);
+  // 140 D-11: which turns have their "Ran N queries" list expanded (collapsed by default).
+  const [openQueries, setOpenQueries] = useState<ReadonlySet<string>>(() => new Set());
+  function toggleQueries(id: string) {
+    setOpenQueries((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     const el = logRef.current;
@@ -157,6 +167,26 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                       {n}
                     </div>
                   ))}
+                  {(chat?.queries ?? []).length > 0 && (
+                    <>
+                      <div className="ai-chat-turn-actions">
+                        <button
+                          type="button"
+                          className="ghost-sm"
+                          aria-expanded={openQueries.has(turn.id)}
+                          onClick={() => toggleQueries(turn.id)}
+                        >
+                          {formatQueriesToggle((chat?.queries ?? []).length)}
+                        </button>
+                      </div>
+                      {openQueries.has(turn.id) &&
+                        (chat?.queries ?? []).map((q, qi) => (
+                          <div key={`q-${qi}`} className="ai-chat-note muted ai-chat-query">
+                            {q.sql} {"\u2014"} {describeQueryEntry(q)}
+                          </div>
+                        ))}
+                    </>
+                  )}
                   {(chat?.emptyFilters ?? [])
                     .filter((e) => currentFilter(e.source, e.column) !== null)
                     .map((e) => (
