@@ -149,3 +149,22 @@ export async function guardQuery(sql: string, scope: GuardScope): Promise<GuardR
     return { ok: false, reason: GUARD_REASONS.unparseable };
   }
 }
+
+export function substituteViewAliases(
+  sql: string,
+  tables: readonly GuardTableRef[],
+  aliases: ReadonlyMap<string, string>,
+): { ok: true; sql: string } | { ok: false; reason: string } {
+  const cands = tables
+    .filter((t) => !t.schema && aliases.has(t.name))
+    .sort((a, b) => b.location - a.location);
+  let buf = Buffer.from(sql, "utf8");
+  for (const t of cands) {
+    const len = Buffer.byteLength(t.name);
+    if (buf.subarray(t.location, t.location + len).toString("utf8").toLowerCase() !== t.name) {
+      return { ok: false, reason: GUARD_REASONS.aliasUnresolved };
+    }
+    buf = Buffer.concat([buf.subarray(0, t.location), Buffer.from(aliases.get(t.name)!, "utf8"), buf.subarray(t.location + len)]);
+  }
+  return { ok: true, sql: buf.toString("utf8") };
+}

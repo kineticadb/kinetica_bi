@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  guardQuery, GUARD_REASONS, GUARD_MAX_SQL_CHARS, functionNotAllowed, tableNotInScope,
+  guardQuery, substituteViewAliases, GUARD_REASONS, GUARD_MAX_SQL_CHARS, functionNotAllowed, tableNotInScope,
 } from "../src/lib/ai/sqlGuard.js";
 
 const scope = { allowed: new Set(["demo.trips", "demo.zones", "dv_7", "aidv_101"]) };
@@ -126,5 +126,48 @@ describe("guardQuery columnNames", () => {
     const r = await guardQuery("SELECT vendor, t.Fare FROM demo.trips t", scope);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.columnNames).toEqual(expect.arrayContaining(["vendor", "fare"]));
+  });
+});
+
+const PH7 = "_kbi_dv_uann_d1_7";
+const PH101 = "_kbi_ai_uann_sabcd1234_n0a1b2c3d_101_g1";
+const aliases = new Map([["dv_7", PH7], ["aidv_101", PH101]]);
+async function sub(sql: string) {
+  const g = await guardQuery(sql, scope);
+  if (!g.ok) throw new Error(`guard refused: ${g.reason}`);
+  return substituteViewAliases(sql, g.tables, aliases);
+}
+
+describe("substituteViewAliases", () => {
+  it("SQG-S1 replaces a FROM alias", async () => {
+    expect(await sub("SELECT * FROM dv_7")).toEqual({ ok: true, sql: `SELECT * FROM ${PH7}` });
+  });
+  it("SQG-S2 replaces join + subquery aliases only", async () => {
+    expect(await sub("SELECT * FROM dv_7 d JOIN demo.trips t ON d.v = t.v WHERE t.z IN (SELECT z FROM aidv_101)")).toEqual({
+      ok: true,
+      sql: `SELECT * FROM ${PH7} d JOIN demo.trips t ON d.v = t.v WHERE t.z IN (SELECT z FROM ${PH101})`,
+    });
+  });
+  it("SQG-S3 leaves a column alias named like a view", async () => {
+    expect(await sub("SELECT vendor AS dv_7 FROM dv_7")).toEqual({ ok: true, sql: `SELECT vendor AS dv_7 FROM ${PH7}` });
+  });
+  it("SQG-S4 leaves a CTE named like a view", async () => {
+    const q = "WITH dv_7 AS (SELECT * FROM demo.trips) SELECT * FROM dv_7";
+    expect(await sub(q)).toEqual({ ok: true, sql: q });
+  });
+  it("SQG-S5 handles multi-byte literals before the reference", async () => {
+    expect(await sub("SELECT 'Zürich' AS c FROM aidv_101")).toEqual({ ok: true, sql: `SELECT 'Zürich' AS c FROM ${PH101}` });
+  });
+  it("SQG-S6 refuses a quoted alias", async () => {
+    expect(await sub('SELECT * FROM "dv_7"')).toEqual({ ok: false, reason: GUARD_REASONS.aliasUnresolved });
+  });
+  it("SQG-S7 round trip: pass 2 accepts physical names; pass 1 would refuse them", async () => {
+    const model = "SELECT * FROM dv_7 d JOIN demo.trips t ON d.v = t.v";
+    const s = await sub(model);
+    expect(s.ok).toBe(true);
+    const out = s.ok ? s.sql : "";
+    const pass2 = { allowed: new Set(["demo.trips", PH7.toLowerCase(), PH101.toLowerCase()]) };
+    expect(await guardQuery(out, pass2)).toMatchObject({ ok: true });
+    expect(await guardQuery(out, scope)).toMatchObject({ ok: false });
   });
 });
