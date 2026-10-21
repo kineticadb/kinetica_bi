@@ -43,6 +43,11 @@ Out of scope: Keep (141), generate + audit viewer page + live Gemini/Ollama UAT 
 - **D-15 Fixtures cover all four sources:** (a) data values in query results, (b) column names and table comments returned by the describe tools, (c) dashboard and widget titles in the snapshot, (d) markup in answers (markdown links, images, HTML), which must render as literal text (operator human-verify; answers already render as React text, `AiChat.tsx:154`).
 - **D-16 The canary no-egress test still passes in schema mode** across every tool and error path (roadmap SC4). In query mode, values intentionally reach the provider, but only through `run_query` and `get_column_profile`, within D-01/D-02.
 
+### Post-research decisions (operator, 2026-10-20, after 140-RESEARCH.md)
+- **D-17 Parser = `libpg-query`** (MIT; the real PostgreSQL parser as WASM, ~1.8 MB), added as a new server dependency. The first task adds it with a `parse("SELECT 1")` smoke spec and proves it loads under server vitest and in the deploy build. The server build uses `--packages=external`, so the WASM must ship in the deployed `node_modules`. Kinetica-only syntax it can't parse (QUALIFY, PIVOT, TOP, `LIMIT a,b`, `TABLE(fn())`, backticks) is refused with a rewrite hint (D-10).
+- **D-18 Kinetica SQL errors go to the model as categorized, fixed messages** (e.g. "unknown column <name>", "syntax error", "timed out", "cancelled"). Kinetica's raw error text is never forwarded to the provider.
+- **D-19 The model refers to dynamic views by aliases** `dv_<id>` (saved) and `aidv_<n>` (session AI views). The server swaps in the physical `_kbi_*` name, then re-runs the guard on the final SQL (a substitution bug can only cause a refusal). Physical names, which embed the username, never reach the provider.
+
 ### Claude's Discretion
 - Exact env names and defaults for D-02. Tool argument shapes (flat, per REG-2). The untrusted-data envelope format. The concrete list of "outside the rules" actions each fixture tries: for example, querying a table not on the dashboard, DML through `run_query`, a query tool in schema mode, removing saved content without confirmation, a cross-user view name, and exfiltration through a markdown image URL.
 - Whether `run_query` refusals count against D-04.
