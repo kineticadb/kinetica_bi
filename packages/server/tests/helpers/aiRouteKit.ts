@@ -9,6 +9,7 @@ import { FAKE_PROVIDER_BASE_URL, KEY_SENTINEL } from "./aiTestKit";
 const AI_ENV_KEYS = [
   "AI_ENABLED", "AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY", "AI_DATA_ACCESS", "AI_MAX_TOOL_STEPS", "AI_TIMEOUT_MS",
   "AI_MAX_ANSWERS_PER_USER_PER_HOUR", "AI_MAX_ANSWERS_PER_DAY", "AI_HISTORY_TURNS", "AI_TOOL_MODE",
+  "AI_QUERY_MAX_ROWS", "AI_QUERY_MAX_CHARS", "AI_QUERY_TIMEOUT_MS", "AI_QUERY_MAX_PER_ANSWER",
 ] as const;
 
 /** Enable AI via env BEFORE createApp() (config is read once at boot). Returns restore(). */

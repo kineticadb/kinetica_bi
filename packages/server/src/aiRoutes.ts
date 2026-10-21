@@ -21,7 +21,7 @@ import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 import { getAiConfig } from "./lib/aiConfig";
 import { AI_CONTRACT_VERSION } from "./lib/aiContract";
-import { admitAiAnswer, finalizeAiAnswer, type FinalizeInput } from "./lib/aiAudit";
+import { admitAiAnswer, finalizeAiAnswer, type AiQueryAuditEntry, type FinalizeInput } from "./lib/aiAudit";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getDashboard } from "./db";
 import { runAnswer } from "./lib/ai/runAnswer";
@@ -127,6 +127,7 @@ export function registerAiRoutes(app: Express): void {
         console.error("[ai] audit finalize failed", err instanceof Error ? err.message : "unknown");
       }
     };
+    // Probes only: run_query jobs (<requestId>-qNN) are cancelled by the query port via the abort signal (140).
     // Aborting the HTTP request does not stop a Kinetica job; cancel the answer's tagged jobs (best effort).
     const cancelJobs = (): void => {
       try {
@@ -143,6 +144,7 @@ export function registerAiRoutes(app: Express): void {
       }
     });
 
+    const queryLog: { current?: () => readonly AiQueryAuditEntry[] } = {};
     let fin: FinalizeInput | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
     let hardTimer: NodeJS.Timeout | undefined;
@@ -171,6 +173,7 @@ export function registerAiRoutes(app: Express): void {
           config,
           signal: ac.signal,
           sse,
+          queryLog,
         }),
         hardDeadline,
       ]);
@@ -187,6 +190,7 @@ export function registerAiRoutes(app: Express): void {
           tools: [],
           changes: { applied: [], rejected: [] },
           durationMs: Date.now() - started,
+          ...(queryLog.current ? { queries: [...queryLog.current()] } : {}),
         });
         res.end();
       } else {

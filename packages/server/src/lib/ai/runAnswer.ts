@@ -1,9 +1,10 @@
 // Phase 135-10: one admitted ask -> streamed SSE events + the FinalizeInput for the audit row. Never throws.
 // Events: status / step / result {answerId,text,ops,skipped,clarifications,followUps,applied} (ONLY on outcome ok, once) / error / done. Nothing from a non-ok answer is applied.
-import type { AskRequest } from "@kinetica-bi/shared";
-import { getDashboardDynamicView, listDashboardTables, listTables } from "../../db";
+import { AI_QUERY_LIST_MAX, type AskRequest } from "@kinetica-bi/shared";
+import { getDashboardDynamicView, listDashboardDynamicViews, listDashboardTables, listTables } from "../../db";
 import type { AiConfig } from "../aiConfig";
-import type { FinalizeInput } from "../aiAudit";
+import type { AiQueryAuditEntry, FinalizeInput } from "../aiAudit";
+import { listAiSessionViewsForSid } from "../aiSessionViews";
 import { canViewDashboard } from "../dashboardAccessDb";
 import { getEffectivePermissions } from "../rbacDb";
 import { principalForSession, SessionEndedError } from "../exportRunner";
@@ -11,12 +12,15 @@ import { AI_USER_MESSAGES, runAgentLoop, type AgentLoopResult } from "./agentLoo
 import { buildConversationMessages, buildSystemParts, projectSnapshot } from "./context";
 import { gatewayDvLimits } from "./dvDeps";
 import { createLiveSchema } from "./liveSchema";
+import { buildQueryScope, type QueryScope } from "./queryScope";
+import { createQueryPort, type QueryPort } from "./queryRunner";
 import { parseReplyTrailer, toChoiceClarification } from "./replyTrailer";
 import { getAiProviderFactory } from "./providers";
 import { defaultSleep } from "./retry";
 import { createShadow } from "./shadow";
 import type { createSseWriter } from "./sseWriter";
 import { buildToolRegistry } from "./tools/registry";
+import { QUERY_TOOLS } from "./tools/query";
 import type { LiveTableInfo } from "./tools/types";
 
 export type RunAnswerInput = {
@@ -31,6 +35,8 @@ export type RunAnswerInput = {
   sse: ReturnType<typeof createSseWriter>;
   now?: () => number;
   sleep?: (ms: number, s: AbortSignal) => Promise<void>;
+  /** 140-09: set by runAnswer once the query port exists so the route's hard-deadline finalize can still record the queries attempted. */
+  queryLog?: { current?: () => readonly AiQueryAuditEntry[] };
 };
 
 export type AiErrorCode = "AI_CAPPED" | "AI_RATE_LIMITED" | "AI_PROVIDER_ERROR" | "AI_CANCELLED" | "AI_SESSION_ENDED" | "AI_INTERNAL";
@@ -62,6 +68,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
   let finalize: FinalizeInput;
   let usage: { inputTokens?: number; outputTokens?: number } = {};
   let steps = 0;
+  let queryPort: QueryPort | undefined;
 
   try {
     const principal = () => principalForSession(sid);
@@ -73,9 +80,31 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       if (d.ok) dashboardTables.push(d.table);
     }
     const view = projectSnapshot(body, input.dashboard);
-    const system = buildSystemParts({ view, dashboardTables, maxToolSteps: config.maxToolSteps, dataAccess: config.dataAccess });
+    let queryRules: { maxRows: number; maxPerAnswer: number; views: QueryScope["views"] } | undefined;
+    if (config.dataAccess === "query") {
+      const scope = buildQueryScope({
+        username,
+        dashboardId: input.dashboard.id,
+        dashboardTables: listDashboardTables(input.dashboard.id).map((t) => ({ id: t.id, schema: t.schema, name: t.name })),
+        savedViews: listDashboardDynamicViews(input.dashboard.id).map((v) => ({ id: v.id, name: v.name, columns: v.columns_json })),
+        aiViews: listAiSessionViewsForSid(sid),
+        aiViewNames: new Map(body.snapshot.dynamicViews.filter((d) => d.id < 0).map((d) => [d.id, d.name] as [number, string])),
+      });
+      queryPort = createQueryPort({
+        requestId: input.requestId,
+        principal,
+        scope,
+        liveSchema,
+        limits: { maxRows: config.queryMaxRows, maxChars: config.queryMaxChars, timeoutMs: config.queryTimeoutMs, maxPerAnswer: config.queryMaxPerAnswer },
+        dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
+      });
+      const port = queryPort;
+      if (input.queryLog) input.queryLog.current = () => port.entries();
+      queryRules = { maxRows: config.queryMaxRows, maxPerAnswer: config.queryMaxPerAnswer, views: scope.views };
+    }
+    const system = buildSystemParts({ view, dashboardTables, maxToolSteps: config.maxToolSteps, dataAccess: config.dataAccess, ...(queryRules ? { query: queryRules } : {}) });
     const messages = buildConversationMessages(body.turns, body.question, config.historyTurns);
-    const registry = buildToolRegistry({ dataAccess: config.dataAccess });
+    const registry = buildToolRegistry({ dataAccess: config.dataAccess, extraTools: [...QUERY_TOOLS] });
     const shadow = createShadow(body.snapshot);
     const provider = getAiProviderFactory()(config);
 
@@ -92,6 +121,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
           registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
           liveSchema,
+          ...(queryPort ? { query: queryPort } : {}),
         },
         gateway: {
           username,
@@ -134,7 +164,15 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     if (result.outcome === "ok" && trailer) {
       const choice = toChoiceClarification(trailer.text, trailer.choices);
       const clarifications = choice && !result.clarifications.some((c) => c.kind === "choose_option") ? [...result.clarifications, choice] : result.clarifications;
-      sse.send("result", { answerId: input.auditId, text: trailer.text, ops: result.ops, skipped: result.skipped, clarifications, followUps: trailer.followUps, applied: result.applied });
+      const queries = queryPort
+        ? queryPort.entries().slice(0, AI_QUERY_LIST_MAX).map((q) => ({
+            sql: q.sql.slice(0, 8000),
+            ...(q.rowCount !== undefined ? { rowCount: q.rowCount } : {}),
+            outcome: q.outcome,
+            ...(q.reason ? { reason: q.reason.slice(0, 300) } : {}),
+          }))
+        : [];
+      sse.send("result", { answerId: input.auditId, text: trailer.text, ops: result.ops, skipped: result.skipped, clarifications, followUps: trailer.followUps, applied: result.applied, ...(queries.length > 0 ? { queries } : {}) });
     } else {
       const code = errorCodeFor(result);
       sse.send("error", { code, message: result.message ?? FALLBACK_MESSAGE[code] });
@@ -150,6 +188,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       tools: result.tools,
       changes: { applied: result.outcome === "ok" ? result.applied : [], rejected: result.rejected },
       durationMs: durationMs(),
+      ...(queryPort ? { queries: [...queryPort.entries()] } : {}),
     };
   } catch (e) {
     const ended = e instanceof SessionEndedError;
@@ -163,6 +202,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       tools: [],
       changes: { applied: [], rejected: [] },
       durationMs: durationMs(),
+      ...(queryPort ? { queries: [...queryPort.entries()] } : {}),
     };
   }
   sse.send("done", { answerId: input.auditId, outcome: finalize.outcome, steps: finalize.steps, usage });
