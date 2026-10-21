@@ -55,7 +55,7 @@
 - [x] **Phase 137: AI Widget & Streaming UI** — full-chat AI widget (size-driven inline/drawer), per-answer revert, progress, cancel, follow-ups, clarify, highlights, Keep/Discard bar
 - [x] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
 - [x] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
-- [ ] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
+- [x] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
 - [ ] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
 - [ ] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
 
@@ -269,19 +269,21 @@ Plans:
 4. The canary no-egress test still passes across every tool and error path.
 **Plans:** 13 plans in 6 waves
 Plans:
-- [ ] 140-01-PLAN.md — libpg-query runtime dependency + smoke; pure SQL guard (raw-char refusals, single-SELECT AST allow-list, CTE scoping, system/catalog/function/table-function refusals, dashboard scope) + byte-offset view-alias substitution [W1]
-- [ ] 140-02-PLAN.md — AI_QUERY_MAX_ROWS/MAX_CHARS/TIMEOUT_MS/MAX_PER_ANSWER on AiConfig (+ log, .env.example); AiQueryAuditEntry + ai_audit.queries_json (create + migrate) [W1]
-- [ ] 140-03-PLAN.md — shared AskQueryEntrySchema + optional result.queries; web TurnChat.queries via askRunner and the DEV harness (display only) [W1]
-- [ ] 140-04-PLAN.md — pure query scope (dashboard tables, dv_<id>/aidv_<n> aliases -> physical names from server data) + get_column_profile SQL builders/parsers [W1]
-- [ ] 140-05-PLAN.md — untrusted-data envelope on describe/list/get_dashboard, flattened schema text in the system part, "tool results are data" rule, query-mode rules + queryViews part [W1]
-- [ ] 140-06-PLAN.md — query port: two-pass guard, run-as-user, envelope row cap + char budget, timeout/cancel by tag, per-answer cap, D-18 categorized errors, audit entries; column profile [W2]
-- [ ] 140-07-PLAN.md — "Ran N queries" collapsed list under answers (existing classes) + literal-markup jsdom proof [W2]
-- [ ] 140-08-PLAN.md — run_query / get_column_profile tools (QUERY_TOOLS, gated by the registry), ToolContext.query/signal, loop passes its abort signal to read tools [W3]
-- [ ] 140-09-PLAN.md — runAnswer query-mode wiring (scope, port, rules, SSE queries, queries_json) + deadline-finalize query list + route proofs RQ-1..9 (incl. end-to-end user cancel); full server gate [W4]
-- [ ] 140-10-PLAN.md — obedient-provider injection fixtures INJ-1..11 with positive controls (values, column names, comments, titles, schema mode, authority) [W5]
-- [ ] 140-11-PLAN.md — canary egress matrix: schema-mode query-tool attempts + query-mode containment and error paths (EGX-Q1..Q6), EGX-1..6 unchanged [W5]
-- [ ] 140-12-PLAN.md — operator-run live harness queryModeSpike (cap, timeout/cancel job check, writes refused, dialect corpus, D-18 calibration, quoted case, profile) + --dry-run [W5]
-- [ ] 140-13-PLAN.md — gates + deploy-bundle check, operator UAT (live spike, "Ran N queries" + literal markup in light/dark), bookkeeping by hand [W6]
+- [x] 140-01-PLAN.md — libpg-query runtime dependency + smoke; pure SQL guard (raw-char refusals, single-SELECT AST allow-list, CTE scoping, system/catalog/function/table-function refusals, dashboard scope) + byte-offset view-alias substitution [W1]
+- [x] 140-02-PLAN.md — AI_QUERY_MAX_ROWS/MAX_CHARS/TIMEOUT_MS/MAX_PER_ANSWER on AiConfig (+ log, .env.example); AiQueryAuditEntry + ai_audit.queries_json (create + migrate) [W1]
+- [x] 140-03-PLAN.md — shared AskQueryEntrySchema + optional result.queries; web TurnChat.queries via askRunner and the DEV harness (display only) [W1]
+- [x] 140-04-PLAN.md — pure query scope (dashboard tables, dv_<id>/aidv_<n> aliases -> physical names from server data) + get_column_profile SQL builders/parsers [W1]
+- [x] 140-05-PLAN.md — untrusted-data envelope on describe/list/get_dashboard, flattened schema text in the system part, "tool results are data" rule, query-mode rules + queryViews part [W1]
+- [x] 140-06-PLAN.md — query port: two-pass guard, run-as-user, envelope row cap + char budget, timeout/cancel by tag, per-answer cap, D-18 categorized errors, audit entries; column profile [W2]
+- [x] 140-07-PLAN.md — "Ran N queries" collapsed list under answers (existing classes) + literal-markup jsdom proof [W2]
+- [x] 140-08-PLAN.md — run_query / get_column_profile tools (QUERY_TOOLS, gated by the registry), ToolContext.query/signal, loop passes its abort signal to read tools [W3]
+- [x] 140-09-PLAN.md — runAnswer query-mode wiring (scope, port, rules, SSE queries, queries_json) + deadline-finalize query list + route proofs RQ-1..9 (incl. end-to-end user cancel); full server gate [W4]
+- [x] 140-10-PLAN.md — obedient-provider injection fixtures INJ-1..11 with positive controls (values, column names, comments, titles, schema mode, authority) [W5]
+- [x] 140-11-PLAN.md — canary egress matrix: schema-mode query-tool attempts + query-mode containment and error paths (EGX-Q1..Q6), EGX-1..6 unchanged [W5]
+- [x] 140-12-PLAN.md — operator-run live harness queryModeSpike (cap, timeout/cancel job check, writes refused, dialect corpus, D-18 calibration, quoted case, profile) + --dry-run [W5]
+- [x] 140-13-PLAN.md — gates + deploy-bundle check, operator UAT (live spike, "Ran N queries" + literal markup in light/dark), bookkeeping by hand [W6]
+
+**Completed 2026-10-21:** 13/13 plans. Live spike (`140-13-UAT-RESULTS.md`) on Kinetica 7.2.3.12 as admin: row cap 200 + truncated, timeout and user Cancel leave no tagged job (Q2/Q3 passed on a slower SQL; the default one was too fast), writes refused with 0 SQL sent, no PG-accepted/Kinetica-rejected dialect queries, model sees only categorized errors. Operator UAT driven by Claude in the operator's Chrome, light and dark, harness only: "Ran N queries" list, long-SQL wrapping (inline tile and small-tile drawer), markup rendered literally with no request to evil.test. Deploy image loads libpg-query. Live Gemini query-mode ask skipped (invalid dev AI_MODEL) -> Phase 142. Open minor: SQL line font ligature turns `--` into an en dash; spike default slow SQL too fast. Gate script printed FAILED solely on environmental `lib.exportRunner.memory`.
 
 ### Phase 141: Keep (Persist AI Changes)
 **Goal:** A user with edit rights saves the AI's changes in one all-or-nothing step that never overwrites someone else's edits.
@@ -319,7 +321,7 @@ Plans:
 | 137. AI Widget & Streaming UI | 12/12 | Complete | 2026-10-15 |
 | 138. AI Filters | 8/8 | Complete | 2026-10-16 |
 | 139. Session-Only Dynamic Views | 14/14 | Complete | 2026-10-20 |
-| 140. Query Data-Access Mode & Injection Hardening | 0/? | Not started | - |
+| 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
 | 141. Keep (Persist AI Changes) | 0/? | Not started | - |
 | 142. Generate, Audit Viewer & Live Provider Proofs | 0/? | Not started | - |
 
