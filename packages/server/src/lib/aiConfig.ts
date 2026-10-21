@@ -20,6 +20,10 @@ export type AiConfig = {
   dvMaxJoins: number; // 139 D-07
   dvMaxPerSession: number; // 139 D-14 (AI views, not their filter re-materializations)
   dvPreflightTimeoutMs: number; // 139 D-08 server deadline for preflight + CREATE
+  queryMaxRows: number; // 140 D-01 rows returned to the model per run_query (the server asks Kinetica for +1 to detect truncation)
+  queryMaxChars: number; // 140 D-02 character budget for one query/profile result sent to the model
+  queryTimeoutMs: number; // 140 D-03 per-query deadline; on expiry the tagged Kinetica job is cancelled
+  queryMaxPerAnswer: number; // 140 D-04 executed queries per answer (refusals do not count)
   readonly apiKey?: string;
 };
 export type AiConfigResult =
@@ -108,6 +112,14 @@ export function parseAiConfig(env: Env): AiConfigResult {
   if (dvMaxPerSession === null) errors.push("AI_DV_MAX_PER_SESSION must be an integer from 1 to 20");
   const dvPreflightTimeoutMs = parseIntInRange(val(env, "AI_DV_PREFLIGHT_TIMEOUT_MS"), 30000, 1000, 600000);
   if (dvPreflightTimeoutMs === null) errors.push("AI_DV_PREFLIGHT_TIMEOUT_MS must be an integer from 1000 to 600000");
+  const queryMaxRows = parseIntInRange(val(env, "AI_QUERY_MAX_ROWS"), 200, 1, 5000);
+  if (queryMaxRows === null) errors.push("AI_QUERY_MAX_ROWS must be an integer from 1 to 5000");
+  const queryMaxChars = parseIntInRange(val(env, "AI_QUERY_MAX_CHARS"), 20000, 1000, 200000);
+  if (queryMaxChars === null) errors.push("AI_QUERY_MAX_CHARS must be an integer from 1000 to 200000");
+  const queryTimeoutMs = parseIntInRange(val(env, "AI_QUERY_TIMEOUT_MS"), 30000, 1000, 600000);
+  if (queryTimeoutMs === null) errors.push("AI_QUERY_TIMEOUT_MS must be an integer from 1000 to 600000");
+  const queryMaxPerAnswer = parseIntInRange(val(env, "AI_QUERY_MAX_PER_ANSWER"), 5, 1, 20);
+  if (queryMaxPerAnswer === null) errors.push("AI_QUERY_MAX_PER_ANSWER must be an integer from 1 to 20");
   const toolModeRaw = val(env, "AI_TOOL_MODE");
   let toolMode: AiToolMode = "native";
   if (toolModeRaw === "native" || toolModeRaw === "json") toolMode = toolModeRaw;
@@ -115,7 +127,8 @@ export function parseAiConfig(env: Env): AiConfigResult {
 
   if (errors.length > 0 || provider === null || maxToolSteps === null || timeoutMs === null ||
     maxAnswersPerUserPerHour === null || maxAnswersPerDay === null || historyTurns === null || maxNewWidgets === null ||
-    dvMaxRecords === null || dvMaxJoins === null || dvMaxPerSession === null || dvPreflightTimeoutMs === null) {
+    dvMaxRecords === null || dvMaxJoins === null || dvMaxPerSession === null || dvPreflightTimeoutMs === null ||
+    queryMaxRows === null || queryMaxChars === null || queryTimeoutMs === null || queryMaxPerAnswer === null) {
     return { enabled: false, reason: "invalid", errors };
   }
 
@@ -123,6 +136,7 @@ export function parseAiConfig(env: Env): AiConfigResult {
     provider, baseUrl, model, dataAccess, maxToolSteps, timeoutMs,
     maxAnswersPerUserPerHour, maxAnswersPerDay, historyTurns, toolMode, maxNewWidgets,
     dvMaxRecords, dvMaxJoins, dvMaxPerSession, dvPreflightTimeoutMs,
+    queryMaxRows, queryMaxChars, queryTimeoutMs, queryMaxPerAnswer,
   };
   if (key !== "") Object.defineProperty(config, "apiKey", { value: key, enumerable: false, writable: false });
   return { enabled: true, config };
@@ -138,6 +152,7 @@ export function formatAiConfigLog(result: AiConfigResult): string | null {
       `capPerDay=${c.maxAnswersPerDay === 0 ? "off" : c.maxAnswersPerDay} ` +
       `historyTurns=${c.historyTurns} maxNewWidgets=${c.maxNewWidgets} toolMode=${c.toolMode} ` +
       `dvMaxRecords=${c.dvMaxRecords} dvMaxJoins=${c.dvMaxJoins} dvMaxPerSession=${c.dvMaxPerSession} ` +
+      `queryMaxRows=${c.queryMaxRows} queryMaxChars=${c.queryMaxChars} queryTimeoutMs=${c.queryTimeoutMs} queryMaxPerAnswer=${c.queryMaxPerAnswer} ` +
       `key=${c.apiKey ? "set" : "not set"} contract=${AI_CONTRACT_VERSION}`
     );
   }

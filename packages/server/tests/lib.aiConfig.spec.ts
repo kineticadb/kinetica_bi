@@ -206,3 +206,38 @@ describe("Phase 139 AI dynamic-view limits", () => {
     expect(line).toContain("capPerHour=30 capPerDay=off historyTurns=6 maxNewWidgets=6 toolMode=native");
   });
 });
+
+describe("Phase 140 AI query limits", () => {
+  const cfg = (extra: Record<string, string> = {}) => {
+    const r = parseAiConfig({ ...OLLAMA, ...extra });
+    if (!r.enabled) throw new Error("expected enabled");
+    return r.config;
+  };
+  it("CFGQ-1: defaults", () => {
+    const c = cfg();
+    expect([c.queryMaxRows, c.queryMaxChars, c.queryTimeoutMs, c.queryMaxPerAnswer]).toEqual([200, 20000, 30000, 5]);
+  });
+  it("CFGQ-2: overrides at both range ends", () => {
+    expect(cfg({ AI_QUERY_MAX_ROWS: "1" }).queryMaxRows).toBe(1);
+    expect(cfg({ AI_QUERY_MAX_ROWS: "5000" }).queryMaxRows).toBe(5000);
+    expect(cfg({ AI_QUERY_MAX_CHARS: "1000" }).queryMaxChars).toBe(1000);
+    expect(cfg({ AI_QUERY_MAX_CHARS: "200000" }).queryMaxChars).toBe(200000);
+    expect(cfg({ AI_QUERY_TIMEOUT_MS: "1000" }).queryTimeoutMs).toBe(1000);
+    expect(cfg({ AI_QUERY_TIMEOUT_MS: "600000" }).queryTimeoutMs).toBe(600000);
+    expect(cfg({ AI_QUERY_MAX_PER_ANSWER: "1" }).queryMaxPerAnswer).toBe(1);
+    expect(cfg({ AI_QUERY_MAX_PER_ANSWER: "20" }).queryMaxPerAnswer).toBe(20);
+  });
+  it("CFGQ-3: range errors disable AI", () => {
+    for (const v of ["0", "abc", "5001"]) expect(errorsOf({ ...OLLAMA, AI_QUERY_MAX_ROWS: v })).toContain("AI_QUERY_MAX_ROWS must be an integer from 1 to 5000");
+    expect(errorsOf({ ...OLLAMA, AI_QUERY_MAX_CHARS: "999" })).toContain("AI_QUERY_MAX_CHARS must be an integer from 1000 to 200000");
+    expect(errorsOf({ ...OLLAMA, AI_QUERY_TIMEOUT_MS: "999" })).toContain("AI_QUERY_TIMEOUT_MS must be an integer from 1000 to 600000");
+    for (const v of ["0", "21"]) expect(errorsOf({ ...OLLAMA, AI_QUERY_MAX_PER_ANSWER: v })).toContain("AI_QUERY_MAX_PER_ANSWER must be an integer from 1 to 20");
+    expect(parseAiConfig({ ...OLLAMA, AI_QUERY_MAX_ROWS: "0" })).toMatchObject({ enabled: false, reason: "invalid" });
+  });
+  it("CFGQ-4: log line", () => {
+    const line = formatAiConfigLog(parseAiConfig({ ...OLLAMA, AI_API_KEY: "sk-test-QKEY" }))!;
+    expect(line).toContain("queryMaxRows=200 queryMaxChars=20000 queryTimeoutMs=30000 queryMaxPerAnswer=5");
+    expect(line).toContain("dvMaxRecords=100000 dvMaxJoins=2 dvMaxPerSession=5");
+    expect(line).not.toContain("sk-test-QKEY");
+  });
+});
