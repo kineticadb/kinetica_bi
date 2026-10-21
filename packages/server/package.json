@@ -17,6 +17,7 @@
     "export-runner-smoke": "tsx src/spikes/exportRunnerSmoke.ts",
     "export-routes-smoke": "tsx src/spikes/exportRoutesSmoke.ts",
     "tool-call-spike": "tsx src/spikes/toolCallSpike.ts",
+    "query-mode-spike": "tsx src/spikes/queryModeSpike.ts",
     "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
