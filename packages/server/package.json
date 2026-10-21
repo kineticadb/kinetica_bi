@@ -34,6 +34,7 @@
     "file-type": "^19.6.0",
     "jsdom": "^29.1.1",
     "jsonwebtoken": "^9.0.3",
+    "libpg-query": "^18.1.5",
     "multer": "^2.2.0",
     "openid-client": "^5.7.1",
     "postcss": "^8.5.15",
