@@ -239,7 +239,8 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
             continue;
           }
           try {
-            const res = await tool.run(parsedArgs, toolCtx);
+            // 140: Cancel and the answer deadline reach in-flight queries (the port cancels the tagged Kinetica job)
+            const res = await tool.run(parsedArgs, { ...toolCtx, signal });
             tools.push({ name: tool.name, args: parsedArgs, result: res.isError ? "error" : "ok" });
             answer(res.parts, res.isError);
           } catch (e) {

@@ -319,3 +319,36 @@ describe("Phase 136 repair counting, cap, clarifications", () => {
     expect(r.skipped).toEqual([]);
   });
 });
+
+describe("Phase 140 read tools receive the loop abort signal", () => {
+  const waitAbort = (sig: AbortSignal) => new Promise<void>((res) => (sig.aborted ? res() : sig.addEventListener("abort", () => res(), { once: true })));
+  const probe = (onRun: (ctx: ToolContext) => Promise<void>): ReadTool => ({
+    kind: "read", name: "probe_signal", description: "x", args: z.object({}),
+    run: async (_a, ctx) => { await onRun(ctx); return { parts: [part.config("probed")] }; },
+  });
+  it("LOOPQ-1 ctx.signal is an un-aborted AbortSignal and other ctx fields intact", async () => {
+    let seen: { signal?: AbortSignal; aborted?: boolean; dashboardId?: number } = {};
+    const t = probe(async (ctx) => { seen = { signal: ctx.signal, aborted: ctx.signal?.aborted, dashboardId: ctx.dashboardId }; });
+    const r = await run(setup([turn(call("p1", "probe_signal", {})), final("done")], { extraTools: [t] }));
+    expect(r.outcome).toBe("ok");
+    expect(seen.signal).toBeInstanceOf(AbortSignal);
+    expect(seen.aborted).toBe(false);
+    expect(seen.dashboardId).toBe(1);
+  });
+  it("LOOPQ-2 route abort reaches the in-flight tool; outcome cancelled", async () => {
+    const ctl = new AbortController();
+    let observed: boolean | undefined;
+    const t = probe(async (ctx) => { setTimeout(() => ctl.abort(), 5); await waitAbort(ctx.signal!); observed = ctx.signal!.aborted; });
+    const r = await run(setup([turn(call("p1", "probe_signal", {})), final("late")], { extraTools: [t], deps: { signal: ctl.signal } }));
+    expect(observed).toBe(true);
+    expect(r.outcome).toBe("cancelled");
+  });
+  it("LOOPQ-3 answer deadline reaches the in-flight tool; outcome timeout", async () => {
+    let observed: boolean | undefined;
+    const t = probe(async (ctx) => { await waitAbort(ctx.signal!); observed = ctx.signal!.aborted; });
+    const r = await run(setup([turn(call("p1", "probe_signal", {})), final("late")], { extraTools: [t], timeoutMs: 20 }));
+    expect(observed).toBe(true);
+    expect(r.outcome).toBe("provider_error");
+    expect(r.detail).toBe("timeout");
+  });
+});
