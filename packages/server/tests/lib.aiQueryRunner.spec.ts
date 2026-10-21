@@ -6,6 +6,9 @@ import { UNTRUSTED_NOTICE } from "../src/lib/ai/untrusted";
 import { GUARD_REASONS } from "../src/lib/ai/sqlGuard";
 import { KineticaAuthError, KineticaPermissionError, KineticaUpstreamError } from "../src/kineticaErrors";
 import { SessionEndedError } from "../src/lib/exportRunner";
+import { buildColumnProfileSql } from "../src/lib/ai/columnProfileSql";
+import { buildTopValuesSql } from "../src/lib/topValuesSql";
+import { guardQuery } from "../src/lib/ai/sqlGuard";
 import { captureConsole } from "./helpers/aiTestKit";
 
 const fakePrincipal = { user: { id: 1 }, requestId: "p" } as never;
@@ -176,5 +179,90 @@ describe("createQueryPort.run", () => {
     cap.restore();
     expect(t).not.toContain("secret_col");
     expect(t).not.toContain("CANARY_QRN_7x");
+  });
+});
+
+const live = {
+  describe: vi.fn(async (id: number) =>
+    id === 5
+      ? { ok: true as const, table: { id: 5, schema: "demo", name: "trips", columns: [{ name: "fare", type: "double" }, { name: "vendor", type: "string" }, { name: "geom", type: "wkt" }] } }
+      : { ok: false as const }),
+};
+const profEnc = (mm: boolean) => ({ column_1: [10], column_2: [8], column_3: [4], ...(mm ? { column_4: [1.5], column_5: [99.5] } : {}) });
+
+describe("createQueryPort.profile", () => {
+  const mk = (over: Partial<QueryPortDeps> & { sqlImpl?: (...a: unknown[]) => unknown } = {}) => make({ liveSchema: live, ...over });
+  it("QRP-1 numeric", async () => {
+    const { port, sql } = mk({ sqlImpl: async () => profEnc(true) });
+    const r = await port.profile({ tableId: 5, column: "fare" });
+    expect(sql).toHaveBeenCalledTimes(1);
+    const [, s, opts] = sql.mock.calls[0] as unknown as [unknown, string, Record<string, any>];
+    expect(s).toBe(buildColumnProfileSql({ schema: "demo", table: "trips", column: "fare", minMax: true }));
+    expect(opts.tag).toBe("rid-140-06-q01-1");
+    expect(opts.extra.limit).toBe(2);
+    expect(r).toEqual({ ok: true, envelope: { kind: "column_profile", untrusted: true, notice: UNTRUSTED_NOTICE, table: "demo.trips", column: "fare", type: "double", rowCount: 10, nullCount: 2, distinctCount: 4, min: 1.5, max: 99.5, truncated: false } });
+  });
+  it("QRP-2 string", async () => {
+    let n = 0;
+    const { port, sql } = mk({ sqlImpl: async () => (n++ === 0 ? profEnc(false) : { column_1: ["AA", "BB"], column_2: [6, 2] }) });
+    const r = await port.profile({ tableId: 5, column: "vendor" });
+    expect(sql).toHaveBeenCalledTimes(2);
+    const c = sql.mock.calls as unknown as [unknown, string, Record<string, any>][];
+    expect(c[1][1]).toBe(buildTopValuesSql({ schema: "demo", table: "trips", column: "vendor", n: 10 }));
+    expect(c[1][2].tag).toBe("rid-140-06-q01-2");
+    expect(c[1][2].extra.limit).toBe(10);
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.envelope.topValues).toEqual([{ value: "AA", count: 6 }, { value: "BB", count: 2 }]);
+    expect(r.envelope.min).toBeUndefined();
+    expect(r.envelope.max).toBeUndefined();
+  });
+  it("QRP-3 other type", async () => {
+    const { port, sql } = mk({ sqlImpl: async () => profEnc(false) });
+    const r = await port.profile({ tableId: 5, column: "geom" });
+    expect(sql).toHaveBeenCalledTimes(1);
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.envelope.topValues).toBeUndefined();
+    expect(r.envelope.min).toBeUndefined();
+  });
+  it("QRP-4 refusals", async () => {
+    const { port, sql } = mk();
+    expect(await port.profile({ tableId: 99, column: "fare" })).toEqual({ ok: false, message: "Table 99 is not available." });
+    const dead = mk({ liveSchema: { describe: async () => ({ ok: false }) } });
+    expect(await dead.port.profile({ tableId: 5, column: "fare" })).toEqual({ ok: false, message: "Table 5 is not available." });
+    expect(await port.profile({ tableId: 5, column: "fare_x" })).toEqual({ ok: false, message: "Column fare_x is not on that table; use describe_table." });
+    expect(await port.profile({ tableId: 5, column: "fare; drop" })).toEqual({ ok: false, message: "Column fare; drop is not on that table; use describe_table." });
+    expect(sql).not.toHaveBeenCalled();
+    expect(port.entries().map((e) => e.outcome)).toEqual(["refused", "refused", "refused"]);
+    expect(port.entries()[0].sql).toBe("get_column_profile(99, fare)");
+  });
+  it("QRP-5 one budget unit", async () => {
+    let n = 0;
+    const { port, sql } = mk({ limits: { ...limits, maxPerAnswer: 1 }, sqlImpl: async () => (n++ === 0 ? profEnc(false) : { column_1: ["AA"], column_2: [1] }) });
+    expect((await port.profile({ tableId: 5, column: "vendor" })).ok).toBe(true);
+    expect(sql).toHaveBeenCalledTimes(2);
+    expect(await port.run("SELECT 1 FROM demo.trips")).toEqual({ ok: false, message: "Refused: query limit for this answer reached (1); answer with what you have" });
+    expect(port.entries().filter((e) => e.outcome === "ok").length).toBe(1);
+  });
+  it("QRP-6 generated SQL is guard-clean; timeout cancels with -1 tag", async () => {
+    const { port, sql } = mk({ sqlImpl: async () => profEnc(true) });
+    await port.profile({ tableId: 5, column: "fare" });
+    const s = (sql.mock.calls[0] as unknown[])[1] as string;
+    expect((await guardQuery(s, { allowed: scope.pass2Allowed })).ok).toBe(true);
+    const h = mk({ sqlImpl: hang as never, limits: { ...limits, timeoutMs: 30 } });
+    expect(await h.port.profile({ tableId: 5, column: "fare" })).toEqual({ ok: false, message: "query timed out" });
+    expect(h.cancel).toHaveBeenCalledWith(fakePrincipal, "rid-140-06-q01-1");
+  });
+  it("QRP-7 char budget", async () => {
+    let n = 0;
+    const { port } = mk({
+      limits: { ...limits, maxChars: 1500 },
+      sqlImpl: async () => (n++ === 0 ? profEnc(false) : { column_1: Array.from({ length: 10 }, (_, i) => `${i}`.repeat(500).slice(0, 500)), column_2: Array.from({ length: 10 }, () => 1) }),
+    });
+    const r = await port.profile({ tableId: 5, column: "vendor" });
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.envelope.topValues!.every((v) => v.value.length <= 200)).toBe(true);
+    expect(JSON.stringify(r.envelope).length).toBeLessThanOrEqual(1500);
+    expect(r.envelope.topValues!.length).toBeLessThan(10);
+    expect(r.envelope.truncated).toBe(true);
   });
 });
