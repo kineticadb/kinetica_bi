@@ -277,7 +277,7 @@ Plans:
 - [ ] 140-06-PLAN.md — query port: two-pass guard, run-as-user, envelope row cap + char budget, timeout/cancel by tag, per-answer cap, D-18 categorized errors, audit entries; column profile [W2]
 - [ ] 140-07-PLAN.md — "Ran N queries" collapsed list under answers (existing classes) + literal-markup jsdom proof [W2]
 - [ ] 140-08-PLAN.md — run_query / get_column_profile tools (QUERY_TOOLS, gated by the registry), ToolContext.query/signal, loop passes its abort signal to read tools [W3]
-- [ ] 140-09-PLAN.md — runAnswer query-mode wiring (scope, port, rules, SSE queries, queries_json) + route proofs RQ-1..7; full server gate [W4]
+- [ ] 140-09-PLAN.md — runAnswer query-mode wiring (scope, port, rules, SSE queries, queries_json) + deadline-finalize query list + route proofs RQ-1..9 (incl. end-to-end user cancel); full server gate [W4]
 - [ ] 140-10-PLAN.md — obedient-provider injection fixtures INJ-1..11 with positive controls (values, column names, comments, titles, schema mode, authority) [W5]
 - [ ] 140-11-PLAN.md — canary egress matrix: schema-mode query-tool attempts + query-mode containment and error paths (EGX-Q1..Q6), EGX-1..6 unchanged [W5]
 - [ ] 140-12-PLAN.md — operator-run live harness queryModeSpike (cap, timeout/cancel job check, writes refused, dialect corpus, D-18 calibration, quoted case, profile) + --dry-run [W5]
