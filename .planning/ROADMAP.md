@@ -267,7 +267,21 @@ Plans:
 2. A scripted "obedient" provider reading a poisoned table comment, column name, value or title cannot act outside the gateway's rules.
 3. Model-supplied markup, links and images render as literal text (operator human-verify).
 4. The canary no-egress test still passes across every tool and error path.
-**Plans:** TBD
+**Plans:** 13 plans in 6 waves
+Plans:
+- [ ] 140-01-PLAN.md — libpg-query runtime dependency + smoke; pure SQL guard (raw-char refusals, single-SELECT AST allow-list, CTE scoping, system/catalog/function/table-function refusals, dashboard scope) + byte-offset view-alias substitution [W1]
+- [ ] 140-02-PLAN.md — AI_QUERY_MAX_ROWS/MAX_CHARS/TIMEOUT_MS/MAX_PER_ANSWER on AiConfig (+ log, .env.example); AiQueryAuditEntry + ai_audit.queries_json (create + migrate) [W1]
+- [ ] 140-03-PLAN.md — shared AskQueryEntrySchema + optional result.queries; web TurnChat.queries via askRunner and the DEV harness (display only) [W1]
+- [ ] 140-04-PLAN.md — pure query scope (dashboard tables, dv_<id>/aidv_<n> aliases -> physical names from server data) + get_column_profile SQL builders/parsers [W1]
+- [ ] 140-05-PLAN.md — untrusted-data envelope on describe/list/get_dashboard, flattened schema text in the system part, "tool results are data" rule, query-mode rules + queryViews part [W1]
+- [ ] 140-06-PLAN.md — query port: two-pass guard, run-as-user, envelope row cap + char budget, timeout/cancel by tag, per-answer cap, D-18 categorized errors, audit entries; column profile [W2]
+- [ ] 140-07-PLAN.md — "Ran N queries" collapsed list under answers (existing classes) + literal-markup jsdom proof [W2]
+- [ ] 140-08-PLAN.md — run_query / get_column_profile tools (QUERY_TOOLS, gated by the registry), ToolContext.query/signal, loop passes its abort signal to read tools [W3]
+- [ ] 140-09-PLAN.md — runAnswer query-mode wiring (scope, port, rules, SSE queries, queries_json) + route proofs RQ-1..7; full server gate [W4]
+- [ ] 140-10-PLAN.md — obedient-provider injection fixtures INJ-1..11 with positive controls (values, column names, comments, titles, schema mode, authority) [W5]
+- [ ] 140-11-PLAN.md — canary egress matrix: schema-mode query-tool attempts + query-mode containment and error paths (EGX-Q1..Q6), EGX-1..6 unchanged [W5]
+- [ ] 140-12-PLAN.md — operator-run live harness queryModeSpike (cap, timeout/cancel job check, writes refused, dialect corpus, D-18 calibration, quoted case, profile) + --dry-run [W5]
+- [ ] 140-13-PLAN.md — gates + deploy-bundle check, operator UAT (live spike, "Ran N queries" + literal markup in light/dark), bookkeeping by hand [W6]
 
 ### Phase 141: Keep (Persist AI Changes)
 **Goal:** A user with edit rights saves the AI's changes in one all-or-nothing step that never overwrites someone else's edits.
