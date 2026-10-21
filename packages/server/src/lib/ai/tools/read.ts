@@ -2,6 +2,7 @@
 // serializers) and wrapped in classified parts; upstream objects are never stringified.
 import { z } from "zod/v4";
 import { part } from "../outbound";
+import { markUntrusted } from "../untrusted";
 import type { LiveTableInfo, ReadTool, ToolContext } from "./types";
 
 export const LIST_TABLES_CAP = 50;
@@ -24,7 +25,7 @@ const getDashboard: ReadTool = {
   description: "Get the current dashboard: widgets, layers, dynamic views and filters with their ids. Call this first; use these ids for patch and remove tools.",
   args: z.object({}),
   async run(_args, ctx) {
-    return { parts: [part.config(JSON.stringify(ctx.dashboardView()))] };
+    return { parts: [part.config(JSON.stringify(markUntrusted(ctx.dashboardView())))] };
   },
 };
 
@@ -64,7 +65,7 @@ const listTables: ReadTool = {
     });
     const body: { tables: typeof tables; note?: string } = { tables };
     if (notChecked > 0) body.note = `${notChecked} more tables not shown; ask about a specific table`;
-    return { parts: [part.schema(JSON.stringify(body))] };
+    return { parts: [part.schema(JSON.stringify(markUntrusted(body)))] };
   },
 };
 
@@ -83,7 +84,7 @@ const describeTable: ReadTool = {
     };
     const d = clip(t.description);
     if (d !== undefined) out.description = d;
-    return { parts: [part.schema(JSON.stringify(out))] };
+    return { parts: [part.schema(JSON.stringify(markUntrusted(out)))] };
   },
 };
 
