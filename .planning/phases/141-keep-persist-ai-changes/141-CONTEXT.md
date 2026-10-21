@@ -47,6 +47,9 @@ Out of scope: generate a starter dashboard, the audit viewer and live provider U
 - **D-18 Saved turns stay as provider history.** After Keep, the archived conversation still goes to the AI as context for the next question. The turns just can't be reverted.
 - **D-19 Accepted from research as recommended:** shared custom metrics and column display config are not dashboard state for the 409. `ai:use` is not required at Keep (D-01 literal). No new permission is added.
 
+- **D-20 Dynamic-view on/off (enabled) toggles are not saved, and the user is told (narrows D-16, operator 2026-10-21 after plan check).** `dashboard_dynamic_views` has no persisted enabled column; the toggle is render-time state, like filters. It stays applied in the current view. The Keep dialog adds "View on/off changes are not saved." only when the change set contains such toggles, and the "Changes saved." chat note repeats it. No schema change.
+- **D-21 `completeKeep()` instead of `reset()`** (refines D-11): it clears the 136 removal approval and the revert history but keeps the transcript readable (D-18). A later reader must not "fix" this back to `reset()`.
+
 ### Claude's Discretion
 - The route shape (e.g. `POST /api/dashboards/:id/ai-keep`) and the payload: the client's folded change set versus the op log replayed through the gateway. The server must re-validate everything (shape, allow-list, rights, references, live schema) and never trust client-supplied SQL or names.
 - Reuse of the `dashboardImport` transaction and temp-id remap (`createWidget` / `createDashboardLayer` / `createDashboardDynamicView`, in dependency order dv → layer → widget), and the client id swap / refetch after Keep.
