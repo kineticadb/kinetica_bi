@@ -7,10 +7,11 @@ D=.planning/phases/141-keep-persist-ai-changes
 fail=0
 
 # 1. No parked or skipped proofs in code (web specs live under packages/web/src).
-#    The two allow-listed lines pre-date Phase 141 (verified at plan time, 2026-10-21).
-R='\bit\.(fails|skip|todo)\b|\bxit\(|\btest\.(todo|skip)\b|\bdescribe\.skip\b|GAP-141-'
+#    The seven allow-listed lines pre-date Phase 141 (verified at plan time, 2026-10-21): a comment, one
+#    it.skip, and five environment-gated skipIf (spikes / nginx / python / unzip / macOS ditto).
+R='\b(it|test)\.(fails|skip|todo)\b|\b(it|test|describe)\.(skipIf|runIf)\(|\.concurrent\.(skip|todo)\b|\bxit\(|\bdescribe\.(skip|todo)\b|GAP-141-'
 hits=$(grep -rnE "$R" packages/*/src packages/*/tests 2>/dev/null \
-  | grep -vE 'errorMiddleware\.spec\.ts:[0-9]+: \* Tests 1-4 are it\.todo placeholders|bootstrap\.spec\.ts:[0-9]+:  it\.skip\("does NOT call app\.listen')
+  | grep -vE 'errorMiddleware\.spec\.ts:[0-9]+: \* Tests 1-4 are it\.todo placeholders|bootstrap\.spec\.ts:[0-9]+:  it\.skip\("does NOT call app\.listen|s3Validators\.spike\.spec\.ts:[0-9]+:describe\.skipIf\(!process\.env\.RUN_SPIKES\)\("S3 per-type validators"|deploy\.nginxStream\.spec\.ts:[0-9]+:  it\.skipIf\(!hasNginx\)\("NGX-4:|lib\.zipStream\.spec\.ts:[0-9]+:    it\.skipIf\((!HAS_PY|!HAS_UNZIP|process\.platform !== "darwin")\)\("EXPZIP-(python|unzip-t|ditto)"')
 if [ -n "$hits" ]; then echo "FAIL: parked/skipped proofs:"; echo "$hits"; fail=1; fi
 
 # 2. All 13 implementation SUMMARYs exist and each has exactly one gaps line, and it is empty.
