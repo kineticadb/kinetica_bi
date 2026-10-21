@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Phase 141 step-0 gap gate (141-14 Task 1). Exit 0 = PASS. Prints the reason on failure.
+# Run from anywhere: bash .planning/phases/141-keep-persist-ai-changes/141-14-gap-gate.sh
+set -u
+cd "$(dirname "$0")/../../.." || exit 2
+D=.planning/phases/141-keep-persist-ai-changes
+fail=0
+
+# 1. No parked or skipped proofs in code (web specs live under packages/web/src).
+#    The two allow-listed lines pre-date Phase 141 (verified at plan time, 2026-10-21).
+R='\bit\.(fails|skip|todo)\b|\bxit\(|\btest\.(todo|skip)\b|\bdescribe\.skip\b|GAP-141-'
+hits=$(grep -rnE "$R" packages/*/src packages/*/tests 2>/dev/null \
+  | grep -vE 'errorMiddleware\.spec\.ts:[0-9]+: \* Tests 1-4 are it\.todo placeholders|bootstrap\.spec\.ts:[0-9]+:  it\.skip\("does NOT call app\.listen')
+if [ -n "$hits" ]; then echo "FAIL: parked/skipped proofs:"; echo "$hits"; fail=1; fi
+
+# 2. All 13 implementation SUMMARYs exist and each has exactly one gaps line, and it is empty.
+for n in 01 02 03 04 05 06 07 08 09 10 11 12 13; do
+  f="$D/141-$n-SUMMARY.md"
+  if [ ! -f "$f" ]; then echo "FAIL: missing $f"; fail=1; continue; fi
+  c=$(grep -c '^gaps:' "$f")
+  if [ "$c" -ne 1 ]; then echo "FAIL: $f has $c '^gaps:' lines (need exactly 1)"; fail=1; continue; fi
+  g=$(grep '^gaps:' "$f")
+  if [ "$g" != "gaps: []" ]; then echo "FAIL: $f -> $g"; fail=1; fi
+done
+
+if [ "$fail" -eq 0 ]; then echo "GAP GATE: PASS"; else echo "GAP GATE: FAIL"; fi
+exit "$fail"
