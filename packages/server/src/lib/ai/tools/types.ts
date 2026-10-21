@@ -3,6 +3,7 @@ import type { z } from "zod/v4";
 import type { AiClarification, AiOp } from "@kinetica-bi/shared";
 import type { AiDataAccess } from "../../aiConfig";
 import type { OutboundPart } from "../outbound";
+import type { QueryPort } from "../queryRunner";
 
 export type GatewayStage = "shape" | "allow_list" | "permission" | "reference" | "live_schema" | "layout" | "clarification" | "cap";
 /** Failure extras (ids/names only, never values): `refKey` = the bad reference (`col:<tableId>:<name>`, `table:<id>`,
@@ -45,6 +46,8 @@ export type ToolContext = {
   dashboardTableIds: () => number[];
   registeredTables: () => { id: number; schema: string; name: string; description?: string }[];
   liveSchema: LiveSchemaPort;
+  query?: QueryPort; // 140: present only in query data-access mode
+  signal?: AbortSignal; // 140: the loop's combined abort (route cancel + answer deadline)
 };
 
 export type ReadTool = {

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod/v4";
 import { buildToolRegistry, sanitizeToolSchema, QUERY_TOOL_NAMES } from "../src/lib/ai/tools/registry";
 import type { ReadTool } from "../src/lib/ai/tools/types";
+import { QUERY_TOOLS } from "../src/lib/ai/tools/query";
 
 const FORBIDDEN = ["$ref", "anyOf", "oneOf", "allOf", "not", "$schema", "additionalProperties", "propertyNames", "$defs", "definitions"];
 const MAXSAFE = 9007199254740991;
@@ -43,5 +44,19 @@ describe("tool registry", () => {
   });
   it("REG-4 duplicate names throw", () => {
     expect(() => buildToolRegistry({ dataAccess: "schema", extraTools: [fake("list_tables")] })).toThrow(/duplicate/i);
+  });
+  it("REG-5a schema mode hides QUERY_TOOLS", () => {
+    const r = buildToolRegistry({ dataAccess: "schema", extraTools: [...QUERY_TOOLS] });
+    expect(r.tools).toHaveLength(18);
+    expect(r.byName.has("run_query")).toBe(false);
+    expect(r.byName.has("get_column_profile")).toBe(false);
+    expect(r.specs.some((s) => s.name === "run_query" || s.name === "get_column_profile")).toBe(false);
+  });
+  it("REG-5b query mode registers both with flat schemas", () => {
+    const r = buildToolRegistry({ dataAccess: "query", extraTools: [...QUERY_TOOLS] });
+    expect(r.tools).toHaveLength(20);
+    const props = (n: string) => Object.keys(((r.specs.find((s) => s.name === n)!.jsonSchema as { properties: Record<string, unknown> }).properties)).sort();
+    expect(props("run_query")).toEqual(["sql"]);
+    expect(props("get_column_profile")).toEqual(["column", "tableId"]);
   });
 });
