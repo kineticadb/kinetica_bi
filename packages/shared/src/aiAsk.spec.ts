@@ -125,4 +125,28 @@ describe("Phase 139 snapshot extensions", () => {
     expect(ok({ ...base(), snapshot: { ...base().snapshot, layers: [layer] } })).toBe(true);
     expect(ok({ ...base(), snapshot: { ...base().snapshot, layers: [{ ...layer, value: "x" }] } })).toBe(false);
   });
+
+  const res = () => ({ answerId: 1, text: "x", ops: [], skipped: [], clarifications: [], followUps: ["a"], applied: [] });
+  it("ASKQ-1: result without queries parses", () => {
+    expect(AskResultEventSchema.safeParse(res()).success).toBe(true);
+  });
+  it("ASKQ-2: result with queries parses", () => {
+    const queries = [
+      { sql: "SELECT 1 FROM demo.t", rowCount: 3, outcome: "ok" },
+      { sql: "DELETE FROM demo.t", outcome: "refused", reason: "only a single SELECT (or WITH ... SELECT) is allowed" },
+      { sql: "SELECT ...", outcome: "timed_out" },
+    ];
+    expect(AskResultEventSchema.safeParse({ ...res(), queries }).success).toBe(true);
+  });
+  it("ASKQ-3: invalid query entries rejected", () => {
+    const bad = (q: unknown) => AskResultEventSchema.safeParse({ ...res(), queries: q }).success;
+    const e = { sql: "SELECT 1", outcome: "ok" };
+    expect(bad([e])).toBe(true);
+    expect(bad([{ ...e, outcome: "bogus" }])).toBe(false);
+    expect(bad([{ ...e, rows: [[1]] }])).toBe(false);
+    expect(bad([{ ...e, sql: "x".repeat(8001) }])).toBe(false);
+    expect(bad([{ ...e, reason: "x".repeat(301) }])).toBe(false);
+    expect(bad([{ ...e, rowCount: -1 }])).toBe(false);
+    expect(bad(Array.from({ length: 51 }, () => e))).toBe(false);
+  });
 });

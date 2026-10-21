@@ -137,6 +137,17 @@ export const AI_FOLLOWUP_MAX_CHARS = 120;
 export const AskSkippedSchema = z
   .object({ label: z.string().max(200), stage: z.string().max(50), reasons: z.array(z.string().max(500)).max(10) })
   .strict();
+export const AI_QUERY_LIST_MAX = 50;
+/** 140 D-11: display-only record of one AI query (SQL text + status). Never result values. */
+export const AskQueryEntrySchema = z
+  .object({
+    sql: z.string().max(8000),
+    rowCount: z.number().int().nonnegative().optional(),
+    outcome: z.enum(["ok", "refused", "timed_out", "cancelled", "error"]),
+    reason: z.string().max(300).optional(),
+  })
+  .strict();
+export type AskQueryEntry = z.infer<typeof AskQueryEntrySchema>;
 export const AskResultEventSchema = z
   .object({
     answerId: z.number().int(),
@@ -146,6 +157,7 @@ export const AskResultEventSchema = z
     clarifications: z.array(AiClarificationSchema),
     followUps: z.array(z.string().min(1).max(AI_FOLLOWUP_MAX_CHARS)).max(AI_FOLLOWUP_MAX),
     applied: z.array(z.string().max(300)),
+    queries: z.array(AskQueryEntrySchema).max(AI_QUERY_LIST_MAX).optional(),
   })
   .strict();
 export type AskResultEvent = z.infer<typeof AskResultEventSchema>;
