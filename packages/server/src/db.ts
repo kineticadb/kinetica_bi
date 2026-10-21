@@ -238,7 +238,8 @@ const SCHEMA_DDL = `
     steps INTEGER, input_tokens INTEGER, output_tokens INTEGER,
     tools_json TEXT,
     changes_json TEXT,
-    duration_ms INTEGER
+    duration_ms INTEGER,
+    queries_json TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_ai_audit_ts ON ai_audit (ts_ms);
   CREATE INDEX IF NOT EXISTS idx_ai_audit_user_ts ON ai_audit (username, ts_ms);
@@ -431,6 +432,8 @@ export const createDb = (dbPath: string): Database.Database => {
     .prepare("PRAGMA table_info(sessions)")
     .all() as Array<{ name: string }>;
   const colNames = new Set(cols.map((c) => c.name));
+  const auditCols = new Set((instance.prepare("PRAGMA table_info(ai_audit)").all() as Array<{ name: string }>).map((c) => c.name));
+  if (!auditCols.has("queries_json")) instance.exec("ALTER TABLE ai_audit ADD COLUMN queries_json TEXT"); // 140 D-12
   if (!colNames.has("credential_type")) {
     instance.exec(
       "ALTER TABLE sessions ADD COLUMN credential_type TEXT NOT NULL DEFAULT 'password'"

@@ -15,7 +15,10 @@ export type AdmitResult =
   | { ok: true; auditId: number }
   | { ok: false; code: "AI_USER_CAP"; message: string; retryAfterSeconds: number }
   | { ok: false; code: "AI_DAY_CAP"; message: string; retryAfterSeconds: number };
-export type FinalizeInput = { auditId: number; outcome: AiOutcome; detail?: string; answerText?: string; steps: number; inputTokens?: number; outputTokens?: number; tools: AiToolAuditEntry[]; changes: { applied: string[]; rejected: { label: string; stage: string; reasons: string[] }[] }; durationMs: number };
+export type AiQueryOutcome = "ok" | "refused" | "timed_out" | "cancelled" | "error";
+/** 140 D-12: one AI query. SQL text (may hold literal filter values the user/model typed) — NEVER result values. */
+export type AiQueryAuditEntry = { sql: string; rowCount?: number; durationMs: number; outcome: AiQueryOutcome; reason?: string };
+export type FinalizeInput = { auditId: number; outcome: AiOutcome; detail?: string; answerText?: string; steps: number; inputTokens?: number; outputTokens?: number; tools: AiToolAuditEntry[]; changes: { applied: string[]; rejected: { label: string; stage: string; reasons: string[] }[] }; durationMs: number; queries?: AiQueryAuditEntry[] };
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -69,13 +72,14 @@ export function admitAiAnswer(input: AdmitInput, conn: Database.Database = db): 
 export function finalizeAiAnswer(input: FinalizeInput, conn: Database.Database = db): boolean {
   const info = conn
     .prepare(
-      `UPDATE ai_audit SET status='final', outcome=?, outcome_detail=?, answer_text=?, steps=?, input_tokens=?, output_tokens=?, tools_json=?, changes_json=?, duration_ms=?
+      `UPDATE ai_audit SET status='final', outcome=?, outcome_detail=?, answer_text=?, steps=?, input_tokens=?, output_tokens=?, tools_json=?, changes_json=?, duration_ms=?, queries_json=?
        WHERE id=? AND status='running'`,
     )
     .run(
       input.outcome, input.detail ?? null, input.answerText ?? null, input.steps,
       input.inputTokens ?? null, input.outputTokens ?? null,
-      JSON.stringify(input.tools), JSON.stringify(input.changes), input.durationMs, input.auditId,
+      JSON.stringify(input.tools), JSON.stringify(input.changes), input.durationMs,
+      input.queries === undefined ? null : JSON.stringify(input.queries), input.auditId,
     );
   if (info.changes !== 1) return false;
   const row = conn.prepare("SELECT username, dashboard_id, provider, model FROM ai_audit WHERE id=?").get(input.auditId) as
