@@ -42,6 +42,11 @@ Out of scope: generate a starter dashboard, the audit viewer and live provider U
 - **D-15 Temporary Kinetica views:** Keep creates the saved `dashboard_dynamic_views` row from the AI view's compiled template (139: a valid saved-dv template; joined tables are read raw after Keep, D-21 accepted). The temp `_kbi_ai_*` view is dropped and its registry row removed. Widgets and layers now read the saved view through the normal path (a brief re-materialize).
 - **D-16 Everything else is saved:** widgets, layers (including AI-set visibility and style), dynamic views, rebinds, removals and geometry. Only filters and the chat are not saved.
 
+### Post-research decisions (operator, 2026-10-21, after 141-RESEARCH.md)
+- **D-17 Own-tab saves never cause a 409 (widens D-06).** The baseline moves forward with every save **this tab** makes: eye toggles, layout and auto-saved legacy layouts, anything. Only saves by **other users or other tabs** trigger the 409. Implemented per research with a `dashboards.version` counter bumped by triggers. Write responses carry before→after versions, and the client advances its baseline only along its own chain.
+- **D-18 Saved turns stay as provider history.** After Keep, the archived conversation still goes to the AI as context for the next question. The turns just can't be reverted.
+- **D-19 Accepted from research as recommended:** shared custom metrics and column display config are not dashboard state for the 409. `ai:use` is not required at Keep (D-01 literal). No new permission is added.
+
 ### Claude's Discretion
 - The route shape (e.g. `POST /api/dashboards/:id/ai-keep`) and the payload: the client's folded change set versus the op log replayed through the gateway. The server must re-validate everything (shape, allow-list, rights, references, live schema) and never trust client-supplied SQL or names.
 - Reuse of the `dashboardImport` transaction and temp-id remap (`createWidget` / `createDashboardLayer` / `createDashboardDynamicView`, in dependency order dv → layer → widget), and the client id swap / refetch after Keep.
