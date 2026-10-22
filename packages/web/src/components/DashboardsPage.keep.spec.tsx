@@ -246,6 +246,20 @@ describe("DashboardsPage Keep glue (Phase 141 Plan 13)", () => {
     expect(updateWidget).not.toHaveBeenCalled();
   });
 
+  it("KPAGE-6: a normal drag/resize (exactly the on-screen ids) is still persisted", async () => {
+    await openDashboard();
+    mocked(updateWidget).mockClear();
+    act(() => {
+      (globalThis as any).__gridProps.onLayoutChange([
+        { i: "11", x: 0, y: 0, w: 12, h: 24 },
+        { i: "12", x: 18, y: 0, w: 18, h: 24 },
+      ]);
+    });
+    expect(updateWidget).toHaveBeenCalledTimes(1);
+    expect(mocked(updateWidget).mock.calls[0][0]).toBe(11);
+    expect(mocked(updateWidget).mock.calls[0][1].config.layout).toEqual({ x: 0, y: 0, w: 12, h: 24 });
+  });
+
   it("KPAGE-5: every grid child carries its layout rect as data-grid (no 1x1 synthesis for new children)", async () => {
     await openDashboard();
     turn();
