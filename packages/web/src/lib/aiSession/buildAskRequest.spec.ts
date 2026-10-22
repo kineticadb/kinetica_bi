@@ -176,3 +176,38 @@ describe("ask snapshot dynamic views (139)", () => {
     expect(AskRequestSchema.safeParse(r).success).toBe(true);
   });
 });
+
+describe("KHIST saved turns as provider history (141 D-18)", () => {
+  type Saved = NonNullable<Parameters<typeof buildAskTurns>[2]>;
+  const st = (i: number, chat?: Turn["chat"], answer = `A${i}`): Saved[number] =>
+    ({ kind: "turn", id: `s${i}`, prompt: `Q${i}`, answer, ...(chat ? { chat } : {}) }) as Saved[number];
+  const note = { kind: "note", id: "n1", text: "Changes saved." } as Saved[number];
+
+  it("KHIST-1: saved turns come first, notes never appear, changes carried", () => {
+    const saved = [st(1, { status: "ok", applied: ["added a chart"] } as Turn["chat"]), note, st(2)];
+    const out = buildAskTurns([turn(3, { status: "ok" } as Turn["chat"])], 0, saved);
+    expect(out.map((t) => t.question)).toEqual(["Q1", "Q2", "q3"]);
+    expect(out[0].changes).toContainEqual({ label: "added a chart", status: "applied" });
+  });
+  it("KHIST-2: saved turns count toward the recent-answer window", () => {
+    const saved = Array.from({ length: 9 }, (_, i) => st(i));
+    const out = buildAskTurns([turn(99)], 0, saved);
+    expect(out).toHaveLength(10);
+    expect(out[0].answer).toBe("");
+    expect(out[1].answer).toBe("");
+    expect(out[2].answer).toBe("A2");
+  });
+  it("KHIST-3: error/cancelled saved turns are excluded", () => {
+    const saved = [st(1, { status: "error" } as Turn["chat"]), st(2, { status: "cancelled" } as Turn["chat"]), st(3)];
+    expect(buildAskTurns([], -1, saved).map((t) => t.question)).toEqual(["Q3"]);
+  });
+  it("KHIST-4: no saved argument is unchanged", () => {
+    const turns = [turn(0, { status: "ok" } as Turn["chat"]), turn(1, { status: "error" } as Turn["chat"])];
+    expect(buildAskTurns(turns, 1)).toEqual(buildAskTurns(turns, 1, []));
+    expect(buildAskTurns(turns, 1).map((t) => t.question)).toEqual(["q0"]);
+  });
+  it("KHIST-5: buildAskRequest passes savedTurns through", () => {
+    const body = req({ savedTurns: [st(1), note] } as never);
+    expect(body.turns[0].question).toBe("Q1");
+  });
+});

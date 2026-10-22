@@ -2,7 +2,7 @@
 // (AIGOV-V20-02). Filters are reported as source + column + operator names only. The binding key set is CLOSED: no other widget config key is ever copied.
 import { layersOfMap, aiLayerColumnRefs, type AskRequest } from "@kinetica-bi/shared";
 import type { WidgetDto, DashboardLayerDto } from "../../api/client";
-import type { Turn } from "./types";
+import type { Turn, SavedChatItem } from "./types";
 
 export type AskRect = { x: number; y: number; w: number; h: number };
 
@@ -127,8 +127,12 @@ export function buildAskSnapshot(input: {
   };
 }
 
-export function buildAskTurns(turns: readonly Turn[], cursor: number): AskRequest["turns"] {
-  const kept = turns.slice(0, cursor + 1).filter((t) => !t.chat || t.chat.status === "ok");
+export function buildAskTurns(turns: readonly Turn[], cursor: number, saved: readonly SavedChatItem[] = []): AskRequest["turns"] {
+  // 141 D-18: kept (saved) turns stay as provider history, ahead of the live turns; notes are display-only.
+  const savedTurns = saved.flatMap((x) =>
+    x.kind === "turn" ? [{ id: x.id, prompt: x.prompt, answer: x.answer, entries: [], createdAt: 0, ...(x.chat ? { chat: x.chat } : {}) } as Turn] : [],
+  );
+  const kept = [...savedTurns, ...turns.slice(0, cursor + 1)].filter((t) => !t.chat || t.chat.status === "ok");
   const firstRecent = Math.max(0, kept.length - RECENT_ANSWER_TURNS);
   return kept.map((t, i) => {
     const changes: AskRequest["turns"][number]["changes"] = [];
@@ -156,8 +160,9 @@ export function buildAskRequest(input: {
   turns: readonly Turn[];
   cursor: number;
   removalApproved: boolean;
+  savedTurns?: readonly SavedChatItem[];
 }): AskRequest {
-  const turns = buildAskTurns(input.turns, input.cursor).slice(-50);
+  const turns = buildAskTurns(input.turns, input.cursor, input.savedTurns).slice(-50);
   const make = (): AskRequest => ({
     dashboardId: input.dashboardId,
     question: input.question.trim().slice(0, 2000),

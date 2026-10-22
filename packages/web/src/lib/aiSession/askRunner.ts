@@ -95,6 +95,7 @@ export async function runAsk(ctx: AskContext, question: string, opts?: { pick?: 
     turns: s.turns,
     cursor: s.cursor,
     removalApproved: s.removalApproved,
+    savedTurns: s.savedTurns,
   });
   const ctl = new AbortController();
   controller = ctl;
