@@ -126,3 +126,130 @@ describe("VSTAMP cors", () => {
     expect(exposed).toEqual([W_HDR, R_HDR].sort());
   });
 });
+
+// ─── VSTAMP-8..10: every non-GET route is classified ─────────────────────────
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createApp } from "../src/index";
+
+/** `METHOD /path` -> "stamped" | "exempt: <reason>". A new write route fails VSTAMP-8 until it is listed here. */
+export const WRITE_ROUTE_CLASSIFICATION: Record<string, string> = {
+  "DELETE /api/branding/logo": "exempt: branding is global, not dashboard state",
+  "DELETE /api/dashboards/:dashboardId/tables/:tableId": "stamped",
+  "DELETE /api/dashboards/:id": "exempt: dashboard removed, nothing left to version",
+  "DELETE /api/dashboards/:id/access": "exempt: not dashboard state; visibility re-checked at Keep",
+  "DELETE /api/dashboards/:id/layers/:layerId": "stamped",
+  "DELETE /api/dynamic-view/:id": "stamped",
+  "DELETE /api/exports/:id": "exempt: export job, no dashboard row written",
+  "DELETE /api/filter/materialize": "exempt: drops a session filter view in Kinetica, no dashboard row written",
+  "DELETE /api/roles/:id": "exempt: RBAC role, not dashboard state; visibility re-checked at Keep",
+  "DELETE /api/tables/:id": "exempt: shared dataset admin; cascades bump the version and count as foreign by design",
+  "DELETE /api/tables/:id/sync-history/:entryId": "exempt: shared dataset admin, not dashboard state",
+  "DELETE /api/tables/:tableId/column-display-config/:columnName": "exempt: shared per-table config, D-19",
+  "DELETE /api/tables/:tableId/custom-metrics/:id": "exempt: shared per-table config, D-19",
+  "DELETE /api/users/:username/roles/:roleName": "exempt: RBAC assignment, not dashboard state; visibility re-checked at Keep",
+  "DELETE /api/views/:id": "exempt: legacy dashboard-table filter view not part of the AI Keep dashboard load lists (widgets/layers/dynamic-views/tables)",
+  "DELETE /api/widgets/:id": "stamped",
+  "PATCH /api/dashboards/:id": "stamped",
+  "PATCH /api/dashboards/:id/layers/:layerId": "stamped",
+  "PATCH /api/dashboards/:id/layers/reorder": "stamped",
+  "PATCH /api/tables/:id": "exempt: shared dataset admin; cascades bump the version and count as foreign by design",
+  "PATCH /api/views/:id": "exempt: legacy dashboard-table filter view not part of the AI Keep dashboard load lists",
+  "PATCH /api/widgets/:id": "stamped",
+  "POST /api/ai/ask": "exempt: session/materialize only, no dashboard row written",
+  "POST /api/ai/dynamic-view/drop": "exempt: session/materialize only, no dashboard row written",
+  "POST /api/ai/dynamic-view/materialize": "exempt: session/materialize only, no dashboard row written",
+  "POST /api/auth/login": "exempt: auth/session, not dashboard state",
+  "POST /api/auth/logout": "exempt: auth/session, not dashboard state",
+  "POST /api/branding/logo": "exempt: branding is global, not dashboard state",
+  "POST /api/column-stats": "exempt: read-only Kinetica query over POST",
+  "POST /api/dashboards": "exempt: creates a NEW dashboard",
+  "POST /api/dashboards/:dashboardId/dynamic-views": "stamped",
+  "POST /api/dashboards/:id/access": "exempt: not dashboard state; visibility re-checked at Keep",
+  "POST /api/dashboards/:id/layers": "stamped",
+  "POST /api/dashboards/:id/tables": "stamped",
+  "POST /api/dashboards/:id/views": "exempt: legacy dashboard-table filter view not part of the AI Keep dashboard load lists",
+  "POST /api/dashboards/:id/widgets": "stamped",
+  "POST /api/dashboards/import": "exempt: creates a NEW dashboard",
+  "POST /api/dynamic-view/:id/drop": "exempt: drops the materialized Kinetica view only, no dashboard row written",
+  "POST /api/dynamic-view/materialize": "exempt: materialize only, no dashboard row written",
+  "POST /api/dynamic-view/preview": "exempt: read-only preview query",
+  "POST /api/exports": "exempt: export job, no dashboard row written",
+  "POST /api/exports/:id/cancel": "exempt: export job, no dashboard row written",
+  "POST /api/filter/materialize": "exempt: session filter view in Kinetica, no dashboard row written",
+  "POST /api/info/query": "exempt: read-only Kinetica query over POST",
+  "POST /api/quantile": "exempt: read-only Kinetica query over POST",
+  "POST /api/roles": "exempt: RBAC role, not dashboard state; visibility re-checked at Keep",
+  "POST /api/sql": "exempt: read-only Kinetica query over POST",
+  "POST /api/tables": "exempt: shared dataset admin, registers a table without touching an existing dashboard",
+  "POST /api/tables/:id/schema-apply": "exempt: shared dataset admin; cascades bump the version and count as foreign by design",
+  "POST /api/tables/:tableId/custom-metrics": "exempt: shared per-table config, D-19",
+  "POST /api/top-values": "exempt: read-only Kinetica query over POST",
+  "POST /api/users/:username/roles": "exempt: RBAC assignment, not dashboard state; visibility re-checked at Keep",
+  "POST /api/views/:id/materialize": "exempt: materialize only, no dashboard row written",
+  "PUT /api/branding": "exempt: branding is global, not dashboard state",
+  "PUT /api/dynamic-views/:id": "stamped",
+  "PUT /api/roles/:id/permissions": "exempt: RBAC role, not dashboard state; visibility re-checked at Keep",
+  "PUT /api/tables/:tableId/column-display-config/:columnName": "exempt: shared per-table config, D-19",
+  "PUT /api/tables/:tableId/custom-metrics/:id": "exempt: shared per-table config, D-19",
+};
+
+const collectWriteRoutes = async (): Promise<string[]> => {
+  const app = (await createApp()) as any;
+  const out = new Set<string>();
+  for (const layer of app._router.stack as any[]) {
+    if (!layer.route) continue;
+    const paths: string[] = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
+    for (const m of Object.keys(layer.route.methods)) {
+      if (["get", "head", "options"].includes(m)) continue;
+      for (const p of paths) out.add(`${m.toUpperCase()} ${p}`);
+    }
+  }
+  return [...out].sort();
+};
+
+describe("VSTAMP route classification", () => {
+  it("VSTAMP-8 every non-GET route is classified (no unclassified, no stale)", async () => {
+    const actual = await collectWriteRoutes();
+    const known = Object.keys(WRITE_ROUTE_CLASSIFICATION).sort();
+    const unclassified = actual.filter((k) => !known.includes(k));
+    const stale = known.filter((k) => !actual.includes(k));
+    expect({ unclassified, stale }).toEqual({ unclassified: [], stale: [] });
+  });
+
+  it("VSTAMP-9 values are stamped or exempt-with-reason; stamped set is exactly the 13 routes", () => {
+    for (const [k, v] of Object.entries(WRITE_ROUTE_CLASSIFICATION)) {
+      expect(v === "stamped" || (v.startsWith("exempt: ") && v.slice(8).trim().length > 0), k).toBe(true);
+    }
+    const stamped = Object.entries(WRITE_ROUTE_CLASSIFICATION).filter(([, v]) => v === "stamped").map(([k]) => k).sort();
+    expect(stamped).toEqual([
+      "DELETE /api/dashboards/:dashboardId/tables/:tableId",
+      "DELETE /api/dashboards/:id/layers/:layerId",
+      "DELETE /api/dynamic-view/:id",
+      "DELETE /api/widgets/:id",
+      "PATCH /api/dashboards/:id",
+      "PATCH /api/dashboards/:id/layers/:layerId",
+      "PATCH /api/dashboards/:id/layers/reorder",
+      "PATCH /api/widgets/:id",
+      "POST /api/dashboards/:dashboardId/dynamic-views",
+      "POST /api/dashboards/:id/layers",
+      "POST /api/dashboards/:id/tables",
+      "POST /api/dashboards/:id/widgets",
+      "PUT /api/dynamic-views/:id",
+    ]);
+  });
+
+  it("VSTAMP-10 every stamped route's registration block calls stampWrite(", () => {
+    const src = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+    const regs = [...src.matchAll(/^\s*app\.(get|post|put|patch|delete)\(\s*"([^"]+)"/gm)];
+    for (const [k, v] of Object.entries(WRITE_ROUTE_CLASSIFICATION)) {
+      if (v !== "stamped") continue;
+      const [method, path] = k.split(" ");
+      const i = regs.findIndex((r) => r[1].toUpperCase() === method && r[2] === path);
+      expect(i, `registration for ${k}`).toBeGreaterThanOrEqual(0);
+      const start = regs[i].index!;
+      const end = i + 1 < regs.length ? regs[i + 1].index! : src.length;
+      expect(src.slice(start, end), k).toContain("stampWrite(");
+    }
+  });
+});
