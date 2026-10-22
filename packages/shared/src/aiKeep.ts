@@ -103,3 +103,37 @@ export function keepPermissionMessage(p: KeepRight): string {
   const l = KEEP_PERMISSION_LABELS[p];
   return `You can't save these changes: saving ${l.noun} needs the ${l.label} permission.`;
 }
+
+export const DASHBOARD_VERSION_HEADER = "X-Kbi-Dashboard-Version"; // write: "<dashboardId>:<before>:<after>"
+export const DASHBOARD_VERSION_READ_HEADER = "X-Kbi-Dashboard-Version-Read"; // read: "<dashboardId>:<list>:<version>"
+export const DASHBOARD_VERSION_LISTS = ["widgets", "layers", "dynamic-views", "tables"] as const;
+export type DashboardVersionList = (typeof DASHBOARD_VERSION_LISTS)[number];
+
+const HEADER_MAX = 64;
+const WRITE_RE = /^(\d{1,12}):(\d{1,12}):(\d{1,12})$/;
+const READ_RE = /^(\d{1,12}):(widgets|layers|dynamic-views|tables):(\d{1,12})$/;
+
+export function formatVersionWriteHeader(dashboardId: number, before: number, after: number): string {
+  return `${dashboardId}:${before}:${after}`;
+}
+export function parseVersionWriteHeader(v: string | null | undefined): { dashboardId: number; before: number; after: number } | null {
+  if (typeof v !== "string" || v.length > HEADER_MAX) return null;
+  const m = WRITE_RE.exec(v);
+  if (!m) return null;
+  const dashboardId = Number(m[1]);
+  const before = Number(m[2]);
+  const after = Number(m[3]);
+  if (dashboardId < 1 || after < before) return null;
+  return { dashboardId, before, after };
+}
+export function formatVersionReadHeader(dashboardId: number, list: DashboardVersionList, version: number): string {
+  return `${dashboardId}:${list}:${version}`;
+}
+export function parseVersionReadHeader(v: string | null | undefined): { dashboardId: number; list: DashboardVersionList; version: number } | null {
+  if (typeof v !== "string" || v.length > HEADER_MAX) return null;
+  const m = READ_RE.exec(v);
+  if (!m) return null;
+  const dashboardId = Number(m[1]);
+  if (dashboardId < 1) return null;
+  return { dashboardId, list: m[2] as DashboardVersionList, version: Number(m[3]) };
+}

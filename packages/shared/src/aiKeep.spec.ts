@@ -5,6 +5,13 @@ import {
   KEEP_FAILED_MESSAGE,
   KEEP_RIGHTS_ORDER,
   keepPermissionMessage,
+  DASHBOARD_VERSION_HEADER,
+  DASHBOARD_VERSION_READ_HEADER,
+  DASHBOARD_VERSION_LISTS,
+  formatVersionWriteHeader,
+  parseVersionWriteHeader,
+  formatVersionReadHeader,
+  parseVersionReadHeader,
 } from "./aiKeep";
 
 const spec = { baseTableId: 5, columns: [{ column: "vendor" }], limit: 500 };
@@ -98,5 +105,30 @@ describe("AI keep request schema (141)", () => {
     expect(KEEP_CONFLICT_MESSAGE).toBe("Someone else changed this dashboard since you started. Your AI changes weren't saved.");
     expect(KEEP_FAILED_MESSAGE).toBe("Couldn't save the AI changes. Nothing was saved; try again.");
     expect([...KEEP_RIGHTS_ORDER]).toEqual(["dynamic_views:manage", "layers:manage", "widgets:configure"]);
+  });
+});
+
+describe("dashboard version headers (141)", () => {
+  it("KH-1 write header format and parse", () => {
+    expect(formatVersionWriteHeader(12, 40, 43)).toBe("12:40:43");
+    expect(parseVersionWriteHeader("12:40:43")).toEqual({ dashboardId: 12, before: 40, after: 43 });
+  });
+  it("KH-2 read header format and parse", () => {
+    expect(formatVersionReadHeader(12, "dynamic-views", 40)).toBe("12:dynamic-views:40");
+    expect(parseVersionReadHeader("12:dynamic-views:40")).toEqual({ dashboardId: 12, list: "dynamic-views", version: 40 });
+  });
+  it("KH-3 garbage returns null and never throws", () => {
+    const bad: (string | null | undefined)[] = [null, undefined, "", "12:40", "a:b:c", "12:-1:3", "12:5:4", "12:1.5:2", "12:widgetz:3", "0:1:2", "12:widgets:-1", "1".repeat(200)];
+    for (const b of bad) {
+      expect(parseVersionWriteHeader(b)).toBeNull();
+      expect(parseVersionReadHeader(b)).toBeNull();
+    }
+    expect(parseVersionReadHeader("0:widgets:1")).toBeNull();
+    expect(parseVersionReadHeader("12:widgets:x")).toBeNull();
+  });
+  it("KH-4 header names and lists", () => {
+    expect(DASHBOARD_VERSION_HEADER).toBe("X-Kbi-Dashboard-Version");
+    expect(DASHBOARD_VERSION_READ_HEADER).toBe("X-Kbi-Dashboard-Version-Read");
+    expect([...DASHBOARD_VERSION_LISTS]).toEqual(["widgets", "layers", "dynamic-views", "tables"]);
   });
 });
