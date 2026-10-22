@@ -3,13 +3,18 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useAiSessionStore, hasUnsavedAiChanges } from "../store/aiSessionStore";
 import { baselineFixture, addWidgetOp } from "../test/aiSessionHarness";
 import { requestLeave } from "../lib/aiLeaveGuard";
+import { useAuthStore } from "../store/auth";
+import { seedDesignerStore, seedAnalystStore } from "../test/seedAuthStore";
 import AiLeaveDialog from "./AiLeaveDialog";
 
 function dirty() {
   useAiSessionStore.getState().applyTurn({ prompt: "x", ops: [addWidgetOp(-1)] }, baselineFixture());
 }
 
-beforeEach(() => useAiSessionStore.getState().reset());
+beforeEach(() => {
+  useAiSessionStore.getState().reset();
+  useAuthStore.setState({ status: "unauthenticated", user: null });
+});
 
 describe("AiLeaveDialog", () => {
   it("AIDLG-1: clean session renders nothing and proceeds", () => {
@@ -30,6 +35,7 @@ describe("AiLeaveDialog", () => {
   });
 
   it("AIDLG-3: dirty shows labelled portalled dialog", () => {
+    seedDesignerStore();
     dirty();
     render(<AiLeaveDialog />);
     const fn = vi.fn();
@@ -37,8 +43,9 @@ describe("AiLeaveDialog", () => {
     expect(fn).not.toHaveBeenCalled();
     const dlg = screen.getByRole("dialog", { name: "You have unsaved AI changes" });
     expect(dlg.closest(".modal-overlay")!.parentElement).toBe(document.body);
-    // UAT12-4: Keep is disabled until Phase 141, so the copy must not tell the user to keep first
-    expect(dlg.textContent).not.toMatch(/Keep them first/);
+    // 141: Keep is live, so an editor is told to keep first
+    expect(dlg.textContent).toContain("Keep them first if you want to save them.");
+    expect(dlg.textContent).not.toMatch(/coming soon/i);
   });
 
   it("AIDLG-4: Stay closes, no proceed, turns intact", () => {
@@ -95,5 +102,15 @@ describe("AiLeaveDialog", () => {
     fireEvent.click(stay);
     expect(document.activeElement).toBe(opener);
     opener.remove();
+  });
+
+  it("AIDLG-8: non-editor gets the neutral copy (D-03)", () => {
+    seedAnalystStore();
+    dirty();
+    render(<AiLeaveDialog />);
+    act(() => requestLeave(() => {}));
+    const dlg = screen.getByRole("dialog", { name: "You have unsaved AI changes" });
+    expect(dlg.textContent).toContain("Leaving will discard the changes the AI made to this dashboard.");
+    expect(dlg.textContent).not.toMatch(/Keep them first/);
   });
 });

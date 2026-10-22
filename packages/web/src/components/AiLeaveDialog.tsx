@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useAiSessionStore } from "../store/aiSessionStore";
+import { useAuthStore } from "../store/auth";
+import { PERMISSIONS } from "../lib/permissions";
+import { AI_CHAT_COPY } from "../lib/aiSession/chatText";
 
 /**
  * D-15 leave confirmation. Mounted once in App.tsx; renders null unless a leave is pending.
@@ -9,6 +12,7 @@ import { useAiSessionStore } from "../store/aiSessionStore";
 export default function AiLeaveDialog() {
   const pendingLeave = useAiSessionStore((s) => s.pendingLeave);
   const open = pendingLeave !== null;
+  const canKeep = useAuthStore((s) => s.hasPermission)(PERMISSIONS.DASHBOARDS_EDIT);
   const stayRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -50,9 +54,7 @@ export default function AiLeaveDialog() {
           </div>
         </div>
         <div className="modal-body">
-          <p>
-            Leaving will discard the changes the AI made to this dashboard. Saving AI changes is coming soon.
-          </p>
+          <p>{canKeep ? AI_CHAT_COPY.leaveBody : AI_CHAT_COPY.leaveBodyNeutral}</p>
           <div className="ds-actions">
             <button ref={stayRef} type="button" className="btn-primary btn-sm" onClick={stay}>
               Stay
