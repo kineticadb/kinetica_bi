@@ -66,6 +66,8 @@ export type UseDynamicViewMaterializeChainResult = {
   /** The fetched saved list, untouched by the session overlay. */
   savedDynamicViews: DynamicViewRow[];
   retry: (dynamicViewId: number) => void;
+  /** 141: Keep swaps in the refetched saved list. */
+  setSavedDynamicViews: (rows: DynamicViewRow[]) => void;
 };
 
 const NO_WIDGETS: WidgetDto[] = [];
@@ -316,5 +318,5 @@ export function useDynamicViewMaterializeChain(
     [dynamicViews, fireCascade],
   );
 
-  return { dynamicViews, savedDynamicViews: saved, retry };
+  return { dynamicViews, savedDynamicViews: saved, retry, setSavedDynamicViews: setDynamicViews };
 }
