@@ -1388,6 +1388,10 @@ const DashboardOpen = ({
   }, []);
 
   const handleLayoutChange = (layout: Layout) => {
+    // 141 UAT: after a list swap (Keep) RGL first reports its stale pre-swap layout. A callback whose ids are not
+    // exactly the widgets on screen is stale; persisting it overwrote just-saved rects (and looped). Ignore it.
+    const onScreen = new Set(layouts.map((l) => l.i));
+    if (layout.length !== onScreen.size || layout.some((item) => !onScreen.has(item.i))) return;
     // Phase 134: AI-widget rects (negative temp ids) go to session geometry, never the DB.
     for (const item of layout) {
       if (Number(item.i) < 0) {
@@ -1665,6 +1669,7 @@ const DashboardOpen = ({
           {effectiveWidgets.map((w) => (
             <WidgetCard
               key={String(w.id)}
+              data-grid={layouts.find((l) => l.i === String(w.id))}
               widget={w}
               layers={layers}
               associatedTables={associatedTables}

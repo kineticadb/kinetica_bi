@@ -132,7 +132,7 @@ vi.mock("../lib/aiSession/aiAvailability", () => ({ useAiConfigured: vi.fn(() =>
 import { registerAllChartTypes } from "./charts/definitions";
 import DashboardsPage from "./DashboardsPage";
 import {
-  listDashboards, listWidgets, listViews, listDashboardTables, listDashboardLayers, listDynamicViews, keepAiChanges,
+  listDashboards, listWidgets, listViews, listDashboardTables, listDashboardLayers, listDynamicViews, keepAiChanges, updateWidget,
 } from "../api/client";
 
 const dashboardId = 1;
@@ -223,6 +223,43 @@ describe("DashboardsPage Keep glue (Phase 141 Plan 13)", () => {
     expect(gridItems().some((i) => i.i === "-1")).toBe(false);
     const after = [listWidgets, listDashboardLayers, listDashboardTables, listDynamicViews].map((f) => mocked(f).mock.calls.length);
     after.forEach((n, k) => expect(n).toBeGreaterThan(before[k]));
+  });
+
+  // 141 UAT: after the list swap RGL first reports its stale pre-Keep layout (old ids), then synthesizes 1x1 items
+  // for children it has no layout for; handleLayoutChange persisted both (78 PATCHes, new widgets saved 1x1).
+  it("KPAGE-4: a stale layout callback after Keep (ids not on screen) persists nothing", async () => {
+    await openDashboard();
+    turn();
+    await screen.findByText("AI records");
+    okKeep();
+    mocked(listWidgets).mockResolvedValue(serverRows());
+    await clickKeepThenSave();
+    await waitFor(() => expect(gridItems().some((i) => i.i === "31")).toBe(true));
+    mocked(updateWidget).mockClear();
+    act(() => {
+      (globalThis as any).__gridProps.onLayoutChange([
+        { i: "11", x: 0, y: 30, w: 18, h: 24 },
+        { i: "12", x: 18, y: 0, w: 18, h: 24 },
+        { i: "-1", x: 0, y: 48, w: 18, h: 24 },
+      ]);
+    });
+    expect(updateWidget).not.toHaveBeenCalled();
+  });
+
+  it("KPAGE-5: every grid child carries its layout rect as data-grid (no 1x1 synthesis for new children)", async () => {
+    await openDashboard();
+    turn();
+    await screen.findByText("AI records");
+    okKeep();
+    mocked(listWidgets).mockResolvedValue(serverRows());
+    await clickKeepThenSave();
+    await waitFor(() => expect(gridItems().some((i) => i.i === "31")).toBe(true));
+    const kids = ([] as any[]).concat((globalThis as any).__gridProps.children).flat().filter(Boolean);
+    expect(kids.length).toBe(gridItems().length);
+    for (const k of kids) {
+      const item = gridItems().find((i) => i.i === String(k.key));
+      expect(k.props["data-grid"]).toMatchObject({ x: item.x, y: item.y, w: item.w, h: item.h });
+    }
   });
 
   it("KPAGE-3: the bar disappears and the chat note is archived", async () => {

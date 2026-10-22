@@ -50,6 +50,9 @@ type WidgetCardOwnProps = {
   // Phase 108-02 will pass this to register a ref-map entry for scroll-to-widget; optional
   // and unused here so this plan's extraction stays inert-when-empty.
   registerRef?: (id: number, el: HTMLDivElement | null) => void;
+  // 141 UAT: read by react-grid-layout off the child element when the child has no layout item yet (so a new
+  // child gets its real rect instead of a synthesized 1x1). Consumed here, never rendered to the DOM.
+  "data-grid"?: { x: number; y: number; w: number; h: number; minW?: number; minH?: number; static?: boolean };
 };
 
 // Extend with the standard div attributes RGL/react-resizable/react-draggable inject
@@ -78,6 +81,7 @@ function WidgetCardImpl(
     onDuplicate,
     onRemove,
     registerRef,
+    "data-grid": _dataGrid,
     className,
     style,
     children,
