@@ -103,6 +103,7 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
 export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | "drawer" }) {
   const turns = useAiSessionStore((s) => s.turns);
   const cursor = useAiSessionStore((s) => s.cursor);
+  const savedTurns = useAiSessionStore((s) => s.savedTurns);
   const run = useAiSessionStore((s) => s.run);
   const running = run.status === "running";
   // 138: re-render the zero-row clear offer when filters change (primitive selector).
@@ -122,14 +123,14 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [turns.length, run.status, run.line]);
+  }, [turns.length, savedTurns.length, run.status, run.line]);
 
   const starters = buildStarterQuestions(ctx.tables);
 
   return (
     <div className={`ai-chat ai-chat--${variant}`}>
       <div className="ai-chat-log" role="log" aria-live="polite" ref={logRef}>
-        {turns.length === 0 && !running && (
+        {turns.length === 0 && savedTurns.length === 0 && !running && (
           <div className="ai-chat-empty">
             <p className="muted">{AI_CHAT_COPY.emptyHint}</p>
             <div className="ai-chat-followups">
@@ -140,6 +141,32 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
               ))}
             </div>
           </div>
+        )}
+        {/* 141 D-11: saved (kept) turns are read-only: no revert, choices, follow-ups or filter offers. */}
+        {savedTurns.map((x) =>
+          x.kind === "note" ? (
+            <div key={x.id} className="ai-chat-note muted">
+              {x.text}
+            </div>
+          ) : (
+            <div key={x.id} className="ai-chat-turn">
+              <div className="ai-chat-bubble ai-chat-bubble--user">{x.prompt}</div>
+              {(x.chat?.status ?? "ok") === "ok" && <div className="ai-chat-bubble ai-chat-bubble--ai">{x.answer}</div>}
+              {(x.chat?.filterNotes ?? []).map((n, ni) => (
+                <div key={`sfn-${ni}`} className="ai-chat-note muted">
+                  {n}
+                </div>
+              ))}
+              {(x.chat?.skipped ?? []).map((sk, si) => {
+                const t = describeSkipped(sk);
+                return t ? (
+                  <div key={`ssk-${si}`} className="ai-chat-note muted">
+                    {t}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          ),
         )}
         {turns.map((turn, i) => {
           const status = turn.chat?.status ?? "ok";
