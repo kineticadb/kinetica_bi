@@ -5,7 +5,17 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
-import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest } from "@kinetica-bi/shared";
+import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest, AiKeepRequest, AiKeepResponse } from "@kinetica-bi/shared";
+import {
+  DASHBOARD_VERSION_HEADER,
+  DASHBOARD_VERSION_READ_HEADER,
+  parseVersionWriteHeader,
+  parseVersionReadHeader,
+  AI_KEEP_ERROR_CODES,
+  KEEP_CONFLICT_MESSAGE,
+  KEEP_FAILED_MESSAGE,
+} from "@kinetica-bi/shared";
+import { useDashboardVersionStore } from "../store/dashboardVersionStore";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -60,8 +70,19 @@ export class UpstreamError extends Error {
 
 // --- Network layer ---
 
+// 141 D-07/D-17: every response may carry the dashboard version (own writes before->after, list reads).
+// Tolerates mocked responses with no headers / no `get`.
+function captureVersionHeaders(r: Response): void {
+  if (typeof (r as { headers?: { get?: unknown } })?.headers?.get !== "function") return;
+  const w = parseVersionWriteHeader(r.headers.get(DASHBOARD_VERSION_HEADER));
+  if (w) useDashboardVersionStore.getState().noteWrite(w.dashboardId, w.before, w.after);
+  const rd = parseVersionReadHeader(r.headers.get(DASHBOARD_VERSION_READ_HEADER));
+  if (rd) useDashboardVersionStore.getState().noteRead(rd.dashboardId, rd.list, rd.version);
+}
+
 const apiFetch: typeof fetch = async (input, init) => {
   const response = await fetch(input, { ...init, credentials: "include" });
+  captureVersionHeaders(response);
   if (response.status === 401 && typeof window !== "undefined") {
     // Body-peek for code: "REAUTH_REQUIRED". Clone so the original response stream
     // remains consumable by the caller. Failure to parse → fall back to no-dispatch
@@ -2125,4 +2146,45 @@ export const getAiConfig = async (): Promise<{ enabled: boolean }> => {
   if (!r.ok) return { enabled: false };
   const j = (await r.json()) as { enabled?: unknown };
   return { enabled: j.enabled === true };
+};
+
+// --- 141: Keep AI changes ---
+
+export type KeepAiResult =
+  | { ok: true; response: AiKeepResponse }
+  | { ok: false; kind: "conflict" | "permission" | "invalid" | "failed"; message: string };
+
+/** Never throws, never retries (a retry could double-apply). */
+export const keepAiChanges = async (dashboardId: number, body: AiKeepRequest): Promise<KeepAiResult> => {
+  const failed: KeepAiResult = { ok: false, kind: "failed", message: KEEP_FAILED_MESSAGE };
+  try {
+    const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/ai-keep`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      return { ok: true, response: (await response.json()) as AiKeepResponse };
+    }
+    let json: { code?: unknown; error?: unknown } = {};
+    try {
+      const parsed = await response.json();
+      if (parsed && typeof parsed === "object") json = parsed as typeof json;
+    } catch {
+      return failed;
+    }
+    const text = typeof json.error === "string" && json.error ? json.error : null;
+    if (response.status === 409 && json.code === AI_KEEP_ERROR_CODES.conflict) {
+      return { ok: false, kind: "conflict", message: KEEP_CONFLICT_MESSAGE };
+    }
+    if (response.status === 403 && (json.code === AI_KEEP_ERROR_CODES.permission || json.code === "PERMISSION_DENIED")) {
+      return { ok: false, kind: "permission", message: text ?? "You can't save AI changes." };
+    }
+    if ((response.status === 400 || response.status === 422) && json.code === AI_KEEP_ERROR_CODES.invalid) {
+      return { ok: false, kind: "invalid", message: text ?? KEEP_FAILED_MESSAGE };
+    }
+    return failed;
+  } catch {
+    return failed;
+  }
 };
