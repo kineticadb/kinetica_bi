@@ -18,6 +18,7 @@ import {
   listViews,
   createView,
   downloadDashboardExport,  // Phase 121 (DXIM-V124-01)
+  keepAiChanges,  // 141: called lazily inside onKeep (api/client spec mocks lack this export)
   DashboardDto,
   TableDto,
   WidgetDto,
@@ -47,6 +48,7 @@ import ImportDashboardModal from "./ImportDashboardModal";  // Phase 121 (DXIM-V
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import {
   listDashboardLayers,
+  listDynamicViews,
   createLayer,
   updateLayer as apiUpdateLayer,
   deleteLayer as apiDeleteLayer,
@@ -86,6 +88,8 @@ import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
 import { useAiSessionActions } from "../hooks/useAiSessionActions";
 import type { SessionBaseline } from "../lib/aiSession/types";
 import { AiChangeBar } from "./AiChangeBar";
+import { runKeep, runReloadLatest, rectsFromLayouts, type KeepLists } from "../lib/aiSession/keepRunner";
+import { buildKeepPayload } from "../lib/aiSession/keepPayload";
 import { cancelAsk, type AskContext } from "../lib/aiSession/askRunner";
 import { buildAskSnapshot, type AskRect } from "../lib/aiSession/buildAskRequest";
 import { useEffectiveLayers } from "../hooks/useEffectiveLayers";
@@ -689,7 +693,7 @@ const DashboardOpen = ({
     [sessionDerived.addedDynamicViews, dashboard.id, dvNonce, dvGen, dvColumns, associatedTables],
   );
   // 139: single merge point — saved minus session-removed, plus AI session views (negative ids).
-  const { dynamicViews, savedDynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id, widgets, sessionDvRows, sessionDerived.removedDynamicViewIds);
+  const { dynamicViews, savedDynamicViews, retry: retryDynamicView, setSavedDynamicViews } = useDynamicViewMaterializeChain(dashboard.id, widgets, sessionDvRows, sessionDerived.removedDynamicViewIds);
 
   // Phase 78 (TTLKEEP-V115-01): dashboard-level keep-alive — fires a lightweight READ touch
   // against each live materialized view (filter-views + dynamic-views) ~ttlKeepaliveLeadMinutes
@@ -751,6 +755,44 @@ const DashboardOpen = ({
     return out;
   }, [widgets, sessionDerived, sessionGeometry, editLocked]);
   const setLayers = useDashboardLayersStore((s) => s.setLayers);
+
+  const maxBarGroupBySeriesCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
+  // 141 Keep: refetch the four lists, then swap them in one synchronous block (runKeep owns the order).
+  const reloadLists = async (): Promise<KeepLists> => {
+    const [w, l, t, dv] = await Promise.all([
+      listWidgets(dashboard.id),
+      listDashboardLayers(dashboard.id),
+      listDashboardTables(dashboard.id),
+      listDynamicViews(dashboard.id),
+    ]);
+    return { widgets: w, layers: l, tables: t, dynamicViews: dv.dynamic_views };
+  };
+  const applyLists = (x: KeepLists) => {
+    setWidgets(x.widgets);
+    setLayers(x.layers);
+    setAssociatedTables(x.tables);
+    setSavedDynamicViews(x.dynamicViews);
+  };
+  const onKeep = () =>
+    runKeep({
+      dashboardId: dashboard.id,
+      buildPayload: (baselineVersion) => {
+        const s = useAiSessionStore.getState();
+        return buildKeepPayload({
+          baselineVersion,
+          derived: s.derived,
+          savedWidgets: widgets,
+          savedLayers,
+          tempLayerVisibility: s.tempLayerVisibility,
+          rects: rectsFromLayouts(layouts),
+          overlay: { tables: associatedTables, maxBarGroupBySeriesCap },
+        });
+      },
+      keep: (id, body) => keepAiChanges(id, body), // lazy: api/client spec mocks lack this export
+      reloadLists,
+      applyLists,
+    });
+  const onReloadLatest = () => runReloadLatest({ dashboardId: dashboard.id, reloadLists, applyLists });
 
   // Phase 90 (COMBO-V118-01 / COMBO-V118-03): dashboard-level combination-view orchestrator.
   // Fires one POST per UNIQUE resolved filter combination per filterVersion tick, ref-counts +
@@ -1648,7 +1690,13 @@ const DashboardOpen = ({
         : <div className="dashboard-open-header">{dashboardHeader}</div>}
 
       {/* 137 D-15: full-width Keep/Discard bar, outside the (possibly portalled) header. */}
-      <AiChangeBar savedWidgets={widgets} savedLayers={savedLayers} savedDynamicViews={savedDynamicViews} />
+      <AiChangeBar
+        savedWidgets={widgets}
+        savedLayers={savedLayers}
+        savedDynamicViews={savedDynamicViews}
+        onKeep={onKeep}
+        onReloadLatest={onReloadLatest}
+      />
 
       {error && <div className="error">{error}</div>}
       {(tablesQuery.error || widgetsQuery.error || viewsQuery.error) && (() => {

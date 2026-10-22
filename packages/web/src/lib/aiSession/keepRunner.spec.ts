@@ -10,7 +10,7 @@ import { buildKeepPayload } from "./keepPayload";
 
 const askLog: string[] = [];
 vi.mock("./askRunner", () => ({ cancelAsk: () => askLog.push("cancel") }));
-import { runKeep, runReloadLatest, type KeepLists, type KeepRunDeps } from "./keepRunner";
+import { runKeep, runReloadLatest, rectsFromLayouts, type KeepLists, type KeepRunDeps } from "./keepRunner";
 
 const DASH = 1;
 const st = () => useAiSessionStore.getState();
@@ -197,5 +197,15 @@ describe("keepRunner", () => {
     expect(useWidgetActionStore.getState().dynamicViewOverrides[9301]?.enabled).toBe(false);
     await runReloadLatest(deps());
     expect(useWidgetActionStore.getState().dynamicViewOverrides[9301]).toBeUndefined();
+  });
+
+  it("KRUN-10: rectsFromLayouts keys rects by numeric id and drops non-numeric keys", () => {
+    expect(
+      rectsFromLayouts([
+        { i: "12", x: 0, y: 0, w: 6, h: 8 },
+        { i: "-1", x: 6, y: 0, w: 6, h: 8 },
+        { i: "x", x: 1, y: 1, w: 1, h: 1 },
+      ]),
+    ).toEqual({ 12: { x: 0, y: 0, w: 6, h: 8 }, [-1]: { x: 6, y: 0, w: 6, h: 8 } });
   });
 });

@@ -9,6 +9,7 @@ import { useInfoSelectionStore } from "../../store/infoSelectionStore";
 import { discardAiSession } from "../aiOps/aiFilterEffects";
 import { cancelAsk } from "./askRunner";
 import { countViewToggles } from "./keepPayload";
+import type { SessionRect } from "./types";
 
 export type KeepLists = { widgets: WidgetDto[]; layers: DashboardLayerDto[]; tables: TableDto[]; dynamicViews: DynamicViewRow[] };
 export type KeepRunDeps = {
@@ -22,6 +23,16 @@ export type KeepRunDeps = {
 export type KeepRunOutcome = { kind: "saved" } | { kind: "saved_no_refresh" } | { kind: "conflict" } | { kind: "error"; message: string };
 
 const failed: KeepRunOutcome = { kind: "error", message: KEEP_FAILED_MESSAGE };
+
+/** The grid layout items as rects keyed by numeric widget id (temp ids are negative); non-numeric keys are dropped. */
+export function rectsFromLayouts(items: readonly { i: string; x: number; y: number; w: number; h: number }[]): Record<number, SessionRect> {
+  const out: Record<number, SessionRect> = {};
+  for (const it of items) {
+    const id = Number(it.i);
+    if (Number.isInteger(id)) out[id] = { x: it.x, y: it.y, w: it.w, h: it.h };
+  }
+  return out;
+}
 
 export async function runKeep(d: KeepRunDeps): Promise<KeepRunOutcome> {
   const versions = useDashboardVersionStore.getState();
