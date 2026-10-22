@@ -56,7 +56,7 @@
 - [x] **Phase 138: AI Filters** — AI applies/clears filters through the existing filter path
 - [x] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
 - [x] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
-- [ ] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
+- [x] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
 - [ ] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
 
 **Order:** 133 → {134 ∥ 135} → 136 → 137 → 138 → 139 → 140 → 141 → 142. 134 (client) and 135 (server) touch disjoint files and may run in parallel after 133.
@@ -295,22 +295,24 @@ Plans:
 2. A user without edit rights is not offered Keep, and a forged Keep request is rejected server-side.
 3. If the dashboard changed since the session began, Keep returns 409 and overwrites nothing.
 4. After Keep, a reload shows the saved result; the UI says filters are not saved (operator human-verify).
-**Plans:** 14 plans in 5 waves
+**Plans:** 14/14 plans complete in 5 waves
 Plans:
-- [ ] 141-01-PLAN.md — shared aiKeep.ts contract: strict capped change-set schema, exact D-02/D-08/D-12 texts, version-header format/parse helpers [W1]
-- [ ] 141-02-PLAN.md — dashboards.version column + kbi_ver_* triggers on widgets/layers/dynamic views/dashboard tables + updateDashboard bump + getDashboardVersion; DVER proofs incl. cascade + migration [W1]
-- [ ] 141-03-PLAN.md — negative-aware ref traversal (allowNegative) + collectSignedWidgetConfigRefs / remapTempRefs / remapTempFilterSelection; unmapped temp id throws [W1]
-- [ ] 141-04-PLAN.md — web store: completeKeep (keeps transcript as savedTurns, clears history/approval/overlay, drops temp views, keeps filters), keepBlocked, rekeyDvFilters, all Keep copy [W1]
-- [ ] 141-05-PLAN.md — before/after write stamps on 13 routes + per-list read stamps on 4 GETs + cors exposedHeaders + route-classification spec over app._router.stack [W2]
-- [ ] 141-06-PLAN.md — applyKeep: one sync transaction (version compare first, dv -> layer -> widget placeholders, temp-id rewrite, edits, removals, invariant) + SC1 RAISE(ABORT) injection proofs [W2]
-- [ ] 141-07-PLAN.md — requiredRights/missingRights (D-01/D-02), checkKeepChange (ownership, ai widget, retype, keys, refs), prepareKeep (live schema as user, server-side dv recompile without joinRefs) [W2]
-- [ ] 141-08-PLAN.md — extract mergeWidgetOverlay from WidgetRenderer; pure buildKeepPayload from the fold (configSet/configUnset, geometry baking, temp layer visibility) + Keep-equivalence spec + committed real-payload fixture + countViewToggles (D-20) [W2]
-- [ ] 141-09-PLAN.md — per-tab dashboardVersionStore (min of list reads + own-write edge chain), apiFetch header capture, never-throwing keepAiChanges [W2]
-- [ ] 141-10-PLAN.md — read-only saved turns + "Changes saved." in AiChat; saved turns sent as provider history (D-18) [W2]
-- [ ] 141-11-PLAN.md — AiKeepDialog ("Filters are not saved.") (+ D-20 view-toggle line) + AiKeepConflictDialog (D-08) + leave-dialog copy, editors only (AIDLG-3 edit, AIDLG-8) [W2]
-- [ ] 141-12-PLAN.md — POST /api/dashboards/:id/ai-keep + recordAiKeep audit + after-commit DROP; SC2 forged, SC3 409 (pre-check + in-transaction race), SC1 route atomicity; real-payload fixture applied; full server gate [W3]
-- [ ] 141-13-PLAN.md — keepRunner (refetch + one-block swap + rekey + completeKeep; conflict/permission/failure paths), AiChangeBar Keep states (BAR7-4 edit, D-03 hidden), DashboardsPage wiring + DashboardsPage.keep.spec; full web suite [W4]
-- [ ] 141-14-PLAN.md — step-0 gap gate (141-14-gap-gate.sh), all gates, operator UAT (reload, 409 two browsers, rights + forged fetch, temp views, dvFilters, tiles, light/dark), bookkeeping by hand [W5]
+- [x] 141-01-PLAN.md — shared aiKeep.ts contract: strict capped change-set schema, exact D-02/D-08/D-12 texts, version-header format/parse helpers [W1]
+- [x] 141-02-PLAN.md — dashboards.version column + kbi_ver_* triggers on widgets/layers/dynamic views/dashboard tables + updateDashboard bump + getDashboardVersion; DVER proofs incl. cascade + migration [W1]
+- [x] 141-03-PLAN.md — negative-aware ref traversal (allowNegative) + collectSignedWidgetConfigRefs / remapTempRefs / remapTempFilterSelection; unmapped temp id throws [W1]
+- [x] 141-04-PLAN.md — web store: completeKeep (keeps transcript as savedTurns, clears history/approval/overlay, drops temp views, keeps filters), keepBlocked, rekeyDvFilters, all Keep copy [W1]
+- [x] 141-05-PLAN.md — before/after write stamps on 13 routes + per-list read stamps on 4 GETs + cors exposedHeaders + route-classification spec over app._router.stack [W2]
+- [x] 141-06-PLAN.md — applyKeep: one sync transaction (version compare first, dv -> layer -> widget placeholders, temp-id rewrite, edits, removals, invariant) + SC1 RAISE(ABORT) injection proofs [W2]
+- [x] 141-07-PLAN.md — requiredRights/missingRights (D-01/D-02), checkKeepChange (ownership, ai widget, retype, keys, refs), prepareKeep (live schema as user, server-side dv recompile without joinRefs) [W2]
+- [x] 141-08-PLAN.md — extract mergeWidgetOverlay from WidgetRenderer; pure buildKeepPayload from the fold (configSet/configUnset, geometry baking, temp layer visibility) + Keep-equivalence spec + committed real-payload fixture + countViewToggles (D-20) [W2]
+- [x] 141-09-PLAN.md — per-tab dashboardVersionStore (min of list reads + own-write edge chain), apiFetch header capture, never-throwing keepAiChanges [W2]
+- [x] 141-10-PLAN.md — read-only saved turns + "Changes saved." in AiChat; saved turns sent as provider history (D-18) [W2]
+- [x] 141-11-PLAN.md — AiKeepDialog ("Filters are not saved.") (+ D-20 view-toggle line) + AiKeepConflictDialog (D-08) + leave-dialog copy, editors only (AIDLG-3 edit, AIDLG-8) [W2]
+- [x] 141-12-PLAN.md — POST /api/dashboards/:id/ai-keep + recordAiKeep audit + after-commit DROP; SC2 forged, SC3 409 (pre-check + in-transaction race), SC1 route atomicity; real-payload fixture applied; full server gate [W3]
+- [x] 141-13-PLAN.md — keepRunner (refetch + one-block swap + rekey + completeKeep; conflict/permission/failure paths), AiChangeBar Keep states (BAR7-4 edit, D-03 hidden), DashboardsPage wiring + DashboardsPage.keep.spec; full web suite [W4]
+- [x] 141-14-PLAN.md — step-0 gap gate (141-14-gap-gate.sh), all gates, operator UAT (reload, 409 two browsers, rights + forged fetch, temp views, dvFilters, tiles, light/dark), bookkeeping by hand [W5]
+
+**Completed 2026-10-22:** 14/14 plans. Operator UAT (run by Claude in the operator's signed-in Chrome, `141-14-UAT-RESULTS.md`), Kinetica 7.2.3.12, light and dark, harness only (no provider request). SC1 (all-or-nothing, real ids) and SC2 (forged request refused) proven by server specs; SC3 409 verified live with two tabs (overwrites nothing, own-write chains pass); SC4 reload matches after Keep, "Filters are not saved." seen. UAT step 6 skipped by the operator (route specs cover it), join note deferred to Phase 142. UAT fixes: e5bb56e, eaad490, 3aef06f.
 
 ### Phase 142: Generate, Audit Viewer & Live Provider Proofs
 **Goal:** Designers generate a starter dashboard from a table, admins browse the AI audit log, and the operator proves the provider live on Gemini and a local model.
@@ -337,7 +339,7 @@ Plans:
 | 138. AI Filters | 8/8 | Complete | 2026-10-16 |
 | 139. Session-Only Dynamic Views | 14/14 | Complete | 2026-10-20 |
 | 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
-| 141. Keep (Persist AI Changes) | 0/? | Not started | - |
+| 141. Keep (Persist AI Changes) | 14/14 | Complete | 2026-10-22 |
 | 142. Generate, Audit Viewer & Live Provider Proofs | 0/? | Not started | - |
 
 ---

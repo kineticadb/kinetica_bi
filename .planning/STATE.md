@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.26
 milestone_name: Large Exports & Fixes
 status: in-progress
-stopped_at: "Phase 141 planned (2026-10-21): research + 14 plans in 5 waves, plan check passed (iteration 3). Next: /gsd:execute-phase 141"
-last_updated: "2026-10-21T12:00:00.000Z"
+stopped_at: "Completed 141-14-PLAN.md (2026-10-22): Phase 141 complete (14/14). Next: /gsd:discuss-phase 142"
+last_updated: "2026-10-22T12:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,21 +19,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 140 (Query Data-Access Mode & Injection Hardening) complete; Phase 141 (Keep) next
+**Current focus:** v2.0 AI-Driven Dashboards — Phase 141 (Keep) complete; Phase 142 (Generate, Audit Viewer & Live Provider Proofs) next
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 140 (Query Data-Access Mode & Injection Hardening) — COMPLETE 2026-10-21 (13/13 plans; gates green apart from environmental lib.exportRunner.memory; 140-13 live spike + operator UAT run by Claude on Kinetica 7.2.3.12, light+dark; live Gemini ask deferred to 142; results in `phases/140-query-data-access-mode-injection-hardening/140-13-UAT-RESULTS.md`)
+Phase: 141 (Keep (Persist AI Changes)) — COMPLETE 2026-10-22 (14/14 plans; gates green; 141-14 operator UAT run by Claude in the operator's Chrome on Kinetica 7.2.3.12, light+dark; step 6 skipped, step 9 deferred to 142; UAT fixes e5bb56e/eaad490/3aef06f; results in `phases/141-keep-persist-ai-changes/141-14-UAT-RESULTS.md`)
+Previous phase: 140 (Query Data-Access Mode & Injection Hardening) — COMPLETE 2026-10-21 (13/13 plans; gates green apart from environmental lib.exportRunner.memory; 140-13 live spike + operator UAT run by Claude on Kinetica 7.2.3.12, light+dark; live Gemini ask deferred to 142; results in `phases/140-query-data-access-mode-injection-hardening/140-13-UAT-RESULTS.md`)
 Previous phase: 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans + gap fixes 6a26b22/4b688a9/fb38e93/a23ef71 + UAT fix 2cef90c; gates green; 139-14 operator UAT run by Claude in the operator's Chrome, light+dark; step 8/8b deferred to 142; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
 Previous phase: 138 (AI Filters) — COMPLETE 2026-10-16 (8/8 plans; 138-08 UAT results in `phases/138-ai-filters/138-08-UAT-RESULTS.md`)
-Plan: 140-13 complete — gates recorded (test-gate FAILED only on environmental lib.exportRunner.memory), spike Q1-Q8 PASS (Q2/Q3 on a slower SQL), steps 2-6 and 8 PASS light+dark, step 7 skipped (invalid AI_MODEL). Bookkeeping + `140-13-SUMMARY.md` done.
+Plan: 141-14 complete — GAP GATE PASS, server gate PASSED (2610/2665; failures = 8 known + 2 contamination-only), web 5049 passed, UAT steps 1-5, 7, 8, 10, 11 PASS, step 6 skipped, step 9 deferred. Bookkeeping + `141-14-SUMMARY.md` done.
+Previous plan: 140-13 complete — gates recorded (test-gate FAILED only on environmental lib.exportRunner.memory), spike Q1-Q8 PASS (Q2/Q3 on a slower SQL), steps 2-6 and 8 PASS light+dark, step 7 skipped (invalid AI_MODEL). Bookkeeping + `140-13-SUMMARY.md` done.
 Previous plan: 139-14 complete — full gates green, operator UAT 0-7 and 9-11 PASS (Kinetica 7.2.3.12), step 12 skipped (invalid AI_MODEL in dev). Bookkeeping + `139-14-SUMMARY.md` done.
 Previous plan: 138-08 complete — operator UAT steps 1-8b PASS light+dark.
 Phase 138 (AI Filters) — COMPLETE 2026-10-16 (8/8 plans; gates green; 138-08 operator UAT steps 1-8b PASS light+dark incl. SC4 real map tiles, step 9 skipped; results in `phases/138-ai-filters/138-08-UAT-RESULTS.md`)
 Phase 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans; gates green; 139-14 operator UAT run by Claude in the operator's Chrome against Kinetica 7.2.3.12, light and dark, steps 0-7 and 9-11 PASS, step 8/8b deferred to 142, step 12 skipped; fix 2cef90c; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
-Next: Phase 141 (Keep) → `/gsd:execute-phase 141` (context + research + 14 plans in 5 waves, plan check passed 2026-10-21)
-Status: Phase 140 complete (13/13, 2026-10-21). Phase 139 complete (14/14, 2026-10-20). Phase 138 complete (8/8, 2026-10-16). Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12). Phase 134 complete (10/10, 2026-10-12)
+Next: Phase 142 (Generate, Audit Viewer & Live Provider Proofs) → `/gsd:discuss-phase 142`
+Status: Phase 141 complete (14/14, 2026-10-22). Phase 140 complete (13/13, 2026-10-21). Phase 139 complete (14/14, 2026-10-20). Phase 138 complete (8/8, 2026-10-16). Phase 137 complete (12/12, 2026-10-15). Phase 136 complete (12/12, 2026-10-14). Phase 135 complete (12/12). Phase 134 complete (10/10, 2026-10-12)
 Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness only, no provider request), UAT fixes 81117b2, Phase 137 bookkeeping. Previously 2026-10-14 — 136-12: operator UAT recorded (VAL_ATTR tiles, light/dark, layout, removal approval, undo), Phase 136 bookkeeping. Previously 2026-10-13 — 135-12: S6 recorded in `135-SPIKES.md` (Gemini native, provisional), spike scoring fixed red-first, README provider status, phase bookkeeping
 
 - **Branch:** `feat/ai-driven-dashboards`, cut from `master` at `ef4e837` (PR #10 merged v1.25 + v1.26). `origin` is shared — fetch at session start.
@@ -133,6 +135,25 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - Copy follow-ups: the "Filter ... to the last 30 days" suggestion is date-agnostic (returns 0 rows on the 2009 nyctaxi data); the cap message "you already have 5 session views (limit 5); remove one first" starts lowercase.
 - Not eyeballed: model-driven D-25 ask UI, live model adherence to the dynamic-view prompt rules (step 12 skipped; dev env `AI_MODEL=Antigravity` is invalid) -> 142; dark mode for steps 5c, 6, 6b, 9, 10.
 - Shared remote: `origin` is shared; fetch at session start and branch the next milestone off merged master.
+
+**Phase 141 outcomes (2026-10-22):** A user with edit rights can Keep the AI's changes. (1) `dashboards.version` bumped by `kbi_ver_*` triggers on widgets/layers/dynamic views/dashboard tables, with before/after write headers, per-list read headers and per-tab own-write chains; a route-classification spec covers every write route (141-02, 141-05, 141-09). (2) Strict shared Keep contract with exact copy (141-01). (3) Server re-validation and named missing rights, ownership, keys, references, live schema, server-side dv recompile (141-07). (4) One sync transaction dv -> layer -> widget with temp-id remap; SC1 RAISE(ABORT) proofs; after-commit DROP; audit rows counted 0 (141-06, 141-12). (5) Client payload built through the renderer's own overlay merge (`mergeWidgetOverlay`), Keep-equivalence spec; `completeKeep` keeps the chat as provider history and drops temp views; filters stay and `dvFilters` re-key to the saved view (141-04, 141-08, 141-13). (6) Dialogs: "Filters are not saved." (+ D-20 view on/off line) and the 409 conflict dialog (141-11). (7) Operator UAT 2026-10-22 on Kinetica 7.2.3.12 found and fixed three defects: e5bb56e (Keep refused the AI widget's geometry edit), eaad490 (stale react-grid-layout callbacks wrote new widgets at 1x1 and a write storm after Keep; layout callbacks with ids not on screen are now ignored and children get data-grid), 3aef06f (btn-primary btn-sm height).
+
+**New debt / follow-ups from Phase 141:**
+- Phase 142's audit viewer must handle Keep outcomes (`kept`, `keep_conflict`, `keep_denied`, `keep_invalid`, `keep_failed`) with an empty `question` and `changes_json` of counts and ids only.
+- By decision D-20, dynamic-view on/off toggles are not saved and the user is told (dialog line + chat note); a persisted enabled column would be new scope.
+- A second tab of the same user counts as "someone else" (D-17, by design; UAT step 5 relied on it).
+- A lost Keep response then retry reads "Someone else changed..." (accepted; never duplicates).
+- Shared custom metrics / column display config are not part of the 409 (D-19).
+- Kept joined views read joined tables raw (139 D-21 known difference). UAT step 9 join note NOT TESTABLE on dashboard 12 (no second table with a join key); deferred to Phase 142 with the 139 step-8/8b join checks.
+- Keep does not verify a widget's `sql` mentions only dashboard tables (same trust as PATCH /api/widgets/:id).
+- UAT step 6 (viewer sees only Discard; user without Manage dynamic views message; forged devtools fetch) skipped by the operator; covered by KEEP-ROUTE forged and partial-rights specs; the viewer and partial-rights UI are not browser-verified.
+- (a) Minor, open: after a server restart (139 boot sweep) an open tab's AI views are not rebuilt and chart queries fail "not found".
+- (b) Minor, open: when Keep is blocked, the bar's note pushes Keep and Discard onto a second line.
+- (c) Minor, open: "Discard and reload the latest" (`ghost-sm ghost-danger`) does not look like a danger button until hover.
+- (d) Minor, open: the geometry bake uses the page's index-based fallback rect rather than the grid's actual position for legacy widgets with no saved layout; costs one extra own-tab PATCH after Keep.
+- (e) Step 9 join note and step 6 UI not browser-verified (see above).
+- (f) Harness only: empty answer bubbles for harness turns without answer text.
+- Live provider Keep (a model-driven ask then Keep) is unverified -> Phase 142 live UAT.
 
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.
