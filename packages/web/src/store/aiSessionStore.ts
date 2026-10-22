@@ -14,7 +14,7 @@
  * wholesale, so writing per turn would erase earlier turns' patches on the same target.
  *
  * Removal approval (136 D-06): `removalApproved` is per conversation. It starts false, is set by
- * `approveRemoval()` and cleared by `reset()` (Keep / Discard / dashboard switch / leave), and
+ * `approveRemoval()` and cleared by `reset()` (Discard / dashboard switch / leave) and by `completeKeep()` (Keep), and
  * reload clears memory (134 D-04). It is UX, not security: Keep enforces edit rights (141).
  *
  * 137: run/draft/highlight are shared by every AI widget on the dashboard (D-10); epoch lets the
@@ -28,11 +28,12 @@
  */
 import { create } from "zustand";
 import type {
-  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef,
+  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem,
 } from "../lib/aiSession/types";
-import { AI_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
+import { AI_SOURCE_ID, AI_KEPT_VIEW_TOGGLES_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
 import { evaluateTurn, foldSession, isFilterOp } from "../lib/aiSession/foldSession";
 import { useWidgetActionStore } from "./widgetActionStore";
+import { AI_CHAT_COPY } from "../lib/aiSession/chatText";
 import { AI_FOLLOWUP_MAX, AI_FOLLOWUP_MAX_CHARS, type AiDvOutputColumn } from "@kinetica-bi/shared";
 
 export type AiRun = { status: "idle" | "running"; question: string; startedAt: number; line: string; waitSeconds?: number };
@@ -98,6 +99,13 @@ export type AiSessionState = {
   applyTurn(input: TurnInput, baseline: SessionBaseline): { turnId: string; entries: TurnEntry[] };
   setCursor(index: number, baseline: SessionBaseline): void;
   reset(): void;
+  /** 141 D-08/Pattern 4: "conflict" = a 409 happened and the user chose Stay; "committed" = saved but the refresh failed. Keep stays disabled until reset(). */
+  keepBlocked: null | "conflict" | "committed";
+  setKeepBlocked(v: null | "conflict" | "committed"): void;
+  /** 141 D-11/D-18: read-only archive of kept turns plus notes; cleared by reset(). */
+  savedTurns: SavedChatItem[];
+  /** 141 D-11: after a successful Keep. NOT reset(): keeps the transcript (as savedTurns) and filters; clears history, approval, overlay; drops temp views. */
+  completeKeep(opts?: { warnings?: readonly string[]; viewTogglesNotSaved?: boolean }): void;
   setGeometry(tempId: number, rect: SessionRect): void;
   allocateTempId(): number;
   setPendingLeave(p: { proceed: () => void } | null): void;
@@ -160,6 +168,8 @@ const initial = {
   highlight: { ids: [] as number[], nonce: 0 },
   tempLayerVisibility: {} as Record<number, boolean>,
   pendingLeave: null as { proceed: () => void } | null,
+  savedTurns: [] as SavedChatItem[],
+  keepBlocked: null as null | "conflict" | "committed",
 };
 
 export const useAiSessionStore = create<AiSessionState>((set, get) => ({
@@ -244,6 +254,38 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     aiDvSink?.onReset();
     set({ ...initial, nextTempId: get().nextTempId, epoch: get().epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {} });
     useWidgetActionStore.getState().clearControl(AI_SOURCE_ID);
+    useWidgetActionStore.getState().clearControl(AI_KEPT_VIEW_TOGGLES_SOURCE_ID);
+  },
+
+  setKeepBlocked: (v) => set({ keepBlocked: v }),
+
+  // 141 D-21: Keep calls completeKeep(), NOT reset() - reset() would drop the transcript (D-18) and is for
+  // discard/switch/leave only. Do not change this back. Filters are NOT undone (D-13): aiFilterSink is never called.
+  completeKeep: (opts) => {
+    const s = get();
+    const toggles = s.derived.contribution.dynamicView; // D-20: captured BEFORE the derived state is cleared
+    const archived: SavedChatItem[] = s.turns.slice(0, s.cursor + 1).map((t) => ({
+      kind: "turn" as const, id: t.id, prompt: t.prompt, answer: t.answer, ...(t.chat ? { chat: t.chat } : {}),
+    }));
+    const texts = [
+      opts?.viewTogglesNotSaved ? `${AI_CHAT_COPY.keepSaved} ${AI_CHAT_COPY.viewTogglesNotSaved}` : AI_CHAT_COPY.keepSaved,
+      ...(opts?.warnings ?? []),
+    ];
+    const notes: SavedChatItem[] = texts.map((text) => ({ kind: "note" as const, id: `keep-note-${++turnSeq}`, text }));
+    set({
+      savedTurns: [...s.savedTurns, ...archived, ...notes],
+      baseEntries: [], droppedCount: 0, turns: [], cursor: -1, geometry: {}, derived: EMPTY_DERIVED,
+      removalApproved: false, highlight: { ids: [], nonce: s.highlight.nonce + 1 }, tempLayerVisibility: {},
+      keepBlocked: null, pendingLeave: null, epoch: s.epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {},
+    });
+    aiDvSink?.onReset();
+    const wa = useWidgetActionStore.getState();
+    wa.clearControl(AI_SOURCE_ID);
+    if (Object.keys(toggles).length > 0) {
+      // D-20: toggled views stay as shown in this tab (render-time only, never sent to the server); reset() clears.
+      const prev = wa.contributions[AI_KEPT_VIEW_TOGGLES_SOURCE_ID]?.dynamicView ?? {};
+      wa.setControlContribution(AI_KEPT_VIEW_TOGGLES_SOURCE_ID, { widget: {}, layer: {}, dynamicView: { ...prev, ...toggles } });
+    }
   },
 
   setGeometry: (tempId, rect) =>

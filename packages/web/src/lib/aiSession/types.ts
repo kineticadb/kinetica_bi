@@ -56,6 +56,10 @@ export type TurnChat = {
   emptyFilters?: { source: FilterSourceRef; column: string }[]; // D-17 "matched no rows" offers
 };
 export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number; chat?: TurnChat };
+/** 141 D-11/D-18: read-only archive of kept turns (never reverted; still sent as provider history by 141-10). */
+export type SavedChatItem =
+  | { kind: "turn"; id: string; prompt: string; answer: string; chat?: TurnChat }
+  | { kind: "note"; id: string; text: string };
 export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[]; chat?: TurnChat; currentFilters?: CurrentFilterColumns };
 export type SessionBaseline = {
   dashboardId: number;

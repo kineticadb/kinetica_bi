@@ -9,12 +9,33 @@ export const AI_CHAT_COPY = {
   cancelled: "Cancelled, nothing changed",
   revert: "Revert dashboard to this state",
   keepSoon: "Saving AI changes is coming soon",
+  keepConfirmTitle: "Save AI changes?",
+  keepSave: "Save",
+  keepCancel: "Cancel",
+  filtersNotSaved: "Filters are not saved.",
+  keepSaving: "Saving…",
+  keepEditorsOnly: "Only editors can save AI changes",
+  keepSaved: "Changes saved.",
+  keepNothing: "Nothing to save at this point",
+  keepBusy: "Wait for the AI to finish first",
+  keepBlockedConflict: "Someone else changed this dashboard. Discard to load the latest.",
+  keepCommittedNoRefresh: "Saved, but couldn't refresh the dashboard. Reload the page.",
+  conflictTitle: "This dashboard changed",
+  conflictStay: "Stay",
+  conflictReload: "Discard and reload the latest",
+  leaveBody: "Leaving will discard the changes the AI made to this dashboard. Keep them first if you want to save them.",
+  leaveBodyNeutral: "Leaving will discard the changes the AI made to this dashboard.",
+  viewTogglesNotSaved: "View on/off changes are not saved.",
   discardTitle: "Discard all AI changes?",
   discardBody: "This removes every change the AI made and clears the conversation.",
   lockedSuffix: "Editing is locked until they are kept or discarded.",
   askPlaceholder: "Ask a question about this dashboard",
   retry: "Retry",
 } as const;
+
+export function keepConfirmBody(c: { added: number; edited: number; removed: number }): string {
+  return `${c.added} added · ${c.edited} edited · ${c.removed} removed. ${AI_CHAT_COPY.filtersNotSaved}`;
+}
 
 export const TOOL_PROGRESS: Record<string, string> = {
   add_widget: "Adding a chart…",
