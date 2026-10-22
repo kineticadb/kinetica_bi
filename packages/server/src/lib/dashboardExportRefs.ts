@@ -132,6 +132,12 @@ const getOptionActionsLike = (option: Record<string, unknown>): ActionLike[] => 
   return [];
 };
 
+/** Keep (141): like `asId` but accepts negative temp ids (never 0). Only used when allowNegative. */
+const asRefId = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isInteger(v) && v !== 0 ? v : undefined;
+
+export type VisitOptions = { allowNegative?: boolean };
+
 /**
  * REF-7 / sixth-site shared traversal: `{ sourceMode, allowedSourceWidgetIds: (number | string)[] }`.
  * Takes an ALREADY-PARSED object — string parsing (dashboard_layers.filter_scope is typed
@@ -146,13 +152,18 @@ const getOptionActionsLike = (option: Record<string, unknown>): ActionLike[] => 
  * sentinel up in a `Map<number, number>`, get `undefined` back, and silently destroy spatial-draw
  * filtering on the imported dashboard.
  */
-export const visitFilterSelectionRefs = (value: unknown, visit: RefVisitor): void => {
+export const visitFilterSelectionRefs = (
+  value: unknown,
+  visit: RefVisitor,
+  opts?: VisitOptions,
+): void => {
   if (!isPlainObject(value)) return;
+  const idOf = opts?.allowNegative ? asRefId : asId;
   const ids = value.allowedSourceWidgetIds;
   if (!Array.isArray(ids)) return;
   const out: unknown[] = [];
   for (const entry of ids) {
-    const id = asId(entry);
+    const id = idOf(entry);
     if (id === undefined) {
       out.push(entry); // non-numeric (including the sentinel) passes through untouched
       continue;
@@ -175,14 +186,16 @@ export const visitFilterSelectionRefs = (value: unknown, visit: RefVisitor): voi
 export const visitWidgetConfigRefs = (
   config: unknown,
   visit: RefVisitor,
-  notes?: VisitNotes
+  notes?: VisitNotes,
+  opts?: VisitOptions,
 ): void => {
   if (!isPlainObject(config)) return;
+  const idOf = opts?.allowNegative ? asRefId : asId;
   const cfg = config;
 
   // REF-1: config.tableId -> table
   {
-    const id = asId(cfg.tableId);
+    const id = idOf(cfg.tableId);
     if (id !== undefined) {
       const next = visit({ kind: "table", id });
       if (next === undefined) delete cfg.tableId;
@@ -192,7 +205,7 @@ export const visitWidgetConfigRefs = (
 
   // REF-2: config.dynamicViewId -> dynamicView
   {
-    const id = asId(cfg.dynamicViewId);
+    const id = idOf(cfg.dynamicViewId);
     if (id !== undefined) {
       const next = visit({ kind: "dynamicView", id });
       if (next === undefined) delete cfg.dynamicViewId;
@@ -202,7 +215,7 @@ export const visitWidgetConfigRefs = (
 
   // REF-3: config.sourceMapWidgetId -> widget (standalone Legend widget, Phase 42)
   {
-    const id = asId(cfg.sourceMapWidgetId);
+    const id = idOf(cfg.sourceMapWidgetId);
     if (id !== undefined) {
       const next = visit({ kind: "widget", id });
       if (next === undefined) delete cfg.sourceMapWidgetId;
@@ -212,7 +225,7 @@ export const visitWidgetConfigRefs = (
 
   // REF-4: config.metricId (scalar) -> customMetric
   {
-    const id = asId(cfg.metricId);
+    const id = idOf(cfg.metricId);
     if (id !== undefined) {
       const next = visit({ kind: "customMetric", id });
       if (next === undefined) delete cfg.metricId;
@@ -226,7 +239,7 @@ export const visitWidgetConfigRefs = (
   if (Array.isArray(cfg.metrics)) {
     for (const el of cfg.metrics) {
       if (!isPlainObject(el)) continue;
-      const id = asId(el.metricId);
+      const id = idOf(el.metricId);
       if (id !== undefined) {
         const next = visit({ kind: "customMetric", id });
         if (next === undefined) delete el.metricId;
@@ -246,7 +259,7 @@ export const visitWidgetConfigRefs = (
     const out: unknown[] = [];
     let numericSeen = 0;
     for (const el of src) {
-      const id = asId(el);
+      const id = idOf(el);
       if (id === undefined) {
         out.push(el); // non-numeric passes through verbatim
         continue;
@@ -261,7 +274,7 @@ export const visitWidgetConfigRefs = (
 
   // REF-7: config.filterSelection.allowedSourceWidgetIds -> widget (mixed with sentinel string).
   // No `notes`: an emptied allowlist narrows (fewer filter sources apply), it does not widen.
-  visitFilterSelectionRefs(cfg.filterSelection, visit);
+  visitFilterSelectionRefs(cfg.filterSelection, visit, opts);
 
   // REF-8: config.options[].actions[].target (and legacy singular options[].action.target)
   // -> polymorphic {kind, id} dispatch to widget / layer / dynamicView.
@@ -279,7 +292,7 @@ export const visitWidgetConfigRefs = (
           continue;
         }
         const target = action.target as Record<string, unknown>;
-        const id = asId(target.id);
+        const id = idOf(target.id);
         if (id === undefined) {
           keep.push(action); // no numeric id: untouched, never mis-filed
           continue;
@@ -332,7 +345,7 @@ export const visitWidgetConfigRefs = (
         keep.push(target); // non-object passes through verbatim, never mis-filed
         continue;
       }
-      const id = asId(target.tableId);
+      const id = idOf(target.tableId);
       if (id === undefined) {
         keep.push(target); // no numeric tableId: untouched
         continue;
@@ -538,4 +551,71 @@ export const remapFilterSelection = (
     return mapped;
   });
   return { value: next, stripped };
+};
+
+
+// ---------------------------------------------------------------------------------------------
+// Keep (Phase 141): temp-id remap through the SAME single traversal (allowNegative).
+// ---------------------------------------------------------------------------------------------
+
+export class UnmappedTempRefError extends Error {
+  constructor(
+    readonly kind: RefKind,
+    readonly id: number,
+  ) {
+    super(`unmapped temporary ${kind === "dynamicView" ? "dynamic view" : kind} id ${id}`);
+    this.name = "UnmappedTempRefError";
+  }
+}
+
+/** Keep (141): every reference site, negative temp ids included. Never mutates. */
+export const collectSignedWidgetConfigRefs = (config: unknown): { kind: RefKind; id: number }[] => {
+  const sites: { kind: RefKind; id: number }[] = [];
+  visitWidgetConfigRefs(
+    cloneJson(config),
+    (site) => {
+      sites.push({ kind: site.kind, id: site.id });
+      return site.id;
+    },
+    undefined,
+    { allowNegative: true },
+  );
+  return sites;
+};
+
+const tempVisitor =
+  (maps: RefIdMaps): RefVisitor =>
+  (site) => {
+    if (site.id > 0) return site.id; // saved ids pass through, never stripped
+    const mapped = site.kind === "table" || site.kind === "customMetric" ? undefined : maps[site.kind].get(site.id);
+    if (mapped === undefined) throw new UnmappedTempRefError(site.kind, site.id);
+    return mapped;
+  };
+
+/** Keep (141): negative -> mapped real id or throw; positive unchanged. Returns a NEW object. */
+export const remapTempRefs = (config: unknown, maps: RefIdMaps): Record<string, unknown> => {
+  const next = isPlainObject(config) ? cloneJson(config) : {};
+  visitWidgetConfigRefs(next, tempVisitor(maps), undefined, { allowNegative: true });
+  return next;
+};
+
+/** Keep (141): filterSelection-shaped value (object or JSON string) with temp widget ids remapped. */
+export const remapTempFilterSelection = (
+  value: unknown,
+  widgetMap: Map<number, number>,
+): Record<string, unknown> | null => {
+  let parsed: unknown = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (!isPlainObject(parsed)) return null;
+  const next = cloneJson(parsed);
+  const maps = emptyRefIdMaps();
+  maps.widget = widgetMap;
+  visitFilterSelectionRefs(next, tempVisitor(maps), { allowNegative: true });
+  return next;
 };
