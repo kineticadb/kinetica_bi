@@ -1161,6 +1161,12 @@ a {
   font-size: var(--text-sm);
 }
 
+/* A filled small button pairs with .ghost-sm (1px border) in .ds-actions; a transparent border makes the
+   two boxes the same height (141 UAT: btn-primary btn-sm measured 21px vs ghost-sm 23px). */
+.btn-primary.btn-sm {
+  border: 1px solid transparent;
+}
+
 .muted {
   color: var(--muted);
 }
