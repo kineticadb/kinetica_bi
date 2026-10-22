@@ -8,7 +8,6 @@ export const AI_CHAT_COPY = {
   unavailable: "The AI assistant is not available here.",
   cancelled: "Cancelled, nothing changed",
   revert: "Revert dashboard to this state",
-  keepSoon: "Saving AI changes is coming soon",
   keepConfirmTitle: "Save AI changes?",
   keepSave: "Save",
   keepCancel: "Cancel",
