@@ -166,6 +166,9 @@ import { JSDOM } from "jsdom";
 import DOMPurify from "dompurify";
 // v1.16 Phase 81 (CSS-V116-02): PostCSS AST sanitizer for custom CSS at save time.
 import { sanitizeCssPostcss } from "./lib/brandCssSanitizer";
+// v2.0 Phase 141 (D-17/D-07): own-write attribution + list read-baseline stamps.
+import { stampWrite, stampRead } from "./lib/dashboardVersion";
+import { DASHBOARD_VERSION_HEADER, DASHBOARD_VERSION_READ_HEADER } from "@kinetica-bi/shared";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -174,7 +177,10 @@ export const createApp = async (): Promise<express.Express> => {
   app.use(
     cors({
       origin: corsOrigins.length ? corsOrigins : true,
-      credentials: true
+      credentials: true,
+      // 141 D-17/D-07: expose ONLY the two dashboard-version headers. client.ts relies on
+      // Content-Disposition staying unexposed cross-origin - do not add more here.
+      exposedHeaders: [DASHBOARD_VERSION_HEADER, DASHBOARD_VERSION_READ_HEADER]
     })
   );
   app.use(express.json({ limit: "1mb" }));
@@ -899,7 +905,7 @@ export const createApp = async (): Promise<express.Express> => {
     if ("filter_display_mode" in body && body.filter_display_mode !== "topbar" && body.filter_display_mode !== "panel") {
       return res.status(400).json({ error: "filter_display_mode must be 'topbar' or 'panel'." });
     }
-    const updated = updateDashboard(id, req.body);
+    const updated = stampWrite(res, id, () => updateDashboard(id, req.body));
     if (!updated) return res.status(404).json({ error: "Dashboard not found." });
     return res.json(updated);
   });
@@ -979,6 +985,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    stampRead(res, id, "widgets");
     return res.json({ data: listWidgets(id) });
   });
 
@@ -1017,26 +1024,26 @@ export const createApp = async (): Promise<express.Express> => {
       return res.status(400).json({ error: "Widget requires 'title' and 'type'." });
     }
     if (input.type === ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
-    const widget = createWidget(dashboardId, {
+    const widget = stampWrite(res, dashboardId, () => createWidget(dashboardId, {
       title: input.title,
       type: input.type,
       position: input.position ?? 0,
       config: input.config ?? {}
-    });
+    }));
     return res.status(201).json(widget);
   });
 
   app.patch("/api/widgets/:id", ...requirePermission(PERMISSIONS.WIDGETS_CONFIGURE), (req, res) => {
     const id = Number(req.params.id);
     if (req.body?.type === "ai" && getWidget(id) && getWidget(id)!.type !== ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
-    const updated = updateWidget(id, req.body);
+    const updated = stampWrite(res, getWidget(id)?.dashboard_id, () => updateWidget(id, req.body));
     if (!updated) return res.status(404).json({ error: "Widget not found." });
     return res.json(updated);
   });
 
   app.delete("/api/widgets/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
-    const ok = deleteWidget(id);
+    const ok = stampWrite(res, getWidget(id)?.dashboard_id, () => deleteWidget(id));
     if (!ok) return res.status(404).json({ error: "Widget not found." });
     return res.status(204).send();
   });
@@ -1047,6 +1054,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    stampRead(res, id, "tables");
     return res.json({ data: listDashboardTables(id) });
   });
 
@@ -1056,14 +1064,14 @@ export const createApp = async (): Promise<express.Express> => {
     const { table_id } = req.body as { table_id?: number };
     if (!table_id) return res.status(400).json({ error: "table_id is required." });
     if (!getTable(table_id)) return res.status(404).json({ error: "Table not found." });
-    addDashboardTable(dashboardId, table_id);
+    stampWrite(res, dashboardId, () => addDashboardTable(dashboardId, table_id));
     return res.status(201).json({ data: listDashboardTables(dashboardId) });
   });
 
   app.delete("/api/dashboards/:dashboardId/tables/:tableId", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.dashboardId);
     const tableId = Number(req.params.tableId);
-    const ok = removeDashboardTable(dashboardId, tableId);
+    const ok = stampWrite(res, dashboardId, () => removeDashboardTable(dashboardId, tableId));
     if (!ok) return res.status(404).json({ error: "Association not found." });
     return res.status(204).send();
   });
@@ -1078,6 +1086,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    stampRead(res, id, "layers");
     return res.json({ data: listDashboardLayers(id) });
   });
 
@@ -1093,7 +1102,7 @@ export const createApp = async (): Promise<express.Express> => {
     if (layer_type !== undefined && layer_type !== "KineticaWms") {
       return res.status(400).json({ error: "layer_type must be 'KineticaWms'." });
     }
-    const layer = createDashboardLayer(dashboardId, { table_id, layer_type, position, config });
+    const layer = stampWrite(res, dashboardId, () => createDashboardLayer(dashboardId, { table_id, layer_type, position, config }));
     return res.status(201).json(layer);
   });
 
@@ -1106,7 +1115,7 @@ export const createApp = async (): Promise<express.Express> => {
       return res.status(400).json({ error: "orderedIds (number[]) is required." });
     }
     try {
-      const layers = reorderDashboardLayers(dashboardId, orderedIds);
+      const layers = stampWrite(res, dashboardId, () => reorderDashboardLayers(dashboardId, orderedIds));
       return res.json({ data: layers });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "reorder failed";
@@ -1154,14 +1163,14 @@ export const createApp = async (): Promise<express.Express> => {
       const rawFilterScope = (body as any).filter_scope;
       body.filter_scope = rawFilterScope == null ? null : JSON.stringify(rawFilterScope);
     }
-    const updated = updateDashboardLayer(layerId, body);
+    const updated = stampWrite(res, getDashboardLayer(layerId)?.dashboard_id, () => updateDashboardLayer(layerId, body));
     if (!updated) return res.status(404).json({ error: "Layer not found." });
     return res.json(updated);
   });
 
   app.delete("/api/dashboards/:id/layers/:layerId", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const layerId = Number(req.params.layerId);
-    const ok = deleteDashboardLayer(layerId);
+    const ok = stampWrite(res, getDashboardLayer(layerId)?.dashboard_id, () => deleteDashboardLayer(layerId));
     if (!ok) return res.status(404).json({ error: "Layer not found." });
     return res.status(204).send();
   });
@@ -1796,6 +1805,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (!getDashboard(dashboardId) || !canViewDashboard(username, dashboardId)) {
         return res.status(404).json({ error: "Dashboard not found." });
       }
+      stampRead(res, dashboardId, "dynamic-views");
       const rows = listDashboardDynamicViews(dashboardId);
       // 139 D-03: derived (not stored) - lets the web fast-path send aggregated views to the server
       return res.json({ dynamic_views: rows.map((r) => ({ ...r, aggregated: isAggregatedTemplate(r.template_sql) })) });
@@ -1869,13 +1879,15 @@ export const createApp = async (): Promise<express.Express> => {
           return res.status(400).json({ error: "columns_json must be null or an array of { name: string, type: string }." });
         }
       }
-      const row = createDashboardDynamicView(dashboardId, {
-        source_table_id: body.source_table_id,
-        name: body.name,
-        template_sql: body.template_sql,
-        max_records: body.max_records,
+      // Re-bind narrowed body fields as consts: TS drops narrowing inside the stampWrite closure.
+      const { source_table_id, name, template_sql, max_records } = body;
+      const row = stampWrite(res, dashboardId, () => createDashboardDynamicView(dashboardId, {
+        source_table_id,
+        name,
+        template_sql,
+        max_records,
         columns_json: columnsJsonOnCreate,
-      });
+      }));
       return res.status(201).json({ dynamic_view: row });
     })
   );
@@ -1944,7 +1956,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (typeof body.max_records === "number" && body.max_records >= 0) attrs.max_records = body.max_records;
       if (columnsJsonAttr !== undefined) attrs.columns_json = columnsJsonAttr;
 
-      const updated = updateDashboardDynamicView(id, attrs);
+      const updated = stampWrite(res, existing.dashboard_id, () => updateDashboardDynamicView(id, attrs));
       return res.json({ dynamic_view: updated });
     })
   );
@@ -2366,7 +2378,7 @@ export const createApp = async (): Promise<express.Express> => {
         route: "DELETE /api/dynamic-view/:id",
         op: "DYNAMIC_MATERIALIZE",
       });
-      const deleted = deleteDashboardDynamicView(id);
+      const deleted = stampWrite(res, row.dashboard_id, () => deleteDashboardDynamicView(id));
       return res.json({ deleted, dropped: true });
     })
   );
