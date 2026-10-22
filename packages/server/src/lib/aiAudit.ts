@@ -7,6 +7,7 @@
  */
 import type Database from "better-sqlite3";
 import { db } from "../db";
+import type { AiKeepIdMap } from "@kinetica-bi/shared";
 
 export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited";
 export type AiToolAuditEntry = { name: string; args?: unknown; result: "ok" | "rejected" | "error"; stage?: string; reasons?: string[] };
@@ -133,4 +134,34 @@ export function startAiAuditSweep(): NodeJS.Timeout {
   const handle = setInterval(tick, AI_AUDIT_SWEEP_INTERVAL_MS);
   handle.unref();
   return handle;
+}
+
+// ---- Keep (141-12): one audit row per Keep attempt that reaches the handler. Counts and ids only (Pitfall 8). ----
+export type AiKeepAuditOutcome = "kept" | "keep_conflict" | "keep_denied" | "keep_invalid" | "keep_failed";
+export type AiKeepAuditInput = {
+  username: string;
+  dashboardId: number;
+  outcome: AiKeepAuditOutcome;
+  detail?: string; // a fixed code, never a message carrying values
+  counts: { added: { widgets: number; layers: number; dynamicViews: number }; edited: { widgets: number; layers: number }; removed: { widgets: number; layers: number; dynamicViews: number } };
+  idMap?: AiKeepIdMap;
+  durationMs: number;
+  now?: number;
+};
+
+export function recordAiKeep(input: AiKeepAuditInput, conn: Database.Database = db): void {
+  const now = input.now ?? Date.now();
+  conn
+    .prepare(
+      `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, steps, changes_json, duration_ms)
+       VALUES (?, ?, ?, ?, '', 'final', ?, ?, 0, 0, ?, ?)`,
+    )
+    .run(
+      now, input.username, input.dashboardId, `keep-${now}-${Math.random().toString(36).slice(2, 10)}`, input.outcome, input.detail ?? null,
+      JSON.stringify({ ...input.counts, ...(input.idMap ? { idMap: input.idMap } : {}) }), input.durationMs,
+    );
+  console.log(JSON.stringify({
+    ts: new Date(now).toISOString(), level: "info", event: "ai_keep",
+    username: input.username, dashboard_id: input.dashboardId, outcome: input.outcome, outcome_detail: input.detail ?? null, duration_ms: input.durationMs,
+  }));
 }

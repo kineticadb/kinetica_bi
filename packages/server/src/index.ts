@@ -160,6 +160,7 @@ import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboa
 import { registerExportRoutes } from "./exportRoutes";
 import { registerAiRoutes } from "./aiRoutes";
 import { registerAiDvRoutes } from "./aiDvRoutes";
+import { registerAiKeepRoutes } from "./aiKeepRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -1312,6 +1313,8 @@ export const createApp = async (): Promise<express.Express> => {
   registerAiRoutes(app);
   // v2.0 Phase 139: ad-hoc AI dynamic views (materialize/drop/list); session-only, registry-backed.
   registerAiDvRoutes(app, { requireConfig, wrap: asyncHandler, ttlMinutes: DEFAULT_VIEW_TTL_MINUTES, viewColumnsCache });
+  // v2.0 Phase 141: Keep (persist the AI session's folded change set); the server is the authority.
+  registerAiKeepRoutes(app, { requireConfig, wrap: asyncHandler, viewColumnsCache });
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.

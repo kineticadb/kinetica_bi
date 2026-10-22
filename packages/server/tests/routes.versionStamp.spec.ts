@@ -166,6 +166,7 @@ export const WRITE_ROUTE_CLASSIFICATION: Record<string, string> = {
   "POST /api/dashboards": "exempt: creates a NEW dashboard",
   "POST /api/dashboards/:dashboardId/dynamic-views": "stamped",
   "POST /api/dashboards/:id/access": "exempt: not dashboard state; visibility re-checked at Keep",
+  "POST /api/dashboards/:id/ai-keep": "stamped",
   "POST /api/dashboards/:id/layers": "stamped",
   "POST /api/dashboards/:id/tables": "stamped",
   "POST /api/dashboards/:id/views": "exempt: legacy dashboard-table filter view not part of the AI Keep dashboard load lists",
@@ -217,7 +218,7 @@ describe("VSTAMP route classification", () => {
     expect({ unclassified, stale }).toEqual({ unclassified: [], stale: [] });
   });
 
-  it("VSTAMP-9 values are stamped or exempt-with-reason; stamped set is exactly the 13 routes", () => {
+  it("VSTAMP-9 values are stamped or exempt-with-reason; stamped set is exactly the 14 routes", () => {
     for (const [k, v] of Object.entries(WRITE_ROUTE_CLASSIFICATION)) {
       expect(v === "stamped" || (v.startsWith("exempt: ") && v.slice(8).trim().length > 0), k).toBe(true);
     }
@@ -232,6 +233,7 @@ describe("VSTAMP route classification", () => {
       "PATCH /api/dashboards/:id/layers/reorder",
       "PATCH /api/widgets/:id",
       "POST /api/dashboards/:dashboardId/dynamic-views",
+      "POST /api/dashboards/:id/ai-keep",
       "POST /api/dashboards/:id/layers",
       "POST /api/dashboards/:id/tables",
       "POST /api/dashboards/:id/widgets",
@@ -241,10 +243,16 @@ describe("VSTAMP route classification", () => {
 
   it("VSTAMP-10 every stamped route's registration block calls stampWrite(", () => {
     const src = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+    const keepSrc = readFileSync(join(__dirname, "../src/aiKeepRoutes.ts"), "utf8");
     const regs = [...src.matchAll(/^\s*app\.(get|post|put|patch|delete)\(\s*"([^"]+)"/gm)];
     for (const [k, v] of Object.entries(WRITE_ROUTE_CLASSIFICATION)) {
       if (v !== "stamped") continue;
       const [method, path] = k.split(" ");
+      if (k === "POST /api/dashboards/:id/ai-keep") {
+        // registered in aiKeepRoutes.ts; the Keep route sets the write header itself
+        expect(keepSrc, k).toContain("formatVersionWriteHeader(");
+        continue;
+      }
       const i = regs.findIndex((r) => r[1].toUpperCase() === method && r[2] === path);
       expect(i, `registration for ${k}`).toBeGreaterThanOrEqual(0);
       const start = regs[i].index!;
