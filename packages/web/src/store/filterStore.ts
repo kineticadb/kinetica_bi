@@ -64,6 +64,8 @@ export type FilterState = {
   setBulkFilters: (tableId: number, filters: ActiveFilter[]) => void;
   removeFilter: (tableId: number, column: string) => void;
   clearFilters: (tableId: number) => void;
+  /** 141 D-13: move AI-view (negative id) dvFilters to the saved view id in one filterVersion tick; optionally remap negative sourceWidgetId. */
+  rekeyDvFilters: (dvMap: Readonly<Record<string, number>>, widgetMap?: Readonly<Record<string, number>>) => void;
   // reset() is internal: called from App.tsx on logout, DashboardsPage on dashboard switch.
   reset: () => void;
 };
@@ -230,6 +232,44 @@ export const useFilterStore = create<FilterState>((set) => ({
         dvFilters: next,
         filterVersion: state.filterVersion + 1,
       };
+    }),
+
+  // 141 D-13: AI-view filters follow the view to its saved id; never touched by reset semantics.
+  rekeyDvFilters: (dvMap, widgetMap) =>
+    set((state) => {
+      let changed = false;
+      const remap = (list: ActiveFilter[]): ActiveFilter[] => {
+        if (!widgetMap) return list;
+        let any = false;
+        const out = list.map((fl) => {
+          const w = fl.sourceWidgetId;
+          if (typeof w === "number" && w < 0 && widgetMap[String(w)] !== undefined) {
+            any = true;
+            return { ...fl, sourceWidgetId: widgetMap[String(w)] };
+          }
+          return fl;
+        });
+        if (any) changed = true;
+        return any ? out : list;
+      };
+      const dvFilters: Record<number, ActiveFilter[]> = {};
+      for (const [k, list] of Object.entries(state.dvFilters)) {
+        const id = Number(k);
+        if (id >= 0) continue;
+        changed = true; // negative key is moved or dropped either way
+        const to = dvMap[k];
+        if (to === undefined) continue;
+        dvFilters[to] = [...(dvFilters[to] ?? []), ...remap(list)];
+      }
+      for (const [k, list] of Object.entries(state.dvFilters)) {
+        const id = Number(k);
+        if (id < 0) continue;
+        dvFilters[id] = [...remap(list), ...(dvFilters[id] ?? [])];
+      }
+      const filters: Record<number, ActiveFilter[]> = {};
+      for (const [k, list] of Object.entries(state.filters)) filters[Number(k)] = remap(list);
+      if (!changed) return state;
+      return { dvFilters, filters, filterVersion: state.filterVersion + 1 };
     }),
 
   // Internal-only — called from App.tsx on logout and DashboardsPage on dashboard switch.
