@@ -509,6 +509,14 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!dashboardColNames.has("filter_display_mode")) {
     instance.exec("ALTER TABLE dashboards ADD COLUMN filter_display_mode TEXT");
   }
+  // v2.0 Phase 141 (AISES-V20-06, D-05/D-17): dashboard-wide change counter for Keep's 409.
+  if (!dashboardColNames.has("version")) instance.exec("ALTER TABLE dashboards ADD COLUMN version INTEGER NOT NULL DEFAULT 0");
+  for (const t of ["widgets", "dashboard_layers", "dashboard_dynamic_views", "dashboard_tables"] as const) {
+    instance.exec(`
+      CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_i AFTER INSERT ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = NEW.dashboard_id; END;
+      CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_u AFTER UPDATE ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = NEW.dashboard_id; END;
+      CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_d AFTER DELETE ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = OLD.dashboard_id; END;`);
+  }
 
   // v1.25 Phase 122 (SSYNC-V125-02): add columns_fingerprint TEXT to existing `tables`.
   // NULL = this table's snapshot predates precise type capture, so the first schema check
@@ -626,6 +634,9 @@ export const getDashboard = (id: number): Dashboard | undefined => {
   return row ? mapDashboard(row) : undefined;
 };
 
+export const getDashboardVersion = (id: number): number | undefined =>
+  (db.prepare("SELECT version FROM dashboards WHERE id = ?").get(id) as { version: number } | undefined)?.version;
+
 export const createDashboard = (name: string, description?: string): Dashboard => {
   const stmt = db.prepare("INSERT INTO dashboards (name, description) VALUES (?, ?)");
   const result = stmt.run(name, description ?? null);
@@ -635,7 +646,7 @@ export const createDashboard = (name: string, description?: string): Dashboard =
 export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name" | "description" | "filter_display_mode">>): Dashboard | undefined => {
   const existing = getDashboard(id);
   if (!existing) return undefined;
-  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, updated_at = datetime('now') WHERE id = ?").run(
+  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?").run(
     attrs.name ?? existing.name,
     attrs.description ?? existing.description,
     "filter_display_mode" in attrs ? attrs.filter_display_mode : existing.filter_display_mode,
