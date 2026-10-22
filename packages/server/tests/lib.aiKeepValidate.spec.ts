@@ -103,6 +103,14 @@ describe("checkKeepChange", () => {
     expect(reasonsOf(checkKeepChange(D, withReq({ w: { remove: [WA] } })))).toContain(m);
   });
 
+  it("KVAL-4b (141 UAT): a geometry-only edit of the ai widget is allowed; anything more is not", () => {
+    const m = "the AI assistant widget can't be changed by Keep";
+    const rect = { x: 0, y: 24, w: 18, h: 24 };
+    expect(checkKeepChange(D, withReq({ w: { edit: [{ id: WA, rect }] } })).ok).toBe(true);
+    expect(reasonsOf(checkKeepChange(D, withReq({ w: { edit: [{ id: WA, rect, title: "x" }] } })))).toContain(m);
+    expect(reasonsOf(checkKeepChange(D, withReq({ w: { edit: [{ id: WA, rect, configSet: { show_popup: true } }] } })))).toContain(m);
+  });
+
   it("KVAL-5: only bar/line/pie may retype", () => {
     expect(reasonsOf(checkKeepChange(D, withReq({ w: { edit: [{ id: W3, type: "bar" }] } })))).toContain("only bar, line and pie charts can change type");
     expect(checkKeepChange(D, withReq({ w: { edit: [{ id: W1, type: "pie" }] } })).ok).toBe(true);

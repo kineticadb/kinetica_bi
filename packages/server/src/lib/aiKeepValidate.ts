@@ -108,7 +108,9 @@ export function checkKeepChange(dashboardId: number, c: AiKeepRequest): KeepChec
       continue;
     }
     if (w.type === "ai") {
-      push("the AI assistant widget can't be changed by Keep");
+      // 141 UAT: the client bakes on-screen geometry into widgets without a saved layout (so removals don't shift
+      // them); a geometry-only edit of the AI widget is that bake, not an AI change to it. Anything more is refused.
+      if (Object.keys(e).some((k) => k !== "id" && k !== "rect")) push("the AI assistant widget can't be changed by Keep");
       continue;
     }
     if (e.type !== undefined && !(AI_CHART_SWAP_TYPES as readonly string[]).includes(w.type)) push("only bar, line and pie charts can change type");

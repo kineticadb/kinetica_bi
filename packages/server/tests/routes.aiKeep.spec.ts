@@ -263,6 +263,15 @@ describe("Keep route refusals (141-12 task 2)", () => {
     expectUntouched(before);
   });
 
+  it("KEEP-ROUTE-ai-rect (141 UAT) a baked geometry edit of the ai widget is saved, not refused", async () => {
+    const c = await setup();
+    const r = await post(c, { ...empty(c), widgets: { add: [], edit: [{ id: c.WAI, rect: rect(3) }], remove: [] } });
+    expect(r.status).toBe(200);
+    const row = db.prepare("SELECT type, config FROM widgets WHERE id = ?").get(c.WAI) as { type: string; config: string };
+    expect(row.type).toBe("ai");
+    expect(JSON.parse(row.config).layout).toMatchObject(rect(3));
+  });
+
   it("KEEP-ROUTE-forged-keys blocked config keys and client SQL fields are refused", async () => {
     const c = await setup();
     const before = snap();
