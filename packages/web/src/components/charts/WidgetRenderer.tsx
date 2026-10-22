@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { translateWidgetOverlay, overlayTouchesChartSql } from "../../lib/widgetOverlayKeys";
-import { deriveChartConfig } from "../../lib/chartSql";
+import { mergeWidgetOverlay } from "../../lib/widgetOverlay";
 import MapChartRenderer from "./MapChartRenderer";
 import WidgetErrorBoundary from "../WidgetErrorBoundary";
 import InfoCardRenderer from "./InfoCardRenderer";
@@ -84,7 +83,7 @@ import { whereCustomWhere } from "../../lib/customWhere";
 import { yAxisScaleProps } from "../../lib/yAxisScale";
 // Phase 102 (BARGRP-V119-02/03/04): multi-column bar group-by pivot + series cap + guard.
 import { isMultiColumnBarGroupBy, toBarPivotInput, BAR_SERIES_SEPARATOR } from "../../lib/barGroupedSeries";
-import { isCustomSelection, resolveMetricLabel, resolveMetricExpr } from "../../lib/customMetricSql";
+import { isCustomSelection, resolveMetricLabel } from "../../lib/customMetricSql";
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
 // Phase 121 gap closure (DXIM-V124-10): resolve a custom metric's expression at RENDER time.
 // widget.config.sql freezes whatever expression was live when Apply was last pressed, so an
@@ -356,28 +355,10 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
   const widgetOverlay = useWidgetActionStore((s) => s.widgetOverrides[widget.id] ?? null);
   // Phase 136 (D-01, D-19): SQL-affecting overlays regenerate sql + drill columns with the panel's own generator.
   const maxBarGroupBySeriesCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
-  const effectiveWidget = useMemo(() => {
-    if (!widgetOverlay) return widget;
-    const translated = translateWidgetOverlay(widget.type, widgetOverlay);
-    const merged: Record<string, unknown> = { ...(widget.config ?? {}), ...translated };
-    if (
-      ["bar", "line", "pie", "table", "bignumber"].includes(widget.type) &&
-      merged.dynamicViewId === undefined &&
-      overlayTouchesChartSql(translated)
-    ) {
-      const t = tables.find((x) => x.id === merged.tableId);
-      const tableName = t ? `${t.schema}.${t.name}` : typeof merged.table === "string" ? merged.table : "";
-      const d = deriveChartConfig(widget.type, merged, {
-        tableName,
-        tableColumns: t?.columns ?? {},
-        maxBarGroupBySeriesCap,
-        // deriveChartConfig does not pass tableId; custom metrics resolve against the widget's tableId.
-        resolveMetricExpr: (id, fb) => resolveMetricExpr(id, fb, merged.tableId as number | undefined),
-      });
-      if (d) Object.assign(merged, d);
-    }
-    return { ...widget, config: merged };
-  }, [widget, widgetOverlay, tables, maxBarGroupBySeriesCap]);
+  const effectiveWidget = useMemo(
+    () => mergeWidgetOverlay(widget, widgetOverlay, { tables, maxBarGroupBySeriesCap }),
+    [widget, widgetOverlay, tables, maxBarGroupBySeriesCap],
+  );
 
   let body: ReactElement;
   if (effectiveWidget.type === "map") {
