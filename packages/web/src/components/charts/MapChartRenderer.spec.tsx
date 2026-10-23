@@ -6839,6 +6839,26 @@ describe("MapChartRenderer — Phase 112 initial view from config.defaultView", 
     expect(opts.center).toEqual(NYC.center);
     expect(opts.zoom).toBe(12.437);
   });
+
+  // ── H7: 142 UAT, an AI-added map opens on its server-stamped data extent ─────
+  it("H7: an AI-added map with a server-stamped defaultView constructs its OL view there (session fold path)", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+    const stamped = { center: [-8226375.5, 4974561.25] as [number, number], zoom: 10.9 };
+    act(() => {
+      h.runTurns(h.baselineFixture(), [[{ op: "add_widget", tempId: -1, type: "map", title: "Pickups", config: { defaultView: stamped } }]]);
+    });
+    const aiMap = useAiSessionStore.getState().derived.addedWidgets.find((x) => x.id === -1);
+    expect(aiMap).toBeDefined();
+    await act(async () => {
+      render(<MapChartRenderer widget={aiMap!} tables={[]} />);
+    });
+    const opts = vi.mocked(OlView).mock.calls[0][0] as any;
+    expect(opts.center).toEqual(stamped.center);
+    expect(opts.zoom).toBe(10.9);
+    useAiSessionStore.getState().reset();
+  });
 });
 
 /* ------------------------------------------------------------------ */

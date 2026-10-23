@@ -117,6 +117,17 @@ describe("foldSession", () => {
     expect(d.addedWidgets[0].config.showScaleBar).toBe(true);
     expect("show_scale_bar" in d.addedWidgets[0].config).toBe(false);
   });
+  it("MAPVIEW-F1 (142 UAT): an AI-added map keeps its server-stamped defaultView", () => {
+    const view = { center: [-8226375.5, 4974561.25] as [number, number], zoom: 10.9 };
+    const [e] = turn([{ op: "add_widget", tempId: -1, type: "map", title: "m", config: { defaultView: view } }]);
+    expect(e.result.status).toBe("applied");
+    const d = foldSession(baseline, [e]);
+    expect(d.addedWidgets[0].config.defaultView).toEqual(view);
+  });
+  it("MAPVIEW-F2 (142 UAT): a malformed defaultView is still refused", () => {
+    const [e] = turn([{ op: "add_widget", tempId: -1, type: "map", title: "m", config: { defaultView: { center: [1], zoom: 99 } } }]);
+    expect(e.result.status).toBe("skipped");
+  });
   it("FOLD-4: removals", () => {
     const t = turn([
       patch("widget", 42, { show_popup: true }), { op: "remove_widget", id: 42 },

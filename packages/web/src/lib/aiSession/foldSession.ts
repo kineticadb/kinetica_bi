@@ -383,7 +383,8 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       return done({ status: "applied" });
     case "add_widget": {
       if (sim.usedTemp.has(op.tempId)) return done(skip("duplicate_temp_id"));
-      const v = validateAiWidgetConfig(op.type, op.config);
+      // 142 UAT: ops arrive from the server, which may stamp a map defaultView (never model-settable: the gateway refuses it).
+      const v = validateAiWidgetConfig(op.type, op.config, { allowServerStamped: true });
       if (!v.valid) return done(skip("config_rejected", v.reasons.join("; ")));
       if ("dynamicViewId" in op.config) {
         if (op.config.tableId !== undefined) return done(skip("config_rejected", "pass tableId or dynamicViewId, not both"));

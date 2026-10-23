@@ -253,3 +253,14 @@ describe("buildKeepPayload", () => {
     expect(countViewToggles(foldSession(b, []))).toBe(0);
   });
 });
+
+describe("MAPVIEW-K (142 UAT)", () => {
+  it("MAPVIEW-K1 an AI-added map's server-stamped defaultView rides the Keep payload", () => {
+    const b = baseline();
+    const view = { center: [-8226375.5, 4974561.25], zoom: 10.9 };
+    const d = fold(b, [[{ op: "add_widget", tempId: -1, type: "map", title: "Pickups", config: { defaultView: view }, layout: { x: 0, y: 30, w: 24, h: 40 } }]]);
+    const p = build(b, d);
+    expect(parse(p).success).toBe(true);
+    expect(p.widgets.add[0].config.defaultView).toEqual(view);
+  });
+});
