@@ -1413,6 +1413,11 @@ input[type="checkbox"],
   cursor: pointer;
 }
 
+/* 142 UAT: inside a .ds-form the toggle reads at the form's own text size (fields and inputs use --text-sm). */
+.ds-form .config-toggle {
+  font-size: var(--text-sm);
+}
+
 .config-color-field {
   display: flex;
   flex-direction: column;

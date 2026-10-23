@@ -47,7 +47,9 @@ describe("GeneratedDashboardBar", () => {
       "It was generated and never kept. Discarding deletes it with its charts and AI views.",
     );
     const cancel = screen.getByRole("button", { name: "Cancel" });
-    expect(cancel.className).toBe("btn-primary btn-sm");
+    // 142 UAT: the destructive action is the filled red button; Cancel is the plain one and keeps focus.
+    expect(cancel.className).toBe("ghost-sm");
+    expect(screen.getByRole("button", { name: "Discard" }).className).toBe("btn-danger btn-sm");
     expect(document.activeElement).toBe(cancel);
     fireEvent.keyDown(d, { key: "Escape" });
     fireEvent.click(cancel);

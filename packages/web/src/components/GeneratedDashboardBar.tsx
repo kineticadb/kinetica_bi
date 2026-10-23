@@ -91,11 +91,11 @@ export function GeneratedDiscardDialog({
             </p>
           )}
           <div className="ds-actions">
-            <button ref={cancelRef} type="button" className="btn-primary btn-sm" disabled={busy} onClick={onClose}>
-              Cancel
-            </button>
-            <button type="button" className="ghost-sm ghost-danger" disabled={busy} onClick={() => void discard()}>
+            <button type="button" className="btn-danger btn-sm" disabled={busy} onClick={() => void discard()}>
               {busy ? GENERATED_COPY.discarding : "Discard"}
+            </button>
+            <button ref={cancelRef} type="button" className="ghost-sm" disabled={busy} onClick={onClose}>
+              Cancel
             </button>
           </div>
         </div>

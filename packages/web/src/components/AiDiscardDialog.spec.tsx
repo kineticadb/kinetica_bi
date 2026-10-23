@@ -36,4 +36,11 @@ describe("AiDiscardDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(order).toEqual(["cancel:1"]);
   });
+  it("DISF-STYLE (142 UAT): Discard is the filled red button, Cancel the plain one and focused", () => {
+    render(<AiDiscardDialog onClose={() => {}} />);
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(screen.getByRole("button", { name: "Discard" }).className).toBe("btn-danger btn-sm");
+    expect(cancel.className).toBe("ghost-sm");
+    expect(document.activeElement).toBe(cancel);
+  });
 });

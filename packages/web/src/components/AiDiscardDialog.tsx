@@ -48,11 +48,11 @@ export default function AiDiscardDialog({ onClose }: { onClose: () => void }) {
         <div className="modal-body">
           <p>{AI_CHAT_COPY.discardBody}</p>
           <div className="ds-actions">
-            <button ref={cancelRef} type="button" className="btn-primary btn-sm" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="button" className="ghost-sm ghost-danger" onClick={discard}>
+            <button type="button" className="btn-danger btn-sm" onClick={discard}>
               Discard
+            </button>
+            <button ref={cancelRef} type="button" className="ghost-sm" onClick={onClose}>
+              Cancel
             </button>
           </div>
         </div>
