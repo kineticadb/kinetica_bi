@@ -56,11 +56,11 @@ export type DropDeps = { sql?: typeof kineticaSql; principalFor?: (sid: string) 
 type Tally = { dropped: number; ttlOnly: number; failed: number };
 
 /** Drop every row of one sid (as that session's user), then delete the rows. Mutates `t` as drops settle. */
-async function dropSid(sid: string, deps: DropDeps, t: Tally): Promise<void> {
+async function dropSid(sid: string, deps: DropDeps, t: Tally, dashboardId?: number): Promise<void> {
   const conn = deps.conn ?? db;
   const sql = deps.sql ?? kineticaSql;
   const principalFor = deps.principalFor ?? principalForSession;
-  const rows = listAiSessionViewsForSid(sid, conn);
+  const rows = listAiSessionViewsForSid(sid, conn).filter((r) => dashboardId === undefined || r.dashboardId === dashboardId);
   if (rows.length === 0) return;
   let principal: KineticaPrincipal | null = null;
   let principalErr: "ttl" | "fail" | null = null;
@@ -119,6 +119,26 @@ export async function dropViewsForSid(sid: string, deps: DropDeps = {}): Promise
       for (const r of listAiSessionViewsForSid(sid, conn)) deleteAiSessionView(r.viewName, conn);
     } catch { /* never throws */ }
     return { dropped: t.dropped, failed: t.failed + t.ttlOnly + pending };
+  } catch {
+    return { dropped: t.dropped, failed: Math.max(0, total - t.dropped) };
+  }
+}
+
+/** 142 (AIGEN-V20-02): drop every AI session view of ONE dashboard (any session), as each session's user; then delete the rows.
+ *  Ended sessions fall back to the Kinetica TTL (counted as failed). Never throws; bounded by timeoutMs (default 3000). */
+export async function dropViewsForDashboard(dashboardId: number, deps: DropDeps = {}): Promise<{ dropped: number; failed: number }> {
+  const conn = deps.conn ?? db;
+  const t: Tally = { dropped: 0, ttlOnly: 0, failed: 0 };
+  let total = 0;
+  try {
+    total = (conn.prepare("SELECT COUNT(*) AS c FROM ai_session_views WHERE dashboard_id = ?").get(dashboardId) as { c: number }).c;
+    const sids = (conn.prepare("SELECT DISTINCT sid FROM ai_session_views WHERE dashboard_id = ?").all(dashboardId) as { sid: string }[]).map((r) => r.sid);
+    await bounded(Promise.all(sids.map((sid) => dropSid(sid, deps, t, dashboardId))).then(() => {}), deps.timeoutMs ?? 3000);
+    const settled = t.dropped + t.ttlOnly + t.failed;
+    try {
+      conn.prepare("DELETE FROM ai_session_views WHERE dashboard_id = ?").run(dashboardId);
+    } catch { /* never throws */ }
+    return { dropped: t.dropped, failed: t.failed + t.ttlOnly + Math.max(0, total - settled) };
   } catch {
     return { dropped: t.dropped, failed: Math.max(0, total - t.dropped) };
   }

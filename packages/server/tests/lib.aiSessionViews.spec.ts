@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { createDb } from "../src/db";
 import {
   registerAiSessionView, getAiSessionView, deleteAiSessionView, countAiSessionViews, findAiSessionView,
-  dropViewsForSid, sweepAiViewsOnBoot, type AiSessionViewRow,
+  dropViewsForSid, dropViewsForDashboard, sweepAiViewsOnBoot, type AiSessionViewRow,
 } from "../src/lib/aiSessionViews";
 import { buildAiDynamicViewName } from "../src/lib/aiDvName";
 import { SessionEndedError } from "../src/lib/exportRunner";
@@ -127,5 +127,41 @@ describe("aiSessionViews", () => {
     expect(line).toMatch(/^\[ai\] boot sweep: dropped \d+ AI session views; \d+ left to TTL/);
     expect(line).not.toContain("alice");
     expect(line).not.toContain("_kbi_ai_");
+  });
+});
+
+describe("dropViewsForDashboard (REGV-D)", () => {
+  const forDash = (c: ReturnType<typeof createDb>, d: number) => (c.prepare("SELECT COUNT(*) AS n FROM ai_session_views WHERE dashboard_id = ?").get(d) as { n: number }).n;
+  it("REGV-D1: drops only that dashboard's rows, across sessions", async () => {
+    const c = createDb(":memory:");
+    const rows = [mk(A, -1, 0, "alice", 7), mk(A, -2, 0, "alice", 7), mk(B, -1, 0, "alice", 7)];
+    rows.forEach((r) => registerAiSessionView(r, c));
+    registerAiSessionView(mk(A, -3, 0, "alice", 8), c);
+    const sql = vi.fn().mockResolvedValue({});
+    const res = await dropViewsForDashboard(7, { sql, principalFor: okPrincipal, conn: c });
+    expect(res).toEqual({ dropped: 3, failed: 0 });
+    expect(sql.mock.calls.map((x) => x[1]).sort()).toEqual(rows.map((r) => `DROP TABLE IF EXISTS ${r.viewName}`).sort());
+    expect(sql.mock.calls.every((x) => x[2].op === "DYNAMIC_DROP")).toBe(true);
+    expect(forDash(c, 7)).toBe(0);
+    expect(forDash(c, 8)).toBe(1);
+  });
+  it("REGV-D2: ended session counts failed but rows are deleted", async () => {
+    const c = createDb(":memory:");
+    registerAiSessionView(mk(A, -1, 0, "alice", 7), c);
+    const sql = vi.fn().mockResolvedValue({});
+    const res = await dropViewsForDashboard(7, { sql, principalFor: () => { throw new SessionEndedError(); }, conn: c });
+    expect(res).toEqual({ dropped: 0, failed: 1 });
+    expect(sql).not.toHaveBeenCalled();
+    expect(forDash(c, 7)).toBe(0);
+  });
+  it("REGV-D3: bounded by timeoutMs and still deletes rows", async () => {
+    const c = createDb(":memory:");
+    registerAiSessionView(mk(A, -1, 0, "alice", 7), c);
+    const sql = vi.fn().mockImplementation(() => new Promise(() => {}));
+    const t0 = Date.now();
+    const res = await dropViewsForDashboard(7, { sql, principalFor: okPrincipal, conn: c, timeoutMs: 50 });
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(res).toEqual({ dropped: 0, failed: 1 });
+    expect(forDash(c, 7)).toBe(0);
   });
 });
