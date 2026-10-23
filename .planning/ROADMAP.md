@@ -325,7 +325,19 @@ Plans:
 2. Discarding a generated dashboard leaves no dashboard, widgets or views (checked in SQLite and Kinetica).
 3. An admin with the audit permission browses the log (no row values); a user without it cannot open the page.
 4. The operator completes live runs on Gemini and on one named Ollama model, recorded in a UAT file with a tested-models matrix.
-**Plans:** TBD
+**Plans:** 11 plans in 5 waves
+Plans:
+- [ ] 142-01-PLAN.md — dashboards.generated_by/generated_pending_at + one-pending-per-user unique index, ai_audit.kind + (dashboard_id, ts_ms) index, DTO generated_pending, creator-only override in canViewDashboard, enumerator filter, grant refusal, Keep clears the flag in-transaction [W1]
+- [ ] 142-02-PLAN.md — shared placeGenerateBands + GENERATE_AI_RECT, server generateMode.ts (limits, recipe, nudge, band rewrite), agentLoop beforeFinish one-shot nudge [W1]
+- [ ] 142-03-PLAN.md — web generateDashboard/discardGeneratedDashboard client, take-once generate intent, "Generate from a table" on the New Dashboard form, D-06 prompt, "Not kept yet" label [W1]
+- [ ] 142-04-PLAN.md — .env.example tested model IDs/timeouts/Docker recipe/AI_GENERATED_TTL_HOURS, README Generate + AI activity docs, mcp-action-seam superseded banner [W1]
+- [ ] 142-05-PLAN.md — aiGenerate.ts lifecycle (create in one transaction, one discard helper), dropViewsForDashboard, POST /api/dashboards/generate + /:id/discard-generated, DELETE via helper, logout/boot/TTL sweeps [W2]
+- [ ] 142-06-PLAN.md — audit kind on every row; server-derived generate mode in the ask path (limits, recipe, nudge, 4-8 floor/ceiling, bands) [W2]
+- [ ] 142-07-PLAN.md — web open generated dashboard: auto-start first ask once, pending note + server Discard dialog, Keep refetch, RGL guard regression [W2]
+- [ ] 142-08-PLAN.md — web AI activity page (filters, paging, detail), audit client, nav gate on audit:view, permission description text [W2]
+- [ ] 142-09-PLAN.md — GET /api/ai/audit (+ /:id, /dashboards) behind audit:view, bound filters, kind derivation, Keep summaries, no unkept names [W3]
+- [ ] 142-10-PLAN.md — gap gate + full gates, UAT steps (both providers, Gemini quota plan), Gemini live UAT checkpoint + results [W4]
+- [ ] 142-11-PLAN.md — Ollama-in-Docker live UAT checkpoint, Tested models matrix, phase bookkeeping by hand [W5]
 
 ### Progress
 
