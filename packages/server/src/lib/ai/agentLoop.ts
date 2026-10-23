@@ -37,6 +37,8 @@ export type AgentLoopInput = {
   maxToolSteps: number;
   timeoutMs: number;
   maxNewWidgets: number; // D-09: add_widget calls applied per answer
+  /** 142 generate mode: called when the model stops calling tools. A non-null message is sent back ONCE as a user turn and the loop continues (no tool step is used). */
+  beforeFinish?: (s: { addedWidgets: number }) => string | null;
 };
 export type AgentLoopDeps = {
   provider: LlmProvider;
@@ -119,6 +121,7 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
   const extraSkipped: SkippedEntry[] = [];
   const clarifications: AiClarification[] = [];
   let addedWidgets = 0;
+  let nudged = false;
   const convo: OutboundMessage[] = [...input.messages];
 
   const guard = (): void => {
@@ -190,6 +193,13 @@ export async function runAgentLoop(input: AgentLoopInput, deps: AgentLoopDeps): 
 
       if (calls.length === 0) {
         deps.checkSession();
+        const nudge = !nudged && input.beforeFinish ? input.beforeFinish({ addedWidgets }) : null;
+        if (nudge) {
+          nudged = true;
+          if (turnText) convo.push({ role: "assistant", parts: [part.history(turnText)] });
+          convo.push({ role: "user", parts: [part.user(nudge)] });
+          continue;
+        }
         text = turnText;
         break;
       }
