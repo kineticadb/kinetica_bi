@@ -67,9 +67,11 @@ import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
 import { dropViewsForSid, sweepAiViewsOnBoot, getAiSessionView } from "./lib/aiSessionViews";
 import { buildAiDynamicViewName } from "./lib/aiDvName";
 import { startAiAuditSweep } from "./lib/aiAudit";
+import { discardGeneratedDashboard, discardPendingForUser, sweepGeneratedOnBoot, startGeneratedSweep } from "./lib/aiGenerate";
+import { registerAiGenerateRoutes } from "./aiGenerateRoutes";
 import { getExportLimits } from "./lib/exportCaps";
 import { loadAiConfig } from "./lib/aiConfig";
-import { createSession, deleteSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
+import { createSession, deleteSession, getSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
 import {
   createDashboard,
   createWidget,
@@ -467,6 +469,11 @@ export const createApp = async (): Promise<express.Express> => {
       // 139 (AISAFE-V20-06): drop this session's AI views AS the user BEFORE the session row (and its credentials) is
       // deleted. The client cannot do it: its DROP calls run after this response clears the cookie. Bounded; never fails logout.
       try { await dropViewsForSid(decoded.sid, { timeoutMs: 3000 }); } catch { /* swallow */ }
+      // 142 D-03a: an unkept generated dashboard does not outlive its creator's logout. Bounded; never fails logout.
+      try {
+        const s = getSession(decoded.sid);
+        if (s) await discardPendingForUser(s.username, { timeoutMs: 3000 });
+      } catch { /* swallow */ }
       try { deleteSession(decoded.sid); } catch { /* swallow — logout never fails */ }
     }
     clearSessionCookie(res);
@@ -912,12 +919,17 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json(updated);
   });
 
-  app.delete("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_DELETE), (req, res) => {
+  app.delete("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_DELETE), asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    // 142: a pending generated dashboard goes through the one discard helper (drops its AI session views too).
+    if (getDashboard(id)?.generated_pending) {
+      const r = await discardGeneratedDashboard(id);
+      return r.deleted ? res.status(204).send() : res.status(404).json({ error: "Dashboard not found." });
+    }
     const ok = deleteDashboard(id);
     if (!ok) return res.status(404).json({ error: "Dashboard not found." });
     return res.status(204).send();
-  });
+  }));
 
   // ─── Dashboard Access Grant CRUD (ENFORCE-V110-03/04) ─────────────────────────
   // All three routes are gated by dashboards:manage_access. Admin and designer hold it
@@ -1318,6 +1330,8 @@ export const createApp = async (): Promise<express.Express> => {
   registerAiDvRoutes(app, { requireConfig, wrap: asyncHandler, ttlMinutes: DEFAULT_VIEW_TTL_MINUTES, viewColumnsCache });
   // v2.0 Phase 141: Keep (persist the AI session's folded change set); the server is the authority.
   registerAiKeepRoutes(app, { requireConfig, wrap: asyncHandler, viewColumnsCache });
+  // v2.0 Phase 142: Generate from a table (pending dashboard) + creator-only discard.
+  registerAiGenerateRoutes(app, { requireConfig, wrap: asyncHandler });
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.
@@ -3486,7 +3500,7 @@ export const errorMiddleware = (
 
 if (process.env.NODE_ENV !== "test") {
   // Async IIFE — the bootstrap regex test (tests/bootstrap.spec.ts) verifies that this
-  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen, startExportSweep() after, and the Phase 135 AI audit sweep last). All live inside the IIFE
+  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen, startExportSweep() after, and the Phase 135 AI audit sweep and Phase 142 generated sweep last). All live inside the IIFE
   // body which is itself inside the gate's brace block, so the regex matches.
   void (async () => {
     try {
@@ -3497,6 +3511,8 @@ if (process.env.NODE_ENV !== "test") {
       reconcileExportsOnBoot();
       // Phase 139 D-16: drop AI session views left by the previous process (as their users, via stored sessions); the rest fall back to the TTL. Bounded, never throws.
       await sweepAiViewsOnBoot({ timeoutMs: 10000 });
+      // Phase 142 D-03a: delete generated dashboards nobody kept (views were just swept). Runs even when AI is off. Never throws.
+      await sweepGeneratedOnBoot({ timeoutMs: 10000 });
       app.listen(port, () => {
         console.log(`Kinetica BI backend running on http://localhost:${port}`);
       });
@@ -3508,6 +3524,8 @@ if (process.env.NODE_ENV !== "test") {
       startExportSweep();
       // Phase 135 D-10: AI audit retention sweep — runs even when AI is disabled (rows outlive a config change).
       startAiAuditSweep();
+      // Phase 142 D-03a: hourly AI_GENERATED_TTL_HOURS sweep (.unref()'d).
+      startGeneratedSweep();
     } catch (err) {
       console.error(
         JSON.stringify({
