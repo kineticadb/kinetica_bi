@@ -2232,3 +2232,77 @@ export const keepAiChanges = async (dashboardId: number, body: AiKeepRequest): P
     return failed;
   }
 };
+
+// ---- Phase 142 (AIGOV-V20-05): AI activity (audit read API, never row values) ----
+export type AiAuditKind = "ask" | "generate" | "keep";
+export type AiAuditDashboardState = "live" | "pending" | "deleted" | "none";
+export type AiAuditRowDto = {
+  id: number;
+  ts: number;
+  username: string;
+  dashboardId: number | null;
+  dashboardName: string | null;
+  dashboardState: AiAuditDashboardState;
+  kind: AiAuditKind;
+  question: string;
+  summary: string | null;
+  outcome: string | null;
+  outcomeDetail: string | null;
+  steps: number | null;
+  durationMs: number | null;
+};
+export type AiAuditListDto = { rows: AiAuditRowDto[]; total: number; page: number; pageSize: 50 };
+export type AiAuditDetailDto = Omit<AiAuditRowDto, "question"> & {
+  question: string;
+  answerText: string | null;
+  provider: string | null;
+  model: string | null;
+  dataAccess: string | null;
+  allowListVersion: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  tools: { name: string; result: string; stage?: string; reasons?: string[] }[] | null;
+  changes:
+    | { applied?: string[]; rejected?: { label: string; stage: string; reasons: string[] }[] }
+    | { added?: unknown; edited?: unknown; removed?: unknown }
+    | null;
+  queries: { sql: string; rowCount?: number; durationMs?: number; outcome?: string; reason?: string }[] | null;
+};
+export type AiAuditDashboardsDto = {
+  dashboards: { id: number; name: string | null; state: AiAuditDashboardState }[];
+};
+
+export const listAiAudit = async (
+  q: { from?: number; to?: number; outcomes?: string[]; dashboardId?: number; page?: number },
+  signal?: AbortSignal,
+): Promise<AiAuditListDto> => {
+  const p = new URLSearchParams();
+  if (q.from !== undefined) p.set("from", String(q.from));
+  if (q.to !== undefined) p.set("to", String(q.to));
+  if (q.outcomes && q.outcomes.length > 0) p.set("outcome", q.outcomes.join(","));
+  if (q.dashboardId !== undefined) p.set("dashboardId", String(q.dashboardId));
+  if (q.page !== undefined) p.set("page", String(q.page));
+  const qs = p.toString();
+  const response = await apiFetch(`${API_BASE}/api/ai/audit${qs ? `?${qs}` : ""}`, { signal });
+  if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
+  return (await response.json()) as AiAuditListDto;
+};
+
+export const getAiAuditEntry = async (id: number, signal?: AbortSignal): Promise<AiAuditDetailDto> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/audit/${id}`, { signal });
+  if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
+  return (await response.json()) as AiAuditDetailDto;
+};
+
+export const listAiAuditDashboards = async (
+  q: { from?: number; to?: number },
+  signal?: AbortSignal,
+): Promise<AiAuditDashboardsDto> => {
+  const p = new URLSearchParams();
+  if (q.from !== undefined) p.set("from", String(q.from));
+  if (q.to !== undefined) p.set("to", String(q.to));
+  const qs = p.toString();
+  const response = await apiFetch(`${API_BASE}/api/ai/audit/dashboards${qs ? `?${qs}` : ""}`, { signal });
+  if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
+  return (await response.json()) as AiAuditDashboardsDto;
+};
