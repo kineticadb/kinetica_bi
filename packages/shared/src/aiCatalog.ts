@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { AiIdentifierSchema, getWidgetAllowListSchemas } from "./actionAllowList";
 import type { AiWidgetType } from "./aiAsk";
+import { AiMapDefaultViewSchema } from "./mapView";
 
 /** Curated subset of the web colormap catalogue (cividis/turbo removed: deployed server rejects them). */
 export const AI_HEATMAP_RAMPS = [
@@ -49,8 +50,21 @@ export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.Z
 
 export type AiValidation = { valid: true } | { valid: false; reasons: string[] };
 
+/**
+ * 142 UAT: config keys the SERVER stamps onto an AI op after the model is done (never in the model-facing schema).
+ * Accepted only when the caller passes allowServerStamped (the web fold of a server answer); the gateway never does,
+ * so a model that sends one is rejected like any unknown key.
+ */
+export const AI_SERVER_STAMPED_CONFIG: Partial<Record<AiWidgetType, Record<string, z.ZodTypeAny>>> = {
+  map: { defaultView: AiMapDefaultViewSchema },
+};
+
 /** Reasons never contain the rejected value. `tableId` and `dynamicViewId` (D-24) are the ignored binding keys, checked at the gateway. */
-export function validateAiWidgetConfig(type: string, config: Record<string, unknown>): AiValidation {
+export function validateAiWidgetConfig(
+  type: string,
+  config: Record<string, unknown>,
+  opts?: { allowServerStamped?: boolean },
+): AiValidation {
   if (!Object.prototype.hasOwnProperty.call(AI_WIDGET_CONFIG, type)) {
     return { valid: false, reasons: [`widget type "${type}" is not supported`] };
   }
@@ -64,7 +78,10 @@ export function validateAiWidgetConfig(type: string, config: Record<string, unkn
       continue;
     }
     if (k === "tableId") continue;
-    const schema = Object.prototype.hasOwnProperty.call(cat.fields, k) ? cat.fields[k] : undefined;
+    const stamped = opts?.allowServerStamped ? AI_SERVER_STAMPED_CONFIG[type as AiWidgetType] : undefined;
+    const schema = Object.prototype.hasOwnProperty.call(cat.fields, k)
+      ? cat.fields[k]
+      : stamped && Object.prototype.hasOwnProperty.call(stamped, k) ? stamped[k] : undefined;
     if (!schema) {
       reasons.push(`config key "${k}" is not allowed for ${type}`);
       continue;
