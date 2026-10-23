@@ -162,6 +162,7 @@ import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboa
 // type detection, jsdom DOM environment, DOMPurify SVG sanitization.
 import { registerExportRoutes } from "./exportRoutes";
 import { registerAiRoutes } from "./aiRoutes";
+import { registerAiAuditRoutes } from "./aiAuditRoutes";
 import { registerAiDvRoutes } from "./aiDvRoutes";
 import { registerAiKeepRoutes } from "./aiKeepRoutes";
 import multer from "multer";
@@ -1326,6 +1327,7 @@ export const createApp = async (): Promise<express.Express> => {
   registerExportRoutes(app);
   // v2.0 Phase 135: AI routes (POST /api/ai/ask requires ai:use; GET /api/ai/config requireAuth).
   registerAiRoutes(app);
+  registerAiAuditRoutes(app);
   // v2.0 Phase 139: ad-hoc AI dynamic views (materialize/drop/list); session-only, registry-backed.
   registerAiDvRoutes(app, { requireConfig, wrap: asyncHandler, ttlMinutes: DEFAULT_VIEW_TTL_MINUTES, viewColumnsCache });
   // v2.0 Phase 141: Keep (persist the AI session's folded change set); the server is the authority.
