@@ -71,3 +71,46 @@ export function validateLayout(
   }
   return reasons.length > 0 ? { valid: false, reasons } : { valid: true };
 }
+
+// Phase 142 (D-12): server-fixed bands for a generated dashboard. The AI Assistant sits in a 12-wide right column.
+// Widths are deliberately rescaled from AI_DEFAULT_SIZE to fit the 24-column main area beside it.
+export const GENERATE_MAIN_COLS = 24;
+export const GENERATE_AI_RECT: GridRect = Object.freeze({ x: 24, y: 0, w: 12, h: 40 }) as GridRect;
+const KPI_H = 14;
+const MID_H = 30;
+const MAP_H = 40;
+const REC_H = 36;
+const KPI_PER_ROW = 3;
+
+export function placeGenerateBands(items: readonly { key: number; type: string }[]): Record<number, GridRect> {
+  const out: Record<number, GridRect> = {};
+  const kpis = items.filter((i) => i.type === "bignumber");
+  const maps = items.filter((i) => i.type === "map");
+  const records = items.filter((i) => i.type === "records");
+  const rest = items.filter((i) => i.type !== "bignumber" && i.type !== "map" && i.type !== "records");
+  const middle = [...rest.filter((i) => i.type === "line"), ...rest.filter((i) => i.type !== "line")];
+  let y = 0;
+  for (let s = 0; s < kpis.length; s += KPI_PER_ROW) {
+    const chunk = kpis.slice(s, s + KPI_PER_ROW);
+    const w = chunk.length === 1 ? 12 : Math.floor(GENERATE_MAIN_COLS / chunk.length);
+    chunk.forEach((it, i) => { out[it.key] = { x: i * w, y, w, h: KPI_H }; });
+    y += KPI_H;
+  }
+  for (let s = 0; s < middle.length; s += 2) {
+    const pair = middle.slice(s, s + 2);
+    pair.forEach((it, i) => {
+      out[it.key] = pair.length === 1 ? { x: 0, y, w: GENERATE_MAIN_COLS, h: MID_H } : { x: i * 12, y, w: 12, h: MID_H };
+    });
+    y += MID_H;
+  }
+  for (const it of maps) {
+    out[it.key] = { x: 0, y, w: GENERATE_MAIN_COLS, h: MAP_H };
+    y += MAP_H;
+  }
+  let ry = Math.max(y, GENERATE_AI_RECT.y + GENERATE_AI_RECT.h);
+  for (const it of records) {
+    out[it.key] = { x: 0, y: ry, w: AI_GRID_COLS, h: REC_H };
+    ry += REC_H;
+  }
+  return out;
+}
