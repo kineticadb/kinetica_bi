@@ -91,6 +91,7 @@ import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
 import { useAiSessionActions } from "../hooks/useAiSessionActions";
 import type { SessionBaseline } from "../lib/aiSession/types";
 import { AiChangeBar } from "./AiChangeBar";
+import { GeneratedPendingNote, GeneratedDiscardDialog } from "./GeneratedDashboardBar";  // 142 (D-05/D-07)
 import { runKeep, runReloadLatest, rectsFromLayouts, type KeepLists } from "../lib/aiSession/keepRunner";
 import { buildKeepPayload } from "../lib/aiSession/keepPayload";
 import { cancelAsk, type AskContext } from "../lib/aiSession/askRunner";
@@ -222,6 +223,11 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
         onDashboardUpdated={(updated) => {
           setView({ mode: "open", dashboard: updated });
           setDashboards((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        }}
+        onGeneratedDiscarded={(id) => {
+          leaveDashboardUrl();
+          setDashboards((prev) => prev.filter((d) => d.id !== id));
+          setView({ mode: "list" });
         }}
       />
     );
@@ -752,12 +758,17 @@ const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => ({
 const DashboardOpen = ({
   dashboard,
   onBack,
-  onDashboardUpdated
+  onDashboardUpdated,
+  onGeneratedDiscarded
 }: {
   dashboard: DashboardDto;
   onBack: () => void;
   onDashboardUpdated?: (dashboard: DashboardDto) => void;
+  /** 142 D-05: the unkept generated dashboard was deleted server-side; the owner returns to the list. */
+  onGeneratedDiscarded?: (id: number) => void;
 }) => {
+  const [genDiscardOpen, setGenDiscardOpen] = useState(false);
+  const pending = dashboard.generated_pending === true;
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const rawCanEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
   const rawCanConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
@@ -902,7 +913,7 @@ const DashboardOpen = ({
     setAssociatedTables(x.tables);
     setSavedDynamicViews(x.dynamicViews);
   };
-  const onKeep = () =>
+  const runKeepNow = () =>
     runKeep({
       dashboardId: dashboard.id,
       buildPayload: (baselineVersion) => {
@@ -921,6 +932,17 @@ const DashboardOpen = ({
       reloadLists,
       applyLists,
     });
+  const onKeep = async () => {
+    const o = await runKeepNow();
+    // 142 D-05: the first Keep makes a generated dashboard ordinary; learn the cleared flag from the server.
+    if (pending && (o.kind === "saved" || o.kind === "saved_no_refresh")) {
+      try {
+        const fresh = (await listDashboards()).find((d) => d.id === dashboard.id);
+        if (fresh) onDashboardUpdated?.(fresh);
+      } catch { /* the note stays until reload; harmless */ }
+    }
+    return o;
+  };
   const onReloadLatest = () => runReloadLatest({ dashboardId: dashboard.id, reloadLists, applyLists });
 
   // Phase 90 (COMBO-V118-01 / COMBO-V118-03): dashboard-level combination-view orchestrator.
@@ -1824,13 +1846,22 @@ const DashboardOpen = ({
         : <div className="dashboard-open-header">{dashboardHeader}</div>}
 
       {/* 137 D-15: full-width Keep/Discard bar, outside the (possibly portalled) header. */}
+      {pending && !aiDirty && <GeneratedPendingNote onDiscard={() => setGenDiscardOpen(true)} />}
       <AiChangeBar
+        onDiscardGenerated={pending ? () => setGenDiscardOpen(true) : undefined}
         savedWidgets={widgets}
         savedLayers={savedLayers}
         savedDynamicViews={savedDynamicViews}
         onKeep={onKeep}
         onReloadLatest={onReloadLatest}
       />
+      {genDiscardOpen && (
+        <GeneratedDiscardDialog
+          dashboardId={dashboard.id}
+          onClose={() => setGenDiscardOpen(false)}
+          onDiscarded={(id) => { setGenDiscardOpen(false); onGeneratedDiscarded?.(id); }}
+        />
+      )}
 
       {error && <div className="error">{error}</div>}
       {(tablesQuery.error || widgetsQuery.error || viewsQuery.error) && (() => {
