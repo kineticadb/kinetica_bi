@@ -21,6 +21,7 @@ export function AiChangeBar({
   savedDynamicViews,
   onKeep,
   onReloadLatest,
+  onDiscardGenerated,
 }: {
   savedWidgets: readonly WidgetDto[];
   savedLayers: readonly DashboardLayerDto[];
@@ -30,6 +31,8 @@ export function AiChangeBar({
   onKeep?: () => Promise<KeepRunOutcome>;
   /** 141 D-08: "Discard and reload the latest" after a 409. */
   onReloadLatest?: () => Promise<void>;
+  /** 142 D-05: while the dashboard is an unkept generated one, Discard deletes it (owner shows GeneratedDiscardDialog). */
+  onDiscardGenerated?: () => void;
 }) {
   const visible = useAiSessionStore(selectHasUnsavedAiChanges);
   const derived = useAiSessionStore((s) => s.derived);
@@ -117,7 +120,7 @@ export function AiChangeBar({
             {saving ? AI_CHAT_COPY.keepSaving : "Keep"}
           </button>
         )}
-        <button type="button" className="ghost-sm" disabled={saving} onClick={() => setConfirming(true)}>
+        <button type="button" className="ghost-sm" disabled={saving} onClick={() => (onDiscardGenerated ? onDiscardGenerated() : setConfirming(true))}>
           Discard
         </button>
       </div>

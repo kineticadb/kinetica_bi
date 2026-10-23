@@ -281,4 +281,17 @@ describe("AiChangeBar", () => {
     fireEvent.click(keepBtn());
     expect(screen.getByRole("dialog").textContent).toContain("View on/off changes are not saved.");
   });
+
+  it("GENBAR-5: onDiscardGenerated routes Discard away from the 137 dialog; absent keeps it", () => {
+    apply([addWidgetOp(-1)]);
+    const fn = vi.fn();
+    const first = render(<AiChangeBar savedWidgets={widgets} savedLayers={[]} onDiscardGenerated={fn} />);
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    first.unmount();
+    render(bar());
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.getByRole("dialog").textContent).toContain(AI_CHAT_COPY.discardTitle);
+  });
 });
