@@ -19,6 +19,8 @@ import {
   createView,
   downloadDashboardExport,  // Phase 121 (DXIM-V124-01)
   keepAiChanges,  // 141: called lazily inside onKeep (api/client spec mocks lack this export)
+  // 142: generateDashboard / discardGeneratedDashboard are imported lazily inside DashboardCreate handlers
+  // (several specs mock ../api/client without them).
   DashboardDto,
   TableDto,
   WidgetDto,
@@ -26,6 +28,7 @@ import {
   type ImportReportDto,  // Phase 121 (DXIM-V124-10)
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
+import { setGenerateIntent } from "../lib/aiSession/generateIntent";  // 142 (D-01): take-once first ask
 import { toSessionDvRows } from "../lib/aiDv/sessionDvRows";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
 import { useViewKeepAlive } from "../hooks/useViewKeepAlive";  // Phase 78 (TTLKEEP-V115-01)
@@ -228,6 +231,17 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
     return (
       <DashboardCreate
         onBack={() => setView({ mode: "list" })}
+        onGenerated={(d) => {
+          setDashboards((prev) => [d, ...prev]);
+          openDashboardUrl(d.id);
+          setView({ mode: "open", dashboard: d });
+        }}
+        onOpenExisting={(id) => {
+          const d = dashboards.find((x) => x.id === id);
+          if (d) { openDashboardUrl(id); setView({ mode: "open", dashboard: d }); }
+          else { refetch(); setView({ mode: "list" }); }
+        }}
+        onDiscardedExisting={(id) => setDashboards((prev) => prev.filter((x) => x.id !== id))}
         onSaved={(created) => {
           setDashboards((prev) => [created, ...prev]);
           // Phase 117 (DSET-V122-01): the first-ever linkable moment for a fresh dashboard — push.
@@ -314,7 +328,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
             </div>
             {dashboards.map((dash) => (
               <div key={dash.id} className="ds-row dash-grid">
-                <span className="ds-name">{dash.name}</span>
+                <span className="ds-name">{dash.name}{dash.generated_pending && <span className="muted"> · Not kept yet</span>}</span>
                 <span className="ds-schema">{dash.description || "—"}</span>
                 <span className="ds-meta">{new Date(dash.updated_at).toLocaleString()}</span>
                 <span className="ds-actions">
@@ -547,15 +561,40 @@ const DashboardEdit = ({
 
 const DashboardCreate = ({
   onBack,
-  onSaved
+  onSaved,
+  onGenerated,
+  onOpenExisting,
+  onDiscardedExisting
 }: {
   onBack: () => void;
   onSaved: (created: DashboardDto) => void;
+  onGenerated: (created: DashboardDto) => void;
+  onOpenExisting: (id: number) => void;
+  onDiscardedExisting: (id: number) => void;
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // 142 (D-01): Generate from a table. Only for ai:use users on an AI-enabled server.
+  const canAi = useAuthStore((s) => s.hasPermission)(PERMISSIONS.AI_USE);
+  const aiOn = useAiConfigured(canAi) === true;
+  const [generate, setGenerate] = useState(false);
+  const [tables, setTables] = useState<TableDto[] | null>(null);
+  const [tableId, setTableId] = useState<number | null>(null);
+  const [prompt, setPrompt] = useState("");
+  const [pending, setPending] = useState<{ id: number; name: string } | null>(null);
+  const inFlight = useRef(false);
+  const generating = generate && canAi && aiOn;
+
+  useEffect(() => {
+    if (!generating || tables !== null) return;
+    let live = true;
+    listTables()
+      .then((t) => { if (live) setTables(t); })
+      .catch((err) => { if (live) { setTables([]); setSaveError(err.message); } });
+    return () => { live = false; };
+  }, [generating, tables]);
 
   const handleSave = () => {
     setSaving(true);
@@ -564,6 +603,46 @@ const DashboardCreate = ({
       .then(onSaved)
       .catch((err) => setSaveError(err.message))
       .finally(() => setSaving(false));
+  };
+
+  const handleGenerate = async () => {
+    if (inFlight.current || tableId === null) return;
+    inFlight.current = true;
+    setSaving(true);
+    setSaveError(null);
+    setPending(null);
+    try {
+      const { generateDashboard } = await import("../api/client");
+      const r = await generateDashboard({
+        name: name.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        tableId
+      });
+      if (r.ok) {
+        setGenerateIntent(r.dashboard.id, prompt);
+        onGenerated(r.dashboard);
+      } else if (r.kind === "pending") {
+        setPending(r.existing);
+      } else {
+        setSaveError(r.message);
+      }
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  };
+
+  const discardPending = async () => {
+    if (!pending) return;
+    const { id } = pending;
+    try {
+      const { discardGeneratedDashboard } = await import("../api/client");
+      await discardGeneratedDashboard(id);
+      setPending(null);
+      onDiscardedExisting(id);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to discard the dashboard");
+    }
   };
 
   return (
@@ -581,10 +660,60 @@ const DashboardCreate = ({
             <span className="ds-field-label">Description</span>
             <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" />
           </label>
-          {saveError && <div className="error">{saveError}</div>}
-          <button className="btn-primary" onClick={handleSave} disabled={saving || !name}>
-            {saving ? "Creating…" : "Create Dashboard"}
-          </button>
+          {canAi && aiOn && (
+            <div className="config-group">
+              <label className="config-toggle">
+                <input type="checkbox" checked={generate} onChange={(e) => setGenerate(e.target.checked)} /> Generate from a table
+              </label>
+              {generate && (
+                <>
+                  <label className="ds-field">
+                    <span className="ds-field-label">Table</span>
+                    <select
+                      className="ds-select"
+                      value={tableId ?? ""}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        setTableId(id);
+                        const t = tables?.find((x) => x.id === id);
+                        if (t && !name.trim()) setName(`${t.name} overview`);
+                      }}
+                    >
+                      <option value="" disabled>Choose a table</option>
+                      {tables?.map((t) => (
+                        <option key={t.id} value={t.id}>{t.schema ? `${t.schema}.${t.name}` : t.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ds-field">
+                    <span className="ds-field-label">What do you want to see?</span>
+                    <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Optional, for example: tips by payment type" />
+                  </label>
+                  <span className="muted">The AI builds 4 to 8 charts from this table. Nothing is saved until you keep it.</span>
+                </>
+              )}
+            </div>
+          )}
+          {pending ? (
+            <div className="config-group">
+              <span>You already have a generated dashboard that isn't kept yet: "{pending.name}". Keep or discard it first.</span>
+              <div className="ds-actions">
+                <button className="btn-primary btn-sm" onClick={() => onOpenExisting(pending.id)}>Open it</button>
+                <button className="ghost-sm ghost-danger" onClick={discardPending}>Discard it</button>
+              </div>
+            </div>
+          ) : (
+            saveError && <div className="error">{saveError}</div>
+          )}
+          {generating ? (
+            <button className="btn-primary" onClick={handleGenerate} disabled={saving || !name.trim() || tableId === null}>
+              {saving ? "Generating…" : "Generate dashboard"}
+            </button>
+          ) : (
+            <button className="btn-primary" onClick={handleSave} disabled={saving || !name}>
+              {saving ? "Creating…" : "Create Dashboard"}
+            </button>
+          )}
         </div>
       </ChartCard>
     </div>
