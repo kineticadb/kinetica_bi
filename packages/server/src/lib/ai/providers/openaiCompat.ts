@@ -67,6 +67,16 @@ function retryHintMs(headers: Headers, body: unknown, now: number): number | und
   return undefined;
 }
 
+/** 142 UAT: Gemini answers a bad or missing key with 400 INVALID_ARGUMENT (reason API_KEY_INVALID, or only a message
+ *  naming the API key), not 401. The body is inspected here only; it is never surfaced or logged. */
+function isBadKeyBody(parsed: unknown): boolean {
+  const e = (Array.isArray(parsed) ? parsed[0] : parsed) as { error?: { message?: unknown; details?: unknown } } | undefined;
+  const err = e?.error;
+  if (!err) return false;
+  if (Array.isArray(err.details) && err.details.some((d) => (d as { reason?: unknown })?.reason === "API_KEY_INVALID")) return true;
+  return typeof err.message === "string" && /\bapi[ _-]?key\b/i.test(err.message);
+}
+
 export function createOpenAiCompatProvider(opts: OpenAiCompatOptions, deps: ProviderDeps = {}): LlmProvider {
   const apiKey = opts.apiKey; // closure only
   const streaming = opts.stream !== false;
@@ -121,7 +131,7 @@ export function createOpenAiCompatProvider(opts: OpenAiCompatOptions, deps: Prov
       }
       const s = res.status;
       const kind: ProviderErrorKind =
-        s === 401 || s === 403 ? "auth" : s === 429 ? "rate_limited" : s >= 500 ? "overloaded" : "bad_request";
+        s === 401 || s === 403 || (s === 400 && isBadKeyBody(parsed)) ? "auth" : s === 429 ? "rate_limited" : s >= 500 ? "overloaded" : "bad_request";
       yield fail(kind, s, kind === "rate_limited" ? retryHintMs(res.headers, parsed, now()) : undefined);
       return;
     }

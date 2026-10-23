@@ -184,6 +184,9 @@ describe("OAI openai-compatible adapter", () => {
       const cases: Array<[string, { status: number; headers?: Record<string, string> }, LlmEvent]> = [
         ["error_401.json", { status: 401 }, { type: "error", kind: "auth", status: 401 }],
         ["error_400.json", { status: 400 }, { type: "error", kind: "bad_request", status: 400 }],
+        // 142 UAT: Gemini reports a bad or missing key as 400 INVALID_ARGUMENT, not 401 (live body, key masked).
+        ["error_400_gemini_bad_key.json", { status: 400 }, { type: "error", kind: "auth", status: 400 }],
+        ["error_400_gemini_no_key.json", { status: 400 }, { type: "error", kind: "auth", status: 400 }],
         ["error_429_gemini_array.json", { status: 429 }, { type: "error", kind: "rate_limited", status: 429, retryAfterMs: 34000 }],
         ["error_400.json", { status: 429, headers: { "Retry-After": "2" } }, { type: "error", kind: "rate_limited", status: 429, retryAfterMs: 2000 }],
         ["error_400.json", { status: 503 }, { type: "error", kind: "overloaded", status: 503 }],
