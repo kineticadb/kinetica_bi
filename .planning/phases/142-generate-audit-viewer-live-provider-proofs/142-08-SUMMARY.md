@@ -54,6 +54,6 @@ classNames in AiActivityPage.tsx (all existing or `ai-activity-*`): ai-activity-
 
 Light/dark legibility of the table and detail panel: routed to 142-10 UAT. STATE/ROADMAP/REQUIREMENTS untouched per operator constraint.
 
-gaps: none
+gaps: []
 
 ## Self-Check: PASSED

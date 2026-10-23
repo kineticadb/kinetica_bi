@@ -28,7 +28,7 @@ metrics:
 
 Opening a generated dashboard auto-starts its first ask once (take-once intent), shows a pending note with Discard, routes Discard to a server-delete confirm while unkept, and refetches the pending flag after the first Keep.
 
-gaps: none
+gaps: []
 
 ## Commits
 - 151232a: GeneratedDashboardBar (note + portalled discard dialog), AiChangeBar `onDiscardGenerated`

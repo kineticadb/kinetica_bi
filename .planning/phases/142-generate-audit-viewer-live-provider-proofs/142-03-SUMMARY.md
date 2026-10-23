@@ -43,6 +43,6 @@ New Dashboard form gains a "Generate from a table" option (ai:use plus AI enable
 
 Light/dark visual correctness of the new form block: routed to the 142-10 UAT.
 
-gaps: none
+gaps: []
 
 ## Self-Check: PASSED

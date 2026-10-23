@@ -10,7 +10,7 @@ key-files:
   created: [packages/server/src/aiAuditRoutes.ts, packages/server/tests/routes.aiAudit.spec.ts]
   modified: [packages/server/src/index.ts]
 requirements: [AIGOV-V20-05]
-gaps: none
+gaps: []
 ---
 
 # Phase 142 Plan 09: Audit read API Summary
