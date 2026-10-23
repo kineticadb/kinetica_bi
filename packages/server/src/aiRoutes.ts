@@ -23,7 +23,7 @@ import { getAiConfig } from "./lib/aiConfig";
 import { AI_CONTRACT_VERSION } from "./lib/aiContract";
 import { admitAiAnswer, finalizeAiAnswer, type AiQueryAuditEntry, type FinalizeInput } from "./lib/aiAudit";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
-import { getDashboard } from "./db";
+import { getDashboard, listWidgets } from "./db";
 import { runAnswer } from "./lib/ai/runAnswer";
 import { createSseWriter } from "./lib/ai/sseWriter";
 import { AI_USER_MESSAGES } from "./lib/ai/agentLoop";
@@ -85,6 +85,12 @@ export function registerAiRoutes(app: Express): void {
     if (!dashboard || !canViewDashboard(username, body.dashboardId)) {
       return res.status(404).json({ error: "Dashboard not found." });
     }
+    // 142 Pattern 2: generate mode is derived on the server, never sent by the client. A Retry re-enters it while the
+    // dashboard is still empty; a refine ask (temp widgets in the snapshot) does not.
+    const generate =
+      dashboard.generated_pending === true &&
+      listWidgets(dashboard.id).every((w) => String(w.type) === "ai") &&
+      body.snapshot.widgets.every((w) => w.type === "ai");
     if (inflight.has(key)) {
       return res.status(409).json({ error: "An AI answer is already in progress.", code: "AI_BUSY" });
     }
@@ -102,6 +108,7 @@ export function registerAiRoutes(app: Express): void {
       now: Date.now(),
       capPerHour: config.maxAnswersPerUserPerHour,
       capPerDay: config.maxAnswersPerDay,
+      kind: generate ? "generate" : "ask",
     });
     if (!admit.ok) {
       res.setHeader("Retry-After", String(admit.retryAfterSeconds));
@@ -171,6 +178,7 @@ export function registerAiRoutes(app: Express): void {
           body,
           dashboard: { id: dashboard.id, title: dashboard.name },
           config,
+          generate,
           signal: ac.signal,
           sse,
           queryLog,

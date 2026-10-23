@@ -9,11 +9,13 @@ import { canViewDashboard } from "../dashboardAccessDb";
 import { getEffectivePermissions } from "../rbacDb";
 import { principalForSession, SessionEndedError } from "../exportRunner";
 import { AI_USER_MESSAGES, runAgentLoop, type AgentLoopResult } from "./agentLoop";
+import { buildGenerateRecipe, countDataWidgetAdds, applyGenerateBands, generateLimits, generateNudge, GEN_MIN_WIDGETS, GENERATE_TOO_FEW_MESSAGE } from "./generateMode";
 import { buildConversationMessages, buildSystemParts, projectSnapshot } from "./context";
 import { gatewayDvLimits } from "./dvDeps";
 import { createLiveSchema } from "./liveSchema";
 import { buildQueryScope, type QueryScope } from "./queryScope";
 import { createQueryPort, type QueryPort } from "./queryRunner";
+import { part } from "./outbound";
 import { parseReplyTrailer, toChoiceClarification } from "./replyTrailer";
 import { getAiProviderFactory } from "./providers";
 import { defaultSleep } from "./retry";
@@ -31,6 +33,8 @@ export type RunAnswerInput = {
   body: AskRequest;
   dashboard: { id: number; title?: string };
   config: AiConfig;
+  /** 142: server-derived generate mode (pending dashboard, empty of data widgets). Never client-supplied. */
+  generate?: boolean;
   signal: AbortSignal;
   sse: ReturnType<typeof createSseWriter>;
   now?: () => number;
@@ -102,13 +106,17 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       if (input.queryLog) input.queryLog.current = () => port.entries();
       queryRules = { maxRows: config.queryMaxRows, maxPerAnswer: config.queryMaxPerAnswer, views: scope.views };
     }
-    const system = buildSystemParts({ view, dashboardTables, maxToolSteps: config.maxToolSteps, dataAccess: config.dataAccess, ...(queryRules ? { query: queryRules } : {}) });
+    const limits = input.generate ? generateLimits(config) : { maxToolSteps: config.maxToolSteps, maxNewWidgets: config.maxNewWidgets };
+    const system = [
+      ...buildSystemParts({ view, dashboardTables, maxToolSteps: limits.maxToolSteps, dataAccess: config.dataAccess, ...(queryRules ? { query: queryRules } : {}) }),
+      ...(input.generate ? [part.system(buildGenerateRecipe(config.dataAccess))] : []),
+    ];
     const messages = buildConversationMessages(body.turns, body.question, config.historyTurns);
     const registry = buildToolRegistry({ dataAccess: config.dataAccess, extraTools: [...QUERY_TOOLS] });
     const shadow = createShadow(body.snapshot);
     const provider = getAiProviderFactory()(config);
 
-    const result = await runAgentLoop(
+    const loopResult = await runAgentLoop(
       {
         system,
         messages,
@@ -139,9 +147,10 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           },
         },
         dataAccess: config.dataAccess,
-        maxToolSteps: config.maxToolSteps,
+        maxToolSteps: limits.maxToolSteps,
         timeoutMs: config.timeoutMs,
-        maxNewWidgets: config.maxNewWidgets,
+        maxNewWidgets: limits.maxNewWidgets,
+        ...(input.generate ? { beforeFinish: ({ addedWidgets }: { addedWidgets: number }) => (addedWidgets < GEN_MIN_WIDGETS ? generateNudge(addedWidgets) : null) } : {}),
       },
       {
         provider,
@@ -158,10 +167,20 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       },
     );
 
+    // 142 D-07/D-12: generate answers need >= 4 data widgets, and the server (not the model) owns the layout.
+    let result = loopResult;
+    let tooFew = false;
+    if (input.generate && result.outcome === "ok") {
+      if (countDataWidgetAdds(result.ops) < GEN_MIN_WIDGETS) tooFew = true;
+      else result = { ...result, ops: applyGenerateBands(result.ops) };
+    }
+
     usage = result.usage;
     steps = result.steps;
     const trailer = result.outcome === "ok" ? parseReplyTrailer(result.text) : null;
-    if (result.outcome === "ok" && trailer) {
+    if (tooFew) {
+      sse.send("error", { code: "AI_PROVIDER_ERROR", message: GENERATE_TOO_FEW_MESSAGE });
+    } else if (result.outcome === "ok" && trailer) {
       const choice = toChoiceClarification(trailer.text, trailer.choices);
       const clarifications = choice && !result.clarifications.some((c) => c.kind === "choose_option") ? [...result.clarifications, choice] : result.clarifications;
       const queries = queryPort
@@ -179,14 +198,14 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     }
     finalize = {
       auditId: input.auditId,
-      outcome: result.outcome,
-      ...(result.detail !== undefined ? { detail: result.detail } : {}),
+      outcome: tooFew ? "provider_error" : result.outcome,
+      ...(tooFew ? { detail: "generate_too_few" } : result.detail !== undefined ? { detail: result.detail } : {}),
       answerText: trailer ? trailer.text : result.text,
       steps: result.steps,
       ...(result.usage.inputTokens !== undefined ? { inputTokens: result.usage.inputTokens } : {}),
       ...(result.usage.outputTokens !== undefined ? { outputTokens: result.usage.outputTokens } : {}),
       tools: result.tools,
-      changes: { applied: result.outcome === "ok" ? result.applied : [], rejected: result.rejected },
+      changes: { applied: result.outcome === "ok" && !tooFew ? result.applied : [], rejected: result.rejected },
       durationMs: durationMs(),
       ...(queryPort ? { queries: [...queryPort.entries()] } : {}),
     };
