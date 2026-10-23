@@ -260,6 +260,48 @@ describe("DashboardsPage Keep glue (Phase 141 Plan 13)", () => {
     expect(mocked(updateWidget).mock.calls[0][1].config.layout).toEqual({ x: 0, y: 0, w: 12, h: 24 });
   });
 
+  // 142 UAT: below the 36-col breakpoints RGL reports its auto-generated, column-clamped fallback (sm = 18 cols).
+  // handleLayoutChange persisted it as the canonical 36-col layout: saved widgets PATCHed, AI temp geometry overwritten.
+  it("KPAGE-7: a layout callback at a narrow (18-col) breakpoint persists nothing for saved widgets", async () => {
+    roReportedWidth = 900;
+    await openDashboard();
+    mocked(updateWidget).mockClear();
+    act(() => {
+      (globalThis as any).__gridProps.onLayoutChange([
+        { i: "11", x: 0, y: 0, w: 12, h: 24 },
+        { i: "12", x: 6, y: 24, w: 12, h: 24 },
+      ]);
+    });
+    expect(updateWidget).not.toHaveBeenCalled();
+  });
+
+  it("KPAGE-8: a narrow-breakpoint callback never overwrites AI temp-widget geometry", async () => {
+    roReportedWidth = 900;
+    await openDashboard();
+    turn();
+    await screen.findByText("AI records");
+    const before = { ...useAiSessionStore.getState().geometry };
+    act(() => {
+      (globalThis as any).__gridProps.onLayoutChange(
+        gridItems().map((l: any) => ({ ...l, x: 0, w: Math.min(l.w, 18) })),
+      );
+    });
+    expect(useAiSessionStore.getState().geometry).toEqual(before);
+  });
+
+  it("KPAGE-9: at the md breakpoint (still 36 cols) a drag is persisted", async () => {
+    roReportedWidth = 1000;
+    await openDashboard();
+    mocked(updateWidget).mockClear();
+    act(() => {
+      (globalThis as any).__gridProps.onLayoutChange([
+        { i: "11", x: 0, y: 0, w: 12, h: 24 },
+        { i: "12", x: 18, y: 0, w: 18, h: 24 },
+      ]);
+    });
+    expect(updateWidget).toHaveBeenCalledTimes(1);
+  });
+
   it("KPAGE-5: every grid child carries its layout rect as data-grid (no 1x1 synthesis for new children)", async () => {
     await openDashboard();
     turn();

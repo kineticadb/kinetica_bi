@@ -565,6 +565,16 @@ const DashboardEdit = ({
   );
 };
 
+type GridBreakpoint = "lg" | "md" | "sm" | "xs" | "xxs";
+const GRID_BREAKPOINTS: Record<GridBreakpoint, number> = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
+const GRID_COLS: Record<GridBreakpoint, number> = { lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 };
+/** The breakpoint ResponsiveGridLayout picks for this width (largest whose threshold is below it); pinned to lg in panel mode. */
+function activeGridBreakpoint(width: number, panelMode: boolean): GridBreakpoint {
+  if (panelMode) return "lg";
+  const order: GridBreakpoint[] = ["lg", "md", "sm", "xs", "xxs"];
+  return order.find((b) => width > GRID_BREAKPOINTS[b]) ?? "xxs";
+}
+
 const DashboardCreate = ({
   onBack,
   onSaved,
@@ -1543,6 +1553,9 @@ const DashboardOpen = ({
     // exactly the widgets on screen is stale; persisting it overwrote just-saved rects (and looped). Ignore it.
     const onScreen = new Set(layouts.map((l) => l.i));
     if (layout.length !== onScreen.size || layout.some((item) => !onScreen.has(item.i))) return;
+    // 142 UAT: below the 36-col breakpoints RGL reports its auto-generated, column-clamped fallback. It is a display
+    // reflow of the stored 36-col layout, never a user edit: persisting it corrupted saved and AI-session geometry.
+    if (GRID_COLS[activeGridBreakpoint(width, isPanelMode)] !== 36) return;
     // Phase 134: AI-widget rects (negative temp ids) go to session geometry, never the DB.
     for (const item of layout) {
       if (Number(item.i) < 0) {
@@ -1807,8 +1820,8 @@ const DashboardOpen = ({
           // panel can never persist a fallback. Topbar/unset mode passes `undefined`
           // (identical to omitting the prop) — byte-identical to pre-fix behavior.
           breakpoint={(isPanelMode ? "lg" : undefined) as "lg" | "md" | "sm" | "xs" | "xxs" | undefined}
-          breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-          cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
+          breakpoints={GRID_BREAKPOINTS}
+          cols={GRID_COLS}
           rowHeight={5}
           margin={[8, 8]}
           containerPadding={[8, 8]}
