@@ -32,7 +32,7 @@ describe("AI audit", () => {
   it("AUD-3 exact column list, no row-value column", () => {
     const c = buildInMemoryDb();
     const cols = (c.prepare("PRAGMA table_info(ai_audit)").all() as { name: string }[]).map((x) => x.name);
-    expect(cols).toEqual(["id","ts_ms","username","dashboard_id","request_id","question","answer_text","status","outcome","outcome_detail","counted","provider","model","data_access","allow_list_version","steps","input_tokens","output_tokens","tools_json","changes_json","duration_ms","queries_json"]);
+    expect(cols).toEqual(["id","ts_ms","username","dashboard_id","request_id","question","answer_text","status","outcome","outcome_detail","counted","provider","model","data_access","allow_list_version","steps","input_tokens","output_tokens","tools_json","changes_json","duration_ms","queries_json","kind"]);
   });
   it("AUD-4 log line has metadata only", () => {
     const c = buildInMemoryDb();

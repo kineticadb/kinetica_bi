@@ -434,6 +434,8 @@ export const createDb = (dbPath: string): Database.Database => {
   const colNames = new Set(cols.map((c) => c.name));
   const auditCols = new Set((instance.prepare("PRAGMA table_info(ai_audit)").all() as Array<{ name: string }>).map((c) => c.name));
   if (!auditCols.has("queries_json")) instance.exec("ALTER TABLE ai_audit ADD COLUMN queries_json TEXT"); // 140 D-12
+  if (!auditCols.has("kind")) instance.exec("ALTER TABLE ai_audit ADD COLUMN kind TEXT"); // 142 D-20: ask | generate | keep (NULL = legacy, derived on read)
+  instance.exec("CREATE INDEX IF NOT EXISTS idx_ai_audit_dash_ts ON ai_audit (dashboard_id, ts_ms)");
   if (!colNames.has("credential_type")) {
     instance.exec(
       "ALTER TABLE sessions ADD COLUMN credential_type TEXT NOT NULL DEFAULT 'password'"
@@ -511,6 +513,11 @@ export const createDb = (dbPath: string): Database.Database => {
   }
   // v2.0 Phase 141 (AISES-V20-06, D-05/D-17): dashboard-wide change counter for Keep's 409.
   if (!dashboardColNames.has("version")) instance.exec("ALTER TABLE dashboards ADD COLUMN version INTEGER NOT NULL DEFAULT 0");
+  // v2.0 Phase 142 (AIGEN-V20-02, D-03/D-06): "generated, never kept" marker. NULL/NULL = an ordinary dashboard.
+  if (!dashboardColNames.has("generated_by")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_by TEXT");
+  if (!dashboardColNames.has("generated_pending_at")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_pending_at INTEGER");
+  // D-06 hard guarantee (race-proof); the generate route's app-level check only exists to return a friendly 409.
+  instance.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_dashboards_one_pending ON dashboards (generated_by) WHERE generated_pending_at IS NOT NULL");
   for (const t of ["widgets", "dashboard_layers", "dashboard_dynamic_views", "dashboard_tables"] as const) {
     instance.exec(`
       CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_i AFTER INSERT ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = NEW.dashboard_id; END;
@@ -580,6 +587,7 @@ const mapDashboard = (row: any): Dashboard => ({
   // v1.20 Phase 106 (FSET-V120-02/03): coalesce NULL / anything-not-'panel' to 'topbar'
   // so the wire value is always concrete — never null (backward-compat default).
   filter_display_mode: row.filter_display_mode === "panel" ? "panel" : "topbar",
+  generated_pending: row.generated_pending_at !== null && row.generated_pending_at !== undefined,
   created_at: row.created_at,
   updated_at: row.updated_at
 });
@@ -629,6 +637,8 @@ export const listDashboards = (): Dashboard[] => {
   return db.prepare("SELECT * FROM dashboards ORDER BY updated_at DESC").all().map(mapDashboard);
 };
 
+export const listKeptDashboards = (): Dashboard[] => listDashboards().filter((d) => !d.generated_pending);
+
 export const getDashboard = (id: number): Dashboard | undefined => {
   const row = db.prepare("SELECT * FROM dashboards WHERE id = ?").get(id);
   return row ? mapDashboard(row) : undefined;
@@ -636,6 +646,12 @@ export const getDashboard = (id: number): Dashboard | undefined => {
 
 export const getDashboardVersion = (id: number): number | undefined =>
   (db.prepare("SELECT version FROM dashboards WHERE id = ?").get(id) as { version: number } | undefined)?.version;
+
+export const getGeneratedPending = (id: number): { generatedBy: string; pendingAt: number } | null | undefined => {
+  const r = db.prepare("SELECT generated_by, generated_pending_at FROM dashboards WHERE id = ?").get(id) as { generated_by: string | null; generated_pending_at: number | null } | undefined;
+  if (!r) return undefined;
+  return r.generated_pending_at !== null && r.generated_by !== null ? { generatedBy: r.generated_by, pendingAt: r.generated_pending_at } : null;
+};
 
 export const createDashboard = (name: string, description?: string): Dashboard => {
   const stmt = db.prepare("INSERT INTO dashboards (name, description) VALUES (?, ?)");

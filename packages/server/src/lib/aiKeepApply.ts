@@ -51,6 +51,8 @@ export function applyKeep(dashboardId: number, change: AiKeepRequest, prepared: 
     const cur = getDashboardVersion(dashboardId);
     if (cur === undefined) throw new KeepInvalid(["dashboard not found"]);
     if (cur !== change.baselineVersion) throw new KeepConflict();
+    // 142 D-05: the first Keep makes a generated dashboard ordinary. Same transaction: a rollback restores the flag.
+    db.prepare("UPDATE dashboards SET generated_by = NULL, generated_pending_at = NULL WHERE id = ? AND generated_pending_at IS NOT NULL").run(dashboardId);
 
     const maps = emptyRefIdMaps();
     const mapDv = (x: number | null | undefined): number | null => {
