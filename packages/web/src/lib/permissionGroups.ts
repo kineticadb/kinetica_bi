@@ -26,7 +26,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "roles:manage_permissions": "Edit which permissions each role grants",
   "roles:create_custom": "Create new custom roles",
   "roles:delete_custom": "Delete custom roles",
-  "audit:view": "View the audit log (viewer ships in a future release)",
+  "audit:view": "View the AI activity page (AI answers, generated dashboards and Keeps)",
   "branding:manage": "Manage white-label branding: logo, app name, colors, fonts, and custom CSS",
   "ai:use": "Ask the AI assistant on dashboards (changes stay in the user's own session until saved)",
 };

@@ -9,6 +9,7 @@ import LoginPage from "./components/LoginPage";
 import Toast from "./components/Toast";
 import { UsersPage } from "./components/UsersPage";
 import { RolesPage } from "./components/RolesPage";
+import { AiActivityPage } from "./components/AiActivityPage";
 import { ProfilePage } from "./components/ProfilePage";
 import { useAuthStore } from "./store/auth";
 import { useFilterStore } from "./store/filterStore";
@@ -36,7 +37,7 @@ import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashbo
 import { useDeepLinkTable, DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkTable";  // Phase 116 (TLINK-V121-02/04)
 import { hasTableParam, clearTableUrl, restoreTableUrl, isValidTableId, type TableMode } from "./lib/tableUrl";  // Phase 116
 
-type Page = "dashboards" | "datasets" | "exports" | "settings" | "users" | "roles" | "profile" | "branding";
+type Page = "dashboards" | "datasets" | "exports" | "settings" | "users" | "roles" | "profile" | "branding" | "ai-activity";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
 // Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
@@ -153,6 +154,9 @@ const App = () => {
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const markUnauthenticated = useAuthStore((s) => s.markUnauthenticated);
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  // 142: hasPermission is a stable function, so a mid-session role change would not re-run the
+  // gate effect or re-render. Subscribe to the boolean itself.
+  const canViewAudit = useAuthStore((s) => s.hasPermission(PERMISSIONS.AUDIT_VIEW));
 
   // Phase 115 (DLINK-V121-03): a dashboard id recovered from kbi_returnTo after an OIDC round
   // trip, read once at mount so the hook has it on the FIRST render (no list flash).
@@ -449,7 +453,9 @@ const App = () => {
         parsed.page === "profile" ||
         // Branding is permission-gated: never restore it for a user who lacks
         // branding:manage (server enforces too, but don't strand them on the page).
-        (parsed.page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE))
+        (parsed.page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE)) ||
+        // 142: AI activity is gated by audit:view (server returns 403 too).
+        (parsed.page === "ai-activity" && hasPermission(PERMISSIONS.AUDIT_VIEW))
       ) {
         setPage(parsed.page);
         if (parsed.page !== "dashboards") {
@@ -559,10 +565,14 @@ const App = () => {
   // gap where the page itself was still reachable/rendered.
   useEffect(() => {
     if (status !== "authenticated") return;
-    if (page === "branding" && !hasPermission(PERMISSIONS.BRANDING_MANAGE)) {
+    // 142: same gate for the AI activity page (audit:view).
+    if (
+      (page === "branding" && !hasPermission(PERMISSIONS.BRANDING_MANAGE)) ||
+      (page === "ai-activity" && !canViewAudit)
+    ) {
       setPage("dashboards");
     }
-  }, [status, page, hasPermission]);
+  }, [status, page, hasPermission, canViewAudit]);
 
   // Phase 11 MAP-01/MAP-02: probe WMS capabilities once per authenticated session.
   // Fires AFTER auth-status gating so it only runs when the user is authenticated
@@ -672,6 +682,7 @@ const App = () => {
         {page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE) && <BrandingSettingsPage />}
         {page === "users" && <UsersPage />}
         {page === "roles" && <RolesPage />}
+        {page === "ai-activity" && canViewAudit && <AiActivityPage />}
         {page === "profile" && <ProfilePage />}
       </div>
       <BrandStyleInjector />

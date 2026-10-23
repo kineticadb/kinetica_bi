@@ -173,6 +173,19 @@ describe("Sidebar", () => {
       expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
     });
 
+    it("AUDNAV-1: admin sees AI activity after Roles; analyst does not", () => {
+      seedAdminStore();
+      const { unmount } = renderSidebar();
+      const names = screen.getAllByRole("button").map((b) => b.textContent);
+      const roles = names.findIndex((n) => n?.includes("Roles"));
+      const ai = names.findIndex((n) => n?.includes("AI activity"));
+      expect(ai).toBeGreaterThan(roles);
+      unmount();
+      seedAnalystStore();
+      renderSidebar();
+      expect(screen.queryByRole("button", { name: "AI activity" })).toBeNull();
+    });
+
     it("unauthenticated user: gated items hidden, base 3 items present", () => {
       // user is null — default state after beforeEach reset
       renderSidebar();

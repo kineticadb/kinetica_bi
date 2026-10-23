@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupPermissionList, NOUN_TO_GROUP, GROUP_ORDER } from "./permissionGroups";
+import { groupPermissionList, NOUN_TO_GROUP, GROUP_ORDER, PERMISSION_DESCRIPTIONS } from "./permissionGroups";
 
 describe("groupPermissionList", () => {
   it("returns [] for empty input", () => {
@@ -93,5 +93,13 @@ describe("NOUN_TO_GROUP", () => {
 describe("GROUP_ORDER", () => {
   it("has the seven expected group names in order", () => {
     expect(GROUP_ORDER).toEqual(["Dashboards", "Design", "Users", "Roles", "Audit", "Branding", "AI"]);
+  });
+});
+
+describe("audit:view description", () => {
+  it("AUDNAV-5: describes the AI activity page", () => {
+    expect(PERMISSION_DESCRIPTIONS["audit:view"]).toBe(
+      "View the AI activity page (AI answers, generated dashboards and Keeps)",
+    );
   });
 });
