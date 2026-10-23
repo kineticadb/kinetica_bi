@@ -455,4 +455,20 @@ describe("Keep route refusals (141-12 task 2)", () => {
     const map = ws.find((w) => w.id === 9102)!.config.includedLayerIds as number[];
     expect(map).toEqual([9201, r.body.idMap.layers[temps.layers[0]]]);
   });
+
+  it("KEEP-ROUTE-mapview (142 UAT) an AI map's server-stamped defaultView is accepted and persisted verbatim", async () => {
+    const c = await setup();
+    const view = { center: [-8226375.123456, 4974561.987654], zoom: 10.9 };
+    const r = await post(c, {
+      baselineVersion: c.baseline,
+      dynamicViews: { add: [], remove: [] },
+      layers: { add: [{ tempId: -2, tableId: c.T, config: { renderMode: "heatmap", latColumn: "fare", lonColumn: "fare" } }], edit: [], remove: [] },
+      widgets: { add: [{ tempId: -1, type: "map", title: "Pickups", config: { includedLayerIds: [-2], defaultView: view }, rect: rect(20) }], edit: [], remove: [] },
+    });
+    expect(r.body.reasons ?? []).toEqual([]);
+    expect(r.status).toBe(200);
+    const saved = listWidgets(c.D).find((w) => w.id === r.body.idMap.widgets["-1"])!;
+    expect(saved.config.defaultView).toEqual(view);
+    expect(saved.config.includedLayerIds).toEqual([r.body.idMap.layers["-2"]]);
+  });
 });

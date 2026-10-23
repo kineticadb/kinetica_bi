@@ -13,6 +13,7 @@ import { buildGenerateRecipe, countDataWidgetAdds, applyGenerateBands, generateL
 import { buildConversationMessages, buildSystemParts, projectSnapshot } from "./context";
 import { gatewayDvLimits } from "./dvDeps";
 import { createLiveSchema } from "./liveSchema";
+import { stampMapDefaultViews } from "./mapDefaultView";
 import { buildQueryScope, type QueryScope } from "./queryScope";
 import { createQueryPort, type QueryPort } from "./queryRunner";
 import { part } from "./outbound";
@@ -173,6 +174,20 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     if (input.generate && result.outcome === "ok") {
       if (countDataWidgetAdds(result.ops) < GEN_MIN_WIDGETS) tooFew = true;
       else result = { ...result, ops: applyGenerateBands(result.ops) };
+    }
+
+    // 142 UAT: AI-added maps open on their data. After the provider is done; values never reach it or the audit.
+    if (result.outcome === "ok" && !tooFew) {
+      result = {
+        ...result,
+        ops: await stampMapDefaultViews(result.ops, {
+          requestId: input.requestId,
+          principal,
+          liveSchema,
+          dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
+          signal: input.signal,
+        }),
+      };
     }
 
     usage = result.usage;
