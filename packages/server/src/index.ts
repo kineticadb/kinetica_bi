@@ -85,6 +85,7 @@ import {
   getTable,
   getView,
   listDashboards,
+  listKeptDashboards,
   listWidgets,
   listTables,
   listViews,
@@ -938,7 +939,9 @@ export const createApp = async (): Promise<express.Express> => {
     if ((grantee_type !== "user" && grantee_type !== "role") || typeof grantee !== "string" || grantee.trim() === "") {
       return res.status(400).json({ error: "grantee_type ('user'|'role') and grantee are required." });
     }
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const target = getDashboard(id);
+    if (!target) return res.status(404).json({ error: "Dashboard not found." });
+    if (target.generated_pending) return res.status(409).json({ error: "This dashboard hasn't been kept yet, so it can't be shared.", code: "DASHBOARD_NOT_KEPT" });
     const actor = (req as AuthedRequest).user!.creds.username;
     const before = listDashboardGrants(id);
     const inserted = addDashboardGrant(id, grantee_type, grantee);
@@ -2755,7 +2758,7 @@ export const createApp = async (): Promise<express.Express> => {
         check: diff,
         tableId: id,
         refsInput: loadColumnRefsInput(id),
-        dashboards: listDashboards().map((d) => ({ id: d.id, name: d.name })),
+        dashboards: listKeptDashboards().map((d) => ({ id: d.id, name: d.name })),
       });
       const response: SchemaCheckResponse = { ...diff, impact };
       return res.json(response);

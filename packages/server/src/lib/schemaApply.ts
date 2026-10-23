@@ -44,7 +44,7 @@ import {
   getTable,
   getTableColumnsFingerprint,
   insertTableSyncHistoryEntry,
-  listDashboards,
+  listKeptDashboards,
   loadColumnRefsInput,
   setTableSchemaSnapshot,
   type SyncChangeset,
@@ -341,7 +341,7 @@ export function applySchemaSync(input: {
       check: diff,
       tableId: input.tableId,
       refsInput: loadColumnRefsInput(input.tableId),
-      dashboards: listDashboards().map((d) => ({ id: d.id, name: d.name })),
+      dashboards: listKeptDashboards().map((d) => ({ id: d.id, name: d.name })),
     });
   }
 
