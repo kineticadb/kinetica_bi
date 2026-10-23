@@ -1,5 +1,7 @@
 # AI / MCP Action Seam
 
+> **Superseded by v2.0 AI-Driven Dashboards (Phases 133-142).** The AI chat widget shipped as the "AI Assistant" widget. Its server path is `packages/server/src/aiRoutes.ts` -> `lib/ai/agentLoop.ts` -> `lib/ai/gateway.ts`, with Keep in `aiKeepRoutes.ts`. The browser applies AI changes through `lib/aiSession` and `lib/aiOps`, not through this seam. No MCP server was built. The text below is the original v1.11 design record.
+
 **Scope: design + documentation only**
 
 > **NOT BUILT in v1.11:** No AI chat widget and no MCP server are built this milestone.
