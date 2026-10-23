@@ -364,6 +364,8 @@ export type DashboardDto = {
   filter_display_mode: "topbar" | "panel";
   created_at: string;
   updated_at: string;
+  // v2.0 Phase 142 (D-03/D-04): true while a generated dashboard has never been kept.
+  generated_pending?: boolean;
 };
 
 export const createDashboard = async (input: Pick<DashboardDto, "name"> & Partial<Pick<DashboardDto, "description">>): Promise<DashboardDto> => {
@@ -394,6 +396,48 @@ export const deleteDashboard = async (id: number): Promise<void> => {
   const response = await apiFetch(`${API_BASE}/api/dashboards/${id}`, { method: "DELETE" });
   if (!response.ok && response.status !== 204) {
     await throwForStatus(response, "Failed to delete dashboard");
+  }
+};
+
+export type GenerateDashboardResult =
+  | { ok: true; dashboard: DashboardDto }
+  | { ok: false; kind: "pending"; existing: { id: number; name: string }; message: string }
+  | { ok: false; kind: "error"; message: string };
+export const GENERATE_FAILED_MESSAGE = "Couldn't generate the dashboard. Try again.";
+
+/** 142 (D-01/D-06): never throws, never retries (a retry could create two dashboards). */
+export const generateDashboard = async (input: { name: string; description?: string; tableId: number }): Promise<GenerateDashboardResult> => {
+  try {
+    const r = await apiFetch(`${API_BASE}/api/dashboards/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
+    if (r.ok) return { ok: true, dashboard: (await r.json()) as DashboardDto };
+    let j: { error?: unknown; code?: unknown; dashboard?: { id?: unknown; name?: unknown } } = {};
+    try {
+      j = (await r.json()) ?? {};
+    } catch {
+      j = {};
+    }
+    if (r.status === 409 && j.code === "AI_GENERATE_PENDING" && j.dashboard && typeof j.dashboard.id === "number") {
+      return {
+        ok: false,
+        kind: "pending",
+        existing: { id: j.dashboard.id, name: String(j.dashboard.name ?? "") },
+        message: typeof j.error === "string" && j.error ? j.error : "You already have a generated dashboard that isn't kept yet."
+      };
+    }
+    return { ok: false, kind: "error", message: typeof j.error === "string" && j.error ? j.error : GENERATE_FAILED_MESSAGE };
+  } catch {
+    return { ok: false, kind: "error", message: GENERATE_FAILED_MESSAGE };
+  }
+};
+
+export const discardGeneratedDashboard = async (id: number): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${id}/discard-generated`, { method: "POST" });
+  if (!response.ok && response.status !== 204) {
+    await throwForStatus(response, "Failed to discard the dashboard");
   }
 };
 
