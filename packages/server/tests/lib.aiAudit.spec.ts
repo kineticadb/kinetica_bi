@@ -5,7 +5,7 @@ import Database from "better-sqlite3";
 import { createDb } from "../src/db";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildInMemoryDb } from "./helpers/db";
-import { admitAiAnswer, finalizeAiAnswer, readAiAuditRetentionDays, runAiAuditSweepOnce } from "../src/lib/aiAudit";
+import { admitAiAnswer, finalizeAiAnswer, recordAiKeep, readAiAuditRetentionDays, runAiAuditSweepOnce } from "../src/lib/aiAudit";
 
 const NOW = 1_800_000_000_000;
 const DAY = 86_400_000;
@@ -138,4 +138,34 @@ describe("AI audit sweep", () => {
     expect(runAiAuditSweepOnce(NOW, c).deleted).toBe(1);
   });
   afterEach(() => vi.unstubAllEnvs());
+});
+
+describe("AI audit kind (142-06)", () => {
+  const kindOf = (c: ReturnType<typeof buildInMemoryDb>, id: number) => (c.prepare("SELECT kind FROM ai_audit WHERE id=?").get(id) as { kind: string | null }).kind;
+  it("AUDKIND-1 defaults to ask", () => {
+    const c = buildInMemoryDb();
+    const r = admitAiAnswer({ ...base, username: "ann", now: NOW }, c) as { auditId: number };
+    expect(kindOf(c, r.auditId)).toBe("ask");
+  });
+  it("AUDKIND-2 generate on running and cap-refusal rows", () => {
+    const c = buildInMemoryDb();
+    const r = admitAiAnswer({ ...base, username: "ann", now: NOW, kind: "generate" }, c) as { auditId: number };
+    expect(kindOf(c, r.auditId)).toBe("generate");
+    const refused = admitAiAnswer({ ...base, username: "ann", now: NOW + 1, capPerHour: 1, kind: "generate" }, c);
+    expect(refused.ok).toBe(false);
+    const rows = c.prepare("SELECT kind FROM ai_audit WHERE outcome='capped'").all() as { kind: string }[];
+    expect(rows).toEqual([{ kind: "generate" }]);
+  });
+  it("AUDKIND-3 keep rows", () => {
+    const c = buildInMemoryDb();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    recordAiKeep({ username: "ann", dashboardId: 1, outcome: "kept", counts: { added: { widgets: 0, layers: 0, dynamicViews: 0 }, edited: { widgets: 0, layers: 0 }, removed: { widgets: 0, layers: 0, dynamicViews: 0 } }, durationMs: 1, now: NOW }, c);
+    expect((c.prepare("SELECT kind FROM ai_audit").get() as { kind: string }).kind).toBe("keep");
+  });
+  it("AUDKIND-4 finalize keeps kind", () => {
+    const c = buildInMemoryDb();
+    const r = admitAiAnswer({ ...base, username: "ann", now: NOW, kind: "generate" }, c) as { auditId: number };
+    finalizeAiAnswer(fin(r.auditId), c);
+    expect(kindOf(c, r.auditId)).toBe("generate");
+  });
 });

@@ -10,8 +10,9 @@ import { db } from "../db";
 import type { AiKeepIdMap } from "@kinetica-bi/shared";
 
 export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited";
+export type AiAuditKind = "ask" | "generate" | "keep";
 export type AiToolAuditEntry = { name: string; args?: unknown; result: "ok" | "rejected" | "error"; stage?: string; reasons?: string[] };
-export type AdmitInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number; capPerHour: number; capPerDay: number };
+export type AdmitInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number; capPerHour: number; capPerDay: number; kind?: "ask" | "generate" };
 export type AdmitResult =
   | { ok: true; auditId: number }
   | { ok: false; code: "AI_USER_CAP"; message: string; retryAfterSeconds: number }
@@ -35,14 +36,15 @@ export function formatStepCapMessage(maxSteps: number): string {
   return `This answer reached the ${maxSteps}-step limit; try a more specific question.`;
 }
 
-const INSERT_REFUSAL = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, provider, model, data_access, allow_list_version, steps)
-  VALUES (@now, @username, @dashboardId, @requestId, @question, 'final', 'capped', @detail, 0, @provider, @model, @dataAccess, @allowListVersion, 0)`;
-const INSERT_RUNNING = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, counted, provider, model, data_access, allow_list_version)
-  VALUES (@now, @username, @dashboardId, @requestId, @question, 'running', 1, @provider, @model, @dataAccess, @allowListVersion)`;
+const INSERT_REFUSAL = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, provider, model, data_access, allow_list_version, steps, kind)
+  VALUES (@now, @username, @dashboardId, @requestId, @question, 'final', 'capped', @detail, 0, @provider, @model, @dataAccess, @allowListVersion, 0, @kind)`;
+const INSERT_RUNNING = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, counted, provider, model, data_access, allow_list_version, kind)
+  VALUES (@now, @username, @dashboardId, @requestId, @question, 'running', 1, @provider, @model, @dataAccess, @allowListVersion, @kind)`;
 
 export function admitAiAnswer(input: AdmitInput, conn: Database.Database = db): AdmitResult {
   const run = conn.transaction((): AdmitResult => {
     const { now, capPerHour, capPerDay } = input;
+    const row = { ...input, kind: input.kind ?? "ask" };
     if (capPerHour > 0) {
       const rows = conn
         .prepare("SELECT ts_ms FROM ai_audit WHERE username = ? AND counted = 1 AND ts_ms > ? ORDER BY ts_ms ASC")
@@ -50,7 +52,7 @@ export function admitAiAnswer(input: AdmitInput, conn: Database.Database = db): 
       if (rows.length >= capPerHour) {
         const waitMs = rows[rows.length - capPerHour].ts_ms + HOUR_MS - now;
         const minutes = waitMs < 60_000 ? 0 : Math.ceil(waitMs / 60_000);
-        conn.prepare(INSERT_REFUSAL).run({ ...input, detail: "user_hour_cap" });
+        conn.prepare(INSERT_REFUSAL).run({ ...row, detail: "user_hour_cap" });
         return { ok: false, code: "AI_USER_CAP", message: formatUserCapMessage(capPerHour, minutes), retryAfterSeconds: Math.max(1, Math.ceil(waitMs / 1000)) };
       }
     }
@@ -60,11 +62,11 @@ export function admitAiAnswer(input: AdmitInput, conn: Database.Database = db): 
         .all(now - DAY_MS) as { ts_ms: number }[];
       if (rows.length >= capPerDay) {
         const waitMs = rows[rows.length - capPerDay].ts_ms + DAY_MS - now;
-        conn.prepare(INSERT_REFUSAL).run({ ...input, detail: "deployment_day_cap" });
+        conn.prepare(INSERT_REFUSAL).run({ ...row, detail: "deployment_day_cap" });
         return { ok: false, code: "AI_DAY_CAP", message: DAY_CAP_MESSAGE, retryAfterSeconds: Math.max(1, Math.ceil(waitMs / 1000)) };
       }
     }
-    const info = conn.prepare(INSERT_RUNNING).run(input);
+    const info = conn.prepare(INSERT_RUNNING).run(row);
     return { ok: true, auditId: Number(info.lastInsertRowid) };
   });
   return run();
@@ -153,8 +155,8 @@ export function recordAiKeep(input: AiKeepAuditInput, conn: Database.Database = 
   const now = input.now ?? Date.now();
   conn
     .prepare(
-      `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, steps, changes_json, duration_ms)
-       VALUES (?, ?, ?, ?, '', 'final', ?, ?, 0, 0, ?, ?)`,
+      `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, steps, changes_json, duration_ms, kind)
+       VALUES (?, ?, ?, ?, '', 'final', ?, ?, 0, 0, ?, ?, 'keep')`,
     )
     .run(
       now, input.username, input.dashboardId, `keep-${now}-${Math.random().toString(36).slice(2, 10)}`, input.outcome, input.detail ?? null,
