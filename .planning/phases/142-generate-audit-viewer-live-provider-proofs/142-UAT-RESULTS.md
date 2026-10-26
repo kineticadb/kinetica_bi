@@ -64,3 +64,17 @@ Quota: 5/5 answers (audit rows 22-26). The scratchpad playwright-core install ha
 - **Open (minor):** count charts label the y-axis with the counted column ("vendor_id") rather than "Count".
 - **Observation:** multi-line follow-up chips centre their wrapped text.
 - The "Maximum update depth" warning did not recur today (no refine on an unkept generated dashboard was run).
+
+## Day 2 follow-ups (2026-10-26, no provider quota)
+
+### Fixes
+- **b601087** bar value axis + legend default to the line chart's rule (`resolveLineMetricTitle`): display label, else "<Aggregation> of <column>" (a COUNT bar read "vendor_id"; now "Count of vendor_id"). Applies to hand-built bars too; explicit yAxisLabel/yFieldLabel and stored column labels still win. Checked live light + dark (dashboard 21: "Count of vendor_id", "Average of tip_amount").
+- Time trend on a raw timestamp: being fixed by letting the AI add the existing `timeline` chart (auto-binned DATE_TRUNC) and pointing the generate recipe's trend slot at it (in progress).
+
+### G6 joins (harness, 0 answers)
+- Step 0: `demo.nyctaxi` vendor_id = NYC 148,750 · YCAB 136,878 · VTS 124,067 · CMT 86,513 · DDS 3,792.
+- Operator approved; created `uat.vendor_dim (vendor_id VARCHAR(4) NOT NULL, vendor_name VARCHAR(32) NOT NULL)` with NYC, YCAB, VTS, CMT (DDS left out). `CREATE SCHEMA IF NOT EXISTS uat` was run (could not tell whether `uat` pre-existed: at cleanup drop the schema only if vendor_dim is its only object). Registered as table id 10; attached to dashboard 21 (its 2 unkept G4 charts were discarded first so the attach would not stale the AI session).
+- 139 step 8b: harness views on dashboard 21, `count(*)` by `vendor_id` + `vendor_name` (from the dim): INNER -901 = 4 rows / 496,208 trips; LEFT -902 = 5 rows / 500,000 with `DDS | null | 3,792`. INNER <= LEFT; LEFT shows the unmatched vendor. PASS.
+- Filter on the dim: chart on the LEFT view ("UAT Trips by vendor name", sum of trips by vendor_name); `filter(dynamicView -902, vendor_name in [Yellow Cab, NYC Taxi Co])` -> two bars. PASS. Observation: the unmatched (null) category renders with a blank tick label.
+- 141 step 9: Keep (dialog "3 added · 0 edited · 0 removed. Filters are not saved.") -> "Changes saved. Saved views read joined tables without their filters."; writes: one `POST /ai-keep`, 2 AI view drops, saved view materialize, chart reads (no layout PATCH storm); audit row 27 keep/kept; widget 171 bound to dynamic view 15. Reload: same chart, unfiltered, no change bar (light + dark). PASS.
+- 139 step 8 (preflight timeout): needs the operator to set `AI_DV_PREFLIGHT_TIMEOUT_MS=2000` and restart. NOT RUN YET.
