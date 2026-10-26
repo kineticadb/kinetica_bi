@@ -1064,10 +1064,13 @@ const BarRenderer = ({
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
   const metricId = config.metricId as number | undefined;
-  // Effective metric label: custom → the stored metric label; real column → its display label.
+  // Effective metric label: custom → the stored metric label; real column → its display label, else
+  // "<Aggregation> of <column>" (142 UAT: the line chart's rule, so a COUNT bar never reads as the raw column).
   const metricLabel = isCustomSelection(metricId)
     ? (resolveMetricLabel(metricId, tableId) ?? "")
-    : (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
+    : (tableId !== undefined && metricColumn
+      ? resolveLineMetricTitle({ columnLabel: resolveLabel(tableId, metricColumn), metricColumn, aggregation: config.aggregation as string | undefined })
+      : "");
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_BAR_COLOR;
 
