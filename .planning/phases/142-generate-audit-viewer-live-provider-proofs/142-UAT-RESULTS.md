@@ -69,7 +69,7 @@ Quota: 5/5 answers (audit rows 22-26). The scratchpad playwright-core install ha
 
 ### Fixes
 - **b601087** bar value axis + legend default to the line chart's rule (`resolveLineMetricTitle`): display label, else "<Aggregation> of <column>" (a COUNT bar read "vendor_id"; now "Count of vendor_id"). Applies to hand-built bars too; explicit yAxisLabel/yFieldLabel and stored column labels still win. Checked live light + dark (dashboard 21: "Count of vendor_id", "Average of tip_amount").
-- Time trend on a raw timestamp: being fixed by letting the AI add the existing `timeline` chart (auto-binned DATE_TRUNC) and pointing the generate recipe's trend slot at it (in progress).
+- **f0d6929** time trend on a raw timestamp: the AI can now add the existing `timeline` chart (auto-binned), and the generate recipe's slot 2 asks for "One time trend (type timeline)". Model-facing config `timeColumn`/`metric`/`aggregation` (+ colour, valueLabel, showLegend); the gateway skips a non-date timeColumn ("column X is not a date or time column"). Timelines are add-only (edits/view binding refused with a clear reason; TimelineRenderer does not query a bound view), not in the action allow-list, so ALLOW_LIST_VERSION stays v4. Gates: shared 243/243, server AI specs 770/770, web 5131 passed + theme-guard 182/182, tsc clean x3. Live (harness, 0 answers, dashboard 21): count of trips by pickup_datetime renders ~100 chronological bins in the palette violet, light + dark. Observation (pre-existing timeline formatting): multi-year range ticks show day + month without the year. Model choosing timeline in a live generate: to check on day 3.
 
 ### G6 joins (harness, 0 answers)
 - Step 0: `demo.nyctaxi` vendor_id = NYC 148,750 · YCAB 136,878 · VTS 124,067 · CMT 86,513 · DDS 3,792.
