@@ -107,6 +107,26 @@ describe("AiChat", () => {
     expect((screen.getByRole("button", { name: "F1" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("CHAT-CANCEL-NORESEND: a Cancel that ends the run within the click does not re-send the restored question", async () => {
+    // 142 UAT: the aborted run restored the question to the draft and ended before the click's default action ran;
+    // the reused <button> had become type=submit with an enabled Send, so the form re-submitted it (server 409).
+    useAiSessionStore.setState({ run: { status: "running", question: "q", startedAt: Date.now(), line: "Thinking…" } });
+    vi.mocked(cancelAsk).mockImplementation(() => {
+      useAiSessionStore.getState().setDraft("q");
+      useAiSessionStore.getState().endRun();
+    });
+    // jsdom does not replay Chrome's late activation, so assert the precondition: Send is a NEW element, never the
+    // clicked Cancel node re-typed to submit (live proof: one Send + Cancel made two POSTs in Chrome before the fix).
+    render(<AiChat ctx={ctx} variant="inline" />);
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    await userEvent.click(cancel);
+    expect(cancelAsk).toHaveBeenCalledTimes(1);
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).not.toBe(cancel);
+    expect(cancel.isConnected).toBe(false);
+    expect(runAsk).not.toHaveBeenCalled();
+  });
+
   it("CHAT-5: cancelled note, error message, Retry only when retryable", async () => {
     seed([
       turn(0, "qc", "", { status: "cancelled" }),

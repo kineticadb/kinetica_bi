@@ -87,12 +87,14 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
         }}
         aria-label="Ask the AI"
       />
+      {/* Distinct keys (142 UAT): a cancel can end the run and restore the draft before the click's default action,
+          so a reused node re-typed to submit would re-send the cancelled question. */}
       {running ? (
-        <button type="button" className="ghost-sm" onClick={() => cancelAsk()}>
+        <button key="cancel" type="button" className="ghost-sm" onClick={() => cancelAsk()}>
           Cancel
         </button>
       ) : (
-        <button type="submit" className="btn-primary btn-sm" disabled={!draft.trim()}>
+        <button key="send" type="submit" className="btn-primary btn-sm" disabled={!draft.trim()}>
           Send
         </button>
       )}
