@@ -184,8 +184,13 @@ export const MONTH_ABBR = [
  * timestamps ("YYYY-MM-DD HH:MM:SS.sss", date/time parts optional). Parsed by
  * regex — NOT `new Date(str)` — to avoid timezone shifts on the wall-clock value.
  * Falls back to the raw string when it doesn't match the expected shape.
+ * `withYear` (142 UAT): sub-month labels add the year, for data that crosses a year.
  */
-export function formatTimelineTick(bucket: string, intervalKey: TimelineIntervalKey): string {
+export function formatTimelineTick(
+  bucket: string,
+  intervalKey: TimelineIntervalKey,
+  opts: { withYear?: boolean } = {},
+): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(bucket);
   if (!m) return bucket;
   const year = m[1];
@@ -194,6 +199,7 @@ export function formatTimelineTick(bucket: string, intervalKey: TimelineInterval
   const hh = m[4] ?? "00";
   const mm = m[5] ?? "00";
   const mon = MONTH_ABBR[monthIdx] ?? m[2];
+  const date = opts.withYear ? `${mon} ${day} ${year}` : `${mon} ${day}`;
 
   switch (intervalKey) {
     case "year":
@@ -204,17 +210,29 @@ export function formatTimelineTick(bucket: string, intervalKey: TimelineInterval
       return `${year}-${m[2]}`;
     case "week":
     case "day":
-      return `${mon} ${day}`;
+      return date;
     case "12h":
     case "6h":
     case "hour":
-      return `${mon} ${day} ${hh}:00`;
+      return `${date} ${hh}:00`;
     case "30min":
     case "15min":
     case "5min":
     case "minute":
-      return `${hh}:${mm}`;
+      return opts.withYear ? `${date} ${hh}:${mm}` : `${hh}:${mm}`;
     default:
       return bucket;
   }
+}
+
+/** True when the bucket labels cover more than one calendar year (unparseable labels are ignored). */
+export function bucketsSpanYears(buckets: readonly string[]): boolean {
+  let first: string | undefined;
+  for (const b of buckets) {
+    const y = /^(\d{4})-/.exec(b)?.[1];
+    if (y === undefined) continue;
+    if (first === undefined) first = y;
+    else if (y !== first) return true;
+  }
+  return false;
 }

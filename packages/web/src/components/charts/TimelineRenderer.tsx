@@ -49,6 +49,7 @@ import {
   pickInterval,
   buildTimelineRangeQuery,
   formatTimelineTick,
+  bucketsSpanYears,
   DEFAULT_MAX_INTERVALS,
   type TimelineInterval,
   type TimelineMetric,
@@ -523,11 +524,13 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
     : [];
 
   // Axis tick formatter for the bucket (category) axis — shared by both orientations.
+  // 142 UAT: day/hour/minute ticks name the year when the data crosses one.
+  const withYear = bucketsSpanYears(data.map((r) => String(r.bucket)));
   const bucketFormatter = (v: string) => {
     // Non-empty, non-"auto" override → operator's literal pass-through (raw bucket).
     if (dateFormatOverride !== "" && dateFormatOverride !== "auto") return v;
     // "auto" (default): format at the chosen bin granularity.
-    return interval ? formatTimelineTick(v, interval.key) : v;
+    return interval ? formatTimelineTick(v, interval.key, { withYear }) : v;
   };
 
   // Phase 87 (UAT): size the value axis to its formatted tick labels rather than a fixed
@@ -612,7 +615,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
               dataKey="bucket"
               stroke={X_AXIS_COLOR}
               tick={{ fontSize: 11, fill: X_AXIS_COLOR }}
-              width={72}
+              width={withYear ? 104 : 72}
               minTickGap={24}
               tickFormatter={bucketFormatter}
             />
