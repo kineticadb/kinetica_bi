@@ -10,6 +10,7 @@ import {
   AI_COLUMN_BINDING_KEYS as SHARED_BINDING_KEYS,
   planDvDependents,
   isAiNumericColumnType,
+  isAiTemporalColumnType,
   parseAiOp,
   placeWidget,
   validateActionPatch,
@@ -90,7 +91,8 @@ function nearest(name: string, cols: string[]): string[] {
   return scored.sort((a, b) => a.score - b.score || a.i - b.i).slice(0, 3).map((x) => x.c);
 }
 
-type ColRef = { name: string; numeric: boolean };
+/** temporal: 142 timeline timeColumn must be a date/time column. */
+type ColRef = { name: string; numeric: boolean; temporal?: boolean };
 const strs = (v: unknown): string[] => (typeof v === "string" && v ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x !== "") : []);
 
 const AI_WIDGET_LOCKED = "the AI assistant widget can't be changed";
@@ -107,6 +109,7 @@ function opColumnRefs(op: AiOp, shadow: ShadowState): { tableId: number | undefi
     }
     for (const name of strs(rec.columns)) refs.push({ name, numeric: false });
     for (const name of strs(rec.sortField)) refs.push({ name, numeric: false });
+    for (const name of strs(rec.timeColumn)) refs.push({ name, numeric: false, temporal: true });
     return refs;
   };
   if (op.op === "add_widget") {
@@ -162,6 +165,10 @@ function slotOf(op: AiOp): string | undefined {
 const NOT_ON_DASHBOARD = (id: number) => `table ${id} isn't on this dashboard; add it in dashboard settings first`;
 const NOT_AVAILABLE = (id: number) => `table ${id} is not available; use list_tables for valid ids`;
 const DV_BOUND = "this chart uses a dynamic view; the AI can't edit it yet";
+// 142: a timeline is add-only and table-bound (TimelineRenderer does not resolve a dynamic view's name yet).
+const TIMELINE_NO_EDIT = "a timeline can't be edited yet; remove it and add a new one";
+const TIMELINE_NO_DV = "a timeline can't use a dynamic view yet; pass tableId";
+const NOT_TEMPORAL = (c: string) => `column ${c} is not a date or time column`;
 const TABLE_KEYS = ["tableId", "table_id", "table"];
 
 export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: string): Promise<GatewayResult> {
@@ -313,12 +320,18 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       } else if (c.numeric && isAiNumericColumnType(meta.columns.find((q) => q.name === c.name)?.type) === false) {
         reasons.push(`column ${c.name} is not numeric`);
         refKey ??= key;
+      } else if (c.temporal && isAiTemporalColumnType(meta.columns.find((q) => q.name === c.name)?.type) === false) {
+        reasons.push(NOT_TEMPORAL(c.name));
+        refKey ??= key;
       }
     }
     return reasons.length ? f("live_schema", reasons, refKey) : undefined;
   };
 
   // b. allow_list
+  if (op.op === "patch" && op.action.target.kind === "widget" && shadow.widgets.get(op.action.target.id)?.type === "timeline") {
+    return f("allow_list", [TIMELINE_NO_EDIT]);
+  }
   if (isRebind && op.op === "patch") {
     if (Object.keys(op.action.configPatch).length !== 1) return f("allow_list", ["change the view binding on its own, then send other settings in a separate edit"]);
     if (!(typeof rebindView === "number" && Number.isInteger(rebindView) && rebindView !== 0)) return f("allow_list", ["invalid value for dynamicViewId"]);
@@ -432,6 +445,7 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       const dv = (op.config as Record<string, unknown>).dynamicViewId;
       if (typeof dv === "number") {
         if (op.type === "map") return f("reference", ["map widgets can't use a dynamic view"]);
+        if (op.type === "timeline") return f("reference", [TIMELINE_NO_DV]);
         if (t !== undefined) return f("reference", ["pass tableId or dynamicViewId, not both"]);
         if (!shadow.dynamicViews.has(dv) || !dvMeta(dv)) return missing("dynamicView", dv, "dynamic view");
       } else if (op.type === "map") {
@@ -650,6 +664,12 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
         const col = d.table.columns.find((q) => q.name === c.name);
         if (isAiNumericColumnType(col?.type) === false) {
           reasons.push(`column ${c.name} is not numeric`);
+          refKey ??= key;
+        }
+      } else if (c.temporal) {
+        // an untyped column (type unknown) is not refused, same as the numeric rule
+        if (isAiTemporalColumnType(d.table.columns.find((q) => q.name === c.name)?.type) === false) {
+          reasons.push(NOT_TEMPORAL(c.name));
           refKey ??= key;
         }
       }

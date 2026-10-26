@@ -24,6 +24,17 @@ export function aiWidgetColumnRefs(cfg: Readonly<Record<string, unknown>>): stri
   }
   pushNames(out, cfg.columns);
   if (typeof cfg.sortField === "string" && cfg.sortField.trim() !== "") out.push(cfg.sortField.trim());
+  // 142 timeline: model-facing timeColumn; renderer config timeCol + metrics[].column
+  for (const k of ["timeColumn", "timeCol"]) {
+    const v = cfg[k];
+    if (typeof v === "string" && v.trim() !== "") out.push(v.trim());
+  }
+  if (Array.isArray(cfg.metrics)) {
+    for (const m of cfg.metrics) {
+      const c = typeof m === "object" && m !== null ? (m as { column?: unknown }).column : undefined;
+      if (typeof c === "string" && c.trim() !== "") out.push(c.trim());
+    }
+  }
   return dedupe(out);
 }
 

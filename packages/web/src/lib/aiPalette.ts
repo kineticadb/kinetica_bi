@@ -11,6 +11,12 @@ export const AI_PALETTE_COLORS = Object.fromEntries(
   AI_PALETTE_NAMES.map((n, i) => [n, AURORA_CHART_PALETTE[i]]),
 ) as Record<AiPaletteName, string>;
 
+/** 142: the timeline metric colour format (8-char AARRGGBB, opaque) for a palette name, derived from the same palette. */
+export function paletteColorAarrggbb(name: string): string | undefined {
+  const css = paletteColor(name);
+  return css === undefined ? undefined : `FF${css.replace(/^#/, "").toUpperCase()}`;
+}
+
 export function paletteColor(name: string): string | undefined {
   return Object.prototype.hasOwnProperty.call(AI_PALETTE_COLORS, name)
     ? AI_PALETTE_COLORS[name as AiPaletteName]

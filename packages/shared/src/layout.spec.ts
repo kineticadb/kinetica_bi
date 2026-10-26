@@ -60,7 +60,7 @@ describe("layout", () => {
   it("LAYOUT-7 default sizes", () => {
     expect(AI_DEFAULT_SIZE).toEqual({
       bignumber: { w: 9, h: 14 }, bar: { w: 18, h: 30 }, line: { w: 18, h: 30 }, pie: { w: 18, h: 30 },
-      table: { w: 18, h: 36 }, records: { w: 36, h: 36 }, map: { w: 28, h: 45 },
+      table: { w: 18, h: 36 }, records: { w: 36, h: 36 }, map: { w: 28, h: 45 }, timeline: { w: 18, h: 30 },
     });
     expect(Object.keys(AI_DEFAULT_SIZE).sort()).toEqual([...AI_WIDGET_TYPES].sort());
   });
@@ -103,6 +103,13 @@ describe("placeGenerateBands", () => {
     const l = placeGenerateBands([{ key: -1, type: "bar" }, { key: -2, type: "line" }]);
     expect(l[-2].x).toBe(0);
     expect(l[-1].x).toBe(12);
+  });
+  it("GENBAND-TL-1 a timeline takes the trend slot ahead of breakdowns", () => {
+    const r = placeGenerateBands([{ key: -1, type: "bar" }, { key: -2, type: "pie" }, { key: -3, type: "timeline" }]);
+    expect(r[-3]).toEqual({ x: 0, y: 0, w: 12, h: 30 });
+    expect(r[-1]).toEqual({ x: 12, y: 0, w: 12, h: 30 });
+    expect(r[-2]).toEqual({ x: 0, y: 30, w: 24, h: 30 });
+    expect(AI_DEFAULT_SIZE.timeline).toEqual(AI_DEFAULT_SIZE.line);
   });
   it("GENBAND-6 exhaustive 4..8 mixes validate with the AI rect", () => {
     let checked = 0;

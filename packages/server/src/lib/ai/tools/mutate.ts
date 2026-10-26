@@ -61,6 +61,7 @@ const addWidgetArgs = z.object({
   columns: z.array(z.string().max(128)).max(50).optional(),
   sortField: z.string().max(128).optional(),
   sortDirection: z.enum(["asc", "desc"]).optional(),
+  timeColumn: z.string().max(128).optional(),
   showPopup: z.boolean().optional(),
   showScaleBar: z.boolean().optional(),
   showFullscreen: z.boolean().optional(),
@@ -120,6 +121,9 @@ const addWidget: MutateTool = {
     `Add a widget. Use a new negative tempId (-1, -2, ...). Never SQL, never hex; colour is one of ${PALETTE}. ` +
     "Position is automatic. tableId must be a table on this dashboard (from list_tables); column names must come from describe_table. " +
     "Pass dynamicViewId (an AI or saved dynamic view) INSTEAD of tableId to chart a view; columns then come from that view. " +
+    "For a trend over a date or timestamp column use type timeline with timeColumn (that date/time column), metric and aggregation (optional colour, valueLabel): " +
+    "it bins time into years, months, days or hours and orders by time. A line chart groups by raw values, so a line on a timestamp shows scattered instants. " +
+    "A timeline needs tableId (not a dynamic view) and can't be edited afterwards. " +
     "To repair a rejected call reuse the same tempId.",
   args: addWidgetArgs,
   toOp(args) {
@@ -131,6 +135,7 @@ const addWidget: MutateTool = {
       columns: a.columns,
       sortField: a.sortField,
       sortDirection: a.sortDirection,
+      timeColumn: a.timeColumn,
       show_popup: a.showPopup,
       show_scale_bar: a.showScaleBar,
       show_fullscreen: a.showFullscreen,

@@ -39,6 +39,12 @@ describe("aiColumnRefs (139)", () => {
       drop: { widgetIds: [], layerIds: [] },
     });
   });
+  it("REFS-TL-1 timeline refs: model-facing timeColumn and renderer timeCol + metrics columns", () => {
+    expect(aiWidgetColumnRefs({ metric: "fare", aggregation: "sum", timeColumn: "pickup_datetime" })).toEqual(["fare", "pickup_datetime"]);
+    expect(
+      aiWidgetColumnRefs({ timeCol: "pickup_datetime", metrics: [{ column: "fare", aggregation: "SUM" }, { column: "tip", aggregation: "AVG" }, { column: "" }, 7] }),
+    ).toEqual(["pickup_datetime", "fare", "tip"]);
+  });
   it("REFS-6 binding key drift guard", () => {
     expect([...AI_COLUMN_BINDING_KEYS]).toEqual(["metric", "metricColumn", "groupByColumn", "groupByColumns"]);
   });

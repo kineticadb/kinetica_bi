@@ -14,11 +14,23 @@ const str = (v: unknown, max = 200): string | undefined => (typeof v === "string
 const clamp = (n: number) => Math.min(1000, Math.max(0, Math.round(n)));
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 
-function bindingOf(config: Record<string, unknown>): NonNullable<AskRequest["snapshot"]["widgets"][number]["binding"]> | undefined {
+function bindingOf(config: Record<string, unknown>, type: string): NonNullable<AskRequest["snapshot"]["widgets"][number]["binding"]> | undefined {
   const b: Record<string, unknown> = {};
   for (const k of ["metric", "aggregation", "dimension", "metricColumn", "groupByColumn", "sortField"] as const) {
     const v = str(config[k]);
     if (v !== undefined) b[k] = v;
+  }
+  // 142: a timeline's time column and first metric, in the model's vocabulary (names only)
+  if (type === "timeline") {
+    const t = str(config.timeCol);
+    if (t) b.timeColumn = t;
+    const m0 = Array.isArray(config.metrics) ? (config.metrics[0] as Record<string, unknown> | undefined) : undefined;
+    if (m0 && typeof m0 === "object") {
+      const col = str(m0.column);
+      if (col && b.metric === undefined) b.metric = col;
+      const agg = str(m0.aggregation);
+      if (agg && b.aggregation === undefined) b.aggregation = agg.toLowerCase();
+    }
   }
   if (Array.isArray(config.groupByColumns)) {
     b.groupByColumns = config.groupByColumns
@@ -85,7 +97,7 @@ export function buildAskSnapshot(input: {
     if (isInt(cfg.dynamicViewId) && cfg.dynamicViewId !== 0) out.dynamicViewId = cfg.dynamicViewId;
     const r = input.layouts[w.id];
     if (r) out.layout = { x: clamp(r.x), y: clamp(r.y), w: clamp(r.w), h: clamp(r.h) };
-    const binding = bindingOf(cfg);
+    const binding = bindingOf(cfg, w.type);
     if (binding) out.binding = binding;
     return out;
   });

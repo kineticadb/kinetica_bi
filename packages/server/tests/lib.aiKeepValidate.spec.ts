@@ -243,6 +243,11 @@ describe("prepareKeep", () => {
   it("KVAL-14: referenced columns must exist (live table, compiled temp dv, saved dv)", async () => {
     const { deps } = mkDeps();
     expect(reasons(await prepareKeep(withReq({ w: { add: [wAdd(-1, { tableId: T, groupByColumn: "fare_x" })] } }), deps))).toContain(`column fare_x is not on table ${T}`);
+    // 142: a kept timeline's renderer columns (timeCol, metrics[].column) are checked too
+    const tl = (timeCol: string, column: string) => wAdd(-1, { tableId: T, tableRef: "public.tbl_t", timeCol, metrics: [{ column, aggregation: "SUM", color: "FF7F40ED" }] }, "timeline");
+    expect(reasons(await prepareKeep(withReq({ w: { add: [tl("pickup", "fare")] } }), deps))).toEqual([]);
+    expect(reasons(await prepareKeep(withReq({ w: { add: [tl("pickup_x", "fare")] } }), deps))).toContain(`column pickup_x is not on table ${T}`);
+    expect(reasons(await prepareKeep(withReq({ w: { add: [tl("pickup", "fare_y")] } }), deps))).toContain(`column fare_y is not on table ${T}`);
     expect(reasons(await prepareKeep(withReq({ w: { add: [wAdd(-1, { tableId: T, groupByColumn: "vendor" })] } }), deps))).toEqual([]);
 
     // edit: only the configSet's own refs are checked

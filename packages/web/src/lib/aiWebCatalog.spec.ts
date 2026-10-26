@@ -40,6 +40,12 @@ describe("AI catalogue drift", () => {
     });
   }
 
+  it("DRIFT6-TL timeline defaults equal the registry's timeline defaults", () => {
+    const def = getChartType("timeline")!.defaultConfig;
+    const d = AI_WIDGET_DEFAULTS.timeline.config;
+    for (const k of ["maxIntervals", "showLegend", "showTooltip", "vertical", "colorTheme", "dateFormatOverride"]) expect(d[k], k).toEqual(def[k]);
+  });
+
   it("DRIFT6-4 map basemaps match the registry default", () => {
     const def = getChartType("map")!.defaultConfig;
     expect(AI_WIDGET_DEFAULTS.map.config.basemapLight).toBeDefined();

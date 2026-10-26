@@ -1,10 +1,47 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_HEATMAP_RAMPS, isAiNumericColumnType, layersOfMap, resolveHeatmapHost, validateAiLayerPatch, validateAiWidgetConfig,
+  AI_HEATMAP_RAMPS, isAiNumericColumnType, isAiTemporalColumnType, layersOfMap, resolveHeatmapHost, validateAiLayerPatch, validateAiWidgetConfig,
 } from "./aiCatalog";
 import { AI_PALETTE_NAMES } from "./actionAllowList";
 
 const BAR = { metric: "fare_amount", aggregation: "sum", groupByColumn: "vendor_id" };
+
+const TL = { timeColumn: "pickup_datetime", metric: "fare_amount", aggregation: "sum" };
+
+describe("aiCatalog timeline", () => {
+  it("TL-CAT-1 valid timeline config (required + optional keys)", () => {
+    expect(validateAiWidgetConfig("timeline", TL)).toEqual({ valid: true });
+    expect(validateAiWidgetConfig("timeline", { ...TL, color: "teal", showLegend: false, yFieldLabel: "Fares", tableId: 3 })).toEqual({ valid: true });
+  });
+  it("TL-CAT-2 missing required fields", () => {
+    const r = validateAiWidgetConfig("timeline", { metric: "fare_amount" });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.reasons).toContain("missing required field timeColumn");
+      expect(r.reasons).toContain("missing required field aggregation");
+    }
+  });
+  it.each(["groupByColumn", "limit", "sortDir", "timeCol", "metrics", "maxIntervals", "customWhere", "sql"])("TL-CAT-3 rejects key %s", (k) => {
+    const r = validateAiWidgetConfig("timeline", { ...TL, [k]: "x" });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.reasons.join()).toContain(k);
+  });
+  it("TL-CAT-4 bad values are rejected without echoing them", () => {
+    for (const bad of [{ timeColumn: "a b" }, { color: "#ff0000" }, { aggregation: "median" }]) {
+      const r = validateAiWidgetConfig("timeline", { ...TL, ...bad });
+      expect(r.valid).toBe(false);
+      if (!r.valid) {
+        expect(r.reasons).toEqual([`invalid value for ${Object.keys(bad)[0]}`]);
+        expect(r.reasons.join()).not.toContain(Object.values(bad)[0]);
+      }
+    }
+  });
+  it("TL-CAT-5 isAiTemporalColumnType", () => {
+    for (const t of ["timestamp", "DATE", "time", "datetime", "Timestamp(3)"]) expect(isAiTemporalColumnType(t)).toBe(true);
+    for (const t of ["bigint", "long", "string(char16)", "float", "int(int8)"]) expect(isAiTemporalColumnType(t)).toBe(false);
+    expect(isAiTemporalColumnType(undefined)).toBeUndefined();
+  });
+});
 
 describe("aiCatalog", () => {
   it("CAT-1 positive control", () => {

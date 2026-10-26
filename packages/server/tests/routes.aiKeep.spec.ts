@@ -471,4 +471,19 @@ describe("Keep route refusals (141-12 task 2)", () => {
     expect(saved.config.defaultView).toEqual(view);
     expect(saved.config.includedLayerIds).toEqual([r.body.idMap.layers["-2"]]);
   });
+
+  it("KEEP-ROUTE-timeline (142 UAT) an AI timeline is accepted and saved with its renderer config", async () => {
+    const c = await setup();
+    const config = {
+      tableId: c.T, tableRef: "fleet.trips", timeCol: "pickup_datetime",
+      metrics: [{ column: "fare", aggregation: "SUM", color: "FF7F40ED" }],
+      maxIntervals: 200, showLegend: true, showTooltip: true, vertical: false, colorTheme: "Set2", dateFormatOverride: "",
+    };
+    const r = await post(c, { ...empty(c), widgets: { add: [{ tempId: -1, type: "timeline", title: "Fares over time", config, rect: rect(20) }], edit: [], remove: [] } });
+    expect(r.body.reasons ?? []).toEqual([]);
+    expect(r.status).toBe(200);
+    const saved = listWidgets(c.D).find((w) => w.id === r.body.idMap.widgets["-1"])!;
+    expect(saved.type).toBe("timeline");
+    expect(saved.config).toMatchObject(config);
+  });
 });

@@ -7,6 +7,7 @@
 import type { AiWidgetType } from "@kinetica-bi/shared";
 import { AI_PALETTE_COLORS, paletteColor } from "./aiPalette";
 import { DEFAULT_BASEMAP_LIGHT, DEFAULT_BASEMAP_DARK } from "./basemaps";
+import { DEFAULT_MAX_INTERVALS } from "./timelineBin";
 
 type Flags = { usesAggregation: boolean; requiresGroupBy: boolean };
 
@@ -35,6 +36,11 @@ export const AI_WIDGET_DEFAULTS: Record<AiWidgetType, { config: Record<string, u
   records: { config: { pageSize: 25 }, flags: { usesAggregation: false, requiresGroupBy: true } },
   map: {
     config: { basemapLight: DEFAULT_BASEMAP_LIGHT, basemapDark: DEFAULT_BASEMAP_DARK },
+    flags: { usesAggregation: false, requiresGroupBy: true },
+  },
+  // 142: TimelineRenderer owns its SQL; timeCol/metrics come from the fold. "Set2" = DEFAULT_COLOR_THEME (drift: DRIFT6-TL).
+  timeline: {
+    config: { maxIntervals: DEFAULT_MAX_INTERVALS, showLegend: true, showTooltip: true, vertical: false, colorTheme: "Set2", dateFormatOverride: "" },
     flags: { usesAggregation: false, requiresGroupBy: true },
   },
 };

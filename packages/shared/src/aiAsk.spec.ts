@@ -53,7 +53,12 @@ describe("AskRequestSchema", () => {
   });
 
   it("ASK-5: approved widget subset", () => {
-    expect([...AI_WIDGET_TYPES]).toEqual(["bar", "line", "pie", "table", "bignumber", "records", "map"]);
+    expect([...AI_WIDGET_TYPES]).toEqual(["bar", "line", "pie", "table", "bignumber", "records", "map", "timeline"]);
+  });
+
+  it("ASK-TL-1: a snapshot binding may name a timeline's time column", () => {
+    const snap = { ...base().snapshot, widgets: [{ id: 4, type: "timeline", title: "t", binding: { metric: "fare", aggregation: "sum", timeColumn: "pickup_datetime" } }] };
+    expect(ok({ ...base(), snapshot: snap })).toBe(true);
   });
 });
 

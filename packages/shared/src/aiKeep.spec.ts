@@ -85,6 +85,13 @@ describe("AI keep request schema (141)", () => {
     expect(ok(w([wAdd(-1, { type: "map" })]))).toBe(true);
   });
 
+  it("KC-TL-1 a kept AI timeline widget parses; change-type to timeline does not", () => {
+    const w = (add: any[] = [], edit: any[] = []) => ({ ...empty(), widgets: { add, edit, remove: [] } });
+    const config = { tableId: 3, tableRef: "demo.nyctaxi", timeCol: "pickup_datetime", metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF7F40ED" }] };
+    expect(ok(w([wAdd(-1, { type: "timeline", config })]))).toBe(true);
+    expect(ok(w([], [{ id: 1, type: "timeline" }]))).toBe(false);
+  });
+
   it("KC-6 caps", () => {
     const w = (add: any[]) => ({ ...empty(), widgets: { add, edit: [], remove: [] } });
     expect(ok(w(Array.from({ length: 200 }, (_, i) => wAdd(-(i + 1)))))).toBe(true);

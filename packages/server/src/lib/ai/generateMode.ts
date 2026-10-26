@@ -17,7 +17,7 @@ export function buildGenerateRecipe(dataAccess: AiDataAccess): string {
     "- Generate mode: this dashboard was just created from the table listed above and has no charts yet. Build a starter dashboard in this answer.",
     "- Add between 4 and 8 widgets with add_widget, all on that table, following this recipe and skipping any slot that does not fit its columns:",
     "  1. One to three KPIs (type bignumber), for example a row count and the sum or average of key numeric columns.",
-    "  2. One time trend (type line) if there is a date or timestamp column.",
+    "  2. One time trend (type timeline) if there is a date or timestamp column, with timeColumn set to that column; not a line chart, which groups by raw values.",
     "  3. One or two breakdowns (type bar or pie) by low-cardinality text columns; avoid ids and free text.",
     "  4. One map (type map) and one heatmap layer on it (add_layer) if the table has a geometry column or latitude and longitude columns.",
     "  5. One records table (type records).",

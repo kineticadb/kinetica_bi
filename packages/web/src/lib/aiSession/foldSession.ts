@@ -7,6 +7,7 @@ import { deriveChartConfig } from "../chartSql";
 import { AI_WIDGET_DEFAULTS } from "../aiWidgetDefaults";
 import { aggregationLabel } from "../aggregationLabels";
 import { makeAiHeatmapLayerConfig } from "../layerDefaults";
+import { paletteColorAarrggbb } from "../aiPalette";
 import {
   parseAiOp,
   validateActionPatch,
@@ -93,6 +94,23 @@ function withDefaultBigNumberLabel(cfg: Cfg): Cfg {
   return label === undefined ? cfg : { ...cfg, label };
 }
 
+/**
+ * 142: model-facing timeline keys (timeColumn, metric, aggregation, color, yFieldLabel, showLegend) -> TimelineRenderer
+ * config (timeCol + one metrics[] entry, aggregation upper-case, colour AARRGGBB). Nothing else is copied.
+ */
+function timelineRendererConfig(fields: Cfg): Cfg {
+  const color = paletteColorAarrggbb(typeof fields.color === "string" ? fields.color : "violet") ?? paletteColorAarrggbb("violet");
+  const metric: Cfg = {
+    column: fields.metric,
+    aggregation: typeof fields.aggregation === "string" ? fields.aggregation.toUpperCase() : fields.aggregation,
+    color,
+  };
+  if (typeof fields.yFieldLabel === "string" && fields.yFieldLabel !== "") metric.label = fields.yFieldLabel;
+  const out: Cfg = { timeCol: fields.timeColumn, metrics: [metric] };
+  if (typeof fields.showLegend === "boolean") out.showLegend = fields.showLegend;
+  return out;
+}
+
 /** The AI never supplies SQL: strip, apply defaults, translate to renderer keys, derive (D-01/D-23). */
 export type DvBinding = { baseTableId: number | undefined; columns: readonly { name: string; type: string }[] };
 
@@ -101,6 +119,17 @@ export function makeSessionWidget(op: AddWidgetOp, baseline: SessionBaseline, dv
   const dvId = dvBinding && typeof op.config.dynamicViewId === "number" ? op.config.dynamicViewId : undefined;
   const { tableId, ...fields } = strip(op.config);
   const defaults = AI_WIDGET_DEFAULTS[op.type as AiWidgetType]?.config ?? {};
+  if (op.type === "timeline") {
+    // table-bound only (evaluate refuses a view binding): TimelineRenderer reads tableId + tableRef and runs its own SQL
+    const config: Cfg = { ...defaults, ...timelineRendererConfig(fields) };
+    const tt = findTable(baseline, tableId);
+    if (tt) {
+      config.tableId = tt.id;
+      config.tableRef = `${tt.schema}.${tt.name}`;
+    }
+    if (op.layout) config.layout = { ...op.layout };
+    return { id: op.tempId, dashboard_id: baseline.dashboardId, title: op.title, type: op.type, position: 0, config, created_at: "", updated_at: "" };
+  }
   let config: Cfg = { ...defaults, ...translateWidgetOverlay(op.type, fields) };
   delete config.metricId;
   if (op.type === "records" && Array.isArray(config.columns)) config.columns = config.columns.join(", ");
@@ -386,6 +415,7 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       // 142 UAT: ops arrive from the server, which may stamp a map defaultView (never model-settable: the gateway refuses it).
       const v = validateAiWidgetConfig(op.type, op.config, { allowServerStamped: true });
       if (!v.valid) return done(skip("config_rejected", v.reasons.join("; ")));
+      if (op.type === "timeline" && "dynamicViewId" in op.config) return done(skip("config_rejected", "a timeline can't use a dynamic view"));
       if ("dynamicViewId" in op.config) {
         if (op.config.tableId !== undefined) return done(skip("config_rejected", "pass tableId or dynamicViewId, not both"));
         if (typeof op.config.dynamicViewId !== "number" || !sim.dvs.has(op.config.dynamicViewId)) return done(skip("target_not_found", "no such dynamic view"));
@@ -425,6 +455,7 @@ function evaluateOne(sim: Sim, rawOp: unknown, opts: EvaluateOptions): TurnEntry
       if (target.kind === "widget") {
         const w = sim.widgets.get(target.id);
         if (!w) return done(skip("target_not_found"));
+        if (w.type === "timeline") return done(skip("unsupported_target", "a timeline can't be edited"));
         if ("dynamicViewId" in configPatch) return done(evalRebind(sim, configPatch));
         if (w.dvBound) return done(skip("unsupported_target", "widget is bound to a dynamic view"));
         const v = validateActionPatch("widget", w.type, configPatch);

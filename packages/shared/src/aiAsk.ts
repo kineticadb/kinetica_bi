@@ -3,8 +3,8 @@
 // (AIGOV-V20-02) - the snapshot is structure only.
 import { z } from "zod";
 
-/** 133-SPIKES S3 approved AI widget subset. */
-export const AI_WIDGET_TYPES = ["bar", "line", "pie", "table", "bignumber", "records", "map"] as const;
+/** 133-SPIKES S3 approved AI widget subset. 142 UAT: + timeline (time trends over a date/time column). */
+export const AI_WIDGET_TYPES = ["bar", "line", "pie", "table", "bignumber", "records", "map", "timeline"] as const;
 export type AiWidgetType = (typeof AI_WIDGET_TYPES)[number];
 
 export const ASK_REQUEST_MAX_BYTES = 65_536;
@@ -41,6 +41,7 @@ const SnapWidget = z
         // 139: names only; a view's spec (which holds filter values) is never in the snapshot
         columns: z.array(Name).max(50),
         sortField: Name,
+        timeColumn: Name, // 142: a timeline's time column (name only)
       })
       .partial()
       .strict()

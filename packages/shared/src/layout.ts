@@ -17,6 +17,7 @@ export const AI_DEFAULT_SIZE: Record<AiWidgetType, { w: number; h: number }> = {
   table: { w: 18, h: 36 },
   records: { w: 36, h: 36 },
   map: { w: 28, h: 45 },
+  timeline: { w: 18, h: 30 },
 };
 
 /** Mirrors DashboardsPage getWidgetLayout fallback, per field. */
@@ -88,7 +89,9 @@ export function placeGenerateBands(items: readonly { key: number; type: string }
   const maps = items.filter((i) => i.type === "map");
   const records = items.filter((i) => i.type === "records");
   const rest = items.filter((i) => i.type !== "bignumber" && i.type !== "map" && i.type !== "records");
-  const middle = [...rest.filter((i) => i.type === "line"), ...rest.filter((i) => i.type !== "line")];
+  // the time-trend slot (line or timeline) leads the middle band
+  const isTrend = (t: string) => t === "line" || t === "timeline";
+  const middle = [...rest.filter((i) => isTrend(i.type)), ...rest.filter((i) => !isTrend(i.type))];
   let y = 0;
   for (let s = 0; s < kpis.length; s += KPI_PER_ROW) {
     const chunk = kpis.slice(s, s + KPI_PER_ROW);

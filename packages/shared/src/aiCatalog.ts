@@ -1,7 +1,7 @@
 // Phase 136 (D-03, D-10, D-11..D-13, D-23): positive AI config catalogue. Pure (zod only).
 // Never imports ./aiOp (aiOp imports AiHeatmapStyleSchema from here).
 import { z } from "zod";
-import { AiIdentifierSchema, getWidgetAllowListSchemas } from "./actionAllowList";
+import { AI_PALETTE_NAMES, AiIdentifierSchema, CHART_AGGREGATIONS, getWidgetAllowListSchemas } from "./actionAllowList";
 import type { AiWidgetType } from "./aiAsk";
 import { AiMapDefaultViewSchema } from "./mapView";
 
@@ -26,6 +26,30 @@ export function isAiNumericColumnType(t: string | undefined): boolean | undefine
   return (AI_NUMERIC_COLUMN_TYPES as readonly string[]).includes(base);
 }
 
+export const AI_TEMPORAL_COLUMN_TYPES = ["timestamp", "date", "time", "datetime"] as const;
+
+/** 142: true for a date/time column type (same set as the web's inferDataTypeFromColumn "datetime"); undefined when unknown. */
+export function isAiTemporalColumnType(t: string | undefined): boolean | undefined {
+  if (t === undefined) return undefined;
+  const base = t.toLowerCase().replace(/\(.*\)\s*$/, "").trim();
+  if (base === "") return undefined;
+  return (AI_TEMPORAL_COLUMN_TYPES as readonly string[]).includes(base);
+}
+
+/**
+ * 142: timeline is add-only for the AI, so its keys live here and NOT in the action allow-list (WIDGET_ALLOW_LIST):
+ * edit_widget patches on a timeline stay rejected and ALLOW_LIST_VERSION is unchanged (the 139 carve-out precedent).
+ * Same vocabulary as the other charts; the web fold translates to the renderer's timeCol + metrics[].
+ */
+const TIMELINE_FIELDS: Record<string, z.ZodTypeAny> = {
+  timeColumn: AiIdentifierSchema,
+  metric: AiIdentifierSchema,
+  aggregation: z.enum(CHART_AGGREGATIONS),
+  color: z.enum(AI_PALETTE_NAMES),
+  showLegend: z.boolean(),
+  yFieldLabel: z.string().max(80),
+};
+
 export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.ZodTypeAny>; required: readonly string[] }> = (() => {
   const f = (t: string) => ({ ...(getWidgetAllowListSchemas(t) ?? {}) });
   const chartReq = ["metric", "aggregation", "groupByColumn"] as const;
@@ -45,6 +69,7 @@ export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.Z
       required: [],
     },
     map: { fields: f("map"), required: [] },
+    timeline: { fields: { ...TIMELINE_FIELDS }, required: ["timeColumn", "metric", "aggregation"] },
   };
 })();
 
