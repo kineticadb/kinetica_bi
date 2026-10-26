@@ -37,3 +37,30 @@ Quota used day 1: 5/5 answers (2 wasted on the unsaved key).
 - **dba356f** "Generate from a table" now uses the form's `--text-sm` (11 px, was 14 px) via `.ds-form .config-toggle`; both discard dialogs (generated dashboard, AI changes) now show Discard as `btn-danger btn-sm` (the existing confirm-remove pairing) and Cancel as `ghost-sm`, still focused. Checked light + dark.
 - **a758465, 9570676, 688ab33** Every AI-added map with an AI lat/lon heatmap layer in the same answer gets a server-stamped `config.defaultView` from the 2nd-98th percentile lon/lat extent (run as the user, tagged, 5 s, world view on any failure; never sent to the provider or audited; the model cannot set it). Live check on Kinetica 7.2.3.12: raw extent lon -736.6..0.08, lat -0.14..3210 (bad data); percentile box lon -74.010..-73.861, lat 40.674..40.800 in 577 ms; view center lon -73.936 / lat 40.737, zoom 11.72; applied to dashboard 21's map it opens on Manhattan + LaGuardia (light + dark). End-to-end on a model-driven map still to be seen on day 2. Geometry (WKT/WKB) layers and dynamic-view-bound layers keep the world view.
 - Gate note: `routes.dynamic-view`, `routes.filter-materialize`, `routes.filter-materialize-dv` now fail in isolation because the dev `.env` sets `DEFAULT_VIEW_TTL_MINUTES=3` (tests expect TTL 5); environmental (memory: dev .env leaks into server vitest), not a regression.
+
+## Gemini, day 2 (2026-10-26)
+
+Quota: 5/5 answers (audit rows 22-26). The scratchpad playwright-core install had been partly removed by the macOS temp cleaner; reinstalled (1.48.2).
+
+| Step | Verdict | Evidence |
+|---|---|---|
+| G1 (uat_analyst 403) | PASS | no "AI activity" in the nav; `/api/ai/audit`, `/api/ai/audit/dashboards`, `/api/ai/audit/1` -> 403 `audit:view is required`; `?page=ai-activity` lands on Dashboards |
+| G2 (designer half) | PASS light + dark | unkept dashboard 22 absent from uat_designer's list; `?dashboard=22` shows "This dashboard isn't available"; `/api/dashboards/22/widgets` and `/tables` -> 404 "Dashboard not found." (same as id 99999); kept dashboard 21 listed and its widgets load (200) |
+| G2 map zoom (model-driven) | PASS | dashboard 22 (generated, audit row 22, 8.4 s, 9 steps): the AI "Trip Map" heatmap opened on Manhattan with no manual step |
+| G3b cancel | PASS after fix 0aa5150 | dashboard 23: "Cancelled, nothing changed", empty dashboard with the pending note and "Discard dashboard"; audit row 23 `generate/cancelled`, 0 steps, 69 ms (counted toward the cap). First attempt (my script clicked the form's Cancel) let dashboard 22 finish. |
+| G3b one-unkept prompt | PASS light | Generate while 22 was unkept: `You already have a generated dashboard that isn't kept yet: "UAT142 Cancel A". Keep or discard it first.`; "Open it" (btn-primary btn-sm) and "Discard it" (ghost-sm ghost-danger) both 23 px; no /api/ai/ask. Dashboard 23 then discarded via "Discard dashboard" -> gone. |
+| G3c logout | PASS | admin logout with 22 unkept: dashboards/widgets 1/1 -> 0/0, audit row kept (1); log `{"event":"ai_generated_discard","dashboard_id":22,"deleted":true}` |
+| G4 (partial, dashboard 21 as the TEST dashboard; no dashboard-12 copy exists) | 3 of 6 asks | see below |
+
+### G4 detail
+1. "Add a bar chart of trip count by vendor": applied (row 24, 1 step, 4.4 s, 1 POST); "Trip Count by Vendor" placed below the records table; trailer present (3 follow-ups).
+2. Follow-up chip "Would you like to see the average trip distance by vendor as well?": applied (row 25, 1 step, 5.0 s, 1 POST); trailer present.
+3. "Rename that chart to Trips per vendor and make it a line chart": the model asked which chart ("Which did you mean?" with "Rename the Trip Count by Vendor chart" / "...Average Trip Distance by Vendor chart"), row 26, 0 steps, 11.9 s. Reasonable: two charts had just been added. Covers the "ambiguous ask offers Choices" item. Light + dark readable.
+- Remaining for day 3: pick a choice (rename + line), "Remove the records table" (confirm once), the "Show fares by type" ambiguous ask, "Revert dashboard to this state" (free). Dashboard 21 has unkept AI changes (2 added) carried in the browser session.
+
+### Defects / observations (day 2)
+- **Fixed 0aa5150 - Cancel re-sent the question.** Cancel and Send shared one reused `<button>`; the aborted run restored the draft and ended before the click's default action, so the node (now `type=submit`, Send enabled) submitted the form again. Live: after G3b's cancel a second "Create a starter dashboard..." POST got 409 AI_BUSY (error box + toast). Reproduced for free with a hung mocked `/api/ai/ask`: 2 POSTs before, 1 after. Affects every Cancel since 137; if the server had already released the request it would have re-run (and counted) the cancelled question. CHAT-CANCEL-NORESEND asserts the precondition (distinct nodes) red-first; jsdom does not replay Chrome's late activation.
+- **Open (model quality):** dashboard 22's "Trips Over Time" grouped by the raw pickup timestamp ("Showing 100 of 447,884 categories", epoch-ms axis) instead of a day/month bucket.
+- **Open (minor):** count charts label the y-axis with the counted column ("vendor_id") rather than "Count".
+- **Observation:** multi-line follow-up chips centre their wrapped text.
+- The "Maximum update depth" warning did not recur today (no refine on an unkept generated dashboard was run).
