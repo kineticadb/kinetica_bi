@@ -56,6 +56,9 @@ function errorCodeFor(r: Pick<AgentLoopResult, "outcome" | "detail">): AiErrorCo
   }
 }
 
+/** 142 UAT (Ollama): shown when the model ends with no text, no changes, no choices and nothing skipped. */
+export const EMPTY_ANSWER_MESSAGE = "The AI returned an empty answer. Nothing was changed. Try again.";
+
 const FALLBACK_MESSAGE: Record<AiErrorCode, string> = {
   AI_CAPPED: "This answer reached its limit; try a more specific question.",
   AI_RATE_LIMITED: AI_USER_MESSAGES.rateLimited,
@@ -193,8 +196,19 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     usage = result.usage;
     steps = result.steps;
     const trailer = result.outcome === "ok" ? parseReplyTrailer(result.text) : null;
+    // 142 UAT: an empty reply (follow-ups alone do not count) must not be recorded and shown as an answer.
+    const empty =
+      !tooFew &&
+      trailer !== null &&
+      trailer.text.trim() === "" &&
+      trailer.choices.length === 0 &&
+      result.ops.length === 0 &&
+      result.clarifications.length === 0 &&
+      result.skipped.length === 0;
     if (tooFew) {
       sse.send("error", { code: "AI_PROVIDER_ERROR", message: GENERATE_TOO_FEW_MESSAGE });
+    } else if (empty) {
+      sse.send("error", { code: "AI_PROVIDER_ERROR", message: EMPTY_ANSWER_MESSAGE });
     } else if (result.outcome === "ok" && trailer) {
       const choice = toChoiceClarification(trailer.text, trailer.choices);
       const clarifications = choice && !result.clarifications.some((c) => c.kind === "choose_option") ? [...result.clarifications, choice] : result.clarifications;
@@ -213,14 +227,14 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     }
     finalize = {
       auditId: input.auditId,
-      outcome: tooFew ? "provider_error" : result.outcome,
-      ...(tooFew ? { detail: "generate_too_few" } : result.detail !== undefined ? { detail: result.detail } : {}),
-      answerText: trailer ? trailer.text : result.text,
+      outcome: tooFew || empty ? "provider_error" : result.outcome,
+      ...(tooFew ? { detail: "generate_too_few" } : empty ? { detail: "empty_answer" } : result.detail !== undefined ? { detail: result.detail } : {}),
+      answerText: empty ? "" : trailer ? trailer.text : result.text,
       steps: result.steps,
       ...(result.usage.inputTokens !== undefined ? { inputTokens: result.usage.inputTokens } : {}),
       ...(result.usage.outputTokens !== undefined ? { outputTokens: result.usage.outputTokens } : {}),
       tools: result.tools,
-      changes: { applied: result.outcome === "ok" && !tooFew ? result.applied : [], rejected: result.rejected },
+      changes: { applied: result.outcome === "ok" && !tooFew && !empty ? result.applied : [], rejected: result.rejected },
       durationMs: durationMs(),
       ...(queryPort ? { queries: [...queryPort.entries()] } : {}),
     };

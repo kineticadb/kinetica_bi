@@ -5,6 +5,7 @@
 import { isOutboundRequest, type OutboundRequest } from "../outbound";
 import type { LlmEvent, LlmMessage, LlmProvider, ProviderDeps, ProviderErrorKind } from "../provider";
 import { parseSseStream } from "../sseParse";
+import { providerFetch } from "./providerFetch";
 
 export type OpenAiCompatOptions = {
   baseUrl: string;
@@ -80,7 +81,7 @@ function isBadKeyBody(parsed: unknown): boolean {
 export function createOpenAiCompatProvider(opts: OpenAiCompatOptions, deps: ProviderDeps = {}): LlmProvider {
   const apiKey = opts.apiKey; // closure only
   const streaming = opts.stream !== false;
-  const fetchFn = deps.fetchFn ?? ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a));
+  const fetchFn = deps.fetchFn ?? providerFetch;
   const now = deps.now ?? Date.now;
   const url = `${opts.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 

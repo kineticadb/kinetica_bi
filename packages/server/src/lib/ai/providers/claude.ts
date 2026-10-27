@@ -8,6 +8,7 @@
 //  - the API key travels ONLY in the x-api-key header; provider body text is never surfaced (errors carry kind/status only)
 import { isOutboundRequest, type OutboundRequest } from "../outbound";
 import { parseSseStream } from "../sseParse";
+import { providerFetch } from "./providerFetch";
 import type { Capabilities, LlmEvent, LlmMessage, LlmProvider, ProviderDeps, ProviderErrorKind } from "../provider";
 
 export type ClaudeOptions = { baseUrl: string; model: string; apiKey: string; maxTokens?: number };
@@ -107,7 +108,7 @@ export function createClaudeProvider(opts: ClaudeOptions, deps: ProviderDeps = {
     capabilities: CAPS,
     async *complete(req: OutboundRequest, signal: AbortSignal): AsyncGenerator<LlmEvent> {
       if (!isOutboundRequest(req)) throw new Error("claude provider: request is not an OutboundRequest");
-      const fetchFn = deps.fetchFn ?? globalThis.fetch;
+      const fetchFn = deps.fetchFn ?? providerFetch;
       const body: Json = {
         model: opts.model,
         max_tokens: maxTokens,
