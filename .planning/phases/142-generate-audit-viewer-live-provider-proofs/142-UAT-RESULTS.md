@@ -126,7 +126,9 @@ Cap 12 for the day (operator). 5 Gemini answers today (audit rows 35, 38-41); th
 | G4 rename + line | PASS (see observation) | row 38, 2 steps, 6.5 s: `rename_widget` + `change_widget_type` on widget 165 -> "Tips per vendor", line chart renders (CMT/DDS/NYC/VTS/YCAB, "Average of tip_amount"); 3 follow-up chips. |
 | G4 remove + confirm | PASS after fix 21fd377 | row 39: `remove_widget 166` held at the clarification stage ("removing saved content needs the user's approval"); card `Remove the saved records "Recent Trip Records"?` Yes / No. Row 40 ("Yes, remove it"): `remove_widget 166` ok, "Removed widget \"Recent Trip Records\"", chips rendered. |
 | G4 revert | PASS | "Revert dashboard to this state" on the rename turn: no dialog, the later turns dim, the records table returns, the line chart stays; change bar "0 added · 1 edited · 0 removed". The rest was then discarded (dialog "Discard all AI changes?"); widgets 165/166 back to bar "Average Tip by Vendor" / records. |
-| Generate uses timeline | PASS | row 41, dashboard 25 "UAT Gemini gen day3": 13 steps, 11.4 s, 121k in / 3.6k out. Step 1 had 5 rejections (timeline/bar/pie without `metric`; map with a tableId; heatmap on the missing map), all repaired in step 2. Result: 2 KPIs, "Trips Over Time" **timeline** (ticks "Oct 31 2010 ... Jun 28 2015", so the year fix works on live data), bar by payment type, pie by vendor, map with a pickup heatmap, records. Left unkept for cleanup. |
+| Generate uses timeline | PASS | row 41, dashboard 25 "UAT Gemini gen day3": 13 steps, 11.4 s, 121k in / 3.6k out. Step 1 had 5 rejections (timeline/bar/pie without `metric`; map with a tableId; heatmap on the missing map), all repaired in step 2. Result: 2 KPIs, "Trips Over Time" **timeline** (ticks "Oct 31 2010 ... Jun 28 2015", so the year fix works on live data), bar by payment type, pie by vendor, map with a pickup heatmap, records. Left unkept for cleanup (later deleted by the restart sweep, see G3c below). |
+| G9 AI activity page (0 answers) | PASS LIGHT + DARK (queries part waits for G8) | 41 rows, "Page 1 of 1 · 41 entries" (page size 50, so Next/Previous stay disabled; multi-page not exercised live). Kinds Ask / Generate / Keep; Keep rows read "Kept 2 added, 0 edited, 0 removed". Outcome filter counts match `ai_audit`: Kept 13, Keep conflict 3, Keep invalid 2, Keep denied 0 and Keep failed 0 ("No AI activity in this period."), Limit reached 1, Cancelled 1, Failed 5. Dashboard filter lists "Deleted dashboard #13 ... #25"; the cell is `<span class="muted">` with no link; filtering on #24 gives its 2 rows. Ask detail (row 35): question, answer, tools (add_dynamic_view ok, add_widget rejected, add_widget ok), changes, "1 rejected", `openai-compatible / gemini-3-flash-preview`, 68905 in / 840 out, schema, v4. Timeout row (34): outcome detail timeout and "The tools list can be incomplete for answers that timed out." |
+| G3c restart path (incidental) | PASS | my server edit restarted the dev API at 13:08 and the boot sweep logged `{"event":"ai_generated_discard","dashboard_id":25,"deleted":true}` / "deleted 1 unkept generated dashboards"; dashboard 25 shows as "Deleted dashboard #25". |
 
 - Not run: the "Show fares by type" ambiguous ask (day 2 row 26 already covered "an ambiguous ask offers Choices").
 
@@ -136,3 +138,16 @@ Cap 12 for the day (operator). 5 Gemini answers today (audit rows 35, 38-41); th
 - **Observation (model):** the G7 chart used `sum` over a view column that is already an average ("Sum of avg_tip"; correct values because there is one row per vendor).
 - **Observation:** a generated dashboard's pie and map take half the width each, leaving the right column empty below the AI widget.
 - **Observation (carried):** the unmatched (null) category renders with a blank tick label.
+- **Observation (G9, minor):** the detail says "1 rejected" without the reason, and token counts have no thousands separator ("68905 in").
+
+## Tested models
+
+Same table as README.md "Tested models (Phase 142):".
+
+| Provider | Model ID | Tool mode | Result | Notes | Date |
+|----------|----------|-----------|--------|-------|------|
+| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass so far (filters/views, query mode and the S6 spike still open) | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s | 2026-10-23 to 2026-10-27 |
+| OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26 |
+| Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
+
+The Ollama 300 s cut-off (defect 1) and empty-answer acceptance (defect 2) were fixed after the run (51b009d) and not re-run live. `.env.example` now carries `AI_TOOL_MODE=json` under the Ollama example.
