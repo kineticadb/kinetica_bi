@@ -19,11 +19,18 @@ function clean(items: string[], max: number, maxChars: number): string[] {
   return out;
 }
 
-export function parseReplyTrailer(raw: string): ReplyTrailer {
+const norm = (s: string) => s.trim().toLowerCase();
+
+/** `echoes`: questions the UI already shows as cards. 142 UAT: the model repeats a confirm question after its
+ *  trailer, which hid the trailer and showed the question twice, so trailing echoes are dropped first. */
+export function parseReplyTrailer(raw: string, echoes: readonly string[] = []): ReplyTrailer {
   try {
     const unchanged = { text: raw, followUps: [] as string[], choices: [] as string[] };
     if (raw.length > PARSE_CAP) return unchanged;
     const lines = raw.replace(/\r\n?/g, "\n").split("\n");
+    const echo = new Set(echoes.map(norm).filter(Boolean));
+    const hasTextAbove = (n: number) => lines.slice(0, n).some((l) => l.trim() !== "");
+    while (lines.length > 0 && (lines[lines.length - 1]!.trim() === "" || (echo.has(norm(lines[lines.length - 1]!)) && hasTextAbove(lines.length - 1)))) lines.pop();
     let end = lines.length - 1;
     let cut = lines.length;
     let followUps: string[] = [];

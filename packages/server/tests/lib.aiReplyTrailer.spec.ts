@@ -43,6 +43,19 @@ describe("parseReplyTrailer", () => {
     expect(parseReplyTrailer("Hello\nFollow-ups:")).toEqual({ text: "Hello", followUps: [], choices: [] });
     expect(parseReplyTrailer("Hi\r\nFollow-ups:\r\n- a\r\n").followUps).toEqual(["a"]);
   });
+  it("TRL-9: a trailing echo of a card question is dropped, so the trailer still parses", () => {
+    const q = 'Remove the saved records "Recent Trip Records"?';
+    const t = `I have started the process to remove the Records table.\n\nFollow-ups:\n- What else would you like to remove?\n- Add a summary instead\n\n${q}\n`;
+    expect(parseReplyTrailer(t, [q])).toEqual({
+      text: "I have started the process to remove the Records table.",
+      followUps: ["What else would you like to remove?", "Add a summary instead"],
+      choices: [],
+    });
+    expect(parseReplyTrailer(`Removing it.\n\n  ${q.toUpperCase()}  `, [q]).text).toBe("Removing it.");
+    expect(parseReplyTrailer(`${q}\nThen the rest.`, [q]).text).toBe(`${q}\nThen the rest.`);
+    expect(parseReplyTrailer(t).followUps).toEqual([]);
+    expect(parseReplyTrailer(`${q}\n`, [q]).text).toBe(q); // the only text: kept, so the bubble is not empty
+  });
   it("TRL-8: toChoiceClarification", () => {
     expect(toChoiceClarification("x?", ["only"])).toBeNull();
     const c = toChoiceClarification("Some text.\nWhich one?", ["Fare", "Tip"]);

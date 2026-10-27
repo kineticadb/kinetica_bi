@@ -195,7 +195,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
 
     usage = result.usage;
     steps = result.steps;
-    const trailer = result.outcome === "ok" ? parseReplyTrailer(result.text) : null;
+    const trailer = result.outcome === "ok" ? parseReplyTrailer(result.text, result.clarifications.map((c) => c.question)) : null;
     // 142 UAT: an empty reply (follow-ups alone do not count) must not be recorded and shown as an answer.
     const empty =
       !tooFew &&
