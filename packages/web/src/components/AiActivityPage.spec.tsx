@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { AiAuditRowDto, AiAuditDetailDto } from "../api/client";
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -144,6 +146,22 @@ describe("AiActivityPage", () => {
     expect(within(panel).getByText("all good")).toBeTruthy();
     fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
     expect(screen.queryByLabelText("AI activity detail")).toBeNull();
+  });
+
+  it("AUDPAGE-7d: a one-row query reads \"1 row\"; answer text keeps its line breaks", async () => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({
+      answerText: "Averages:\n- Cash: 1.55\n- Credit: 1.03",
+      queries: [{ sql: "SELECT 1", rowCount: 1, durationMs: 9, outcome: "ok" }],
+    }));
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    expect(within(panel).getByText("1 row · 9 ms · ok")).toBeTruthy();
+    // jsdom has no layout: the structural precondition is the wrapping class on the answer, and that class pre-wraps.
+    const answer = within(panel).getByText((_, el) => el?.textContent === "Averages:\n- Cash: 1.55\n- Credit: 1.03" && el.tagName === "DIV");
+    expect(answer.className).toBe("ai-activity-text");
+    const css = readFileSync(resolve(__dirname, "AiActivityPage.css"), "utf-8");
+    expect(css).toMatch(/\.ai-activity-text\s*\{[^}]*white-space:\s*pre-wrap/);
   });
 
   it("AUDPAGE-7c: rejected actions show their reasons; counts are grouped", async () => {

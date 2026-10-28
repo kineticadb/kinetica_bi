@@ -23,6 +23,12 @@
   gap: var(--space-4);
 }
 
+/* Question/answer text keeps the model's line breaks (lists), like the chat bubble. */
+.ai-activity-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .ai-activity-sql {
   white-space: pre-wrap;
   word-break: break-word;

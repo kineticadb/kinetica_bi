@@ -113,12 +113,12 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
     <section className="ai-activity-detail" aria-label="AI activity detail">
       <div className="config-group">
         <span className="config-group-label">{d.kind === "keep" ? "Summary" : "Question"}</span>
-        <div>{d.kind === "keep" ? orDash(d.summary) : orDash(d.question)}</div>
+        <div className="ai-activity-text">{d.kind === "keep" ? orDash(d.summary) : orDash(d.question)}</div>
       </div>
       {d.kind !== "keep" && (
         <div className="config-group">
           <span className="config-group-label">Answer</span>
-          <div>{orDash(d.answerText)}</div>
+          <div className="ai-activity-text">{orDash(d.answerText)}</div>
         </div>
       )}
       {d.kind !== "keep" && (
@@ -162,7 +162,7 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
               <pre className="ai-activity-sql">{q.sql}</pre>
               <span className="muted">
                 {[
-                  q.rowCount !== undefined ? `${countText(q.rowCount)} rows` : null,
+                  q.rowCount !== undefined ? `${countText(q.rowCount)} ${q.rowCount === 1 ? "row" : "rows"}` : null,
                   q.durationMs !== undefined ? `${q.durationMs} ms` : null,
                   q.outcome ?? null,
                 ]
