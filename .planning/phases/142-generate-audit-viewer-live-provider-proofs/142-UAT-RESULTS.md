@@ -168,6 +168,12 @@ Cap 18 for the day (operator). 7 Gemini answers (audit rows 42-48, all `ok`, cou
 - **Observation (G9, minor):** the detail says "1 rows"; the answer text collapses the reply's bullet list onto one line ("are: - Cash: 1.55 - Credit: 1.03 ...") although the chat bubble shows a list.
 - **Observation (UAT tooling):** the `?page=ai-activity` deep link lands on Dashboards on a fresh load (clicking the nav item works).
 
+### Day 4 extra ask and follow-up fixes (operator-approved)
+- Extra ask (schema mode restored, operator-requested to use leftover quota), row 49 (3 steps, 13.5 s): "Show average tip by hour of day" -> again `add_dynamic_view` with `bucket: "hour"` and a bar on it; discarded. So the hour-of-day gap is the app, not the model: `AI_DV_BUCKETS` only truncates (`DATE_TRUNC`), nothing extracts hour of day / day of week. **Deferred** to todo `2026-10-28-ai-dv-hour-of-day-day-of-week-buckets.md`. Row 49 also had `add_widget` rejected once for "missing required field aggregation" (repaired).
+- **52919a9 - add_widget names required fields.** Across all audit rows 13 of 59 `add_widget` calls were rejected for a missing metric/aggregation/groupByColumn (each a provider round + ~40-60k input tokens). The description now carries "Required fields: bar metric+aggregation+groupBy, ... bignumber metric+aggregation, timeline timeColumn+metric+aggregation." built from `AI_WIDGET_CONFIG` (arg names), plus "never sum an average" for already-aggregated view columns (day 3 "Sum of avg_tip"). AWREQ-1/2 red first. Not yet checked live (next quota day: watch the rejection rate on new add_widget calls).
+- **0150f36 - AI activity detail.** "1 row" (was "1 rows"); question/summary/answer use page-local `.ai-activity-text` (pre-wrap) so the model's lists keep their line breaks. AUDPAGE-7d red first (structural for the wrap; looks to check live).
+- Gates: server tsc clean; AI specs 67 files / 785 passed; full server suite failing files = the known set (auth.oidc, auth.routes, boot.hardening, boot.wipe, bootstrap, db.smoke, oidc.module, routes.dynamic-view, routes.filter-materialize(-dv), routes.wms) plus routes.management, which passes alone (65/65). Web tsc clean; full web vitest 272 files / 5145 passed, 1 skipped (`--maxWorkers=2`); theme-guard green.
+
 ## Tested models
 
 Same table as README.md "Tested models (Phase 142):".
