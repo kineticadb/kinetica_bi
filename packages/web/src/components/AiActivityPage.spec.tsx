@@ -138,12 +138,30 @@ describe("AiActivityPage", () => {
     expect(within(panel).getByText(/200 rows/)).toBeTruthy();
     expect(within(panel).getByText(/35 ms/)).toBeTruthy();
     expect(within(panel).getByText(/gemini-3-flash-preview/)).toBeTruthy();
-    expect(within(panel).getByText("1200 in / 300 out")).toBeTruthy();
+    expect(within(panel).getByText("1,200 in / 300 out")).toBeTruthy();
     expect(within(panel).getByText("user-scoped")).toBeTruthy();
     expect(within(panel).getByText("v7")).toBeTruthy();
     expect(within(panel).getByText("all good")).toBeTruthy();
     fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
     expect(screen.queryByLabelText("AI activity detail")).toBeNull();
+  });
+
+  it("AUDPAGE-7c: rejected actions show their reasons; counts are grouped", async () => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({
+      inputTokens: 68905, outputTokens: 840,
+      changes: { applied: ["Added bar \"Tips\""], rejected: [
+        { label: "add_widget", stage: "allow_list", reasons: ["missing required field aggregation", "missing required field metric"] },
+        { label: "set_layout", stage: "reference", reasons: [] },
+        "junk" as never, // a malformed stored row is skipped
+      ] },
+    }));
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    expect(within(panel).getByText("3 rejected")).toBeTruthy();
+    expect(within(panel).getByText("add_widget: missing required field aggregation; missing required field metric")).toBeTruthy();
+    expect(within(panel).getByText("set_layout")).toBeTruthy();
+    expect(within(panel).getByText("68,905 in / 840 out")).toBeTruthy();
   });
 
   it("AUDPAGE-7b: Enter opens detail", async () => {

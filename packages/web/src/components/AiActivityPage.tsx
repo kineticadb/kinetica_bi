@@ -76,6 +76,18 @@ function DashboardCell({ row }: { row: AiAuditRowDto }) {
   return <span className="muted">{dashboardLabel(row.dashboardId, row.dashboardName, row.dashboardState)}</span>;
 }
 
+const countText = (n: number | null | undefined): string =>
+  typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("en-US") : "—";
+
+/** One stored rejection ({label, stage, reasons}) as "label: reason; reason"; anything else gives "". */
+function rejectedLine(r: unknown): string {
+  if (!r || typeof r !== "object") return "";
+  const { label, reasons } = r as { label?: unknown; reasons?: unknown };
+  if (typeof label !== "string" || !label) return "";
+  const why = Array.isArray(reasons) ? reasons.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
+  return why.length > 0 ? `${label}: ${why.join("; ")}` : label;
+}
+
 function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
   const tools = Array.isArray(d.tools) ? d.tools : [];
   const queries = Array.isArray(d.queries) ? d.queries : [];
@@ -87,14 +99,15 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
     removed?: unknown;
   } | null;
   const applied = Array.isArray(changes?.applied) ? changes!.applied! : [];
-  const rejectedCount = Array.isArray(changes?.rejected) ? changes!.rejected!.length : 0;
+  const rejected = Array.isArray(changes?.rejected) ? changes!.rejected!.map(rejectedLine) : [];
+  const rejectedCount = rejected.length;
   const hasChanges = !!changes && (applied.length > 0 || rejectedCount > 0);
   const modelText =
     d.provider || d.model ? `${orDash(d.provider)} / ${orDash(d.model)}` : "—";
   const tokenText =
     d.inputTokens === null && d.outputTokens === null
       ? "—"
-      : `${orDash(d.inputTokens)} in / ${orDash(d.outputTokens)} out`;
+      : `${countText(d.inputTokens)} in / ${countText(d.outputTokens)} out`;
 
   return (
     <section className="ai-activity-detail" aria-label="AI activity detail">
@@ -134,6 +147,11 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
             </ul>
           )}
           {rejectedCount > 0 && <div>{`${rejectedCount} rejected`}</div>}
+          {rejected.some(Boolean) && (
+            <ul className="muted">
+              {rejected.map((l, i) => (l ? <li key={i}>{l}</li> : null))}
+            </ul>
+          )}
         </div>
       )}
       {queries.length > 0 && (
@@ -144,7 +162,7 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
               <pre className="ai-activity-sql">{q.sql}</pre>
               <span className="muted">
                 {[
-                  q.rowCount !== undefined ? `${q.rowCount} rows` : null,
+                  q.rowCount !== undefined ? `${countText(q.rowCount)} rows` : null,
                   q.durationMs !== undefined ? `${q.durationMs} ms` : null,
                   q.outcome ?? null,
                 ]
