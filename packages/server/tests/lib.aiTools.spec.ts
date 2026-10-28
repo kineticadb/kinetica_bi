@@ -1,4 +1,4 @@
-import { parseAiOp } from "@kinetica-bi/shared";
+import { parseAiOp, AI_WIDGET_CONFIG } from "@kinetica-bi/shared";
 import { describe, it, expect } from "vitest";
 import { z } from "zod/v4";
 import { READ_TOOLS, LIST_TABLES_CAP, LIST_TABLES_CONCURRENCY } from "../src/lib/ai/tools/read";
@@ -257,5 +257,22 @@ describe("dynamic view tools (139-10)", () => {
     const d = byName(MUTATE_TOOLS, "remove_dynamic_view").description;
     expect(d).toContain("pointed at its table");
     expect(d).toContain("confirmation");
+  });
+});
+
+// 142 UAT day 4: 13 of 59 live add_widget calls were rejected for a missing metric/aggregation/groupByColumn, each costing a repair round.
+describe("add_widget required fields (142)", () => {
+  it("AWREQ-1 the description names every type's required fields from the catalog (arg names, not config keys)", () => {
+    const d = byName(MUTATE_TOOLS, "add_widget").description;
+    const req = d.match(/Required fields: ([^.]*)\./)?.[1] ?? "";
+    for (const [type, cfg] of Object.entries(AI_WIDGET_CONFIG)) {
+      if (cfg.required.length === 0) continue;
+      const names = cfg.required.map((k) => (k === "groupByColumn" ? "groupBy" : k));
+      expect(req, type).toContain(`${type} ${names.join("+")}`);
+    }
+    expect(req).not.toContain("groupByColumn");
+  });
+  it("AWREQ-2 the description steers aggregation on an already-aggregated view column", () => {
+    expect(byName(MUTATE_TOOLS, "add_widget").description).toContain("never sum an average");
   });
 });

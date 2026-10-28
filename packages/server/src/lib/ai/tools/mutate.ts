@@ -1,7 +1,7 @@
 // Phase 136 flat typed mutate tools: each emits a raw AiOp candidate; the gateway validates it.
 // No tool accepts free-form config, SQL, hex colours or a layout for a new widget: vocabularies are enums.
 import { z } from "zod/v4";
-import { AI_WIDGET_TYPES, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS, AI_CHART_SWAP_TYPES, CHART_AGGREGATIONS, AI_DV_AGG_FNS, AI_DV_BUCKETS } from "@kinetica-bi/shared";
+import { AI_WIDGET_CONFIG, AI_WIDGET_TYPES, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS, AI_CHART_SWAP_TYPES, CHART_AGGREGATIONS, AI_DV_AGG_FNS, AI_DV_BUCKETS } from "@kinetica-bi/shared";
 import type { MutateTool } from "./types";
 
 const PALETTE = AI_PALETTE_NAMES.join(", ");
@@ -114,13 +114,21 @@ const patchArgs = z.object({
 }).strict();
 const idArgs = z.object({ id: z.number().int() }).strict();
 
+// 142 UAT: missing required fields were the most common add_widget rejection; name them per type (arg names, from the catalog).
+const REQUIRED_FIELDS_TEXT = Object.entries(AI_WIDGET_CONFIG)
+  .filter(([, c]) => c.required.length > 0)
+  .map(([type, c]) => `${type} ${c.required.map((k) => (k === "groupByColumn" ? "groupBy" : k)).join("+")}`)
+  .join(", ");
+
 const addWidget: MutateTool = {
   kind: "mutate",
   name: "add_widget",
   description:
     `Add a widget. Use a new negative tempId (-1, -2, ...). Never SQL, never hex; colour is one of ${PALETTE}. ` +
     "Position is automatic. tableId must be a table on this dashboard (from list_tables); column names must come from describe_table. " +
+    `Required fields: ${REQUIRED_FIELDS_TEXT}. ` +
     "Pass dynamicViewId (an AI or saved dynamic view) INSTEAD of tableId to chart a view; columns then come from that view. " +
+    "A view column that is already aggregated still needs an aggregation: use avg for an average, sum for a total or count; never sum an average. " +
     "For a trend over a date or timestamp column use type timeline with timeColumn (that date/time column), metric and aggregation (optional colour, valueLabel): " +
     "it bins time into years, months, days or hours and orders by time. A line chart groups by raw values, so a line on a timestamp shows scattered instants. " +
     "A timeline needs tableId (not a dynamic view) and can't be edited afterwards. " +
