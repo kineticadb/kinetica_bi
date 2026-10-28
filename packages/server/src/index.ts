@@ -165,6 +165,7 @@ import { registerAiRoutes } from "./aiRoutes";
 import { registerAiAuditRoutes } from "./aiAuditRoutes";
 import { registerAiDvRoutes } from "./aiDvRoutes";
 import { registerAiKeepRoutes } from "./aiKeepRoutes";
+import { registerMcpRoutes } from "./mcpRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -1334,6 +1335,8 @@ export const createApp = async (): Promise<express.Express> => {
   registerAiKeepRoutes(app, { requireConfig, wrap: asyncHandler, viewColumnsCache });
   // v2.0 Phase 142: Generate from a table (pending dashboard) + creator-only discard.
   registerAiGenerateRoutes(app, { requireConfig, wrap: asyncHandler });
+  // kbi-mcp spike: tools for the Kinetica BI MCP server (Claude Desktop); off unless MCP_ENABLED=true.
+  if (process.env.MCP_ENABLED === "true") registerMcpRoutes(app, { wrap: asyncHandler, appUrl: process.env.MCP_APP_URL ?? "http://localhost:5173" });
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.

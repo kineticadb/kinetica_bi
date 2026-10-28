@@ -5,7 +5,7 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
-import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest, AiKeepRequest, AiKeepResponse } from "@kinetica-bi/shared";
+import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest, AiKeepRequest, AiKeepResponse, AiOp } from "@kinetica-bi/shared";
 import {
   DASHBOARD_VERSION_HEADER,
   DASHBOARD_VERSION_READ_HEADER,
@@ -2286,6 +2286,15 @@ export const listAiAudit = async (
   const response = await apiFetch(`${API_BASE}/api/ai/audit${qs ? `?${qs}` : ""}`, { signal });
   if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
   return (await response.json()) as AiAuditListDto;
+};
+
+/** kbi-mcp spike: ops an MCP client (Claude Desktop) built for this dashboard; the server hands them over once. */
+export type McpHandoffDto = { prompt: string; answer: string; ops: AiOp[]; applied: string[] };
+export const getMcpHandoff = async (sessionId: string, dashboardId: number): Promise<McpHandoffDto | null> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/sessions/${encodeURIComponent(sessionId)}/handoff?dashboardId=${dashboardId}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to load the Claude Desktop changes (${response.status})`);
+  return (await response.json()) as McpHandoffDto;
 };
 
 export const getAiAuditEntry = async (id: number, signal?: AbortSignal): Promise<AiAuditDetailDto> => {

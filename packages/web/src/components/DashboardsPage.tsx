@@ -8,6 +8,7 @@ import {
   updateDashboard,
   deleteDashboard,
   listDashboardTables,
+  getMcpHandoff,
   addDashboardTable,
   removeDashboardTable,
   listTables,
@@ -101,6 +102,9 @@ import { applySessionToWidgets } from "../lib/aiSession/applySession";
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
+
+/** kbi-mcp spike: MCP handoff session ids already requested in this page load (the server hands each over once). */
+const mcpHandoffsTaken = new Set<string>();
 
 type View =
   | { mode: "list" }
@@ -1131,6 +1135,29 @@ const DashboardOpen = ({
       uninstall?.();
     };
   }, [aiActions]);
+
+  // kbi-mcp spike: ?mcp=<session> carries what Claude Desktop built. Once the tables and widgets are loaded (widget
+  // SQL is derived from table columns), apply it as ONE unsaved AI turn: preview, the change bar and Keep as usual.
+  // Ready once the fetched lists have been copied into state (the AI baseline reads that state, one effect later).
+  const mcpReady = tablesQuery.data !== undefined && associatedTables === tablesQuery.data && widgetsQuery.data !== undefined && widgets === widgetsQuery.data;
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get("mcp");
+    if (!mcpReady || !sessionId || mcpHandoffsTaken.has(sessionId)) return;
+    mcpHandoffsTaken.add(sessionId); // module-level: StrictMode re-runs effects, and the server hands over once
+    const params = new URLSearchParams(window.location.search);
+    params.delete("mcp");
+    const qs = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+    void getMcpHandoff(sessionId, dashboard.id)
+      .then((h) => {
+        if (!h) {
+          useToastStore.getState().showToast("Nothing to load from Claude Desktop (already loaded or expired).", "error");
+          return;
+        }
+        aiActions.applyTurn({ prompt: h.prompt, answer: h.answer, ops: h.ops, chat: { status: "ok", applied: h.applied, followUps: [] } });
+      })
+      .catch((e: unknown) => useToastStore.getState().showToast(e instanceof Error ? e.message : "Failed to load the Claude Desktop changes", "error"));
+  }, [mcpReady, dashboard.id, aiActions]);
 
   // Phase 113 (DLINK-V121-07): leaving an open dashboard by ANY route must clear the
   // address bar. App.tsx:318 renders DashboardsPage conditionally, so a sidebar click to
