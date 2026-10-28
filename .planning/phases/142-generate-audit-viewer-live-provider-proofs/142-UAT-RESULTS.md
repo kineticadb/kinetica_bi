@@ -140,6 +140,12 @@ Cap 12 for the day (operator). 5 Gemini answers today (audit rows 35, 38-41); th
 - **Observation (carried):** the unmatched (null) category renders with a blank tick label.
 - **Observation (G9, minor):** the detail says "1 rejected" without the reason, and token counts have no thousands separator ("68905 in").
 
+### Day 3 follow-up fixes (2026-10-27/28, 0 answers)
+- **c5b7879 - null category reads "(blank)".** New `lib/categoryLabel.ts`: null, undefined and empty/whitespace categories display as "(blank)" on the bar category axis (vertical and horizontal), the line x axis and `ColumnFormatTooltip` (was a blank tick and "null"). Display only: data, sort order and click-to-filter keep the real value. CATLABEL-1..3 (CATLABEL-3 structural: the three axes use `tickFormatter={categoryLabel}`), CATLABEL-4 (tooltip).
+- **285f686 - AI activity rejection reasons + grouped counts.** The detail lists each stored rejection as "label: reason; reason" (label alone when it has no reasons; malformed rows skipped) under "N rejected"; tokens and query row counts use thousands separators ("68,905 in / 840 out"). AUDPAGE-7c.
+- Gates: web tsc clean; full web vitest 272 files / 5144 passed, 1 skipped (`--maxWorkers=2`); theme-guard green. A first full run at load ~17 failed 2599 tests in unrelated files (the sampled failing spec passed alone); the clean rerun is the result of record.
+- **Not yet checked live:** "(blank)" on the G7 vendor chart (dashboard 21, the unmatched vendor) and the rejection list on row 35, light + dark. To do at the next UAT session.
+
 ## Tested models
 
 Same table as README.md "Tested models (Phase 142):".
