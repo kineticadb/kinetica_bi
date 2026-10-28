@@ -119,6 +119,14 @@ describe("ColumnFormatTooltip (COLAPPLY-V115-02)", () => {
     expect(getByText(/Electronics/i)).toBeTruthy();
   });
 
+  it("CATLABEL-4: a null category reads (blank), not \"null\"", () => {
+    const { getByText, queryByText } = render(
+      <ColumnFormatTooltip tableId={undefined} groupByColumn="vendor_name" metricColumn="" active={true} payload={[makeEntry(7)]} label={null} />,
+    );
+    expect(getByText("(blank)")).toBeTruthy();
+    expect(queryByText(/\bnull\b/)).toBeNull();
+  });
+
   // ------------------------------------------------------------------
   // Behavior 3: formats numeric value via resolveFormatter
   // ------------------------------------------------------------------

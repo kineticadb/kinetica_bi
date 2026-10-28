@@ -14,6 +14,7 @@
  *     raw recharts label/value — legacy/dv-bound widgets are never broken.
  */
 
+import { categoryLabel } from "../../lib/categoryLabel";
 import React from "react";
 import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import {
@@ -126,7 +127,7 @@ export function ColumnFormatTooltip({
           }}
         >
           {catLabel != null ? `${catLabel}: ` : ""}
-          {String(categoryValue)}
+          {categoryLabel(categoryValue)}
         </p>
       )}
 

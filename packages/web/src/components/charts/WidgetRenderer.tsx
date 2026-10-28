@@ -93,6 +93,7 @@ import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
+import { categoryLabel } from "../../lib/categoryLabel";
 import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
 import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
@@ -1236,11 +1237,11 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
-            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 104 : 90} label={leftLabelObj} />
+            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryLabel} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
-            <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
+            <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryLabel} label={bottomLabelObj} />
             <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
           </>
         )}
@@ -1534,6 +1535,7 @@ const LineRenderer = ({
       stroke={AXIS_COLOR}
       interval={0}
       tick={{ fontSize: 11, fill: AXIS_COLOR }}
+      tickFormatter={categoryLabel}
       height={layout.xAxisHeight}
       {...(layout.tilt ? { angle: -45, textAnchor: "end" as const } : {})}
     />
