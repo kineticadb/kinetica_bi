@@ -228,7 +228,7 @@ Tested models (Phase 142):
 
 | Provider | Model ID | Tool mode | Result | Notes | Date |
 |----------|----------|-----------|--------|-------|------|
-| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass so far (filters/views, query mode and the S6 spike still open) | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s | 2026-10-23 to 2026-10-27 |
+| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass so far (the S6 spike still open) | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s | 2026-10-23 to 2026-10-28 |
 | OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26 |
 | Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
 

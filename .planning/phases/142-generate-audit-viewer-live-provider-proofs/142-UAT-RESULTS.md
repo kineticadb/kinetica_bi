@@ -144,7 +144,29 @@ Cap 12 for the day (operator). 5 Gemini answers today (audit rows 35, 38-41); th
 - **c5b7879 - null category reads "(blank)".** New `lib/categoryLabel.ts`: null, undefined and empty/whitespace categories display as "(blank)" on the bar category axis (vertical and horizontal), the line x axis and `ColumnFormatTooltip` (was a blank tick and "null"). Display only: data, sort order and click-to-filter keep the real value. CATLABEL-1..3 (CATLABEL-3 structural: the three axes use `tickFormatter={categoryLabel}`), CATLABEL-4 (tooltip).
 - **285f686 - AI activity rejection reasons + grouped counts.** The detail lists each stored rejection as "label: reason; reason" (label alone when it has no reasons; malformed rows skipped) under "N rejected"; tokens and query row counts use thousands separators ("68,905 in / 840 out"). AUDPAGE-7c.
 - Gates: web tsc clean; full web vitest 272 files / 5144 passed, 1 skipped (`--maxWorkers=2`); theme-guard green. A first full run at load ~17 failed 2599 tests in unrelated files (the sampled failing spec passed alone); the clean rerun is the result of record.
-- **Not yet checked live:** "(blank)" on the G7 vendor chart (dashboard 21, the unmatched vendor) and the rejection list on row 35, light + dark. To do at the next UAT session.
+- **Checked live 2026-10-28 (light + dark):** the G7 "Average Tip by Vendor Name" chart (dashboard 21) shows the unmatched vendor's tick as "(blank)" and its tooltip as "vendor_name: (blank)"; row 35's detail lists "1 rejected" then "add_widget: missing required field aggregation", tokens "68,905 in / 840 out".
+
+## Gemini, day 4 (2026-10-28)
+
+Cap 18 for the day (operator). 7 Gemini answers (audit rows 42-48, all `ok`, counted). All on dashboard 21; every AI change was discarded afterwards (no saved content changed). Servers and the UAT Chrome launched by Claude (fresh scratchpad profile, Chrome 156); operator signed in and edited `.env`.
+
+| Step | Verdict | Evidence |
+|---|---|---|
+| G5 filter | PASS light + dark | row 42 (1 step, 10.7 s): "Filter to payment type Credit" -> `apply_filter payment_type eq 'Credit'`, "Filtered nyctaxi to payment_type = 'Credit' (6 widgets)"; chip `payment_type = 'Credit'` with the AI tag; "Total Fare by Payment Type" shows only Credit, records only Credit, Total Trips 189,817. Map tiles narrow: after a zoom the WMS request's LAYERS is `_kbi_filt_uadmin_d21_t1_...` (the filter view), not demo.nyctaxi. Follow-ups present. |
+| G5 dynamic view | PASS light + dark (see observation) | row 43 (3 steps, 15.3 s): `add_dynamic_view` "Average Tip by Hour" (groupBy pickup_datetime bucket hour, avg tip_amount) + line "Average Tip by Hour Trend" bound to it; change bar "2 added · 0 edited · 0 removed"; chart renders ("Showing 100 of 10,847 categories"). Follow-ups present. |
+| G5 remove saved view | PASS light | row 44 (5.2 s): `remove_dynamic_view 14` held at the clarification stage ("removing saved content needs the user's approval"); card `Remove the saved dynamic view "UAT Trips by vendor INNER"?` Yes / No. Row 45 (Yes, 2.7 s): removed; change bar "2 added · 0 edited · 1 removed". View 14 was unbound. Discard ("Discard all AI changes?") then restored it; views 13-16 all present in SQLite. |
+| G8 query mode | PASS (ask 1 by model choice, see observation) | Operator set `AI_DATA_ACCESS=query`; restart logged `dataAccess=query`. Row 46 "What's the average tip by payment type?" -> the model added a bar chart (`add_widget`, no query; `queries_json` `[]`). Row 47 "Which columns would make good breakdowns?" -> 3x `get_column_profile` (rate_code_id, store_and_fwd_flag, cab_type), answer in words, "Ran 3 queries". Row 48 "Don't add a chart. Just tell me the average tip for each payment type." -> `run_query`, answer in words (Cash 1.55, Credit 1.03, Unknown 0.34, Dispute 0.05, No Charge 0.00), "Ran 1 query". |
+| G8 queries_json | PASS | row 48: `[{"sql":"SELECT payment_type, AVG(tip_amount) as avg_tip FROM demo.nyctaxi GROUP BY payment_type ORDER BY avg_tip DESC","rowCount":5,"durationMs":227,"outcome":"ok"}]`; row 47 entries have the same four keys. No row values stored. |
+| G9 queries part | PASS light + dark | rows 47/48 detail: QUERIES section lists each SQL with "N rows · N ms · ok"; Data access "query"; tools `get_column_profile (ok)` x3 / `run_query (ok)`. |
+
+- Not run today: G10 S6 spike (needs its own quota day).
+- Operator to set `AI_DATA_ACCESS=schema` back and restart.
+
+### Defects / observations (day 4)
+- **Observation (model):** "average tip by hour" was read as calendar hour (`DATE_TRUNC` hour, 10,847 buckets) rather than hour of day; the line then plots 100 non-consecutive hours. Axis title "Average of avg_tip" (average over an average) and ticks are raw timestamps ("2009-01-04 07:00:00.000").
+- **Observation (model):** in query mode the plain question "What's the average tip by payment type?" was answered with a chart, not a query; it answered in words only when told "Don't add a chart".
+- **Observation (G9, minor):** the detail says "1 rows"; the answer text collapses the reply's bullet list onto one line ("are: - Cash: 1.55 - Credit: 1.03 ...") although the chat bubble shows a list.
+- **Observation (UAT tooling):** the `?page=ai-activity` deep link lands on Dashboards on a fresh load (clicking the nav item works).
 
 ## Tested models
 
@@ -152,7 +174,7 @@ Same table as README.md "Tested models (Phase 142):".
 
 | Provider | Model ID | Tool mode | Result | Notes | Date |
 |----------|----------|-----------|--------|-------|------|
-| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass so far (filters/views, query mode and the S6 spike still open) | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s | 2026-10-23 to 2026-10-27 |
+| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass so far (the S6 spike still open) | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s | 2026-10-23 to 2026-10-28 |
 | OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26 |
 | Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
 
