@@ -67,6 +67,7 @@ import {
   resolveFormatter,
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+import { isCountAggregation, valueFormatColumn } from "../../lib/aggregationLabels";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 import {
@@ -94,6 +95,7 @@ import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
 import { categoryLabel } from "../../lib/categoryLabel";
+import { computeBarXAxisLayout, truncateBarLabel } from "../../lib/barChartLayout";
 import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
 import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
@@ -1064,6 +1066,7 @@ const BarRenderer = ({
   }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const valueColumn = valueFormatColumn(metricColumn, config.aggregation); // a count ignores the column format
   const metricId = config.metricId as number | undefined;
   // Effective metric label: custom → the stored metric label; real column → its display label, else
   // "<Aggregation> of <column>" (142 UAT: the line chart's rule, so a COUNT bar never reads as the raw column).
@@ -1204,10 +1207,11 @@ const BarRenderer = ({
   const yAxisFormatSpec = config.yAxisFormat as FormatSpec | undefined;
   const valueAxisTickFormatter = (v: unknown): string => {
     if (yAxisFormatSpec) return String(buildFormatter(yAxisFormatSpec)(v) ?? v);
-    if (tableId !== undefined && metricColumn) {
-      const out = resolveFormatter(tableId, metricColumn)(v);
+    if (tableId !== undefined && valueColumn) {
+      const out = resolveFormatter(tableId, valueColumn)(v);
       if (out !== v) return String(out);
     }
+    if (typeof v === "number" && isCountAggregation(config.aggregation)) return v.toLocaleString();
     return v == null ? "" : String(v);
   };
   // Size the vertical value axis to its formatted labels so short SI ticks ("1.2M") reclaim
@@ -1216,6 +1220,22 @@ const BarRenderer = ({
     scaleValues,
     valueAxisTickFormatter,
   );
+  // Vertical bars show every category label, tilting them when they do not fit flat (Recharts would
+  // otherwise drop labels silently). Measure the outer wrapper, as the line chart does.
+  const barWrapRef = useRef<HTMLDivElement>(null);
+  const [barWrapW, setBarWrapW] = useState(0);
+  useEffect(() => {
+    const el = barWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return; // jsdom has none -> width unknown -> fallback
+    const ro = new ResizeObserver(() => setBarWrapW(el.clientWidth));
+    ro.observe(el);
+    setBarWrapW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const barPlotWidthPx = Math.max(0, barWrapW - valueAxisWidth - (leftTitle ? 16 : 0) - 10);
+  const barMaxLabelChars = chartData.reduce((m, r) => Math.max(m, categoryLabel(r[xKey]).length), 0);
+  const barXLayout = computeBarXAxisLayout({ n: chartData.length, plotWidthPx: barPlotWidthPx, maxLabelChars: barMaxLabelChars });
+  const barCategoryTick = (v: unknown): string => (barXLayout.tilt ? truncateBarLabel(categoryLabel(v)) : categoryLabel(v));
 
   const chartEl = (
     <ResponsiveContainer width="100%" height="100%">
@@ -1241,7 +1261,16 @@ const BarRenderer = ({
           </>
         ) : (
           <>
-            <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryLabel} label={bottomLabelObj} />
+            <XAxis
+              dataKey={xKey}
+              stroke={AXIS_COLOR}
+              tick={{ fontSize: 11 }}
+              tickFormatter={barCategoryTick}
+              label={bottomLabelObj}
+              height={barXLayout.xAxisHeight}
+              {...(barXLayout.showAll ? { interval: 0 } : {})}
+              {...(barXLayout.tilt ? { angle: -45, textAnchor: "end" as const } : {})}
+            />
             <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
           </>
         )}
@@ -1253,10 +1282,11 @@ const BarRenderer = ({
             // via useChartAxisColors) at low opacity so the hovered-category highlight follows
             // the active theme/brand instead.
             cursor={{ fill: AXIS_COLOR, fillOpacity: 0.12 }}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
-        {showLegend && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
+        {/* One series repeats the chart title, so only a multi-series bar shows its legend (as the timeline does). */}
+        {showLegend && multiSeries && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
         {/* Phase 102 (BARGRP-V119-02): multi-series path — N <Bar> elements, no <Cell>/<LabelList>. */}
         {multiSeries ? (
           top.series.map((sk, i) => (
@@ -1289,8 +1319,8 @@ const BarRenderer = ({
                 // format spec is set, resolveFormatter is identity → fall back to the prior
                 // toLocaleString() default (thousands separator) so unconfigured bars look unchanged.
                 formatter={(v: unknown) => {
-                  if (tableId !== undefined && metricColumn) {
-                    const out = resolveFormatter(tableId, metricColumn)(v);
+                  if (tableId !== undefined && valueColumn) {
+                    const out = resolveFormatter(tableId, valueColumn)(v);
                     if (out !== v) return String(out); // a real format spec was applied
                   }
                   return typeof v === "number" ? v.toLocaleString() : String(v ?? "");
@@ -1321,7 +1351,7 @@ const BarRenderer = ({
     // child gives ResponsiveContainer a concrete pixel-sized parent, so the chart fills the
     // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
     // plain height:100% left dead space below the bars.
-    <div data-testid="bar-chart" style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+    <div ref={barWrapRef} data-testid="bar-chart" style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
     {/* Phase 102 (BARGRP-V119-03): truncation note — takes its own row above the plot (flex column) so it never overlaps the chart (UAT gap). */}
     {multiSeries && top.truncated && (
       <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>
@@ -1393,6 +1423,7 @@ const LineRenderer = ({
   }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const valueColumn = valueFormatColumn(metricColumn, config.aggregation); // a count ignores the column format
   const metricId = config.metricId as number | undefined;
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_LINE_COLOR;
@@ -1440,10 +1471,11 @@ const LineRenderer = ({
     fallbackKey: y,
   });
   const valueAxisTickFormatter = (v: unknown): string => {
-    if (tableId !== undefined && metricColumn) {
-      const out = resolveFormatter(tableId, metricColumn)(v);
+    if (tableId !== undefined && valueColumn) {
+      const out = resolveFormatter(tableId, valueColumn)(v);
       if (out !== v) return String(out);
     }
+    if (typeof v === "number" && isCountAggregation(config.aggregation)) return v.toLocaleString();
     return v == null ? "" : String(v);
   };
 
@@ -1548,13 +1580,14 @@ const LineRenderer = ({
           tableId={tableId}
           groupByColumn={multiSeries ? groupByColumns[0] : groupByColumn}
           metricColumn={metricColumn}
+          aggregation={config.aggregation as string | undefined}
           multiSeries={multiSeries}
           metricTitle={multiSeries ? undefined : yTitle}
         />
       }
     />
   ) : null;
-  const legendEl = showLegend ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
+  const legendEl = showLegend && multiSeries ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
   const gridEl = showGrid ? <CartesianGrid stroke={GRID_COLOR} vertical={false} /> : null;
 
   const chart = multiSeries ? (
@@ -1704,6 +1737,7 @@ const PieRenderer = ({
   }, [tableId, loadConfig]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const valueColumn = valueFormatColumn(metricColumn, config.aggregation); // a count ignores the column format
   const { x: nameKey, y: valueKey } = resolveKeys(data, config);
   const innerRadius = (config.innerRadius as number) ?? 0;
   const padAngle = (config.padAngle as number) ?? 2;
@@ -1730,8 +1764,8 @@ const PieRenderer = ({
   // Slice value → display string: prefer the metric column formatter (matches the tooltip),
   // else a plain number capped at 2 decimals so raw floats ("15.53458581142423") don't leak.
   const formatSliceValue = (v: unknown): string => {
-    if (tableId !== undefined && metricColumn) {
-      const out = resolveFormatter(tableId, metricColumn)(v);
+    if (tableId !== undefined && valueColumn) {
+      const out = resolveFormatter(tableId, valueColumn)(v);
       if (out !== v && out != null) return String(out);
     }
     const n = typeof v === "number" ? v : Number(v);
@@ -1832,7 +1866,7 @@ const PieRenderer = ({
             {...RECHARTS_TOOLTIP_PROPS}
             itemStyle={{ color: "var(--text)" }}
             labelStyle={{ color: "var(--text)" }}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
         {showLegend && <Legend />}
@@ -1927,7 +1961,7 @@ const ScatterRenderer = ({
         {showTooltip && (
           <Tooltip
             {...RECHARTS_TOOLTIP_PROPS}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
         <Scatter data={data} fill={color}>

@@ -18,3 +18,13 @@ export function aggregationLabel(value: string | undefined): string {
   if (!value) return "";
   return AGGREGATIONS.find((a) => a.value === value)?.label ?? value;
 }
+
+export function isCountAggregation(aggregation: unknown): boolean {
+  const a = typeof aggregation === "string" ? aggregation.toUpperCase() : "";
+  return a === "COUNT" || a === "COUNT_DISTINCT";
+}
+
+/** The column whose display format applies to an aggregated value: none for a count, which is a plain number even when it counts a date or currency column. */
+export function valueFormatColumn(metricColumn: string, aggregation: unknown): string {
+  return isCountAggregation(aggregation) ? "" : metricColumn;
+}

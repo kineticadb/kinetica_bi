@@ -142,18 +142,26 @@ describe("placeFitBands", () => {
   const mk = (types: string[]) => types.map((type, i) => ({ key: -(i + 1), type }));
   const bottom = (r: Record<number, GridRect>) => Math.max(...Object.values(r).map((x) => x.y + x.h));
 
-  it("FITBAND-1 KPIs, charts and a map fit above the fold; records go last", () => {
+  it("FITBAND-1 with a map: the map fills the right half from the top; KPIs then charts fill the left half", () => {
     const r = placeFitBands(mk(["bignumber", "bignumber", "bar", "bar", "bar", "map", "records"]));
-    expect(r[-1]).toEqual({ x: 0, y: 0, w: 18, h: FIT_KPI_H });
-    expect(r[-2]).toEqual({ x: 18, y: 0, w: 18, h: FIT_KPI_H });
-    // the map takes the right half beside the charts, which pair up on the left
-    expect(r[-6]).toMatchObject({ x: 18, y: FIT_KPI_H, w: 18 });
-    expect(r[-3]).toMatchObject({ x: 0, y: FIT_KPI_H, w: 9 });
-    expect(r[-4]).toMatchObject({ x: 9, y: FIT_KPI_H, w: 9 });
-    expect(r[-5]).toMatchObject({ x: 0, w: 18 }); // odd chart out spans the left half
-    const above = Object.entries(r).filter(([k]) => Number(k) !== -7).map(([, v]) => v);
-    expect(Math.max(...above.map((x) => x.y + x.h))).toBeLessThanOrEqual(FIT_SCREEN_ROWS);
-    expect(r[-7]).toEqual({ x: 0, y: bottom(Object.fromEntries(above.map((v, i) => [i, v]))), w: AI_GRID_COLS, h: FIT_RECORDS_H });
+    expect(r[-1]).toEqual({ x: 0, y: 0, w: 9, h: FIT_KPI_H });
+    expect(r[-2]).toEqual({ x: 9, y: 0, w: 9, h: FIT_KPI_H });
+    expect(r[-3]).toEqual({ x: 0, y: FIT_KPI_H, w: 9, h: FIT_CHART_H });
+    expect(r[-4]).toEqual({ x: 9, y: FIT_KPI_H, w: 9, h: FIT_CHART_H });
+    expect(r[-5]).toEqual({ x: 0, y: FIT_KPI_H + FIT_CHART_H, w: 18, h: FIT_CHART_H }); // odd chart out spans the left half
+    expect(r[-6]).toEqual({ x: 18, y: 0, w: 18, h: FIT_KPI_H + 2 * FIT_CHART_H });
+    expect(FIT_KPI_H + 2 * FIT_CHART_H).toBeLessThanOrEqual(FIT_SCREEN_ROWS);
+    expect(r[-7]).toEqual({ x: 0, y: FIT_KPI_H + 2 * FIT_CHART_H, w: AI_GRID_COLS, h: FIT_RECORDS_H });
+  });
+
+  it("FITBAND-1b beside a map, KPIs go three across the left half; without charts they stay full width", () => {
+    const r = placeFitBands(mk(["bignumber", "bignumber", "bignumber", "bignumber", "bar", "map"]));
+    expect([r[-1], r[-2], r[-3]].map((x) => [x.x, x.w, x.y])).toEqual([[0, 6, 0], [6, 6, 0], [12, 6, 0]]);
+    expect(r[-4]).toEqual({ x: 0, y: FIT_KPI_H, w: 18, h: FIT_KPI_H });
+    expect(r[-6]).toMatchObject({ x: 18, y: 0 });
+    const noCharts = placeFitBands(mk(["bignumber", "bignumber", "map"]));
+    expect(noCharts[-1]).toEqual({ x: 0, y: 0, w: 18, h: FIT_KPI_H });
+    expect(noCharts[-3]).toEqual({ x: 0, y: FIT_KPI_H, w: 36, h: FIT_MAP_ALONE_H });
   });
 
   it("FITBAND-2 without a map, charts go three across (two across for 2 or 4)", () => {

@@ -57,6 +57,7 @@ import type { NumericLineConfig } from "./NumericLineConfigPanel";
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
 import { resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+import { valueFormatColumn } from "../../lib/aggregationLabels";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
 import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
@@ -162,12 +163,12 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
       const fmt = buildFormatter(cfg.yAxisFormat);
       return (v: unknown) => String(fmt(v) ?? v);
     }
-    if (tableId !== undefined && metricColumn !== "") {
+    if (tableId !== undefined && valueFormatColumn(metricColumn, metrics[0]?.aggregation) !== "") {
       const fmt = resolveFormatter(tableId, metricColumn);
       return (v: unknown) => String(fmt(v) ?? v);
     }
     return (v: unknown) => String(v ?? "");
-  }, [cfg.yAxisFormat, tableId, metricColumn, configVersion]);
+  }, [cfg.yAxisFormat, tableId, metricColumn, metrics[0]?.aggregation, configVersion]);
 
   // ----- Empty-state gates -----
   if (tableId === undefined || tableRef === undefined) {
@@ -683,7 +684,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
           {showTooltip && (
             <Tooltip
               {...RECHARTS_TOOLTIP_PROPS}
-              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={metrics[0]?.aggregation} />}
             />
           )}
           {/* Legend: always shown when grouped (series values matter); when ungrouped,

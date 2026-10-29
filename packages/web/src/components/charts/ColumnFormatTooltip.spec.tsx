@@ -150,6 +150,24 @@ describe("ColumnFormatTooltip (COLAPPLY-V115-02)", () => {
     expect(getByText(/\$1,234\.50/)).toBeTruthy();
   });
 
+  it("AGG-CNT-2: a COUNT value ignores the metric column's format but keeps its label", () => {
+    useColumnDisplayConfigStore.getState().upsertColumn(TABLE_ID, "amount", "Amount", NUMBER_SPEC);
+    const { container } = render(
+      <ColumnFormatTooltip
+        tableId={TABLE_ID}
+        groupByColumn="category"
+        metricColumn="amount"
+        aggregation="COUNT"
+        active={true}
+        payload={[makeEntry(1234)]}
+        label="Widget"
+      />,
+    );
+    expect(container.textContent).not.toContain("$");
+    expect(container.textContent).toContain("1234");
+    expect(container.textContent).toContain("Amount");
+  });
+
   // ------------------------------------------------------------------
   // Behavior 4: falls back gracefully when tableId is undefined
   // ------------------------------------------------------------------

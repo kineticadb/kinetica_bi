@@ -17,8 +17,10 @@ describe("CATLABEL: category display text", () => {
   });
   it("CATLABEL-3 bar and line category axes format their ticks with it (structural; looks checked live)", () => {
     const src = readFileSync(resolve(__dirname, "../components/charts/WidgetRenderer.tsx"), "utf-8");
-    expect(src.match(/<XAxis dataKey=\{xKey\}[^>]*tickFormatter=\{categoryLabel\}/g)?.length).toBe(1);
+    // the vertical bar axis wraps it (barCategoryTick shortens tilted labels); the others use it directly
+    expect(src).toMatch(/const barCategoryTick = \(v: unknown\): string => \(barXLayout\.tilt \? truncateBarLabel\(categoryLabel\(v\)\) : categoryLabel\(v\)\);/);
+    expect(src.match(/<XAxis\s+dataKey=\{xKey\}[^>]*tickFormatter=\{barCategoryTick\}/g)?.length).toBe(1);
     expect(src.match(/<YAxis type="category" dataKey=\{xKey\}[^>]*tickFormatter=\{categoryLabel\}/g)?.length).toBe(1);
-    expect(src.match(/tickFormatter=\{categoryLabel\}/g)?.length).toBe(3);
+    expect(src.match(/tickFormatter=\{categoryLabel\}/g)?.length).toBe(2);
   });
 });

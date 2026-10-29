@@ -143,31 +143,29 @@ export function placeFitBands(items: readonly { key: number; type: string }[]): 
   const isTrend = (t: string) => t === "line" || t === "timeline";
   const charts = [...rest.filter((i) => isTrend(i.type)), ...rest.filter((i) => !isTrend(i.type))];
 
+  // With a map and charts, the first map fills the right half from the top and the KPIs, then the charts
+  // (two across), fill the left half beside it. Otherwise everything is full width.
+  const [firstMap, ...restMaps] = maps;
+  const sideMap = firstMap && charts.length > 0 ? firstMap : undefined;
+  const otherMaps = sideMap ? restMaps : maps;
+  const leftCols = sideMap ? AI_GRID_COLS / 2 : AI_GRID_COLS;
+  const kpiPerRow = sideMap ? FIT_KPI_PER_ROW / 2 : FIT_KPI_PER_ROW;
+
   let y = 0;
-  for (let s = 0; s < kpis.length; s += FIT_KPI_PER_ROW) {
-    const chunk = kpis.slice(s, s + FIT_KPI_PER_ROW);
-    splitRow(chunk.length, AI_GRID_COLS).forEach((c, i) => { out[chunk[i].key] = { ...c, y, h: FIT_KPI_H }; });
+  for (let s = 0; s < kpis.length; s += kpiPerRow) {
+    const chunk = kpis.slice(s, s + kpiPerRow);
+    splitRow(chunk.length, leftCols).forEach((c, i) => { out[chunk[i].key] = { ...c, y, h: FIT_KPI_H }; });
     y += FIT_KPI_H;
   }
-
-  // Charts fill rows; with a map, they pair up in the left half and the first map takes the right half beside them.
-  const [sideMap, ...otherMaps] = maps;
-  const chartCols = sideMap && charts.length > 0 ? AI_GRID_COLS / 2 : AI_GRID_COLS;
   const perRow = sideMap ? 2 : charts.length === 1 ? 1 : charts.length === 2 || charts.length === 4 ? 2 : 3;
-  const top = y;
   for (let s = 0; s < charts.length; s += perRow) {
     const row = charts.slice(s, s + perRow);
-    splitRow(row.length, chartCols).forEach((c, i) => { out[row[i].key] = { ...c, y, h: FIT_CHART_H }; });
+    splitRow(row.length, leftCols).forEach((c, i) => { out[row[i].key] = { ...c, y, h: FIT_CHART_H }; });
     y += FIT_CHART_H;
   }
   if (sideMap) {
-    if (charts.length > 0) {
-      out[sideMap.key] = { x: chartCols, y: top, w: AI_GRID_COLS - chartCols, h: Math.max(y - top, 2 * FIT_CHART_H) };
-      y = top + out[sideMap.key].h;
-    } else {
-      out[sideMap.key] = { x: 0, y, w: AI_GRID_COLS, h: FIT_MAP_ALONE_H };
-      y += FIT_MAP_ALONE_H;
-    }
+    out[sideMap.key] = { x: leftCols, y: 0, w: AI_GRID_COLS - leftCols, h: Math.max(y, FIT_KPI_H + 2 * FIT_CHART_H) };
+    y = out[sideMap.key].h;
   }
   for (const it of otherMaps) {
     out[it.key] = { x: 0, y, w: AI_GRID_COLS, h: FIT_MAP_ALONE_H };

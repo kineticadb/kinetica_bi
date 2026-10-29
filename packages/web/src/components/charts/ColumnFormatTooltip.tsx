@@ -15,6 +15,7 @@
  */
 
 import { categoryLabel } from "../../lib/categoryLabel";
+import { valueFormatColumn } from "../../lib/aggregationLabels";
 import React from "react";
 import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import {
@@ -33,6 +34,8 @@ export type ColumnFormatTooltipProps = {
   groupByColumn: string;
   /** Source column name for the metric / y dimension. Empty string = unknown. */
   metricColumn: string;
+  /** The widget's aggregation: a COUNT value is a plain number, so the metric column's format is skipped. */
+  aggregation?: string;
   // Recharts-injected (set by Recharts when used as `content` prop):
   active?: boolean;
   payload?: Array<{
@@ -64,6 +67,7 @@ export function ColumnFormatTooltip({
   tableId,
   groupByColumn,
   metricColumn,
+  aggregation,
   active,
   payload,
   label,
@@ -91,7 +95,7 @@ export function ColumnFormatTooltip({
 
   // Metric formatter: applied to each payload entry's value.
   const fmt: (v: unknown) => unknown =
-    tableId !== undefined && metricColumn
+    tableId !== undefined && valueFormatColumn(metricColumn, aggregation)
       ? resolveFormatter(tableId, metricColumn)
       : (v) => v;
 

@@ -36,6 +36,7 @@ import {
   sampleRamp,
 } from "../../lib/heatmapColorScale";
 import { formatBucketTick, isCyclicalBucket } from "../../lib/heatmapBucket";
+import { valueFormatColumn } from "../../lib/aggregationLabels";
 import {
   buildHeatmapGrid,
   cellKey,
@@ -199,14 +200,14 @@ const HeatmapRenderer = ({
     const fmt =
       spec
         ? buildFormatter(spec)
-        : hasTable && metricCol
+        : hasTable && valueFormatColumn(metricCol, config.aggregation)
           ? resolveFormatter(tableId, metricCol)
           : buildFormatter(spec);
     return (n: number): string => {
       const out = fmt(n);
       return typeof out === "string" ? out : n.toLocaleString();
     };
-  }, [config.valueFormat, config.metricColumn, hasTable, tableId, configVersion]);
+  }, [config.valueFormat, config.metricColumn, config.aggregation, hasTable, tableId, configVersion]);
 
   /** Operator-facing column names, honouring any Display label. */
   const axisTitles = useMemo(() => {
