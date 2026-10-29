@@ -36,7 +36,7 @@
 
 - ✅ **v1.26 Large Exports & Fixes** — Phases 127-132 (shipped 2026-10-08) — see `milestones/v1.26-ROADMAP.md`
 
-- 🚧 **v2.0 AI-Driven Dashboards** — Phases 133-142 (in progress, started 2026-10-08)
+- 🚧 **v2.0 AI-Driven Dashboards** — Phases 133-143 (in progress, started 2026-10-08)
 
 ---
 
@@ -58,6 +58,7 @@
 - [x] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
 - [x] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
 - [ ] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
+- [ ] **Phase 143: Claude Desktop MCP Connector** — Claude Desktop builds and edits dashboards through Kinetica BI's gateway; text widget; fit-to-screen layout (added 2026-10-29)
 
 **Order:** 133 → {134 ∥ 135} → 136 → 137 → 138 → 139 → 140 → 141 → 142. 134 (client) and 135 (server) touch disjoint files and may run in parallel after 133.
 **Research-phase flagged:** 133 (S1, S3), 135 (S6), 137 (S2 through the deploy proxy), 139 (S1, S7), 140 (SQL guard, S7). Standard: 134, 136, 138, 141, 142.
@@ -339,6 +340,20 @@ Plans:
 - [ ] 142-10-PLAN.md — gap gate + full gates, UAT steps (both providers, Gemini quota plan), Gemini live UAT checkpoint + results [W4]
 - [ ] 142-11-PLAN.md — Ollama-in-Docker live UAT checkpoint, Tested models matrix, phase bookkeeping by hand [W5]
 
+### Phase 143: Claude Desktop MCP Connector
+**Goal:** A user builds or changes a Kinetica BI dashboard from Claude Desktop (their Claude subscription, no API key), with every change checked by the same gateway as the in-app AI and nothing saved until they press Keep.
+**Depends on:** 141 (Keep), 142 (audit kinds)
+**Requirements:** AIMCP-V20-01 .. AIMCP-V20-09 (promotes AI-F6)
+**Context:** `phases/143-claude-desktop-mcp-connector/143-CONTEXT.md` (started as `spike/kbi-mcp`, 2026-10-28)
+**Success Criteria:**
+1. Claude Desktop builds a dashboard that the user reviews and keeps; a rejected change comes back with reasons and Claude repairs it. *(done in the spike)*
+2. The dashboard fits one screen when there are not too many widgets, and a text summary sits at the top sized to its text. *(done)*
+3. The connector signs in with a revocable personal access token; no password is stored in Claude Desktop's config.
+4. Discarding, or never opening the link, leaves no dashboard behind (checked in SQLite).
+5. The AI activity page shows Claude Desktop builds as their own kind; Keep works with the in-app AI off.
+6. Claude can change an existing dashboard and apply filters, reviewed with the same Keep bar.
+**Done so far (spike, on `spike/kbi-mcp`):** 91ede8b connector + routes; 2ae8a5b clickable AI layers + fit layout; f5611dc chart fixes; d592ecb text widget, KPI format, axis decimals; 35e752e, 0961ef6, 5301497 sizing and KPI fixes. UAT: `143-UAT-RESULTS.md`.
+
 ### Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -352,7 +367,8 @@ Plans:
 | 139. Session-Only Dynamic Views | 14/14 | Complete | 2026-10-20 |
 | 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
 | 141. Keep (Persist AI Changes) | 14/14 | Complete | 2026-10-22 |
-| 142. Generate, Audit Viewer & Live Provider Proofs | 0/? | Not started | - |
+| 142. Generate, Audit Viewer & Live Provider Proofs | 9/11 | In UAT (G10 S6 spike left) | - |
+| 143. Claude Desktop MCP Connector | spike | In progress (3/9 requirements) | - |
 
 ---
 
