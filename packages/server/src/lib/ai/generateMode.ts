@@ -1,6 +1,6 @@
 // Phase 142 generate mode: pure helpers (recipe text, limits, nudge, deterministic band layout rewrite). No I/O.
 import type { AiOp } from "@kinetica-bi/shared";
-import { placeGenerateBands } from "@kinetica-bi/shared";
+import { placeFitBands, placeGenerateBands } from "@kinetica-bi/shared";
 import type { AiDataAccess } from "../aiConfig";
 
 export const GEN_MIN_STEPS = 20;
@@ -40,8 +40,20 @@ export function countDataWidgetAdds(ops: readonly AiOp[]): number {
 }
 
 export function applyGenerateBands(ops: readonly AiOp[]): AiOp[] {
+  return rewriteAddLayouts(ops, placeGenerateBands);
+}
+
+/** kbi-mcp finish: the full-width, fit-one-screen layout (no AI column on the dashboard). */
+export function applyFitBands(ops: readonly AiOp[]): AiOp[] {
+  return rewriteAddLayouts(ops, placeFitBands);
+}
+
+function rewriteAddLayouts(
+  ops: readonly AiOp[],
+  place: (items: readonly { key: number; type: string }[]) => Record<number, { x: number; y: number; w: number; h: number }>,
+): AiOp[] {
   const adds = ops.filter((o): o is Extract<AiOp, { op: "add_widget" }> => o.op === "add_widget");
-  const rects = placeGenerateBands(adds.map((o) => ({ key: o.tempId, type: o.type })));
+  const rects = place(adds.map((o) => ({ key: o.tempId, type: o.type })));
   const out: AiOp[] = [];
   for (const o of ops) {
     if (o.op === "set_layout") continue;

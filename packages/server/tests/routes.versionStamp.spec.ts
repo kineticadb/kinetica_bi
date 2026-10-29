@@ -135,6 +135,9 @@ import { createApp } from "../src/index";
 /** `METHOD /path` -> "stamped" | "exempt: <reason>". A new write route fails VSTAMP-8 until it is listed here. */
 export const WRITE_ROUTE_CLASSIFICATION: Record<string, string> = {
   "POST /api/dashboards/generate": "exempt: creates a NEW dashboard",
+  "POST /api/mcp/sessions": "exempt: in-memory MCP session only; Keep stamps the dashboard",
+  "POST /api/mcp/sessions/:id/call": "exempt: validates against the in-memory MCP session; no dashboard write",
+  "POST /api/mcp/sessions/:id/finish": "exempt: in-memory MCP session only; Keep stamps the dashboard",
   "POST /api/dashboards/:id/discard-generated": "exempt: dashboard removed, nothing left to version",
   "DELETE /api/branding/logo": "exempt: branding is global, not dashboard state",
   "DELETE /api/dashboards/:dashboardId/tables/:tableId": "stamped",

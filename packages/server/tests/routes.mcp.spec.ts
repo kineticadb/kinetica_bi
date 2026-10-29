@@ -9,6 +9,7 @@ import { enableAiEnv, sessionFor, makeDashboard, makeTableOn, resetAiTables, moc
 import { __clearLiveSchemaCacheForTest } from "../src/lib/ai/liveSchema";
 import { __resetMcpSessionsForTest } from "../src/lib/mcp/mcpSessions";
 import { MCP_TOOL_NAMES } from "../src/mcpRoutes";
+import { FIT_KPI_H, placeFitBands } from "@kinetica-bi/shared";
 
 let restoreEnv: (() => void) | null = null;
 let savedMcp: string | undefined;
@@ -126,5 +127,22 @@ describe("/api/mcp (kbi-mcp spike)", () => {
     await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId));
     await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({});
     expect((await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId, { tempId: -2 }))).status).toBe(409);
+  });
+
+  it("MCP-8 finish lays the whole dashboard out to fit one screen (compact KPIs, charts side by side)", async () => {
+    const app = await boot();
+    const c = dee();
+    const { dashboardId, tableId, sessionId } = await startSession(app, c);
+    const kpi = (tempId: number) => addWidgetArgs(tableId, { tempId, type: "bignumber", title: `K${tempId}`, groupBy: undefined });
+    for (const args of [addWidgetArgs(tableId, { tempId: -1 }), kpi(-2), addWidgetArgs(tableId, { tempId: -3, type: "pie" }), kpi(-4)]) {
+      expect((await call(app, c, sessionId, "add_widget", args)).body).toMatchObject({ ok: true });
+    }
+    await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({});
+    const h = await request(app).get(`/api/mcp/sessions/${sessionId}/handoff?dashboardId=${dashboardId}`).set("Cookie", c);
+    const ops = h.body.ops as { tempId: number; type: string; layout: unknown }[];
+    const want = placeFitBands(ops.map((o) => ({ key: o.tempId, type: o.type })));
+    expect(ops).toHaveLength(4);
+    for (const o of ops) expect(o.layout).toEqual(want[o.tempId]);
+    expect(ops.find((o) => o.tempId === -2)?.layout).toEqual({ x: 0, y: 0, w: 18, h: FIT_KPI_H });
   });
 });

@@ -26,6 +26,7 @@ import { checkAiOp } from "./lib/ai/gateway";
 import { gatewayDvLimits } from "./lib/ai/dvDeps";
 import { isClassAllowed } from "./lib/ai/outbound";
 import { stampMapDefaultViews } from "./lib/ai/mapDefaultView";
+import { applyFitBands } from "./lib/ai/generateMode";
 import { buildToolRegistry } from "./lib/ai/tools/registry";
 import { createMcpSession, getMcpSession, takeMcpHandoff } from "./lib/mcp/mcpSessions";
 
@@ -149,6 +150,8 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         s.summary = typeof summary === "string" ? summary.slice(0, 2000) : undefined;
         const liveSchema = createLiveSchema({ username, principal: () => authedReq });
         // 142: AI-added maps open on their data; values never leave the server.
+        // The dashboard started empty, so every widget is Claude's: lay them all out to fit one screen.
+        s.ops = applyFitBands(s.ops);
         s.ops = await stampMapDefaultViews(s.ops, {
           requestId: randomUUID(),
           principal: () => authedReq,

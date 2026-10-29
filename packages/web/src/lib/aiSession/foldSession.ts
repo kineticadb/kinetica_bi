@@ -181,7 +181,8 @@ export function makeSessionLayer(op: AddLayerOp, baseline: SessionBaseline, posi
       name: op.name,
       style: op.style,
     }),
-    info_enabled: 0,
+    // Clickable like a hand-made layer (DB default 1); 0 was a stub-layer leftover that hid the info popup.
+    info_enabled: 1,
     info_columns: null,
     info_template: null,
     dynamic_view_id: op.dynamicViewId ?? null,

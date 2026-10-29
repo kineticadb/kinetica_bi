@@ -230,7 +230,7 @@ describe("Phase 136 fold", () => {
   it("FOLD6-4: add_layer builds a complete heatmap layer on the dashboard table", () => {
     const op = { ...addLayerOp(-4, 42), tableId: 5, style: { colormap: "plasma", opacity: 0.5 } };
     const d = foldSession(baseline6, t6([op]));
-    expect(d.addedLayers[0]).toMatchObject({ id: -4, table_id: 5 });
+    expect(d.addedLayers[0]).toMatchObject({ id: -4, table_id: 5, info_enabled: 1 });
     expect(d.addedLayers[0].config).toMatchObject({ renderMode: "heatmap", colormap: "plasma", POINTOPACITY: 50, latColumn: "lat" });
     const [bad] = t6([{ ...op, widgetId: 50 }]);
     expect(reason(bad)).toBe("target_not_found");

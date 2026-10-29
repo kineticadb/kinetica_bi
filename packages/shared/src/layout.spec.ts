@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_DEFAULT_SIZE, AI_GRID_COLS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
+  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
 } from "./layout";
 import { AI_WIDGET_TYPES } from "./aiAsk";
 
@@ -134,5 +134,53 @@ describe("placeGenerateBands", () => {
     const r = placeGenerateBands(mk(["bignumber", "gauge", "records", "map"]));
     expect(r[-2]).toEqual({ x: 0, y: 14, w: 24, h: 30 });
     expect(validateLayout([-1, -2, -3, -4].map((k) => ({ id: k, ...r[k] })).concat([{ id: 1, ...GENERATE_AI_RECT }]))).toEqual({ valid: true });
+  });
+});
+
+// MCP finish: a whole dashboard built outside the app, laid out full width to fit one screen where it can.
+describe("placeFitBands", () => {
+  const mk = (types: string[]) => types.map((type, i) => ({ key: -(i + 1), type }));
+  const bottom = (r: Record<number, GridRect>) => Math.max(...Object.values(r).map((x) => x.y + x.h));
+
+  it("FITBAND-1 KPIs, charts and a map fit above the fold; records go last", () => {
+    const r = placeFitBands(mk(["bignumber", "bignumber", "bar", "bar", "bar", "map", "records"]));
+    expect(r[-1]).toEqual({ x: 0, y: 0, w: 18, h: FIT_KPI_H });
+    expect(r[-2]).toEqual({ x: 18, y: 0, w: 18, h: FIT_KPI_H });
+    // the map takes the right half beside the charts, which pair up on the left
+    expect(r[-6]).toMatchObject({ x: 18, y: FIT_KPI_H, w: 18 });
+    expect(r[-3]).toMatchObject({ x: 0, y: FIT_KPI_H, w: 9 });
+    expect(r[-4]).toMatchObject({ x: 9, y: FIT_KPI_H, w: 9 });
+    expect(r[-5]).toMatchObject({ x: 0, w: 18 }); // odd chart out spans the left half
+    const above = Object.entries(r).filter(([k]) => Number(k) !== -7).map(([, v]) => v);
+    expect(Math.max(...above.map((x) => x.y + x.h))).toBeLessThanOrEqual(FIT_SCREEN_ROWS);
+    expect(r[-7]).toEqual({ x: 0, y: bottom(Object.fromEntries(above.map((v, i) => [i, v]))), w: AI_GRID_COLS, h: FIT_RECORDS_H });
+  });
+
+  it("FITBAND-2 without a map, charts go three across (two across for 2 or 4)", () => {
+    const three = placeFitBands(mk(["bar", "pie", "line"]));
+    expect(Object.values(three).map((x) => x.w)).toEqual([12, 12, 12]);
+    const four = placeFitBands(mk(["bar", "pie", "line", "bar"]));
+    expect(Object.values(four).map((x) => [x.x, x.w])).toEqual([[0, 18], [18, 18], [0, 18], [18, 18]]);
+    expect(placeFitBands(mk(["bar"]))[-1]).toEqual({ x: 0, y: 0, w: 36, h: FIT_CHART_H });
+  });
+
+  it("FITBAND-3 a map alone is full width; the timeline leads the charts", () => {
+    expect(placeFitBands(mk(["map"]))[-1]).toEqual({ x: 0, y: 0, w: 36, h: FIT_MAP_ALONE_H });
+    const r = placeFitBands(mk(["bar", "timeline"]));
+    expect(r[-2]).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("FITBAND-4 KPIs wrap at six per row and every mix validates", () => {
+    const seven = placeFitBands(mk(Array(7).fill("bignumber")));
+    expect(seven[-7]).toEqual({ x: 0, y: FIT_KPI_H, w: 36, h: FIT_KPI_H });
+    const pool = ["bignumber", "bar", "pie", "line", "timeline", "table", "map", "records"];
+    for (let n = 1; n <= 12; n++) {
+      for (let seed = 0; seed < 20; seed++) {
+        const types = Array.from({ length: n }, (_, i) => pool[(i * 7 + seed * 3) % pool.length]);
+        const r = placeFitBands(mk(types));
+        expect(Object.keys(r)).toHaveLength(n);
+        expect(validateLayout(Object.entries(r).map(([k, v]) => ({ id: Number(k), ...v })))).toEqual({ valid: true });
+      }
+    }
   });
 });

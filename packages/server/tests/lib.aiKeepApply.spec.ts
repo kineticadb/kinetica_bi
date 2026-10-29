@@ -98,11 +98,11 @@ describe("applyKeep (KEEP-APPLY-)", () => {
     expect("dynamicViewId" in l1.config).toBe(false);
   });
 
-  it("KEEP-APPLY-5: new layer has info_enabled 0, visible false, table T", () => {
+  it("KEEP-APPLY-5: new layer has info_enabled 1 (clickable like a hand-made layer), visible false, table T", () => {
     const f = buildKeepFixture();
     const r = applyKeep(f.D, f.change, f.prepared);
     const l = getDashboardLayer(r.idMap.layers["-2"])!;
-    expect(l.info_enabled).toBeFalsy();
+    expect(l.info_enabled).toBe(1);
     expect(l.config.visible).toBe(false);
     expect(l.table_id).toBe(f.T);
   });

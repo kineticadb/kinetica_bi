@@ -95,7 +95,7 @@ export function applyKeep(dashboardId: number, change: AiKeepRequest, prepared: 
     for (const add of change.layers.add) {
       updateDashboardLayer(maps.layer.get(add.tempId)!, {
         config: assertNoTempIds(add.config),
-        info_enabled: 0,
+        info_enabled: 1, // clickable like a hand-made layer, matching the browser fold
         dynamic_view_id: mapDv(add.dynamicViewId ?? null),
       });
     }

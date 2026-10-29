@@ -8,7 +8,8 @@ export const INSTRUCTIONS = [
   "Build Kinetica BI dashboards. Workflow: list_tables -> start_dashboard (a new dashboard with the tables it uses) ->",
   "describe_table for each table -> add_dynamic_view / add_widget / add_heatmap_layer -> finish_dashboard.",
   "Nothing is saved by these tools: finish_dashboard returns a link; the user opens it, reviews the dashboard and presses Keep.",
-  "Column names must come from describe_table. Widgets are placed automatically. A rejected call returns the reasons:",
+  "Column names must come from describe_table. Do not size or place widgets: finish_dashboard lays the dashboard out to fit",
+  "one screen (up to about 3 KPIs, 4 charts and a map; a records table goes below). A rejected call returns the reasons:",
   "fix them and call again with the same tempId. A good dashboard: 1-3 KPIs (bignumber) on top, a time trend (timeline),",
   "2-3 breakdowns (bar/pie), a map with a heatmap layer when the table has lat/lon or geometry, and a records table.",
 ].join(" ");
