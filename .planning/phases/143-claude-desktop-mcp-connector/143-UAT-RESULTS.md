@@ -16,6 +16,15 @@ Run in the operator's Claude Desktop (subscription, no API key) against Kinetica
 
 Checked in dark mode throughout; the text widget also in light mode. Safety: a `<script>` line in the text rendered as text (no script element); links open with `noopener noreferrer`.
 
-## Known limits (spike)
+## Phase 143 items 1-6 (2026-10-29), checked by Claude in the operator's Chrome through the connector's routes
 
-Password sign-in; new dashboards only; adds only; no filters; an unkept or never-opened dashboard stays behind; Keep needs `AI_ENABLED`; the audit records Keep only, under the in-app kind. These are Phase 143 items 1-6.
+| # | Requirement | Result | Notes |
+|---|-------------|--------|-------|
+| 8 | AIMCP-V20-04 token sign-in | PASS | Profile > Claude Desktop: created a token (shown once, Copy config), token-login opened a session as admin, Revoke removed the token and its session (0 rows left). Light and dark. |
+| 9 | AIMCP-V20-05 unkept builds | PASS | start creates an unkept dashboard; AI bar Discard -> "Discard this dashboard?" -> deleted (SQLite); Keep cleared generated_by/pending. |
+| 10 | AIMCP-V20-06 audit kind | PASS | AI activity row: kind "Claude Desktop", question 'Built "..." in Claude Desktop', Claude's summary, tools and changes; survives the dashboard's deletion. Labels no longer carry stale first-fit positions. |
+| 11 | AIMCP-V20-07 Keep without the in-app AI | PASS (specs) | Route specs with AI off and MCP on; the browser handoff/Keep have no AI-config gate. Not re-run live with AI off (a restart signs the operator out). |
+| 12 | AIMCP-V20-08 edit a saved dashboard | PASS after fix | First run: the confirmed removal was skipped in the browser (needs_confirmation). Fix: the handoff records the approval. Second run: 1 added, 1 edited, 1 removed; kept. |
+| 13 | AIMCP-V20-09 filters | PASS | apply_filter payment_type = Cash: AI-tagged chip, KPIs/pie/timeline narrowed; filter-only changes show no Keep bar (same as in-app). |
+
+**Next:** the operator runs items 1-6 in Claude Desktop itself: create a token on the Profile page, put it in the config (`KBI_TOKEN`), quit and reopen Claude Desktop, then build, edit and filter.

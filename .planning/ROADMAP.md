@@ -368,7 +368,7 @@ Plans:
 | 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
 | 141. Keep (Persist AI Changes) | 14/14 | Complete | 2026-10-22 |
 | 142. Generate, Audit Viewer & Live Provider Proofs | 9/11 | In UAT (G10 S6 spike left) | - |
-| 143. Claude Desktop MCP Connector | spike | In progress (3/9 requirements) | - |
+| 143. Claude Desktop MCP Connector | 9/9 requirements | Built; awaiting operator Claude Desktop UAT | - |
 
 ---
 
