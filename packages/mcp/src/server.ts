@@ -16,6 +16,7 @@ export const INSTRUCTIONS = [
   "and a KPI of money sets numberFormat currency.",
   "Optionally start with a text widget (type text, markdown, no tableId) summarising what the dashboard shows; keep it to a",
   "heading and a few bullets, and only state facts you know (never invent numbers).",
+  "Keep widget titles short (a few words, no findings) and leave KPI subLabel empty: findings belong in the text widget.",
 ].join(" ");
 
 const LOCAL_TOOLS: Tool[] = [
