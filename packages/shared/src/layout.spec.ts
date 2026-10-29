@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_TEXT_DEFAULT_H, FIT_TEXT_MAX_H, fitTextRows, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
+  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_TEXT_DEFAULT_H, FIT_TEXT_MAX_H, fitTextRows, refitTextLayouts, textCharsPerLine, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
 } from "./layout";
 import { AI_WIDGET_TYPES } from "./aiAsk";
+import type { AiOp } from "./aiOp";
 
 describe("layout", () => {
   it("LAYOUT-1 resolveRect fallback and per-field fill", () => {
@@ -207,5 +208,32 @@ describe("placeFitBands text", () => {
     const long = fitTextRows(Array(40).fill("A line of findings about the data.").join("\n"));
     expect(long).toBe(FIT_TEXT_MAX_H);
     expect(fitTextRows("one\ntwo\nthree\nfour")).toBeGreaterThan(fitTextRows("one"));
+  });
+  const SUMMARY = [
+    "# NYC Taxi Overview",
+    "**500,000 trips** from **Jan 2009 to Jun 2015** (demo.nyctaxi), bringing in about **$7.19M** in total revenue.",
+    "- **Typical trip:** average fare $11.84, average tip $1.35, average distance 5.28 miles.",
+    "- **Payment:** cash covers 61.7% of trips and $4.50M of revenue; credit covers 38.0% of trips and $2.67M. Unknown, No Charge and Dispute together make up under 0.4%.",
+    "- **Vendors:** 5 vendors. NYC has the most trips (148,750, 29.8%), followed by YCAB (136,878), VTS (124,067) and CMT (86,513). DDS has only 3,792.",
+    "- **Where:** the heatmap at the bottom shows where pickups are concentrated.",
+  ].join("\n");
+  it("FITBAND-7 a real summary is sized to its text at the width it is shown", () => {
+    // measured live: a 902px text area wraps two bullets and needs a 20-row card; a wide screen fits each bullet on one line (~17)
+    expect(fitTextRows(SUMMARY, textCharsPerLine(902))).toBe(20);
+    expect(fitTextRows(SUMMARY, textCharsPerLine(1300))).toBeLessThanOrEqual(17);
+  });
+  it("FITBAND-8 refitTextLayouts resizes text to the real width and moves what is below it", () => {
+    const ops: AiOp[] = [
+      { op: "add_widget", tempId: -1, type: "text", title: "S", config: { markdown: SUMMARY }, layout: { x: 0, y: 0, w: 36, h: 22 } },
+      { op: "add_widget", tempId: -2, type: "bignumber", title: "K", config: {}, layout: { x: 0, y: 22, w: 9, h: 10 } },
+      { op: "add_widget", tempId: -3, type: "map", title: "M", config: {}, layout: { x: 18, y: 22, w: 18, h: 54 } },
+    ];
+    const out = refitTextLayouts(ops, textCharsPerLine(1300)) as Extract<AiOp, { op: "add_widget" }>[];
+    const h = out[0].layout!.h;
+    expect(h).toBeLessThan(22);
+    expect(out[1].layout).toEqual({ x: 0, y: h, w: 9, h: 10 });
+    expect(out[2].layout).toEqual({ x: 18, y: h, w: 18, h: 54 });
+    expect(ops[1].op === "add_widget" && ops[1].layout!.y).toBe(22); // input untouched
+    expect(refitTextLayouts(ops.slice(1), 100)).toEqual(ops.slice(1));
   });
 });

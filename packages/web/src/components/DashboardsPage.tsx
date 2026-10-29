@@ -82,7 +82,7 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
-import { resolveRect, placeWidget, AI_DEFAULT_SIZE, AI_MIN_W, AI_MIN_H, type GridRect } from "@kinetica-bi/shared";
+import { resolveRect, placeWidget, refitTextLayouts, textCharsPerLine, AI_DEFAULT_SIZE, AI_MIN_W, AI_MIN_H, type GridRect } from "@kinetica-bi/shared";
 import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
 import { useAiConfigured } from "../lib/aiSession/aiAvailability";
 import { AI_ASSISTANT_TYPE, AI_ASSISTANT_DEFAULT_SIZE } from "../lib/aiSession/constants";
@@ -105,6 +105,8 @@ import "react-resizable/css/styles.css";
 
 /** kbi-mcp spike: MCP handoff session ids already requested in this page load (the server hands each over once). */
 const mcpHandoffsTaken = new Set<string>();
+/** Grid width minus a full-width text widget's card and body padding. */
+const MCP_TEXT_PADDING_PX = 48;
 
 type View =
   | { mode: "list" }
@@ -1139,7 +1141,8 @@ const DashboardOpen = ({
   // kbi-mcp spike: ?mcp=<session> carries what Claude Desktop built. Once the tables and widgets are loaded (widget
   // SQL is derived from table columns), apply it as ONE unsaved AI turn: preview, the change bar and Keep as usual.
   // Ready once the fetched lists have been copied into state (the AI baseline reads that state, one effect later).
-  const mcpReady = tablesQuery.data !== undefined && associatedTables === tablesQuery.data && widgetsQuery.data !== undefined && widgets === widgetsQuery.data;
+  // width > 0: the grid is measured, so Claude's text widgets can be sized to the real screen.
+  const mcpReady = tablesQuery.data !== undefined && associatedTables === tablesQuery.data && widgetsQuery.data !== undefined && widgets === widgetsQuery.data && width > 0;
   useEffect(() => {
     const sessionId = new URLSearchParams(window.location.search).get("mcp");
     if (!mcpReady || !sessionId || mcpHandoffsTaken.has(sessionId)) return;
@@ -1154,10 +1157,12 @@ const DashboardOpen = ({
           useToastStore.getState().showToast("Nothing to load from Claude Desktop (already loaded or expired).", "error");
           return;
         }
-        aiActions.applyTurn({ prompt: h.prompt, answer: h.answer, ops: h.ops, chat: { status: "ok", applied: h.applied, followUps: [] } });
+        // The server sized text for a typical laptop; resize it to this grid (full-width text minus card and body padding).
+        const ops = refitTextLayouts(h.ops, textCharsPerLine(width - MCP_TEXT_PADDING_PX));
+        aiActions.applyTurn({ prompt: h.prompt, answer: h.answer, ops, chat: { status: "ok", applied: h.applied, followUps: [] } });
       })
       .catch((e: unknown) => useToastStore.getState().showToast(e instanceof Error ? e.message : "Failed to load the Claude Desktop changes", "error"));
-  }, [mcpReady, dashboard.id, aiActions]);
+  }, [mcpReady, dashboard.id, aiActions, width]);
 
   // Phase 113 (DLINK-V121-07): leaving an open dashboard by ANY route must clear the
   // address bar. App.tsx:318 renders DashboardsPage conditionally, so a sidebar click to

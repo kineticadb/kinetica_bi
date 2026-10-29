@@ -14,8 +14,8 @@ export const INSTRUCTIONS = [
   "2-3 breakdowns (bar/pie), a map with a heatmap layer when the table has lat/lon or geometry, and a records table.",
   "Name what a value means: for a count of rows set yAxisLabel on a chart or label on a KPI, such as \"Trips\" (otherwise it reads \"Count of <column>\"),",
   "and a KPI of money sets numberFormat currency.",
-  "Optionally start with a text widget (type text, markdown, no tableId) summarising what the dashboard shows; keep it to a",
-  "heading and a few bullets, and only state facts you know (never invent numbers).",
+  "Optionally start with a text widget (type text, markdown, no tableId) summarising what the dashboard shows: a short",
+  "heading and at most 3-4 one-line bullets with the key findings (the charts carry the detail). Only state facts you know.",
   "Keep widget titles short (a few words, no findings) and leave KPI subLabel empty: findings belong in the text widget.",
 ].join(" ");
 

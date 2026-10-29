@@ -5,25 +5,25 @@
   overflow: auto;
   padding: 0.25rem 0.5rem;
   color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: 0.85rem; /* shared/layout fitTextRows sizes the widget for this */
+  line-height: 1.45;
 }
 .text-widget > :first-child { margin-top: 0; }
 .text-widget > :last-child { margin-bottom: 0; }
 .text-widget h3,
 .text-widget h4,
 .text-widget h5 {
-  margin: 0.75rem 0 0.35rem;
+  margin: 0.6rem 0 0.3rem;
   color: var(--text);
   line-height: 1.25;
 }
-.text-widget h3 { font-size: 1.15rem; }
-.text-widget h4 { font-size: 1rem; }
+.text-widget h3 { font-size: 1.05rem; }
+.text-widget h4 { font-size: 0.95rem; }
 .text-widget h5 { font-size: 0.9rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.text-widget p { margin: 0 0 0.6rem; }
+.text-widget p { margin: 0 0 0.5rem; }
 .text-widget ul,
-.text-widget ol { margin: 0 0 0.6rem; padding-left: 1.25rem; }
-.text-widget li { margin: 0.15rem 0; }
+.text-widget ol { margin: 0 0 0.5rem; padding-left: 1.25rem; }
+.text-widget li { margin: 0.1rem 0; }
 .text-widget strong { color: var(--text); }
 .text-widget a { color: var(--accent-text); }
 .text-widget code {

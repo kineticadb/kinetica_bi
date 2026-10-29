@@ -1,5 +1,6 @@
 // Phase 136 (D-07, D-08): pure grid math for AI widget placement. No React, no store.
 import type { AiWidgetType } from "./aiAsk";
+import type { AiOp } from "./aiOp";
 
 export const AI_GRID_COLS = 36;
 export const AI_MIN_W = 6;
@@ -129,14 +130,37 @@ export const FIT_RECORDS_H = 24;
 export const FIT_SCREEN_ROWS = 56;
 const FIT_KPI_PER_ROW = 6;
 export const FIT_TEXT_DEFAULT_H = 8;
-export const FIT_TEXT_MAX_H = 24;
+export const FIT_TEXT_MAX_H = 22;
 const FIT_TEXT_MIN_H = 6;
-const FIT_TEXT_CHARS_PER_LINE = 110;
+/** Average character width of the text widget's 0.85rem (13.6px) body text. */
+const TEXT_CHAR_PX = 6.8;
+/** The server does not know the screen: assume a laptop's full-width text area (~950px). The browser refits on load. */
+const FIT_TEXT_CHARS_PER_LINE = 140;
 
-/** Grid rows for a full-width text widget: 2 rows (26px) per rendered line with block spacing, plus the header. */
-export function fitTextRows(markdown: string): number {
-  const lines = markdown.split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(l.length / FIT_TEXT_CHARS_PER_LINE)), 0);
-  return Math.min(FIT_TEXT_MAX_H, Math.max(FIT_TEXT_MIN_H, lines * 2 + 6));
+export function textCharsPerLine(textWidthPx: number): number {
+  return Math.max(40, Math.floor(textWidthPx / TEXT_CHAR_PX));
+}
+const FIT_ROWS_PER_LINE = 1.55; // ~20px line height / 13px grid row
+const FIT_ROWS_PER_BLOCK = 0.8; // the gap after a heading, paragraph or list
+const FIT_TEXT_CHROME_ROWS = 5; // widget header + padding (57px) + grid margin
+
+/** Grid rows for a full-width text widget: its wrapped lines, the gaps between blocks, and the header. */
+export function fitTextRows(markdown: string, charsPerLine: number = FIT_TEXT_CHARS_PER_LINE): number {
+  let lines = 0;
+  let blocks = 0;
+  let prev = "blank";
+  for (const raw of markdown.split("\n")) {
+    const l = raw.trim();
+    const kind = l === "" ? "blank" : /^#{1,3}\s/.test(l) ? "heading" : /^([-*+]|\d+[.)])\s/.test(l) ? "list" : l.startsWith("|") ? "table" : "text";
+    if (kind !== "blank") {
+      const shown = l.replace(/^(#{1,3}|[-*+]|\d+[.)])\s+/, "").replace(/\*\*|__|`/g, ""); // markers take no width
+      lines += Math.max(1, Math.ceil(shown.length / charsPerLine));
+      if (kind === "heading" || kind !== prev) blocks++;
+    }
+    prev = kind;
+  }
+  const rows = Math.ceil(lines * FIT_ROWS_PER_LINE + blocks * FIT_ROWS_PER_BLOCK + FIT_TEXT_CHROME_ROWS);
+  return Math.min(FIT_TEXT_MAX_H, Math.max(FIT_TEXT_MIN_H, rows));
 }
 
 /** Splits `cols` across `n` items in a row; the last item takes the remainder so the row is exactly full. */
@@ -193,6 +217,27 @@ export function placeFitBands(items: readonly { key: number; type: string; rows?
   for (const it of records) {
     out[it.key] = { x: 0, y, w: AI_GRID_COLS, h: FIT_RECORDS_H };
     y += FIT_RECORDS_H;
+  }
+  return out;
+}
+
+/**
+ * kbi-mcp handoff: the browser knows the real width, so it resizes each added text widget to its text and moves
+ * every added widget below it by the same amount. Ops without text come back unchanged (a new array).
+ */
+export function refitTextLayouts(ops: readonly AiOp[], charsPerLine: number): AiOp[] {
+  const out = ops.map((o) => (o.op === "add_widget" && o.layout ? { ...o, layout: { ...o.layout } } : o));
+  const adds = out.filter((o): o is Extract<AiOp, { op: "add_widget" }> => o.op === "add_widget" && o.layout !== undefined);
+  const texts = adds.filter((o) => o.type === "text").sort((a, b) => a.layout!.y - b.layout!.y);
+  for (const t of texts) {
+    const md = (t.config as Record<string, unknown>).markdown;
+    if (typeof md !== "string") continue;
+    const oldBottom = t.layout!.y + t.layout!.h;
+    const h = fitTextRows(md, charsPerLine);
+    const delta = h - t.layout!.h;
+    if (delta === 0) continue;
+    t.layout!.h = h;
+    for (const o of adds) if (o !== t && o.layout!.y >= oldBottom) o.layout!.y += delta;
   }
   return out;
 }
