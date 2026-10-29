@@ -2,7 +2,7 @@
 
 Lets Claude Desktop build Kinetica BI dashboards. Claude's model does the thinking; Kinetica BI checks every change with the same rules as the in-app AI (structured changes only, never SQL; column names checked against the live schema; your permissions). Nothing is saved by Claude: it finishes with a link, you open it, review the dashboard and press **Keep** (or **Discard**).
 
-Scope today: new dashboards only; Claude can read tables and add dynamic views, charts (KPI, bar, line, pie, table, timeline, records), markdown text, maps and heatmap layers. No edits before handoff, no filters yet (Phase 143).
+Claude can build a new dashboard or change one you can edit (`list_dashboards`, `open_dashboard`): read tables and the dashboard, add dynamic views, charts (KPI, bar, line, pie, table, timeline, records), markdown text, maps and heatmap layers, edit, move, rename and remove them (removing saved items needs your OK in chat), and apply filters. Filters only last while you review: Keep does not save them.
 
 ## 1. Run Kinetica BI with the MCP routes on
 
@@ -51,10 +51,14 @@ Ask Claude, for example: *"Using kinetica-bi, build a dashboard for demo.nyctaxi
 | Tool | What it does |
 |---|---|
 | `list_tables` | Registered tables |
-| `start_dashboard` | Creates a new dashboard with the chosen tables |
-| `describe_table` | Live columns and types |
-| `add_dynamic_view`, `add_widget`, `add_heatmap_layer` | Validated by the server; rejections come back with reasons to fix |
-| `finish_dashboard` | Returns the review link |
+| `start_dashboard` | Creates a new, unkept dashboard with the chosen tables (only you see it; `replace` discards your previous unkept one) |
+| `list_dashboards`, `open_dashboard` | Pick a saved dashboard you can edit and start changing it |
+| `describe_table`, `get_dashboard` | Live columns and types; the dashboard's widgets, layers and views |
+| `add_dynamic_view`, `add_widget` (incl. `text`), `add_heatmap_layer` | Validated by the server; rejections come back with reasons to fix |
+| `edit_widget`, `rename_widget`, `change_widget_type`, `set_layout`, `edit_heatmap_layer`, `set_layer_visibility` | Change saved or new items |
+| `remove_widget`, `remove_layer`, `remove_dynamic_view` | Saved items need `confirmed: true` after you approve in chat |
+| `apply_filter`, `clear_filter` | Narrow the dashboard while you review (not saved by Keep) |
+| `finish_dashboard` | Returns the review link (Keep or Discard there; the build is logged on the AI activity page as Claude Desktop) |
 
 ## Tests
 

@@ -10,6 +10,8 @@ export const INSTRUCTIONS = [
   "Change an existing one: list_dashboards -> open_dashboard -> get_dashboard (ids, titles, layout) -> describe_table ->",
   "edit_widget / rename_widget / change_widget_type / set_layout / edit_heatmap_layer / set_layer_visibility / add_* /",
   "remove_* -> finish_dashboard. Before removing anything saved, ask the user in chat; then pass confirmed: true.",
+  "apply_filter / clear_filter narrow the dashboard while the user reviews it; Keep does not save filters, so say so if the",
+  "user asks for a filtered dashboard.",
   "Nothing is saved by these tools: finish_dashboard returns a link; the user opens it, reviews the dashboard and presses Keep.",
   "Column names must come from describe_table. Do not size or place widgets: finish_dashboard lays the dashboard out to fit",
   "one screen (up to about 3 KPIs, 4 charts and a map; a records table goes below). A rejected call returns the reasons:",

@@ -204,7 +204,16 @@ export const WRITE_ROUTE_CLASSIFICATION: Record<string, string> = {
 };
 
 const collectWriteRoutes = async (): Promise<string[]> => {
-  const app = (await createApp()) as any;
+  // Phase 143: the MCP routes are classified, so register them whatever a dev .env says (it leaks into vitest).
+  const savedMcp = process.env.MCP_ENABLED;
+  process.env.MCP_ENABLED = "true";
+  let app: any;
+  try {
+    app = (await createApp()) as any;
+  } finally {
+    if (savedMcp === undefined) delete process.env.MCP_ENABLED;
+    else process.env.MCP_ENABLED = savedMcp;
+  }
   const out = new Set<string>();
   for (const layer of app._router.stack as any[]) {
     if (!layer.route) continue;

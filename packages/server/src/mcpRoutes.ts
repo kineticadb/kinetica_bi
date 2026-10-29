@@ -47,12 +47,14 @@ import { createMcpSession, getMcpSession, takeMcpHandoff, MCP_MAX_AUDITED_CALLS,
 import { recordMcpBuild, type AiToolAuditEntry } from "./lib/aiAudit";
 import { ALLOW_LIST_VERSION } from "@kinetica-bi/shared";
 
-/** The in-app AI's tools Claude Desktop may call: read the schema and the dashboard, add, and (Phase 143) edit and remove. */
+/** The in-app AI's tools Claude Desktop may call: read the schema and the dashboard, add, and (Phase 143) edit, remove and filter. */
 export const MCP_TOOL_NAMES = [
   "list_tables", "describe_table", "get_dashboard",
   "add_dynamic_view", "add_widget", "add_heatmap_layer",
   "edit_widget", "rename_widget", "change_widget_type", "set_layout", "edit_heatmap_layer", "set_layer_visibility",
   "remove_widget", "remove_layer", "remove_dynamic_view",
+  // Phase 143 (AIMCP-V20-09): session-only, like the in-app AI's; Keep does not save filters.
+  "apply_filter", "clear_filter",
 ] as const;
 const REMOVE_TOOLS: ReadonlySet<string> = new Set(["remove_widget", "remove_layer", "remove_dynamic_view"]);
 const CONFIRM_REASON = "Removing saved content needs the user's approval: ask the user, then call again with confirmed: true.";

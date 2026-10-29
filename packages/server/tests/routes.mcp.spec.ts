@@ -302,4 +302,18 @@ describe("/api/mcp (kbi-mcp spike)", () => {
     const theirs = await startSession(app, eve);
     expect((await request(app).post("/api/mcp/sessions").set("Cookie", dee()).send({ dashboardId: theirs.dashboardId })).status).toBe(404);
   });
+
+  it("MCP-16 Claude applies and clears filters through the gateway; they reach the browser as session-only filter ops", async () => {
+    const app = await boot();
+    const c = dee();
+    const { dashboardId, tableId, sessionId } = await startSession(app, c);
+    expect((await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId))).body).toMatchObject({ ok: true });
+    const f = await call(app, c, sessionId, "apply_filter", { tableId, column: "zone", value: "Midtown" });
+    expect(f.body).toMatchObject({ ok: true });
+    expect((await call(app, c, sessionId, "apply_filter", { tableId, column: "nope", value: "x" })).body).toMatchObject({ ok: false });
+    expect((await call(app, c, sessionId, "clear_filter", { tableId, column: "zone" })).body).toMatchObject({ ok: true });
+    await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({});
+    const ops = (await request(app).get(`/api/mcp/sessions/${sessionId}/handoff?dashboardId=${dashboardId}`).set("Cookie", c)).body.ops as { op: string }[];
+    expect(ops.map((o) => o.op)).toEqual(["add_widget", "apply_filter", "clear_filter"]);
+  });
 });
