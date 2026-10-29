@@ -1,7 +1,9 @@
-// kbi-mcp spike: a tiny Kinetica BI REST client. Signs in with password login (the user's own credentials from the
-// Claude Desktop config) and keeps the session cookie; one re-login on a 401. Never logs credentials or cookies.
+// kbi-mcp: a tiny Kinetica BI REST client. Signs in with the user's personal access token (Phase 143, KBI_TOKEN), or
+// with a username and password when no token is set, and keeps the session cookie; one re-login on a 401 (the server
+// drops sessions when it restarts). Never logs credentials, tokens or cookies.
 
 export type KbiResponse = { status: number; body: unknown };
+export type KbiCredentials = { token?: string; username?: string; password?: string };
 
 export class KbiError extends Error {
   readonly status: number;
@@ -26,8 +28,7 @@ export class KbiClient {
 
   constructor(
     private readonly baseUrl: string,
-    private readonly username: string,
-    private readonly password: string,
+    private readonly credentials: KbiCredentials,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
@@ -36,11 +37,15 @@ export class KbiClient {
   }
 
   async login(): Promise<void> {
-    if (!this.username || !this.password) throw new KbiError(401, "KBI_USERNAME and KBI_PASSWORD must be set in the MCP server's env.");
-    const res = await this.fetchImpl(this.url("/api/auth/login"), {
+    const { token, username, password } = this.credentials;
+    if (!token && !(username && password)) {
+      throw new KbiError(401, "Set KBI_TOKEN in the MCP server's env (create one in Kinetica BI: your user menu, Connect Claude Desktop).");
+    }
+    const [path, payload] = token ? ["/api/mcp/token-login", { token }] : ["/api/auth/login", { username, password }];
+    const res = await this.fetchImpl(this.url(path), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: this.username, password: this.password }),
+      body: JSON.stringify(payload),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new KbiError(res.status, `Kinetica BI sign-in failed: ${messageOf(body, `HTTP ${res.status}`)}`);

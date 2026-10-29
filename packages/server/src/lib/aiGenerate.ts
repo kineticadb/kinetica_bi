@@ -23,7 +23,20 @@ export function findPendingForUser(username: string): { id: number; name: string
     .get(norm(username)) as { id: number; name: string } | undefined;
 }
 
-export function createGeneratedDashboard(input: { username: string; name: string; description?: string; tableId: number; now?: number }): Dashboard {
+/**
+ * `tableIds` (Phase 143) links several tables; `assistant: false` (Phase 143, a Claude Desktop build) skips the AI
+ * Assistant widget. Generate passes one tableId and gets the assistant.
+ */
+export function createGeneratedDashboard(input: {
+  username: string;
+  name: string;
+  description?: string;
+  tableId?: number;
+  tableIds?: number[];
+  assistant?: boolean;
+  now?: number;
+}): Dashboard {
+  const tableIds = input.tableIds ?? (input.tableId !== undefined ? [input.tableId] : []);
   const u = norm(input.username);
   try {
     return db.transaction((): Dashboard => {
@@ -33,8 +46,10 @@ export function createGeneratedDashboard(input: { username: string; name: string
         .prepare("INSERT INTO dashboards (name, description, generated_by, generated_pending_at) VALUES (?, ?, ?, ?)")
         .run(input.name, input.description ?? "", u, input.now ?? Date.now());
       const id = Number(r.lastInsertRowid);
-      db.prepare("INSERT INTO dashboard_tables (dashboard_id, table_id) VALUES (?, ?)").run(id, input.tableId);
-      createWidget(id, { title: AI_ASSISTANT_TITLE, type: "ai" as Widget["type"], position: 0, config: { layout: { ...GENERATE_AI_RECT } } });
+      for (const tableId of tableIds) db.prepare("INSERT INTO dashboard_tables (dashboard_id, table_id) VALUES (?, ?)").run(id, tableId);
+      if (input.assistant !== false) {
+        createWidget(id, { title: AI_ASSISTANT_TITLE, type: "ai" as Widget["type"], position: 0, config: { layout: { ...GENERATE_AI_RECT } } });
+      }
       return getDashboard(id)!;
     })();
   } catch (e) {

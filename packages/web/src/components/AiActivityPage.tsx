@@ -18,7 +18,7 @@ import type {
 } from "../api/client";
 import "./AiActivityPage.css";
 
-const KIND_LABEL = { ask: "Ask", generate: "Generate", keep: "Keep" } as const;
+const KIND_LABEL = { ask: "Ask", generate: "Generate", keep: "Keep", mcp: "Claude Desktop" } as const;
 const OUTCOME_LABEL: Record<string, string> = {
   ok: "Answered",
   cancelled: "Cancelled",

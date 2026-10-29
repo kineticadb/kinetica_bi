@@ -176,3 +176,19 @@ export function loadAiConfig(env: Env = process.env): AiConfigResult {
 export function getAiConfig(): AiConfigResult {
   return current;
 }
+
+/** What the gateway and Keep need from the AI config: the data access and the dynamic-view limits. */
+export type AiCheckLimits = Pick<AiConfig, "dataAccess" | "dvMaxRecords" | "dvMaxJoins" | "dvMaxPerSession">;
+
+/**
+ * Phase 143 (AIMCP-V20-07): with the in-app AI off, the Claude Desktop connector (MCP_ENABLED) still uses the gateway
+ * and Keep. It then runs schema-only (no row values ever reach Claude) with the default view limits.
+ */
+export const MCP_ONLY_LIMITS: AiCheckLimits = Object.freeze({ dataAccess: "schema", dvMaxRecords: 100000, dvMaxJoins: 2, dvMaxPerSession: 5 });
+
+/** The in-app AI's config when it is on; else the connector's defaults when MCP_ENABLED; else undefined (AI checks unavailable). */
+export function aiCheckLimits(env: Env = process.env): AiCheckLimits | undefined {
+  const c = getAiConfig();
+  if (c.enabled) return c.config;
+  return env.MCP_ENABLED === "true" ? MCP_ONLY_LIMITS : undefined;
+}

@@ -80,6 +80,14 @@ describe("AiActivityPage", () => {
     expect(within(table).getByText("Kept 3 added, 1 edited, 0 removed")).toBeTruthy();
   });
 
+  it("AUDPAGE-MCP: a Claude Desktop build has its own kind and shows its question", async () => {
+    vi.mocked(listAiAudit).mockResolvedValue(list([row({ id: 9, kind: "mcp", question: 'Built "NYC" in Claude Desktop' })]));
+    render(<AiActivityPage />);
+    const table = await screen.findByRole("table");
+    expect(await within(table).findByText("Claude Desktop")).toBeTruthy();
+    expect(within(table).getByText('Built "NYC" in Claude Desktop')).toBeTruthy();
+  });
+
   it("AUDPAGE-4: dashboard states", async () => {
     vi.mocked(listAiAudit).mockResolvedValue(list([
       row({ id: 1, dashboardName: "Live one" }),

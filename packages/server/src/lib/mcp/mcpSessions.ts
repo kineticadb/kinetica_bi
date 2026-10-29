@@ -4,6 +4,10 @@
 import { randomUUID } from "node:crypto";
 import type { AiOp } from "@kinetica-bi/shared";
 import { createShadow, type ShadowState } from "../ai/shadow";
+import type { AiToolAuditEntry } from "../aiAudit";
+
+/** Tool calls kept for the audit row (Phase 143); a runaway client cannot grow a session without bound. */
+export const MCP_MAX_AUDITED_CALLS = 200;
 
 export const MCP_SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 export const MCP_MAX_SESSIONS_PER_USER = 3;
@@ -15,6 +19,10 @@ export type McpSession = {
   shadow: ShadowState;
   ops: AiOp[];
   applied: string[];
+  /** Phase 143 (AIMCP-V20-06): every tool call and every rejected change, for the audit row written at finish. */
+  tools: AiToolAuditEntry[];
+  rejected: { label: string; stage: string; reasons: string[] }[];
+  startedAt: number;
   summary?: string;
   finished: boolean;
   touchedAt: number;
@@ -39,6 +47,9 @@ export function createMcpSession(username: string, dashboardId: number, now = Da
     shadow: createShadow({ widgets: [], layers: [], dynamicViews: [], filters: [] }),
     ops: [],
     applied: [],
+    tools: [],
+    rejected: [],
+    startedAt: now,
     finished: false,
     touchedAt: now,
   };

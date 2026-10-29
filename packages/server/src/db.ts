@@ -414,6 +414,30 @@ const SCHEMA_DDL = `
     finished_at TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_export_jobs_user ON export_jobs (username, created_at DESC);
+
+  -- v2.0 Phase 143 (AIMCP-V20-04): personal access tokens for the Claude Desktop connector. The user's Kinetica
+  -- password is encrypted with a key derived from the token itself (never stored), so a row alone cannot be used.
+  CREATE TABLE IF NOT EXISTS mcp_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL,
+    name TEXT NOT NULL,
+    token_hash BLOB NOT NULL,
+    salt BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
+    iv BLOB NOT NULL,
+    auth_tag BLOB NOT NULL,
+    kinetica_url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    expires_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_mcp_tokens_user ON mcp_tokens (username);
+  -- Sessions a token opened, so revoking the token ends them too.
+  CREATE TABLE IF NOT EXISTS mcp_token_sessions (
+    sid TEXT PRIMARY KEY,
+    token_id INTEGER NOT NULL
+  );
 `;
 
 export const createDb = (dbPath: string): Database.Database => {

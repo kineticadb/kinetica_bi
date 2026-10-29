@@ -83,3 +83,43 @@
   font-size: var(--text-lg);
   opacity: 0.5;
 }
+
+/* Phase 143: Claude Desktop access tokens */
+.profile-token-form,
+.profile-token-created {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.profile-token-created .config-sql-code {
+  white-space: pre;
+  overflow-x: auto;
+  word-break: normal;
+}
+.profile-token-error {
+  margin-top: var(--space-2);
+  color: var(--danger);
+  font-size: var(--text-base);
+}
+.profile-token-list {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.profile-token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.profile-token-name {
+  font-weight: var(--font-weight-semibold);
+}
+.profile-token-meta {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}

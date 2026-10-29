@@ -16,7 +16,7 @@ import {
 import type { AuthedRequest } from "./auth";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
-import { getAiConfig } from "./lib/aiConfig";
+import { aiCheckLimits } from "./lib/aiConfig";
 import { getDashboard, getDashboardVersion, getDashboardDynamicView } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getEffectivePermissions } from "./lib/rbacDb";
@@ -51,8 +51,9 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
     if (!Number.isInteger(id) || id <= 0 || !getDashboard(id) || !canViewDashboard(username, id)) {
       return res.status(404).json({ error: "Dashboard not found." });
     }
-    const cfg = getAiConfig();
-    if (!cfg.enabled) return res.status(503).json({ error: "AI is not configured.", code: "AI_NOT_CONFIGURED" });
+    // 143: Keep also serves Claude Desktop builds, so it works when the in-app AI is off but the connector is on.
+    const limits = aiCheckLimits();
+    if (!limits) return res.status(503).json({ error: "AI is not configured.", code: "AI_NOT_CONFIGURED" });
 
     const parsed = AiKeepRequestSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -97,7 +98,7 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
     const live = createLiveSchema({ username, principal: () => authedReq });
     const prep = await prepareKeep(c, {
       describe: (t) => live.describe(t),
-      limits: { maxRecords: cfg.config.dvMaxRecords, maxJoins: cfg.config.dvMaxJoins },
+      limits: { maxRecords: limits.dvMaxRecords, maxJoins: limits.dvMaxJoins },
       savedDvColumns: (dv) => {
         const r = getDashboardDynamicView(dv);
         return r && r.dashboard_id === id ? r.columns_json : null;

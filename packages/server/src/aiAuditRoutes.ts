@@ -82,8 +82,9 @@ function dashLookup() {
   };
 }
 
-const kindOf = (r: { kind: string | null; request_id: unknown }): "ask" | "generate" | "keep" =>
-  (r.kind as "ask" | "generate" | "keep" | null) ?? (typeof r.request_id === "string" && r.request_id.startsWith("keep-") ? "keep" : "ask");
+type AuditKind = "ask" | "generate" | "keep" | "mcp";
+const kindOf = (r: { kind: string | null; request_id: unknown }): AuditKind =>
+  (r.kind as AuditKind | null) ?? (typeof r.request_id === "string" && r.request_id.startsWith("keep-") ? "keep" : "ask");
 
 function baseDto(r: any, dash: ReturnType<typeof dashLookup>) {
   const d = dash(r.dashboard_id);

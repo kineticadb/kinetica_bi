@@ -10,7 +10,7 @@ import { db } from "../db";
 import type { AiKeepIdMap } from "@kinetica-bi/shared";
 
 export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited";
-export type AiAuditKind = "ask" | "generate" | "keep";
+export type AiAuditKind = "ask" | "generate" | "keep" | "mcp";
 export type AiToolAuditEntry = { name: string; args?: unknown; result: "ok" | "rejected" | "error"; stage?: string; reasons?: string[] };
 export type AdmitInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number; capPerHour: number; capPerDay: number; kind?: "ask" | "generate" };
 export type AdmitResult =
@@ -166,4 +166,43 @@ export function recordAiKeep(input: AiKeepAuditInput, conn: Database.Database = 
     ts: new Date(now).toISOString(), level: "info", event: "ai_keep",
     username: input.username, dashboard_id: input.dashboardId, outcome: input.outcome, outcome_detail: input.detail ?? null, duration_ms: input.durationMs,
   }));
+}
+
+/** Phase 143 (AIMCP-V20-06): a Claude Desktop build (connector session). Claude's model did the work, so it is not counted against the in-app AI's caps. */
+export type McpBuildAuditInput = {
+  username: string;
+  dashboardId: number;
+  dashboardName: string;
+  summary?: string;
+  dataAccess: string;
+  allowListVersion: string;
+  tools: AiToolAuditEntry[];
+  changes: FinalizeInput["changes"];
+  startedAt: number;
+  now: number;
+};
+
+export function recordMcpBuild(input: McpBuildAuditInput, conn: Database.Database = db): number {
+  const info = conn
+    .prepare(
+      `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, answer_text, status, outcome, counted, provider, model, data_access,
+         allow_list_version, steps, tools_json, changes_json, duration_ms, kind)
+       VALUES (@now, lower(@username), @dashboardId, @requestId, @question, @summary, 'final', 'ok', 0, 'claude-desktop', '', @dataAccess,
+         @allowListVersion, @steps, @tools, @changes, @duration, 'mcp')`,
+    )
+    .run({
+      now: input.now,
+      username: input.username,
+      dashboardId: input.dashboardId,
+      requestId: `mcp-${input.now}-${input.dashboardId}`,
+      question: `Built "${input.dashboardName}" in Claude Desktop`,
+      summary: input.summary ?? null,
+      dataAccess: input.dataAccess,
+      allowListVersion: input.allowListVersion,
+      steps: input.tools.length,
+      tools: JSON.stringify(input.tools),
+      changes: JSON.stringify(input.changes),
+      duration: Math.max(0, input.now - input.startedAt),
+    });
+  return Number(info.lastInsertRowid);
 }

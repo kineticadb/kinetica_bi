@@ -306,15 +306,38 @@ describe("Keep route refusals (141-12 task 2)", () => {
     expectUntouched(before);
   });
 
-  it("KEEP-ROUTE-forged-disabled AI off -> 503", async () => {
+  it("KEEP-ROUTE-forged-disabled AI off and the connector off -> 503", async () => {
     const c = await setup();
     restoreEnv?.();
     restoreEnv = null;
     delete process.env.AI_ENABLED;
-    const app2 = await createApp();
-    const r = await request(app2).post(`/api/dashboards/${c.D}/ai-keep`).set("Cookie", c.cookie).send(happy(c));
-    expect(r.status).toBe(503);
-    expect(r.body.code).toBe("AI_NOT_CONFIGURED");
+    const savedMcp = process.env.MCP_ENABLED; // a dev .env may turn the connector on (it leaks into vitest)
+    delete process.env.MCP_ENABLED;
+    try {
+      const app2 = await createApp();
+      const r = await request(app2).post(`/api/dashboards/${c.D}/ai-keep`).set("Cookie", c.cookie).send(happy(c));
+      expect(r.status).toBe(503);
+      expect(r.body.code).toBe("AI_NOT_CONFIGURED");
+    } finally {
+      if (savedMcp !== undefined) process.env.MCP_ENABLED = savedMcp;
+    }
+  });
+
+  it("KEEP-ROUTE-mcp-only AI off but the Claude Desktop connector on -> Keep works (143 AIMCP-V20-07)", async () => {
+    const c = await setup();
+    restoreEnv?.();
+    restoreEnv = null;
+    delete process.env.AI_ENABLED;
+    const savedMcp = process.env.MCP_ENABLED;
+    process.env.MCP_ENABLED = "true";
+    try {
+      const app2 = await createApp();
+      const r = await request(app2).post(`/api/dashboards/${c.D}/ai-keep`).set("Cookie", c.cookie).send(happy(c));
+      expect(r.status).toBe(200);
+    } finally {
+      if (savedMcp === undefined) delete process.env.MCP_ENABLED;
+      else process.env.MCP_ENABLED = savedMcp;
+    }
   });
 
   it("KEEP-ROUTE-conflict a foreign write before Keep -> 409, zero Kinetica calls, nothing overwritten", async () => {

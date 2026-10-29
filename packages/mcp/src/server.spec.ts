@@ -31,9 +31,11 @@ const TOOLS = {
 function routes(c: Call): KbiResponse | KbiError {
   if (c.path === "/api/mcp/tools") return { status: 200, body: TOOLS };
   if (c.path === "/api/tables") return { status: 200, body: { data: [{ id: 7, schema: "demo", name: "nyctaxi", description: "Taxi trips" }] } };
-  if (c.path === "/api/dashboards") return { status: 201, body: { id: 42 } };
-  if (c.path === "/api/dashboards/42/tables") return { status: 201, body: { data: [] } };
-  if (c.path === "/api/mcp/sessions") return { status: 201, body: { sessionId: "s1", dashboardId: 42 } };
+  if (c.path === "/api/mcp/sessions") {
+    const b = c.body as { name: string; replace?: boolean };
+    if (b.name === "Busy" && !b.replace) return new KbiError(409, 'You already have an unkept dashboard, "Old". Open it and Keep or Discard it, or start again with replace to discard it.');
+    return { status: 201, body: { sessionId: "s1", dashboardId: 42 } };
+  }
   if (c.path === "/api/mcp/sessions/s1/call") {
     const args = (c.body as { args: { aggregation?: string } }).args;
     return args.aggregation
@@ -74,8 +76,9 @@ describe("kbi-mcp server", () => {
     const mcp = await connect(client);
     expect(textOf(await mcp.callTool({ name: "list_tables", arguments: {} }))).toBe("7: demo.nyctaxi - Taxi trips");
     expect(textOf(await mcp.callTool({ name: "start_dashboard", arguments: { name: "Tips", tableIds: [7] } }))).toContain("id 42");
-    expect(calls.find((c) => c.path === "/api/dashboards/42/tables")?.body).toEqual({ table_id: 7 });
-    expect(calls.find((c) => c.path === "/api/mcp/sessions")?.body).toEqual({ dashboardId: 42 });
+    // one server call creates the unkept dashboard with its tables and opens the session
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/mcp/sessions"]);
+    expect(calls.find((c) => c.path === "/api/mcp/sessions")?.body).toEqual({ name: "Tips", tableIds: [7] });
     const bad = await mcp.callTool({ name: "add_widget", arguments: { tempId: -1, type: "bar" } });
     expect(bad.isError).toBe(true);
     expect(textOf(bad)).toBe("Rejected (allow_list): missing required field aggregation. Fix it and call again with the same tempId.");
@@ -86,6 +89,18 @@ describe("kbi-mcp server", () => {
     expect(textOf(fin)).toContain("press Keep");
     // the session is over: the next widget needs a new dashboard
     expect((await mcp.callTool({ name: "add_widget", arguments: {} })).isError).toBe(true);
+  });
+
+  it("MCPS-3b an unkept dashboard blocks a new one until Claude asks to replace it", async () => {
+    const { client, calls } = fakeKbi(routes);
+    const mcp = await connect(client);
+    const busy = await mcp.callTool({ name: "start_dashboard", arguments: { name: "Busy", tableIds: [7] } });
+    expect(busy.isError).toBe(true);
+    expect(textOf(busy)).toContain('"Old"');
+    expect(textOf(busy)).toContain("replace");
+    const ok = await mcp.callTool({ name: "start_dashboard", arguments: { name: "Busy", tableIds: [7], replace: true } });
+    expect(ok.isError).toBeFalsy();
+    expect(calls.at(-1)?.body).toEqual({ name: "Busy", tableIds: [7], replace: true });
   });
 
   it("MCPS-4 server errors come back as tool errors with the server's message", async () => {
@@ -112,15 +127,28 @@ describe("KbiClient", () => {
       }
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     }) as typeof fetch;
-    const c = new KbiClient("http://kbi:4000/", "u", "p", f);
+    const c = new KbiClient("http://kbi:4000/", { username: "u", password: "p" }, f);
     const r = await c.request("GET", "/api/tables");
     expect(r.body).toEqual({ data: [] });
     expect(seen).toEqual([{ path: "/api/tables", cookie: "kbi_session=tok1" }, { path: "/api/tables", cookie: "kbi_session=tok1" }]);
   });
 
   it("MCPC-2 missing credentials and failed sign-in are clear errors", async () => {
-    await expect(new KbiClient("http://kbi", "", "").request("GET", "/x")).rejects.toThrow("KBI_USERNAME and KBI_PASSWORD");
+    await expect(new KbiClient("http://kbi", {}).request("GET", "/x")).rejects.toThrow("KBI_TOKEN");
     const f = (async () => new Response(JSON.stringify({ error: "Invalid credentials." }), { status: 401 })) as unknown as typeof fetch;
-    await expect(new KbiClient("http://kbi", "u", "bad", f).request("GET", "/x")).rejects.toThrow("Kinetica BI sign-in failed: Invalid credentials.");
+    await expect(new KbiClient("http://kbi", { username: "u", password: "bad" }, f).request("GET", "/x")).rejects.toThrow("Kinetica BI sign-in failed: Invalid credentials.");
+  });
+
+  it("MCPC-3 an access token signs in through token-login and wins over a password", async () => {
+    const posted: { path: string; body: unknown }[] = [];
+    const f = (async (url: string, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      if (init?.method === "POST") posted.push({ path, body: JSON.parse(String(init.body)) });
+      if (path === "/api/mcp/token-login") return login();
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as typeof fetch;
+    const c = new KbiClient("http://kbi", { token: "kbi_0123456789abcdef_x", username: "u", password: "p" }, f);
+    await c.request("GET", "/api/tables");
+    expect(posted).toEqual([{ path: "/api/mcp/token-login", body: { token: "kbi_0123456789abcdef_x" } }]);
   });
 });

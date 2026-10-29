@@ -278,7 +278,9 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV ceiling (default 100000).
 export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number; maxRowsPerQuery: number;
   // Phase 130 (EXPRT-V126-15, D-18): admin export caps (unset = null; default concurrency 2).
-  exportLimits: ExportLimits };
+  exportLimits: ExportLimits;
+  // Phase 143 (AIMCP-V20-04): the Claude Desktop connector routes are on (MCP_ENABLED); shows "Connect Claude Desktop".
+  mcpEnabled: boolean };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -328,6 +330,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     maxRowsPerQuery: typeof json.maxRowsPerQuery === "number" ? json.maxRowsPerQuery : 20000,
     // Phase 130 (D-18): normalised — an older server omitting the field yields the defaults, never undefined.
     exportLimits: normalizeExportLimits(json.exportLimits),
+    // Phase 143: === true — an older server omitting the field never offers the connector.
+    mcpEnabled: json.mcpEnabled === true,
   };
 };
 
@@ -2234,7 +2238,7 @@ export const keepAiChanges = async (dashboardId: number, body: AiKeepRequest): P
 };
 
 // ---- Phase 142 (AIGOV-V20-05): AI activity (audit read API, never row values) ----
-export type AiAuditKind = "ask" | "generate" | "keep";
+export type AiAuditKind = "ask" | "generate" | "keep" | "mcp"; // mcp: a Claude Desktop build (Phase 143)
 export type AiAuditDashboardState = "live" | "pending" | "deleted" | "none";
 export type AiAuditRowDto = {
   id: number;
@@ -2295,6 +2299,36 @@ export const getMcpHandoff = async (sessionId: string, dashboardId: number): Pro
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Failed to load the Claude Desktop changes (${response.status})`);
   return (await response.json()) as McpHandoffDto;
+};
+
+// Phase 143 (AIMCP-V20-04): personal access tokens for the Claude Desktop connector.
+export type McpTokenDto = { id: number; name: string; createdAt: string; lastUsedAt: string | null; expiresAt: string };
+export type McpTokenCreatedDto = { id: number; token: string; name: string; expiresAt: string };
+
+const mcpTokenError = async (response: Response, fallback: string): Promise<Error> => {
+  const json = await response.json().catch(() => ({}));
+  return new Error(typeof json?.error === "string" ? json.error : `${fallback} (${response.status})`);
+};
+
+export const listMcpTokens = async (): Promise<McpTokenDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/tokens`);
+  if (!response.ok) throw await mcpTokenError(response, "Failed to load access tokens");
+  return ((await response.json()) as { tokens: McpTokenDto[] }).tokens;
+};
+
+export const createMcpToken = async (name: string): Promise<McpTokenCreatedDto> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw await mcpTokenError(response, "Failed to create the access token");
+  return (await response.json()) as McpTokenCreatedDto;
+};
+
+export const revokeMcpToken = async (id: number): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/tokens/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await mcpTokenError(response, "Failed to revoke the access token");
 };
 
 export const getAiAuditEntry = async (id: number, signal?: AbortSignal): Promise<AiAuditDetailDto> => {

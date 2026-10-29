@@ -165,7 +165,7 @@ import { registerAiRoutes } from "./aiRoutes";
 import { registerAiAuditRoutes } from "./aiAuditRoutes";
 import { registerAiDvRoutes } from "./aiDvRoutes";
 import { registerAiKeepRoutes } from "./aiKeepRoutes";
-import { registerMcpRoutes } from "./mcpRoutes";
+import { registerMcpRoutes, registerMcpTokenLoginRoute } from "./mcpRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
@@ -495,7 +495,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY, exportLimits: EXPORT_LIMITS });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY, exportLimits: EXPORT_LIMITS, mcpEnabled: process.env.MCP_ENABLED === "true" });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
@@ -709,6 +709,9 @@ export const createApp = async (): Promise<express.Express> => {
     issueSessionCookie(res, username, sid);
     return res.redirect(`${webRedirectBase}/`);
   }));
+
+  // Phase 143: the Claude Desktop connector exchanges its access token for a session (no session yet).
+  if (process.env.MCP_ENABLED === "true") registerMcpTokenLoginRoute(app, { wrap: asyncHandler });
 
   // All routes below require authentication.
   app.use("/api", requireAuth);

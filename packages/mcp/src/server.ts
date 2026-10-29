@@ -27,12 +27,16 @@ const LOCAL_TOOLS: Tool[] = [
   },
   {
     name: "start_dashboard",
-    description: "Create a new, empty Kinetica BI dashboard with the given tables and start building it. Later tools add to this dashboard.",
+    description:
+      "Create a new, empty Kinetica BI dashboard with the given tables and start building it. Later tools add to this dashboard. " +
+      "It stays unkept (only you see it) until the user presses Keep. A user has one unkept dashboard at a time: if this " +
+      "reports one, ask the user before calling again with replace: true, which discards it.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", minLength: 1, maxLength: 120, description: "Dashboard name" },
         tableIds: { type: "array", items: { type: "integer" }, minItems: 1, maxItems: 4, description: "Table ids from list_tables" },
+        replace: { type: "boolean", description: "Discard the user's existing unkept dashboard first (ask the user)" },
       },
       required: ["name", "tableIds"],
       additionalProperties: false,
@@ -91,11 +95,9 @@ export function createKbiMcpServer(client: KbiClient, log: (msg: string) => void
         const dashName = typeof args.name === "string" ? args.name.trim() : "";
         const tableIds = Array.isArray(args.tableIds) ? args.tableIds.filter((n): n is number => Number.isInteger(n)) : [];
         if (!dashName || tableIds.length === 0) return text("start_dashboard needs a name and at least one table id.", true);
-        const d = await client.request("POST", "/api/dashboards", { name: dashName });
-        const dashboardId = (d.body as { id: number }).id;
-        for (const tableId of tableIds) await client.request("POST", `/api/dashboards/${dashboardId}/tables`, { table_id: tableId });
-        const s = await client.request("POST", "/api/mcp/sessions", { dashboardId });
-        session = { id: (s.body as { sessionId: string }).sessionId, dashboardId, name: dashName };
+        const s = await client.request("POST", "/api/mcp/sessions", { name: dashName, tableIds, ...(args.replace === true ? { replace: true } : {}) });
+        const { sessionId, dashboardId } = s.body as { sessionId: string; dashboardId: number };
+        session = { id: sessionId, dashboardId, name: dashName };
         return text(`Started dashboard "${dashName}" (id ${dashboardId}) with tables ${tableIds.join(", ")}. Next: describe_table, then add widgets.`);
       }
       if (name === "finish_dashboard") {

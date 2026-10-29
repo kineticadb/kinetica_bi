@@ -6,11 +6,13 @@
 
 import { useAuthStore } from "../store/auth";
 import { groupPermissionList } from "../lib/permissionGroups";
+import { ClaudeDesktopTokens } from "./ClaudeDesktopTokens";
 import "./ProfilePage.css";
 
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
   const authMode = useAuthStore((s) => s.authMode);
+  const mcpEnabled = useAuthStore((s) => s.mcpEnabled);
 
   if (!user) return null;
 
@@ -71,6 +73,9 @@ export function ProfilePage() {
           </div>
         )}
       </section>
+
+      {/* ── Claude Desktop access tokens (Phase 143; password sign-in only) ── */}
+      {mcpEnabled && authMode === "password" && user.permissions.includes("ai:use") && <ClaudeDesktopTokens />}
     </div>
   );
 }

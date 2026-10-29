@@ -3,9 +3,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
 import { createApp } from "../src/index";
-import { db, createWidget } from "../src/db";
+import { db, createTable, getDashboard, listDashboardTables, listWidgets } from "../src/db";
 import { forbidProviderNetwork } from "./helpers/aiTestKit";
-import { enableAiEnv, sessionFor, makeDashboard, makeTableOn, resetAiTables, mockKinetica, addWidgetArgs } from "./helpers/aiRouteKit";
+import { enableAiEnv, sessionFor, resetAiTables, mockKinetica, addWidgetArgs } from "./helpers/aiRouteKit";
 import { __clearLiveSchemaCacheForTest } from "../src/lib/ai/liveSchema";
 import { __resetMcpSessionsForTest } from "../src/lib/mcp/mcpSessions";
 import { MCP_TOOL_NAMES } from "../src/mcpRoutes";
@@ -25,7 +25,7 @@ const dee = () => sessionFor("dee", ["designer"]).cookie;
 
 beforeEach(() => {
   resetAiTables();
-  db.exec("DELETE FROM widgets;");
+  db.exec("DELETE FROM widgets; DELETE FROM mcp_tokens; DELETE FROM mcp_token_sessions;");
   __clearLiveSchemaCacheForTest();
   __resetMcpSessionsForTest();
   forbidProviderNetwork(mockKinetica({ probes: { "fleet.trips": ["zone", "fare"] } }));
@@ -39,11 +39,10 @@ afterEach(() => {
   else process.env.MCP_ENABLED = savedMcp;
 });
 
-async function startSession(app: Express, cookie: string) {
-  const d = makeDashboard();
-  const t = makeTableOn(d.id);
-  const res = await request(app).post("/api/mcp/sessions").set("Cookie", cookie).send({ dashboardId: d.id });
-  return { dashboardId: d.id, tableId: t.id, res, sessionId: res.body.sessionId as string };
+async function startSession(app: Express, cookie: string, over: Record<string, unknown> = {}) {
+  const t = createTable({ name: "trips", schema: "fleet", columns: {} });
+  const res = await request(app).post("/api/mcp/sessions").set("Cookie", cookie).send({ name: "Trips", tableIds: [t.id], ...over });
+  return { dashboardId: res.body.dashboardId as number, tableId: t.id, res, sessionId: res.body.sessionId as string };
 }
 const call = (app: Express, cookie: string, sid: string, name: string, args: unknown) =>
   request(app).post(`/api/mcp/sessions/${sid}/call`).set("Cookie", cookie).send({ name, args });
@@ -63,16 +62,39 @@ describe("/api/mcp (kbi-mcp spike)", () => {
     for (const t of res.body.tools) expect(t.jsonSchema).toMatchObject({ type: "object" });
   });
 
-  it("MCP-3 a session needs an empty dashboard the caller can see", async () => {
+  it("MCP-3 start creates an unkept dashboard only its creator sees, with the tables and no widgets", async () => {
     const app = await boot();
     const c = dee();
-    const { res } = await startSession(app, c);
+    const { res, dashboardId, tableId } = await startSession(app, c);
     expect(res.status).toBe(201);
     expect(typeof res.body.sessionId).toBe("string");
-    expect((await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ dashboardId: 999999 })).status).toBe(404);
-    const used = makeDashboard();
-    createWidget(used.id, { title: "x", type: "bar", config: {} } as never);
-    expect((await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ dashboardId: used.id })).status).toBe(409);
+    expect(getDashboard(dashboardId)).toMatchObject({ name: "Trips", generated_pending: true });
+    expect(listDashboardTables(dashboardId).map((t) => t.id)).toEqual([tableId]);
+    expect(listWidgets(dashboardId)).toEqual([]); // no AI Assistant widget, unlike Generate
+    expect((await request(app).get("/api/dashboards").set("Cookie", sessionFor("eve", ["designer"]).cookie)).body.data?.map((d: { id: number }) => d.id) ?? []).not.toContain(dashboardId);
+    expect((await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ name: "x", tableIds: [999999] })).status).toBe(404);
+    expect((await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ name: "", tableIds: [tableId] })).status).toBe(400);
+  });
+
+  it("MCP-3b one unkept build at a time: a second start names the first, replace discards it", async () => {
+    const app = await boot();
+    const c = dee();
+    const first = await startSession(app, c);
+    const again = await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ name: "Second", tableIds: [first.tableId] });
+    expect(again.status).toBe(409);
+    expect(again.body).toMatchObject({ code: "AI_GENERATE_PENDING", dashboard: { id: first.dashboardId, name: "Trips" } });
+    const replaced = await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ name: "Second", tableIds: [first.tableId], replace: true });
+    expect(replaced.status).toBe(201);
+    expect(getDashboard(first.dashboardId)).toBeUndefined();
+    expect(getDashboard(replaced.body.dashboardId)).toMatchObject({ name: "Second", generated_pending: true });
+  });
+
+  it("MCP-3c Discard on a Claude build deletes the dashboard", async () => {
+    const app = await boot();
+    const c = dee();
+    const { dashboardId } = await startSession(app, c);
+    expect((await request(app).post(`/api/dashboards/${dashboardId}/discard-generated`).set("Cookie", c)).status).toBe(204);
+    expect(getDashboard(dashboardId)).toBeUndefined();
   });
 
   it("MCP-4 add_widget through the gateway, finish, then the browser takes the ops exactly once", async () => {
@@ -161,5 +183,76 @@ describe("/api/mcp (kbi-mcp spike)", () => {
     expect(t.config).toEqual({ markdown: "## Tips\n- Cash trips tip **more** on average" });
     expect(t.layout).toMatchObject({ x: 0, y: 0, w: 36 });
     expect(ops.find((o) => o.tempId === -3)!.layout.y).toBeGreaterThan(0);
+  });
+
+  it("MCP-10 a personal access token signs the connector in; revoking it signs it out", async () => {
+    const app = await boot();
+    const c = dee();
+    const made = await request(app).post("/api/mcp/tokens").set("Cookie", c).send({ name: "Claude Desktop" });
+    expect(made.status).toBe(201);
+    expect(made.body.token).toMatch(/^kbi_/);
+    const list = await request(app).get("/api/mcp/tokens").set("Cookie", c);
+    expect(list.body.tokens).toHaveLength(1);
+    expect(JSON.stringify(list.body)).not.toContain(made.body.token);
+
+    const login = await request(app).post("/api/mcp/token-login").send({ token: made.body.token });
+    expect(login.body).toEqual({ user: { username: "dee" } });
+    expect(login.status).toBe(200);
+    expect(login.body.user.username).toBe("dee");
+    const cookie = String(login.headers["set-cookie"]).split(";")[0];
+    expect((await request(app).get("/api/mcp/tools").set("Cookie", cookie)).status).toBe(200);
+
+    expect((await request(app).post("/api/mcp/token-login").send({ token: made.body.token + "x" })).status).toBe(401);
+    expect((await request(app).delete(`/api/mcp/tokens/${made.body.id}`).set("Cookie", sessionFor("eve", ["designer"]).cookie)).status).toBe(404);
+    expect((await request(app).delete(`/api/mcp/tokens/${made.body.id}`).set("Cookie", c)).status).toBe(204);
+    expect((await request(app).post("/api/mcp/token-login").send({ token: made.body.token })).status).toBe(401);
+    expect((await request(app).get("/api/mcp/tools").set("Cookie", cookie)).status).toBe(401);
+  });
+
+  it("MCP-11 tokens need the Use AI permission and password sign-in", async () => {
+    const app = await boot();
+    expect((await request(app).post("/api/mcp/tokens").set("Cookie", sessionFor("vic", ["analyst"]).cookie).send({ name: "x" })).status).toBe(403);
+    expect((await request(app).post("/api/mcp/tokens").set("Cookie", dee()).send({ name: "" })).status).toBe(400);
+  });
+
+  it("MCP-12 finish writes one Claude Desktop audit row with the tool calls and changes, not counted against AI caps", async () => {
+    const app = await boot();
+    const c = dee();
+    const { dashboardId, tableId, sessionId } = await startSession(app, c);
+    await call(app, c, sessionId, "describe_table", { tableId });
+    await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId, { aggregation: undefined }));
+    await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId));
+    await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({ summary: "Trips by zone." });
+    await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({}); // idempotent: still one row
+    const rows = db.prepare("SELECT * FROM ai_audit WHERE dashboard_id = ?").all(dashboardId) as Record<string, unknown>[];
+    expect(rows).toHaveLength(1);
+    const r = rows[0];
+    expect(r).toMatchObject({ kind: "mcp", status: "final", outcome: "ok", counted: 0, provider: "claude-desktop", answer_text: "Trips by zone.", steps: 3 });
+    expect(String(r.question)).toBe('Built "Trips" in Claude Desktop');
+    const tools = JSON.parse(String(r.tools_json)) as { name: string; result: string; stage?: string }[];
+    expect(tools.map((t) => [t.name, t.result])).toEqual([["describe_table", "ok"], ["add_widget", "rejected"], ["add_widget", "ok"]]);
+    const changes = JSON.parse(String(r.changes_json)) as { applied: string[]; rejected: { stage: string; reasons: string[] }[] };
+    expect(changes.applied).toHaveLength(1);
+    // finish re-lays out everything, so a first-fit position in the label would be wrong
+    expect(changes.applied[0]).toBe('Added bar "Trips by zone"');
+    expect(changes.rejected[0].reasons).toContain("missing required field aggregation");
+    const list = await request(app).get("/api/ai/audit").set("Cookie", sessionFor("ada", ["admin"]).cookie);
+    expect(list.body.rows?.find((x: { id: number }) => x.id === r.id)).toMatchObject({ kind: "mcp" });
+  });
+
+  it("MCP-13 with the in-app AI off, the connector still builds (schema-only access) and finishes", async () => {
+    restoreEnv = enableAiEnv();
+    delete process.env.AI_ENABLED;
+    savedMcp = process.env.MCP_ENABLED;
+    process.env.MCP_ENABLED = "true";
+    const app = await createApp();
+    const c = dee();
+    const { res, tableId, sessionId } = await startSession(app, c);
+    expect(res.status).toBe(201);
+    expect((await call(app, c, sessionId, "describe_table", { tableId })).body).toMatchObject({ ok: true });
+    expect((await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId))).body).toMatchObject({ ok: true });
+    expect((await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({})).status).toBe(200);
+    const row = db.prepare("SELECT data_access FROM ai_audit WHERE kind = 'mcp'").get() as { data_access: string };
+    expect(row.data_access).toBe("schema");
   });
 });

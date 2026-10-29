@@ -4,7 +4,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { KbiClient } from "./kbiClient.js";
 import { createKbiMcpServer } from "./server.js";
 
-const client = new KbiClient(process.env.KBI_URL ?? "http://localhost:4000", process.env.KBI_USERNAME ?? "", process.env.KBI_PASSWORD ?? "");
+const client = new KbiClient(process.env.KBI_URL ?? "http://localhost:4000", {
+  token: process.env.KBI_TOKEN,
+  username: process.env.KBI_USERNAME,
+  password: process.env.KBI_PASSWORD,
+});
 const server = createKbiMcpServer(client);
 await server.connect(new StdioServerTransport());
 process.stderr.write(`[kbi-mcp] ready (Kinetica BI at ${process.env.KBI_URL ?? "http://localhost:4000"})\n`);

@@ -136,6 +136,9 @@ import { createApp } from "../src/index";
 export const WRITE_ROUTE_CLASSIFICATION: Record<string, string> = {
   "POST /api/dashboards/generate": "exempt: creates a NEW dashboard",
   "POST /api/mcp/sessions": "exempt: in-memory MCP session only; Keep stamps the dashboard",
+  "POST /api/mcp/tokens": "exempt: a user's access token, not dashboard state",
+  "DELETE /api/mcp/tokens/:id": "exempt: a user's access token, not dashboard state",
+  "POST /api/mcp/token-login": "exempt: opens a session, not dashboard state",
   "POST /api/mcp/sessions/:id/call": "exempt: validates against the in-memory MCP session; no dashboard write",
   "POST /api/mcp/sessions/:id/finish": "exempt: in-memory MCP session only; Keep stamps the dashboard",
   "POST /api/dashboards/:id/discard-generated": "exempt: dashboard removed, nothing left to version",
