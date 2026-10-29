@@ -5,8 +5,11 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, typ
 import { KbiError, type KbiClient } from "./kbiClient.js";
 
 export const INSTRUCTIONS = [
-  "Build Kinetica BI dashboards. Workflow: list_tables -> start_dashboard (a new dashboard with the tables it uses) ->",
+  "Build and change Kinetica BI dashboards. New: list_tables -> start_dashboard (a new dashboard with the tables it uses) ->",
   "describe_table for each table -> add_dynamic_view / add_widget / add_heatmap_layer -> finish_dashboard.",
+  "Change an existing one: list_dashboards -> open_dashboard -> get_dashboard (ids, titles, layout) -> describe_table ->",
+  "edit_widget / rename_widget / change_widget_type / set_layout / edit_heatmap_layer / set_layer_visibility / add_* /",
+  "remove_* -> finish_dashboard. Before removing anything saved, ask the user in chat; then pass confirmed: true.",
   "Nothing is saved by these tools: finish_dashboard returns a link; the user opens it, reviews the dashboard and presses Keep.",
   "Column names must come from describe_table. Do not size or place widgets: finish_dashboard lays the dashboard out to fit",
   "one screen (up to about 3 KPIs, 4 charts and a map; a records table goes below). A rejected call returns the reasons:",
@@ -39,6 +42,23 @@ const LOCAL_TOOLS: Tool[] = [
         replace: { type: "boolean", description: "Discard the user's existing unkept dashboard first (ask the user)" },
       },
       required: ["name", "tableIds"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "list_dashboards",
+    description: "List the Kinetica BI dashboards you can see (id and name), to change one with open_dashboard.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "open_dashboard",
+    description:
+      "Start changing an existing dashboard (needs edit rights). Then call get_dashboard for its widgets, layers and views. " +
+      "Your changes are reviewed in the browser like a new build: nothing is saved until the user presses Keep.",
+    inputSchema: {
+      type: "object",
+      properties: { dashboardId: { type: "integer", description: "Dashboard id from list_dashboards" } },
+      required: ["dashboardId"],
       additionalProperties: false,
     },
   },
@@ -99,6 +119,20 @@ export function createKbiMcpServer(client: KbiClient, log: (msg: string) => void
         const { sessionId, dashboardId } = s.body as { sessionId: string; dashboardId: number };
         session = { id: sessionId, dashboardId, name: dashName };
         return text(`Started dashboard "${dashName}" (id ${dashboardId}) with tables ${tableIds.join(", ")}. Next: describe_table, then add widgets.`);
+      }
+      if (name === "list_dashboards") {
+        const r = await client.request("GET", "/api/dashboards");
+        const rows = (r.body as { data?: { id: number; name: string; generated_pending?: boolean }[] }).data ?? [];
+        if (rows.length === 0) return text("You can't see any dashboards yet. Use start_dashboard to build one.");
+        return text(rows.map((d) => `${d.id}: ${d.name}${d.generated_pending ? " (not kept yet)" : ""}`).join("\n"));
+      }
+      if (name === "open_dashboard") {
+        const dashboardId = typeof args.dashboardId === "number" && Number.isInteger(args.dashboardId) ? args.dashboardId : 0;
+        if (dashboardId <= 0) return text("open_dashboard needs a dashboardId from list_dashboards.", true);
+        const s = await client.request("POST", "/api/mcp/sessions", { dashboardId });
+        const b = s.body as { sessionId: string; dashboardId: number; name: string };
+        session = { id: b.sessionId, dashboardId: b.dashboardId, name: b.name };
+        return text(`Opened dashboard "${b.name}" (id ${b.dashboardId}). Next: get_dashboard for its widgets, layers and views.`);
       }
       if (name === "finish_dashboard") {
         if (!session) return text("No dashboard in progress. Call start_dashboard first.", true);

@@ -3,12 +3,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
 import { createApp } from "../src/index";
-import { db, createTable, getDashboard, listDashboardTables, listWidgets } from "../src/db";
+import { db, createTable, createDashboard, addDashboardTable, createWidget, getDashboard, listDashboardTables, listWidgets } from "../src/db";
 import { forbidProviderNetwork } from "./helpers/aiTestKit";
-import { enableAiEnv, sessionFor, resetAiTables, mockKinetica, addWidgetArgs } from "./helpers/aiRouteKit";
+import { enableAiEnv, sessionFor, resetAiTables, mockKinetica, addWidgetArgs, makeRole } from "./helpers/aiRouteKit";
 import { __clearLiveSchemaCacheForTest } from "../src/lib/ai/liveSchema";
 import { __resetMcpSessionsForTest } from "../src/lib/mcp/mcpSessions";
 import { MCP_TOOL_NAMES } from "../src/mcpRoutes";
+import { addDashboardGrant } from "../src/lib/dashboardAccessDb";
 import { FIT_KPI_H, placeFitBands } from "@kinetica-bi/shared";
 
 let restoreEnv: (() => void) | null = null;
@@ -254,5 +255,51 @@ describe("/api/mcp (kbi-mcp spike)", () => {
     expect((await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({})).status).toBe(200);
     const row = db.prepare("SELECT data_access FROM ai_audit WHERE kind = 'mcp'").get() as { data_access: string };
     expect(row.data_access).toBe("schema");
+  });
+
+  it("MCP-14 Claude opens a saved dashboard, reads it, edits and (with confirmation) removes saved widgets, and the layout is kept", async () => {
+    const app = await boot();
+    const c = dee();
+    const d = createDashboard("Ops", "");
+    addDashboardGrant(d.id, "role", "designer");
+    const T = createTable({ name: "trips", schema: "fleet", columns: {} }).id;
+    addDashboardTable(d.id, T);
+    const W1 = createWidget(d.id, { title: "Fares", type: "bar", position: 0, config: { tableId: T, metricColumn: "fare", aggregation: "SUM", groupByColumn: "zone", layout: { x: 0, y: 0, w: 12, h: 20 } } } as never).id;
+    const W2 = createWidget(d.id, { title: "Old", type: "bar", position: 1, config: { tableId: T, metricColumn: "fare", aggregation: "SUM", groupByColumn: "zone", layout: { x: 12, y: 0, w: 12, h: 20 } } } as never).id;
+
+    const open = await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ dashboardId: d.id });
+    expect(open.status).toBe(201);
+    const sid = open.body.sessionId as string;
+    const view = await call(app, c, sid, "get_dashboard", {});
+    expect(view.body.text).toContain('"Fares"');
+    expect((await call(app, c, sid, "rename_widget", { id: W1, title: "Fares by zone" })).body).toMatchObject({ ok: true });
+    const blocked = await call(app, c, sid, "remove_widget", { id: W2 });
+    expect(blocked.body).toMatchObject({ ok: false, stage: "clarification" });
+    expect(blocked.body.reasons.join(" ")).toMatch(/confirmed/);
+    expect((await call(app, c, sid, "remove_widget", { id: W2, confirmed: true })).body).toMatchObject({ ok: true });
+    expect((await call(app, c, sid, "add_widget", addWidgetArgs(T, { tempId: -1 }))).body).toMatchObject({ ok: true });
+
+    await request(app).post(`/api/mcp/sessions/${sid}/finish`).set("Cookie", c).send({ summary: "Renamed and tidied." });
+    const h = await request(app).get(`/api/mcp/sessions/${sid}/handoff?dashboardId=${d.id}`).set("Cookie", c);
+    expect(h.body.mode).toBe("edit");
+    const add = (h.body.ops as { op: string; layout?: { x: number; y: number; w: number; h: number } }[]).find((o) => o.op === "add_widget")!;
+    // placed first-fit into free space, not re-laid out over the saved widgets
+    expect(add.layout).toMatchObject({ x: 12, y: 0 });
+    const audit = db.prepare("SELECT question FROM ai_audit WHERE kind = 'mcp' AND dashboard_id = ?").get(d.id) as { question: string };
+    expect(audit.question).toBe('Changed "Ops" in Claude Desktop');
+  });
+
+  it("MCP-15 opening needs edit rights and view access; other users' unkept builds stay hidden", async () => {
+    const app = await boot();
+    const d = createDashboard("Private", "");
+    addDashboardGrant(d.id, "role", "admin");
+    // no manage_access bypass (designer has it): this user can edit dashboards but cannot see this one
+    const editor = makeRole("mcp-editor", ["ai:use", "dashboards:view", "dashboards:edit", "dashboards:create"]);
+    expect((await request(app).post("/api/mcp/sessions").set("Cookie", sessionFor("rex", [editor]).cookie).send({ dashboardId: d.id })).status).toBe(404);
+    addDashboardGrant(d.id, "role", "analyst");
+    expect((await request(app).post("/api/mcp/sessions").set("Cookie", sessionFor("ana", ["analyst"]).cookie).send({ dashboardId: d.id })).status).toBe(403);
+    const eve = sessionFor("eve", ["designer"]).cookie;
+    const theirs = await startSession(app, eve);
+    expect((await request(app).post("/api/mcp/sessions").set("Cookie", dee()).send({ dashboardId: theirs.dashboardId })).status).toBe(404);
   });
 });

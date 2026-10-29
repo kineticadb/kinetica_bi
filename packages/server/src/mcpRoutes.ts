@@ -35,6 +35,8 @@ import { principalForSession, SessionEndedError } from "./lib/exportRunner";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getEffectivePermissions } from "./lib/rbacDb";
 import { createLiveSchema } from "./lib/ai/liveSchema";
+import { projectSnapshot } from "./lib/ai/context";
+import { snapshotForDashboard } from "./lib/mcp/mcpSnapshot";
 import { checkAiOp } from "./lib/ai/gateway";
 import { gatewayDvLimits } from "./lib/ai/dvDeps";
 import { isClassAllowed } from "./lib/ai/outbound";
@@ -45,13 +47,21 @@ import { createMcpSession, getMcpSession, takeMcpHandoff, MCP_MAX_AUDITED_CALLS,
 import { recordMcpBuild, type AiToolAuditEntry } from "./lib/aiAudit";
 import { ALLOW_LIST_VERSION } from "@kinetica-bi/shared";
 
-/** Spike scope: read the schema, then ADD views, charts and map layers to a new dashboard. */
-export const MCP_TOOL_NAMES = ["list_tables", "describe_table", "add_dynamic_view", "add_widget", "add_heatmap_layer"] as const;
+/** The in-app AI's tools Claude Desktop may call: read the schema and the dashboard, add, and (Phase 143) edit and remove. */
+export const MCP_TOOL_NAMES = [
+  "list_tables", "describe_table", "get_dashboard",
+  "add_dynamic_view", "add_widget", "add_heatmap_layer",
+  "edit_widget", "rename_widget", "change_widget_type", "set_layout", "edit_heatmap_layer", "set_layer_visibility",
+  "remove_widget", "remove_layer", "remove_dynamic_view",
+] as const;
+const REMOVE_TOOLS: ReadonlySet<string> = new Set(["remove_widget", "remove_layer", "remove_dynamic_view"]);
+const CONFIRM_REASON = "Removing saved content needs the user's approval: ask the user, then call again with confirmed: true.";
 export const MCP_MAX_NEW_WIDGETS = 12;
 const MCP_PROMPT = "Built in Claude Desktop";
 export const MCP_TOKENS_PER_USER = 10;
 const MCP_TOKEN_NAME_MAX = 60;
 /** MCP_TOKEN_TTL_DAYS (1-365, default 90). */
+const OpenBody = z.object({ dashboardId: z.number().int().positive() }).strict();
 const StartBody = z
   .object({ name: z.string().trim().min(1).max(200), tableIds: z.array(z.number().int().positive()).min(1).max(4), replace: z.boolean().optional() })
   .strict();
@@ -143,17 +153,39 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
 
   app.get("/api/mcp/tools", ...requirePermission(PERMISSIONS.AI_USE), (_req, res) => {
     const specs = registry().specs.filter((s) => (MCP_TOOL_NAMES as readonly string[]).includes(s.name));
-    return res.json({ tools: specs });
+    // The in-app AI asks the user in its own UI before removing saved content; Claude asks in chat and says so with `confirmed`.
+    return res.json({
+      tools: specs.map((t) => {
+        if (!REMOVE_TOOLS.has(t.name)) return t;
+        const js = t.jsonSchema as { properties?: Record<string, unknown> };
+        return {
+          ...t,
+          description: `${t.description} Removing saved content: ask the user first, then pass confirmed: true.`,
+          jsonSchema: { ...js, properties: { ...(js.properties ?? {}), confirmed: { type: "boolean", description: "The user approved removing this saved item" } } },
+        };
+      }),
+    });
   });
 
   app.post(
     "/api/mcp/sessions",
     ...requirePermission(PERMISSIONS.AI_USE),
-    ...requirePermission(PERMISSIONS.DASHBOARDS_CREATE),
     deps.wrap(async (req, res) => {
       if (!aiConfig(res)) return;
       const { creds, sid } = (req as AuthedRequest).user!;
       const username = creds.username;
+      const perms = getEffectivePermissions(username);
+      const open = OpenBody.safeParse(req.body);
+      if (open.success) {
+        // Phase 143 (AIMCP-V20-08): change a saved dashboard. Reviewed with the same Keep bar; Keep re-checks rights and conflicts.
+        const id = open.data.dashboardId;
+        const d = getDashboard(id);
+        if (!d || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+        if (!perms.has(PERMISSIONS.DASHBOARDS_EDIT)) return res.status(403).json({ error: "You can't edit dashboards." });
+        const s = createMcpSession(username, id, { mode: "edit", snapshot: snapshotForDashboard(id) });
+        return res.status(201).json({ sessionId: s.id, dashboardId: id, name: d.name });
+      }
+      if (!perms.has(PERMISSIONS.DASHBOARDS_CREATE)) return res.status(403).json({ error: "You can't create dashboards." });
       const parsed = StartBody.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Give the dashboard a name and 1 to 4 table ids from list_tables." });
       const { name, tableIds, replace } = parsed.data;
@@ -195,7 +227,15 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const s = getMcpSession(String(req.params.id), username);
       if (!s) return res.status(404).json({ error: "Session not found or expired. Start a new dashboard." });
       if (s.finished) return res.status(409).json({ error: "This dashboard was already handed to the browser." });
-      const { name, args } = (req.body ?? {}) as { name?: unknown; args?: unknown };
+      const { name, args: rawArgs } = (req.body ?? {}) as { name?: unknown; args?: unknown };
+      // `confirmed` is the connector's removal approval, not a tool argument (the tools' schemas are strict).
+      let confirmed = false;
+      let args = rawArgs;
+      if (typeof name === "string" && REMOVE_TOOLS.has(name) && rawArgs && typeof rawArgs === "object") {
+        const { confirmed: c, ...rest } = rawArgs as Record<string, unknown>;
+        confirmed = c === true;
+        args = rest;
+      }
       const reg = registry();
       const tool = typeof name === "string" && (MCP_TOOL_NAMES as readonly string[]).includes(name) ? reg.byName.get(name) : undefined;
       if (!tool) return res.status(400).json({ error: `Unknown tool. Use one of: ${MCP_TOOL_NAMES.join(", ")}.` });
@@ -213,7 +253,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
           username,
           dashboardId: s.dashboardId,
           dataAccess: config.dataAccess,
-          dashboardView: () => ({ dashboardId: s.dashboardId, widgets: [], layers: [], dynamicViews: [], filters: [] }),
+          dashboardView: () => projectSnapshot({ dashboardId: s.dashboardId, question: "-", snapshot: s.snapshot, turns: [] }, { id: s.dashboardId }),
           dashboardTableIds,
           registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
           liveSchema,
@@ -238,6 +278,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
           liveSchema,
           getPermissions: (u) => getEffectivePermissions(u),
           canViewDashboard: (u, id) => canViewDashboard(u, id),
+          approvals: { removeSaved: confirmed },
           dashboardTableIds,
           aiDv: gatewayDvLimits(config),
           dynamicViewInfo: (id) => {
@@ -249,6 +290,10 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         JSON.stringify(args ?? {}),
       );
       if (!g.ok) {
+        if (g.stage === "clarification" && REMOVE_TOOLS.has(tool.name)) {
+          logCall(s, { name: tool.name, args, result: "rejected", stage: g.stage, reasons: [CONFIRM_REASON] });
+          return res.json({ ok: false, stage: g.stage, reasons: [CONFIRM_REASON] });
+        }
         logCall(s, { name: tool.name, args, result: "rejected", stage: g.stage, reasons: g.reasons });
         s.rejected.push({ label: tool.name, stage: g.stage, reasons: g.reasons });
         return res.json({ ok: false, stage: g.stage, reasons: g.reasons });
@@ -276,8 +321,9 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       if (!s.finished) {
         s.summary = typeof summary === "string" ? summary.slice(0, 2000) : undefined;
         const liveSchema = createLiveSchema({ username, principal: () => authedReq });
-        // The dashboard started empty, so every widget is Claude's: lay them all out to fit one screen.
-        s.ops = applyFitBands(s.ops);
+        // A new build started empty, so every widget is Claude's: lay them all out to fit one screen. An edit keeps the
+        // saved layout; its new widgets were already placed in free space by the gateway.
+        if (s.mode === "new") s.ops = applyFitBands(s.ops);
         // 142: AI-added maps open on their data; values never leave the server.
         s.ops = await stampMapDefaultViews(s.ops, {
           requestId: randomUUID(),
@@ -292,6 +338,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
           username,
           dashboardId: s.dashboardId,
           dashboardName: getDashboard(s.dashboardId)?.name ?? "",
+          mode: s.mode,
           summary: s.summary,
           dataAccess: config.dataAccess,
           allowListVersion: ALLOW_LIST_VERSION,
@@ -309,6 +356,6 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.get("/api/mcp/sessions/:id/handoff", requireAuth, (req, res) => {
     const s = takeMcpHandoff(String(req.params.id), usernameOf(req), Number(req.query.dashboardId));
     if (!s) return res.status(404).json({ error: "Nothing to load from Claude Desktop (already loaded or expired)." });
-    return res.json({ prompt: MCP_PROMPT, answer: s.summary ?? "", ops: s.ops, applied: s.applied });
+    return res.json({ prompt: MCP_PROMPT, answer: s.summary ?? "", ops: s.ops, applied: s.applied, mode: s.mode });
   });
 }

@@ -173,6 +173,8 @@ export type McpBuildAuditInput = {
   username: string;
   dashboardId: number;
   dashboardName: string;
+  /** "new" = built; "edit" = changed a saved dashboard (Phase 143). */
+  mode?: "new" | "edit";
   summary?: string;
   dataAccess: string;
   allowListVersion: string;
@@ -195,7 +197,7 @@ export function recordMcpBuild(input: McpBuildAuditInput, conn: Database.Databas
       username: input.username,
       dashboardId: input.dashboardId,
       requestId: `mcp-${input.now}-${input.dashboardId}`,
-      question: `Built "${input.dashboardName}" in Claude Desktop`,
+      question: `${input.mode === "edit" ? "Changed" : "Built"} "${input.dashboardName}" in Claude Desktop`,
       summary: input.summary ?? null,
       dataAccess: input.dataAccess,
       allowListVersion: input.allowListVersion,

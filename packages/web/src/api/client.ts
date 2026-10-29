@@ -2293,7 +2293,8 @@ export const listAiAudit = async (
 };
 
 /** kbi-mcp spike: ops an MCP client (Claude Desktop) built for this dashboard; the server hands them over once. */
-export type McpHandoffDto = { prompt: string; answer: string; ops: AiOp[]; applied: string[] };
+// Phase 143: mode "new" = Claude built this (unkept) dashboard; "edit" = Claude changed a saved one.
+export type McpHandoffDto = { prompt: string; answer: string; ops: AiOp[]; applied: string[]; mode?: "new" | "edit" };
 export const getMcpHandoff = async (sessionId: string, dashboardId: number): Promise<McpHandoffDto | null> => {
   const response = await apiFetch(`${API_BASE}/api/mcp/sessions/${encodeURIComponent(sessionId)}/handoff?dashboardId=${dashboardId}`);
   if (response.status === 404) return null;

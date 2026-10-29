@@ -2,7 +2,7 @@
 // AI, but the client's model does the thinking. Accepted ops collect here, in memory; the browser takes them once
 // (handoff) and applies them as an unsaved AI session (applyAiTurn), so preview, the change bar and Keep are unchanged.
 import { randomUUID } from "node:crypto";
-import type { AiOp } from "@kinetica-bi/shared";
+import type { AiOp, AskRequest } from "@kinetica-bi/shared";
 import { createShadow, type ShadowState } from "../ai/shadow";
 import type { AiToolAuditEntry } from "../aiAudit";
 
@@ -16,6 +16,10 @@ export type McpSession = {
   id: string;
   username: string; // lowercased owner
   dashboardId: number;
+  /** Phase 143: "new" = an unkept dashboard Claude builds (re-laid out at finish); "edit" = a saved dashboard (AIMCP-V20-08). */
+  mode: "new" | "edit";
+  /** The saved dashboard as the AI sees it (names and ids, never values); empty for a new build. */
+  snapshot: AskRequest["snapshot"];
   shadow: ShadowState;
   ops: AiOp[];
   applied: string[];
@@ -34,8 +38,15 @@ function sweep(now: number): void {
   for (const [id, s] of sessions) if (now - s.touchedAt > MCP_SESSION_TTL_MS) sessions.delete(id);
 }
 
-/** A new session for an EMPTY dashboard (the spike only builds new dashboards); the oldest of the user's sessions goes past the cap. */
-export function createMcpSession(username: string, dashboardId: number, now = Date.now()): McpSession {
+const EMPTY: AskRequest["snapshot"] = { widgets: [], layers: [], dynamicViews: [], filters: [] };
+
+/** A new session; the oldest of the user's sessions goes past the cap. An edit session starts from the saved dashboard's snapshot. */
+export function createMcpSession(
+  username: string,
+  dashboardId: number,
+  opts: { mode?: "new" | "edit"; snapshot?: AskRequest["snapshot"] } = {},
+  now = Date.now(),
+): McpSession {
   sweep(now);
   const owner = username.toLowerCase();
   const mine = [...sessions.values()].filter((s) => s.username === owner).sort((a, b) => a.touchedAt - b.touchedAt);
@@ -44,7 +55,9 @@ export function createMcpSession(username: string, dashboardId: number, now = Da
     id: randomUUID(),
     username: owner,
     dashboardId,
-    shadow: createShadow({ widgets: [], layers: [], dynamicViews: [], filters: [] }),
+    mode: opts.mode ?? "new",
+    snapshot: opts.snapshot ?? EMPTY,
+    shadow: createShadow(opts.snapshot ?? EMPTY),
     ops: [],
     applied: [],
     tools: [],

@@ -87,6 +87,7 @@ import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
 import { useAiConfigured } from "../lib/aiSession/aiAvailability";
 import { AI_ASSISTANT_TYPE, AI_ASSISTANT_DEFAULT_SIZE } from "../lib/aiSession/constants";
 import { useAiSessionStore, selectHasUnsavedAiChanges, hasUnsavedAiChanges } from "../store/aiSessionStore";
+import { removesSavedContent } from "../lib/aiSession/mcpHandoff";
 import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/07)
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
 import { useAiSessionActions } from "../hooks/useAiSessionActions";
@@ -1157,8 +1158,11 @@ const DashboardOpen = ({
           useToastStore.getState().showToast("Nothing to load from Claude Desktop (already loaded or expired).", "error");
           return;
         }
-        // The server sized text for a typical laptop; resize it to this grid (full-width text minus card and body padding).
-        const ops = refitTextLayouts(h.ops, textCharsPerLine(width - MCP_TEXT_PADDING_PX));
+        // A new build: the server sized text for a typical laptop; resize it to this grid (full-width text minus card and
+        // body padding). An edit keeps the saved layout, so nothing is moved.
+        const ops = h.mode === "edit" ? h.ops : refitTextLayouts(h.ops, textCharsPerLine(width - MCP_TEXT_PADDING_PX));
+        // The server only hands over a saved removal the user approved in chat (confirmed: true).
+        if (removesSavedContent(ops)) useAiSessionStore.getState().approveRemoval();
         aiActions.applyTurn({ prompt: h.prompt, answer: h.answer, ops, chat: { status: "ok", applied: h.applied, followUps: [] } });
       })
       .catch((e: unknown) => useToastStore.getState().showToast(e instanceof Error ? e.message : "Failed to load the Claude Desktop changes", "error"));

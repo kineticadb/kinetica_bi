@@ -31,6 +31,10 @@ const TOOLS = {
 function routes(c: Call): KbiResponse | KbiError {
   if (c.path === "/api/mcp/tools") return { status: 200, body: TOOLS };
   if (c.path === "/api/tables") return { status: 200, body: { data: [{ id: 7, schema: "demo", name: "nyctaxi", description: "Taxi trips" }] } };
+  if (c.path === "/api/dashboards") return { status: 200, body: { data: [{ id: 5, name: "Ops" }, { id: 6, name: "Draft", generated_pending: true }] } };
+  if (c.path === "/api/mcp/sessions" && (c.body as { dashboardId?: number }).dashboardId !== undefined) {
+    return { status: 201, body: { sessionId: "s2", dashboardId: 5, name: "Ops" } };
+  }
   if (c.path === "/api/mcp/sessions") {
     const b = c.body as { name: string; replace?: boolean };
     if (b.name === "Busy" && !b.replace) return new KbiError(409, 'You already have an unkept dashboard, "Old". Open it and Keep or Discard it, or start again with replace to discard it.');
@@ -60,7 +64,7 @@ describe("kbi-mcp server", () => {
   it("MCPS-1 lists the local tools plus Kinetica BI's tools", async () => {
     const mcp = await connect(fakeKbi(routes).client);
     const names = (await mcp.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(["list_tables", "start_dashboard", "finish_dashboard", "describe_table", "add_widget"]);
+    expect(names).toEqual(["list_tables", "start_dashboard", "list_dashboards", "open_dashboard", "finish_dashboard", "describe_table", "add_widget"]);
     expect(await mcp.getInstructions()).toContain("presses Keep");
   });
 
@@ -101,6 +105,18 @@ describe("kbi-mcp server", () => {
     const ok = await mcp.callTool({ name: "start_dashboard", arguments: { name: "Busy", tableIds: [7], replace: true } });
     expect(ok.isError).toBeFalsy();
     expect(calls.at(-1)?.body).toEqual({ name: "Busy", tableIds: [7], replace: true });
+  });
+
+  it("MCPS-5 list_dashboards and open_dashboard start an edit session on a saved dashboard", async () => {
+    const { client, calls } = fakeKbi(routes);
+    const mcp = await connect(client);
+    expect(textOf(await mcp.callTool({ name: "list_dashboards", arguments: {} }))).toBe("5: Ops\n6: Draft (not kept yet)");
+    const opened = await mcp.callTool({ name: "open_dashboard", arguments: { dashboardId: 5 } });
+    expect(opened.isError).toBeFalsy();
+    expect(textOf(opened)).toContain("get_dashboard");
+    expect(calls.find((c) => c.path === "/api/mcp/sessions")?.body).toEqual({ dashboardId: 5 });
+    await mcp.callTool({ name: "add_widget", arguments: { tempId: -1, type: "bar", aggregation: "sum" } });
+    expect(calls.at(-1)?.path).toBe("/api/mcp/sessions/s2/call");
   });
 
   it("MCPS-4 server errors come back as tool errors with the server's message", async () => {
