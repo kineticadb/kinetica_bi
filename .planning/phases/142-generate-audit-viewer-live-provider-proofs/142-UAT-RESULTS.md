@@ -116,6 +116,27 @@ Quota: 5/5 answers (audit rows 22-26). The scratchpad playwright-core install ha
 - **Defect 2 fixed - empty answer.** `runAnswer`: an ask that ends with no text (follow-ups alone do not count), no changes, no choices and nothing skipped sends `AI_PROVIDER_ERROR` "The AI returned an empty answer. Nothing was changed. Try again." (retryable) and audits `provider_error` / `empty_answer`. Generate keeps its own too-few rule. EMPTYANS-1 (3 cases, red first), EMPTYANS-2/3 (an applied change or a skip still returns a normal result).
 - Gates: server tsc clean; AI specs 68 files / 779 passed; full server suite failing files identical to a baseline run without the change (auth.oidc, auth.routes, boot.hardening, boot.wipe, bootstrap, db.smoke, oidc.module, routes.dynamic-view, routes.filter-materialize(-dv), routes.wms), plus one load timeout in layers.spec.ts that passes alone (23/23).
 
+## Ollama re-run (2026-10-29, json mode, after 51b009d)
+
+Purpose: the live re-run the 10-26 defect fixes never had, with the documented `AI_TOOL_MODE=json`. Container and model started again by Claude at the operator's request (`ollama/ollama:latest`, `qwen2.5:7b-instruct` 4.7 GB); Docker 4 CPUs / 11.5 GB; `ollama ps` 6.0 GB, 100% CPU, CONTEXT 16384; warm-up load 13 s. Operator set `.env` (Ollama base URL, model, AI_TIMEOUT_MS=600000, AI_TOOL_MODE=json, schema); boot line `toolMode=json capPerDay=18`. Asks driven by Claude through the AI Assistant's chat box in the operator's Chrome (dashboard 62 "UAT142 Ollama", demo.nyctaxi), dark mode.
+
+| Step | Result | Time | Notes |
+|------|--------|------|-------|
+| O1 probe (native, `--raw --runs 1`) | PASS (adapter) | | no 400s, calls arrive as tool_calls; 6/7 clean: valid 50%, malformed 50%, parallel 60%, 2nd turn ok, calls 70-90 s; scenario 1 excluded `network` (spike script, not investigated). Supports json mode for this model. |
+| Defect 1 (300 s cut) live | PASS | 394 s | the first ask ran 394 s to completion with no cut at 300 s (providerFetch). |
+| O3 add "Add a bar chart of trip count by vendor" | FAIL then PASS | 394 s; 44 s | row 74: the model replied `{"add_widget":{...}}` (tool name as the key, optional fields `null`); json mode only knew `{"tool","args"}`, so the JSON showed as answer text, 0 steps (**defect 3**). Fixed (below); row 75: one valid add_widget, "Trip Count by Vendor" bar (NYC/YCAB/VTS/CMT/DDS) added, change bar "1 added". Follow-ups written inline in the answer, not as the trailer (local default chips shown). |
+| O3 edit "Rename it to Trips per vendor" | FAIL (model) | 404 s; 45 s | rows 76-77 (second try named the chart): rename_widget on id 278, the AI Assistant widget, not the new chart (-1); gateway refused "the AI assistant widget can't be changed", chat showed "Couldn't do". The model's own text still claimed success. |
+| O3 filter "Filter to payment type Cash" | FAIL (model) | 49 s | row 78: 0 tool calls; the model's answer says it applied the filter and even writes a "Changes: applied: ..." line in its own text (imitating the app's list); no chip, chart unchanged. |
+| O3 Generate (demo.nyctaxi, dashboard 63) | PARTIAL | 600 s | row 79: one add_widget in 600 s (bignumber on column `count`, rejected with the did-you-mean `passenger_count`), then AI_TIMEOUT_MS ended it (`provider_error` / `timeout`). Nothing to Keep. |
+| O3 Discard (dashboard 63) | PASS | | pending note "Discard dashboard" -> dialog "Discard this dashboard? ..." with Cancel focused -> back on the list, row gone; G3 query before `1|1|0|0|1|0|1`, after `0|0|0|0|0|0|1` (audit kept). |
+| O4 AI activity | PASS | | row "Deleted dashboard #63 · Generate · Failed · 600.0 s"; detail `openai-compatible / qwen2.5:7b-instruct`, 4,750 in / 609 out, schema, v4, outcome detail timeout, incomplete-tools line, the rejected call with its reason. |
+| O2 S6 | not re-run | | json mode already measured 10-26 (85.7% valid, 21/21 clean). |
+
+**Re-run verdict: still PARTIAL.** Defect 1's fix holds live. json mode now runs this model's calls, but a 7B model on 4 CPUs still picks wrong targets, claims actions it did not take and cannot finish Generate in 600 s. Every wrong or unbacked action was refused or not applied.
+
+- **Defect 3 fixed - json-mode reply shapes.** `jsonAction.ts`: besides `{"tool","args"}`, a reply whose single key is one of the request's own tool names with an object value is a call (`{"add_widget":{...}}`); `null` arguments count as absent. JSA-OLL-1/2 red first. Not a security change: only the request's tools can be named, and every call still goes through the gateway.
+- **Observation:** a model can write text that looks like the app's change list ("Changes: applied: ..."). The app's own list was absent and nothing was applied, but the imitation is easy to misread. Possible follow-up: style the app's list so model text cannot pass for it.
+
 ## Gemini, day 3 (2026-10-27)
 
 Cap 12 for the day (operator). 5 Gemini answers today (audit rows 35, 38-41); the 24 h window was full (12/12) after row 41. Row 37 was capped (`counted=0`): yesterday's rows 23-26 were still inside the rolling 24 h window, which I had miscounted.
