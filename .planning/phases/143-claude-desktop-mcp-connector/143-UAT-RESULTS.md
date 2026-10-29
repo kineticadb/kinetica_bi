@@ -27,4 +27,8 @@ Checked in dark mode throughout; the text widget also in light mode. Safety: a `
 | 12 | AIMCP-V20-08 edit a saved dashboard | PASS after fix | First run: the confirmed removal was skipped in the browser (needs_confirmation). Fix: the handoff records the approval. Second run: 1 added, 1 edited, 1 removed; kept. |
 | 13 | AIMCP-V20-09 filters | PASS | apply_filter payment_type = Cash: AI-tagged chip, KPIs/pie/timeline narrowed; filter-only changes show no Keep bar (same as in-app). |
 
-**Next:** the operator runs items 1-6 in Claude Desktop itself: create a token on the Profile page, put it in the config (`KBI_TOKEN`), quit and reopen Claude Desktop, then build, edit and filter.
+## Operator run in Claude Desktop (2026-10-29)
+
+Password config (token test deferred by the operator). After Cmd+Q and reopen: list_dashboards, open + rename + confirmed removal (Claude asked first), filter, a new build discarded (gone from the list), AI activity "Claude Desktop" rows. **Operator: everything passed.**
+
+**Deferred:** live token sign-in from Claude Desktop (create a token on the Profile page, `KBI_TOKEN` in the config). The token flow itself was checked in the browser (row 8).
