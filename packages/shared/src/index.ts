@@ -9,3 +9,4 @@ export * from "./aiDynamicView";
 export * from "./aiColumnRefs";
 export * from "./aiKeep";
 export * from "./mapView";
+export * from "./aiSnapshot";
