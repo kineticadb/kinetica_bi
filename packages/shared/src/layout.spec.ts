@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
+  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_TEXT_DEFAULT_H, FIT_TEXT_MAX_H, fitTextRows, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
 } from "./layout";
 import { AI_WIDGET_TYPES } from "./aiAsk";
 
@@ -60,7 +60,7 @@ describe("layout", () => {
   it("LAYOUT-7 default sizes", () => {
     expect(AI_DEFAULT_SIZE).toEqual({
       bignumber: { w: 9, h: 14 }, bar: { w: 18, h: 30 }, line: { w: 18, h: 30 }, pie: { w: 18, h: 30 },
-      table: { w: 18, h: 36 }, records: { w: 36, h: 36 }, map: { w: 28, h: 45 }, timeline: { w: 18, h: 30 },
+      table: { w: 18, h: 36 }, records: { w: 36, h: 36 }, map: { w: 28, h: 45 }, timeline: { w: 18, h: 30 }, text: { w: 18, h: 12 },
     });
     expect(Object.keys(AI_DEFAULT_SIZE).sort()).toEqual([...AI_WIDGET_TYPES].sort());
   });
@@ -190,5 +190,22 @@ describe("placeFitBands", () => {
         expect(validateLayout(Object.entries(r).map(([k, v]) => ({ id: Number(k), ...v })))).toEqual({ valid: true });
       }
     }
+  });
+});
+
+describe("placeFitBands text", () => {
+  const mk = (types: string[]) => types.map((type, i) => ({ key: -(i + 1), type }));
+  it("FITBAND-5 text goes first, full width, sized by its rows; the rest moves down", () => {
+    const r = placeFitBands([{ key: -9, type: "text", rows: 8 }, ...mk(["bignumber", "bar", "map"])]);
+    expect(r[-9]).toEqual({ x: 0, y: 0, w: 36, h: 8 });
+    expect(r[-1]).toMatchObject({ x: 0, y: 8 });
+    expect(r[-3]).toMatchObject({ x: 18, y: 8 });
+    expect(placeFitBands([{ key: -1, type: "text" }])[-1]).toEqual({ x: 0, y: 0, w: 36, h: FIT_TEXT_DEFAULT_H });
+  });
+  it("FITBAND-6 fitTextRows grows with the text and stays within bounds", () => {
+    expect(fitTextRows("# Title")).toBeGreaterThanOrEqual(6);
+    const long = fitTextRows(Array(40).fill("A line of findings about the data.").join("\n"));
+    expect(long).toBe(FIT_TEXT_MAX_H);
+    expect(fitTextRows("one\ntwo\nthree\nfour")).toBeGreaterThan(fitTextRows("one"));
   });
 });

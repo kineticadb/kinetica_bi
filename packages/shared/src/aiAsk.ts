@@ -4,7 +4,9 @@
 import { z } from "zod";
 
 /** 133-SPIKES S3 approved AI widget subset. 142 UAT: + timeline (time trends over a date/time column). */
-export const AI_WIDGET_TYPES = ["bar", "line", "pie", "table", "bignumber", "records", "map", "timeline"] as const;
+export const AI_WIDGET_TYPES = ["bar", "line", "pie", "table", "bignumber", "records", "map", "timeline", "text"] as const;
+/** Widget types bound to no table: a map draws its layers' tables; a text widget shows markdown. */
+export const AI_TABLELESS_WIDGET_TYPES: readonly string[] = ["map", "text"];
 export type AiWidgetType = (typeof AI_WIDGET_TYPES)[number];
 
 export const ASK_REQUEST_MAX_BYTES = 65_536;

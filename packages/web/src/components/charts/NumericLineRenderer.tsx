@@ -55,7 +55,7 @@ import { DEFAULT_COLOR_THEME, MAX_METRICS } from "./TimelineConfigPanel";
 import type { NumericLineConfig } from "./NumericLineConfigPanel";
 // Phase 77 Plan 02 (COLAPPLY-V115-02): column label + value formatting at tooltip.
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
-import { resolveFormatter } from "../../store/columnDisplayConfigStore";
+import { resolveAxisFormatter, resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 import { valueFormatColumn } from "../../lib/aggregationLabels";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
@@ -155,20 +155,6 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
   // metricColumn for tooltip: first metric's source column (single-metric / grouped case).
   const metricColumn = metrics[0]?.column ?? "";
 
-  // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
-  // configVersion dep ensures the column-default refreshes when the column's display config is edited.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const yAxisTickFormatter = useMemo(() => {
-    if (cfg.yAxisFormat) {
-      const fmt = buildFormatter(cfg.yAxisFormat);
-      return (v: unknown) => String(fmt(v) ?? v);
-    }
-    if (tableId !== undefined && valueFormatColumn(metricColumn, metrics[0]?.aggregation) !== "") {
-      const fmt = resolveFormatter(tableId, metricColumn);
-      return (v: unknown) => String(fmt(v) ?? v);
-    }
-    return (v: unknown) => String(v ?? "");
-  }, [cfg.yAxisFormat, tableId, metricColumn, metrics[0]?.aggregation, configVersion]);
 
   // ----- Empty-state gates -----
   if (tableId === undefined || tableRef === undefined) {
@@ -243,6 +229,23 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
   // ----- Data fetch state -----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [data, setData] = useState<Record<string, number | string | null>[]>([]);
+
+  // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
+  // configVersion dep ensures the column-default refreshes when the column's display config is edited.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const yAxisTickFormatter = useMemo(() => {
+    if (cfg.yAxisFormat) {
+      const fmt = buildFormatter(cfg.yAxisFormat);
+      return (v: unknown) => String(fmt(v) ?? v);
+    }
+    if (tableId !== undefined && valueFormatColumn(metricColumn, metrics[0]?.aggregation) !== "") {
+      // Every numeric cell is a plotted value (the bucket key is a string or the x value, never the largest).
+      const maxAbs = data.reduce((m, r) => Object.values(r).reduce<number>((mm, v) => (typeof v === "number" && Number.isFinite(v) ? Math.max(mm, Math.abs(v)) : mm), m), 0);
+      const fmt = resolveAxisFormatter(tableId, metricColumn, maxAbs);
+      return (v: unknown) => String(fmt(v) ?? v);
+    }
+    return (v: unknown) => String(v ?? "");
+  }, [cfg.yAxisFormat, tableId, metricColumn, metrics[0]?.aggregation, data, configVersion]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [loading, setLoading] = useState(true);
   // eslint-disable-next-line react-hooks/rules-of-hooks

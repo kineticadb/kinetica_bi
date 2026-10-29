@@ -50,6 +50,15 @@ const TIMELINE_FIELDS: Record<string, z.ZodTypeAny> = {
   yFieldLabel: z.string().max(80),
 };
 
+/** The Big Number's own format settings (BigNumberRenderer: format + decimals); percent appends % without multiplying. */
+export const AI_KPI_FORMATS = ["number", "currency", "percent", "compact"] as const;
+const KPI_FORMAT_FIELDS: Record<string, z.ZodTypeAny> = {
+  format: z.enum(AI_KPI_FORMATS),
+  decimals: z.number().int().min(0).max(4),
+};
+
+export const AI_TEXT_MAX_CHARS = 4000;
+
 export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.ZodTypeAny>; required: readonly string[] }> = (() => {
   const f = (t: string) => ({ ...(getWidgetAllowListSchemas(t) ?? {}) });
   const chartReq = ["metric", "aggregation", "groupByColumn"] as const;
@@ -58,7 +67,8 @@ export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.Z
     line: { fields: f("line"), required: chartReq },
     pie: { fields: f("pie"), required: chartReq },
     table: { fields: f("table"), required: chartReq },
-    bignumber: { fields: f("bignumber"), required: ["metric", "aggregation"] },
+    // kbi-mcp: format/decimals are add-only (like timeline's keys): not in WIDGET_ALLOW_LIST, so ALLOW_LIST_VERSION is unchanged.
+    bignumber: { fields: { ...f("bignumber"), ...KPI_FORMAT_FIELDS }, required: ["metric", "aggregation"] },
     records: {
       fields: {
         ...f("records"),
@@ -70,6 +80,8 @@ export const AI_WIDGET_CONFIG: Record<AiWidgetType, { fields: Record<string, z.Z
     },
     map: { fields: f("map"), required: [] },
     timeline: { fields: { ...TIMELINE_FIELDS }, required: ["timeColumn", "metric", "aggregation"] },
+    // kbi-mcp: markdown text (titles, notes, findings); add-only, like timeline. Rendered without HTML (web lib/markdownText).
+    text: { fields: { markdown: z.string().min(1).max(AI_TEXT_MAX_CHARS) }, required: ["markdown"] },
   };
 })();
 

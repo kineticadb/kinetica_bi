@@ -683,7 +683,7 @@ describe("TimelineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03)",
     // override branch uses buildFormatter
     expect(src).toMatch(/buildFormatter\(cfg\.yAxisFormat/);
     // column-default branch uses resolveFormatter
-    expect(src).toMatch(/resolveFormatter\(tableId, metricColumn\)/);
+    expect(src).toMatch(/resolveAxisFormatter\(tableId, metricColumn, maxAbs\)/);
     // configVersion is in the useMemo dep array
     expect(src).toMatch(/configVersion\]/);
     // Invoke buildFormatter directly via ESM import to prove SI output
@@ -695,7 +695,7 @@ describe("TimelineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03)",
   it("Y2 (column-default): absent yAxisFormat → useMemo uses resolveFormatter(tableId, metricColumn); identity fallback produces raw string (source assertions)", () => {
     // Source assertion: the fallback path calls resolveFormatter(tableId, metricColumn)
     const src = readFileSync(resolve(__dirname, "TimelineRenderer.tsx"), "utf-8");
-    expect(src).toMatch(/resolveFormatter\(tableId, metricColumn\)/);
+    expect(src).toMatch(/resolveAxisFormatter\(tableId, metricColumn, maxAbs\)/);
     // Source assertion: configVersion is the last dep in the yAxisTickFormatter useMemo
     expect(src).toMatch(/configVersion\]/);
     // Source assertion: the identity branch returns String(v ?? "")

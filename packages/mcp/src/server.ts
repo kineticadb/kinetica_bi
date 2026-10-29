@@ -12,6 +12,10 @@ export const INSTRUCTIONS = [
   "one screen (up to about 3 KPIs, 4 charts and a map; a records table goes below). A rejected call returns the reasons:",
   "fix them and call again with the same tempId. A good dashboard: 1-3 KPIs (bignumber) on top, a time trend (timeline),",
   "2-3 breakdowns (bar/pie), a map with a heatmap layer when the table has lat/lon or geometry, and a records table.",
+  "Name what a value means: for a count of rows set yAxisLabel on a chart or label on a KPI, such as \"Trips\" (otherwise it reads \"Count of <column>\"),",
+  "and a KPI of money sets numberFormat currency.",
+  "Optionally start with a text widget (type text, markdown, no tableId) summarising what the dashboard shows; keep it to a",
+  "heading and a few bullets, and only state facts you know (never invent numbers).",
 ].join(" ");
 
 const LOCAL_TOOLS: Tool[] = [

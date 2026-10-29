@@ -43,4 +43,6 @@ export const AI_WIDGET_DEFAULTS: Record<AiWidgetType, { config: Record<string, u
     config: { maxIntervals: DEFAULT_MAX_INTERVALS, showLegend: true, showTooltip: true, vertical: false, colorTheme: "Set2", dateFormatOverride: "" },
     flags: { usesAggregation: false, requiresGroupBy: true },
   },
+  // kbi-mcp: markdown text; the fold copies `markdown` from the op (definitions/text.ts defaultConfig).
+  text: { config: {}, flags: { usesAggregation: false, requiresGroupBy: true } },
 };

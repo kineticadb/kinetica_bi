@@ -65,8 +65,10 @@ import {
   useColumnDisplayConfigStore,
   resolveLabel,
   resolveFormatter,
+  resolveAxisFormatter,
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+import TextRenderer from "./TextRenderer";
 import { isCountAggregation, valueFormatColumn } from "../../lib/aggregationLabels";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
@@ -375,6 +377,9 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // Phase 23 (CARD-V14-01): info-card short-circuits BEFORE AggregatedWidgetRenderer so it
     // does not try to read widget.config.sql (info-card defaultConfig is {} — no SQL).
     body = <InfoCardRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "text") {
+    // kbi-mcp: markdown text short-circuits BEFORE AggregatedWidgetRenderer (no SQL).
+    body = <TextRenderer widget={effectiveWidget} />;
   } else if (effectiveWidget.type === "legend") {
     // Phase 42 Plan 02 (WIDGET-V17-01): legend short-circuits BEFORE AggregatedWidgetRenderer
     // so it does not try to read widget.config.sql (legend defaultConfig is {} — no SQL).
@@ -1200,6 +1205,7 @@ const BarRenderer = ({
     ? chartData.flatMap((row) => top.series.map((sk) => Number((row as Record<string, unknown>)[sk])))
     : data.map((r) => Number((r as Record<string, unknown>)[y]));
   const scaleProps = yAxisScaleProps(yAxisScale, scaleValues);
+  const valueAxisMaxAbs = scaleValues.reduce((m, n) => (Number.isFinite(n) ? Math.max(m, Math.abs(n)) : m), 0);
 
   // Phase 87 (UAT): value-axis number format — per-widget override → bound metric column
   // default → raw. Mirrors the timeline/line hybrid; unconfigured bars keep their raw tick
@@ -1208,7 +1214,7 @@ const BarRenderer = ({
   const valueAxisTickFormatter = (v: unknown): string => {
     if (yAxisFormatSpec) return String(buildFormatter(yAxisFormatSpec)(v) ?? v);
     if (tableId !== undefined && valueColumn) {
-      const out = resolveFormatter(tableId, valueColumn)(v);
+      const out = resolveAxisFormatter(tableId, valueColumn, valueAxisMaxAbs)(v);
       if (out !== v) return String(out);
     }
     if (typeof v === "number" && isCountAggregation(config.aggregation)) return v.toLocaleString();
@@ -1470,9 +1476,13 @@ const LineRenderer = ({
     aggregation: config.aggregation as string | undefined,
     fallbackKey: y,
   });
+  const valueAxisMaxAbs = chartData.reduce((m, r) => {
+    for (const k of multiSeries ? top.series : [y]) { const n = Number((r as Record<string, unknown>)[k]); if (Number.isFinite(n)) m = Math.max(m, Math.abs(n)); }
+    return m;
+  }, 0);
   const valueAxisTickFormatter = (v: unknown): string => {
     if (tableId !== undefined && valueColumn) {
-      const out = resolveFormatter(tableId, valueColumn)(v);
+      const out = resolveAxisFormatter(tableId, valueColumn, valueAxisMaxAbs)(v);
       if (out !== v) return String(out);
     }
     if (typeof v === "number" && isCountAggregation(config.aggregation)) return v.toLocaleString();

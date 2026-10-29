@@ -11,6 +11,7 @@ import {
   planDvDependents,
   isAiNumericColumnType,
   isAiTemporalColumnType,
+  AI_TABLELESS_WIDGET_TYPES,
   parseAiOp,
   placeWidget,
   validateActionPatch,
@@ -115,7 +116,7 @@ function opColumnRefs(op: AiOp, shadow: ShadowState): { tableId: number | undefi
   if (op.op === "add_widget") {
     const t = (op.config as Record<string, unknown>).tableId;
     const tableId = typeof t === "number" ? t : undefined;
-    return { tableId, refs: fromRec(op.config), probe: op.type !== "map" };
+    return { tableId, refs: fromRec(op.config), probe: !AI_TABLELESS_WIDGET_TYPES.includes(op.type) };
   }
   if (op.op === "patch" && op.action.target.kind === "widget") {
     const refs = fromRec(op.action.configPatch);
@@ -444,12 +445,12 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
       const t = (op.config as Record<string, unknown>).tableId;
       const dv = (op.config as Record<string, unknown>).dynamicViewId;
       if (typeof dv === "number") {
-        if (op.type === "map") return f("reference", ["map widgets can't use a dynamic view"]);
+        if (AI_TABLELESS_WIDGET_TYPES.includes(op.type)) return f("reference", [`${op.type} widgets can't use a dynamic view`]);
         if (op.type === "timeline") return f("reference", [TIMELINE_NO_DV]);
         if (t !== undefined) return f("reference", ["pass tableId or dynamicViewId, not both"]);
         if (!shadow.dynamicViews.has(dv) || !dvMeta(dv)) return missing("dynamicView", dv, "dynamic view");
-      } else if (op.type === "map") {
-        if (t !== undefined) return f("reference", ["map widgets have no table"]);
+      } else if (AI_TABLELESS_WIDGET_TYPES.includes(op.type)) {
+        if (t !== undefined) return f("reference", [`${op.type} widgets have no table`]);
       } else if (typeof t !== "number") {
         return f("reference", [`tableId is required for ${op.type}`]);
       } else {

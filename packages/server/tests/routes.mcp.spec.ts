@@ -145,4 +145,21 @@ describe("/api/mcp (kbi-mcp spike)", () => {
     for (const o of ops) expect(o.layout).toEqual(want[o.tempId]);
     expect(ops.find((o) => o.tempId === -2)?.layout).toEqual({ x: 0, y: 0, w: 18, h: FIT_KPI_H });
   });
+
+  it("MCP-9 a text widget needs no table, refuses one, and leads the finished layout", async () => {
+    const app = await boot();
+    const c = dee();
+    const { dashboardId, tableId, sessionId } = await startSession(app, c);
+    const text = { tempId: -1, type: "text", title: "Summary", markdown: "## Tips\n- Cash trips tip **more** on average" };
+    expect((await call(app, c, sessionId, "add_widget", { ...text, tableId })).body).toMatchObject({ ok: false });
+    expect((await call(app, c, sessionId, "add_widget", text)).body).toMatchObject({ ok: true });
+    expect((await call(app, c, sessionId, "add_widget", { tempId: -2, type: "text", title: "Empty", markdown: "" })).body).toMatchObject({ ok: false });
+    expect((await call(app, c, sessionId, "add_widget", addWidgetArgs(tableId, { tempId: -3 }))).body).toMatchObject({ ok: true });
+    await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({});
+    const ops = (await request(app).get(`/api/mcp/sessions/${sessionId}/handoff?dashboardId=${dashboardId}`).set("Cookie", c)).body.ops as { tempId: number; config: Record<string, unknown>; layout: { x: number; y: number; w: number } }[];
+    const t = ops.find((o) => o.tempId === -1)!;
+    expect(t.config).toEqual({ markdown: "## Tips\n- Cash trips tip **more** on average" });
+    expect(t.layout).toMatchObject({ x: 0, y: 0, w: 36 });
+    expect(ops.find((o) => o.tempId === -3)!.layout.y).toBeGreaterThan(0);
+  });
 });

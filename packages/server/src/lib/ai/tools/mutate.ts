@@ -1,7 +1,7 @@
 // Phase 136 flat typed mutate tools: each emits a raw AiOp candidate; the gateway validates it.
 // No tool accepts free-form config, SQL, hex colours or a layout for a new widget: vocabularies are enums.
 import { z } from "zod/v4";
-import { AI_WIDGET_CONFIG, AI_WIDGET_TYPES, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS, AI_CHART_SWAP_TYPES, CHART_AGGREGATIONS, AI_DV_AGG_FNS, AI_DV_BUCKETS } from "@kinetica-bi/shared";
+import { AI_KPI_FORMATS, AI_TEXT_MAX_CHARS, AI_WIDGET_CONFIG, AI_WIDGET_TYPES, AI_PALETTE_NAMES, AI_HEATMAP_RAMPS, AI_CHART_SWAP_TYPES, CHART_AGGREGATIONS, AI_DV_AGG_FNS, AI_DV_BUCKETS } from "@kinetica-bi/shared";
 import type { MutateTool } from "./types";
 
 const PALETTE = AI_PALETTE_NAMES.join(", ");
@@ -62,6 +62,9 @@ const addWidgetArgs = z.object({
   sortField: z.string().max(128).optional(),
   sortDirection: z.enum(["asc", "desc"]).optional(),
   timeColumn: z.string().max(128).optional(),
+  numberFormat: z.enum(AI_KPI_FORMATS).optional(),
+  markdown: z.string().max(AI_TEXT_MAX_CHARS).optional(),
+  decimals: z.number().int().min(0).max(4).optional(),
   showPopup: z.boolean().optional(),
   showScaleBar: z.boolean().optional(),
   showFullscreen: z.boolean().optional(),
@@ -132,6 +135,9 @@ const addWidget: MutateTool = {
     "For a trend over a date or timestamp column use type timeline with timeColumn (that date/time column), metric and aggregation (optional colour, valueLabel): " +
     "it bins time into years, months, days or hours and orders by time. A line chart groups by raw values, so a line on a timestamp shows scattered instants. " +
     "A timeline needs tableId (not a dynamic view) and can't be edited afterwards. " +
+    "A text widget (type text, no tableId) shows markdown you write: a heading, notes or findings. Supported: # to ### headings, **bold**, *italic*, " +
+    "- and 1. lists, | pipe | tables |, [links](https://...); HTML is shown as plain text. Write facts you were given or read from the schema; never invent numbers. " +
+    "A bignumber may set numberFormat (number, currency for money, percent, compact for large counts) and decimals (0-4). " +
     "To repair a rejected call reuse the same tempId.",
   args: addWidgetArgs,
   toOp(args) {
@@ -144,6 +150,9 @@ const addWidget: MutateTool = {
       sortField: a.sortField,
       sortDirection: a.sortDirection,
       timeColumn: a.timeColumn,
+      format: a.numberFormat,
+      markdown: a.markdown,
+      decimals: a.decimals,
       show_popup: a.showPopup,
       show_scale_bar: a.showScaleBar,
       show_fullscreen: a.showFullscreen,

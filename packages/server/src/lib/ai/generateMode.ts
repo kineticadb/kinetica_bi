@@ -1,6 +1,6 @@
 // Phase 142 generate mode: pure helpers (recipe text, limits, nudge, deterministic band layout rewrite). No I/O.
 import type { AiOp } from "@kinetica-bi/shared";
-import { placeFitBands, placeGenerateBands } from "@kinetica-bi/shared";
+import { fitTextRows, placeFitBands, placeGenerateBands } from "@kinetica-bi/shared";
 import type { AiDataAccess } from "../aiConfig";
 
 export const GEN_MIN_STEPS = 20;
@@ -50,10 +50,14 @@ export function applyFitBands(ops: readonly AiOp[]): AiOp[] {
 
 function rewriteAddLayouts(
   ops: readonly AiOp[],
-  place: (items: readonly { key: number; type: string }[]) => Record<number, { x: number; y: number; w: number; h: number }>,
+  place: (items: readonly { key: number; type: string; rows?: number }[]) => Record<number, { x: number; y: number; w: number; h: number }>,
 ): AiOp[] {
   const adds = ops.filter((o): o is Extract<AiOp, { op: "add_widget" }> => o.op === "add_widget");
-  const rects = place(adds.map((o) => ({ key: o.tempId, type: o.type })));
+  const rows = (o: (typeof adds)[number]) => {
+    const md = (o.config as Record<string, unknown>).markdown;
+    return o.type === "text" && typeof md === "string" ? fitTextRows(md) : undefined;
+  };
+  const rects = place(adds.map((o) => ({ key: o.tempId, type: o.type, rows: rows(o) })));
   const out: AiOp[] = [];
   for (const o of ops) {
     if (o.op === "set_layout") continue;

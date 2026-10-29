@@ -1,4 +1,4 @@
-import { parseAiOp, AI_WIDGET_CONFIG } from "@kinetica-bi/shared";
+import { parseAiOp, AI_WIDGET_CONFIG, validateAiWidgetConfig } from "@kinetica-bi/shared";
 import { describe, it, expect } from "vitest";
 import { z } from "zod/v4";
 import { READ_TOOLS, LIST_TABLES_CAP, LIST_TABLES_CONCURRENCY } from "../src/lib/ai/tools/read";
@@ -274,5 +274,18 @@ describe("add_widget required fields (142)", () => {
   });
   it("AWREQ-2 the description steers aggregation on an already-aggregated view column", () => {
     expect(byName(MUTATE_TOOLS, "add_widget").description).toContain("never sum an average");
+  });
+});
+
+// kbi-mcp UAT: a KPI of tips read "674,531" while its chart axis read "$600,000"; the KPI's format was not reachable.
+describe("add_widget KPI number format", () => {
+  it("KPIFMT-1 numberFormat and decimals map to the KPI's format settings and pass the catalog", () => {
+    const op = byName(MUTATE_TOOLS, "add_widget").toOp({ tempId: -1, type: "bignumber", title: "Tips", tableId: 5, metric: "tip_amount", aggregation: "sum", numberFormat: "currency", decimals: 0 }) as { config: Record<string, unknown> };
+    expect(op.config).toMatchObject({ format: "currency", decimals: 0 });
+    const { tableId: _t, ...cfg } = op.config;
+    void _t;
+    expect(validateAiWidgetConfig("bignumber", cfg)).toEqual({ valid: true });
+    expect(validateAiWidgetConfig("bar", { metric: "tip_amount", aggregation: "sum", groupByColumn: "z", format: "currency" }).valid).toBe(false);
+    expect(byName(MUTATE_TOOLS, "add_widget").description).toContain("numberFormat");
   });
 });

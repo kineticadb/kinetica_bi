@@ -2,7 +2,7 @@
 
 Lets Claude Desktop build Kinetica BI dashboards. Claude's model does the thinking; Kinetica BI checks every change with the same rules as the in-app AI (structured changes only, never SQL; column names checked against the live schema; your permissions). Nothing is saved by Claude: it finishes with a link, you open it, review the dashboard and press **Keep** (or **Discard**).
 
-Spike scope: new dashboards only; Claude can read tables and add dynamic views, charts (KPI, bar, line, pie, table, timeline, records), maps and heatmap layers. No edits before handoff, no filters, password login only.
+Spike scope: new dashboards only; Claude can read tables and add dynamic views, charts (KPI, bar, line, pie, table, timeline, records), markdown text, maps and heatmap layers. No edits before handoff, no filters, password login only.
 
 ## 1. Run Kinetica BI with the MCP routes on
 

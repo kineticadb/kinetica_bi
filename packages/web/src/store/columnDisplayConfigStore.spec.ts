@@ -10,7 +10,8 @@
  *   - listColumnDisplayConfig is mocked — this store is pure client-side; no fetch in tests.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useColumnDisplayConfigStore, resolveLabel, resolveFormatter } from "./columnDisplayConfigStore";
+import { useColumnDisplayConfigStore, resolveLabel, resolveFormatter, resolveAxisFormatter } from "./columnDisplayConfigStore";
+import type { FormatSpecNumber } from "../lib/columnFormatter";
 import { listColumnDisplayConfig } from "../api/client";
 
 // Mock the api/client module so listColumnDisplayConfig never hits the network.
@@ -269,5 +270,20 @@ describe("columnDisplayConfigStore.loadConfig — never rejects", () => {
     ] as never);
     await useColumnDisplayConfigStore.getState().loadConfig(7);
     expect(resolveLabel(7, "amount")).toBe("Amount");
+  });
+});
+
+describe("resolveAxisFormatter", () => {
+  const CURRENCY: FormatSpecNumber = { kind: "number", thousandsSep: true, decimals: 2, currency: "$", percent: false };
+  it("AXISFMT-1 ticks of large values drop the column's decimals; small values keep them", () => {
+    useColumnDisplayConfigStore.getState().upsertColumn(91, "tips", null, CURRENCY);
+    expect(resolveAxisFormatter(91, "tips", 600000)(600000)).toBe("$600,000");
+    expect(resolveAxisFormatter(91, "tips", 1.6)(1.2)).toBe("$1.20");
+    expect(resolveAxisFormatter(91, "tips", 99.5)(80)).toBe("$80.00");
+  });
+  it("AXISFMT-2 other formats and unformatted columns are unchanged", () => {
+    useColumnDisplayConfigStore.getState().upsertColumn(91, "at", null, { kind: "date", preset: "iso" } as never);
+    expect(resolveAxisFormatter(91, "at", 1e12)(0)).toBe(resolveFormatter(91, "at")(0));
+    expect(resolveAxisFormatter(91, "plain", 5000)(5000)).toBe(5000);
   });
 });

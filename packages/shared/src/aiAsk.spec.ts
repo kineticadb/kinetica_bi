@@ -53,7 +53,7 @@ describe("AskRequestSchema", () => {
   });
 
   it("ASK-5: approved widget subset", () => {
-    expect([...AI_WIDGET_TYPES]).toEqual(["bar", "line", "pie", "table", "bignumber", "records", "map", "timeline"]);
+    expect([...AI_WIDGET_TYPES]).toEqual(["bar", "line", "pie", "table", "bignumber", "records", "map", "timeline", "text"]);
   });
 
   it("ASK-TL-1: a snapshot binding may name a timeline's time column", () => {

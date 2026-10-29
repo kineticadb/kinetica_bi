@@ -18,6 +18,7 @@ export const AI_DEFAULT_SIZE: Record<AiWidgetType, { w: number; h: number }> = {
   records: { w: 36, h: 36 },
   map: { w: 28, h: 45 },
   timeline: { w: 18, h: 30 },
+  text: { w: 18, h: 12 },
 };
 
 /** Mirrors DashboardsPage getWidgetLayout fallback, per field. */
@@ -127,6 +128,16 @@ export const FIT_RECORDS_H = 24;
 /** About 730px: KPI band plus two chart rows, the part meant to show without scrolling. */
 export const FIT_SCREEN_ROWS = 56;
 const FIT_KPI_PER_ROW = 6;
+export const FIT_TEXT_DEFAULT_H = 8;
+export const FIT_TEXT_MAX_H = 24;
+const FIT_TEXT_MIN_H = 6;
+const FIT_TEXT_CHARS_PER_LINE = 110;
+
+/** Grid rows for a full-width text widget: 2 rows (26px) per rendered line with block spacing, plus the header. */
+export function fitTextRows(markdown: string): number {
+  const lines = markdown.split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(l.length / FIT_TEXT_CHARS_PER_LINE)), 0);
+  return Math.min(FIT_TEXT_MAX_H, Math.max(FIT_TEXT_MIN_H, lines * 2 + 6));
+}
 
 /** Splits `cols` across `n` items in a row; the last item takes the remainder so the row is exactly full. */
 function splitRow(n: number, cols: number): { x: number; w: number }[] {
@@ -134,14 +145,22 @@ function splitRow(n: number, cols: number): { x: number; w: number }[] {
   return Array.from({ length: n }, (_, i) => ({ x: i * w, w: i === n - 1 ? cols - i * w : w }));
 }
 
-export function placeFitBands(items: readonly { key: number; type: string }[]): Record<number, GridRect> {
+export function placeFitBands(items: readonly { key: number; type: string; rows?: number }[]): Record<number, GridRect> {
   const out: Record<number, GridRect> = {};
+  const texts = items.filter((i) => i.type === "text");
   const kpis = items.filter((i) => i.type === "bignumber");
   const maps = items.filter((i) => i.type === "map");
   const records = items.filter((i) => i.type === "records");
-  const rest = items.filter((i) => i.type !== "bignumber" && i.type !== "map" && i.type !== "records");
+  const rest = items.filter((i) => !["bignumber", "map", "records", "text"].includes(i.type));
   const isTrend = (t: string) => t === "line" || t === "timeline";
   const charts = [...rest.filter((i) => isTrend(i.type)), ...rest.filter((i) => !isTrend(i.type))];
+
+  // Text (a title, notes, findings) leads, full width; everything else starts below it.
+  let top = 0;
+  for (const it of texts) {
+    out[it.key] = { x: 0, y: top, w: AI_GRID_COLS, h: it.rows ?? FIT_TEXT_DEFAULT_H };
+    top += out[it.key].h;
+  }
 
   // With a map and charts, the first map fills the right half from the top and the KPIs, then the charts
   // (two across), fill the left half beside it. Otherwise everything is full width.
@@ -151,7 +170,7 @@ export function placeFitBands(items: readonly { key: number; type: string }[]): 
   const leftCols = sideMap ? AI_GRID_COLS / 2 : AI_GRID_COLS;
   const kpiPerRow = sideMap ? FIT_KPI_PER_ROW / 2 : FIT_KPI_PER_ROW;
 
-  let y = 0;
+  let y = top;
   for (let s = 0; s < kpis.length; s += kpiPerRow) {
     const chunk = kpis.slice(s, s + kpiPerRow);
     splitRow(chunk.length, leftCols).forEach((c, i) => { out[chunk[i].key] = { ...c, y, h: FIT_KPI_H }; });
@@ -164,8 +183,8 @@ export function placeFitBands(items: readonly { key: number; type: string }[]): 
     y += FIT_CHART_H;
   }
   if (sideMap) {
-    out[sideMap.key] = { x: leftCols, y: 0, w: AI_GRID_COLS - leftCols, h: Math.max(y, FIT_KPI_H + 2 * FIT_CHART_H) };
-    y = out[sideMap.key].h;
+    out[sideMap.key] = { x: leftCols, y: top, w: AI_GRID_COLS - leftCols, h: Math.max(y - top, FIT_KPI_H + 2 * FIT_CHART_H) };
+    y = top + out[sideMap.key].h;
   }
   for (const it of otherMaps) {
     out[it.key] = { x: 0, y, w: AI_GRID_COLS, h: FIT_MAP_ALONE_H };

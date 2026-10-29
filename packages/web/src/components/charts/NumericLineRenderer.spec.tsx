@@ -526,7 +526,7 @@ describe("NumericLineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03
     // override branch uses buildFormatter
     expect(src).toMatch(/buildFormatter\(cfg\.yAxisFormat/);
     // column-default branch uses resolveFormatter
-    expect(src).toMatch(/resolveFormatter\(tableId, metricColumn\)/);
+    expect(src).toMatch(/resolveAxisFormatter\(tableId, metricColumn, maxAbs\)/);
     // configVersion is in the useMemo dep array
     expect(src).toMatch(/configVersion\]/);
     // Invoke buildFormatter directly via ESM import to prove SI output
@@ -537,7 +537,7 @@ describe("NumericLineRenderer — yAxisTickFormatter resolution (AXIS-V117-02/03
 
   it("Y2 (column-default): absent yAxisFormat → useMemo uses resolveFormatter(tableId, metricColumn); identity fallback produces raw string (source assertions)", () => {
     const src = readFileSync(resolve(__dirname, "NumericLineRenderer.tsx"), "utf-8");
-    expect(src).toMatch(/resolveFormatter\(tableId, metricColumn\)/);
+    expect(src).toMatch(/resolveAxisFormatter\(tableId, metricColumn, maxAbs\)/);
     expect(src).toMatch(/configVersion\]/);
     expect(src).toContain('return (v: unknown) => String(v ?? "")');
     const identity = (v: unknown) => String(v ?? "");
