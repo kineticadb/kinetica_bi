@@ -66,7 +66,7 @@ import { DEFAULT_COLOR_THEME, MAX_METRICS, type TimelineConfig } from "./Timelin
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
 import { resolveAxisFormatter, resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
-import { valueFormatColumn } from "../../lib/aggregationLabels";
+import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
 import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
@@ -256,6 +256,8 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
       const fmt = resolveAxisFormatter(tableId, metricColumn, maxAbs);
       return (v: unknown) => String(fmt(v) ?? v);
     }
+    const countTick = countTickFormatter(metrics[0]?.aggregation); // a count: "32,000"
+    if (countTick) return countTick;
     return (v: unknown) => String(v ?? "");
   }, [cfg.yAxisFormat, tableId, metricColumn, metrics[0]?.aggregation, data, configVersion]);
   // eslint-disable-next-line react-hooks/rules-of-hooks

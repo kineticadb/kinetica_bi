@@ -125,6 +125,8 @@ export function placeGenerateBands(items: readonly { key: number; type: string }
 export const FIT_KPI_H = 10;
 export const FIT_CHART_H = 22;
 export const FIT_MAP_ALONE_H = 44;
+/** A map beside the charts matches their column, but never shorter than this (~520px). */
+export const FIT_MAP_MIN_H = 40;
 export const FIT_RECORDS_H = 24;
 /** About 730px: KPI band plus two chart rows, the part meant to show without scrolling. */
 export const FIT_SCREEN_ROWS = 56;
@@ -192,7 +194,8 @@ export function placeFitBands(items: readonly { key: number; type: string; rows?
   const sideMap = firstMap && charts.length > 0 ? firstMap : undefined;
   const otherMaps = sideMap ? restMaps : maps;
   const leftCols = sideMap ? AI_GRID_COLS / 2 : AI_GRID_COLS;
-  const kpiPerRow = sideMap ? FIT_KPI_PER_ROW / 2 : FIT_KPI_PER_ROW;
+  // Beside a map, three across the half; four go 2x2 rather than leaving one stretched across a row of its own.
+  const kpiPerRow = sideMap ? (kpis.length === 4 ? 2 : FIT_KPI_PER_ROW / 2) : FIT_KPI_PER_ROW;
 
   let y = top;
   for (let s = 0; s < kpis.length; s += kpiPerRow) {
@@ -207,7 +210,7 @@ export function placeFitBands(items: readonly { key: number; type: string; rows?
     y += FIT_CHART_H;
   }
   if (sideMap) {
-    out[sideMap.key] = { x: leftCols, y: top, w: AI_GRID_COLS - leftCols, h: Math.max(y - top, FIT_KPI_H + 2 * FIT_CHART_H) };
+    out[sideMap.key] = { x: leftCols, y: top, w: AI_GRID_COLS - leftCols, h: Math.max(y - top, FIT_MAP_MIN_H) };
     y = top + out[sideMap.key].h;
   }
   for (const it of otherMaps) {

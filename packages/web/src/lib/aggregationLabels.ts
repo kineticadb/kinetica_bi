@@ -28,3 +28,9 @@ export function isCountAggregation(aggregation: unknown): boolean {
 export function valueFormatColumn(metricColumn: string, aggregation: unknown): string {
   return isCountAggregation(aggregation) ? "" : metricColumn;
 }
+
+/** Axis ticks for a count: thousands separators ("32,000"). undefined for other aggregations, whose ticks keep their own format. */
+export function countTickFormatter(aggregation: unknown): ((v: unknown) => string) | undefined {
+  if (!isCountAggregation(aggregation)) return undefined;
+  return (v) => (typeof v === "number" ? v.toLocaleString() : String(v ?? ""));
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatBigNumberValue, pickBigNumberColor } from "./bigNumberFormat";
+import { formatBigNumberValue, pickBigNumberColor, bigNumberLabel } from "./bigNumberFormat";
 
 describe("formatBigNumberValue", () => {
   it("formats plain numbers with the configured decimals", () => {
@@ -63,5 +63,15 @@ describe("pickBigNumberColor", () => {
     expect(pickBigNumberColor(50, "#000", [{ min: 200, color: "#fff" }])).toBe("#000");
     expect(pickBigNumberColor("x", "#000", rules)).toBe("#000");
     expect(pickBigNumberColor(5, "#000", undefined)).toBe("#000");
+  });
+});
+
+describe("bigNumberLabel", () => {
+  it("BNLABEL-1 a set label wins; a meaningful SQL alias shows; the generic alias 'value' shows nothing", () => {
+    expect(bigNumberLabel({ label: "Trips" }, "value")).toBe("Trips");
+    expect(bigNumberLabel({ label: "" }, "trips")).toBe("trips");
+    expect(bigNumberLabel({}, "value")).toBe("");
+    expect(bigNumberLabel({ label: "" }, "value")).toBe("");
+    expect(bigNumberLabel({ label: 7 }, "")).toBe("");
   });
 });

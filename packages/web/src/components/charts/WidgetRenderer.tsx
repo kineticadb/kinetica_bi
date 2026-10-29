@@ -55,7 +55,7 @@ import { aggregateSpatialTargetsByTable } from "../../lib/spatialTargets";
 import { fromSwap } from "../../lib/fromSwap";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { buildChipText, type DrillDownDataType } from "../../lib/columnTypes";
-import { formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } from "../../lib/bigNumberFormat";
+import { bigNumberLabel, formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } from "../../lib/bigNumberFormat";
 import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
@@ -69,7 +69,7 @@ import {
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 import TextRenderer from "./TextRenderer";
-import { isCountAggregation, valueFormatColumn } from "../../lib/aggregationLabels";
+import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 import {
@@ -1217,7 +1217,8 @@ const BarRenderer = ({
       const out = resolveAxisFormatter(tableId, valueColumn, valueAxisMaxAbs)(v);
       if (out !== v) return String(out);
     }
-    if (typeof v === "number" && isCountAggregation(config.aggregation)) return v.toLocaleString();
+    const countTick = countTickFormatter(config.aggregation);
+    if (countTick && typeof v === "number") return countTick(v);
     return v == null ? "" : String(v);
   };
   // Size the vertical value axis to its formatted labels so short SI ticks ("1.2M") reclaim
@@ -1485,7 +1486,8 @@ const LineRenderer = ({
       const out = resolveAxisFormatter(tableId, valueColumn, valueAxisMaxAbs)(v);
       if (out !== v) return String(out);
     }
-    if (typeof v === "number" && isCountAggregation(config.aggregation)) return v.toLocaleString();
+    const countTick = countTickFormatter(config.aggregation);
+    if (countTick && typeof v === "number") return countTick(v);
     return v == null ? "" : String(v);
   };
 
@@ -2164,7 +2166,7 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
   const prefix = (config.prefix as string) || "";
   const suffix = (config.suffix as string) || "";
   const color = (config.color as string) || DEFAULT_BIGNUMBER_COLOR;
-  const label = (config.label as string) || valueField;
+  const label = bigNumberLabel(config, valueField);
   const subLabel = (config.subLabel as string) || "";
 
   const formatted = formatBigNumberValue(rawValue, {
@@ -2179,7 +2181,7 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
 
   return (
     <div className="widget-bignumber">
-      <div className="widget-bignumber-label">{label}</div>
+      {label !== "" && <div className="widget-bignumber-label">{label}</div>}
       <div className="widget-bignumber-value" style={{ color: effectiveColor }}>
         {prefix}{formatted}{suffix}
       </div>

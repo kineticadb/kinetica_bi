@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_TEXT_DEFAULT_H, FIT_TEXT_MAX_H, fitTextRows, refitTextLayouts, textCharsPerLine, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
+  AI_DEFAULT_SIZE, AI_GRID_COLS, FIT_CHART_H, FIT_MAP_MIN_H, FIT_TEXT_DEFAULT_H, FIT_TEXT_MAX_H, fitTextRows, refitTextLayouts, textCharsPerLine, FIT_KPI_H, FIT_MAP_ALONE_H, FIT_RECORDS_H, FIT_SCREEN_ROWS, GENERATE_AI_RECT, GENERATE_MAIN_COLS, placeFitBands, placeGenerateBands, placeWidget, rectsOverlap, resolveRect, validateLayout, type GridRect,
 } from "./layout";
 import { AI_WIDGET_TYPES } from "./aiAsk";
 import type { AiOp } from "./aiOp";
@@ -155,11 +155,16 @@ describe("placeFitBands", () => {
     expect(r[-7]).toEqual({ x: 0, y: FIT_KPI_H + 2 * FIT_CHART_H, w: AI_GRID_COLS, h: FIT_RECORDS_H });
   });
 
-  it("FITBAND-1b beside a map, KPIs go three across the left half; without charts they stay full width", () => {
+  it("FITBAND-1b beside a map, KPIs go three across the left half (four as 2x2); without charts they stay full width", () => {
+    const three = placeFitBands(mk(["bignumber", "bignumber", "bignumber", "bar", "map"]));
+    expect([three[-1], three[-2], three[-3]].map((x) => [x.x, x.w, x.y])).toEqual([[0, 6, 0], [6, 6, 0], [12, 6, 0]]);
+    // four go 2x2 rather than three plus one stretched across the half
     const r = placeFitBands(mk(["bignumber", "bignumber", "bignumber", "bignumber", "bar", "map"]));
-    expect([r[-1], r[-2], r[-3]].map((x) => [x.x, x.w, x.y])).toEqual([[0, 6, 0], [6, 6, 0], [12, 6, 0]]);
-    expect(r[-4]).toEqual({ x: 0, y: FIT_KPI_H, w: 18, h: FIT_KPI_H });
+    expect([r[-1], r[-2], r[-3], r[-4]].map((x) => [x.x, x.y, x.w])).toEqual([[0, 0, 9], [9, 0, 9], [0, FIT_KPI_H, 9], [9, FIT_KPI_H, 9]]);
     expect(r[-6]).toMatchObject({ x: 18, y: 0 });
+    // two KPI rows + one chart row: the map matches the left column instead of leaving a gap under it
+    const left = 2 * FIT_KPI_H + FIT_CHART_H;
+    expect(placeFitBands(mk(["bignumber", "bignumber", "bignumber", "bignumber", "bar", "pie", "map"]))[-7]).toEqual({ x: 18, y: 0, w: 18, h: Math.max(left, FIT_MAP_MIN_H) });
     const noCharts = placeFitBands(mk(["bignumber", "bignumber", "map"]));
     expect(noCharts[-1]).toEqual({ x: 0, y: 0, w: 18, h: FIT_KPI_H });
     expect(noCharts[-3]).toEqual({ x: 0, y: FIT_KPI_H, w: 36, h: FIT_MAP_ALONE_H });

@@ -397,28 +397,26 @@ describe("HOST7 / KPI7 (137-07 Task 3, 136-12 UAT findings 2 + 3)", () => {
     expect(counts([removeLayerOp(23)], true)).toEqual({ added: 0, edited: 0, removed: 1 });
   });
 
-  it("KPI7-1: an AI-added big number without a label shows '<Aggregation> of <column>'", () => {
-    expect(fold3([kpi()]).addedWidgets[0].config.label).toBe("Sum of fare_amount");
+  it("KPI7-1: an AI-added big number without a label gets none (its title names it; the renderer hides the 'value' alias)", () => {
+    expect(fold3([kpi()]).addedWidgets[0].config).not.toHaveProperty("label");
   });
   it("KPI7-2: an AI-supplied label is kept", () => {
     expect(fold3([kpi({ label: "Total fares" })]).addedWidgets[0].config.label).toBe("Total fares");
   });
-  it("KPI7-3: a metric/aggregation patch re-derives an auto label but keeps an AI one", () => {
+  it("KPI7-3: a metric/aggregation patch keeps an AI label and invents none", () => {
     const patchAvg = { op: "patch", action: { target: { kind: "widget", id: -1 }, configPatch: { aggregation: "avg" } } };
-    expect(fold3([kpi(), patchAvg]).addedWidgets[0].config.label).toBe("Average of fare_amount");
+    expect(fold3([kpi(), patchAvg]).addedWidgets[0].config).not.toHaveProperty("label");
     expect(fold3([kpi({ label: "Total fares" }), patchAvg]).addedWidgets[0].config.label).toBe("Total fares");
   });
-  it("KPI7-4: change_widget_type to bignumber gets the default label", () => {
+  it("KPI7-4: change_widget_type to bignumber adds no label", () => {
     // The shared op schema only swaps to bar/line/pie today (AI_CHART_SWAP_TYPES), so evaluateTurn
     // would skip these; feed applied entries straight to the fold to prove the defensive branch.
     const applied = (op: unknown): TurnEntry => ({ raw: op, op: op as TurnEntry["op"], result: { status: "applied" } });
     const bar = { op: "add_widget", tempId: -2, type: "bar", title: "B", config: { tableId: 1, metric: "fare_amount", aggregation: "sum", groupByColumn: "vendor" } };
     const temp = foldSession(b3, [applied(bar), applied(changeTypeOp(-2, "bignumber"))]);
-    expect(temp.addedWidgets[0].config.label).toBe("Sum of fare_amount");
+    expect(temp.addedWidgets[0].config).not.toHaveProperty("label");
     const saved = foldSession(b3, [applied(changeTypeOp(60, "bignumber"))]);
-    expect(saved.widgetMeta[60].config?.label).toBe("Sum of fare_amount");
-    const other = foldSession(b3, [applied(changeTypeOp(60, "line"))]);
-    expect(other.widgetMeta[60].config).not.toHaveProperty("label");
+    expect(saved.widgetMeta[60].config ?? {}).not.toHaveProperty("label");
   });
 });
 
