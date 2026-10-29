@@ -35,6 +35,25 @@ export function extractFirstJsonObject(text: string): unknown | undefined {
   return undefined;
 }
 
+/** null means "not given": small models fill every optional field with null, which the strict tool schemas reject. */
+function withoutNulls(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) if (v !== null) out[k] = v;
+  return out;
+}
+
+/**
+ * The tool call in a reply: the documented {"tool","args"} shape, or (142-11 Ollama UAT: qwen2.5 wrote
+ * {"add_widget":{...}}) a single key that is one of THIS request's tool names with an object value.
+ */
+function toolCallOf(obj: Record<string, unknown>, toolNames: ReadonlySet<string>): { name: string; args: Record<string, unknown> } | undefined {
+  const isArgs = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  if (typeof obj.tool === "string" && obj.tool !== "") return { name: obj.tool, args: withoutNulls(isArgs(obj.args) ? obj.args : {}) };
+  const keys = Object.keys(obj);
+  if (keys.length === 1 && toolNames.has(keys[0]) && isArgs(obj[keys[0]])) return { name: keys[0], args: withoutNulls(obj[keys[0]] as Record<string, unknown>) };
+  return undefined;
+}
+
 function renderTools(tools: readonly ToolSpec[]): string {
   const lines = [
     "You can use tools. Reply with EXACTLY ONE JSON object and nothing else:",
@@ -94,9 +113,9 @@ export function createJsonActionProvider(inner: LlmProvider): LlmProvider {
           text += ev.text;
         } else if (ev.type === "done") {
           const obj = extractFirstJsonObject(text) as Record<string, unknown> | undefined;
-          if (obj && typeof obj.tool === "string" && obj.tool !== "") {
-            const args = obj.args && typeof obj.args === "object" && !Array.isArray(obj.args) ? obj.args : {};
-            yield { type: "tool_call", id: `json_call_${++n}`, name: obj.tool, argsRaw: JSON.stringify(args) };
+          const call = obj ? toolCallOf(obj, new Set(req.tools.map((t) => t.name))) : undefined;
+          if (call) {
+            yield { type: "tool_call", id: `json_call_${++n}`, name: call.name, argsRaw: JSON.stringify(call.args) };
             yield { type: "done", finish: "tool_calls" };
           } else if (obj && typeof obj.final === "string") {
             if (obj.final !== "") yield { type: "text_delta", text: obj.final };

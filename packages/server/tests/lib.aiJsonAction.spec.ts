@@ -113,4 +113,19 @@ describe("json action provider", () => {
     const b = await run([{ type: "text_delta", text: "par" }, e]);
     expect(b.out).toEqual([e]);
   });
+
+  it("JSA-OLL-1: Ollama UAT shape {\"<tool>\": {...}} becomes a call when the key is a known tool; nulls count as absent", async () => {
+    const { out } = await run(textReply('{"describe_table":{"tableId":3,"note":null}}'));
+    const tc = out.find((e) => e.type === "tool_call") as Extract<LlmEvent, { type: "tool_call" }>;
+    expect(tc.name).toBe("describe_table");
+    expect(JSON.parse(tc.argsRaw)).toEqual({ tableId: 3 });
+  });
+
+  it("JSA-OLL-2: an unknown single key stays text; the usual shape also drops nulls", async () => {
+    const unknown = await run(textReply('{"drop_everything":{"x":1}}'));
+    expect(unknown.out.some((e) => e.type === "tool_call")).toBe(false);
+    const usual = await run(textReply('{"tool":"describe_table","args":{"tableId":3,"label":null}}'));
+    const tc = usual.out.find((e) => e.type === "tool_call") as Extract<LlmEvent, { type: "tool_call" }>;
+    expect(JSON.parse(tc.argsRaw)).toEqual({ tableId: 3 });
+  });
 });
