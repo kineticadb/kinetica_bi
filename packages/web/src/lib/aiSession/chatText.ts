@@ -30,7 +30,27 @@ export const AI_CHAT_COPY = {
   lockedSuffix: "Editing is locked until they are kept or discarded.",
   askPlaceholder: "Ask a question about this dashboard",
   retry: "Retry",
+  noChanges: "No changes were made to the dashboard.",
 } as const;
+
+/** 142 UAT: the app's own record of what a turn changed, shown outside the model's bubble so model text cannot pass
+ *  for it. Labels come from the server's accepted list, shown only when the browser actually applied something. */
+const CHANGES_SHOWN = 6;
+const CLAIMS_CHANGE = /\b(added|applied|filtered|created|removed|renamed|changed|updated|moved|replaced)\b/i;
+
+export type TurnChanges = { kind: "applied"; labels: string[] } | { kind: "none" } | null;
+
+export function turnChanges(t: { answer: string; entries: readonly { result: { status: string } }[]; chat?: { applied?: string[]; clarifications?: unknown[]; skipped?: unknown[] } }): TurnChanges {
+  const changed = t.entries.some((e) => e.result.status === "applied");
+  const labels = t.chat?.applied ?? [];
+  if (changed && labels.length > 0) {
+    const shown = labels.slice(0, CHANGES_SHOWN);
+    const more = labels.length - shown.length;
+    return { kind: "applied", labels: more > 0 ? [...shown, `and ${more} more`] : shown };
+  }
+  const waiting = (t.chat?.clarifications ?? []).length > 0 || (t.chat?.skipped ?? []).length > 0;
+  return !changed && !waiting && CLAIMS_CHANGE.test(t.answer) ? { kind: "none" } : null;
+}
 
 export function keepConfirmBody(c: { added: number; edited: number; removed: number }): string {
   return `${c.added} added · ${c.edited} edited · ${c.removed} removed. ${AI_CHAT_COPY.filtersNotSaved}`;

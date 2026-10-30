@@ -150,7 +150,13 @@ export function summarizeEarlierTurns(turns: Turns): string | null {
   return `Earlier in this conversation (${plural(turns.length, "question")}): ${plural(applied.length, "change")} applied${detail}, ${skipped} skipped.`;
 }
 
+/** 142 UAT: this record used to end the model's own past replies, and a weak model then wrote its own "Changes:" line
+ *  without making any call. It now rides at the start of the NEXT user message, labelled as the app's record. */
 function changesLine(changes: Turns[number]["changes"]): string {
+  return `[App record of what your previous reply changed on the dashboard; the app writes this, never you] ${changesText(changes)}`;
+}
+
+function changesText(changes: Turns[number]["changes"]): string {
   if (changes.length === 0) return "Changes: none";
   const ap = changes.filter((c) => c.status === "applied").map((c) => c.label);
   const sk = changes.filter((c) => c.status === "skipped").map((c) => (c.reason ? `${c.label} (${c.reason})` : c.label));
@@ -167,10 +173,12 @@ export function buildConversationMessages(turns: Turns, question: string, histor
   const msgs: OutboundMessage[] = [];
   const summary = summarizeEarlierTurns(older);
   if (summary) msgs.push({ role: "user", parts: [part.history(summary)] });
+  let record: OutboundPart[] = [];
   for (const t of recent) {
-    msgs.push({ role: "user", parts: [part.history(t.question)] });
-    msgs.push({ role: "assistant", parts: [part.history(`${t.answer}\n${changesLine(t.changes)}`)] });
+    msgs.push({ role: "user", parts: [...record, part.history(t.question)] });
+    msgs.push({ role: "assistant", parts: [part.history(t.answer)] });
+    record = [part.history(changesLine(t.changes))];
   }
-  msgs.push({ role: "user", parts: [part.user(question)] });
+  msgs.push({ role: "user", parts: [...record, part.user(question)] });
   return msgs;
 }

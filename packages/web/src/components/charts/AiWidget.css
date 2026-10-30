@@ -59,6 +59,25 @@
   font-size: var(--text-xs);
 }
 
+/* 142 UAT: the app's record of what a turn changed, outside the model's bubble (model text cannot render here) */
+.ai-chat-changes {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.ai-chat-changes li::before {
+  content: "\2713\00a0";
+  color: var(--accent);
+}
+
+.ai-chat-changes li {
+  overflow-wrap: anywhere;
+}
+
 /* 140 D-11: long SQL lines wrap inside the chat column (no colour: theme tokens untouched) */
 .ai-chat-query {
   white-space: pre-wrap;

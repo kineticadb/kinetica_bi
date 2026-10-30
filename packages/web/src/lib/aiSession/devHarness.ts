@@ -48,6 +48,7 @@ type ChatTurnOpts = {
   pickedChoice?: { clarificationIndex: number; optionId: string };
   message?: string;
   retryable?: boolean;
+  applied?: string[];
   queries?: AskQueryEntry[];
 };
 
@@ -210,6 +211,7 @@ export function installAiDevHarness(
           message: opts.message,
           retryable: opts.retryable,
           ...(opts.queries ? { queries: opts.queries } : {}),
+          ...(opts.applied ? { applied: opts.applied } : {}),
         },
       });
       reportPosition("chatTurn");

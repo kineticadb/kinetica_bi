@@ -56,6 +56,14 @@ describe("parseReplyTrailer", () => {
     expect(parseReplyTrailer(t).followUps).toEqual([]);
     expect(parseReplyTrailer(`${q}\n`, [q]).text).toBe(q); // the only text: kept, so the bubble is not empty
   });
+  it("TRL-10: lines shaped like the app's change record are dropped from the reply", () => {
+    const t = "I filtered to Cash.\nChanges: applied: Filtered nyctaxi to payment_type = 'Cash'\n\nFollow-ups:\n- Show by vendor";
+    expect(parseReplyTrailer(t)).toEqual({ text: "I filtered to Cash.", followUps: ["Show by vendor"], choices: [] });
+    expect(parseReplyTrailer("Done.\n**Changes: none**").text).toBe("Done.");
+    expect(parseReplyTrailer("[App record of what your previous reply changed] Changes: none\nHi").text).toBe("Hi");
+    expect(parseReplyTrailer("Changes to the layout are easy: just ask.").text).toBe("Changes to the layout are easy: just ask.");
+  });
+
   it("TRL-8: toChoiceClarification", () => {
     expect(toChoiceClarification("x?", ["only"])).toBeNull();
     const c = toChoiceClarification("Some text.\nWhich one?", ["Fare", "Tip"]);

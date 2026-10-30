@@ -244,7 +244,8 @@ describe("AiChat", () => {
       seed([turn(0, "q", "a", { status: "ok", followUps: [], emptyFilters: empty })]);
       const { container } = render(<AiChat ctx={ctx} variant="inline" />);
       const btn = screen.getByRole("button", { name: "Clear the payment_type filter" });
-      expect(btn.className).toContain("ghost-sm");
+      // 142 todo: the offer is the turn's primary action, not another ghost button like the follow-ups below it
+      expect(btn.className).toBe("btn-primary btn-sm");
       expect(btn.textContent).toBe("Clear this filter");
       expect(btn.closest(".ai-chat-turn-actions")).toBeTruthy();
       await userEvent.click(btn);
@@ -266,6 +267,39 @@ describe("AiChat", () => {
       render(<AiChat ctx={ctx} variant="inline" />);
       expect(screen.getByRole("button", { name: "Revert dashboard to this state" })).toBeTruthy();
     });
+  });
+});
+
+describe("change record (142 UAT)", () => {
+  const applied = { raw: {}, op: null, result: { status: "applied" as const } };
+
+  it("CHG-1: applied labels show outside the AI bubble, capped with 'and N more'", () => {
+    const labels = Array.from({ length: 8 }, (_, i) => `Added bar "B${i}"`);
+    const t = turn(0, "q", "Added the charts.", { status: "ok", followUps: [], applied: labels });
+    t.entries = [applied];
+    seed([t]);
+    const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+    const list = screen.getByRole("list", { name: "Dashboard changes" });
+    expect(Array.from(list.querySelectorAll("li")).map((li) => li.textContent)).toEqual([...labels.slice(0, 6), "and 2 more"]);
+    expect(list.closest(".ai-chat-bubble")).toBeNull();
+    expect(container.querySelector(".ai-chat-bubble--ai")!.textContent).toBe("Added the charts.");
+  });
+
+  it("CHG-2: a reply that claims a change the app did not make gets the app's 'no changes' note", () => {
+    seed([turn(0, "Filter to Cash", "I filtered the dashboard to Cash.", { status: "ok", followUps: [], applied: ["Filtered nyctaxi"] })]);
+    render(<AiChat ctx={ctx} variant="inline" />);
+    expect(screen.getByText("No changes were made to the dashboard.")).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Dashboard changes" })).toBeNull();
+  });
+
+  it("CHG-3: no note on a plain answer or while a choice is pending", () => {
+    seed([
+      turn(0, "q", "Cash tips the most.", { status: "ok", followUps: [] }),
+      turn(1, "remove it", "I removed it.", { status: "ok", followUps: [], clarifications: [{ kind: "choose_option", question: "Which?", options: [{ id: "a", label: "A" }] } as never] }),
+    ]);
+    const { container } = render(<AiChat ctx={ctx} variant="inline" />);
+    expect(container.textContent).not.toContain("No changes were made");
+    expect(container.querySelector(".ai-chat-changes")).toBeNull();
   });
 });
 

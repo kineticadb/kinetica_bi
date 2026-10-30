@@ -199,8 +199,9 @@ describe("CTX history", () => {
     expect(text(msgs[1])).toContain("QUESTION-4");
     expect(msgs[2].role).toBe("assistant");
     expect(text(msgs[2])).toContain("NEWANSWER-4");
-    expect(text(msgs[2])).toContain("Changes: applied: Added bar \"4\"");
-    expect(text(msgs[13])).toBe("NOW");
+    expect(text(msgs[2])).toBe("NEWANSWER-4");
+    expect(text(msgs[3])).toMatch(/^\[App record of what your previous reply changed.*\] Changes: applied: Added bar "4"\nQUESTION-5$/);
+    expect(text(msgs[13])).toMatch(/Changes: applied: Added bar "9"\nNOW$/);
   });
 
   it("CTX-6 old answers absent, recent answers present", () => {
@@ -229,16 +230,18 @@ describe("CTX history", () => {
   it("CTX-8 prior parts are history class, current question is user class", () => {
     const msgs = buildConversationMessages(nine, "NOW", 6);
     const last = msgs[msgs.length - 1] as any;
-    expect(last.parts.map((p: any) => p.cls)).toEqual(["user"]);
+    expect(last.parts.map((p: any) => p.cls)).toEqual(["history", "user"]);
     for (const m of msgs.slice(0, -1)) {
       for (const p of (m as any).parts) expect(p.cls).toBe("history");
     }
     expect(msgs.slice(0, -1).filter((m) => m.role === "assistant").every((m) => !("toolCalls" in m))).toBe(true);
   });
 
-  it("CTX-9 empty changes render 'Changes: none'", () => {
+  it("CTX-9 empty changes render 'Changes: none', in the next user message, never in the reply", () => {
     const msgs = buildConversationMessages([mkTurn(9)], "NOW", 6);
-    expect(text(msgs[1])).toContain("Changes: none");
+    expect(text(msgs[1])).toBe("NEWANSWER-9");
+    expect(text(msgs[2])).toContain("Changes: none");
+    for (const m of msgs) if (m.role === "assistant") expect(text(m)).not.toMatch(/Changes:|App record/);
   });
 
   it("CTX-10 zero turns and oversized window", () => {

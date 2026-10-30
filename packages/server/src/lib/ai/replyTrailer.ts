@@ -8,6 +8,9 @@ const CHOICE_MAX = 3;
 const CHOICE_MAX_CHARS = 200;
 const ITEM_RE = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
 const HEADING_RE = /^\s*(follow[- ]?ups?(?: questions)?|choices|options)\s*:\s*$/i;
+/** 142 UAT: a weak model copied the app's change record into its reply ("Changes: applied: ...") without making any
+ *  call. Lines in that record's shape are the app's to write, so they are dropped from the reply. */
+const IMITATED_RECORD_RE = /^\s*[*_>-]*\s*(\[app record\b|changes\s*:\s*(none|applied|skipped)\b)/i;
 
 function clean(items: string[], max: number, maxChars: number): string[] {
   const out: string[] = [];
@@ -27,7 +30,7 @@ export function parseReplyTrailer(raw: string, echoes: readonly string[] = []): 
   try {
     const unchanged = { text: raw, followUps: [] as string[], choices: [] as string[] };
     if (raw.length > PARSE_CAP) return unchanged;
-    const lines = raw.replace(/\r\n?/g, "\n").split("\n");
+    const lines = raw.replace(/\r\n?/g, "\n").split("\n").filter((l) => !IMITATED_RECORD_RE.test(l));
     const echo = new Set(echoes.map(norm).filter(Boolean));
     const hasTextAbove = (n: number) => lines.slice(0, n).some((l) => l.trim() !== "");
     while (lines.length > 0 && (lines[lines.length - 1]!.trim() === "" || (echo.has(norm(lines[lines.length - 1]!)) && hasTextAbove(lines.length - 1)))) lines.pop();

@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAiSessionStore } from "../../store/aiSessionStore";
 import { runAsk, cancelAsk, choiceQuestion, type AskContext } from "../../lib/aiSession/askRunner";
-import { AI_CHAT_COPY, formatElapsed, describeSkipped, formatQueriesToggle, describeQueryEntry } from "../../lib/aiSession/chatText";
+import { AI_CHAT_COPY, turnChanges, formatElapsed, describeSkipped, formatQueriesToggle, describeQueryEntry } from "../../lib/aiSession/chatText";
 import { buildStarterQuestions, buildTemplateFollowUps } from "../../lib/aiSession/starterQuestions";
 import { useFilterStore } from "../../store/filterStore";
 import { currentFilter, clearFilterAsUser } from "../../lib/aiOps/aiFilterApplier";
@@ -185,12 +185,21 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                 : buildTemplateFollowUps(ctx.tables, turn.prompt);
           const changedSomething = turn.entries.some((e) => e.result.status === "applied");
           const showRevert = !hasChoices || changedSomething;
+          const changes = status === "ok" ? turnChanges(turn) : null;
           return (
             <div key={turn.id} className={`ai-chat-turn${i > cursor ? " ai-chat-turn--ahead" : ""}`}>
               <div className="ai-chat-bubble ai-chat-bubble--user">{turn.prompt}</div>
               {status === "ok" && (
                 <>
                   <div className="ai-chat-bubble ai-chat-bubble--ai">{turn.answer}</div>
+                  {changes?.kind === "applied" && (
+                    <ul className="ai-chat-changes" aria-label="Dashboard changes">
+                      {changes.labels.map((c, ci) => (
+                        <li key={ci}>{c}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {changes?.kind === "none" && <div className="ai-chat-note muted">{AI_CHAT_COPY.noChanges}</div>}
                   {(chat?.filterNotes ?? []).map((n, ni) => (
                     <div key={`fn-${ni}`} className="ai-chat-note muted">
                       {n}
@@ -222,7 +231,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                       <div key={`ef-${e.source.kind}-${e.source.id}-${e.column}`} className="ai-chat-turn-actions">
                         <button
                           type="button"
-                          className="ghost-sm"
+                          className="btn-primary btn-sm"
                           aria-label={`Clear the ${e.column} filter`}
                           disabled={running}
                           onClick={() => clearFilterAsUser(e.source, e.column)}
