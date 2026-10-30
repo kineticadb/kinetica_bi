@@ -165,9 +165,9 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - (c) The TTL sweep's view drop falls back to the Kinetica TTL when the session has expired.
 - (d) A failed generation has no Keep (D-07): Retry, Discard or the sweep only.
 - (e) S6 matrix: Gemini day 1 of 3 (inconclusive so far); Ollama native 58.1% / json 85.7% (json best effort). Claude adapter not live-verified (AI-F11).
-- (f) Open, model side: "by hour" reads as calendar hour (app gap, todo `2026-10-28-ai-dv-hour-of-day-day-of-week-buckets.md`); an already-averaged view column sometimes summed; in query mode a plain question can get a chart. Weak models can claim changes they did not make: since 2026-10-30 the app shows its own change list outside the reply and "No changes were made to the dashboard." when nothing changed, and the change record no longer sits in the model's own past replies.
+- (f) Open, model side: "by hour" read as calendar hour (app gap closed 2026-10-30 in 7985387: hour_of_day / day_of_week / month_of_year buckets, live on Kinetica; not yet tried with Gemini picking them); an already-averaged view column sometimes summed; in query mode a plain question can get a chart. Weak models can claim changes they did not make: since 2026-10-30 (0f8e460, checked live light + dark) the app shows its own change list outside the reply and "No changes were made to the dashboard." when nothing changed, and the change record no longer sits in the model's own past replies.
 - (g) Open, minor: `?page=ai-activity` deep link lands on Dashboards on a fresh load; the server accepts an `AI_MODEL` with spaces without a warning; the "Maximum update depth" warning seen once on day 1 did not recur.
-- (h) Done 2026-10-30: "Clear this filter" is now the turn's primary button (todo closed).
+- (h) Done 2026-10-30: "Clear this filter" is now the turn's primary button (0f8e460, todo closed).
 
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.

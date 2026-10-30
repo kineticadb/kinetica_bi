@@ -40,7 +40,7 @@ UAT fixes (each red-first): 9d91596, bc97400, dba356f, a758465 / 9570676 / 688ab
 - The S6 spike runs one `--runs 1` per quota day; the final verdict is recorded when >= 20 clean trials exist.
 
 ## Open observations (not blockers)
-- Model: "by hour" read as calendar hour (app gap: no hour-of-day / day-of-week buckets; todo 2026-10-28).
+- Model: "by hour" read as calendar hour (app gap: no hour-of-day / day-of-week buckets; closed 2026-10-30 in 7985387).
 - Model: occasionally sums an already-averaged view column (prompt rule added in 52919a9).
 - Model: in query mode a plain question was answered with a chart.
 - `?page=ai-activity` deep link lands on Dashboards on a fresh load.
