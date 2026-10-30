@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: AI-Driven Dashboards
 status: in-progress
-stopped_at: "Phase 143 formalised (2026-10-29); 142 UAT waits on a Gemini quota day (G10). Next: 143 token sign-in"
-last_updated: "2026-10-29T16:00:00.000Z"
+stopped_at: "Phase 142 bookkeeping done (2026-10-30); Gemini S6 spike day 1 of 3 recorded. Next: S6 days 2-3, then /gsd:audit-milestone v2.0"
+last_updated: "2026-10-30T16:00:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — Phase 142 in UAT (only G10 S6 spike left, needs Gemini quota); Phase 143 (Claude Desktop MCP Connector) in progress on `spike/kbi-mcp`
+**Current focus:** v2.0 AI-Driven Dashboards — all phases (133-143) complete; the Gemini S6 spike matrix needs 2 more quota days, then the milestone audit
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 143 (Claude Desktop MCP Connector) — IN PROGRESS, added 2026-10-29 (promotes AI-F6). Branch `spike/kbi-mcp` off `feat/ai-driven-dashboards`. AIMCP-V20-01..03 complete from the spike and its live Claude Desktop UAT (`phases/143-claude-desktop-mcp-connector/143-UAT-RESULTS.md`). Next, in the operator's order: token sign-in (04), cleanup on Discard (05), AI activity kind (06), Keep without the in-app AI (07), edit existing dashboards (08), filters (09).
-Phase: 142 (Generate, Audit Viewer & Live Provider Proofs) — 142-01..09 executed; 142-10 Gemini UAT days 1-4 recorded in `142-UAT-RESULTS.md` (G1-G9 pass); 142-11 Ollama UAT run 2026-10-26 (PARTIAL) and re-run live in json mode 2026-10-29 (still PARTIAL; defect 1 fix confirmed, defect 3 json reply shapes fixed). Left: G10 S6 spike and a live check of the add_widget required-fields description (Gemini quota day), then phase bookkeeping.
+Phase: 143 (Claude Desktop MCP Connector) — COMPLETE 2026-10-29 (AIMCP-V20-01..09; operator Claude Desktop UAT passed; live token sign-in from Claude Desktop deferred by the operator). Merged into `feat/ai-driven-dashboards`.
+Phase: 142 (Generate, Audit Viewer & Live Provider Proofs) — COMPLETE 2026-10-30 (11/11 plans; Gemini G0-G9 PASS; Ollama PARTIAL; S6 Gemini spike day 1 of 3 recorded, verdict after >= 20 clean trials). Next: S6 `--runs 1` on two more quota days, then `/gsd:audit-milestone` for v2.0 and the PR to `master`.
 Phase: 141 (Keep (Persist AI Changes)) — COMPLETE 2026-10-22 (14/14 plans; gates green; 141-14 operator UAT run by Claude in the operator's Chrome on Kinetica 7.2.3.12, light+dark; step 6 skipped, step 9 deferred to 142; UAT fixes e5bb56e/eaad490/3aef06f; results in `phases/141-keep-persist-ai-changes/141-14-UAT-RESULTS.md`)
 Previous phase: 140 (Query Data-Access Mode & Injection Hardening) — COMPLETE 2026-10-21 (13/13 plans; gates green apart from environmental lib.exportRunner.memory; 140-13 live spike + operator UAT run by Claude on Kinetica 7.2.3.12, light+dark; live Gemini ask deferred to 142; results in `phases/140-query-data-access-mode-injection-hardening/140-13-UAT-RESULTS.md`)
 Previous phase: 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans + gap fixes 6a26b22/4b688a9/fb38e93/a23ef71 + UAT fix 2cef90c; gates green; 139-14 operator UAT run by Claude in the operator's Chrome, light+dark; step 8/8b deferred to 142; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
@@ -156,6 +156,18 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - (e) Step 9 join note and step 6 UI not browser-verified (see above).
 - (f) Harness only: empty answer bubbles for harness turns without answer text.
 - Live provider Keep (a model-driven ask then Keep) is unverified -> Phase 142 live UAT.
+
+**Phase 142 outcomes (2026-10-30):** Designers generate a starter dashboard from a table, admins browse the AI log, and the provider is proven live. (1) `POST /api/dashboards/generate` creates a private, unkept dashboard (one per user, unique index; creator-only visibility in `canViewDashboard`, 404 to others) and the AI Assistant starts the first ask once; generate mode is derived on the server (own limits, recipe, one-shot nudge, 4-8 widget floor/ceiling, fixed bands) (142-01..03, 142-05..07). (2) One discard helper behind Discard, DELETE, logout, the boot sweep and the TTL sweep (`AI_GENERATED_TTL_HOURS`); views dropped with the dashboard (142-05). (3) `ai_audit.kind` (ask / generate / keep, later mcp) and the "AI activity" page behind the existing `audit:view`: filters, paging, details with tools, rejections, queries (SQL + counts only) (142-06, 142-08, 142-09). (4) Live Gemini `gemini-3-flash-preview` (native) G0-G9 PASS over 4 quota days, light and dark, with 15 UAT fix commits (timeline chart for time trends, map default view from the data extent, bad-key 400 as auth, Cancel no longer re-sends, required-fields tool description, and others; list in `142-10-SUMMARY.md`). (5) Live Ollama `qwen2.5:7b-instruct` on 4 CPUs: PARTIAL (adapter fine; model too weak; json mode best effort; 300 s fetch cap removed). (6) S6: Ollama native 58.1% valid (18 clean) / json 85.7% (21/21); Gemini day 1 (2026-10-30) 7/7 clean, 80% valid, 2nd turn 0/1, inconclusive until >= 20 clean trials. README "Tested models (Phase 142)" table.
+
+**New debt / follow-ups from Phase 142:**
+- (a) A user signed in from two browsers loses the unkept dashboard when either logs out (by design, D-03a).
+- (b) Filter/combination views a user creates by hand on an unkept dashboard fall to the Kinetica TTL (not dropped by Discard).
+- (c) The TTL sweep's view drop falls back to the Kinetica TTL when the session has expired.
+- (d) A failed generation has no Keep (D-07): Retry, Discard or the sweep only.
+- (e) S6 matrix: Gemini day 1 of 3 (inconclusive so far); Ollama native 58.1% / json 85.7% (json best effort). Claude adapter not live-verified (AI-F11).
+- (f) Open, model side: "by hour" reads as calendar hour (app gap, todo `2026-10-28-ai-dv-hour-of-day-day-of-week-buckets.md`); an already-averaged view column sometimes summed; in query mode a plain question can get a chart. Weak models can claim changes they did not make: since 2026-10-30 the app shows its own change list outside the reply and "No changes were made to the dashboard." when nothing changed, and the change record no longer sits in the model's own past replies.
+- (g) Open, minor: `?page=ai-activity` deep link lands on Dashboards on a fresh load; the server accepts an `AI_MODEL` with spaces without a warning; the "Maximum update depth" warning seen once on day 1 did not recur.
+- (h) Done 2026-10-30: "Clear this filter" is now the turn's primary button (todo closed).
 
 **Pending from Phase 133:**
 - ~~Quick task for `defect-dv-combination-filter-view.md`~~ — DONE 2026-10-09 (quick 261009-jg6, operator-verified). Follow-ups: map overlay "Some layers over threshold" still reason-agnostic; spatial draws ignored for a dv source table with no eligible map spatial target.

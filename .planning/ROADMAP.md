@@ -57,8 +57,8 @@
 - [x] **Phase 139: Session-Only Dynamic Views** — structured-spec views, ad-hoc materialize, temp-view lifecycle
 - [x] **Phase 140: Query Data-Access Mode & Injection Hardening** — guarded read-only SELECT; poisoned-input fixtures
 - [x] **Phase 141: Keep (Persist AI Changes)** — one all-or-nothing save with edit-rights and 409 checks
-- [ ] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
-- [ ] **Phase 143: Claude Desktop MCP Connector** — Claude Desktop builds and edits dashboards through Kinetica BI's gateway; text widget; fit-to-screen layout (added 2026-10-29)
+- [x] **Phase 142: Generate, Audit Viewer & Live Provider Proofs** — starter dashboard, audit page, live Gemini + Ollama UAT
+- [x] **Phase 143: Claude Desktop MCP Connector** — Claude Desktop builds and edits dashboards through Kinetica BI's gateway; text widget; fit-to-screen layout (added 2026-10-29)
 
 **Order:** 133 → {134 ∥ 135} → 136 → 137 → 138 → 139 → 140 → 141 → 142. 134 (client) and 135 (server) touch disjoint files and may run in parallel after 133.
 **Research-phase flagged:** 133 (S1, S3), 135 (S6), 137 (S2 through the deploy proxy), 139 (S1, S7), 140 (SQL guard, S7). Standard: 134, 136, 138, 141, 142.
@@ -326,19 +326,20 @@ Plans:
 2. Discarding a generated dashboard leaves no dashboard, widgets or views (checked in SQLite and Kinetica).
 3. An admin with the audit permission browses the log (no row values); a user without it cannot open the page.
 4. The operator completes live runs on Gemini and on one named Ollama model, recorded in a UAT file with a tested-models matrix.
+**Completed 2026-10-30:** 11/11 plans. Live UAT on Kinetica 7.2.3.12 driven by Claude in the operator's Chrome, light and dark (`142-UAT-RESULTS.md`). SC1 PASS (Gemini Generate 4-8 widgets incl. timeline and an AI map opening on the data; refine; Keep). SC2 PASS (Discard, Cancel, logout, boot and TTL sweeps leave no dashboard, widgets or AI views; checked in SQLite). SC3 PASS (AI activity page behind audit:view, 403 for uat_analyst, no row values; queries_json SQL + counts only). SC4: Gemini `gemini-3-flash-preview` PASS (G0-G9); Ollama `qwen2.5:7b-instruct` (CPU, json mode) PARTIAL; tested-models matrix in README. Gemini S6 spike: day 1 of 3 (7/7 clean, 80% valid, inconclusive until >= 20 clean trials). UAT fixes: 9d91596, bc97400, dba356f, a758465, 9570676, 688ab33, 0aa5150, b601087, f0d6929, 4601291, 21fd377, 51b009d, c5b7879, 285f686, 52919a9, 0150f36, 7517ae1.
 **Plans:** 11 plans in 5 waves
 Plans:
-- [ ] 142-01-PLAN.md — dashboards.generated_by/generated_pending_at + one-pending-per-user unique index, ai_audit.kind + (dashboard_id, ts_ms) index, DTO generated_pending, creator-only override in canViewDashboard, enumerator filter, grant refusal, Keep clears the flag in-transaction [W1]
-- [ ] 142-02-PLAN.md — shared placeGenerateBands + GENERATE_AI_RECT, server generateMode.ts (limits, recipe, nudge, band rewrite), agentLoop beforeFinish one-shot nudge [W1]
-- [ ] 142-03-PLAN.md — web generateDashboard/discardGeneratedDashboard client, take-once generate intent, "Generate from a table" on the New Dashboard form, D-06 prompt, "Not kept yet" label [W1]
-- [ ] 142-04-PLAN.md — .env.example tested model IDs/timeouts/Docker recipe/AI_GENERATED_TTL_HOURS, README Generate + AI activity docs, mcp-action-seam superseded banner [W1]
-- [ ] 142-05-PLAN.md — aiGenerate.ts lifecycle (create in one transaction, one discard helper), dropViewsForDashboard, POST /api/dashboards/generate + /:id/discard-generated, DELETE via helper, logout/boot/TTL sweeps [W2]
-- [ ] 142-06-PLAN.md — audit kind on every row; server-derived generate mode in the ask path (limits, recipe, nudge, 4-8 floor/ceiling, bands) [W2]
-- [ ] 142-07-PLAN.md — web open generated dashboard: auto-start first ask once, pending note + server Discard dialog, Keep refetch, RGL guard regression [W2]
-- [ ] 142-08-PLAN.md — web AI activity page (filters, paging, detail), audit client, nav gate on audit:view, permission description text [W2]
-- [ ] 142-09-PLAN.md — GET /api/ai/audit (+ /:id, /dashboards) behind audit:view, bound filters, kind derivation, Keep summaries, no unkept names [W3]
-- [ ] 142-10-PLAN.md — gap gate + full gates, UAT steps (both providers, Gemini quota plan), Gemini live UAT checkpoint + results [W4]
-- [ ] 142-11-PLAN.md — Ollama-in-Docker live UAT checkpoint, Tested models matrix, phase bookkeeping by hand [W5]
+- [x] 142-01-PLAN.md — dashboards.generated_by/generated_pending_at + one-pending-per-user unique index, ai_audit.kind + (dashboard_id, ts_ms) index, DTO generated_pending, creator-only override in canViewDashboard, enumerator filter, grant refusal, Keep clears the flag in-transaction [W1]
+- [x] 142-02-PLAN.md — shared placeGenerateBands + GENERATE_AI_RECT, server generateMode.ts (limits, recipe, nudge, band rewrite), agentLoop beforeFinish one-shot nudge [W1]
+- [x] 142-03-PLAN.md — web generateDashboard/discardGeneratedDashboard client, take-once generate intent, "Generate from a table" on the New Dashboard form, D-06 prompt, "Not kept yet" label [W1]
+- [x] 142-04-PLAN.md — .env.example tested model IDs/timeouts/Docker recipe/AI_GENERATED_TTL_HOURS, README Generate + AI activity docs, mcp-action-seam superseded banner [W1]
+- [x] 142-05-PLAN.md — aiGenerate.ts lifecycle (create in one transaction, one discard helper), dropViewsForDashboard, POST /api/dashboards/generate + /:id/discard-generated, DELETE via helper, logout/boot/TTL sweeps [W2]
+- [x] 142-06-PLAN.md — audit kind on every row; server-derived generate mode in the ask path (limits, recipe, nudge, 4-8 floor/ceiling, bands) [W2]
+- [x] 142-07-PLAN.md — web open generated dashboard: auto-start first ask once, pending note + server Discard dialog, Keep refetch, RGL guard regression [W2]
+- [x] 142-08-PLAN.md — web AI activity page (filters, paging, detail), audit client, nav gate on audit:view, permission description text [W2]
+- [x] 142-09-PLAN.md — GET /api/ai/audit (+ /:id, /dashboards) behind audit:view, bound filters, kind derivation, Keep summaries, no unkept names [W3]
+- [x] 142-10-PLAN.md — gap gate + full gates, UAT steps (both providers, Gemini quota plan), Gemini live UAT checkpoint + results [W4]
+- [x] 142-11-PLAN.md — Ollama-in-Docker live UAT checkpoint, Tested models matrix, phase bookkeeping by hand [W5]
 
 ### Phase 143: Claude Desktop MCP Connector
 **Goal:** A user builds or changes a Kinetica BI dashboard from Claude Desktop (their Claude subscription, no API key), with every change checked by the same gateway as the in-app AI and nothing saved until they press Keep.
@@ -367,7 +368,7 @@ Plans:
 | 139. Session-Only Dynamic Views | 14/14 | Complete | 2026-10-20 |
 | 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
 | 141. Keep (Persist AI Changes) | 14/14 | Complete | 2026-10-22 |
-| 142. Generate, Audit Viewer & Live Provider Proofs | 9/11 | In UAT (G10 S6 spike left) | - |
+| 142. Generate, Audit Viewer & Live Provider Proofs | 11/11 | Complete (Gemini S6 matrix day 1 of 3) | 2026-10-30 |
 | 143. Claude Desktop MCP Connector | 9/9 requirements | Complete (operator UAT passed; live token sign-in deferred) | 2026-10-29 |
 
 ---

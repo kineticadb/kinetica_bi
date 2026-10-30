@@ -24,7 +24,7 @@
 - [x] **AIWID-V20-02**: A user types a question in the AI widget; the dashboard changes to answer it AND the widget keeps a full chat conversation (the user's prompts and the AI's full answers). All AI widgets on a dashboard share one conversation. *(Changed 2026-10-12 — was "no chat transcript".)*
 - [x] **AIWID-V20-03**: Each AI answer in the conversation shows its full plain-text answer (not shortened), 2–3 clickable follow-up questions (clicking one asks it), and a **"Revert dashboard to this state"** button. *(Changed 2026-10-12 — was a short explanation in Full mode only.)*
 - [x] **AIWID-V20-04**: The widget shows progress while the AI works, and the user can cancel. Only one answer runs at a time per widget.
-- [ ] **AIWID-V20-05**: When a question is ambiguous, the widget offers 2–3 clickable choices instead of the AI guessing.
+- [x] **AIWID-V20-05**: When a question is ambiguous, the widget offers 2–3 clickable choices instead of the AI guessing.
 - [x] **AIWID-V20-06**: Widgets and layers the AI added or changed are visibly highlighted.
 - [x] **AIWID-V20-07**: If the AI fails, is capped or is rate-limited (e.g. provider quota exceeded), the user sees a clear message and the dashboard is left unchanged.
 
@@ -54,13 +54,13 @@
 
 ### Generate
 
-- [ ] **AIGEN-V20-01**: A designer picks a table and asks for a starter dashboard; they get 4–8 widgets suited to its columns (e.g. KPIs, a time trend, a breakdown, a map if it has geometry, a records table) to review, refine by asking, and Keep.
-- [ ] **AIGEN-V20-02**: Discarding a generated dashboard leaves nothing behind — no dashboard, widgets or views.
+- [x] **AIGEN-V20-01**: A designer picks a table and asks for a starter dashboard; they get 4–8 widgets suited to its columns (e.g. KPIs, a time trend, a breakdown, a map if it has geometry, a records table) to review, refine by asking, and Keep.
+- [x] **AIGEN-V20-02**: Discarding a generated dashboard leaves nothing behind — no dashboard, widgets or views.
 
 ### Provider
 
 - [x] **AIPRV-V20-01**: An admin sets the AI provider, endpoint, model and key through env. AI is off by default, and the app behaves exactly as today without it.
-- [ ] **AIPRV-V20-02**: The OpenAI-compatible provider works end to end, proven live by the operator on **Gemini** (Google AI Studio).
+- [x] **AIPRV-V20-02**: The OpenAI-compatible provider works end to end, proven live by the operator on **Gemini** (Google AI Studio).
 - [ ] **AIPRV-V20-03**: The same provider is proven live on one named **local open model** (Ollama).
 - [x] **AIPRV-V20-04**: A Claude provider exists and is unit-tested, documented as not live-verified.
 - [x] **AIPRV-V20-05**: The API key never reaches the browser or the logs; automated tests never call a real provider or read the dev key.
@@ -71,7 +71,7 @@
 - [x] **AIGOV-V20-02**: An admin sets AI data access through env: **schema** (default — the AI sees table structure and dashboard config; no row value ever reaches the provider, proven with a planted value) or **query** (the AI may also run queries).
 - [x] **AIGOV-V20-03**: In query mode, AI queries are single read-only SELECT statements, run as the user with their own Kinetica credentials and a row cap; anything else is refused.
 - [x] **AIGOV-V20-04**: Every AI answer is logged — who asked, on which dashboard, the question, the tools run, the changes applied or rejected, and the outcome — with no row values.
-- [ ] **AIGOV-V20-05**: An admin can browse the AI log on an audit page gated by the existing `audit:view` permission. *(Changed 2026-10-12, Phase 135 discussion — was "its own permission".)*
+- [x] **AIGOV-V20-05**: An admin can browse the AI log on an audit page gated by the existing `audit:view` permission. *(Changed 2026-10-12, Phase 135 discussion — was "its own permission".)*
 - [x] **AIGOV-V20-06**: An admin sets AI usage caps through env (steps per answer, answers per user per hour); a capped user is told why.
 
 ### Claude Desktop (MCP) — added 2026-10-29, promotes AI-F6
@@ -131,7 +131,7 @@ Which phases cover which requirements.
 | AIWID-V20-02 | Phase 137 | Complete (operator UAT 2026-10-15: conversation bubbles, auto-scroll, shared store; multi-widget sync unit-tested only) |
 | AIWID-V20-03 | Phase 137 | Complete (operator UAT 2026-10-15 step 2: full answers, follow-ups, per-answer Revert; trailer follow-ups server-tested, live adherence in 142) |
 | AIWID-V20-04 | Phase 137 | Complete (operator UAT 2026-10-15 step 3: spinner + elapsed, Send -> Cancel; one-at-a-time + cancel unit-tested; W1 deadline; S2 nginx block) |
-| AIWID-V20-05 | Phase 137 | Partial (choices UI + choose_option contract done; live model adherence verified in Phase 142 UAT) |
+| AIWID-V20-05 | Phase 137 | Complete (live trailer adherence verified on Gemini 2026-10-26: an ambiguous rename offered two choices, follow-ups present on every ask; Ollama: not observed) |
 | AIWID-V20-06 | Phase 137 | Complete (operator UAT 2026-10-15 steps 5/5b/5c: fading outline, pills, layer-only edit highlights the host map, Layers-panel AI row) |
 | AIWID-V20-07 | Phase 137 | Complete (inline error + Retry operator-checked 2026-10-15; cap/quota/429 messages and unchanged dashboard unit-tested) |
 | AIACT-V20-01 | Phase 136 | Complete |
@@ -152,18 +152,18 @@ Which phases cover which requirements.
 | AISES-V20-05 | Phase 141 | Complete (SC1/SC2 server-proven; SC4 operator UAT 2026-10-22 on Kinetica 7.2.3.12, reload matches, light+dark; UAT step 6 skipped by operator, covered by KEEP-ROUTE forged/partial-rights specs; join note deferred to 142) |
 | AISES-V20-06 | Phase 141 | Complete (409 pre-check + in-transaction race proven; operator UAT step 5 two tabs, own-write chains pass, foreign write 409s, light+dark) |
 | AISES-V20-07 | Phase 134 | Complete |
-| AIGEN-V20-01 | Phase 142 | Pending |
-| AIGEN-V20-02 | Phase 142 | Pending |
+| AIGEN-V20-01 | Phase 142 | Complete |
+| AIGEN-V20-02 | Phase 142 | Complete |
 | AIPRV-V20-01 | Phase 133 | Complete |
-| AIPRV-V20-02 | Phase 142 | Pending |
-| AIPRV-V20-03 | Phase 142 | Pending |
+| AIPRV-V20-02 | Phase 142 | Complete (Gemini G0-G9 live 2026-10-23..28; S6 spike matrix still collecting trials, day 1 of 3 on 2026-10-30) |
+| AIPRV-V20-03 | Phase 142 | Partial (qwen2.5:7b-instruct on CPU Ollama: adapter works, model too weak for actions and Generate in 600 s; json mode best effort) |
 | AIPRV-V20-04 | Phase 135 | Complete |
 | AIPRV-V20-05 | Phase 135 | Complete |
 | AIGOV-V20-01 | Phase 135 | Complete (server refusal + Roles grant in 135; widget use/add gate UI + server create/patch guard in 137; no-access widget view unit-tested, not operator-viewed) |
 | AIGOV-V20-02 | Phase 135 | Complete |
 | AIGOV-V20-03 | Phase 140 | Complete (libpg-query guard + run-as-user port; live spike on Kinetica 7.2.3.12: cap 200, timeout/cancel leave no tagged job, writes refused with 0 SQL sent; spike ran as admin, live model ask deferred to 142) |
 | AIGOV-V20-04 | Phase 135 | Complete |
-| AIGOV-V20-05 | Phase 142 | Pending |
+| AIGOV-V20-05 | Phase 142 | Complete |
 | AIGOV-V20-06 | Phase 135 | Complete |
 | AIMCP-V20-01 | Phase 143 | Complete (spike 91ede8b; live in Claude Desktop 2026-10-29) |
 | AIMCP-V20-02 | Phase 143 | Complete (2ae8a5b, f5611dc, 0961ef6, 5301497; checked live at 1440 and 1920) |
@@ -182,4 +182,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-10-08*
-*Last updated: 2026-10-29 — Phase 143: AIMCP-V20-01..09 all complete (live-checked by Claude in the operator's Chrome through the connector routes; a live Claude Desktop run of 04-09 is the operator's next step). Earlier the same day: Phase 143 (Claude Desktop MCP connector) added: AIMCP-V20-01..09, promoting AI-F6; 01-03 complete from the spike and its UAT. Previously 2026-10-22 — Phase 141 complete: AISES-V20-05 and AISES-V20-06 Complete (automated proofs + operator UAT 2026-10-22 driven by Claude in the operator's Chrome, light and dark, Kinetica 7.2.3.12; step 6 rights UI skipped and covered by route specs; join note deferred to Phase 142; three UAT fixes e5bb56e, eaad490, 3aef06f). Previously 2026-10-21 — Phase 140 complete: AIGOV-V20-03 and AISAFE-V20-05 Complete (automated proofs + live spike and operator UAT 2026-10-21 driven by Claude, light and dark, Kinetica 7.2.3.12; live model adherence to the query rules deferred to Phase 142). Previously 2026-10-20 — Phase 139 complete: AIACT-V20-07, AIACT-V20-08, AISAFE-V20-04, AISAFE-V20-06 Complete (automated proofs + operator UAT 2026-10-20 driven by Claude in the operator's Chrome, light and dark, Kinetica 7.2.3.12; lifecycle verified by listing views; AISAFE-V20-04 amended to include joins (D-07); join preflight-cancel and join-through-filter-view live checks deferred to Phase 142). Previously 2026-10-16 — Phase 138 complete: AIACT-V20-09 Complete (automated proofs + operator UAT 2026-10-16 driven by Claude in the operator's Chrome, light and dark, against real Kinetica; AI filter produced the identical combination view and narrowed map tiles as a hand click; live model adherence deferred to Phase 142). Previously 2026-10-15 — Phase 137 complete: AIWID-V20-01/02/03/04/06/07, AISES-V20-04 and AIGOV-V20-01 Complete (automated proofs + operator UAT 2026-10-15 driven by Claude in the operator's Chrome, light and dark, 7 visual issues fixed in 81117b2 and re-verified; operator accepted a disabled Keep for AISES-V20-04 until Phase 141). AIWID-V20-05 Partial (no live ask was run; choices verified via harness only, live model adherence in Phase 142 UAT). Previously 2026-10-14 — Phase 136 complete: AIACT-V20-01/02/03/04/05/06/10/11 Complete (automated proofs + operator UAT 2026-10-14: VAL_ATTR tiles, light/dark, layout, removal approval, undo; legend "AI heat" row and layer-edit highlight on the host map carried to Phase 137 under AIWID-V20-06). Previously 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*
+*Last updated: 2026-10-30 — Phase 142: AIGEN-V20-01/02, AIGOV-V20-05, AIPRV-V20-02 Complete and AIWID-V20-05 Complete (Gemini live UAT 2026-10-23..28 driven by Claude, light and dark, Kinetica 7.2.3.12); AIPRV-V20-03 Partial (Ollama qwen2.5:7b-instruct on CPU); the Gemini S6 spike matrix is still collecting trials. Previously 2026-10-29 — Phase 143: AIMCP-V20-01..09 all complete (live-checked by Claude in the operator's Chrome through the connector routes; a live Claude Desktop run of 04-09 is the operator's next step). Earlier the same day: Phase 143 (Claude Desktop MCP connector) added: AIMCP-V20-01..09, promoting AI-F6; 01-03 complete from the spike and its UAT. Previously 2026-10-22 — Phase 141 complete: AISES-V20-05 and AISES-V20-06 Complete (automated proofs + operator UAT 2026-10-22 driven by Claude in the operator's Chrome, light and dark, Kinetica 7.2.3.12; step 6 rights UI skipped and covered by route specs; join note deferred to Phase 142; three UAT fixes e5bb56e, eaad490, 3aef06f). Previously 2026-10-21 — Phase 140 complete: AIGOV-V20-03 and AISAFE-V20-05 Complete (automated proofs + live spike and operator UAT 2026-10-21 driven by Claude, light and dark, Kinetica 7.2.3.12; live model adherence to the query rules deferred to Phase 142). Previously 2026-10-20 — Phase 139 complete: AIACT-V20-07, AIACT-V20-08, AISAFE-V20-04, AISAFE-V20-06 Complete (automated proofs + operator UAT 2026-10-20 driven by Claude in the operator's Chrome, light and dark, Kinetica 7.2.3.12; lifecycle verified by listing views; AISAFE-V20-04 amended to include joins (D-07); join preflight-cancel and join-through-filter-view live checks deferred to Phase 142). Previously 2026-10-16 — Phase 138 complete: AIACT-V20-09 Complete (automated proofs + operator UAT 2026-10-16 driven by Claude in the operator's Chrome, light and dark, against real Kinetica; AI filter produced the identical combination view and narrowed map tiles as a hand click; live model adherence deferred to Phase 142). Previously 2026-10-15 — Phase 137 complete: AIWID-V20-01/02/03/04/06/07, AISES-V20-04 and AIGOV-V20-01 Complete (automated proofs + operator UAT 2026-10-15 driven by Claude in the operator's Chrome, light and dark, 7 visual issues fixed in 81117b2 and re-verified; operator accepted a disabled Keep for AISES-V20-04 until Phase 141). AIWID-V20-05 Partial (no live ask was run; choices verified via harness only, live model adherence in Phase 142 UAT). Previously 2026-10-14 — Phase 136 complete: AIACT-V20-01/02/03/04/05/06/10/11 Complete (automated proofs + operator UAT 2026-10-14: VAL_ATTR tiles, light/dark, layout, removal approval, undo; legend "AI heat" row and layer-edit highlight on the host map carried to Phase 137 under AIWID-V20-06). Previously 2026-10-13 — Phase 135 complete: AISAFE-V20-02/03, AIPRV-V20-04/05, AIGOV-V20-02/04/06 Complete; AIGOV-V20-01 Partial (server + Roles done, widget-side gate with the AI widget in Phase 137; AIGOV-V20-02 delivers the env setting and schema-mode proof, query tools themselves are AIGOV-V20-03, Phase 140). Previously 2026-10-12 — AIWID-V20-01/02/03 and AISES-V20-03 changed to a full chat with per-answer revert and size-driven presentation (Phase 134 discussion + research); chat transcript removed from out-of-scope; AI-F13 added. Previously 2026-10-09 — AIACT-V20-04/06 narrowed to heatmap layers and AI-F12 added at the 133 operator checkpoint (2026-10-09); AISAFE-V20-01 and AIPRV-V20-01 complete*
