@@ -253,6 +253,13 @@ describe("dynamic view tools (139-10)", () => {
     const eh = byName(MUTATE_TOOLS, "edit_heatmap_layer");
     expect(eh.toOp(eh.args.parse({ id: 70, dynamicViewId: -1 }))).toEqual({ op: "patch", action: { target: { kind: "layer", id: 70 }, configPatch: { dynamicViewId: -1 } } });
   });
+  it("TOOLDV-6 add_dynamic_view accepts part-of-time buckets and says when to use them", () => {
+    const d = adv().description;
+    for (const b of ["hour_of_day", "day_of_week", "month_of_year", "by hour of day"]) expect(d).toContain(b);
+    const op = adv().toOp({ tempId: -2, name: "Trips by hour of day", baseTableId: 5, groupBy: [{ column: "pickup_datetime", bucket: "hour_of_day" }], aggregates: [{ fn: "count", as: "trips" }] });
+    expect((op as { spec: { groupBy: unknown[] } }).spec.groupBy).toEqual([{ from: undefined, column: "pickup_datetime", bucket: "hour_of_day" }].map(({ from: _f, ...g }) => g));
+  });
+
   it("TOOLDV-5 remove_dynamic_view description covers dependents and confirmation", () => {
     const d = byName(MUTATE_TOOLS, "remove_dynamic_view").description;
     expect(d).toContain("pointed at its table");

@@ -70,11 +70,23 @@ describe("validateAiDvSpec", () => {
     const b = (column: string, bucket: "hour" | "day" | "week") =>
       validateAiDvSpec({ baseTableId: 5, groupBy: [{ column, bucket }], aggregates: [{ fn: "count", as: "n" }] }, [T5], LIM);
     expect(b("pickup_datetime", "hour").ok).toBe(true);
-    expect(reasons(b("pickup_date", "hour"))).toContain("column pickup_date is a date; use day, week, month or year");
+    expect(reasons(b("pickup_date", "hour"))).toContain("column pickup_date is a date; use day, week, month, year, day_of_week or month_of_year");
     expect(b("pickup_date", "week").ok).toBe(true);
-    expect(reasons(b("pickup_time", "day"))).toContain("column pickup_time is a time of day and can't be bucketed");
+    expect(reasons(b("pickup_time", "day"))).toContain("column pickup_time is a time of day; only hour_of_day works on it");
     expect(reasons(b("fare", "day"))).toContain("column fare is not a date or time column");
     expect(reasons(b("notype", "day"))).toContain("column notype is not a date or time column");
+  });
+
+  it("CMP-4b: part-of-time buckets (hour of day, day of week, month of year)", () => {
+    const b = (column: string, bucket: "hour_of_day" | "day_of_week" | "month_of_year") =>
+      validateAiDvSpec({ baseTableId: 5, groupBy: [{ column, bucket }], aggregates: [{ fn: "count", as: "n" }] }, [T5], LIM);
+    for (const u of ["hour_of_day", "day_of_week", "month_of_year"] as const) expect(b("pickup_datetime", u).ok).toBe(true);
+    expect(b("pickup_date", "day_of_week").ok).toBe(true);
+    expect(b("pickup_date", "month_of_year").ok).toBe(true);
+    expect(reasons(b("pickup_date", "hour_of_day"))).toContain("column pickup_date is a date; use day, week, month, year, day_of_week or month_of_year");
+    expect(b("pickup_time", "hour_of_day").ok).toBe(true);
+    expect(reasons(b("pickup_time", "day_of_week"))).toContain("column pickup_time is a time of day; only hour_of_day works on it");
+    expect(reasons(b("fare", "hour_of_day"))).toContain("column fare is not a date or time column");
   });
 
   it("CMP-5: join rules", () => {
@@ -210,6 +222,25 @@ describe("compileAiDvSpec", () => {
       const expr = `DATE_TRUNC('${u.toUpperCase()}', t0."pickup_datetime")`;
       expect(t.split(expr).length).toBe(3);
     }
+  });
+
+  it("CMP-14b: part-of-time buckets compile to sortable values, same expression in select and GROUP BY", () => {
+    const compile = (bucket: "hour_of_day" | "day_of_week" | "month_of_year") =>
+      compileAiDvSpec({ baseTableId: 5, groupBy: [{ column: "pickup_datetime", bucket }], aggregates: [{ fn: "count", as: "n" }] }, [T5], LIM);
+    const hod = compile("hour_of_day");
+    expect(hod.template.split('HOUR(t0."pickup_datetime")').length).toBe(3);
+    expect(hod.template).not.toContain("DATE_TRUNC");
+    expect(hod.columns[0]).toEqual({ name: "pickup_datetime_hour_of_day", type: "int" });
+    const dow = compile("day_of_week");
+    const dowExpr =
+      `CASE DAYOFWEEK(t0."pickup_datetime") WHEN 1 THEN '1 Sun' WHEN 2 THEN '2 Mon' WHEN 3 THEN '3 Tue' WHEN 4 THEN '4 Wed' ` +
+      `WHEN 5 THEN '5 Thu' WHEN 6 THEN '6 Fri' WHEN 7 THEN '7 Sat' END`;
+    expect(dow.template.split(dowExpr).length).toBe(3);
+    expect(dow.columns[0]).toEqual({ name: "pickup_datetime_day_of_week", type: "varchar(8)" });
+    const moy = compile("month_of_year");
+    expect(moy.template).toContain(`CASE MONTH(t0."pickup_datetime") WHEN 1 THEN '01 Jan' WHEN 2 THEN '02 Feb'`);
+    expect(moy.template).toContain(`WHEN 12 THEN '12 Dec' END`);
+    expect(moy.columns[0].type).toBe("varchar(8)");
   });
 
   it("CMP-15: aggregate forms", () => {

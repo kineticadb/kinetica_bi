@@ -8,6 +8,8 @@ import {
   isAiNumericColumnType,
   AI_DV_NUMERIC_AGG_FNS,
   AI_DV_DATE_BUCKETS,
+  AI_DV_TIME_BUCKETS,
+  type AI_DV_BUCKETS,
   type AiDvSpec,
   type AiDvOutputColumn,
 } from "@kinetica-bi/shared";
@@ -81,9 +83,10 @@ export function validateAiDvSpec(spec: AiDvSpec, tables: readonly AiDvTable[], l
     if (!col || !g.bucket) continue;
     const k = dateKind(col.type);
     if (k === "none") push(`column ${g.column} is not a date or time column`);
-    else if (k === "time") push(`column ${g.column} is a time of day and can't be bucketed`);
-    else if (k === "date" && !(AI_DV_DATE_BUCKETS as readonly string[]).includes(g.bucket)) {
-      push(`column ${g.column} is a date; use day, week, month or year`);
+    else if (k === "time" && !(AI_DV_TIME_BUCKETS as readonly string[]).includes(g.bucket)) {
+      push(`column ${g.column} is a time of day; only hour_of_day works on it`);
+    } else if (k === "date" && !(AI_DV_DATE_BUCKETS as readonly string[]).includes(g.bucket)) {
+      push(`column ${g.column} is a date; use day, week, month, year, day_of_week or month_of_year`);
     }
   }
   for (const { a, col } of acols) {
@@ -111,6 +114,25 @@ export function validateAiDvSpec(spec: AiDvSpec, tables: readonly AiDvTable[], l
 }
 
 export const AI_DV_BUCKET_UNITS = { minute: "MINUTE", hour: "HOUR", day: "DAY", week: "WEEK", month: "MONTH", year: "YEAR" } as const;
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** Day and month parts become "1 Sun" / "01 Jan" so they sort in calendar order and still read as names. */
+const caseLabels = (fn: string, base: string, labels: string[], pad: number) =>
+  `CASE ${fn}(${base}) ${labels.map((l, i) => `WHEN ${i + 1} THEN '${String(i + 1).padStart(pad, "0")} ${l}'`).join(" ")} END`;
+
+function bucketExpr(bucket: (typeof AI_DV_BUCKETS)[number], base: string): { expr: string; type: string } {
+  switch (bucket) {
+    case "hour_of_day":
+      return { expr: `HOUR(${base})`, type: "int" };
+    case "day_of_week":
+      return { expr: caseLabels("DAYOFWEEK", base, DAY_LABELS, 1), type: "varchar(8)" };
+    case "month_of_year":
+      return { expr: caseLabels("MONTH", base, MONTH_LABELS, 2), type: "varchar(8)" };
+    default:
+      return { expr: `DATE_TRUNC('${AI_DV_BUCKET_UNITS[bucket]}', ${base})`, type: "datetime" };
+  }
+}
 export type AiDvCompiled = { template: string; columns: AiDvOutputColumn[]; aggregated: boolean; maxRecords: number };
 export class AiDvCompileError extends Error {
   constructor(public readonly reasons: string[]) {
@@ -163,10 +185,11 @@ export function compileAiDvSpec(
     (spec.groupBy ?? []).forEach((g, i) => {
       const from = g.from ?? 0;
       const base = ref(from, g.column);
-      const expr = g.bucket ? `DATE_TRUNC('${AI_DV_BUCKET_UNITS[g.bucket]}', ${base})` : base;
+      const b = g.bucket ? bucketExpr(g.bucket, base) : null;
+      const expr = b ? b.expr : base;
       groupExprs.push(expr);
       selectParts.push(`${expr} AS ${q(names[i])}`);
-      columns.push({ name: names[i], type: g.bucket ? "datetime" : (colOf(from, g.column)?.type ?? "unknown") });
+      columns.push({ name: names[i], type: b ? b.type : (colOf(from, g.column)?.type ?? "unknown") });
     });
     const off = spec.groupBy?.length ?? 0;
     (spec.aggregates ?? []).forEach((a, i) => {

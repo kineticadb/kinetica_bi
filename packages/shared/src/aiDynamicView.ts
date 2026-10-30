@@ -5,8 +5,10 @@ import { AiFilterItemSchema } from "./aiFilter";
 
 export const AI_DV_AGG_FNS = ["count", "count_distinct", "sum", "avg", "min", "max", "median", "percentile"] as const;
 export const AI_DV_NUMERIC_AGG_FNS = ["sum", "avg", "median", "percentile"] as const; // need a numeric column
-export const AI_DV_BUCKETS = ["minute", "hour", "day", "week", "month", "year"] as const;
-export const AI_DV_DATE_BUCKETS = ["day", "week", "month", "year"] as const; // the only buckets allowed on DATE columns
+// minute..year truncate (one group per calendar hour/day/...); the *_of_* buckets extract a part (24 hours, 7 days, 12 months).
+export const AI_DV_BUCKETS = ["minute", "hour", "day", "week", "month", "year", "hour_of_day", "day_of_week", "month_of_year"] as const;
+export const AI_DV_DATE_BUCKETS = ["day", "week", "month", "year", "day_of_week", "month_of_year"] as const; // the only buckets allowed on DATE columns
+export const AI_DV_TIME_BUCKETS = ["hour_of_day"] as const; // the only bucket allowed on TIME columns
 export const AI_DV_JOIN_TYPES = ["inner", "left"] as const;
 export const AI_DV_HARD_MAX_JOINS = 4; // schema bound; AI_DV_MAX_JOINS env (default 2) is enforced server-side
 export const AI_DV_DEFAULT_MAX_RECORDS = 100000; // web fallback only; AI_DV_MAX_RECORDS env is authoritative

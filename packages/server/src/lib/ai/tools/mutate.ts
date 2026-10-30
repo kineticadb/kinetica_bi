@@ -340,7 +340,8 @@ const addDynamicView: MutateTool = {
   name: "add_dynamic_view",
   description:
     "Create a session-only dynamic view from a structured description (never SQL): a base table on this dashboard, optional inner/left joins on equal columns (at most the server limit), " +
-    "then EITHER columns (a row view) OR groupBy + aggregates (a summary), plus optional filters, sort and limit. Buckets: minute..year on date/time columns. " +
+    "then EITHER columns (a row view) OR groupBy + aggregates (a summary), plus optional filters, sort and limit. Buckets on date/time columns: minute, hour, day, week, month, year give one group per calendar period (a trend over time); " +
+    "hour_of_day (0-23), day_of_week (1 Sun..7 Sat) and month_of_year (01 Jan..12 Dec) group across all dates (\"by hour of day\", \"by weekday\", \"busiest hour\"). " +
     "median and percentile are approximate (about 2%). Use a new negative tempId, then bind widgets/layers with dynamicViewId = that tempId.",
   args: addDynamicViewArgs,
   toOp(args) {
