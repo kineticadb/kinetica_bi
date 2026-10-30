@@ -195,6 +195,26 @@ Cap 18 for the day (operator). 7 Gemini answers (audit rows 42-48, all `ok`, cou
 - **0150f36 - AI activity detail.** "1 row" (was "1 rows"); question/summary/answer use page-local `.ai-activity-text` (pre-wrap) so the model's lists keep their line breaks. AUDPAGE-7d red first. Checked live light + dark: row 48 answer shows its 5-line list; "1 row · 167 ms · ok".
 - Gates: server tsc clean; AI specs 67 files / 785 passed; full server suite failing files = the known set (auth.oidc, auth.routes, boot.hardening, boot.wipe, bootstrap, db.smoke, oidc.module, routes.dynamic-view, routes.filter-materialize(-dv), routes.wms) plus routes.management, which passes alone (65/65). Web tsc clean; full web vitest 272 files / 5145 passed, 1 skipped (`--maxWorkers=2`); theme-guard green.
 
+## Gemini G10 S6 spike, day 1 (2026-10-30)
+
+Operator's terminal, `--runs 1 --rpm 6`, native, stream, output `packages/server/s6-gemini-day1.json` (git-ignored). 7/7 clean trials, 0 excluded, no 429s, no request errors.
+
+| provider | model | date | stream | tool valid% | malformed% | parallel% | 2nd-turn ok | index present | 429 delay>20s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| gemini | gemini-3-flash-preview | 2026-10-30 | true | 80% | 20% | 25% | fail (0/1) | no | 0/0 | inconclusive (7 clean trials) |
+
+| Scenario | Calls | Note |
+|---|---|---|
+| s1 list_tables | none | answered in text (3 s) |
+| s2 describe_table typed args | describe_table | valid |
+| s3 multi-step add bar chart | add_widget | valid |
+| s4 parallel invite | list_tables | valid call, wrong tool for the scenario, not parallel |
+| s5 no-tool question | none | correct |
+| s6 multi-turn round-trip | none | text instead of the second-turn call (0/1) |
+| s7 malformed pressure | add_widget, set_layout | parallel; 1 of 2 malformed, repair 0/1 |
+
+Latency p50 9.8 s / p95 10.7 s. Decision line: inconclusive, default stays `AI_TOOL_MODE=native`. Needs about 2 more quota days (`--runs 1` each) to reach >= 20 clean trials; one run is too small to read the s1/s6 misses as a pattern.
+
 ## Tested models
 
 Same table as README.md "Tested models (Phase 142):".
