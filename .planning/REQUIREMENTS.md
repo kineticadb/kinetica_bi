@@ -171,7 +171,7 @@ Which phases cover which requirements.
 | AIMCP-V20-04 | Phase 143 | Complete (a410fbd; token created, used and revoked live in the Profile page, light and dark; Claude Desktop signed in with KBI_TOKEN only, built and kept dashboard 68, revoke signed it out, 2026-11-02) |
 | AIMCP-V20-05 | Phase 143 | Complete (a410fbd; Discard deleted the dashboard, Keep cleared the mark, checked in SQLite) |
 | AIMCP-V20-06 | Phase 143 | Complete (a410fbd; AI activity row "Claude Desktop" seen live) |
-| AIMCP-V20-07 | Phase 143 | Complete (a410fbd; route specs with AI off; browser handoff/Keep have no AI-config gate, not re-run live with AI off) |
+| AIMCP-V20-07 | Phase 143 | Complete (a410fbd, df769a0; route specs with AI off; live 2026-11-02 with AI_ENABLED off: build with a dynamic view, map and heatmap, Keep and reload (dashboard 69)) |
 | AIMCP-V20-08 | Phase 143 | Complete (955634f; rename, confirmed removal and an added note kept live on dashboard 59) |
 | AIMCP-V20-09 | Phase 143 | Complete (filters applied live through the handoff; not saved by Keep) |
 
