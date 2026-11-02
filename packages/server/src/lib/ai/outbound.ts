@@ -56,7 +56,7 @@ function check(parts: readonly OutboundPart[] | undefined, access: AiDataAccess)
 }
 const join = (parts: readonly OutboundPart[] | undefined): string => (parts ?? []).map((p) => p.text).join("\n");
 
-/** kbi-mcp spike: the same class table for tool results that leave through MCP instead of a provider request. */
+/** MCP connector (143): the same class table for tool results that leave through MCP instead of a provider request. */
 export function isClassAllowed(access: AiDataAccess, cls: DataClass): boolean {
   return ALLOWED[access].has(cls);
 }

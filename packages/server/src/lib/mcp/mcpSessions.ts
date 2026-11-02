@@ -1,4 +1,4 @@
-// kbi-mcp spike: an MCP client (Claude Desktop) builds a dashboard through the SAME tools and gateway as the in-app
+// MCP connector (143): an MCP client (Claude Desktop) builds a dashboard through the SAME tools and gateway as the in-app
 // AI, but the client's model does the thinking. Accepted ops collect here, in memory; the browser takes them once
 // (handoff) and applies them as an unsaved AI session (applyAiTurn), so preview, the change bar and Keep are unchanged.
 import { randomUUID } from "node:crypto";

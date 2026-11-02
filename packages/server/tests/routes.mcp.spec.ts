@@ -1,4 +1,4 @@
-// kbi-mcp spike: /api/mcp/* (tools, sessions, call, finish, handoff). No AI provider is ever called.
+// MCP connector (143): /api/mcp/* (tools, sessions, call, finish, handoff). No AI provider is ever called.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
@@ -48,14 +48,14 @@ async function startSession(app: Express, cookie: string, over: Record<string, u
 const call = (app: Express, cookie: string, sid: string, name: string, args: unknown) =>
   request(app).post(`/api/mcp/sessions/${sid}/call`).set("Cookie", cookie).send({ name, args });
 
-describe("/api/mcp (kbi-mcp spike)", () => {
+describe("/api/mcp (MCP connector)", () => {
   it("MCP-1 the routes do not exist unless MCP_ENABLED=true", async () => {
     const app = await boot(false);
     const res = await request(app).get("/api/mcp/tools").set("Cookie", dee());
     expect(res.status).toBe(404);
   });
 
-  it("MCP-2 tools lists exactly the spike's tools, with JSON schemas", async () => {
+  it("MCP-2 tools lists exactly the connector's tools, with JSON schemas", async () => {
     const app = await boot();
     const res = await request(app).get("/api/mcp/tools").set("Cookie", dee());
     expect(res.status).toBe(200);

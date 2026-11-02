@@ -1,5 +1,5 @@
 /**
- * kbi-mcp spike: routes for the Kinetica BI MCP server (packages/mcp). Registered only when MCP_ENABLED=true.
+ * MCP connector (143): routes for the Kinetica BI MCP server (packages/mcp). Registered only when MCP_ENABLED=true.
  *
  * The MCP client's model calls the in-app AI's tools; nothing here talks to an AI provider. Read tools run as the
  * user; mutate tools go through the same gateway (checkAiOp) and only collect ops. Nothing is persisted until the

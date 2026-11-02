@@ -104,7 +104,7 @@ import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout }
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
-/** kbi-mcp spike: MCP handoff session ids already requested in this page load (the server hands each over once). */
+/** MCP connector (143): MCP handoff session ids already requested in this page load (the server hands each over once). */
 const mcpHandoffsTaken = new Set<string>();
 /** Grid width minus a full-width text widget's card and body padding. */
 const MCP_TEXT_PADDING_PX = 48;
@@ -1139,7 +1139,7 @@ const DashboardOpen = ({
     };
   }, [aiActions]);
 
-  // kbi-mcp spike: ?mcp=<session> carries what Claude Desktop built. Once the tables and widgets are loaded (widget
+  // MCP connector (143): ?mcp=<session> carries what Claude Desktop built. Once the tables and widgets are loaded (widget
   // SQL is derived from table columns), apply it as ONE unsaved AI turn: preview, the change bar and Keep as usual.
   // Ready once the fetched lists have been copied into state (the AI baseline reads that state, one effect later).
   // width > 0: the grid is measured, so Claude's text widgets can be sized to the real screen.
