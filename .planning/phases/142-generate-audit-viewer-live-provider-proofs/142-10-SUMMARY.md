@@ -30,7 +30,7 @@ Gap gate PASS, gates run, then the Gemini UAT (`gemini-3-flash-preview`, OpenAI-
 | G7 Keep after a live ask (joined view) | PASS |
 | G8 query mode + `queries_json` | PASS |
 | G9 AI activity page, details, queries | PASS light + dark |
-| G10 S6 spike | day 1 of 3: 7/7 clean, 80% valid calls, 2nd turn 0/1, inconclusive (needs >= 20 clean trials); day 2/3 pending |
+| G10 S6 spike | days 1-2 of 3: 14/14 clean, 83% valid calls (10/12), 2nd turn 1/2, inconclusive (needs >= 20 clean trials); day 3 pending |
 
 UAT fixes (each red-first): 9d91596, bc97400, dba356f, a758465 / 9570676 / 688ab33, 0aa5150, b601087, f0d6929, 4601291, 21fd377, c5b7879, 285f686, 52919a9, 0150f36.
 

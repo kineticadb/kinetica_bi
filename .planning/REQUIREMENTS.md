@@ -155,7 +155,7 @@ Which phases cover which requirements.
 | AIGEN-V20-01 | Phase 142 | Complete |
 | AIGEN-V20-02 | Phase 142 | Complete |
 | AIPRV-V20-01 | Phase 133 | Complete |
-| AIPRV-V20-02 | Phase 142 | Complete (Gemini G0-G9 live 2026-10-23..28; S6 spike matrix still collecting trials, day 1 of 3 on 2026-10-30) |
+| AIPRV-V20-02 | Phase 142 | Complete (Gemini G0-G9 live 2026-10-23..28; S6 spike matrix still collecting trials, days 1-2 of 3 on 2026-10-30 and 2026-11-02, 14 clean) |
 | AIPRV-V20-03 | Phase 142 | Partial (qwen2.5:7b-instruct on CPU Ollama: adapter works, model too weak for actions and Generate in 600 s; json mode best effort) |
 | AIPRV-V20-04 | Phase 135 | Complete |
 | AIPRV-V20-05 | Phase 135 | Complete |

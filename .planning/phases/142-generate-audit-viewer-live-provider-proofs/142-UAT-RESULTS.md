@@ -215,6 +215,28 @@ Operator's terminal, `--runs 1 --rpm 6`, native, stream, output `packages/server
 
 Latency p50 9.8 s / p95 10.7 s. Decision line: inconclusive, default stays `AI_TOOL_MODE=native`. Needs about 2 more quota days (`--runs 1` each) to reach >= 20 clean trials; one run is too small to read the s1/s6 misses as a pattern.
 
+## Gemini G10 S6 spike, day 2 (2026-11-02)
+
+Operator's terminal, `--runs 1 --rpm 6`, native, stream, output `packages/server/s6-gemini-day2.json` (git-ignored). A first attempt the same morning ran with no key in the shell (`key=not set`): 3 trials, every one a 400 "Missing or invalid Authorization header.", stopped early, INVALID RUN, not counted. The re-run: 7/7 clean trials, 0 excluded, no 429s, no request errors.
+
+| provider | model | date | stream | tool valid% | malformed% | parallel% | 2nd-turn ok | index present | 429 delay>20s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| gemini | gemini-3-flash-preview | 2026-11-02 | true | 85.7% | 14.3% | 20% | ok | no | 0/0 | inconclusive (7 clean trials) |
+
+| Scenario | Calls | Note |
+|---|---|---|
+| s1 list_tables | none | answered in text (4 s), same as day 1 |
+| s2 describe_table typed args | describe_table | valid |
+| s3 multi-step add bar chart | add_widget | valid |
+| s4 parallel invite | list_tables | valid call, wrong tool for the scenario, not parallel (same as day 1) |
+| s5 no-tool question | none | correct |
+| s6 multi-turn round-trip | list_tables | second-turn call made (1/1; day 1 was 0/1) |
+| s7 malformed pressure | describe_table, add_widget, set_layout | parallel; 1 of 3 malformed, repair 0/1 |
+
+Latency p50 9.9 s / p95 20.5 s. Decision line: inconclusive, default stays `AI_TOOL_MODE=native`.
+
+Running total after 2 days: 14 clean trials, 0 excluded; 12 calls, 10 valid (83%), 2 malformed (both in s7, neither repaired); second turn 1/2; s1 answered in text both days; s4 never parallel. One more `--runs 1` day reaches 21 clean trials.
+
 ## Tested models
 
 Same table as README.md "Tested models (Phase 142):".
