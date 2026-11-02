@@ -43,6 +43,6 @@ UAT fixes (each red-first): 9d91596, bc97400, dba356f, a758465 / 9570676 / 688ab
 - Model: "by hour" read as calendar hour (app gap: no hour-of-day / day-of-week buckets; closed 2026-10-30 in 7985387).
 - Model: occasionally sums an already-averaged view column (prompt rule added in 52919a9).
 - Model: in query mode a plain question was answered with a chart.
-- `?page=ai-activity` deep link lands on Dashboards on a fresh load.
+- ~~`?page=ai-activity` deep link lands on Dashboards on a fresh load.~~ Not a defect (2026-11-02): the app has no `?page=` deep link; the UAT script used a URL that was never supported.
 
 ## Self-Check: PASSED (G10 verdict pending the remaining spike days)

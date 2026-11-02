@@ -248,6 +248,12 @@ Two in-app asks by Claude in the operator's Chrome (dark), scratch dashboard 64 
 
 The app's change list (0f8e460) showed under both live replies ("Added dynamic view ...", "Added bar ..."). Session discarded; no AI views left.
 
+## Operator-reported layout fix and panel default (2026-11-02, 0 answers)
+
+- **Observation (operator):** on dashboard 65 (built in Claude Desktop), Settings -> Filters -> Right panel switched live left the widgets overlapping at the left. A reload drew them correctly. Cause: the topbar and panel branches rendered the grid under different parents, so react-grid-layout's width observer stayed on the removed node. Fixed in 9cf49b7 (one stable wrapper); checked live on dashboard 65: widget boxes after a live switch equal a fresh load, both directions; saved layouts unchanged.
+- **Operator request:** dashboards built by Generate or by Claude Desktop open with the right filter panel (abcc492, `createGeneratedDashboard` inserts `filter_display_mode = 'panel'`; spec GENLIFE-1b). Hand-made dashboards keep the top bar default.
+- **Correction:** the "`?page=ai-activity` lands on Dashboards" observation (G1 row, day 4) is not a defect: the app has no `?page=` deep link (only `?dashboard=` and `?table=`).
+
 ## Tested models
 
 Same table as README.md "Tested models (Phase 142):".
