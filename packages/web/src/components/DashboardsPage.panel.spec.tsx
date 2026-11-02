@@ -107,11 +107,12 @@ vi.mock("../api/client", async (importOriginal) => {
     listDashboardGrants: vi.fn(() => Promise.resolve([])),
     addDashboardGrant: vi.fn(() => Promise.resolve([])),
     removeDashboardGrant: vi.fn(() => Promise.resolve([])),
+    updateDashboard: vi.fn(),
   };
 });
 
 import DashboardsPage from "./DashboardsPage";
-import { listDashboards, listWidgets, listViews, listDashboardTables } from "../api/client";
+import { listDashboards, listWidgets, listViews, listDashboardTables, updateDashboard } from "../api/client";
 
 const dashboardId = 1;
 const tableId = 42;
@@ -368,6 +369,34 @@ describe("DashboardsPage panel mode (Phase 107 Plan 02)", () => {
     const sorted = [...lefts].sort((a, b) => a - b);
     expect(sorted[0]).toBeLessThan(sorted[1]);
     expect(sorted[1]).toBeLessThan(sorted[2]);
+  });
+
+  // 2026-11-02 UAT: switching Top bar -> Right panel in Settings left every widget at the old full width and piled
+  // at the left edge until a reload. useContainerWidth observes the node it saw on mount; wrapping the grid in the
+  // panel layout replaced that node, so the new, narrower width was never measured. The node must survive the switch.
+  it("switching Top bar -> Right panel live keeps the grid's measured container node", async () => {
+    const rowWidgets = [{ id: 211, x: 0 }, { id: 212, x: 18 }].map(({ id, x }) => ({
+      id,
+      dashboard_id: dashboardId,
+      title: `W${id}`,
+      type: "bar",
+      position: 0,
+      config: { tableId, layout: { x, y: 0, w: 18, h: 12 } },
+      created_at: "2026-07-09T00:00:00Z",
+      updated_at: "2026-07-09T00:00:00Z",
+    }));
+    (updateDashboard as ReturnType<typeof vi.fn>).mockResolvedValue({ ...topbarDashboard, filter_display_mode: "panel" });
+    await openDashboard(topbarDashboard, rowWidgets);
+    await waitFor(() => expect(document.querySelectorAll(".react-grid-item").length).toBe(2));
+    const host = document.querySelector(".dashboard-grid")?.parentElement;
+    expect(host).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Right panel" }));
+    await waitFor(() => expect(document.querySelector(".filter-panel-layout")).not.toBeNull());
+
+    expect(document.querySelector(".dashboard-grid")?.parentElement).toBe(host);
+    expect(host?.isConnected).toBe(true);
   });
 
   it("group order: table -> dv -> spatial group titles appear in that DOM order", async () => {

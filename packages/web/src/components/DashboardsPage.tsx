@@ -2089,10 +2089,12 @@ const DashboardOpen = ({
         </div>
       )}
 
-      {isPanelMode ? (
-        <div className="filter-panel-layout">
-          {gridBlock}
-          {panelCollapsed ? (
+      {/* One wrapper in both modes: gridBlock must keep its place in the tree when the mode is switched live.
+          useContainerWidth observes the node it saw on mount; remounting it left the grid at the old width. */}
+      <div className={isPanelMode ? "filter-panel-layout" : undefined}>
+        {gridBlock}
+        {isPanelMode &&
+          (panelCollapsed ? (
             <FilterPanelRail count={activeFilterCount} onExpand={() => setPanelCollapsed(false)} />
           ) : (
             <FilterPanel
@@ -2103,11 +2105,8 @@ const DashboardOpen = ({
               onCollapse={() => setPanelCollapsed(true)}
               onClearAllFilters={clearAllFilters}
             />
-          )}
-        </div>
-      ) : (
-        gridBlock
-      )}
+          ))}
+      </div>
 
       {showTableModal && (
         <TablePickerModal
