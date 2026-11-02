@@ -237,6 +237,17 @@ Latency p50 9.9 s / p95 20.5 s. Decision line: inconclusive, default stays `AI_T
 
 Running total after 2 days: 14 clean trials, 0 excluded; 12 calls, 10 valid (83%), 2 malformed (both in s7, neither repaired); second turn 1/2; s1 answered in text both days; s4 never parallel. One more `--runs 1` day reaches 21 clean trials.
 
+## Gemini check of the new time buckets (2026-11-02)
+
+Two in-app asks by Claude in the operator's Chrome (dark), scratch dashboard 64 (nyctaxi, AI widget, map), `AI_DATA_ACCESS=schema`; buckets from 7985387.
+
+| Ask | Result |
+|---|---|
+| "Which hour of the day is busiest? Show trips by hour of day." (14 s) | PASS. View "Trips by Hour of Day" + bar with 24 bars labelled 0-23 (hour_of_day); busiest 19. Reply did not name the hour (schema mode, no data access). |
+| "Which day of the week has the most trips?" (follow-up chip) | PASS. View "Trips by Weekday" + bar labelled "6 Fri" ... "2 Mon" (day_of_week), Friday highest. Y axis "Sum of trip_count" (sum over the view's count column, values correct). |
+
+The app's change list (0f8e460) showed under both live replies ("Added dynamic view ...", "Added bar ..."). Session discarded; no AI views left.
+
 ## Tested models
 
 Same table as README.md "Tested models (Phase 142):".
