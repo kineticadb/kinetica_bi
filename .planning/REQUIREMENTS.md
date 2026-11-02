@@ -168,7 +168,7 @@ Which phases cover which requirements.
 | AIMCP-V20-01 | Phase 143 | Complete (spike 91ede8b; live in Claude Desktop 2026-10-29) |
 | AIMCP-V20-02 | Phase 143 | Complete (2ae8a5b, f5611dc, 0961ef6, 5301497; checked live at 1440 and 1920) |
 | AIMCP-V20-03 | Phase 143 | Complete (d592ecb; dark and light, script shown as text) |
-| AIMCP-V20-04 | Phase 143 | Complete (a410fbd; token created, used and revoked live in the Profile page, light and dark) |
+| AIMCP-V20-04 | Phase 143 | Complete (a410fbd; token created, used and revoked live in the Profile page, light and dark; Claude Desktop signed in with KBI_TOKEN only, built and kept dashboard 68, revoke signed it out, 2026-11-02) |
 | AIMCP-V20-05 | Phase 143 | Complete (a410fbd; Discard deleted the dashboard, Keep cleared the mark, checked in SQLite) |
 | AIMCP-V20-06 | Phase 143 | Complete (a410fbd; AI activity row "Claude Desktop" seen live) |
 | AIMCP-V20-07 | Phase 143 | Complete (a410fbd; route specs with AI off; browser handoff/Keep have no AI-config gate, not re-run live with AI off) |

@@ -369,7 +369,7 @@ Plans:
 | 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
 | 141. Keep (Persist AI Changes) | 14/14 | Complete | 2026-10-22 |
 | 142. Generate, Audit Viewer & Live Provider Proofs | 11/11 | Complete (Gemini S6 matrix day 2 of 3) | 2026-10-30 |
-| 143. Claude Desktop MCP Connector | 9/9 requirements | Complete (operator UAT passed; live token sign-in deferred) | 2026-10-29 |
+| 143. Claude Desktop MCP Connector | 9/9 requirements | Complete (operator UAT passed; live token sign-in passed 2026-11-02; AI-off Keep live pending) | 2026-10-29 |
 
 ---
 

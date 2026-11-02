@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards star
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
-Phase: 143 (Claude Desktop MCP Connector) — COMPLETE 2026-10-29 (AIMCP-V20-01..09; operator Claude Desktop UAT passed; live token sign-in from Claude Desktop deferred by the operator). Merged into `feat/ai-driven-dashboards`.
+Phase: 143 (Claude Desktop MCP Connector) — COMPLETE 2026-10-29 (AIMCP-V20-01..09; operator Claude Desktop UAT passed; live token sign-in from Claude Desktop passed 2026-11-02). Merged into `feat/ai-driven-dashboards`.
 Phase: 142 (Generate, Audit Viewer & Live Provider Proofs) — COMPLETE 2026-10-30 (11/11 plans; Gemini G0-G9 PASS; Ollama PARTIAL; S6 Gemini spike days 1-2 of 3 recorded (14/14 clean, 83% valid calls), verdict after >= 20 clean trials). Next: S6 `--runs 1` on two more quota days, then `/gsd:audit-milestone` for v2.0 and the PR to `master`.
 Phase: 141 (Keep (Persist AI Changes)) — COMPLETE 2026-10-22 (14/14 plans; gates green; 141-14 operator UAT run by Claude in the operator's Chrome on Kinetica 7.2.3.12, light+dark; step 6 skipped, step 9 deferred to 142; UAT fixes e5bb56e/eaad490/3aef06f; results in `phases/141-keep-persist-ai-changes/141-14-UAT-RESULTS.md`)
 Previous phase: 140 (Query Data-Access Mode & Injection Hardening) — COMPLETE 2026-10-21 (13/13 plans; gates green apart from environmental lib.exportRunner.memory; 140-13 live spike + operator UAT run by Claude on Kinetica 7.2.3.12, light+dark; live Gemini ask deferred to 142; results in `phases/140-query-data-access-mode-injection-hardening/140-13-UAT-RESULTS.md`)
