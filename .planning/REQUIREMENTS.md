@@ -61,7 +61,7 @@
 
 - [x] **AIPRV-V20-01**: An admin sets the AI provider, endpoint, model and key through env. AI is off by default, and the app behaves exactly as today without it.
 - [x] **AIPRV-V20-02**: The OpenAI-compatible provider works end to end, proven live by the operator on **Gemini** (Google AI Studio).
-- [ ] **AIPRV-V20-03**: The same provider is proven live on one named **local open model** (Ollama).
+- [ ] **AIPRV-V20-03**: The same provider is proven live on one named **local open model** (Ollama). *Partial, accepted by the operator for v2.0 on 2026-11-02: the adapter is proven on Ollama; a stronger local model is future work.*
 - [x] **AIPRV-V20-04**: A Claude provider exists and is unit-tested, documented as not live-verified.
 - [x] **AIPRV-V20-05**: The API key never reaches the browser or the logs; automated tests never call a real provider or read the dev key.
 
@@ -156,7 +156,7 @@ Which phases cover which requirements.
 | AIGEN-V20-02 | Phase 142 | Complete |
 | AIPRV-V20-01 | Phase 133 | Complete |
 | AIPRV-V20-02 | Phase 142 | Complete (Gemini G0-G9 live 2026-10-23..28; S6 spike matrix still collecting trials, days 1-2 of 3 on 2026-10-30 and 2026-11-02, 14 clean) |
-| AIPRV-V20-03 | Phase 142 | Partial (qwen2.5:7b-instruct on CPU Ollama: adapter works, model too weak for actions and Generate in 600 s; json mode best effort) |
+| AIPRV-V20-03 | Phase 142 | Partial, accepted for v2.0 by the operator 2026-11-02 (qwen2.5:7b-instruct on CPU Ollama: adapter works, model too weak for actions and Generate in 600 s; json mode best effort) |
 | AIPRV-V20-04 | Phase 135 | Complete |
 | AIPRV-V20-05 | Phase 135 | Complete |
 | AIGOV-V20-01 | Phase 135 | Complete (server refusal + Roles grant in 135; widget use/add gate UI + server create/patch guard in 137; no-access widget view unit-tested, not operator-viewed) |

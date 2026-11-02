@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: AI-Driven Dashboards
 status: in-progress
-stopped_at: "v2.0 milestone audit done 2026-11-02 (tech_debt, 52/53; v2.0-MILESTONE-AUDIT.md); F1 fixed df769a0. Next: S6 day 3, operator Claude Desktop session, AIPRV-V20-03 decision, then complete-milestone + PR"
+stopped_at: "2026-11-02: audit done; Claude Desktop token + AI-off Keep PASS live; AIPRV-V20-03 accepted partial; F2/F3 fixed (7e305c8). Next: S6 day 3, then /gsd:complete-milestone v2.0 + PR"
 last_updated: "2026-11-02T18:00:00.000Z"
 progress:
   total_phases: 6
@@ -170,6 +170,7 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - (h) Done 2026-10-30: "Clear this filter" is now the turn's primary button (0f8e460, todo closed).
 - (i) Not a defect (2026-11-02): the `?page=ai-activity` "deep link" was a UAT-script URL the app never supported; only `?dashboard=` and `?table=` are deep links. Pages other than those are not addressable by URL (possible future feature).
 - (k) 2026-11-02 milestone audit (`v2.0-MILESTONE-AUDIT.md`): tech_debt, 52/53 (AIPRV-V20-03 partial); 142/143 VERIFICATION.md written (human_needed, no code gaps); integration finding F1 (AI view materialize needed AI_ENABLED, broke Claude Desktop previews with AI off) fixed in df769a0; F2-F8 carried as debt; PR draft `v2.0-PR-DESCRIPTION.md`.
+- (l) 2026-11-02 evening: Claude Desktop token sign-in/revoke and Keep with AI_ENABLED off PASS live (dashboards 68, 69); map-after-cap fix fd1fa43; Keep on a removed dashboard says so (d4e43bd); connector lists only readable tables and tokens are revocable without ai:use (7e305c8); AIPRV-V20-03 accepted as PARTIAL for v2.0 by the operator.
 - (j) Done 2026-11-02, no quota: the connector drops its "spike" labels and reports the package version (d08359f; README: Keep works with the in-app AI off); the S6 spike refuses to start against Gemini with no key (6b76ee3); switching Settings to the right filter panel live no longer piles widgets at the left (9cf49b7, the grid's measured wrapper is now stable; checked live on dashboard 65 both ways); dashboards made by Generate and by Claude Desktop open with the right filter panel (abcc492; hand-made dashboards still default to the top bar).
 
 **Pending from Phase 133:**
