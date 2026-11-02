@@ -335,6 +335,10 @@ export async function main(argv: string[], env: Record<string, string | undefine
   const origin = new URL(config.baseUrl);
   const secret = (env.AI_API_KEY ?? "").trim();
   console.log(`[s6] endpoint=${origin.origin} model=${config.model} key=${secret !== "" ? "set" : "not set"} mode=${mode} stream=${args.stream} runs=${args.runs} rpm=${args.rpm}`);
+  if (secret === "" && providerLabel(origin) === "gemini") {
+    console.error("[s6] ERROR: AI_API_KEY is not set in this shell; Gemini would reject every request. Run `read -s AI_API_KEY && export AI_API_KEY` on its own line, type the key, press Enter, then re-run.");
+    return 1;
+  }
 
   // tee fetch for wire observation + sanitised recordings
   let wire = freshWire();

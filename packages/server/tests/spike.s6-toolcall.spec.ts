@@ -339,3 +339,27 @@ describe("S6-9 the spike stops early and writes partial output (scripted fetch, 
     expect(r.out.matrixRow).toContain("inconclusive (0 clean trials)");
   });
 });
+
+// ---- S6-10: operator run 2026-11-02 pasted the whole block, read -s took no key, and 3 trials burned on 400s ----
+describe("S6-10 refuses to start against Gemini without a key", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const gemini = {
+    AI_ENABLED: "true",
+    AI_PROVIDER: "openai-compatible",
+    AI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    AI_MODEL: "gemini-3-flash-preview",
+  };
+  it.each([["unset", undefined], ["blank", "   "]])("key %s -> exit 1, no request, says how to set it", async (_label, key) => {
+    forbidProviderNetwork();
+    const fetchSpy = vi.fn(globalThis.fetch);
+    vi.stubGlobal("fetch", fetchSpy);
+    const errors: string[] = [];
+    const errSpy = vi.spyOn(console, "error").mockImplementation((m: unknown) => void errors.push(String(m)));
+    const { main } = await import("../src/spikes/toolCallSpike");
+    const code = await main(["--runs", "1"], { ...gemini, AI_API_KEY: key });
+    errSpy.mockRestore();
+    expect(code).toBe(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toContain("AI_API_KEY is not set");
+  });
+});
