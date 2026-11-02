@@ -45,7 +45,7 @@ import { applyFitBands } from "./lib/ai/generateMode";
 import { buildToolRegistry } from "./lib/ai/tools/registry";
 import { createMcpSession, getMcpSession, takeMcpHandoff, MCP_MAX_AUDITED_CALLS, type McpSession } from "./lib/mcp/mcpSessions";
 import { recordMcpBuild, type AiToolAuditEntry } from "./lib/aiAudit";
-import { ALLOW_LIST_VERSION } from "@kinetica-bi/shared";
+import { ALLOW_LIST_VERSION, type AiOp } from "@kinetica-bi/shared";
 
 /** The in-app AI's tools Claude Desktop may call: read the schema and the dashboard, add, and (Phase 143) edit, remove and filter. */
 export const MCP_TOOL_NAMES = [
@@ -59,6 +59,11 @@ export const MCP_TOOL_NAMES = [
 const REMOVE_TOOLS: ReadonlySet<string> = new Set(["remove_widget", "remove_layer", "remove_dynamic_view"]);
 const CONFIRM_REASON = "Removing saved content needs the user's approval: ask the user, then call again with confirmed: true.";
 export const MCP_MAX_NEW_WIDGETS = 12;
+/** New widgets still on the dashboard: removing one Claude added frees its slot under MCP_MAX_NEW_WIDGETS. */
+const liveNewWidgets = (ops: AiOp[]): number => {
+  const removed = new Set(ops.flatMap((o) => (o.op === "remove_widget" ? [o.id] : [])));
+  return ops.filter((o) => o.op === "add_widget" && !removed.has(o.tempId)).length;
+};
 const MCP_PROMPT = "Built in Claude Desktop";
 export const MCP_TOKENS_PER_USER = 10;
 const MCP_TOKEN_NAME_MAX = 60;
@@ -266,7 +271,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         return res.json({ ok: !out.isError, text });
       }
 
-      if (tool.name === "add_widget" && s.ops.filter((o) => o.op === "add_widget").length >= MCP_MAX_NEW_WIDGETS) {
+      if (tool.name === "add_widget" && liveNewWidgets(s.ops) >= MCP_MAX_NEW_WIDGETS) {
         const reasons = [`limit of ${MCP_MAX_NEW_WIDGETS} new widgets reached`];
         logCall(s, { name: tool.name, args, result: "rejected", stage: "cap", reasons });
         s.rejected.push({ label: tool.name, stage: "cap", reasons });

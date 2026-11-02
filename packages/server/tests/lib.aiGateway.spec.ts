@@ -201,7 +201,7 @@ describe("checkAiOp gateway (phase 136)", () => {
     const noTable = await run(mk(), addWidget, add({ tableId: undefined }));
     expect(noTable).toMatchObject({ ok: false, stage: "reference", reasons: ["tableId is required for bar"] });
     const mapT = await run(mk(), addWidget, add({ type: "map", metric: undefined, aggregation: undefined, groupByColumn: undefined, tableId: 5 }));
-    expect(mapT).toMatchObject({ ok: false, reasons: ["map widgets have no table"] });
+    expect(mapT).toMatchObject({ ok: false, reasons: ["map widgets have no table: leave out tableId; add the data afterwards with add_heatmap_layer on this map"] });
     const off = await run(mk(), addWidget, add({ tableId: 6 }));
     expect(off).toMatchObject({ ok: false, stage: "reference", reasons: ["table 6 isn't on this dashboard; add it in dashboard settings first"] });
     const a = await run(mk(), addWidget, add({ tableId: 9 }));

@@ -450,7 +450,11 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
         if (t !== undefined) return f("reference", ["pass tableId or dynamicViewId, not both"]);
         if (!shadow.dynamicViews.has(dv) || !dvMeta(dv)) return missing("dynamicView", dv, "dynamic view");
       } else if (AI_TABLELESS_WIDGET_TYPES.includes(op.type)) {
-        if (t !== undefined) return f("reference", [`${op.type} widgets have no table`]);
+        if (t !== undefined) {
+          // Say what to do instead: a model that only hears "no table" tends to retry with the table again.
+          const fix = op.type === "map" ? "leave out tableId; add the data afterwards with add_heatmap_layer on this map" : "leave out tableId";
+          return f("reference", [`${op.type} widgets have no table: ${fix}`]);
+        }
       } else if (typeof t !== "number") {
         return f("reference", [`tableId is required for ${op.type}`]);
       } else {

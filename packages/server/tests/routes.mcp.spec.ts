@@ -8,7 +8,7 @@ import { forbidProviderNetwork } from "./helpers/aiTestKit";
 import { enableAiEnv, sessionFor, resetAiTables, mockKinetica, addWidgetArgs, makeRole } from "./helpers/aiRouteKit";
 import { __clearLiveSchemaCacheForTest } from "../src/lib/ai/liveSchema";
 import { __resetMcpSessionsForTest } from "../src/lib/mcp/mcpSessions";
-import { MCP_TOOL_NAMES } from "../src/mcpRoutes";
+import { MCP_MAX_NEW_WIDGETS, MCP_TOOL_NAMES } from "../src/mcpRoutes";
 import { addDashboardGrant } from "../src/lib/dashboardAccessDb";
 import { FIT_KPI_H, placeFitBands } from "@kinetica-bi/shared";
 
@@ -315,5 +315,19 @@ describe("/api/mcp (MCP connector)", () => {
     await request(app).post(`/api/mcp/sessions/${sessionId}/finish`).set("Cookie", c).send({});
     const ops = (await request(app).get(`/api/mcp/sessions/${sessionId}/handoff?dashboardId=${dashboardId}`).set("Cookie", c)).body.ops as { op: string }[];
     expect(ops.map((o) => o.op)).toEqual(["add_widget", "apply_filter", "clear_filter"]);
+  });
+
+  it("MCP-17 removing a widget Claude added frees its slot under the new-widget cap", async () => {
+    const app = await boot();
+    const c = dee();
+    const { sessionId: sid, tableId: T } = await startSession(app, c);
+    for (let i = 1; i <= MCP_MAX_NEW_WIDGETS; i++) {
+      expect((await call(app, c, sid, "add_widget", addWidgetArgs(T, { tempId: -i }))).body).toMatchObject({ ok: true });
+    }
+    const full = await call(app, c, sid, "add_widget", addWidgetArgs(T, { tempId: -50 }));
+    expect(full.body).toMatchObject({ ok: false, stage: "cap" });
+    expect((await call(app, c, sid, "remove_widget", { id: -2 })).body).toMatchObject({ ok: true });
+    expect((await call(app, c, sid, "add_widget", addWidgetArgs(T, { tempId: -50 }))).body).toMatchObject({ ok: true });
+    expect((await call(app, c, sid, "add_widget", addWidgetArgs(T, { tempId: -51 }))).body).toMatchObject({ ok: false, stage: "cap" });
   });
 });
