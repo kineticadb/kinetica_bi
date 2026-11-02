@@ -43,6 +43,11 @@ describe("generated lifecycle (GENLIFE)", () => {
     expect(ws[0]).toMatchObject({ type: "ai", title: "AI Assistant" });
     expect((ws[0]!.config as any).layout).toEqual({ x: 24, y: 0, w: 12, h: 40 });
   });
+  it("GENLIFE-1b AI and Claude Desktop builds show filters in the right panel (2026-11-02 UAT)", async () => {
+    expect(createGeneratedDashboard({ username: "Dee", name: "Trips", tableId: T }).filter_display_mode).toBe("panel");
+    await discardPendingForUser("dee");
+    expect(createGeneratedDashboard({ username: "Dee", name: "Desk", tableIds: [T], assistant: false }).filter_display_mode).toBe("panel");
+  });
   it("GENLIFE-2 one per user", () => {
     const a = createGeneratedDashboard({ username: "dee", name: "Trips", tableId: T });
     const before = (db.prepare("SELECT COUNT(*) AS n FROM dashboards").get() as { n: number }).n;

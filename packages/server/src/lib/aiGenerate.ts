@@ -43,7 +43,8 @@ export function createGeneratedDashboard(input: {
       const existing = findPendingForUser(u);
       if (existing) throw new GeneratePendingError(existing);
       const r = db
-        .prepare("INSERT INTO dashboards (name, description, generated_by, generated_pending_at) VALUES (?, ?, ?, ?)")
+        // AI and Claude Desktop builds show filters in the right panel (2026-11-02 operator request).
+        .prepare("INSERT INTO dashboards (name, description, generated_by, generated_pending_at, filter_display_mode) VALUES (?, ?, ?, ?, 'panel')")
         .run(input.name, input.description ?? "", u, input.now ?? Date.now());
       const id = Number(r.lastInsertRowid);
       for (const tableId of tableIds) db.prepare("INSERT INTO dashboard_tables (dashboard_id, table_id) VALUES (?, ?)").run(id, tableId);
