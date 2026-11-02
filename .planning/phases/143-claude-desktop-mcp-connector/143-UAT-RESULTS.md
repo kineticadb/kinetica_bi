@@ -32,3 +32,12 @@ Checked in dark mode throughout; the text widget also in light mode. Safety: a `
 Password config (token test deferred by the operator). After Cmd+Q and reopen: list_dashboards, open + rename + confirmed removal (Claude asked first), filter, a new build discarded (gone from the list), AI activity "Claude Desktop" rows. **Operator: everything passed.**
 
 **Deferred:** live token sign-in from Claude Desktop (create a token on the Profile page, `KBI_TOKEN` in the config). The token flow itself was checked in the browser (row 8).
+
+## Operator run in Claude Desktop with a token (2026-11-02)
+
+Config with `KBI_URL` + `KBI_TOKEN` only (no password), `AI_ENABLED=true`.
+
+- **Token sign-in (AIMCP-V20-04): PASS (build + Keep).** Claude Desktop signed in with the token and built "NYC Taxi Overview" (audit 85). Revoke-then-call not yet checked live.
+- **No map on the first build (fixed fd1fa43).** Claude tried a map six times: refused for `showLegend`, then for `tableId` ("map widgets have no table", so it retried with the table), then twice by the 12-new-widget cap, which counted every add even after Claude removed a widget to make room; the heatmap layer was refused for the missing map. Now removed new widgets free their slot (MCP-17) and the refusal says to leave out tableId and add the data with add_heatmap_layer.
+- **Keep failed on that first build: test-environment cause.** Server code edits during the run restarted `tsx watch`; the boot sweep deleted the unkept dashboard 66 and its AI views before Keep, which then showed the generic "try again" message. Keep on a removed dashboard now says the dashboard no longer exists (web, KCL-6b).
+- **Rebuild: PASS.** Dashboard 67 built with the map and heatmap layer, kept (audit 86, 87).

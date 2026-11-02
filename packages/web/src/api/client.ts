@@ -2202,6 +2202,8 @@ export type KeepAiResult =
   | { ok: true; response: AiKeepResponse }
   | { ok: false; kind: "conflict" | "permission" | "invalid" | "failed"; message: string };
 
+export const KEEP_GONE_MESSAGE = "This dashboard no longer exists, so nothing was saved. Unkept dashboards are removed when the server restarts or when they expire.";
+
 /** Never throws, never retries (a retry could double-apply). */
 export const keepAiChanges = async (dashboardId: number, body: AiKeepRequest): Promise<KeepAiResult> => {
   const failed: KeepAiResult = { ok: false, kind: "failed", message: KEEP_FAILED_MESSAGE };
@@ -2231,6 +2233,8 @@ export const keepAiChanges = async (dashboardId: number, body: AiKeepRequest): P
     if ((response.status === 400 || response.status === 422) && json.code === AI_KEEP_ERROR_CODES.invalid) {
       return { ok: false, kind: "invalid", message: text ?? KEEP_FAILED_MESSAGE };
     }
+    // The dashboard is gone, e.g. an unkept build removed by a server restart or the TTL sweep: "try again" can't help.
+    if (response.status === 404) return { ok: false, kind: "invalid", message: KEEP_GONE_MESSAGE };
     return failed;
   } catch {
     return failed;

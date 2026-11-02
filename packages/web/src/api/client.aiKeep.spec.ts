@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { listWidgets, keepAiChanges, API_BASE } from "./client";
+import { listWidgets, keepAiChanges, API_BASE, KEEP_GONE_MESSAGE } from "./client";
 import { useDashboardVersionStore } from "../store/dashboardVersionStore";
 import { useToastStore } from "../store/toast";
 import { KEEP_CONFLICT_MESSAGE, KEEP_FAILED_MESSAGE, type AiKeepRequest } from "@kinetica-bi/shared";
@@ -75,12 +75,17 @@ describe("client Keep + version header capture", () => {
     }
   });
 
+  it("KCL-6b: a 404 (the unkept dashboard was removed) says so instead of 'try again'", async () => {
+    stub(async () => json({ error: "Dashboard not found." }, 404));
+    expect(await keepAiChanges(12, payload)).toEqual({ ok: false, kind: "invalid", message: KEEP_GONE_MESSAGE });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("KCL-7/8: everything else is failed, never rejects, never retries", async () => {
     const failed = { ok: false, kind: "failed", message: KEEP_FAILED_MESSAGE };
     const cases: Array<() => Promise<unknown>> = [
       async () => json({ code: "AI_KEEP_FAILED" }, 500),
       async () => json({ code: "AI_NOT_CONFIGURED" }, 503),
-      async () => json({ error: "Dashboard not found." }, 404),
       async () => new Response("<html>", { status: 502 }),
       async () => { throw new TypeError("network"); },
     ];
