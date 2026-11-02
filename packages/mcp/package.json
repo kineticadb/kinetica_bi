@@ -3,7 +3,7 @@
   "version": "1.23.0",
   "private": true,
   "type": "module",
-  "description": "kbi-mcp spike: an MCP server that lets Claude Desktop build Kinetica BI dashboards",
+  "description": "kbi-mcp: an MCP server that lets Claude Desktop build Kinetica BI dashboards",
   "scripts": {
     "start": "tsx src/index.ts",
     "test": "vitest --run",

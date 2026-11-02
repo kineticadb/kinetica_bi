@@ -1,4 +1,4 @@
-// kbi-mcp spike: stdio entry point for Claude Desktop. Configure in claude_desktop_config.json (see README.md).
+// kbi-mcp: stdio entry point for Claude Desktop. Configure in claude_desktop_config.json (see README.md).
 // stdout carries the MCP protocol, so diagnostics go to stderr only.
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { KbiClient } from "./kbiClient.js";

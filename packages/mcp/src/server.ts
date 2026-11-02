@@ -1,5 +1,6 @@
-// kbi-mcp spike: the MCP tool surface. Claude Desktop's model does the thinking; Kinetica BI validates every change
+// kbi-mcp: the MCP tool surface. Claude Desktop's model does the thinking; Kinetica BI validates every change
 // with the in-app AI's gateway and nothing is saved until the user opens the link and presses Keep.
+import { createRequire } from "node:module";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { KbiError, type KbiClient } from "./kbiClient.js";
@@ -78,11 +79,14 @@ const LOCAL_NAMES = new Set(LOCAL_TOOLS.map((t) => t.name));
 
 const text = (t: string, isError = false): CallToolResult => ({ content: [{ type: "text", text: t }], ...(isError ? { isError: true } : {}) });
 
+/** Reported to Claude Desktop; follows the monorepo version in package.json. */
+const { version: VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 type ServerToolSpec = { name: string; description: string; jsonSchema: Record<string, unknown> };
 type CallBody = { ok: boolean; text?: string; stage?: string; reasons?: string[] };
 
 export function createKbiMcpServer(client: KbiClient, log: (msg: string) => void = (m) => process.stderr.write(`${m}\n`)): Server {
-  const server = new Server({ name: "kinetica-bi", version: "0.1.0-spike" }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
+  const server = new Server({ name: "kinetica-bi", version: VERSION }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
   let session: { id: string; dashboardId: number; name: string } | undefined;
   let remote: ServerToolSpec[] | undefined;
 

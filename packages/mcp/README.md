@@ -1,4 +1,4 @@
-# Kinetica BI MCP server (spike)
+# Kinetica BI MCP server
 
 Lets Claude Desktop build Kinetica BI dashboards. Claude's model does the thinking; Kinetica BI checks every change with the same rules as the in-app AI (structured changes only, never SQL; column names checked against the live schema; your permissions). Nothing is saved by Claude: it finishes with a link, you open it, review the dashboard and press **Keep** (or **Discard**).
 
@@ -11,7 +11,7 @@ cd packages/server && MCP_ENABLED=true npm run dev     # or add MCP_ENABLED=true
 cd packages/web && npx vite
 ```
 
-AI must be enabled on the server (`AI_ENABLED=true`): Keep uses the in-app AI's save route. The configured provider is never called by MCP.
+The in-app AI does not need to be on: with `MCP_ENABLED=true`, Claude Desktop can build and you can Keep even when `AI_ENABLED` is off (Keep is refused only when both are off). The configured AI provider is never called by MCP.
 `MCP_APP_URL` sets the web address used in the link (default `http://localhost:5173`). `MCP_TOKEN_TTL_DAYS` sets how long access tokens last (default 90).
 
 ## 2. Create an access token

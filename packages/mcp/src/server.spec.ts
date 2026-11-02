@@ -1,4 +1,5 @@
-// kbi-mcp spike: the MCP surface driven like Claude Desktop does (SDK client over an in-memory transport).
+// kbi-mcp: the MCP surface driven like Claude Desktop does (SDK client over an in-memory transport).
+import { createRequire } from "node:module";
 import { describe, it, expect } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -66,6 +67,12 @@ describe("kbi-mcp server", () => {
     const names = (await mcp.listTools()).tools.map((t) => t.name);
     expect(names).toEqual(["list_tables", "start_dashboard", "list_dashboards", "open_dashboard", "finish_dashboard", "describe_table", "add_widget"]);
     expect(await mcp.getInstructions()).toContain("presses Keep");
+  });
+
+  it("MCPS-1b reports the package version to Claude Desktop", async () => {
+    const mcp = await connect(fakeKbi(routes).client);
+    const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+    expect(mcp.getServerVersion()).toEqual({ name: "kinetica-bi", version });
   });
 
   it("MCPS-2 Kinetica BI tools need a dashboard in progress", async () => {
