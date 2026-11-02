@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: AI-Driven Dashboards
 status: in-progress
-stopped_at: "No-quota fixes recorded 2026-11-02 (d08359f, 6b76ee3, 9cf49b7, abcc492); S6 days 1-2 of 3 recorded (14 clean). Next: S6 day 3, then /gsd:audit-milestone v2.0"
+stopped_at: "v2.0 milestone audit done 2026-11-02 (tech_debt, 52/53; v2.0-MILESTONE-AUDIT.md); F1 fixed f88309b. Next: S6 day 3, operator Claude Desktop session, AIPRV-V20-03 decision, then complete-milestone + PR"
 last_updated: "2026-11-02T18:00:00.000Z"
 progress:
   total_phases: 6
@@ -169,6 +169,7 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - (g) Open, minor: the server accepts an `AI_MODEL` with spaces without a warning; the "Maximum update depth" warning seen once on day 1 did not recur.
 - (h) Done 2026-10-30: "Clear this filter" is now the turn's primary button (0f8e460, todo closed).
 - (i) Not a defect (2026-11-02): the `?page=ai-activity` "deep link" was a UAT-script URL the app never supported; only `?dashboard=` and `?table=` are deep links. Pages other than those are not addressable by URL (possible future feature).
+- (k) 2026-11-02 milestone audit (`v2.0-MILESTONE-AUDIT.md`): tech_debt, 52/53 (AIPRV-V20-03 partial); 142/143 VERIFICATION.md written (human_needed, no code gaps); integration finding F1 (AI view materialize needed AI_ENABLED, broke Claude Desktop previews with AI off) fixed in f88309b; F2-F8 carried as debt; PR draft `v2.0-PR-DESCRIPTION.md`.
 - (j) Done 2026-11-02, no quota: the connector drops its "spike" labels and reports the package version (d08359f; README: Keep works with the in-app AI off); the S6 spike refuses to start against Gemini with no key (6b76ee3); switching Settings to the right filter panel live no longer piles widgets at the left (9cf49b7, the grid's measured wrapper is now stable; checked live on dashboard 65 both ways); dashboards made by Generate and by Claude Desktop open with the right filter panel (abcc492; hand-made dashboards still default to the top bar).
 
 **Pending from Phase 133:**

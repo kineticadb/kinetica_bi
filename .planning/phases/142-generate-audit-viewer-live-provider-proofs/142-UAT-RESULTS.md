@@ -264,4 +264,4 @@ Same table as README.md "Tested models (Phase 142):".
 | OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26 |
 | Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
 
-The Ollama 300 s cut-off (defect 1) and empty-answer acceptance (defect 2) were fixed after the run (51b009d) and not re-run live. `.env.example` now carries `AI_TOOL_MODE=json` under the Ollama example.
+The Ollama 300 s cut-off (defect 1) and empty-answer acceptance (defect 2) were fixed after the run (51b009d); the 2026-10-29 re-run confirmed the 300 s fix live (an ask ran 394 s to completion). `.env.example` now carries `AI_TOOL_MODE=json` under the Ollama example.
