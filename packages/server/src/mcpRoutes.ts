@@ -129,7 +129,8 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   };
   const registry = () => buildToolRegistry({ dataAccess: "schema" });
 
-  app.get("/api/mcp/tokens", ...requirePermission(PERMISSIONS.AI_USE), (req, res) => {
+  // Listing and revoking need only a session: someone who lost ai:use can still see and revoke the tokens they made.
+  app.get("/api/mcp/tokens", requireAuth, (req, res) => {
     return res.json({ tokens: listMcpTokens(usernameOf(req)), ttlDays: mcpTokenTtlDays() });
   });
 
@@ -152,11 +153,38 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
     return res.status(201).json({ id, token, name, expiresAt: row.expiresAt });
   });
 
-  app.delete("/api/mcp/tokens/:id", ...requirePermission(PERMISSIONS.AI_USE), (req, res) => {
+  app.delete("/api/mcp/tokens/:id", requireAuth, (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || !revokeMcpToken(usernameOf(req), id)) return res.status(404).json({ error: "Token not found." });
     return res.status(204).end();
   });
+
+  // The tables Claude may use, before any session exists: the in-app list_tables tool, so only tables the user can
+  // describe in Kinetica are listed and registry descriptions carry the untrusted-text markers.
+  app.get(
+    "/api/mcp/tables",
+    ...requirePermission(PERMISSIONS.AI_USE),
+    deps.wrap(async (req, res) => {
+      const config = aiConfig(res);
+      if (!config) return;
+      const tool = registry().byName.get("list_tables");
+      if (!tool || tool.kind !== "read") return res.status(500).json({ error: "list_tables is unavailable." });
+      const username = usernameOf(req);
+      const out = await tool.run({}, {
+        username,
+        dashboardId: 0,
+        dataAccess: config.dataAccess,
+        dashboardView: () => {
+          throw new Error("no dashboard before start_dashboard");
+        },
+        dashboardTableIds: () => [],
+        registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
+        liveSchema: createLiveSchema({ username, principal: () => req as AuthedRequest }),
+      });
+      const text = out.parts.filter((p) => isClassAllowed(config.dataAccess, p.cls)).map((p) => p.text).join("\n");
+      return res.json({ ok: !out.isError, text });
+    }),
+  );
 
   app.get("/api/mcp/tools", ...requirePermission(PERMISSIONS.AI_USE), (_req, res) => {
     const specs = registry().specs.filter((s) => (MCP_TOOL_NAMES as readonly string[]).includes(s.name));

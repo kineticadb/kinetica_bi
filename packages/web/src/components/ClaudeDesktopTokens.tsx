@@ -14,7 +14,8 @@ export function claudeDesktopEnv(token: string): string {
   return JSON.stringify({ env: { KBI_URL: url, KBI_TOKEN: token } }, null, 2);
 }
 
-export function ClaudeDesktopTokens() {
+/** `canCreate` (ai:use): without it the user can still see and revoke tokens made earlier; with none, nothing shows. */
+export function ClaudeDesktopTokens({ canCreate = true }: { canCreate?: boolean } = {}) {
   const [tokens, setTokens] = useState<McpTokenDto[] | null>(null);
   const [name, setName] = useState("Claude Desktop");
   const [created, setCreated] = useState<McpTokenCreatedDto | null>(null);
@@ -65,6 +66,8 @@ export function ClaudeDesktopTokens() {
     void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => setCopied(false));
   };
 
+  if (!canCreate && (tokens === null || tokens.length === 0)) return null;
+
   return (
     <section className="profile-section">
       <h2 className="profile-section-title">Claude Desktop</h2>
@@ -73,7 +76,9 @@ export function ClaudeDesktopTokens() {
         revoke it here at any time.
       </p>
 
-      {created ? (
+      {!canCreate ? (
+        <div className="config-hint">You no longer have the Use AI permission, so the connector can't build; revoke the tokens you no longer need.</div>
+      ) : created ? (
         <div className="profile-token-created">
           <div className="config-hint">Copy this token now. It is shown once.</div>
           <code className="config-sql-code">{created.token}</code>

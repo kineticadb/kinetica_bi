@@ -16,7 +16,7 @@ The in-app AI does not need to be on: with `MCP_ENABLED=true`, Claude Desktop ca
 
 ## 2. Create an access token
 
-In Kinetica BI open your user menu, **Profile**, then **Claude Desktop** and press **Create token**. The token is shown once; **Copy config** copies the `env` block below with the token filled in. Revoke it on the same page; revoking also signs the connector out. Tokens need password sign-in (with single sign-on there is no lasting credential to wrap), and stop working if your Kinetica password changes: create a new one.
+In Kinetica BI open your user menu, **Profile**, then **Claude Desktop** and press **Create token**. The token is shown once; **Copy config** copies the `env` block below with the token filled in. Revoke it on the same page; revoking also signs the connector out. You can still see and revoke your tokens after losing the Use AI permission. Tokens need password sign-in (with single sign-on there is no lasting credential to wrap), and stop working if your Kinetica password changes: create a new one.
 
 ## 3. Add the server to Claude Desktop
 
@@ -50,7 +50,7 @@ Ask Claude, for example: *"Using kinetica-bi, build a dashboard for demo.nyctaxi
 
 | Tool | What it does |
 |---|---|
-| `list_tables` | Registered tables |
+| `list_tables` | Tables you can read in Kinetica (registered tables your Kinetica user cannot read are left out) |
 | `start_dashboard` | Creates a new, unkept dashboard with the chosen tables (only you see it; `replace` discards your previous unkept one) |
 | `list_dashboards`, `open_dashboard` | Pick a saved dashboard you can edit and start changing it |
 | `describe_table`, `get_dashboard` | Live columns and types; the dashboard's widgets, layers and views |

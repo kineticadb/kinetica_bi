@@ -37,6 +37,18 @@ describe("ClaudeDesktopTokens", () => {
     expect(screen.queryAllByText((t) => t.includes(TOKEN))).toHaveLength(0);
   });
 
+  it("CDT-6 without Use AI: existing tokens can be revoked, no Create form; with none, nothing shows", async () => {
+    const { unmount } = render(<ClaudeDesktopTokens canCreate={false} />);
+    expect(await screen.findByText("Laptop")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create token" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Revoke Laptop" })).toBeTruthy();
+    unmount();
+    vi.mocked(client.listMcpTokens).mockResolvedValue([]);
+    const { container } = render(<ClaudeDesktopTokens canCreate={false} />);
+    await waitFor(() => expect(client.listMcpTokens).toHaveBeenCalledTimes(2));
+    expect(container.innerHTML).toBe("");
+  });
+
   it("CDT-3 revoke asks first, then removes the token", async () => {
     render(<ClaudeDesktopTokens />);
     await screen.findByText("Laptop");

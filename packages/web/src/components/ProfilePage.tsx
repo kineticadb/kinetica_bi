@@ -74,8 +74,8 @@ export function ProfilePage() {
         )}
       </section>
 
-      {/* ── Claude Desktop access tokens (Phase 143; password sign-in only) ── */}
-      {mcpEnabled && authMode === "password" && user.permissions.includes("ai:use") && <ClaudeDesktopTokens />}
+      {/* ── Claude Desktop access tokens (Phase 143; password sign-in only). Without ai:use: revoke only, hidden when none ── */}
+      {mcpEnabled && authMode === "password" && <ClaudeDesktopTokens canCreate={user.permissions.includes("ai:use")} />}
     </div>
   );
 }

@@ -32,6 +32,7 @@ const TOOLS = {
 function routes(c: Call): KbiResponse | KbiError {
   if (c.path === "/api/mcp/tools") return { status: 200, body: TOOLS };
   if (c.path === "/api/tables") return { status: 200, body: { data: [{ id: 7, schema: "demo", name: "nyctaxi", description: "Taxi trips" }] } };
+  if (c.path === "/api/mcp/tables") return { status: 200, body: { ok: true, text: '{"tables":[{"id":7,"schema":"demo","name":"nyctaxi","columnCount":19}]}' } };
   if (c.path === "/api/dashboards") return { status: 200, body: { data: [{ id: 5, name: "Ops" }, { id: 6, name: "Draft", generated_pending: true }] } };
   if (c.path === "/api/mcp/sessions" && (c.body as { dashboardId?: number }).dashboardId !== undefined) {
     return { status: 201, body: { sessionId: "s2", dashboardId: 5, name: "Ops" } };
@@ -85,7 +86,10 @@ describe("kbi-mcp server", () => {
   it("MCPS-3 start -> add (rejected, then repaired) -> finish returns the review link", async () => {
     const { client, calls } = fakeKbi(routes);
     const mcp = await connect(client);
-    expect(textOf(await mcp.callTool({ name: "list_tables", arguments: {} }))).toBe("7: demo.nyctaxi - Taxi trips");
+    expect(textOf(await mcp.callTool({ name: "list_tables", arguments: {} }))).toContain('"name":"nyctaxi"');
+    // the server's permission-filtered list, never the raw registry
+    expect(calls.some((x) => x.path === "/api/mcp/tables")).toBe(true);
+    expect(calls.some((x) => x.path === "/api/tables")).toBe(false);
     expect(textOf(await mcp.callTool({ name: "start_dashboard", arguments: { name: "Tips", tableIds: [7] } }))).toContain("id 42");
     // one server call creates the unkept dashboard with its tables and opens the session
     expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/mcp/sessions"]);

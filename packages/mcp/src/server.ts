@@ -28,7 +28,7 @@ export const INSTRUCTIONS = [
 const LOCAL_TOOLS: Tool[] = [
   {
     name: "list_tables",
-    description: "List the tables registered in Kinetica BI (id, schema.name, description). Call first.",
+    description: "List the Kinetica BI tables you can read (id, schema, name, description, column count). Call first.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -112,10 +112,11 @@ export function createKbiMcpServer(client: KbiClient, log: (msg: string) => void
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
     try {
       if (name === "list_tables") {
-        const r = await client.request("GET", "/api/tables");
-        const rows = ((r.body as { data?: { id: number; schema: string; name: string; description?: string | null }[] }).data ?? []);
-        if (rows.length === 0) return text("No tables are registered in Kinetica BI. Ask an administrator to register one in Datasets.");
-        return text(rows.map((t) => `${t.id}: ${t.schema}.${t.name}${t.description ? ` - ${t.description}` : ""}`).join("\n"));
+        // The server's list_tables: only tables this user can read, descriptions marked as untrusted text.
+        const r = await client.request("GET", "/api/mcp/tables");
+        const body = r.body as { ok?: boolean; text?: string };
+        if (/"tables":\[\]/.test(body.text ?? "")) return text("No tables you can read are registered in Kinetica BI. Ask an administrator to register one in Datasets or grant access.");
+        return text(body.text ?? "", body.ok === false);
       }
       if (name === "start_dashboard") {
         const dashName = typeof args.name === "string" ? args.name.trim() : "";
