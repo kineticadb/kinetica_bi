@@ -10,7 +10,7 @@ import {
 import type { AuthedRequest } from "./auth";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
-import { getAiConfig } from "./lib/aiConfig";
+import { aiCheckLimits } from "./lib/aiConfig";
 import { getDashboard, listDashboardTables } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { kineticaSql, kineticaShowTable } from "./kinetica";
@@ -59,9 +59,9 @@ const invalid = (res: Response, reasons: string[]) =>
 
 export function registerAiDvRoutes(app: Express, deps: AiDvRouteDeps): void {
   const materialize = async (req: Request, res: Response): Promise<unknown> => {
-    const cfg = getAiConfig();
-    if (!cfg.enabled) return res.status(503).json({ error: "AI is not configured.", code: "AI_NOT_CONFIGURED" });
-    const config = cfg.config;
+    // 143: Claude Desktop builds add views too, so the preview works when the in-app AI is off but the connector is on.
+    const config = aiCheckLimits();
+    if (!config) return res.status(503).json({ error: "AI is not configured.", code: "AI_NOT_CONFIGURED" });
 
     const parsed = AiDvMaterializeRequestSchema.safeParse(req.body);
     if (!parsed.success) {

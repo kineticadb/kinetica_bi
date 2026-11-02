@@ -141,13 +141,38 @@ describe("AI dynamic-view routes (139)", () => {
     expect(r.status).toBe(401);
     restoreEnv?.();
     restoreEnv = null;
-    for (const k of ["AI_ENABLED"]) delete process.env[k];
-    const app2 = await createApp();
-    const role = makeRole("ai-dv-users2", ["dashboards:view", "ai:use"]);
-    const { cookie } = sessionFor("bea", [role]);
-    r = await request(app2).post("/api/ai/dynamic-view/materialize").set("Cookie", cookie).send(req(c, rowSpec(c)));
-    expect(r.status).toBe(503);
-    expect(r.body.code).toBe("AI_NOT_CONFIGURED");
+    const savedMcp = process.env.MCP_ENABLED; // a dev .env may turn the connector on (it leaks into vitest)
+    for (const k of ["AI_ENABLED", "MCP_ENABLED"]) delete process.env[k];
+    try {
+      const app2 = await createApp();
+      const role = makeRole("ai-dv-users2", ["dashboards:view", "ai:use"]);
+      const { cookie } = sessionFor("bea", [role]);
+      r = await request(app2).post("/api/ai/dynamic-view/materialize").set("Cookie", cookie).send(req(c, rowSpec(c)));
+      expect(r.status).toBe(503);
+      expect(r.body.code).toBe("AI_NOT_CONFIGURED");
+    } finally {
+      if (savedMcp !== undefined) process.env.MCP_ENABLED = savedMcp;
+    }
+  });
+
+  it("AIDV-1b with the in-app AI off but MCP_ENABLED, a Claude Desktop view still materializes on the connector limits", async () => {
+    const c = await setup();
+    restoreEnv?.();
+    restoreEnv = null;
+    const savedMcp = process.env.MCP_ENABLED;
+    delete process.env.AI_ENABLED;
+    process.env.MCP_ENABLED = "true";
+    try {
+      const app2 = await createApp(); // the AI config is read when the app is created
+      counts = [{ match: /fleet\.trips/, n: 50 }];
+      const r = await request(app2).post("/api/ai/dynamic-view/materialize").set("Cookie", c.cookie).send(req(c, summarySpec(c)));
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ status: "materialized", view_name: c.name(), row_count: 50 });
+      expect(getAiSessionView(c.name())).toBeTruthy();
+    } finally {
+      if (savedMcp === undefined) delete process.env.MCP_ENABLED;
+      else process.env.MCP_ENABLED = savedMcp;
+    }
   });
 
   it("AIDV-2 a body carrying name/sql/view_name or a bad nonce is 400 with zero Kinetica calls", async () => {
