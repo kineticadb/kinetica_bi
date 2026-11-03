@@ -1,7 +1,7 @@
 /**
  * Phase 20 (STORE-V14-01..05): per-layerId info-selection store.
  *
- * Three-store split (locked at .planning/STATE.md § "Key v1.4 Architecture Decisions"):
+ * Three-store split (a v1.4 architecture decision):
  *   - useFilterStore (UNCHANGED v1.2 slice) — chip state, filterVersion.
  *   - useFilterViewStore (UNCHANGED v1.3 slice) — server-resolved view names per tableId.
  *   - useInfoSelectionStore (THIS FILE) — current map info-popup selection per layerId.

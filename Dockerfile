@@ -5,6 +5,7 @@ COPY package*.json ./
 COPY packages/web/package.json ./packages/web/
 COPY packages/server/package.json ./packages/server/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/mcp/package.json ./packages/mcp/
 RUN npm ci
 COPY . .
 ENV VITE_API_URL=""
@@ -18,6 +19,7 @@ COPY package*.json ./
 COPY packages/web/package.json ./packages/web/
 COPY packages/server/package.json ./packages/server/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/mcp/package.json ./packages/mcp/
 RUN npm ci --omit=dev
 
 FROM nginx:1.27-alpine AS web

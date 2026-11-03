@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useToastStore } from "./toast";
 
 // PITFALL C-04 / AP-4 lock: filters MUST be Record<tableId, ActiveFilter[]> from day 1.
-// Retrofit cost is very high — see .planning/research/PITFALLS.md C-04.
+// Retrofit cost is very high (research pitfall C-04).
 //
 // distinction note: this store is the CLIENT-TRANSIENT drill-down filter set.
 // The existing `views.filter_clause` field on the server (see ViewDto in src/api/client.ts)

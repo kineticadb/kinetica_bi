@@ -14,7 +14,8 @@
     "test": "npm run test --workspace @kinetica-bi/web",
     "test:server": "npm run test --workspace @kinetica-bi/server -- --run",
     "test:shared": "npm run test --workspace @kinetica-bi/shared -- --run",
-    "test:all": "npm run test && npm run test:server && npm run test:shared",
+    "test:mcp": "npm run test --workspace @kinetica-bi/mcp",
+    "test:all": "npm run test && npm run test:server && npm run test:shared && npm run test:mcp",
     "test:server:gate": "npm run test:gate --workspace @kinetica-bi/server"
   }
 }

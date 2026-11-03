@@ -13,9 +13,10 @@ Semantic versioning, **three parts, always**: `vMAJOR.MINOR.PATCH`.
 - **MAJOR** — a breaking change to the deployment contract (env vars, DB schema
   requiring manual migration, API shape consumers depend on).
 
-`package.json` in the root and both workspaces carries the version of the
-**last released** tag. Bump all three together; they are the only in-tree record
-of the version, since `.planning/` is gitignored.
+Every `package.json` carries the version of the **last released** tag. Bump them
+all together (root, `packages/web`, `packages/server`,
+`packages/shared`, `packages/mcp`, and the matching entries in `package-lock.json`);
+they are the only in-tree record of the version, since `.planning/` is gitignored.
 
 > **Two-part tags do not release.** `.github/workflows/build-images.yml` triggers
 > on `v*.*.*`, which requires two literal dots, and `docker/metadata-action`'s

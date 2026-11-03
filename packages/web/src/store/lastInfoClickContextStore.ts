@@ -7,7 +7,7 @@
  * map click's coordinates rather than synthesizing new ones (locked at 23-CONTEXT.md
  * "the card's dropdown-switch CANNOT make up new spatial coordinates").
  *
- * Strategy B locked at .planning/phases/23-info-card/23-RESEARCH.md § Q1: sibling slice
+ * Strategy B locked in Phase 23 research (Q1): sibling slice
  * (NOT a Phase 20 store-shape change; NOT a recompute-from-mapRef strategy). Mirrors the
  * useFilterStore + useFilterViewStore + useInfoSelectionStore sibling pattern.
  *

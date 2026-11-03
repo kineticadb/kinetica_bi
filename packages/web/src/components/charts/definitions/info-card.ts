@@ -3,8 +3,7 @@ import { registerChartType, type ChartTypeDefinition } from "../registry";
 /**
  * Phase 23 (CARD-V14-01): Info Card chart type definition.
  *
- * Card is a "popup mirrored in a widget" — locked design north star at
- * .planning/phases/23-info-card/23-CONTEXT.md § "Card identity & registry shape".
+ * Card is a "popup mirrored in a widget" — the locked design north star (Phase 23).
  *
  * No CustomConfigPanel — card has no per-widget configuration. The in-widget
  * dropdown (rendered by <InfoSelectionView />) is the user's only configuration

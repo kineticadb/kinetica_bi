@@ -5,7 +5,7 @@ Two images from one multi-stage `Dockerfile`:
 - `web` — nginx serving the built SPA, proxies `/api` to the server
 - `server` — the Node/Express API (port 4000)
 
-CI publishes both to GHCR. `main` builds are tagged `v<version>-main-<sha>-<ts>`; a `v*` git tag publishes a clean `vX.Y.Z`.
+CI publishes both to GHCR when a release tag `vX.Y.Z` is pushed, tagged `X.Y.Z` and `X.Y` (see `RELEASING.md`).
 
 ## Build
 

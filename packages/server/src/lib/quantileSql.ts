@@ -12,8 +12,7 @@
  * Numeric `n` is typed and validated by the route handler in `index.ts` BEFORE
  * calling buildQuantileSql (n integer in [2, 256] per 38-CONTEXT.md).
  *
- * NTILE template locked verbatim from
- * .planning/phases/37-cb-track-wms-spike/37-SPIKE-NOTES.md ## Decision lines 287-294
+ * NTILE template locked verbatim from the Phase 37 class-break/track WMS spike decision
  * (PASS HTTP 200 against deployed Kinetica with `PARTITION BY 0` form).
  *
  * Pure module — zero imports beyond Node stdlib. No Express, db, or kinetica.ts

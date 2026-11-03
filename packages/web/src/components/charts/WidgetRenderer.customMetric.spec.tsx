@@ -4,7 +4,6 @@
  * Cross-environment proof for `AggregatedWidgetRenderer` resolving a custom metric's
  * expression LIVE via `applyLiveMetricExpr` instead of rendering the frozen text baked into
  * `widget.config.sql` at Apply time. See:
- *   - .planning/defect-frozen-config-sql-metric-expression.md (the defect)
  *   - packages/web/src/lib/liveMetricSql.ts (the pure resolver, unit-proven in Plan 05)
  *   - WidgetRenderer.tsx AggregatedWidgetRenderer (the wiring under test, Plan 06 Task 1)
  *

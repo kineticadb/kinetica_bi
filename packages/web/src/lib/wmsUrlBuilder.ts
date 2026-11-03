@@ -161,7 +161,7 @@ export type MapWidgetConfig = {
 };
 
 // ─── SPIKE-LOCKED CONSTANTS ──────────────────────────────────────────────────
-// Pulled verbatim from .planning/phases/11-map-chart/11-SPIKE-NOTES.md
+// Pulled verbatim from the Phase 11 map spike's
 // "Locked Parameter Names" table (HIGH confidence — verified against deployed Kinetica).
 //
 // X_ATTR: lon column (X axis = longitude) — X_COLUMN_NAME is WRONG (returns XML error)

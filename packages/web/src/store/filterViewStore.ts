@@ -1,7 +1,7 @@
 /**
  * Phase 14 (VSTORE-V13-01 / VSTORE-V13-02): per-tableId view-name store.
  *
- * Two-store split (locked at .planning/PROJECT.md § "Current Milestone: v1.3"):
+ * Two-store split (locked in v1.3):
  *   - useFilterStore (UNCHANGED v1.2 slice) — chip state, filterVersion, 10-cap, drill-down dispatch.
  *   - useFilterViewStore (THIS FILE) — server-resolved view names + expiresAt + materializing flag
  *     + materializeVersion per tableId. Phase 15 wires the trigger; Phase 14 ships dormant plumbing.

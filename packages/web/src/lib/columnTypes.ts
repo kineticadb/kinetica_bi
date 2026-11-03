@@ -23,7 +23,7 @@ export type DrillDownDataType = "string" | "number" | "boolean" | "datetime" | "
 
 // PITFALL D-01 lock: Kinetica geometry + large-text types excluded from drill-down picker.
 // Type strings are lowercased Kinetica DATA_TYPE values from INFORMATION_SCHEMA.COLUMNS
-// (packages/server/src/index.ts:642-654). MEDIUM confidence per .planning/phases/10-existing-chart-drill-down/10-RESEARCH.md
+// (packages/server/src/index.ts:642-654). MEDIUM confidence per Phase 10 research
 // Open Question #1 — conservative pass-through for unknown types means an unknown spatial
 // type would slip into the picker (acceptable: over-exclusion would hide valid columns).
 const EXCLUDED_DRILLDOWN_TYPES: ReadonlySet<string> = new Set([

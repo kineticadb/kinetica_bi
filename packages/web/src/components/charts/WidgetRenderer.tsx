@@ -91,7 +91,7 @@ import { useCustomMetricsStore } from "../../store/customMetricsStore";
 // Phase 121 gap closure (DXIM-V124-10): resolve a custom metric's expression at RENDER time.
 // widget.config.sql freezes whatever expression was live when Apply was last pressed, so an
 // imported widget rendered the SOURCE environment's definition and an edited metric kept
-// rendering the OLD one. See .planning/defect-frozen-config-sql-metric-expression.md.
+// rendering the OLD one (the frozen config.sql metric-expression defect).
 import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";

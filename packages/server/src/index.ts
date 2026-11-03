@@ -1661,7 +1661,7 @@ export const createApp = async (): Promise<express.Express> => {
   // /api/filter/materialize + /api/dynamic-view/*). No caching (single round-trip per
   // operator click — see 38-CONTEXT.md § /api/quantile endpoint contract).
   //
-  // SQL template locked verbatim from .planning/phases/37-cb-track-wms-spike/37-SPIKE-NOTES.md
+  // SQL template locked verbatim from the Phase 37 class-break/track WMS spike
   // ## Decision § NTILE syntax locked (PARTITION BY 0 form + bucket-MIN wrapper).
   //
   // AUTH_MODE-agnostic — works under both password and OIDC modes via the existing

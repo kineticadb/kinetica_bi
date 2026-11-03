@@ -311,11 +311,10 @@ export function pickPopupAnchor(
 // GAP-24-01-A ROOT CAUSE (Phase 24-04 Task 1, 2026-05-11):
 //   Symptom: toggling a layer's visibility OFF in LayersModal blanks the entire app
 //            (dark-blue background, no dashboard, no widgets, no topbar). Page refresh
-//            required to recover. Screenshot:
-//            .planning/phases/24-verification/screenshots/24-01-task1-layer-visibility-blank-app.png
+//            required to recover.
 //   Captured stack: Live capture not possible from this execution environment (no dev
 //            browser). Static-code root-cause via the four-hypothesis grid in
-//            .planning/phases/24-verification/24-04-PLAN.md <interfaces>. Live re-walk
+//            the Phase 24-04 plan. Live re-walk
 //            after the fix is the verification gate (Task 3 vitest + STEP 24-01 re-walk).
 //   Failing file:line: src/components/charts/MapChartRenderer.tsx:468-469
 //            (source.on("imageloaderror", handleTileError) / source.on("imageloadend",
@@ -370,8 +369,7 @@ export function pickPopupAnchor(
 //            followed by `Uncaught NotFoundError: Failed to execute 'insertBefore' on 'Node':
 //            The node before which the new node is to be inserted is not a child of this
 //            node.` Dashboard B does NOT render — operator sees the dark-blue
-//            dashboard-switch-crash background. Screenshot:
-//            .planning/phases/24-verification/screenshots/24-02-task2-dashboard-switch-crash.png
+//            dashboard-switch-crash background.
 //   Captured stack: `NotFoundError` originates in OpenLayers' internal `ImageWMS#renderFrame`
 //            path which calls `insertBefore` on the OL canvas-container parent node. That
 //            parent was already detached from the DOM at the React-unmount step

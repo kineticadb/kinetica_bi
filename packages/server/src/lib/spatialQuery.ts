@@ -16,13 +16,13 @@
  *     not characterize the WKB code path. Function signature stays exported for
  *     type stability so Plan 18-03 can route by spatialMode without conditional
  *     imports (the route handler returns HTTP 501 BEFORE invoking this stub).
- *     See: .planning/phases/18-spatial-spike-and-endpoint/18-SPIKE-NOTES.md ## Decision.
+ *     See the Phase 18 spatial spike decision.
  *
  * Trust boundary on `schema`, `table`, and column-name fields (`lonCol`, `latCol`,
  * `wktCol`, `wkbCol`): names are interpolated DIRECTLY into the SQL without
  * quoting or escaping, and are CLIENT-SUPPLIED. Every route that passes them
  * here MUST first call assertColumnsExist / assertIdentifier (lib/columnGuard.ts).
- * Inventory: .planning/phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-COLUMN-AUDIT.md.
+ * Inventory: the Phase 133 column audit.
  *
  * Numeric click coordinates and radius are typed as `number` in
  * SpatialQueryArgs; the route handler in Plan 18-03 validates `typeof === "number"`

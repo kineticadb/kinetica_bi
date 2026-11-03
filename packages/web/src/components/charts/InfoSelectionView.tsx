@@ -22,8 +22,8 @@
  *
  * RENDER MODE: When the active layer's `info_template` is non-null, each row renders
  * via the shared `renderInfoTemplate` helper (Plan 21-01) using
- * `dangerouslySetInnerHTML`. NO sanitization — locked at .planning/PROJECT.md Key
- * Decision: "Dashboard authors are privileged users (analogous to saved SQL queries)."
+ * `dangerouslySetInnerHTML`. NO sanitization — project key decision (v1.4):
+ * "Dashboard authors are privileged users (analogous to saved SQL queries)."
  *
  * CROSS-PHASE COLUMN SORT (Phase 22 lock): caller-side alphabetical sort via
  * localeCompare BEFORE renderInfoTemplate so KV-mode column order matches the
@@ -462,7 +462,7 @@ export default function InfoSelectionView({
             formatValue: (col, value) => String(resolveFormatter(activeLayer.table_id, col)(value) ?? ""),
           });
           if (result.mode === "template") {
-            // NO SANITIZATION — locked at .planning/PROJECT.md Key Decision:
+            // NO SANITIZATION — project key decision (v1.4):
             // "Dashboard authors are privileged users (analogous to saved SQL queries)."
             return (
               <div

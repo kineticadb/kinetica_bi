@@ -14,7 +14,7 @@
  * Trust boundary on the `column` field: column names are CLIENT-SUPPLIED and
  * interpolated unquoted. Every route that passes them here MUST first call
  * assertColumnsExist / assertIdentifier (lib/columnGuard.ts). Inventory:
- * .planning/phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-COLUMN-AUDIT.md.
+ * the Phase 133 column audit.
  * String / datetime VALUES, by contrast, ARE always escaped via
  * escapeKineticaStringLiteral (single-quote doubling, SQL standard).
  *

@@ -969,7 +969,7 @@ export async function fetchWmsCapabilities(
 // ---------------------------------------------------------------------------
 // Phase 14 (VSTORE-V13-04): client helpers for POST/DELETE /api/filter/materialize.
 //
-// Phase 13 endpoint contract (locked at .planning/STATE.md):
+// Phase 13 endpoint contract:
 //   POST   /api/filter/materialize  body:  { dashboardId, tableId, filters }
 //                                   resp:  { viewName, expiresAt }
 //   DELETE /api/filter/materialize  query: ?dashboardId=N&tableId=M
@@ -1261,8 +1261,7 @@ export const dropCombinationView = async (
 // ---------------------------------------------------------------------------
 // Phase 21 (POPUP-V14-01..06): client helper for POST /api/info/query.
 //
-// Phase 18 endpoint contract (locked at .planning/phases/18-spatial-spike-and-endpoint
-// /18-VERIFICATION.md and packages/server/src/index.ts:787-940):
+// Phase 18 endpoint contract (see packages/server/src/index.ts, POST /api/info/query):
 //   POST /api/info/query
 //     body:  { layerId, tableId, schema, table, spatialMode, spatialColumns,
 //              clickLon, clickLat, radiusPx, mapBbox, mapWidthPx, mapHeightPx, page }
@@ -1591,7 +1590,7 @@ export const listAiDynamicViews = async (): Promise<{ views: string[] }> => {
 // Auto-suggest classbreak boundaries.
 //
 // Server route: POST /api/quantile { schema, table, column, n } → { breaks: number[] }.
-// SQL template locked in .planning/phases/37-cb-track-wms-spike/37-SPIKE-NOTES.md ## Decision.
+// SQL template locked by the Phase 37 class-break/track WMS spike.
 //
 // AbortSignal threading mirrors materializeFilter — Phase 39 Auto-suggest button
 // wires a dedicated AbortController so rapid re-clicks cancel the in-flight call.
