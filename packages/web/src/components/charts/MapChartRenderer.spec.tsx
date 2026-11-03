@@ -6839,4 +6839,239 @@ describe("MapChartRenderer — Phase 112 initial view from config.defaultView", 
     expect(opts.center).toEqual(NYC.center);
     expect(opts.zoom).toBe(12.437);
   });
+
+  // ── H7: 142 UAT, an AI-added map opens on its server-stamped data extent ─────
+  it("H7: an AI-added map with a server-stamped defaultView constructs its OL view there (session fold path)", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+    const stamped = { center: [-8226375.5, 4974561.25] as [number, number], zoom: 10.9 };
+    act(() => {
+      h.runTurns(h.baselineFixture(), [[{ op: "add_widget", tempId: -1, type: "map", title: "Pickups", config: { defaultView: stamped } }]]);
+    });
+    const aiMap = useAiSessionStore.getState().derived.addedWidgets.find((x) => x.id === -1);
+    expect(aiMap).toBeDefined();
+    await act(async () => {
+      render(<MapChartRenderer widget={aiMap!} tables={[]} />);
+    });
+    const opts = vi.mocked(OlView).mock.calls[0][0] as any;
+    expect(opts.center).toEqual(stamped.center);
+    expect(opts.zoom).toBe(10.9);
+    useAiSessionStore.getState().reset();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 134 (AIREAD-MAP) — map reads session-aware effective layers  */
+/* ------------------------------------------------------------------ */
+
+describe("Phase 134 session layer read path (map)", () => {
+  const blocks = () => document.querySelectorAll(".layers-legend-panel-layer-block").length;
+  const blockNames = () =>
+    Array.from(document.querySelectorAll(".layers-legend-panel-layer-name")).map((n) => n.textContent);
+
+  beforeEach(async () => {
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+    allImageWmsInstances.length = 0;
+    vi.clearAllMocks();
+  });
+  afterEach(async () => {
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    useAiSessionStore.getState().reset();
+  });
+
+  it("AIREAD-MAP-1: session remove_layer drops the layer from the map legend; reset restores it", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    const { useAiSessionStore } = await import("../../store/aiSessionStore");
+    const l7 = makeLayer({ id: 7, position: 0, table_id: 10 });
+    const l8 = makeLayer({ id: 8, position: 1, table_id: 11 });
+    _layersState.layers = [l7, l8];
+    const { rerender } = render(
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />,
+    );
+    // Positive control: the fixture reaches the code.
+    expect(blocks()).toBe(2);
+
+    const baseline = h.baselineFixture({ layers: [h.savedLayer(7), h.savedLayer(8)] });
+    act(() => {
+      useAiSessionStore.getState().approveRemoval(); // D-06: saved removal approved for this conversation
+      h.runTurns(baseline, [[h.removeLayerOp(7)]]);
+    });
+    rerender(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);
+    expect(blocks()).toBe(1);
+
+    act(() => {
+      useAiSessionStore.getState().reset();
+    });
+    rerender(<MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />);
+    expect(blocks()).toBe(2);
+  });
+
+  const wrapMap = () => (
+    <DashboardContextProvider dashboardId={1} widgets={[]} dynamicViews={[]} retryDynamicView={() => {}}>
+      <MapChartRenderer widget={makeWidget({ legendPanelEnabled: true })} tables={defaultTables} />
+    </DashboardContextProvider>
+  );
+
+  it("AIREAD-MAP-2: an AI-added heatmap layer on a dashboard table renders a WMS source, inside a DashboardContext", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    _layersState.layers = [makeLayer({ id: 7, position: 0, table_id: 10 })];
+    const { rerender } = render(wrapMap());
+    await act(async () => {});
+    // Positive control: the saved layer issued exactly one WMS source and one legend row.
+    const wmsBefore = allImageWmsInstances.length;
+    expect(wmsBefore).toBeGreaterThanOrEqual(1);
+    expect(blocks()).toBe(1);
+
+    const baseline = {
+      ...h.baselineFixture({ layers: [h.savedLayer(7)] }),
+      tables: [{ id: 10, schema: "public", name: "t10", columns: { lat: "double", lon: "double" } }],
+    };
+    act(() => {
+      h.runTurns(baseline, [[{ ...h.addLayerOp(-2, 42), tableId: 10 }]]);
+    });
+    rerender(wrapMap());
+    await act(async () => {});
+    expect(blocks()).toBe(2);
+    // Phase 136: the AI layer carries the dashboard table id and a complete heatmap config, so it
+    // issues its own WMS request (one more ImageWMS with the heatmap style).
+    expect(allImageWmsInstances.length).toBe(wmsBefore + 1);
+    const Ctor = (await import("ol/source/ImageWMS")).default as any;
+    const styles = Ctor.mock.calls.map((c: any[]) => c[0].params.STYLES);
+    expect(styles).toContain("heatmap");
+  });
+
+  it("AIREAD-MAP-3: an AI-added layer on a table the map does not know creates no WMS source", async () => {
+    const h = await import("../../test/aiSessionHarness");
+    _layersState.layers = [makeLayer({ id: 7, position: 0, table_id: 10 })];
+    const { rerender } = render(wrapMap());
+    await act(async () => {});
+    const wmsBefore = allImageWmsInstances.length;
+    expect(wmsBefore).toBeGreaterThanOrEqual(1); // positive control
+    // table 1 is on the session baseline but absent from the map's `tables` prop
+    const baseline = h.baselineFixture({ layers: [h.savedLayer(7)] });
+    act(() => {
+      h.runTurns(baseline, [[h.addLayerOp(-2, 42)]]);
+    });
+    rerender(wrapMap());
+    await act(async () => {});
+    expect(blocks()).toBe(2);
+    expect(allImageWmsInstances.length).toBe(wmsBefore);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 136 — AI-shaped heatmap layers on BOTH buildWmsParams sites  */
+/* ------------------------------------------------------------------ */
+
+describe("Phase 136 AI heatmap layers on both buildWmsParams sites", () => {
+  const hmConfig = (over: Record<string, unknown> = {}) => ({
+    renderMode: "heatmap",
+    spatialMode: "latlon",
+    latColumn: "pickup_latitude",
+    lonColumn: "pickup_longitude",
+    colormap: "plasma",
+    reverseColormap: false,
+    blurRadius: 8,
+    valueColumn: "fare_amount",
+    visible: true,
+    name: "Pickups",
+    ...over,
+  });
+  const hmLayer = (over: Partial<DashboardLayerDto> = {}, cfg: Record<string, unknown> = {}) =>
+    makeLayer({ id: 31, position: 0, table_id: 10, config: hmConfig(cfg) as any, ...over });
+  const ctorParams = async () => {
+    const Ctor = (await import("ol/source/ImageWMS")).default as any;
+    return Ctor.mock.calls.map((c: any[]) => c[0].params);
+  };
+
+  beforeEach(() => {
+    allImageWmsInstances.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it("HMAP-1: saved heatmap layer constructs ImageWMS with style params and VAL_ATTR", async () => {
+    _layersState.layers = [hmLayer()];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const all = await ctorParams();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all[0]).toMatchObject({
+      STYLES: "heatmap",
+      COLORMAP: "plasma",
+      BLUR_RADIUS: "8",
+      REVERSE_COLORMAP: "FALSE",
+      VAL_ATTR: "fare_amount",
+      LAYERS: "public.t10",
+    });
+  });
+
+  it("HMAP-2: negative session-id heatmap layer renders with the same params", async () => {
+    _layersState.layers = [hmLayer({ id: -7 })];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const all = await ctorParams();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all[0]).toMatchObject({
+      STYLES: "heatmap",
+      COLORMAP: "plasma",
+      BLUR_RADIUS: "8",
+      REVERSE_COLORMAP: "FALSE",
+      VAL_ATTR: "fare_amount",
+      LAYERS: "public.t10",
+    });
+  });
+
+  it("HMAP-3: a restyle reaches the update effect's updateParams", async () => {
+    _layersState.layers = [hmLayer()];
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => {});
+    expect(allImageWmsInstances.length).toBeGreaterThanOrEqual(1);
+    const src = allImageWmsInstances[0];
+    src.updateParams.mockClear();
+    _layersState.layers = [hmLayer({}, { colormap: "viridis", blurRadius: 12 })];
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const calls = src.updateParams.mock.calls.map((c: any[]) => c[0]);
+    expect(calls.some((p: any) => p.COLORMAP === "viridis" && p.BLUR_RADIUS === "12")).toBe(true);
+  });
+
+  it("HMAP-4: legacy heatmap layer without valueColumn has no VAL_ATTR", async () => {
+    _layersState.layers = [hmLayer({}, { valueColumn: undefined })];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    const all = await ctorParams();
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all[0].STYLES).toBe("heatmap"); // positive control: layer reached the builder
+    expect(all[0].VAL_ATTR).toBeUndefined();
+  });
+
+  it("HMAP-5: a heatmap layer whose table_id is not a dashboard table constructs no ImageWMS", async () => {
+    _layersState.layers = [hmLayer({ table_id: 999 })];
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    expect(allImageWmsInstances.length).toBe(0);
+  });
+
+  it("HMAP-6: clearing the weight overwrites the stale VAL_ATTR with undefined", async () => {
+    _layersState.layers = [hmLayer()];
+    const { rerender } = render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    await act(async () => {});
+    const src = allImageWmsInstances[0];
+    src.updateParams.mockClear();
+    _layersState.layers = [hmLayer({}, { valueColumn: undefined })];
+    await act(async () => {
+      rerender(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    expect(src.updateParams).toHaveBeenCalled();
+    const arg = src.updateParams.mock.calls[src.updateParams.mock.calls.length - 1][0];
+    expect(Object.prototype.hasOwnProperty.call(arg, "VAL_ATTR")).toBe(true);
+    expect(arg.VAL_ATTR).toBeUndefined();
+  });
 });

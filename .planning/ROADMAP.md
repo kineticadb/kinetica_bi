@@ -36,6 +36,26 @@
 
 - ✅ **v1.26 Large Exports & Fixes** — Phases 127-132 (shipped 2026-10-08) — see `milestones/v1.26-ROADMAP.md`
 
+- ✅ **v2.0 AI-Driven Dashboards** — Phases 133-143 (shipped 2026-11-03) — see `milestones/v2.0-ROADMAP.md`
+
+---
+
+## v2.0 AI-Driven Dashboards — SHIPPED 2026-11-03
+✅ v2.0 (Phases 133-143) — SHIPPED 2026-11-03 — full phase details archived in `milestones/v2.0-ROADMAP.md`
+- [x] Phase 133: AI Contract, Shared Package, SSYNC-F6 Fix & Spikes
+- [x] Phase 134: Session Layer Engine (client, no LLM)
+- [x] Phase 135: Server Gateway, Agent Loop, Providers & Governance Core
+- [x] Phase 136: Structural & Edit Ops
+- [x] Phase 137: AI Widget & Streaming UI
+- [x] Phase 138: AI Filters
+- [x] Phase 139: Session-Only Dynamic Views
+- [x] Phase 140: Query Data-Access Mode & Injection Hardening
+- [x] Phase 141: Keep (Persist AI Changes)
+- [x] Phase 142: Generate, Audit Viewer & Live Provider Proofs
+- [x] Phase 143: Claude Desktop MCP Connector
+**Verification:** 52/53 requirements Complete; AIPRV-V20-03 (Ollama) Partial, accepted for v2.0 by the operator 2026-11-02. Phases 133-141 verified `passed`; 142 and 143 `human_needed` with every human item closed live (Claude Desktop token sign-in/revoke and AI-off Keep 2026-11-02; S6 2026-11-03). Web tsc, vitest 5186 passed / 1 skipped, theme-guard; server tsc + set-based gate; `packages/mcp` vitest 10/10. Live Gemini `gemini-3-flash-preview` G0-G9 PASS (native); S6 spike 21 clean trials, json (best effort) by its rule, borderline (88.9% valid), native kept by operator decision. Audit `tech_debt`, no blockers (`milestones/v2.0-MILESTONE-AUDIT.md`).
+**Open tech debt:** F4 (MCP edit session vs stale snapshot, no 409), F5 (DELETE/PATCH on another user's unkept dashboard skip canViewDashboard, pre-dates v2.0), F6 (MCP session lifecycle/audit rough edges, no per-user /call cap), F7 (create-only role can generate but not Keep), F8 (Claude Desktop receives values in query mode); PENDVIS-3 parallel flake; Phase 141/142 minor debt in STATE.md; Claude adapter not live-verified (AI-F11); Ollama needs a stronger local model; carried: `TD-V16-TEST-ISOLATION`, the theme-guard `global.css` exemption, OIDC never browser-verified.
+
 ---
 
 ## v1.26 Large Exports & Fixes — SHIPPED 2026-10-08

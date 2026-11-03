@@ -89,7 +89,7 @@ const successKineticaBody = {
 
 const seedFixture = (tableName = "events", schema = "ki_home") => {
   const dash = createDashboard("Test Dashboard", "");
-  const tbl = createTable({ name: tableName, schema, columns: {} });
+  const tbl = createTable({ name: tableName, schema, columns: { zone: "string", lon: "double", lat: "double", geom: "string" } });
   return { dashId: dash.id, tableId: tbl.id, schema, tableName };
 };
 

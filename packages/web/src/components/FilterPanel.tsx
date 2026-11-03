@@ -36,12 +36,15 @@ export type FilterPanelChip = {
   onClearHighlight?: () => void;
   onActivate?: () => void;
   onActivateWidget?: (widgetId: number) => void;
+  aiApplied?: boolean; // 138 D-14: forwarded to FilterChip's AI tag
 };
 
 export type FilterPanelGroupData = {
   title: string;
   chips: FilterPanelChip[];
   onClearAll: () => void;
+  /** 139 D-20: the group is an AI-created dynamic view. */
+  aiTag?: boolean;
 };
 
 export type FilterPanelProps = {
@@ -63,6 +66,9 @@ function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
     <div className="config-group">
       <div className="filter-panel-group-header">
         <span className="filter-panel-group-title">{title}</span>
+        {group.aiTag && (
+          <span className="widget-filter-badge" title="Created by the AI assistant">AI</span>
+        )}
         <div className="filter-panel-group-header-actions">
           <button type="button" className="filter-bar-clear" onClick={onClearAll}>
             Clear all
@@ -92,6 +98,7 @@ function FilterPanelGroup({ group }: { group: FilterPanelGroupData }) {
               onClearHighlight={chip.onClearHighlight}
               onActivate={chip.onActivate}
               onActivateWidget={chip.onActivateWidget}
+              aiApplied={chip.aiApplied}
             />
           ))}
         </div>

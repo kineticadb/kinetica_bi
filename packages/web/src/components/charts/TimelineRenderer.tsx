@@ -49,6 +49,7 @@ import {
   pickInterval,
   buildTimelineRangeQuery,
   formatTimelineTick,
+  bucketsSpanYears,
   DEFAULT_MAX_INTERVALS,
   type TimelineInterval,
   type TimelineMetric,
@@ -63,8 +64,9 @@ import { RECHARTS_TOOLTIP_PROPS } from "../../lib/chartTheme";
 import { DEFAULT_COLOR_THEME, MAX_METRICS, type TimelineConfig } from "./TimelineConfigPanel";
 // Phase 77 Plan 02 (COLAPPLY-V115-02): column label + value formatting at tooltip.
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
-import { resolveFormatter } from "../../store/columnDisplayConfigStore";
+import { resolveAxisFormatter, resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
 import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
@@ -165,20 +167,6 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   // metricColumn for tooltip: first metric's source column (single-metric / grouped case).
   const metricColumn = metrics[0]?.column ?? "";
 
-  // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
-  // configVersion dep ensures the column-default refreshes when the column's display config is edited.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const yAxisTickFormatter = useMemo(() => {
-    if (cfg.yAxisFormat) {
-      const fmt = buildFormatter(cfg.yAxisFormat);
-      return (v: unknown) => String(fmt(v) ?? v);
-    }
-    if (tableId !== undefined && metricColumn !== "") {
-      const fmt = resolveFormatter(tableId, metricColumn);
-      return (v: unknown) => String(fmt(v) ?? v);
-    }
-    return (v: unknown) => String(v ?? "");
-  }, [cfg.yAxisFormat, tableId, metricColumn, configVersion]);
 
   // ----- Empty-state gates -----
   if (tableId === undefined || tableRef === undefined) {
@@ -253,6 +241,25 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
   // ----- Data fetch state -----
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [data, setData] = useState<Record<string, number | string | null>[]>([]);
+
+  // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
+  // configVersion dep ensures the column-default refreshes when the column's display config is edited.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const yAxisTickFormatter = useMemo(() => {
+    if (cfg.yAxisFormat) {
+      const fmt = buildFormatter(cfg.yAxisFormat);
+      return (v: unknown) => String(fmt(v) ?? v);
+    }
+    if (tableId !== undefined && valueFormatColumn(metricColumn, metrics[0]?.aggregation) !== "") {
+      // Every numeric cell is a plotted value (the bucket key is a string or the x value, never the largest).
+      const maxAbs = data.reduce((m, r) => Object.values(r).reduce<number>((mm, v) => (typeof v === "number" && Number.isFinite(v) ? Math.max(mm, Math.abs(v)) : mm), m), 0);
+      const fmt = resolveAxisFormatter(tableId, metricColumn, maxAbs);
+      return (v: unknown) => String(fmt(v) ?? v);
+    }
+    const countTick = countTickFormatter(metrics[0]?.aggregation); // a count: "32,000"
+    if (countTick) return countTick;
+    return (v: unknown) => String(v ?? "");
+  }, [cfg.yAxisFormat, tableId, metricColumn, metrics[0]?.aggregation, data, configVersion]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [loading, setLoading] = useState(true);
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -523,11 +530,13 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
     : [];
 
   // Axis tick formatter for the bucket (category) axis — shared by both orientations.
+  // 142 UAT: day/hour/minute ticks name the year when the data crosses one.
+  const withYear = bucketsSpanYears(data.map((r) => String(r.bucket)));
   const bucketFormatter = (v: string) => {
     // Non-empty, non-"auto" override → operator's literal pass-through (raw bucket).
     if (dateFormatOverride !== "" && dateFormatOverride !== "auto") return v;
     // "auto" (default): format at the chosen bin granularity.
-    return interval ? formatTimelineTick(v, interval.key) : v;
+    return interval ? formatTimelineTick(v, interval.key, { withYear }) : v;
   };
 
   // Phase 87 (UAT): size the value axis to its formatted tick labels rather than a fixed
@@ -612,7 +621,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
               dataKey="bucket"
               stroke={X_AXIS_COLOR}
               tick={{ fontSize: 11, fill: X_AXIS_COLOR }}
-              width={72}
+              width={withYear ? 104 : 72}
               minTickGap={24}
               tickFormatter={bucketFormatter}
             />
@@ -717,7 +726,7 @@ export default function TimelineRenderer({ widget, tables }: Props): JSX.Element
           {showTooltip && (
             <Tooltip
               {...RECHARTS_TOOLTIP_PROPS}
-              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+              content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={metrics[0]?.aggregation} />}
             />
           )}
           {/* Legend: always shown when grouped (series values matter); when ungrouped,

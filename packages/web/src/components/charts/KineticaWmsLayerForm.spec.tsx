@@ -1836,4 +1836,35 @@ describe("Track + Class Break — TRACK STYLE color gating (TRACKFIX-V19-06)", (
     expect(heatmapRadios[0].checked).toBe(true); // instance 0 = heatmap
     expect(rasterRadios[1].checked).toBe(true); // instance 1 = raster
   });
+
+  describe("Phase 136 heatmap Value column", () => {
+    const vcCols = [
+      { name: "fare_amount", type: "double" },
+      { name: "vendor", type: "string" },
+    ];
+    const hmCfg = {
+      ...baseConfig,
+      spatialMode: "latlon" as const,
+      latColumn: "lat",
+      lonColumn: "lon",
+      renderMode: "heatmap" as const,
+    };
+    it("VALATTR-6: numeric-only select; set and clear", () => {
+      const onChange = vi.fn();
+      const { rerender } = render(<KineticaWmsLayerForm config={hmCfg} onChange={onChange} columns={vcCols} />);
+      const select = screen.getByLabelText("Value column") as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["(none - count points)", "fare_amount"]);
+      fireEvent.change(select, { target: { value: "fare_amount" } });
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ valueColumn: "fare_amount" }));
+      onChange.mockClear();
+      rerender(<KineticaWmsLayerForm config={{ ...hmCfg, valueColumn: "fare_amount" }} onChange={onChange} columns={vcCols} />);
+      fireEvent.change(screen.getByLabelText("Value column"), { target: { value: "" } });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).not.toHaveProperty("valueColumn");
+    });
+    it("VALATTR-7: raster mode has no Value column select", () => {
+      render(<KineticaWmsLayerForm config={{ ...hmCfg, renderMode: "raster" }} onChange={vi.fn()} columns={vcCols} />);
+      expect(screen.queryByLabelText("Value column")).not.toBeInTheDocument();
+    });
+  });
 });

@@ -413,6 +413,19 @@ describe("App — LIFE-V13-03 (logout cleanup)", () => {
     expect(useDynamicViewStore.getState().dynamicViewVersion).toBe(0);
   });
 
+  it("APPDV-UA-1 (139): UNAUTHORIZED drops saved views only, never negative AI view ids", async () => {
+    useDynamicViewStore.getState().setView(90, { viewName: "_kbi_dv_saved", status: "materialized", expiresAt: Date.now() + 60000 });
+    useDynamicViewStore.getState().setView(-3, { viewName: "_kbi_ai_u_x", status: "materialized", expiresAt: Date.now() + 60000 });
+    render(<App />);
+    act(() => {
+      useAuthStore.setState({ status: "unauthenticated" } as ReturnType<typeof useAuthStore.getState>);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(dropDynamicView).toHaveBeenCalledTimes(1);
+    expect(dropDynamicView).toHaveBeenCalledWith(90);
+    expect(dropDynamicView).not.toHaveBeenCalledWith(-3);
+  });
+
   it("Phase 33 DV-V16-07: swallows dropDynamicView errors silently (fire-and-forget — V13-P-12)", async () => {
     (dropDynamicView as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Network error"));
     useDynamicViewStore.getState().setView(10, {

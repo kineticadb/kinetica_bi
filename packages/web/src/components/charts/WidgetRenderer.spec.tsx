@@ -3986,16 +3986,27 @@ describe("BarRenderer chart tooltip, series/axis label fallback chains (COLAPPLY
   // ------------------------------------------------------------------
   // Test 3: series name fallback — resolveLabel returns raw column name when no stored label
   // ------------------------------------------------------------------
-  it("series name shows raw column name (resolveLabel fallback) when yFieldLabel is unset and no label is stored", async () => {
+  it("series name and value-axis title read '<Aggregation> of <column>' when yFieldLabel is unset and no label is stored", async () => {
+    // 142 UAT: same rule as the line chart (resolveLineMetricTitle); a raw column name hid the aggregation
+    // (a COUNT bar read "vendor_id").
     const widget = makeBarWidget();
     const { getByTestId } = render(wrap(<WidgetRenderer widget={widget} />));
     await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
 
-    const seriesName = getByTestId("bar-series-name").textContent ?? "";
-    // resolveLabel(tableId, "fare_amount") returns "fare_amount" (raw column name) when no stored label.
-    // The || y fallback is only reached if resolveLabel returns empty/falsy, which it never does
-    // (it always returns at least the column name). So we expect the raw column name here.
-    expect(seriesName).toBe(CHART_METRIC_COL); // "fare_amount"
+    expect(getByTestId("bar-series-name").textContent ?? "").toBe("Sum of fare_amount");
+    expect(getByTestId("yaxis-label").textContent ?? "").toBe("Sum of fare_amount");
+  });
+
+  it("BARTITLE-COUNT: a COUNT bar titles its value axis 'Count of <column>'; yAxisLabel still wins", async () => {
+    const count = makeBarWidget({ config: { ...makeBarWidget().config, metricColumn: "vendor_id", aggregation: "COUNT" } });
+    const { getByTestId, unmount } = render(wrap(<WidgetRenderer widget={count} />));
+    await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
+    expect(getByTestId("yaxis-label").textContent ?? "").toBe("Count of vendor_id");
+    unmount();
+    const titled = makeBarWidget({ config: { ...count.config, yAxisLabel: "Trips" } });
+    const r2 = render(wrap(<WidgetRenderer widget={titled} />));
+    await waitFor(() => expect(r2.getByTestId("recharts-barchart")).toBeTruthy());
+    expect(r2.getByTestId("yaxis-label").textContent ?? "").toBe("Trips");
   });
 
   // ------------------------------------------------------------------
@@ -4074,7 +4085,7 @@ describe("BarRenderer chart tooltip, series/axis label fallback chains (COLAPPLY
     await waitFor(() => expect(getByTestId("recharts-barchart")).toBeTruthy());
 
     // Initial: no stored label → series name = raw column name ("fare_amount" via resolveLabel)
-    expect(getByTestId("bar-series-name").textContent).toBe(CHART_METRIC_COL);
+    expect(getByTestId("bar-series-name").textContent).toBe("Sum of fare_amount"); // default title before a label exists (142: line-chart rule)
 
     // Mutate config directly — upsertColumn bumps configVersion → re-render fires
     act(() => {

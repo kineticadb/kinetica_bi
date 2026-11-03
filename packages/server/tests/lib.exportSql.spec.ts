@@ -51,7 +51,10 @@ function plan(w: Widget | undefined, spec: Partial<ExportSpec> = {}, extra: Part
     widget: w,
     username: "alice",
     jobId: JOB,
-    getTable: (id) => (id === 1 ? { name: "t", schema: "s" } : undefined),
+    getTable: (id) =>
+      id === 1
+        ? { name: "t", schema: "s", columns: { a: "int", b: "int", c: "int", f: "int", g: "int", region: "string", name: "string" } }
+        : undefined,
     getDashboardDynamicView: (id) => (id === 5 ? { dashboard_id: 3 } : id === 6 ? { dashboard_id: 99 } : undefined),
     ...extra,
   });

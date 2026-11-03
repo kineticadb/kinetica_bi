@@ -6,6 +6,7 @@
  * PERMISSION_DESCRIPTIONS added in Phase 50.2: human-readable descriptions for
  * all permissions, displayed as muted secondary text in the Roles matrix.
  * Phase 81 added branding:manage (the "Branding" group).
+ * Phase 135 added ai:use (the "AI" group).
  */
 
 export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
@@ -25,8 +26,9 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "roles:manage_permissions": "Edit which permissions each role grants",
   "roles:create_custom": "Create new custom roles",
   "roles:delete_custom": "Delete custom roles",
-  "audit:view": "View the audit log (viewer ships in a future release)",
+  "audit:view": "View the AI activity page (AI answers, generated dashboards and Keeps)",
   "branding:manage": "Manage white-label branding: logo, app name, colors, fonts, and custom CSS",
+  "ai:use": "Ask the AI assistant on dashboards (changes stay in the user's own session until saved)",
 };
 
 export const NOUN_TO_GROUP: Record<string, string> = {
@@ -40,6 +42,7 @@ export const NOUN_TO_GROUP: Record<string, string> = {
   roles: "Roles",
   audit: "Audit",
   branding: "Branding",
+  ai: "AI",
 };
 
 export const GROUP_ORDER = [
@@ -49,6 +52,7 @@ export const GROUP_ORDER = [
   "Roles",
   "Audit",
   "Branding",
+  "AI",
 ] as const;
 
 /**

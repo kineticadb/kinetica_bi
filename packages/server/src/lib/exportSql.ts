@@ -18,6 +18,7 @@
 import { buildServerWhereClause, type ActiveFilter } from "./whereClause";
 import { composeWhereClause, type SpatialFilter, type SpatialTarget } from "./spatialWhereClause";
 import { buildDynamicViewName } from "./dynamicViewName";
+import { assertColumnsExist, tableLabel } from "./columnGuard";
 import type { Widget } from "../types";
 
 export const EXPORT_IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_.]*$/; // same as WidgetRenderer.tsx:1909
@@ -74,7 +75,7 @@ export type BuildExportPlanInput = {
   widget: Widget | undefined;
   username: string;
   jobId: string;
-  getTable: (id: number) => { name: string; schema: string } | undefined;
+  getTable: (id: number) => { name: string; schema: string; columns: Record<string, string> } | undefined;
   getDashboardDynamicView: (id: number) => { dashboard_id: number } | undefined;
   mechanism?: ExportPagingMechanism;
 };
@@ -138,6 +139,22 @@ export function buildExportPlan(input: BuildExportPlanInput): ExportPlan {
           throw new ExportSpecError("invalid_column", `Invalid spatial column: ${String(c)}`);
         }
       }
+    }
+    // Phase 133 (AISAFE-V20-01): client-supplied columns must exist on the REGISTERED table
+    // snapshot (regex checks above stay first so malformed names keep their invalid_* codes).
+    // cfg.columns / cfg.sortField are SERVER-HELD widget config: residual in 133-COLUMN-AUDIT.md.
+    if (row) {
+      const clientCols: unknown[] = [
+        ...filters.map((f) => f.column),
+        // malformed sortField is rejected later as invalid_sort; only well-formed names reach the snapshot check
+        ...(typeof spec.sortField === "string" && EXPORT_IDENT_RE.test(spec.sortField) ? [spec.sortField] : []),
+        ...(spatialTarget
+          ? [spatialTarget.lonCol, spatialTarget.latCol, spatialTarget.spatialCol].filter(
+              (c) => c !== undefined && c !== "",
+            )
+          : []),
+      ];
+      assertColumnsExist(row.columns, clientCols, tableLabel(row));
     }
     filterWhere = composeWhereClause(filters, spatialFilters, spatialTarget);
   }

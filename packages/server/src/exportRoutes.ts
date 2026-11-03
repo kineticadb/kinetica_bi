@@ -18,6 +18,7 @@ import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { startExport, cancelExport, type ExportOptions } from "./lib/exportRunner";
 import { sanitizeExportName } from "./lib/exportName";
 import { ExportCapError } from "./lib/exportCaps";
+import { ColumnGuardError } from "./lib/columnGuard";
 import { ExportSpecError, type ExportSpec } from "./lib/exportSql";
 import { findOwnedExportJob, toExportJobDto, exportDownloadName, resolveServableExportFile, isExportExpired } from "./lib/exportJobAccess";
 import { trackExportDownload, removeExportFiles } from "./lib/exportCleanup";
@@ -111,6 +112,7 @@ export function registerExportRoutes(app: Express): void {
           ? res.status(404).json(WIDGET_NOT_FOUND)
           : res.status(400).json({ error: e.message, code: e.code });
       }
+      if (e instanceof ColumnGuardError) return res.status(400).json(e.toBody());
       throw e;
     }
   });

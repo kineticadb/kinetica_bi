@@ -26,3 +26,5 @@ dist/
 /packages/server/data/
 # macOS Finder metadata
 .DS_Store
+# S6 provider spike outputs (wire captures; results live in 135-SPIKES.md)
+/packages/server/s6-*

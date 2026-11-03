@@ -6,6 +6,8 @@ export type Dashboard = {
   // nullable TEXT column (db.ts); NULL = unconfigured, coalesced to 'topbar' by mapDashboard
   // so the wire value is always concrete (never null) — mirrors the filter_scope precedent.
   filter_display_mode: "topbar" | "panel";
+  // v2.0 Phase 142 (D-03/D-04): true while a generated dashboard has never been kept. generated_by is never exposed.
+  generated_pending: boolean;
   created_at: string;
   updated_at: string;
 };

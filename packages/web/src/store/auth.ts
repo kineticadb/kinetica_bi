@@ -27,6 +27,8 @@ type AuthState = {
   maxRowsPerQuery: number;
   // Phase 130 (EXPRT-V126-15, D-18): admin export caps from /me for the Phase 131 export dialog. Unset caps are null.
   exportLimits: ExportLimits;
+  // Phase 143 (AIMCP-V20-04): Claude Desktop connector enabled on the server (MCP_ENABLED), from /me.
+  mcpEnabled: boolean;
   bootstrap: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -47,6 +49,7 @@ const meToState = (me: MeResponse) => ({
   csvInBrowserMaxRows: me.csvInBrowserMaxRows,
   maxRowsPerQuery: me.maxRowsPerQuery,
   exportLimits: me.exportLimits ?? { ...DEFAULT_EXPORT_LIMITS },
+  mcpEnabled: me.mcpEnabled === true,
 });
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -62,6 +65,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   csvInBrowserMaxRows: 100000,
   maxRowsPerQuery: 20000,
   exportLimits: { ...DEFAULT_EXPORT_LIMITS },
+  mcpEnabled: false,
   bootstrap: async () => {
     // Step 1: pre-auth config read. Failure → silent fallback (LoginPage falls back to password form).
     // CONTEXT.md / PITFALL I-03/I-04: must NOT throw out of bootstrap.

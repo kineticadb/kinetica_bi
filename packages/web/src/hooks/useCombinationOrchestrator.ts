@@ -84,6 +84,7 @@ const NON_TRIGGER_TYPES = new Set([
   "legend",
   "datafilter",
   "radiogroup",
+  "ai", // 137: AI Assistant widget runs no SQL
   // "timeline" / "numericline" / "calendar" REMOVED (Phase 109.2 — FSCOPE-V120-05): these three
   // widgets are combo-store CONSUMERS (they read vizToHash — see TimelineRenderer.tsx,
   // NumericLineRenderer.tsx, CalendarRenderer.tsx post-109.2 read path) and need a scoped
@@ -115,6 +116,10 @@ export function useCombinationOrchestrator(
   layers: DashboardLayerDto[],   // NEW — Phase 92 (READ-V118-02)
   dynamicViews: DynamicViewRow[] = [],   // quick-261009-jg6 — dv source combinations
 ): void {
+  // 139: latest rows for the D-23 aiNonce/aiGen lookup (read at dispatch time, never a dep).
+  const dynamicViewsRef = useRef(dynamicViews);
+  dynamicViewsRef.current = dynamicViews;
+
   // --- 1. Primitive subscriptions (S-02 compliant — primitives only) ---
   const filterVersion = useFilterStore((s) => s.filterVersion);
   // spatialFilterVersion bumps ONLY on draw/remove/clear (NOT on setEntry) → safe, no loop
@@ -181,13 +186,17 @@ export function useCombinationOrchestrator(
 
   // --- 2d. quick-261009-jg6: stable primitive key for the dashboard's dynamic views (id:sourceTable) ---
   const dvSourcesKey = useMemo(
-    () => dynamicViews.map((dv) => `${dv.id}:${dv.source_table_id}`).sort().join(","),
+    // 139 gap C: an AI view's generation is part of the key (undo/redo = new gen, new Kinetica view name) so the
+    // effect re-runs and stale `dv:-N` entries are replaced. Positive-id saved views keep the exact old key.
+    () => dynamicViews.map((dv) => (dv.id < 0 && dv.ai ? `${dv.id}:${dv.source_table_id}:g${dv.ai.gen}` : `${dv.id}:${dv.source_table_id}`)).sort().join(","),
     [dynamicViews],
   );
 
   // Hashes whose materialize failed since the last filterVersion change. Not re-fired until the
   // filter changes — otherwise the setError -> dynamicViewVersion bump -> re-tick -> re-POST loop.
   const failedHashesRef = useRef<Set<string>>(new Set());
+  // 139 gap C: last-seen generation per AI view id, to detect undo/redo between ticks.
+  const aiGenSeenRef = useRef<Map<number, number>>(new Map());
   const lastTickFilterVersionRef = useRef<number | null>(null);
 
   // --- 3. AbortController-per-hash Map (cross-hash isolation; survives re-renders) ---
@@ -221,6 +230,28 @@ export function useCombinationOrchestrator(
         failedHashesRef.current.clear();
         lastTickFilterVersionRef.current = filterState.filterVersion;
       }
+      // 139 gap C: an AI view whose generation changed (undo/redo) has a new Kinetica view, so every combination
+      // entry built on its old generation is stale. Clear them (and unbind the vizs) BEFORE hashing so STEP D
+      // re-requests with the new aiGen and STEP E re-acquires. Saved (positive) views never enter this branch.
+      for (const dv of dynamicViewsRef.current) {
+        if (dv.id >= 0 || !dv.ai) continue;
+        const seen = aiGenSeenRef.current.get(dv.id);
+        aiGenSeenRef.current.set(dv.id, dv.ai.gen);
+        if (seen === undefined || seen === dv.ai.gen) continue;
+        const st = useFilterCombinationStore.getState();
+        for (const [hash, entry] of Object.entries(st.registry)) {
+          if (entry.sourceType !== "dv" || entry.sourceId !== dv.id) continue;
+          controllersRef.current.get(hash)?.abort();
+          controllersRef.current.delete(hash);
+          failedHashesRef.current.delete(hash);
+          const oldViewName = entry.viewName;
+          useFilterCombinationStore.getState().clearEntry(hash);
+          if (oldViewName) dropCombinationView({ dashboardId, viewName: oldViewName }).catch(() => {});
+          for (const [vizKey, h] of Object.entries(useFilterCombinationStore.getState().vizToHash)) {
+            if (h === hash) useFilterCombinationStore.getState().setVizHash(vizKey, undefined);
+          }
+        }
+      }
       // Shapes read imperatively — avoids stale closure + re-render storm.
       const shapes = useSpatialFilterStore.getState().shapes;
       // Build per-table spatial targets once (pure, synchronous).
@@ -240,6 +271,9 @@ export function useCombinationOrchestrator(
         if (!isTriggerType(w.type)) continue;
         const tableId = w.config.tableId as number | undefined;
         if (tableId === undefined) continue; // dv-bound = Phase 94 scope
+        // 139 UAT: dv-bound widgets also carry their base tableId (dual-write), so skip them here like dv-bound
+        // layers below. Otherwise, while the view rebuilds, the widget binds to the TABLE's filter view and queries it.
+        if (typeof w.config.dynamicViewId === "number") continue;
 
         const cfg = w.type === "calendar" ? coalesceCalendarFilterSelection(w.config) : (w.config.filterSelection as FilterSelectionConfig | undefined);
         const allFilters = (filterState.filters[tableId] ?? []) as ReturnType<typeof resolveFilterSet>;
@@ -625,6 +659,14 @@ export function useCombinationOrchestrator(
         } else {
           // ── Phase 94: dv path ──────────────────────────────────────────
           // NO spatial args — dv path is column-only (server enforces 400 on spatial + dvId).
+          // 139 D-23: an AI view (negative id) is built server-side from its own nonce/gen; without its session
+          // row we cannot name it, so leave the entry alone (no request, nothing marked).
+          let aiArgs: { aiNonce?: string; aiGen?: number } = {};
+          if (dvId! < 0) {
+            const aiRow = dynamicViewsRef.current.find((d) => d.id === dvId);
+            if (!aiRow?.ai) continue;
+            aiArgs = { aiNonce: aiRow.ai.nonce, aiGen: aiRow.ai.gen };
+          }
           // Pitfall 6: markMaterializing SYNCHRONOUSLY before any await.
           storeActions.markMaterializing(hash, dashboardId, "dv", dvId!);
 
@@ -633,7 +675,7 @@ export function useCombinationOrchestrator(
           controllersRef.current.set(hash, ctrl);
 
           materializeFilter(
-            { dashboardId, dynamicViewId: dvId!, filters: resolved, combinationKey: hash },
+            { dashboardId, dynamicViewId: dvId!, filters: resolved, combinationKey: hash, ...aiArgs },
             ctrl.signal,
           )
             .then((res) => {

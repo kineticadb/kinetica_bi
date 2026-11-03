@@ -38,8 +38,14 @@ import path from "node:path";
 const ENGINE_MODULES = [
   path.resolve(__dirname, "widgetAction.ts"),
   path.resolve(__dirname, "actionAllowList.ts"),
+  path.resolve(__dirname, "../../../shared/src/widgetAction.ts"),
+  path.resolve(__dirname, "../../../shared/src/actionAllowList.ts"),
+  path.resolve(__dirname, "../../../shared/src/aiOp.ts"),
   path.resolve(__dirname, "applyWidgetAction.ts"),
   path.resolve(path.join(__dirname, "../store"), "widgetActionStore.ts"),
+  path.resolve(path.join(__dirname, "../store"), "aiSessionStore.ts"),
+  path.resolve(__dirname, "aiSession/foldSession.ts"),
+  path.resolve(__dirname, "aiSession/applySession.ts"),
 ];
 
 // ---------------------------------------------------------------------------

@@ -2010,3 +2010,133 @@ describe("DVCOMBO-SP orchestrator — dv source combination includes spatial dra
     expect(useFilterCombinationStore.getState().vizToHash["dv:5"]).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 139 plan 11 (D-23): AI views (negative ids) send aiNonce/aiGen on the dv filter materialize.
+// ---------------------------------------------------------------------------
+describe("Phase 139 — AI-view drill filters (ORCHDV-1..3)", () => {
+  const AI_ID = -3;
+  const aiRow = (): DynamicViewRow =>
+    ({
+      id: AI_ID, dashboard_id: DASH_ID, source_table_id: TABLE_A, name: "Trips", template_sql: "", max_records: 100000,
+      columns_json: null, created_at: "", updated_at: "", aggregated: true,
+      ai: { nonce: "0a1b2c3d", gen: 1, spec: { baseTableId: TABLE_A }, baseLabel: "demo.trips" },
+    }) as DynamicViewRow;
+  const dvFilter: ActiveFilter = { column: "status", value: "active", dataType: "string", addedAt: 1000, sourceWidgetId: 10 };
+  const setDvFilter = (id: number) =>
+    act(() => {
+      useFilterStore.setState((s) => ({ dvFilters: { ...s.dvFilters, [id]: [dvFilter] }, filterVersion: s.filterVersion + 1 }));
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_dv_v", expiresAt: 9_999_999_999 });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("ORCHDV-1: negative dv id sends aiNonce and aiGen from the session row", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: AI_ID });
+    seedDvMaterialized(AI_ID);
+    setDvFilter(AI_ID);
+    const rows = [aiRow()];
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], rows));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    expect((materializeFilter as Mock).mock.calls[0][0]).toEqual({
+      dashboardId: DASH_ID, dynamicViewId: AI_ID, filters: [dvFilter],
+      combinationKey: stableComboHash("dv", AI_ID, [dvFilter]), aiNonce: "0a1b2c3d", aiGen: 1,
+    });
+  });
+
+  it("ORCHDV-2: a positive dv id sends no aiNonce/aiGen keys", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: DV_ID });
+    seedDvMaterialized(DV_ID);
+    setDvFilter(DV_ID);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    const call = (materializeFilter as Mock).mock.calls[0][0];
+    expect(Object.keys(call).sort()).toEqual(["combinationKey", "dashboardId", "dynamicViewId", "filters"]);
+  });
+
+  it("ORCHDV-3: a negative dv id with no session row sends no request and does not crash", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: AI_ID });
+    seedDvMaterialized(AI_ID);
+    setDvFilter(AI_ID);
+    renderHook(() => useCombinationOrchestrator(DASH_ID, [w], [], []));
+    bumpFilterVersion();
+    advanceDebounce();
+    await act(async () => { await Promise.resolve(); });
+    expect(materializeFilter).not.toHaveBeenCalled();
+    expect(useFilterCombinationStore.getState().registry[stableComboHash("dv", AI_ID, [dvFilter])]).toBeUndefined();
+  });
+
+  it("ORCHDV-4 (gap C): a gen change on an AI view (undo/redo) re-requests the filter view with the new aiGen and replaces the stale entry", async () => {
+    const w = makeDvWidget({ id: 10, dynamicViewId: AI_ID });
+    seedDvMaterialized(AI_ID);
+    setDvFilter(AI_ID);
+    const hash = stableComboHash("dv", AI_ID, [dvFilter]);
+    (materializeFilter as Mock).mockResolvedValueOnce({ viewName: "_kbi_combo_gen0", expiresAt: 9_999_999_999 });
+    (materializeFilter as Mock).mockResolvedValueOnce({ viewName: "_kbi_combo_gen1", expiresAt: 9_999_999_999 });
+    const withGen = (gen: number): DynamicViewRow => ({ ...aiRow(), ai: { ...aiRow().ai!, gen } });
+    const { rerender } = renderHook(({ rows }) => useCombinationOrchestrator(DASH_ID, [w], [], rows), { initialProps: { rows: [withGen(0)] } });
+    bumpFilterVersion();
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect((materializeFilter as Mock).mock.calls[0][0]).toMatchObject({ aiGen: 0 });
+    expect(useFilterCombinationStore.getState().registry[hash]?.viewName).toBe("_kbi_combo_gen0");
+
+    // undo then redo: same id, new generation (no filter change, no filterVersion bump)
+    rerender({ rows: [withGen(1)] });
+    advanceDebounce();
+    await waitFor(() => expect(materializeFilter).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect((materializeFilter as Mock).mock.calls[1][0]).toMatchObject({ dynamicViewId: AI_ID, aiNonce: "0a1b2c3d", aiGen: 1 });
+    expect(useFilterCombinationStore.getState().registry[hash]?.viewName).toBe("_kbi_combo_gen1");
+    expect(useFilterCombinationStore.getState().vizToHash["w:10"]).toBe(hash);
+    expect(useFilterCombinationStore.getState().registry[hash]?.refCount).toBe(1);
+  });
+});
+
+describe("139 UAT issue 1 — dv-bound widgets never bind to a TABLE combination", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFilterCombinationStore.getState().reset();
+    useFilterStore.setState({ filters: {}, dvFilters: {}, filterVersion: 0 });
+    useDynamicViewStore.getState().reset();
+    useAuthStore.setState({ maxCombinationViewsPerTable: 10, dvFilterScopeDisabled: false } as Parameters<typeof useAuthStore.setState>[0]);
+    (materializeFilter as Mock).mockReset();
+    (materializeFilter as Mock).mockResolvedValue({ viewName: "_kbi_combo_t_v", expiresAt: 9_999_999_999 });
+    (dropCombinationView as Mock).mockReset();
+    (dropCombinationView as Mock).mockResolvedValue({});
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  // Dual-write shape (ChartConfigPanel + 139 makeSessionWidget): a dv-bound widget ALSO carries its base tableId.
+  const dualWrite = (id: number, dvId: number): WidgetDto => {
+    const w = makeDvWidget({ id, dynamicViewId: dvId });
+    return { ...w, config: { ...w.config, tableId: TABLE_A } };
+  };
+
+  for (const [label, dvId] of [["AI view", -101], ["saved view", DV_ID]] as const) {
+    it(`DVTBL-1 (${label}): a base-table filter while the view is pending does not map the widget to the table's filter view`, async () => {
+      act(() => { useDynamicViewStore.setState((s) => ({ views: { ...s.views, [dvId]: { status: "pending", viewName: `_kbi_dv_${dvId}` } }, dynamicViewVersion: s.dynamicViewVersion + 1 })); });
+      useFilterStore.setState({ filters: { [TABLE_A]: [FILTER_A] } } as Parameters<typeof useFilterStore.setState>[0]);
+      renderHook(() => useCombinationOrchestrator(DASH_ID, [dualWrite(10, dvId)], [], []));
+      bumpFilterVersion();
+      advanceDebounce();
+      await act(async () => { await Promise.resolve(); });
+      const tableHash = stableComboHash("table", TABLE_A, [FILTER_A]);
+      expect(useFilterCombinationStore.getState().vizToHash["w:10"]).not.toBe(tableHash);
+      expect((materializeFilter as Mock).mock.calls.some((c) => c[0]?.tableId === TABLE_A)).toBe(false);
+    });
+  }
+});

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { mergeWidgetOverlay } from "../../lib/widgetOverlay";
 import MapChartRenderer from "./MapChartRenderer";
 import WidgetErrorBoundary from "../WidgetErrorBoundary";
 import InfoCardRenderer from "./InfoCardRenderer";
@@ -7,6 +8,7 @@ import DataFilterRenderer from "./DataFilterRenderer";
 import RadioGroupRenderer from "./RadioGroupRenderer";
 import TimelineRenderer from "./TimelineRenderer";
 import CalendarRenderer from "./CalendarRenderer";
+import { AiWidgetRenderer } from "./AiWidgetRenderer";
 import HeatmapRenderer from "./HeatmapRenderer";
 import NumericLineRenderer from "./NumericLineRenderer";
 import {
@@ -53,7 +55,7 @@ import { aggregateSpatialTargetsByTable } from "../../lib/spatialTargets";
 import { fromSwap } from "../../lib/fromSwap";
 import { useChartAxisColors } from "../../lib/chartColors";
 import { buildChipText, type DrillDownDataType } from "../../lib/columnTypes";
-import { formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } from "../../lib/bigNumberFormat";
+import { bigNumberLabel, formatBigNumberValue, pickBigNumberColor, type BigNumberColorRule } from "../../lib/bigNumberFormat";
 import { rowsToCsv, buildCsvFilename } from "../../lib/csvExport";
 import { useToastStore } from "../../store/toast";
 import { useWidgetActionStore } from "../../store/widgetActionStore";
@@ -63,8 +65,11 @@ import {
   useColumnDisplayConfigStore,
   resolveLabel,
   resolveFormatter,
+  resolveAxisFormatter,
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
+import TextRenderer from "./TextRenderer";
+import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 import {
@@ -91,6 +96,8 @@ import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
 import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
+import { categoryLabel } from "../../lib/categoryLabel";
+import { computeBarXAxisLayout, truncateBarLabel } from "../../lib/barChartLayout";
 import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
 import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
@@ -347,15 +354,20 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
   // map widgets skip this merge because their layer config is handled by
   // MapChartRenderer via effectiveLayers (useDashboardLayersStore + layerOverrides).
   // The widget.config merge still applies to non-layer widget-level config fields
-  // (e.g. show_popup / show_scale_bar for map widgets).
+  // (e.g. show_popup / show_scale_bar for map widgets). Allow-list snake keys are translated to the
+  // renderer's real keys (showScaleBar / showFullscreenButton / infoEnabled / pageSize) by
+  // translateWidgetOverlay — GAP-134-01.
   const widgetOverlay = useWidgetActionStore((s) => s.widgetOverrides[widget.id] ?? null);
-  const effectiveWidget = widgetOverlay
-    ? { ...widget, config: { ...(widget.config ?? {}), ...widgetOverlay } }
-    : widget;
+  // Phase 136 (D-01, D-19): SQL-affecting overlays regenerate sql + drill columns with the panel's own generator.
+  const maxBarGroupBySeriesCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
+  const effectiveWidget = useMemo(
+    () => mergeWidgetOverlay(widget, widgetOverlay, { tables, maxBarGroupBySeriesCap }),
+    [widget, widgetOverlay, tables, maxBarGroupBySeriesCap],
+  );
 
   let body: ReactElement;
   if (effectiveWidget.type === "map") {
-    // Pass effectiveWidget so widget.config-level fields (show_popup, show_scale_bar, etc.)
+    // Pass effectiveWidget so widget.config-level fields (showScaleBar, infoEnabled, etc., after translation)
     // reflect any overlay-merged config. Map LAYER overlays are handled separately inside
     // MapChartRenderer via effectiveLayers (see Phase 58 Plan 02 wiring there).
     body = <MapChartRenderer widget={effectiveWidget} tables={tables} />;
@@ -365,6 +377,9 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // Phase 23 (CARD-V14-01): info-card short-circuits BEFORE AggregatedWidgetRenderer so it
     // does not try to read widget.config.sql (info-card defaultConfig is {} — no SQL).
     body = <InfoCardRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "text") {
+    // kbi-mcp: markdown text short-circuits BEFORE AggregatedWidgetRenderer (no SQL).
+    body = <TextRenderer widget={effectiveWidget} />;
   } else if (effectiveWidget.type === "legend") {
     // Phase 42 Plan 02 (WIDGET-V17-01): legend short-circuits BEFORE AggregatedWidgetRenderer
     // so it does not try to read widget.config.sql (legend defaultConfig is {} — no SQL).
@@ -402,6 +417,9 @@ const WidgetRenderer = ({ widget, tables = [], onConfigureWidget }: WidgetRender
     // lifecycle (no materializeFilter / dropFilterView) — AggregatedWidgetRenderer is
     // NOT called, preserving the sole-materialize-trigger invariant.
     body = <CalendarRenderer widget={effectiveWidget} tables={tables} />;
+  } else if (effectiveWidget.type === "ai") {
+    // Phase 137 (AIWID-V20-01): AI Assistant short-circuits BEFORE AggregatedWidgetRenderer (no SQL, no filters).
+    body = <AiWidgetRenderer widget={effectiveWidget} />;
   } else {
     body = <AggregatedWidgetRenderer widget={effectiveWidget} />;
   }
@@ -1053,11 +1071,15 @@ const BarRenderer = ({
   }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const valueColumn = valueFormatColumn(metricColumn, config.aggregation); // a count ignores the column format
   const metricId = config.metricId as number | undefined;
-  // Effective metric label: custom → the stored metric label; real column → its display label.
+  // Effective metric label: custom → the stored metric label; real column → its display label, else
+  // "<Aggregation> of <column>" (142 UAT: the line chart's rule, so a COUNT bar never reads as the raw column).
   const metricLabel = isCustomSelection(metricId)
     ? (resolveMetricLabel(metricId, tableId) ?? "")
-    : (tableId !== undefined && metricColumn ? resolveLabel(tableId, metricColumn) : "");
+    : (tableId !== undefined && metricColumn
+      ? resolveLineMetricTitle({ columnLabel: resolveLabel(tableId, metricColumn), metricColumn, aggregation: config.aggregation as string | undefined })
+      : "");
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_BAR_COLOR;
 
@@ -1183,6 +1205,7 @@ const BarRenderer = ({
     ? chartData.flatMap((row) => top.series.map((sk) => Number((row as Record<string, unknown>)[sk])))
     : data.map((r) => Number((r as Record<string, unknown>)[y]));
   const scaleProps = yAxisScaleProps(yAxisScale, scaleValues);
+  const valueAxisMaxAbs = scaleValues.reduce((m, n) => (Number.isFinite(n) ? Math.max(m, Math.abs(n)) : m), 0);
 
   // Phase 87 (UAT): value-axis number format — per-widget override → bound metric column
   // default → raw. Mirrors the timeline/line hybrid; unconfigured bars keep their raw tick
@@ -1190,10 +1213,12 @@ const BarRenderer = ({
   const yAxisFormatSpec = config.yAxisFormat as FormatSpec | undefined;
   const valueAxisTickFormatter = (v: unknown): string => {
     if (yAxisFormatSpec) return String(buildFormatter(yAxisFormatSpec)(v) ?? v);
-    if (tableId !== undefined && metricColumn) {
-      const out = resolveFormatter(tableId, metricColumn)(v);
+    if (tableId !== undefined && valueColumn) {
+      const out = resolveAxisFormatter(tableId, valueColumn, valueAxisMaxAbs)(v);
       if (out !== v) return String(out);
     }
+    const countTick = countTickFormatter(config.aggregation);
+    if (countTick && typeof v === "number") return countTick(v);
     return v == null ? "" : String(v);
   };
   // Size the vertical value axis to its formatted labels so short SI ticks ("1.2M") reclaim
@@ -1202,6 +1227,22 @@ const BarRenderer = ({
     scaleValues,
     valueAxisTickFormatter,
   );
+  // Vertical bars show every category label, tilting them when they do not fit flat (Recharts would
+  // otherwise drop labels silently). Measure the outer wrapper, as the line chart does.
+  const barWrapRef = useRef<HTMLDivElement>(null);
+  const [barWrapW, setBarWrapW] = useState(0);
+  useEffect(() => {
+    const el = barWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return; // jsdom has none -> width unknown -> fallback
+    const ro = new ResizeObserver(() => setBarWrapW(el.clientWidth));
+    ro.observe(el);
+    setBarWrapW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const barPlotWidthPx = Math.max(0, barWrapW - valueAxisWidth - (leftTitle ? 16 : 0) - 10);
+  const barMaxLabelChars = chartData.reduce((m, r) => Math.max(m, categoryLabel(r[xKey]).length), 0);
+  const barXLayout = computeBarXAxisLayout({ n: chartData.length, plotWidthPx: barPlotWidthPx, maxLabelChars: barMaxLabelChars });
+  const barCategoryTick = (v: unknown): string => (barXLayout.tilt ? truncateBarLabel(categoryLabel(v)) : categoryLabel(v));
 
   const chartEl = (
     <ResponsiveContainer width="100%" height="100%">
@@ -1223,11 +1264,20 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
-            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={leftTitle ? 104 : 90} label={leftLabelObj} />
+            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryLabel} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
-            <XAxis dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} />
+            <XAxis
+              dataKey={xKey}
+              stroke={AXIS_COLOR}
+              tick={{ fontSize: 11 }}
+              tickFormatter={barCategoryTick}
+              label={bottomLabelObj}
+              height={barXLayout.xAxisHeight}
+              {...(barXLayout.showAll ? { interval: 0 } : {})}
+              {...(barXLayout.tilt ? { angle: -45, textAnchor: "end" as const } : {})}
+            />
             <YAxis stroke={AXIS_COLOR} tick={{ fontSize: 11 }} width={valueAxisWidth + (leftTitle ? 16 : 0)} label={leftLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
           </>
         )}
@@ -1239,10 +1289,11 @@ const BarRenderer = ({
             // via useChartAxisColors) at low opacity so the hovered-category highlight follows
             // the active theme/brand instead.
             cursor={{ fill: AXIS_COLOR, fillOpacity: 0.12 }}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
-        {showLegend && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
+        {/* One series repeats the chart title, so only a multi-series bar shows its legend (as the timeline does). */}
+        {showLegend && multiSeries && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
         {/* Phase 102 (BARGRP-V119-02): multi-series path — N <Bar> elements, no <Cell>/<LabelList>. */}
         {multiSeries ? (
           top.series.map((sk, i) => (
@@ -1275,8 +1326,8 @@ const BarRenderer = ({
                 // format spec is set, resolveFormatter is identity → fall back to the prior
                 // toLocaleString() default (thousands separator) so unconfigured bars look unchanged.
                 formatter={(v: unknown) => {
-                  if (tableId !== undefined && metricColumn) {
-                    const out = resolveFormatter(tableId, metricColumn)(v);
+                  if (tableId !== undefined && valueColumn) {
+                    const out = resolveFormatter(tableId, valueColumn)(v);
                     if (out !== v) return String(out); // a real format spec was applied
                   }
                   return typeof v === "number" ? v.toLocaleString() : String(v ?? "");
@@ -1307,7 +1358,7 @@ const BarRenderer = ({
     // child gives ResponsiveContainer a concrete pixel-sized parent, so the chart fills the
     // widget body even when the flex percentage-height chain resolves late. Phase 87 (UAT) —
     // plain height:100% left dead space below the bars.
-    <div data-testid="bar-chart" style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+    <div ref={barWrapRef} data-testid="bar-chart" style={{ position: "relative", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
     {/* Phase 102 (BARGRP-V119-03): truncation note — takes its own row above the plot (flex column) so it never overlaps the chart (UAT gap). */}
     {multiSeries && top.truncated && (
       <div className="config-hint" data-testid="bar-truncated-note" style={{ color: "var(--accent-text)", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>
@@ -1379,6 +1430,7 @@ const LineRenderer = ({
   }, [tableId]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const valueColumn = valueFormatColumn(metricColumn, config.aggregation); // a count ignores the column format
   const metricId = config.metricId as number | undefined;
   const { x, y } = resolveKeys(data, config);
   const color = (config.color as string) || DEFAULT_LINE_COLOR;
@@ -1425,11 +1477,17 @@ const LineRenderer = ({
     aggregation: config.aggregation as string | undefined,
     fallbackKey: y,
   });
+  const valueAxisMaxAbs = chartData.reduce((m, r) => {
+    for (const k of multiSeries ? top.series : [y]) { const n = Number((r as Record<string, unknown>)[k]); if (Number.isFinite(n)) m = Math.max(m, Math.abs(n)); }
+    return m;
+  }, 0);
   const valueAxisTickFormatter = (v: unknown): string => {
-    if (tableId !== undefined && metricColumn) {
-      const out = resolveFormatter(tableId, metricColumn)(v);
+    if (tableId !== undefined && valueColumn) {
+      const out = resolveAxisFormatter(tableId, valueColumn, valueAxisMaxAbs)(v);
       if (out !== v) return String(out);
     }
+    const countTick = countTickFormatter(config.aggregation);
+    if (countTick && typeof v === "number") return countTick(v);
     return v == null ? "" : String(v);
   };
 
@@ -1521,6 +1579,7 @@ const LineRenderer = ({
       stroke={AXIS_COLOR}
       interval={0}
       tick={{ fontSize: 11, fill: AXIS_COLOR }}
+      tickFormatter={categoryLabel}
       height={layout.xAxisHeight}
       {...(layout.tilt ? { angle: -45, textAnchor: "end" as const } : {})}
     />
@@ -1533,13 +1592,14 @@ const LineRenderer = ({
           tableId={tableId}
           groupByColumn={multiSeries ? groupByColumns[0] : groupByColumn}
           metricColumn={metricColumn}
+          aggregation={config.aggregation as string | undefined}
           multiSeries={multiSeries}
           metricTitle={multiSeries ? undefined : yTitle}
         />
       }
     />
   ) : null;
-  const legendEl = showLegend ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
+  const legendEl = showLegend && multiSeries ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
   const gridEl = showGrid ? <CartesianGrid stroke={GRID_COLOR} vertical={false} /> : null;
 
   const chart = multiSeries ? (
@@ -1689,6 +1749,7 @@ const PieRenderer = ({
   }, [tableId, loadConfig]);
   const groupByColumn = (config.groupByColumn as string) || "";
   const metricColumn = (config.metricColumn as string) || "";
+  const valueColumn = valueFormatColumn(metricColumn, config.aggregation); // a count ignores the column format
   const { x: nameKey, y: valueKey } = resolveKeys(data, config);
   const innerRadius = (config.innerRadius as number) ?? 0;
   const padAngle = (config.padAngle as number) ?? 2;
@@ -1715,8 +1776,8 @@ const PieRenderer = ({
   // Slice value → display string: prefer the metric column formatter (matches the tooltip),
   // else a plain number capped at 2 decimals so raw floats ("15.53458581142423") don't leak.
   const formatSliceValue = (v: unknown): string => {
-    if (tableId !== undefined && metricColumn) {
-      const out = resolveFormatter(tableId, metricColumn)(v);
+    if (tableId !== undefined && valueColumn) {
+      const out = resolveFormatter(tableId, valueColumn)(v);
       if (out !== v && out != null) return String(out);
     }
     const n = typeof v === "number" ? v : Number(v);
@@ -1817,7 +1878,7 @@ const PieRenderer = ({
             {...RECHARTS_TOOLTIP_PROPS}
             itemStyle={{ color: "var(--text)" }}
             labelStyle={{ color: "var(--text)" }}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
         {showLegend && <Legend />}
@@ -1912,7 +1973,7 @@ const ScatterRenderer = ({
         {showTooltip && (
           <Tooltip
             {...RECHARTS_TOOLTIP_PROPS}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
         <Scatter data={data} fill={color}>
@@ -2105,7 +2166,7 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
   const prefix = (config.prefix as string) || "";
   const suffix = (config.suffix as string) || "";
   const color = (config.color as string) || DEFAULT_BIGNUMBER_COLOR;
-  const label = (config.label as string) || valueField;
+  const label = bigNumberLabel(config, valueField);
   const subLabel = (config.subLabel as string) || "";
 
   const formatted = formatBigNumberValue(rawValue, {
@@ -2120,7 +2181,7 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
 
   return (
     <div className="widget-bignumber">
-      <div className="widget-bignumber-label">{label}</div>
+      {label !== "" && <div className="widget-bignumber-label">{label}</div>}
       <div className="widget-bignumber-value" style={{ color: effectiveColor }}>
         {prefix}{formatted}{suffix}
       </div>

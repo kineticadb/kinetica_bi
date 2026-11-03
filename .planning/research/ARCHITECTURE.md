@@ -1,524 +1,337 @@
-# Architecture Research — v1.26 Large Exports & Fixes
+# Architecture Patterns: v2.0 AI-Driven Dashboards
 
-**Domain:** Integration of (1) a 1,000-row Kinetica envelope ceiling fix, (2) a server-side
-background CSV export job, and (3) line-chart multi-series Group By, into the existing
-Kinetica BI monorepo (`packages/server` Express+better-sqlite3 ESM, `packages/web` React+Vite+
-zustand+Recharts).
-**Researched:** 2026-10-01
-**Confidence:** HIGH for all file:line claims (read directly from the current `feat/schema-sync`
-checkout). MEDIUM for the Kinetica `/execute/sql` `limit`/`offset` *semantics* claims (no official
-doc found in-repo, and live calls were out of scope for this research — flagged explicitly below).
-No live Kinetica calls were made; `packages/server/.env` was not read.
+**Domain:** AI agent that manipulates an existing BI dashboard (session layer + undo + Keep)
+**Researched:** 2026-10-08
+**Overall confidence:** MEDIUM-HIGH. Integration points are verified against the code. LLM-provider and SSE specifics are not verified against current vendor docs (this file is architecture, not stack), and the spikes below are real unknowns.
 
-A sibling researcher already wrote `.planning/research/FEATURES.md` for this milestone (feature
-landscape / competitor analysis). This file is the code-level integration trace it references —
-read together, not standalone.
+## Headline Recommendations
 
----
+1. **The agent loop runs on the server. Mutations are applied on the client.** The server owns the LLM key, the provider adapter, the schema/query tools (which need the user's Kinetica creds) and audit. The *session layer* lives in the browser (`zustand`), so mutation tools are declarative: the server validates each op against a shadow copy of the dashboard sent with the request and streams it to the client over SSE. There is no client round-trip per tool call.
+2. **Session layer = an ordered op log on the client, not DB rows.** Session-only entities get negative temp ids. Nothing is written to SQLite until "Keep", so isolation from other users, reload-revert and discard-revert are true by construction.
+3. **Keep is a NEW transactional server endpoint** (`POST /api/dashboards/:id/ai-keep`) that reuses `lib/dashboardExportRefs.ts` id remapping (`RefIdMaps` + `remapWidgetConfigRefs`). It does NOT reuse `applyDashboardImport`, which always creates a new dashboard.
+4. **Session-only dynamic views still materialize server-side.** Kinetica is the only data substrate and every dv read path is keyed by a `dashboard_dynamic_views` row id. This needs a new ad-hoc (inline-definition) materialize path. This is the riskiest unknown, so spike it first.
+5. **Filters go through `filterStore` -> `filterCombinationStore` -> `/api/filter/materialize`, via a NEW module outside the action engine.** The `ACTION-ENGINE-NO-FILTER` invariant stays intact. The AI filter applier is a sibling, not part of `applyWidgetAction`.
 
-## 1. The 1,000-row ceiling's blast radius
-
-### The mechanism
-
-`packages/server/src/kinetica.ts:160-194` (`kineticaSql`) POSTs to `/execute/sql` with a body
-built as:
+## Recommended Architecture
 
 ```
-body: JSON.stringify({
-  statement: sql,
-  offset: 0,
-  limit: 1000,            // line 187 — hardcoded
-  encoding: "json",
-  request_schema_str: "",
-  data: [],
-  options: {},
-  ...(options.extra ?? {}),   // line 192 — spread LAST, so extra.limit/extra.offset
-                              // silently override the hardcoded top-level fields above
-}),
+ Browser (packages/web)                                     Server (packages/server)
+ ┌──────────────────────────────────────────┐              ┌───────────────────────────────────────┐
+ │ AiWidget (new widget type, portals only) │  POST (fetch │ routes/ai (new aiRoutes.ts)           │
+ │  ask box [+ explanation + follow-ups]    │  + ReadableStream SSE)                              │
+ │            │ ask(prompt, snapshot)       │─────────────▶│ requireAuth + requirePermission(AI_USE)│
+ │            ▼                             │              │   ┌─────────────────────────────┐     │
+ │ aiClient (stream reader)                 │◀─ SSE events─│   │ agentLoop (provider-agnostic)│    │
+ │            │ step/op/explain/followups/done              │   │  LlmProvider adapter         │    │
+ │            ▼                             │              │   │  tools:                      │    │
+ │ aiSessionStore  (op log + inverses)      │              │   │   read: get_schema,          │    │
+ │   ├─ structural derive (added/removed)   │              │   │         get_dashboard,       │    │
+ │   ├─ patches -> widgetActionStore        │              │   │         run_query (gated)    │    │
+ │   │   (source key AI_SOURCE_ID)          │              │   │   mutate (declarative):      │    │
+ │   └─ filter ops -> aiFilterApplier       │              │   │    add/remove_widget,        │    │
+ │        └─> filterStore -> materialize    │              │   │    add/remove_layer, add/    │    │
+ │ Keep / Discard / Undo UI                 │  POST ai-keep│   │    remove_dynamic_view,      │    │
+ │            └────────────────────────────────────────────▶│   │    patch_*, apply_filter     │    │
+ │                                          │              │   └──────────┬──────────────────┘     │
+ └──────────────────────────────────────────┘              │   shadowState (per request, from      │
+                                                           │   client snapshot) validates ops      │
+                                                           │   kineticaSql(req, sql, op AI_QUERY)  │
+                                                           │   ai-keep txn (db.transaction)        │
+                                                           └───────────────────────────────────────┘
 ```
 
-**Critical finding: the override mechanism already exists and is already proven in production.**
-Because `options.extra` is spread *after* the hardcoded `offset`/`limit` keys, any caller that
-passes `extra: { limit: N }` already gets `N` instead of `1000` — no change to `kinetica.ts`
-itself is required for a caller that knows its own ceiling. Three call sites already do this:
-`index.ts:1190` (`extra: { limit: 1 }`), `index.ts:2374` and `:2398` (`extra: { limit: 50 }`,
-spatial info-query). The comment at `index.ts:2368-2370` spells out the distinction explicitly:
-*"The SQL itself has LIMIT 50 OFFSET `<page*50>`; the kineticaSql `extra.limit` is the Kinetica
-request envelope's limit (distinct from the SQL LIMIT clause)."* That distinction — envelope
-`limit` vs. SQL-text `LIMIT` — is the whole bug: a SQL `LIMIT 5000` does nothing if the envelope
-caps the response at 1000 rows regardless.
+### Component Boundaries
 
-`POST /api/sql` (`index.ts:2904-2915`) passes the **client's own request body** straight through
-as `extra`: `extra: options` where `options` is whatever `{ sql, options }` the client sent. So a
-client (or a future export job) *can already* override the limit per-call today, simply by
-sending `{ sql, options: { limit: N } }` to the existing route — the plumbing is live, just
-unused by any current web caller.
+| Component | New/Modified | Responsibility | Talks to |
+|---|---|---|---|
+| `packages/shared/` (zod op + config schemas) | **NEW** | Single source for `AiOp` schema, `WidgetAction`, allow-list; imported by web and server | web, server |
+| `packages/server/src/aiRoutes.ts` | **NEW** | `POST /api/ai/ask` (SSE), `POST /api/dashboards/:id/ai-keep`, `GET /api/ai/config` | index.ts wiring, rbac, db |
+| `packages/server/src/lib/ai/agentLoop.ts` | **NEW** | Tool-use loop, step budget, abort on client disconnect, shadow-state validation | provider, tools |
+| `packages/server/src/lib/ai/providers/{anthropic,openaiCompat}.ts` + `LlmProvider` interface | **NEW** | Pluggable provider (Claude default; OpenAI-compatible for local) | agentLoop |
+| `packages/server/src/lib/ai/tools/*.ts` | **NEW** | Schema/dashboard context, guarded query, op-emitting mutation tools | db.ts, kinetica.ts |
+| `packages/server/src/lib/ai/sqlGuard.ts` | **NEW** | Single-statement read-only SELECT validation for `run_query` | tools/runQuery |
+| `packages/server/src/lib/aiKeep.ts` | **NEW** | Transactional promote of op log to DB with temp->real id map | db.ts, `dashboardExportRefs.ts` |
+| `packages/server/src/kinetica.ts` | **MODIFIED** | Add `"AI_QUERY"` to `KineticaOp` union (audit tag only) | - |
+| `packages/server/src/env.ts` + `lib/permissions.ts` | **MODIFIED** | `AI_*` env vars; optional `ai:use` permission (see Pitfall on count specs) | rbac |
+| `packages/server/src/index.ts` | **MODIFIED** | Mount `aiRoutes`; add ad-hoc dv materialize route(s) | - |
+| `packages/web/src/store/aiSessionStore.ts` | **NEW** | Op log, inverses, derived structural sets, undo/keep/discard, status | widgetActionStore, DashboardsPage |
+| `packages/web/src/lib/aiOps/applyAiOp.ts` | **NEW** | Dispatch of each op; re-validates (never trust the stream) | stores |
+| `packages/web/src/lib/aiOps/aiFilterApplier.ts` | **NEW** | The ONLY AI->filter contact point; calls `filterStore` actions | filterStore |
+| `packages/web/src/components/charts/AiWidgetRenderer.tsx` + `AiConfigPanel.tsx` + `definitions/ai.ts` | **NEW** | Widget type (Compact/Full), registered in `definitions/index.ts` | aiClient, aiSessionStore |
+| `packages/web/src/lib/widgetAction.ts`, `actionAllowList.ts` | **MODIFIED** | Allow-list v3 (wider patchable fields; relax `id: positive()` for temp ids); extract to shared | - |
+| `packages/web/src/components/DashboardsPage.tsx` | **MODIFIED** | Compute `effectiveWidgets/Layers/DynamicViews` = base + session layer; reset in the cleanup chain; Keep/Discard bar | aiSessionStore |
+| `packages/web/src/components/charts/MapChartRenderer.tsx`, `LegendRenderer.tsx`, `lib/applyLayerOverrides.ts` | **MODIFIED** | Read added/removed layers (not only overrides); wire temp-dv FROM-swap at BOTH `buildWmsParams` sites | aiSessionStore |
+| `packages/web/src/hooks/useDynamicViewMaterializeChain.ts` | **MODIFIED** | Include session dvs in the cascade (calls the ad-hoc materialize) | dynamicViewStore |
+| `packages/web/src/api/client.ts` | **MODIFIED** | `askAi` stream reader, `keepAiChanges`, ad-hoc dv materialize | - |
 
-### Every caller, and whether it needs >1000 rows
+## Q1. Where the agent loop runs: server
 
-**Via `kineticaSqlHelper` (server-internal, `index.ts` call sites):** `1187` (DDL — no row data),
-`1493`/`2023`/`2158`/`2190` (`DROP TABLE IF EXISTS` — no row data), `1553`/`1604`/`1636`
-(RBAC-adjacent, not Kinetica-row-shaped — confirmed no `extra` needed), `1921` (`SELECT 1 ...
-LIMIT 0` dynamic-view-preview probe — 0 rows), `1947` (dynamic-view preview,
-`SELECT * FROM (...) LIMIT ${sampleLimit}`, `sampleLimit` from client `body.sample_limit`, only
-validated `> 0` at `index.ts:1897` — **no upper bound**, so an operator requesting a >1000-row
-preview sample would be silently truncated with no warning; low priority since previews are UX
-samples, not data-correctness-critical, but technically in-scope), `2046`/`2071` (`COUNT(*)` —
-single row, safe), `2371`/`2395` (`POST /api/info/query`, spatial map popup, explicit
-`extra: { limit: 50 }` already set — safe), `2809`/`2820`/`2832` (discovery: schemas/tables/
-columns lists — could theoretically exceed 1000 in a very large Kinetica install, edge case, not
-flagged by PROJECT.md), `2909` (`POST /api/sql` passthrough — inherits whatever the caller sends).
+**Why server (verified constraints):**
+- The LLM API key must never reach the browser (and `/api/*` is behind `requireAuth`, so per-user rate limit and audit are cheap).
+- The `run_query` tool needs the user's Kinetica creds. Those live encrypted in `sessionStore.ts` and are only available server-side (`req.user.creds`, or `principalForSession(sid)` in `lib/exportRunner.ts:158` for work that outlives a request).
+- Provider pluggability (Anthropic vs OpenAI-compatible local) is an adapter concern; the browser should not know about it. Local models are usually only reachable from the server network.
+- RBAC and the allow-list gate can be enforced before ANY op reaches the client.
 
-**Via `runSql` (web client, `packages/web/src/api/client.ts:299-316`, which POSTs to
-`/api/sql` with `options` passed straight through as `body.options`):** every current call site
-passes `options` as `undefined` or `{}` — none override the limit today:
-- `WidgetRenderer.tsx:657` — `AggregatedWidgetRenderer`'s chart query (bar/line/pie/heatmap/data
-  table). Chart "Result limit" dropdown values are `[5,10,25,50,100,250,500]`
-  (`ChartConfigPanel.tsx:957`) for non-heatmap charts — **all safely under 1000.**
-- **Heatmap is the one already-broken exception.** `ChartConfigPanel.tsx:36`:
-  `HEATMAP_LIMITS = [250, 500, 1000, 2500, HEATMAP_CELL_LIMIT]` where
-  `HEATMAP_CELL_LIMIT = 5000` (`packages/web/src/lib/heatmapGrid.ts:56`). A heatmap's own SQL
-  `LIMIT` clause can already ask for up to 5000 rows, but the query runs through the same
-  `runSql(sqlToRun, undefined, ...)` call at `WidgetRenderer.tsx:657` with no `extra.limit` — so
-  Kinetica silently returns at most 1000 rows for any Result Limit choice of 1000/2500/5000.
-  **Worse: this is invisible today.** `HeatmapRenderer.tsx:285-306` computes
-  `truncated = data.length >= cellLimit` — comparing the *actual returned row count* against the
-  *requested* cell limit, not against the real server-side cap. For Result Limit = 2500,
-  `data.length` tops out at 1000 (< 2500), so `truncated` is `false` and **no warning is shown** —
-  the grid silently renders an incomplete heatmap with the "truncated" banner suppressed. This is
-  a confirmed, pre-existing, silent-data-loss bug exposed by this ceiling, not merely "stops too
-  early" like the CSV case.
-- `WidgetRenderer.tsx:1991` — the CSV export loop (`handleDownloadCsv`). Requests pages of 5000
-  (`PAGE = 5000` at `:1982`), server returns ≤1000, `rows.length < limit` (`:1995`) reads as "view
-  exhausted" after one short page → the documented bug.
-- `WidgetRenderer.tsx:2115` (records-table page fetch) and `:2188` (`COUNT(*)`) — `pageSize`
-  defaults to 25 (`WidgetRenderer.tsx:1862`, `Math.max(1, Number(cfg.pageSize) || 25)`) and has no
-  UI control exposing a value anywhere near 1000 — **safe today**, though there is no upper-bound
-  guard if an operator hand-edited `pageSize` in a widget's JSON config.
-- `TimelineRenderer.tsx`, `NumericLineRenderer.tsx`, `CalendarRenderer.tsx`,
-  `CalendarConfigPanel.tsx` — all grouped/bucketed queries (one row per time-bucket×series), bounded
-  by the visible date range and `MAX_SERIES = 12` (`lib/groupedSeries.ts:23`) — safe in practice.
-- `hooks/useViewKeepAlive.ts:97` — `SELECT 1 FROM <view> LIMIT 1` — 1 row, safe (this is a touch
-  read, not a data read).
+**The wrinkle:** the session layer is client state (it must be per-user, per-tab, and vanish on reload). So the server can't mutate it.
 
-**`kineticaWms`** (`kinetica.ts:367-434`) is a completely separate code path (GET `/wms`, no
-`/execute/sql` body, no `limit`/`offset` fields at all) — **not in the blast radius.**
+**Resolution: declarative mutation tools + shadow state.**
+1. `POST /api/ai/ask` body: `{ dashboardId, prompt, snapshot, mode, history? }`. `snapshot` = the *effective* dashboard (base + current session layer): widgets (id, type, title, config minus bulky fields), layers, dynamic views, active filters, table ids.
+2. The agent loop keeps a mutable `shadowState` initialised from `snapshot`. A mutate tool (e.g. `add_widget`) validates its args (zod + allow-list + referenced ids exist in `shadowState` + table is on the dashboard), updates `shadowState`, returns a short tool_result to the LLM, and emits an `op` SSE event. The LLM gets immediate feedback; there is no client round trip.
+3. The client applies each `op` as it arrives (and re-validates it with the shared schema; the stream is not trusted).
+4. Server-side errors (invalid column, unknown id) are tool_results with `isError`, so the model self-corrects within the step budget.
 
-**`kineticaShowTable`** (`kinetica.ts:283-358`, POST `/show/table`) also has its own body shape
-with no `limit`/`offset` — used by schema-discovery and v1.25 schema-sync column checks — **not
-in the blast radius.** Schema sync's column-diff work reads table/column *metadata*, not row data.
+*Rejected alternative:* client-executes-tools-and-returns-results (server pauses mid-loop). Needs a second endpoint, request correlation, timeouts when the tab closes, and gives no real benefit because mutation results are fully predictable from shadow state.
+*Rejected alternative:* browser-side loop with a thin LLM proxy. Leaks provider concerns to the client, and the query tool would still need a server route per call.
 
-### Kinetica `/execute/sql` limit semantics — what is and isn't documented in-repo
+**Statelessness:** do NOT keep conversation state server-side (the product is "not a chat transcript"). The client sends the snapshot + the last few Q/A summaries; the server holds nothing between requests. This also makes horizontal restarts safe. Only an in-flight `AbortController` is held per request.
 
-No file under `.planning/` or `packages/server/src` documents Kinetica's `limit`/`offset`
-semantics authoritatively (e.g., whether `-9999` or `0` means "unlimited", or what the maximum
-accepted value is). `.planning/research/_archive_v1.6/STACK.md:276` and `:480` explicitly record
-*"No documented maximum SQL statement length found... HTTP body is JSON"* for a related but
-different question (statement length, not row-limit semantics) — there is no equivalent note for
-row-limit sentinels. **This is a gap, not a verified fact: do not assume `-9999` or any other
-sentinel works without a spike against the real instance** (explicitly out of scope for this
-research per the task's quality gate).
+Confidence: HIGH on the split (follows directly from where creds and session state live).
 
-### Safe fix recommendation
+## Q2. Tool surface
 
-Given the override mechanism is proven and already in production use (three existing
-`extra: { limit: N }` call sites), the lowest-risk fix is **not** a single global "unlimited"
-flip. Recommend:
+| Tool | Executed | Maps to | New? |
+|---|---|---|---|
+| `get_schema(tableId?)` | server | `db.ts` tables registry + cached columns; `kineticaShowTable` for refresh | tool new, data exists |
+| `get_dashboard()` | server (shadow state) | snapshot from request | new |
+| `get_column_profile(tableId, column)` | server, **query mode only** | reuse `lib/columnStatsSql.ts`, `topValuesSql.ts`, `quantileSql.ts` (they already run as the user) | tool new, SQL exists |
+| `run_query(sql)` | server, **query mode only** | `kineticaSql(req, sql, {route:"POST /api/ai/ask", op:"AI_QUERY"})` | new guard + op tag |
+| `add_widget(type, title, config, layout?)` | op -> client | creates temp-id widget; replaces `POST /api/dashboards/:id/widgets` at Keep | new (structural) |
+| `remove_widget(id)` | op -> client | hides; `DELETE /api/widgets/:id` at Keep | new |
+| `patch(target, configPatch)` | op -> client | **existing** `WidgetAction` envelope -> `widgetActionStore` | EXISTING seam |
+| `add_layer(tableId, config)` / `remove_layer(id)` | op -> client | `POST/DELETE /api/dashboards/:id/layers` at Keep | new (structural) |
+| `add_dynamic_view(sourceTableId, name, template_sql, ...)` / `remove_dynamic_view(id)` | op -> client + ad-hoc materialize | `POST/DELETE` dv routes at Keep | new (structural) |
+| `apply_filter(source, filters)` / `clear_filter(source, column?)` | op -> client | `filterStore` actions (`addFilter/setBulkFilters/removeFilter/addDvFilter`) | new applier |
+| `explain(text)` / `suggest_followups([..])` | op -> client | Full-mode UI only | new |
+| `generate_dashboard(tableId)` | orchestration, not a single tool | see Q9 | new |
 
-1. **Raise the hardcoded default** in `kinetica.ts:187` from `1000` to a value that covers every
-   *existing* caller's maximum observed ask without `extra.limit` (heatmap's `HEATMAP_CELL_LIMIT`
-   of `5000` is the largest) — e.g. `5000` or `10000`. This one-line change silently fixes the
-   heatmap truncation bug and the dynamic-view-preview `sample_limit` edge case for free, with no
-   per-caller changes, while still bounding the still-open, client-trusted `POST /api/sql`
-   passthrough (`index.ts:2904-2915`) against an accidental unbounded `SELECT *` pulling millions
-   of rows into Node memory in one response.
-2. **The new export job must never rely on that default.** It should always pass an explicit
-   `extra: { limit: <batchSize> }` (e.g. `20000`, per PROJECT.md) on every batched read, exactly
-   mirroring the existing `extra: { limit: 50 }` precedent at `index.ts:2374`/`:2398` — this makes
-   the job's row-count intent explicit and independent of whatever the shared default is tuned to
-   later.
-3. **Do not use a `-9999`/"unlimited" sentinel without a live spike first** — its semantics are
-   unverified in this codebase and in the research performed so far.
+Rules:
+- **Reuse the existing envelope for patches.** `WidgetActionSchema` is the `patch` tool's `inputSchema` (as `docs/mcp-action-seam.md` §4 designed). Existing PATCH routes are NOT used for session changes (they would persist); they're used only inside Keep.
+- **Do not use MCP in the app path.** `docs/mcp-action-seam.md` anticipated an MCP server. For an in-app agent the loop and tool registry are plain TypeScript; MCP can be layered on later (same `AiOp` zod). Adding `@modelcontextprotocol/sdk` now is scope creep.
+- **`add_widget` needs per-widget-type config validation.** The registry (`components/charts/definitions/*.ts`) has `fields[]` + `defaultConfig`, but NO zod schema, and the allow-list covers only 6 widget fields. Generate a validator from `fields[]` (type/options/min/max) plus a small hand-written set of data-binding keys (metric, aggregation, groupByColumns, dimension, `tableId` - see the blocked-key list in `actionAllowList.ts`). Merge over `defaultConfig`. Flag as a spike (S3).
+- **Allow-list v3 must be a deliberate, versioned bump** (`ALLOW_LIST_VERSION`), and `getFieldLocation` stays the single source of truth for field location. Hardcoded colors from the model must be rejected or mapped to theme tokens (CLAUDE.md theme rule applies to AI-chosen config too, e.g. bar `color` default is a hex in `definitions/bar.ts`; leave defaults, don't let the AI emit hex).
 
----
+## Q3. Extending the action engine to structural changes
 
-## 2. What the export must reproduce
+The engine today is *patch-only on existing ids* (`applyWidgetAction` returns `target_not_found` for anything not in `lookups`). Do **not** shoehorn structure into `widgetActionStore.contributions` (switch-replace per control id is the wrong semantics for an additive log, and `ActionLookups` lists would need to include session entities).
 
-### `handleDownloadCsv` today (`WidgetRenderer.tsx:1957-2031`)
+**Design: `aiSessionStore` holds the op log; the engine stays the patch applier.**
 
-Reads (all computed once per call, imperatively, not via React state):
-- **FROM source** (`:1963-1971`): reads `useFilterCombinationStore.getState()` directly
-  (`vizToHash[recordsVizKey]` → `registry[hash]`), exactly mirroring the page-fetch effect's
-  resolution logic at `:2105-2110`. For a dynamic-view-bound widget (`dynamicViewId !== undefined`),
-  prefers the combo-store's dv-combination view, falling back to the raw dv view
-  (`recordsDvViewName`); for a table-bound widget, uses the combo entry's `viewName` or `""`.
-  `fromSourceCsv = effectiveViewNameCsv || table` — i.e. base registered table name is the final
-  fallback.
-- **Columns** (`:1974-1975`): `columnOrder` (the live on-screen column order, a `useState` set by
-  the page-fetch effect at `:2121`) if non-empty, else `effectiveColumns` (the widget's configured
-  column list). Joined into a `SELECT` clause, or `*` if empty.
-- **customWhere** (`:1867`, computed once per render): `whereCustomWhere(cfg.customWhere)` →
-  `" WHERE (<predicate>)"` or `""` — a raw-SQL fragment that is **designer-authored and persisted
-  in `widgets.config` JSON at design time** (`ChartConfigPanel.tsx`), not user-request-time input.
-- **Sort** (`:1976-1979`): `sortField`/`sortDir` (React state, user-adjustable column-header
-  click), validated against `IDENT_RE` (`:1853`, `/^[a-zA-Z_][a-zA-Z0-9_.]*$/`) before being
-  spliced into `ORDER BY`.
-- **Pagination**: client-side loop, `PAGE = 5000` per request, `OFFSET` advances by
-  `rows.length` actually returned (`:1994`) — i.e. it already tolerates short pages gracefully in
-  principle, it's just that the *ceiling* makes every page short.
+```ts
+type AiStep = { id: string; op: AiOp; inverse: AiInverse; ts: number; label: string };
+type AiSessionState = {
+  dashboardId: number | null;
+  steps: AiStep[];            // ordered; undo pops
+  // derived (recomputed from steps, like widgetActionStore.deriveOverlays):
+  addedWidgets: WidgetDto[];  // id < 0
+  addedLayers: DashboardLayerDto[];
+  addedDynamicViews: DynamicViewRow[];
+  removed: { widget: Set<number>; layer: Set<number>; dynamicView: Set<number> };
+  status: "idle" | "streaming" | "review";
+};
+```
 
-### Can the server rebuild this from `(widgetId + current filter state)`, or must the client send resolved SQL?
+- **Temp ids are negative integers** from a monotonic counter (`-1, -2, ...`). They can't collide with SQLite autoincrement ids and are obviously temporary in logs. Requires relaxing `z.number().int().positive()` to `.int().nonzero()` in `WidgetActionTargetSchema` (only for the AI path).
+- **Patches** continue to flow through `widgetActionStore.setControlContribution(AI_SOURCE_ID, ...)`, rebuilt from the op log on every change. Source-keyed contributions already exist for exactly this ("transient per-viewer overlay; source-keyed"). Pick a reserved control id for the AI source (e.g. `0` or a large negative that no widget id can equal; widget ids are positive). Patch targets may be temp ids (the target is a session widget): resolve those by *mutating the session widget's config in the derived list*, not via overlay (overlays are keyed by saved ids and the added widget is already session-only).
+- **Added widgets/layers/dvs** are merged at the *read site*: `DashboardsPage` computes `effectiveWidgets = [...base.filter(!removed), ...added]`. Layers: today `MapChartRenderer` reads `allLayers` from `useDashboardLayersStore` then `applyLayerOverrides` (line ~534-539). Extend with an `applyLayerSession(layers, session)` step that appends added and drops removed (and keep `applyLayerOverrides` referentially-stable behaviour). `LegendRenderer` must use the same helper (GAP-61-01 precedent: two read paths drifted before).
+- **Removed** entities are hidden from derived lists only; the DB row is untouched until Keep. A removed widget that other widgets reference (Legend bound to a map, radio targets, `filter_selection` refs): hide dependents' references gracefully; `collectWidgetConfigRefs` already enumerates reference sites.
+- **Lifecycle:** `aiSessionStore.reset()` joins the DashboardOpen cleanup chain at `DashboardsPage.tsx` ~line 740 next to `widgetActionStore.reset()` (it is the "7th" store; AI session is the 8th/last, but it must also run the temp-dv DROP loop BEFORE `dynamicViewStore.reset()`).
+- **Layout of new widgets:** the grid uses `widget.config.layout {x,y,w,h}` (see `DashboardsPage.tsx` ~1085). Server tool returns a suggested `layout`; the client resolves overlap with the same `nextY` logic used for manual add (do not let the model pick coordinates blindly). Never modify the layout of saved widgets in the session layer (react-grid-layout `onLayoutChange` persists via `updateWidget`; gate that callback while `status != idle` so a drag in review doesn't persist AI geometry - flag, S5).
 
-**Key finding: there is no server-side registry of "which materialized view is widget X's dashboard
-currently reading."** `useFilterCombinationStore` and `useDynamicViewStore` are pure
-**browser-side zustand stores** (`packages/web/src/store/filterCombinationStore.ts`,
-`dynamicViewStore.ts`) — the server never persists "widget 42 → view
-`_kbi_filt_u...c1a2b3c4`" anywhere; it only ever receives `(dashboardId, tableId, filters[],
-combinationKey)` at materialize-time (`POST /api/filter/materialize`, `index.ts:1259+`) and
-computes the view name **deterministically** from those inputs plus `req.user.sid`
-(`buildFilterViewName`, `lib/viewNaming.ts`) — it never stores the mapping. So the server *can*
-rebuild the exact same view name as the browser did, but **only if given the same inputs the
-browser used** (`combinationKey` — an 8-hex-char hash the client already computes via
-`stableComboHash`/`comboShortHash`, mirrored server-side by `hashKey8`,
-`lib/viewNaming.ts:27-40` — explicitly documented as needing to be "byte-for-byte identical" across
-stacks). A pure `widgetId`-only request cannot recover "which filters are currently active in this
-browser tab" — that is genuinely ephemeral client state, not recoverable from any server-side
-source of truth today.
+### Must session-only dynamic views materialize server-side? **Yes.**
 
-**What the server *can* and should own, independent of the client:** `customWhere`, the column
-list, and the configured sort — these are all already persisted in SQLite on the `widgets` row
-(`db.ts:606`, `getWidget(id)`) and set at design time, not request time. Reading them server-side
-(instead of trusting a client-sent column list / WHERE fragment) is strictly safer and DRYer for
-a job whose provenance should be auditable in the job-history row (`"exported widget 42"`, not an
-opaque SQL blob).
+Evidence: `POST /api/dynamic-view/materialize` takes `{dynamic_view_id}` and does `getDashboardDynamicView(id)`; the view name is `buildDynamicViewName({userId, dashboardId, dynamicViewId})` (`lib/dynamicViewName.ts`); `/api/filter/materialize`'s dv path (`dynamicViewId`) also reads the dv row; `/api/dynamic-view/:id/drop` is by id. A negative temp id has no row, so every one of those 404s.
 
-**Recommendation — split the trust boundary cleanly:**
-- Export-trigger request = `{ widgetId, filename?, gzip?, currentFilters | combinationKey }`.
-  The server loads `widget.config` from SQLite via `getWidget(widgetId)` for `customWhere`,
-  columns, and sort (same source `ChartConfigPanel`/`RecordsTableRenderer` already read) and
-  resolves the FROM source the same way `index.ts:1915-1933` (dynamic-view preview) already does:
-  probe `SELECT 1 FROM <expected-view-name> LIMIT 0`; on `isTableNotFoundError`, fall back to the
-  base table reference. This reuses an **existing, already-shipped precedent** for
-  "server-composed SQL from structured ids," not raw client SQL.
-- This is **distinct from, and safer than,** the *other* existing precedent in this codebase:
-  `POST /api/sql` (`index.ts:2904-2915`) already accepts fully-formed, client-authored SQL and
-  executes it under the requesting user's own Kinetica credentials, scoped by whatever that
-  user's Kinetica grants allow (`buildAuthHeader`, `kinetica.ts:73-79`). That precedent proves
-  "trust the client's SQL, scoped to their own DB grants" is an **accepted** trust model in this
-  app for synchronous, in-request-lifetime queries — but a background job that persists a
-  replayable spec and writes a file to disk unattended is a meaningfully larger blast radius than
-  one more synchronous `/execute/sql` round trip, so reconstructing from a known-safe
-  `widgetId` + structured filter state (mirroring `/api/filter/materialize`'s existing contract,
-  not `/api/sql`'s) is the recommended design, not a new one.
+Options:
+- **(A) Draft rows** (`draft_owner`, `draft_expires_at` columns; filtered out of all list/export queries). Reuses every existing route unchanged, but touches every list/get query, export, access control, and needs a sweeper. Leak risk is exactly the thing the product forbids.
+- **(B, recommended) Ad-hoc inline materialize.** New routes `POST /api/dynamic-view/materialize-adhoc` and a `dynamicViewDef` alternative in `/api/filter/materialize` body: `{dashboardId, sourceTableId, template_sql, max_records, tempId}`. The server runs the *same* `substituteViewToken` + `lib/materializedView.ts` code path, names the view with a temp token (`_kbi_dv_u<user>_d<dash>_t<abs(tempId)>`, **session-scoped suffix too**, so two tabs of the same user don't collide), validates the SQL with the same checks as the existing dv preview/PUT routes (`dynamicViewSql.ts`), and registers a TTL'd view (existing TTL/cleanup infra from v1.15 view lifecycle). Drop via the existing `/drop` loop in `dynamicViewStore.reset()`.
+  - Permission: ad-hoc materialize executes as the user and creates a Kinetica view, so it needs the same Kinetica rights existing dv materialize needs. Do NOT require `DYNAMIC_VIEWS_MANAGE` for viewing (an analyst without edit rights must be able to explore), but DO require `ai:use`, and rate-limit the number of live temp views per session (reuse `MAX_COMBINATION_VIEWS_PER_TABLE`-style cap).
+  - Both `WidgetRenderer` AND `MapChartRenderer` (2 `buildWmsParams` sites + dep keys) must resolve the temp dv's view name (known gotcha: "Map WMS is a separate read-path"). Budget explicit tasks for both.
 
-### `customWhere`/`IDENT_RE`/column-major-decode need a server-side port
+Even *widgets backed by a temp dv* in "removed/discard" states must DROP the Kinetica view; leaking views is a real operational cost (see PITFALLS).
 
-None of `IDENT_RE` (`WidgetRenderer.tsx:1853`), `whereCustomWhere`
-(`packages/web/src/lib/customWhere.ts:34-37`), or the column-major→row-major decode
-(`parseKineticaResponse`, `WidgetRenderer.tsx:243`, which duplicates logic already inline
-server-side at `index.ts:2405-2419` for `POST /api/info/query`) exist server-side as reusable
-modules. There is **no shared package** in this monorepo (`package.json` workspaces are only
-`packages/server` and `packages/web`, confirmed via root `package.json:6-7`) — cross-stack
-byte-identical logic is **intentionally duplicated** per-side already (see `lib/viewNaming.ts:27-31`'s
-explicit comment that `hashKey8` must match the web's `comboShortHash` byte-for-byte). Porting
-`IDENT_RE` + `whereCustomWhere` + the column-major decode into a new
-`packages/server/src/lib/exportSql.ts` (or similar) is a small, pure, independently-testable task
-that follows this established duplication pattern rather than fighting it.
+## Q4. Filters via the existing path
 
----
+- AI emits `{op:"apply_filter", source:{kind:"table"|"dv", id}, filters: ActiveFilter[]}`. The client's `aiFilterApplier` calls `useFilterStore.getState().setBulkFilters(tableId, filters)` (table path) or `addDvFilter(dvId, f)` (dv path, Phase 63 slice). Those bump `filterVersion`; `AggregatedWidgetRenderer` Effect 1 and the dv cascade hook materialize; `filterCombinationStore` registers combinations; maps pick it up through their existing combination read. **Nothing here is new infrastructure**, which is the point: it "drives, does not bypass".
+- Respect `FILTER_CAP_PER_TABLE = 25` (store toasts; surface the toast text back as a step note, and have the server tool pre-check count from the snapshot's active filters).
+- Keep `actionEngineDecoupling.spec.ts` green: `aiFilterApplier.ts` lives in `lib/aiOps/` and is imported by `applyAiOp.ts`, NOT by `applyWidgetAction.ts`/`widgetAction.ts`/`widgetActionStore.ts`. Check the spec's grep scope before placing files (it statically greps the engine files).
+- **Filters are session-only already** (they are viewer state), so Keep does NOT persist filters. Surface that to the user in the Keep UI ("filters are not saved"). If product wants saved default filters, that is a separate feature (do not build).
+- Selection of the right table when a widget is dv-backed: `apply_filter` must name the *source*; the shadow-state validator checks the column exists on that table/dv `columns_json`.
+- Spatial/map-draw filters: out of scope for v2.0 (spatialFilterStore has its own semantics); the tool surface is column filters only.
 
-## 3. Transient view lifecycle
+## Q5. Undo stack design
 
-**TTL enforcement is entirely Kinetica-native, not a server sweep.** `materializedView.ts:31-54`
-(`createOrReplaceMaterialized`) emits `CREATE OR REPLACE MATERIALIZED VIEW ... USING TABLE
-PROPERTIES (TTL = <n>)` — Kinetica itself expires the view after `n` minutes of inactivity
-(a **sliding** TTL, per `index.ts:1443`'s comment `// TTL (sliding)` and the extensive design
-notes in `useViewKeepAlive.ts:1-24`). `DEFAULT_VIEW_TTL_MINUTES` is read once at boot
-(`index.ts:198`, `readPositiveIntEnv("DEFAULT_VIEW_TTL_MINUTES", 5)` — default **5 minutes**).
+- **Granularity: one undo unit per AI *turn* (ask), with per-step breakdown visible.** Users think "undo what the AI just did", not "undo step 3 of 7". Provide "Undo" (last turn) and "Discard all" (reset whole session layer). Per-step undo is possible from the log but not required.
+- **Mechanism: op log + inverse, not state snapshots.**
+  - Structural/patch ops are *pure derivations* of the log: undo = drop the step(s), recompute derived sets + re-write the AI contribution. Inverse is trivial.
+  - Filter ops are *side-effects* on `filterStore`: each step records the **prior filter state for that source** (`before: ActiveFilter[]`) and its inverse is `setBulkFilters`/`removeFilter` back to `before`. (`setBulkFilters` is replace-by-column and preserves others; to restore "column was absent" use `removeFilter`.)
+  - Temp-dv ops: inverse = drop the Kinetica view (best effort) + remove from the added list.
+- **Interleaved user actions** (user manually adds a filter between AI turns) must not be clobbered: inverse touches only the columns the AI changed.
+- **Persistence of the stack:** in-memory only. Reload = discard (a locked requirement); do not write to localStorage.
+- **Stale-state hazard:** the shadow state sent to the server must be the *effective* dashboard at ask time, including prior session changes, so multi-turn sessions compose correctly.
+- Undo disabled while `status === "streaming"` (cancel first; cancel = abort fetch -> server aborts LLM call; already-applied ops stay in the log and are undoable).
 
-**There is no server-side sweeper for materialized views** — unlike sessions, which do have one
-(`sessionStore.ts:280-291`, `startSessionSweep`, hourly `setInterval`, `.unref()`'d so test runners
-exit cleanly). View liveness is maintained *purely* by reads resetting Kinetica's sliding TTL,
-which is exactly why `hooks/useViewKeepAlive.ts` (246 lines, browser-only) exists: a per-dashboard
-timer fires a no-op `SELECT 1 FROM <viewName> LIMIT 1` touch read (`:97`) roughly
-`ttlKeepaliveLeadMinutes` (`index.ts:199`, default 1 min) before each view's `expiresAt`, on the
-documented *assumption* that a read resets the TTL — the module's own comments (`:17-20`) say this
-was "confirmed live in Phase 79" but is still flagged "best-effort."
+## Q6. "Keep" promotes the session layer to persisted entities
 
-**Implication for the export job:** the job runs server-side and may well outlive the triggering
-browser tab (the "export history list" requirement implies exactly this — re-download after
-navigating away). It **cannot** depend on `useViewKeepAlive`, which only runs while a dashboard
-component is mounted in a browser. Two designs were considered:
+**Gate:** server enforces `DASHBOARDS_EDIT` (+ `LAYERS_MANAGE` if any layer op, `DYNAMIC_VIEWS_MANAGE` if any dv op, `WIDGETS_CONFIGURE` for patches that touch widget config) via `getEffectivePermissions` inside the handler (route-level `requirePermission` is a single permission, and the existing import route chains two). The client hides Keep when `useAuthStore.hasPermission` says no, but the server is the authority. Users without edit rights simply never see Keep; "Discard" is always available. Also re-check `canViewDashboard` (v1.10 per-dashboard access).
 
-- *(Rejected)* Let the job's own batched reads double as keep-alive touches, relying on the
-  "reads reset TTL" premise. Risk: on a very large export, OFFSET-depth scan cost can grow
-  batch-over-batch; if any single batch takes longer than the remaining TTL window, the view can
-  expire *during* a read that would otherwise have renewed it — a race the live dashboard's
-  shorter, decoupled touch-read doesn't have to worry about at the same scale.
-- **(Recommended) Materialize a job-private snapshot view at trigger time**, reusing
-  `createOrReplaceMaterialized` (`materializedView.ts:31-54`) with (a) a **new, job-scoped naming
-  convention** distinct from `buildFilterViewName`'s user+session+dashboard+table+combinationKey
-  scheme (so it can't be dropped out from under the job by an unrelated filter change or
-  `DELETE /api/filter/materialize` call), and (b) a **TTL sized to the job's expected duration**
-  (e.g. `max(DEFAULT_VIEW_TTL_MINUTES, configured export timeout)`), not the dashboard default.
-  This fully decouples the export from the live dashboard's filter churn and from
-  `useViewKeepAlive`'s assumptions, and gives OFFSET-paging **true snapshot semantics for free**
-  (the private view is immutable for the job's lifetime) — directly addressing PROJECT.md's
-  "OFFSET paging needs a stable order" hazard. The job should explicitly `DROP TABLE IF EXISTS` its
-  private view on completion/cancel/failure (mirroring the existing explicit-drop pattern at
-  `index.ts:1493`, `:2023`, `:2158`, `:2190`), rather than waiting out its TTL.
-- **Stable sort tiebreaker:** `sortField`/`sortDir` are a single, operator-chosen, not-necessarily-
-  unique column. Recommend `ORDER BY <sortField>, <all remaining exported columns>` as a cheap
-  deterministic composite tiebreaker — no new Kinetica feature required, and acceptable as a known
-  edge case (duplicate full-row ties) in the same spirit this codebase already accepts elsewhere
-  (`lib/barGroupedSeries.ts:30-32`'s explicit "accepted known edge-case" note on its own separator
-  collision). Since the export job reads an immutable private snapshot (point above), this is
-  sufficient — the data literally cannot shift between batches.
+**Endpoint:** `POST /api/dashboards/:id/ai-keep` with `{ steps: AiOp[] (structural + patch only), expectedDashboardUpdatedAt }`.
 
----
+**Algorithm (inside one `db.transaction`, mirroring `applyDashboardImport`'s structure):**
+1. Validate every op again with the shared zod + allow-list (never trust the client).
+2. Maintain `RefIdMaps` (`emptyRefIdMaps()`; `maps.widget/layer/dynamicView` are `Map<number, number>`; temp negative id -> real id).
+3. Pass 1, create in dependency order: **dynamic views -> layers -> widgets** (widgets can reference dvs/layers/other widgets). Use the same creators `applyDashboardImport` uses: `createDashboardDynamicView`, `createDashboardLayer`, `createWidget`; record `maps.*.set(tempId, created.id)`.
+4. Pass 2, remap: for each created widget/layer config call `remapWidgetConfigRefs(config, maps)` (and the layer/dv equivalents) then `updateWidget/updateDashboardLayer`. This is exactly import's Pass 2; it also strips/reports refs that cannot resolve (e.g. an added widget referencing a removed one).
+5. Apply patches to existing entities (merge into stored config with `getFieldLocation` split; top-level layer fields `track_config`/`cb_config` per the `track_config` gotcha), then removals (`DELETE` equivalents: `deleteWidget`, layer delete, dv delete).
+6. Return `{ idMap: {widget:{-1:123}, layer:{...}, dynamicView:{...}}, report }`.
+7. **Client after success:** apply `idMap` to the session (swap temp ids for real ids in `addedWidgets` etc. - or simply refetch widgets/layers/dvs and clear the session layer), re-key `filterStore.dvFilters`, `dynamicViewStore.views`, and `filterCombinationStore.vizToHash` entries that were keyed by temp ids (or drop and re-materialize; the simpler path is clear-and-refetch with a single toast; flag S4 for the temp-dv->real-dv view rename: the real view name uses the real id, so re-materialize once).
 
-## 4. Job + file design within this codebase
+**Why not reuse `applyDashboardImport`:** it always `createDashboard(...)`s, resolves tables by `schema.name`, and has no notion of "patch/delete existing". What IS reusable: `RefIdMaps`, `remapWidgetConfigRefs`, `remapFilterSelection`, `collect*Refs` (dangling detection), and the "validate-before-write, all-in-one-transaction, report what was stripped" discipline. Add a lightweight `ai-keep` module beside `dashboardImport.ts`.
 
-### Job registry: SQLite, following the `table_sync_history` precedent
+**Concurrency:** another designer may have edited the dashboard since the session started. Send `expectedDashboardUpdatedAt`; on mismatch return 409 and let the user choose Keep anyway (patches use merge-into-current) or discard. Minimum viable: last-write-wins with a warning (flag).
 
-`db.ts` already has the exact shape of precedent needed: `CREATE TABLE IF NOT EXISTS
-table_sync_history (... kind TEXT NOT NULL CHECK(kind IN ('baseline','diff')) ...)`
-(`db.ts:326-336`), created via the same `ensureDir`/`CREATE TABLE IF NOT EXISTS` pattern used for
-every other table in `SCHEMA_DDL` (`db.ts:20-...`). Recommend a new `export_jobs` table following
-this exact style: `id`, `username` (scoping — mirrors `table_sync_history`'s free-text `actor`
-column, `db.ts:329`), `widget_id`, `dashboard_id`, `status` with a `CHECK(status IN (...))`
-constraint (mirroring the `kind` CHECK), `filename`, `gzip`, `rows_written`, `total_rows`
-(nullable — `COUNT(*)` may be skipped if expensive), `file_path`, `file_size_bytes`, `created_at`,
-`started_at`, `completed_at`, `expires_at`, `error_message`. List/status/download routes should
-filter `WHERE username = ?` (the requesting user, from `AuthedRequest.user.creds.username`) for
-per-user privacy — the filesystem itself provides no isolation (Node owns every file regardless of
-which app-user "owns" it in the data model); privacy is enforced by the route's `WHERE`, not disk
-permissions.
+**Partial Keep:** keep all-or-nothing in v2.0 (transaction). Selective per-step Keep is deferred.
 
-### In-memory piece: per-job `AbortController`, not persisted
+## Q7. How the AI gets dashboard and schema context
 
-The durable SQLite row cannot carry a live `AbortController` across a server restart, and
-shouldn't try. Recommend a module-level `Map<jobId, AbortController>` (new
-`lib/exportRunner.ts` or similar) — this mirrors the existing client-side pattern at
-`WidgetRenderer.tsx:1943` (`exportAbortRef`), just server-side and keyed by job id instead of one
-ref per component instance. **On boot, reconcile stale `running` rows** — any `export_jobs` row
-left `status='running'` from a crashed/killed process should flip to `failed`/`interrupted` before
-`app.listen()`, mirroring the existing `wipeSessionsOnModeChange()` boot-time-reconciliation
-pattern (`index.ts:230-241`, which runs "before `app.listen()` so the server never serves a request
-that could resurrect" stale state).
-
-### Per-user credentials for a job that outlives the triggering request
-
-`AuthedRequest.user.creds` (`auth.ts:26-35`) only exists for the lifetime of the HTTP request that
-carried it. **Do not cache `creds` (password or OIDC access token) in the long-lived job map** —
-that would mean holding a live secret in server memory for the job's full duration, unnecessarily
-widening the secret's exposure window. Recommend storing only the session id (`sid`) on the job,
-and re-deriving `{ credentialType, creds }` fresh before each Kinetica call via
-`sessionStore.getSession(sid)` (`sessionStore.ts:193`) — exactly what `requireAuth` itself does per
-request (`auth.ts:140`, `:168`). This has two good properties for free: (a) it **fails closed** —
-`getSession` returns `null` and deletes the row on expiry (`auth.ts:140`'s comment), so a job whose
-session has since expired or been logged out naturally stops being able to authenticate, matching
-PROJECT.md's "must not outlive or escape that user's authorization" hazard; (b) it needs no new
-secret-handling code path, just a different call site for the same existing function.
-
-**Two session-lifetime hazards to flag, not fix in this phase:**
-- Sessions have a **fixed 8-hour expiry** set at creation (`sessionStore.ts:91`,
-  `datetime('now', '+8 hours')`; `auth.ts:11`, `TOKEN_TTL_SECONDS = 60*60*8`) —
-  `touchSession` only bumps `last_used_at`, **never** `expires_at` (`sessionStore.ts`, comment
-  `"never expires_at (Pitfall P5)"`). A job starting near the end of an 8-hour session window can
-  be cut off mid-export; this should surface as a distinct job failure state
-  ("session expired"), not a silent hang or generic error.
-- **No OIDC token-refresh logic exists anywhere in `auth.ts`** (confirmed by grep — no `refresh`
-  keyword in the file). An OIDC access token can expire independently of, and potentially before,
-  the session cookie's own 8-hour clock, producing a `KineticaAuthError` mid-batch. Same
-  "surface as a job failure, don't silently hang" handling applies; a token-refresh fix is out of
-  scope for this milestone.
-
-### RBAC permission — recommend reusing `dashboards:view`, not adding a new permission
-
-Today's inline CSV download has **no RBAC permission gate** at all — `enableCsvDownload`
-(`WidgetRenderer.tsx:1940`) is a per-widget *designer* config toggle, not an RBAC permission; the
-button renders for anyone who can already view the dashboard (`WidgetRenderer.tsx:2366-2371`).
-`lib/permissions.ts:1-4` documents that "adding a permission requires a release" and the current
-catalog has exactly 18 entries (`:18-37`) with hardcoded counts/expectations rippling through
-`rbacDb.ts`, `rbacSeed.ts`'s `DEFAULT_ROLE_MAPPINGS`, and the web's
-`permissionGroups.ts` (`NOUN_TO_GROUP`/`GROUP_ORDER`/`PERMISSION_DESCRIPTIONS`, all requiring a
-matching new entry) plus `RolesPage` specs — a real, multi-file ripple for a genuinely new
-permission. Since the export job doesn't change *who* can already see/export a widget's data (same
-exposure as today's inline button, same `dashboards:view` implicit gate), recommend gating the new
-export routes on the **same requirement the dashboard already needs**, not a new permission —
-governance over "who can run huge exports" is already scoped by PROJECT.md as the env-var admin
-cap (rows/file-size), not a new role capability. Flag this as an explicit decision point for
-the roadmap author, since it's a product call, not purely technical.
-
-### Env config pattern
-
-`index.ts:186-197` defines `readPositiveIntEnv(name, def)` — read **once at boot** inside
-`createApp()` (comment: `"ARCHITECTURE AP-5 — never re-read process.env per-route"`), warn+fallback
-(not fail-fast) on an invalid value, used for `DEFAULT_VIEW_TTL_MINUTES` (`:198`),
-`TTL_KEEPALIVE_LEAD_MINUTES` (`:199`), `MAX_COMBINATION_VIEWS_PER_TABLE` (`:204`),
-`MAX_BAR_GROUP_BY_SERIES` (`:209`) — this is the established tuning-knob idiom; boolean flags use a
-plain `=== "true"` string compare instead (`DISABLE_DV_FILTER_SCOPE`, `:214`). Recommend new export
-knobs follow this exact pattern (read once, warn+fallback, not DB/UI-backed) — matches the
-project's own standing operator preference for env config over a runtime settings store:
-`EXPORT_ROW_CAP`, `EXPORT_FILE_SIZE_CAP_MB`, `EXPORT_TTL_MINUTES`,
-`EXPORT_MAX_CONCURRENT_PER_USER`, `EXPORT_BATCH_SIZE` (default `20000` per PROJECT.md).
-
-### Temp dir location
-
-No existing on-disk temp-file precedent exists in this server — the only current file-upload
-handling (`multer`, `index.ts:362-363`) uses `multer.memoryStorage()` (in-memory, never touches
-disk) for branding logo uploads. The closest structural precedent is `db.ts:13-18`'s `ensureDir`
-helper (`fs.mkdirSync(dir, { recursive: true })`, skipped for `:memory:`) paired with
-`db.ts:500`'s default path convention: `process.env.DB_PATH || path.join(process.cwd(), "data",
-"kinetica.db")`. Recommend a new `EXPORT_TEMP_DIR` env var defaulting to
-`path.join(process.cwd(), "data", "exports")`, created at boot with the same `ensureDir`-style
-guard. `fs`/`path` are already imported in `db.ts:1-3` — no new dependency required.
-
-### Serving the file (download, Range-resumable)
-
-Express `4.19.2` is already a dependency (`packages/server/package.json`); its built-in
-`res.sendFile()` (via the `send` package Express bundles) **already implements `Range`/
-`Accept-Ranges`/`206 Partial Content` handling natively** — no manual Range-header parsing is
-required. This is genuinely new ground for this server (the only existing file-send precedent is
-`res.send(buffer)` whole-buffer sends at `index.ts:515`, `:969`, `:2877` — none use `sendFile` or
-stream a file from disk today), but it is a small, well-contained addition, not a novel subsystem:
-`res.sendFile(absoluteFilePath, { headers: { "Content-Disposition": ... } })` on a GET route gated
-by the same per-user `WHERE username = ?` ownership check as the job-status route. The existing
-`Content-Disposition: attachment; filename="..."` pattern used for dashboard export
-(`index.ts:965`) is the precedent to reuse for the filename header.
-
-### Graceful shutdown
-
-**No `SIGTERM`/`SIGINT` handling exists anywhere in the server** (confirmed: zero matches
-grepping the whole `packages/server/src` tree). The only shutdown-adjacent precedent is
-`sessionStore.ts:290`'s `.unref()` on its sweep interval, which lets the process exit cleanly in
-tests/dev without an explicit handler. This milestone's boot-time reconciliation step (flip stale
-`running` rows to `failed` on next boot, see above) covers the "server crashed mid-export" case
-without needing a shutdown hook at all. A `SIGTERM` handler (cancel in-flight jobs cleanly,
-close temp file handles) would be genuinely new code for this server — recommend treating it as
-optional/defer-able unless the roadmap specifically wants "don't leave half-written files on a
-clean restart" as a hard requirement; the TTL sweep + boot reconciliation already provide a safety
-net.
-
----
-
-## 5. Line chart multi-series Group By
-
-### What already exists and is directly reusable
-
-`ChartConfigPanel.tsx:352`: `usesMultiColumnGroupBy = isBar || isTable || isHeatmap` — **line is
-currently excluded**. `isBar`/`isHeatmap` are defined at `:346`/`:351`; adding `isLine = widgetType
-=== "line"` and including it in this gate is the single flag-level change needed to expose the
-N-column builder UI (`:828-897`) to the line chart. `MAX_BAR_GROUP_BY_COLUMNS` (`:356`,
-`isHeatmap ? 2 : 6`) already applies generically — line would get the same 6-column cap as bar.
-The builder's per-chart-type label wording (`labelFor`, `:837-842`) and hint text
-(`:893-899`) already branch on `isBar`/`isHeatmap` vs. a generic fallback — line falls into the
-generic `"Group column ${idx+1}"` / table-style hint today and should get its own bar-style wording
-("Primary group (x-axis)" / "Series dimension N") since its SQL semantics (one category axis + N
-series columns) match bar's, not the table's.
-
-`isMultiColumnBarGroupBy(config)` (`lib/barGroupedSeries.ts:16-19`, `Array.isArray(groupByColumns)
-&& length >= 2`) and `toBarPivotInput` (`:34-48`, maps flat SQL rows → `{bucket, series, value}`
-using col1 as bucket and `col2..N` joined by `" / "` as the series key) are **pure, chart-type-
-agnostic** functions — nothing bar-specific in their logic despite the filename. `selectTopSeries`
-and `pivotSeriesRows` (`lib/groupedSeries.ts:56-76`, `:93-127`) are already shared between
-Timeline/NumericLine (grouped time-series) and Bar (`BarRenderer`, `WidgetRenderer.tsx:973-977`) —
-the same three functions are the correct reuse target for Line, no new pivot logic needed.
-
-### What `LineRenderer` (`WidgetRenderer.tsx:1255-1387`) currently lacks, mapped to `BarRenderer`'s existing multi-series branch (`:967-1004`, `:1150-1161`, `:1039-1056`)
-
-| Need | BarRenderer precedent (already shipped) | LineRenderer today |
+| Context | Source | Notes |
 |---|---|---|
-| Pivot config → series | `:969` `multiSeries = isMultiColumnBarGroupBy(config)`; `:973` `toBarPivotInput`; `:974-977` `selectTopSeries`/`pivotSeriesRows` → `chartData` | None — `groupByColumn` only feeds drill-down target resolution (`:1273`, `:1305-1307`), never pivots rows |
-| N series elements | `:1150-1161`, `top.series.map(sk => <Bar dataKey={sk} name={sk} fill={seriesColors[i]} .../>)` | Single hardcoded `<Line dataKey={y} .../>` (`:1375-1382`) / `<Area dataKey={y} .../>` (`:1348-1356`) |
-| Truncation note ("top N of M series") | `:1215-1219`, `multiSeries && top.truncated` banner | None |
-| Drill-down on a series column | `:1039-1056`, explicit `multiSeries` branch: drills on `payload["bucket"]` / `groupByColumns[0]` **only** — the series dimension is deliberately NOT drillable, same accepted limitation as single-column | None — would need the identical branch ported in, same accepted limitation |
-| Legend name for a custom metric | `:961-963`, `isCustomSelection(metricId) ? resolveMetricLabel(...) : resolveLabel(...)` feeds `metricLabel`, used in the `name` prop | `:1355`/`:1381`: `name={(config.yFieldLabel) || (resolveLabel(...)) || y}` — **never calls `resolveMetricLabel`/`isCustomSelection`**, so a custom-metric-backed line chart falls through to the bare dataKey `y` (often literally `"value"`) — this is the standalone legend bug PROJECT.md names, independent of the multi-series work |
-| All x-axis labels shown | N/A (bar doesn't tick-collide the same way) | `<XAxis dataKey={x} .../>` at `:1339`/`:1366` has no `interval` prop — Recharts' default auto-skips colliding ticks; fix is `interval={0}` on both (Area and Line chart variants), per Recharts' own `XAxis` API and the documented tick-interval behavior (see FEATURES.md Sources) |
+| Table registry + columns + types | SQLite `tables` (columns cached at registration; `schemaSync` v1.25 keeps fresh) restricted to tables on this dashboard (`listDashboardTables`) for analysts; designers' generate flow may offer all registered tables | Already contains column names/types; no Kinetica call for schema-only mode |
+| Custom metrics + column display config | `customMetricsStore` server tables (`GET /api/tables/:id/custom-metrics`) | Lets the AI reference "Revenue" metrics by label; resolved server-side |
+| Dashboard state | Client `snapshot` (effective state) | Strip bulky/irrelevant config (colors, formats) to a compact summary; full config only for entities the model asks about via `get_dashboard(ids)` |
+| Widget-type catalogue | Generated from the registry (`getAllChartTypes()`: `type`, `label`, field keys/enums/defaults, data-binding keys) shipped to the server as a build-time JSON or maintained in `packages/shared` | The server cannot import web registry code. This must be a generated artifact or shared module (S3). |
+| Sample/profile data | Only in **query mode**: `get_column_profile` via existing stats SQL; `run_query` with `LIMIT` | In schema-only mode the model sees no row values at all |
+| Active filters | snapshot | |
 
-**Build note:** the multi-series pivot/series-element/drill-down work and the "all labels shown" /
-"legend name" fixes are logically independent (FEATURES.md's dependency graph already says this)
-— they can land as separate, individually-testable changes inside the same `LineRenderer`
-function, in any order, but **all three touch `WidgetRenderer.tsx`**, the same file the export
-job's `RecordsTableRenderer`/`handleDownloadCsv` work also lives in (`:1849-2230` vs.
-`LineRenderer` at `:1255-1387` — different line ranges, same file). This is a file-level
-collision risk for parallel executors (per the project's own recorded lesson about parallel
-executors clobbering shared files), not a logical dependency — the roadmap should either
-sequence the line-chart phase and the export-job phase, or assign both to one plan/executor if
-run in the same window.
+- **Token budget:** the prompt is built from a compact JSON summary; cap tables at N columns per table in prompt and offer `get_schema(tableId)` for detail. Wide Kinetica tables (hundreds of columns) are the realistic overflow case.
+- **Admin data-access modes via env** (project preference: env over runtime store): `AI_DATA_ACCESS=schema|query` (default `schema`). In `schema` mode the `run_query` and `get_column_profile` tools are simply not registered with the LLM. In `query` mode they are registered and run as the user. Also surface what was sent to the provider in the audit log (see PITFALLS: data egress to a third-party LLM).
+- `AI_PROVIDER=anthropic|openai-compat`, `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`, `AI_MAX_STEPS`, `AI_TIMEOUT_MS`. Fail closed: `/api/ai/config` returns `{enabled:false}` when unconfigured, and the AI widget renders a "not configured" state.
 
----
+## Q8. Streaming the AI's steps to the widget
 
-## Suggested Build Order
+- **Transport:** `POST /api/ai/ask` returning `text/event-stream`, consumed by `fetch` + `ReadableStream` on the client (native `EventSource` is GET-only and can't carry the snapshot/body; cookies for the session auth still go along with `credentials`). No SSE exists in the repo today (existing long-running work, the v1.26 export runner, is poll-based), so this is new infra; WebSockets are unnecessary (one-directional).
+- **Event types:** `status` (thinking/running tool), `step` (human label, e.g. "Added a bar chart of sales by region"), `op` (the structured op to apply), `explain` (text delta, Full mode), `followups` (array), `error` (typed code), `done` (usage, step count).
+- **Server:** `res.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'})`, flush after each event, heartbeat comment every ~15s, `req.on('close', abort)` -> `AbortController` into the provider call and any in-flight `kineticaSql`. Note the server's `express.json({limit:"1mb"})` bounds the snapshot size, so summarise the snapshot.
+- Not `asyncHandler`-bubbled for mid-stream errors: once headers are sent, errors must be emitted as an `error` event then `res.end()` (the existing `errorMiddleware` would try to send JSON after headers). Pitfall.
+- **Client:** `aiClient.askAi()` is an async generator; `AiWidgetRenderer` renders `status`/`step` lines (progress), `applyAiOp` is called per `op` event (so the dashboard visibly changes as the agent works), and Full mode shows `explain` + `followups` (clicking a follow-up re-asks). Not a chat transcript: only the latest turn is displayed.
+- **Reverse proxy:** document buffering requirements for the deploy kit (nginx `proxy_buffering off` for this path). Verify with the operator's real proxy (S2).
 
-1. **Fix the 1,000-row ceiling + blast-radius audit** (`kinetica.ts:187`; raise the default,
-   confirmed-safe per the proven `extra.limit` override precedent). Fixes the heatmap silent-
-   truncation bug as a side effect. Nothing else in the export job can be correctness-tested
-   without this landing first — nothing downstream depends on anything it doesn't already have.
+## Q9. Analyst vs designer flows, "generate a dashboard"
 
-2. **Export-job foundation, pure/offline-testable pieces first:**
-   a. Port `IDENT_RE` + `whereCustomWhere` + the column-major row decode into a new server-side
-      `lib/exportSql.ts` (pure, no Kinetica/Express dependency — mirrors the existing
-      `lib/viewNaming.ts`-style cross-stack duplication, independently unit-testable).
-   b. `export_jobs` SQLite table + `db.ts` CRUD (mirrors `table_sync_history`; pure persistence,
-      no Kinetica dependency, testable with `:memory:` db like existing `db.ts` tests).
-   c. Job-private snapshot materialize/drop helper (wraps `createOrReplaceMaterialized`) +
-      deterministic composite `ORDER BY` builder.
-   d. The batch-loop runner (in-memory `Map<jobId, AbortController>`, SQLite progress updates,
-      explicit `extra.limit` per batch) — composes (a)+(b)+(c), build/test last among the
-      "engine" pieces since it's the riskiest and most novel part of this milestone.
-   e. Routes: trigger / history list / status-poll / Range-aware download (`res.sendFile`) /
-      cancel — thin wiring over (d).
-   f. TTL cleanup sweep (mirrors `startSessionSweep`'s `.unref()`'d interval) + boot-time
-      reconciliation of stale `running` rows (mirrors `wipeSessionsOnModeChange`'s
-      before-`app.listen()` pattern).
-   g. Env knobs (`readPositiveIntEnv` style) + `EXPORT_TEMP_DIR` (mirrors `db.ts`'s `ensureDir`).
+- **Analyst explore** (any user with `ai:use` and view access): ops apply to the session layer; Keep is hidden without edit rights. Without Keep rights there are NO server writes except ad-hoc dv views.
+- **Designer generate** (needs `DASHBOARDS_CREATE`, plus edit): recommended flow: (1) user picks a table in the AI widget/designer entry on `DashboardsPage`, (2) client calls existing `POST /api/dashboards` (+ `POST /api/dashboards/:id/tables`) to create an empty dashboard, (3) the same agent loop runs with a `generate` system prompt and `mode:"generate"` (higher step budget, layout planner, strong bias to a coherent set: KPIs on top, map if geometry columns exist, filter widget), (4) the result sits in the session layer for review, (5) Keep commits via `ai-keep`.
+  - This gives ONE mechanism (session layer + Keep) for both flows, rather than a second code path that writes DB directly.
+  - **Alternative considered:** have the AI emit a v1.24 export file and call `validateImportFile` + `applyDashboardImport`. It gets tier-1 structural validation and id remapping for free, but requires `DATASETS_MANAGE` (import's second permission, which designers may lack), forces the model to author the verbose full export schema including every table row, and can't preview before commit. Reject; but DO reuse its remap/validate helpers (Q6). The export file *schema* is still a good reference for the shape of a whole-dashboard op list.
+  - Trade-off: an empty dashboard row exists before Keep. Offer "Delete dashboard" on Discard when the dashboard was created by this flow. Alternatively hold generation in a dashboardless "draft" (rejected: no dashboardId -> no filter/materialize paths).
 
-3. **Client: export-trigger + history UI.** Depends on (2e)'s routes existing. Decide (product
-   call, not purely technical) whether the existing small in-browser `handleDownloadCsv` loop is
-   retired in favor of always routing through the new job, or kept as a fast-path for small
-   tables — either way this is additive UI work, not a blocker for anything else.
+## Data Flow (one ask)
 
-4. **Line chart multi-series Group By** — fully independent of steps 1-3 logically (touches
-   `ChartConfigPanel.tsx` + a different line-range of `WidgetRenderer.tsx`'s `LineRenderer`). Can
-   run in parallel with step 2/3 from a dependency standpoint, but **shares `WidgetRenderer.tsx`**
-   with step 3's export-trigger UI wiring — sequence the two or assign to one plan to avoid a
-   same-file collision.
+1. User types a question in the AI widget; client builds `snapshot` from `effective*` selectors + `filterStore`.
+2. `POST /api/ai/ask` -> `requireAuth` -> `ai:use` -> `canViewDashboard` -> build system prompt (+ tools per `AI_DATA_ACCESS`).
+3. Loop: LLM -> tool_use -> (read tool: run, return result) or (mutate tool: validate vs shadow state, emit `op`, return ok) -> ... -> `explain` + `followups` -> `done`.
+4. Client applies `op`s into `aiSessionStore`; widgets render; temp dvs trigger ad-hoc materialize; filters trigger the normal materialize path.
+5. User reviews: Undo / Discard (client only) or Keep (-> `ai-keep`).
 
----
+## Patterns to Follow
+
+### Pattern 1: Shared op schema, double validation
+**What:** `AiOp` zod discriminated union in `packages/shared`, validated on the server (before emit), on the client (before apply) and on Keep (before write).
+**Why:** the allow-list is the safety boundary; the stream and the Keep body are both attacker-controlled inputs from the server's/client's perspective.
+```ts
+export const AiOpSchema = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("patch"), action: WidgetActionSchema }),
+  z.object({ op: z.literal("add_widget"), tempId: z.number().int().negative(), type: z.string(), title: z.string(), config: z.record(z.unknown()) }),
+  z.object({ op: z.literal("remove_widget"), id: z.number().int() }),
+  // add_layer, remove_layer, add_dynamic_view, remove_dynamic_view, apply_filter, clear_filter ...
+]);
+```
+
+### Pattern 2: Derived-from-log state (mirror `deriveOverlays`)
+Recompute all derived sets from `steps` on every change. Never mutate derived state directly; this makes undo trivial and Keep a pure function of the log.
+
+### Pattern 3: Source-keyed contribution for patches
+Write the AI's patches to `widgetActionStore` under a reserved `AI_SOURCE_ID`, so radio-control overlays and AI overlays compose through the existing deep-merge and `releaseLayerConfigField` logic.
+
+### Pattern 4: Provider adapter with a normalized tool-call shape
+`interface LlmProvider { stream(req: {system, messages, tools, signal}): AsyncIterable<LlmEvent> }` with `LlmEvent = text_delta | tool_use | stop`. Anthropic and OpenAI-compatible adapters translate. Local models often have weaker tool-calling; keep a JSON-mode fallback that parses a constrained op list (S6).
+
+## Anti-Patterns to Avoid
+
+### Anti-pattern 1: AI calls the existing PATCH/POST routes directly
+**Why bad:** persists unsaved changes for everyone (violates "others never see unsaved AI changes"), and bypasses the session layer. **Instead:** those routes run only inside Keep, under the user's edit permission.
+
+### Anti-pattern 2: Putting filter logic in the action engine
+**Why bad:** breaks `ACTION-ENGINE-NO-FILTER` and its static spec. **Instead:** `aiFilterApplier` sibling module.
+
+### Anti-pattern 3: Draft DB rows for session entities
+**Why bad:** every list/export/access query becomes a potential leak; needs a sweeper; violates reload-reverts-by-construction. **Instead:** negative temp ids + ad-hoc materialize.
+
+### Anti-pattern 4: Letting the model write raw SQL into widgets
+**Why bad:** widgets build SQL from config (`metric`, `aggregation`, `customWhere` etc.); `customWhere` is a raw predicate. **Instead:** restrict AI to structured fields; treat `customWhere` as not allow-listed in v2.0 (or validate via `whereClause.ts`); `add_dynamic_view` `template_sql` goes through the existing dv SQL validation.
+
+### Anti-pattern 5: Server-side conversation memory
+**Why bad:** state to clean up, contradicts "not a chat transcript". **Instead:** stateless asks with snapshot.
+
+## Q10. Read-only query tool executing as the user
+
+- Call `kineticaSql(req as AuthedRequest, sql, {route:"POST /api/ai/ask", op:"AI_QUERY", extra:{limit: AI_QUERY_MAX_ROWS}})`. `kineticaSql` already: uses `req.user.creds` (Kinetica enforces *that user's* grants, so the tool can never see more than the user can), clamps limit to `KINETICA_MAX_ROWS_PER_QUERY`, writes the audit line with `request_id/username/route/op`. Add `"AI_QUERY"` to the `KineticaOp` union for log filtering.
+- **Do not rely on Kinetica grants for read-only.** A user with write rights could be talked into a DDL/DML by prompt injection (e.g. text inside a data column). `sqlGuard.ts`: parse-reject anything that is not a single `SELECT`/`WITH ... SELECT`; reject `;`-chained statements, `INTO`, DDL/DML keywords, table functions that write; allow only tables on the dashboard (or registered tables). Reuse the existing dv SQL checks in `lib/dynamicViewSql.ts` / `whereClause.ts` where they fit. Unknown-parse -> reject (fail closed).
+- **Cap results:** low row cap (e.g. 50) and a column/cell truncation before sending to the LLM; this is also the data-egress control.
+- **Session lifetime:** within one request the `req` principal suffices; a request is bounded by `AI_TIMEOUT_MS`. If any step ever runs after the request ends (it should not), use `principalForSession(sid)` like the export runner and handle `SessionEndedError`.
+- Query results go to the LLM provider: for `AI_DATA_ACCESS=query` with a hosted provider this is a data-egress decision the admin makes explicitly via env; document it.
+
+## Suggested Build Order (phases continue from 133)
+
+Dependencies: shared op contract -> session layer (structural) -> agent loop + schema-only tools -> streaming UI -> filters -> dv/ad-hoc materialize -> query tool -> Keep -> generate. Keep is last because it needs stable op shapes; but the *contract* for it should be designed in phase 133.
+
+| Phase | Name | Delivers | Depends on | Research flag |
+|---|---|---|---|---|
+| **133** | AI contract & spikes | `packages/shared` (zod `AiOp`, `WidgetAction`, allow-list v3 extraction, config validators generated from registry); env schema (`AI_*`); `LlmProvider` interface; **spikes S1-S3** | - | **Deeper research** (S1 ad-hoc dv, S3 config validators) |
+| **134** | Session layer engine (client) | `aiSessionStore`, temp ids, derived effective widgets/layers/dvs wired in `DashboardsPage`, `MapChartRenderer`, `LegendRenderer`, `applyLayerOverrides`; undo/discard; reset in cleanup chain; tested with hand-written ops (no LLM) | 133 | Standard (follows `widgetActionStore` patterns) |
+| **135** | Server agent loop + provider adapters + read tools | `aiRoutes.ts`, `agentLoop`, Anthropic + OpenAI-compat adapters, `get_schema/get_dashboard`, shadow-state validation, `ai:use` permission + permission ripple specs, `/api/ai/config` | 133 | Provider tool-calling details (local model JSON fallback) |
+| **136** | AI widget + SSE streaming | `definitions/ai.ts`, `AiWidgetRenderer` (Compact/Full), `AiConfigPanel`, `aiClient` stream reader, step/explain/followups UI, cancel, modals portaled | 134, 135 | SSE through the operator's proxy (S2) |
+| **137** | Structural ops end to end | add/remove widget & layer & patch tools wired model -> op -> session layer; per-type config validation; layout placement | 134, 135, 136 | Standard after S3 |
+| **138** | Filters | `aiFilterApplier`, `apply_filter/clear_filter` tools, filter undo inverses, map WMS verification; keeps decoupling spec | 134, 137 | Standard (well-trodden path) |
+| **139** | Dynamic views (session-only) | Ad-hoc materialize routes, temp-view naming/TTL/drop, `useDynamicViewMaterializeChain` + both map `buildWmsParams` sites + dv filter path, `add/remove_dynamic_view` tools | 137, 138, S1 | **Deeper research** |
+| **140** | Query tool (data access mode) | `sqlGuard`, `run_query`, `get_column_profile`, `AI_QUERY` op, env gating, audit/egress, prompt-injection hardening | 135 | **Deeper research** (SQL guard robustness) |
+| **141** | Keep (persist) | `POST /api/dashboards/:id/ai-keep` txn, id remap reuse, permission checks, 409 staleness, client id swap/refetch, Keep/Discard bar | 137 (and 138/139 to cover all op kinds) | Standard (mirrors import) |
+| **142** | Generate dashboard + hardening | designer "generate from table" flow, generate prompt/budget, empty-dashboard cleanup, e2e + UAT, docs (supersede `mcp-action-seam.md` status) | 141 | Prompt quality iteration |
+
+Rationale for order:
+- 134 can be built and fully tested with zero LLM, de-risking the largest *client* change (read-site merging across Widget/Map/Legend) early.
+- 135 and 134 are parallelizable by different executors (disjoint files); NOTE the memory rule: assign shared-doc/ROADMAP updates to ONE plan.
+- Filters (138) before dv (139): filters use only existing machinery; dv needs the new server surface.
+- Query tool (140) is independent of the UI and highest-risk for safety, so it comes after the loop is proven in schema-only mode, but before Keep so security review isn't rushed at the end.
+- Keep (141) needs stable op shapes; 133 defines them so it can start whenever structural ops (137) exist.
+
+## Risky Unknowns (spikes)
+
+| # | Spike | Question | Fail mode / fallback |
+|---|---|---|---|
+| S1 | Ad-hoc dv materialize | Can `lib/materializedView.ts` + TTL cleanup serve an inline definition with a session-scoped name without a DB row? Does the dv filter path (`/api/filter/materialize` dv branch, `buildFilterViewName` expecting dv row) accept an inline def cleanly? | Fallback (A): draft rows with `draft_owner` |
+| S2 | SSE in this deployment | Does the operator's proxy/ingress buffer `text/event-stream`? Does `cookie`-based auth + 1MB json limit work with POST streaming? Session TTL mid-stream? | Fallback: chunked NDJSON over POST, or poll a job (export-job precedent) |
+| S3 | Per-widget-type config validators | Can zod validators be derived from `ChartTypeDefinition.fields` + data-binding keys accurately for all 16 widget types without a big hand-written table? Where do data-binding keys (metric/groupBy/table) actually live (config vs top-level)? | Support only a subset of widget types in v2.0 (bar/line/pie/table/bignumber/map/records/heatmap); widen later |
+| S4 | Temp -> real id re-keying after Keep | `filterStore.dvFilters`, `dynamicViewStore.views`, `filterCombinationStore.vizToHash` ("w:<id>", "l:<id>", "dv:<id>") are keyed by ids | Fallback: after Keep, `reset()` those stores for AI-added sources and re-materialize |
+| S5 | Grid layout interaction | Does gating `onLayoutChange` during review suffice to keep AI geometry unpersisted? Does react-grid-layout handle appended items without reflow of saved widgets? | Place AI widgets in reserved rows below existing content |
+| S6 | Local-model tool-calling reliability | OpenAI-compatible local servers vary in function-calling quality | JSON-mode constrained-output fallback; document "supported local models" |
+
+## Scalability Considerations
+
+| Concern | 100 users | 10K users | Notes |
+|---|---|---|---|
+| Concurrent LLM streams | Direct, per-user cap | Queue + per-user/global concurrency limit; provider rate-limit backoff | Express holds a socket per stream |
+| Temp Kinetica views | Few | Per-session cap + short TTL + sweep (reuse view-lifecycle cleanup from v1.15) | Orphans after crash/closed tab are the main leak |
+| Prompt size | Fine | Cache tool-level schema summaries per table (invalidate on schema sync v1.25) | Wide tables |
+| Query-tool load | Row cap | Per-user query budget/timeouts | Executes against GPU-DB as the user |
+| Audit volume | Fine | Log structured per-ask record (user, dashboard, tool calls, token usage), not prompt bodies by default | Egress review |
 
 ## Sources
 
-- `packages/server/src/kinetica.ts` (full file read) — `kineticaSql`/`kineticaShowTable`/
-  `kineticaWms`, lines 160-434
-- `packages/server/src/index.ts` — route bodies at 186-241 (env config + boot reconciliation
-  pattern), 1187-1946 (filter/dynamic-view materialize + preview), 2330-2420 (spatial info-query
-  envelope-limit precedent), 2780-2920 (discovery routes + `/api/sql` passthrough), 3255-3293
-  (startup, no graceful shutdown)
-- `packages/server/src/lib/materializedView.ts` (full file) — `createOrReplaceMaterialized`
-- `packages/server/src/lib/viewNaming.ts` (header + `hashKey8`/sanitize, lines 1-60)
-- `packages/server/src/lib/permissions.ts` (full file) — permission catalog + ripple surface
-- `packages/server/src/sessionStore.ts` — session row shape (58-91), `startSessionSweep` (280-291)
-- `packages/server/src/auth.ts` — `AuthedRequest` shape (26-35), `TOKEN_TTL_SECONDS` (11)
-- `packages/server/src/db.ts` — `ensureDir`/`SCHEMA_DDL` (1-18, 320-365), `defaultDbPath` (500)
-- `packages/web/src/components/charts/WidgetRenderer.tsx` (targeted reads) — `handleDownloadCsv`
-  (1957-2031), `RecordsTableRenderer` fetch effects (1849-2230), `BarRenderer` multi-series
-  (932-1221), `LineRenderer` (1255-1387), `resolveAggregatedDrillTarget` (911-926)
-- `packages/web/src/components/charts/ChartConfigPanel.tsx` — Group By builder (339-360, 828-963)
-- `packages/web/src/lib/barGroupedSeries.ts`, `groupedSeries.ts`, `heatmapGrid.ts`,
-  `customWhere.ts` (all full files read)
-- `packages/web/src/components/charts/HeatmapRenderer.tsx` (265-335) — truncation-detection bug
-- `packages/web/src/hooks/useViewKeepAlive.ts` (full file) — client-side TTL keep-alive design
-- `packages/web/src/api/client.ts` (280-316) — `runSql`
-- Root `package.json` (workspaces) — confirms no shared package between `server`/`web`
-- `.planning/research/FEATURES.md` (this milestone, sibling research) — feature landscape /
-  competitor analysis, cross-referenced throughout
-- `.planning/PROJECT.md` (current milestone section) and `CLAUDE.md` — scope and conventions
-- No live Kinetica calls made; `packages/server/.env` not read (per task constraints). Kinetica
-  `/execute/sql` `limit`/`offset` sentinel semantics (e.g. "unlimited" values) are **unverified** —
-  flagged explicitly in §1, not asserted as fact.
+All HIGH confidence (read directly in this repo):
+- `packages/web/docs/mcp-action-seam.md`, `packages/web/src/lib/widgetAction.ts`, `applyWidgetAction.ts`, `actionAllowList.ts`, `applyLayerOverrides.ts`
+- `packages/web/src/store/widgetActionStore.ts`, `filterStore.ts`, `filterCombinationStore.ts`, `dynamicViewStore.ts`
+- `packages/web/src/components/DashboardsPage.tsx` (cleanup chain ~L740, widget add ~L1085, layers L1245-1285), `charts/MapChartRenderer.tsx` (L534-539), `charts/definitions/index.ts`, `charts/registry.ts`
+- `packages/web/src/hooks/useDynamicViewMaterializeChain.ts`
+- `packages/server/src/index.ts` (routes at L843 import, L959-1010 widgets, L1055-1133 layers, L1149-1187 views, L1289 filter materialize, L1688-2040 dynamic views, L2930 SQL proxy), `rbac.ts`, `kinetica.ts` (`kineticaSql`, `KineticaOp`, `KineticaPrincipal`), `lib/exportRunner.ts` (`principalForSession`), `lib/dashboardImport.ts`, `lib/dashboardExport.ts`, `lib/dashboardExportRefs.ts`, `lib/dynamicViewName.ts`, `lib/permissions.ts`, `lib/dashboardAccessDb.ts`
+- `.planning/PROJECT.md`, `.planning/codebase/ARCHITECTURE.md` (this file is stale, dated 2026-03-23, and describes an early layout; real paths are `packages/*`)
 
----
-*Architecture research for: Kinetica BI v1.26 Large Exports & Fixes*
-*Researched: 2026-10-01*
+LOW confidence / unverified: SSE-through-proxy behaviour, local-model tool-calling quality, exact `materializedView.ts` reuse feasibility for inline definitions (S1). Not checked against current LLM vendor docs (belongs to STACK research).

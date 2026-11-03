@@ -1,0 +1,152 @@
+/* 137-08: AI chat. Tokens only (no hex, no rgba). Legibility in light/dark is verified by the operator (137-12). */
+.ai-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+.ai-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.ai-chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ai-chat-turn--ahead {
+  opacity: 0.55;
+}
+
+.ai-chat-bubble {
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.ai-chat-bubble--user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.ai-chat-bubble--ai {
+  align-self: flex-start;
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.ai-chat-bubble--error {
+  border-color: var(--danger);
+}
+
+.ai-chat-note {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+}
+
+/* 142 UAT: the app's record of what a turn changed, outside the model's bubble (model text cannot render here) */
+.ai-chat-changes {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.ai-chat-changes li::before {
+  content: "\2713\00a0";
+  color: var(--accent);
+}
+
+.ai-chat-changes li {
+  overflow-wrap: anywhere;
+}
+
+/* 140 D-11: long SQL lines wrap inside the chat column (no colour: theme tokens untouched) */
+.ai-chat-query {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-chat-choices,
+.ai-chat-followups,
+.ai-chat-turn-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-self: flex-start;
+  align-items: center;
+}
+
+.ai-chat-status {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.ai-chat-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.ai-chat-input {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.ai-chat-textarea {
+  flex: 1;
+  min-width: 0; /* 137-12 UAT: let it shrink so Send stays inside a narrow tile */
+  resize: none;
+  min-height: 0;
+  max-height: calc(4 * 1.4em + var(--space-4));
+  overflow-y: auto;
+  font: inherit;
+}
+
+/* 137-10: AI widget shell (tile + drawer). Tokens only. Light/dark legibility is verified by the operator. */
+.ai-widget { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.ai-widget--small { gap: var(--space-1); padding: var(--space-1); }
+.ai-widget-notice { padding: var(--space-3); font-size: var(--text-sm); }
+.ai-tile-bar { display: flex; align-items: center; gap: var(--space-1); }
+.ai-tile-bar .ai-chat-input { align-items: center; }
+.ai-tile-bar .ai-chat-textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-tile-bar .ai-chat-input { flex: 1; min-width: 0; padding: 0; border-top: none; }
+.ai-tile-last { font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 137-12 UAT: two classes so this beats global.css .modal-overlay { place-items: center } (same specificity, later in the cascade). */
+.modal-overlay.ai-drawer-overlay { place-items: stretch end; }
+.ai-drawer { width: min(480px, 100vw); height: 100vh; display: flex; flex-direction: column; background: var(--panel-solid); border-left: 1px solid var(--border); box-shadow: var(--shadow); animation: ai-drawer-in var(--duration-base) ease-out; }
+@keyframes ai-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .ai-drawer { animation: none; } }
+.ai-drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+@media (max-width: 900px) { .ai-drawer { width: 100vw; border-left: none; } }
+
+/* 137-12 UAT: answered (disabled) choices read as greyed out; the picked one stays legible. */
+.ai-chat-choices .ghost-sm:disabled { opacity: 0.5; cursor: default; }
+.ai-chat-choices .ghost-sm:disabled[aria-pressed="true"] { opacity: 0.8; border-color: var(--accent); }

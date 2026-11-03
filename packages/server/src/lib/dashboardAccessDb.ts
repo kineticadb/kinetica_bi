@@ -8,6 +8,8 @@
  *   removeDashboardGrant(dashboardId, grantee_type, grantee, conn?) — delete.
  *
  * canViewDashboard resolution order:
+ *   0. Pending override (142 D-04): a generated, never-kept dashboard is visible ONLY to its creator,
+ *      decided before any bypass or grant.
  *   1. Bypass: getEffectivePermissions(username).has(DASHBOARDS_MANAGE_ACCESS) — covers admin,
  *      designer, bootstrap admin (short-circuits to ALL_PERMISSIONS internally), and any custom
  *      role granted manage_access. Checked first — cheapest path for common admin/designer case.
@@ -58,6 +60,12 @@ export const canViewDashboard = (
   dashboardId: number,
   conn: Database.Database = defaultDb
 ): boolean => {
+  // 142 D-04: a generated dashboard that has never been kept is visible ONLY to its creator, before any bypass or grant.
+  const pending = conn
+    .prepare<[number], { generated_by: string | null; generated_pending_at: number | null }>("SELECT generated_by, generated_pending_at FROM dashboards WHERE id = ?")
+    .get(dashboardId);
+  if (pending && pending.generated_pending_at !== null) return pending.generated_by === username.trim().toLowerCase();
+
   // (a) Bypass check — fires before any grant query.
   if (getEffectivePermissions(username, conn).has(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS)) {
     return true;

@@ -1,0 +1,20 @@
+{
+  "name": "@kinetica-bi/mcp",
+  "version": "1.23.0",
+  "private": true,
+  "type": "module",
+  "description": "kbi-mcp: an MCP server that lets Claude Desktop build Kinetica BI dashboards",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.2",
+    "vitest": "^4.1.5"
+  }
+}

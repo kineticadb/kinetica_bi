@@ -244,3 +244,40 @@ describe("FilterChip panel variant — applies-to + hover/click (Phase 108 Plan 
     expect(onHighlight).not.toHaveBeenCalled();
   });
 });
+
+describe("FilterChip AI tag (138 D-14)", () => {
+  it("CHIPAI-5: topbar without aiApplied is byte-identical to aiApplied=false and has no badge", () => {
+    const base = { variant: "topbar" as const, text: "a = 1", removeAriaLabel: "rm", onRemove: vi.fn() };
+    const a = render(<FilterChip {...base} />);
+    const htmlA = a.container.innerHTML;
+    a.unmount();
+    const b = render(<FilterChip {...base} aiApplied={false} />);
+    expect(b.container.innerHTML).toBe(htmlA);
+    expect(b.container.querySelector(".widget-filter-badge")).toBeNull();
+  });
+
+  it("CHIPAI-6: topbar aiApplied renders one AI tag between text and dismiss", () => {
+    const onRemove = vi.fn();
+    const { container } = render(
+      <FilterChip variant="topbar" text="a = 1" removeAriaLabel="rm" onRemove={onRemove} aiApplied />
+    );
+    const badges = container.querySelectorAll(".filter-bar-chip .widget-filter-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toBe("AI");
+    expect(badges[0].getAttribute("title")).toBe("Applied by the AI assistant");
+    expect(badges[0].nextElementSibling?.className).toBe("filter-bar-chip-dismiss");
+    fireEvent.click(screen.getByRole("button", { name: "rm" }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("CHIPAI-7: panel aiApplied shows tag + fallback provenance; explicit provenance wins", () => {
+    const base = { variant: "panel" as const, text: "a = 1", removeAriaLabel: "rm", onRemove: vi.fn(), aiApplied: true };
+    const a = render(<FilterChip {...base} />);
+    expect(a.container.querySelectorAll(".filter-panel-chip-row .widget-filter-badge")).toHaveLength(1);
+    expect(a.container.querySelector(".filter-panel-chip-provenance")?.textContent).toBe("from AI assistant");
+    a.unmount();
+    const b = render(<FilterChip {...base} provenance="from Fares" />);
+    expect(b.container.querySelector(".filter-panel-chip-provenance")?.textContent).toBe("from Fares");
+    expect(b.container.querySelectorAll(".widget-filter-badge")).toHaveLength(1);
+  });
+});

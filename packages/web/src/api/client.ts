@@ -5,6 +5,17 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
+import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest, AiKeepRequest, AiKeepResponse, AiOp } from "@kinetica-bi/shared";
+import {
+  DASHBOARD_VERSION_HEADER,
+  DASHBOARD_VERSION_READ_HEADER,
+  parseVersionWriteHeader,
+  parseVersionReadHeader,
+  AI_KEEP_ERROR_CODES,
+  KEEP_CONFLICT_MESSAGE,
+  KEEP_FAILED_MESSAGE,
+} from "@kinetica-bi/shared";
+import { useDashboardVersionStore } from "../store/dashboardVersionStore";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -59,8 +70,19 @@ export class UpstreamError extends Error {
 
 // --- Network layer ---
 
+// 141 D-07/D-17: every response may carry the dashboard version (own writes before->after, list reads).
+// Tolerates mocked responses with no headers / no `get`.
+function captureVersionHeaders(r: Response): void {
+  if (typeof (r as { headers?: { get?: unknown } })?.headers?.get !== "function") return;
+  const w = parseVersionWriteHeader(r.headers.get(DASHBOARD_VERSION_HEADER));
+  if (w) useDashboardVersionStore.getState().noteWrite(w.dashboardId, w.before, w.after);
+  const rd = parseVersionReadHeader(r.headers.get(DASHBOARD_VERSION_READ_HEADER));
+  if (rd) useDashboardVersionStore.getState().noteRead(rd.dashboardId, rd.list, rd.version);
+}
+
 const apiFetch: typeof fetch = async (input, init) => {
   const response = await fetch(input, { ...init, credentials: "include" });
+  captureVersionHeaders(response);
   if (response.status === 401 && typeof window !== "undefined") {
     // Body-peek for code: "REAUTH_REQUIRED". Clone so the original response stream
     // remains consumable by the caller. Failure to parse → fall back to no-dispatch
@@ -256,7 +278,9 @@ export const fetchBranding = async (): Promise<BrandingResponse> => {
 // Phase 127 (EXPRT-V126-01, D-07): admin in-browser CSV ceiling (default 100000).
 export type MeResponse = { user: AuthUser; authMode: AuthMode; ttlKeepaliveLeadMinutes: number; maxCombinationViewsPerTable: number; dvFilterScopeDisabled: boolean; maxBarGroupBySeriesCap: number; csvInBrowserMaxRows: number; maxRowsPerQuery: number;
   // Phase 130 (EXPRT-V126-15, D-18): admin export caps (unset = null; default concurrency 2).
-  exportLimits: ExportLimits };
+  exportLimits: ExportLimits;
+  // Phase 143 (AIMCP-V20-04): the Claude Desktop connector routes are on (MCP_ENABLED); shows "Connect Claude Desktop".
+  mcpEnabled: boolean };
 
 export const login = async (username: string, password: string): Promise<AuthUser> => {
   const response = await apiFetch(`${API_BASE}/api/auth/login`, {
@@ -306,6 +330,8 @@ export const fetchMe = async (): Promise<MeResponse | null> => {
     maxRowsPerQuery: typeof json.maxRowsPerQuery === "number" ? json.maxRowsPerQuery : 20000,
     // Phase 130 (D-18): normalised — an older server omitting the field yields the defaults, never undefined.
     exportLimits: normalizeExportLimits(json.exportLimits),
+    // Phase 143: === true — an older server omitting the field never offers the connector.
+    mcpEnabled: json.mcpEnabled === true,
   };
 };
 
@@ -342,6 +368,8 @@ export type DashboardDto = {
   filter_display_mode: "topbar" | "panel";
   created_at: string;
   updated_at: string;
+  // v2.0 Phase 142 (D-03/D-04): true while a generated dashboard has never been kept.
+  generated_pending?: boolean;
 };
 
 export const createDashboard = async (input: Pick<DashboardDto, "name"> & Partial<Pick<DashboardDto, "description">>): Promise<DashboardDto> => {
@@ -372,6 +400,48 @@ export const deleteDashboard = async (id: number): Promise<void> => {
   const response = await apiFetch(`${API_BASE}/api/dashboards/${id}`, { method: "DELETE" });
   if (!response.ok && response.status !== 204) {
     await throwForStatus(response, "Failed to delete dashboard");
+  }
+};
+
+export type GenerateDashboardResult =
+  | { ok: true; dashboard: DashboardDto }
+  | { ok: false; kind: "pending"; existing: { id: number; name: string }; message: string }
+  | { ok: false; kind: "error"; message: string };
+export const GENERATE_FAILED_MESSAGE = "Couldn't generate the dashboard. Try again.";
+
+/** 142 (D-01/D-06): never throws, never retries (a retry could create two dashboards). */
+export const generateDashboard = async (input: { name: string; description?: string; tableId: number }): Promise<GenerateDashboardResult> => {
+  try {
+    const r = await apiFetch(`${API_BASE}/api/dashboards/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
+    if (r.ok) return { ok: true, dashboard: (await r.json()) as DashboardDto };
+    let j: { error?: unknown; code?: unknown; dashboard?: { id?: unknown; name?: unknown } } = {};
+    try {
+      j = (await r.json()) ?? {};
+    } catch {
+      j = {};
+    }
+    if (r.status === 409 && j.code === "AI_GENERATE_PENDING" && j.dashboard && typeof j.dashboard.id === "number") {
+      return {
+        ok: false,
+        kind: "pending",
+        existing: { id: j.dashboard.id, name: String(j.dashboard.name ?? "") },
+        message: typeof j.error === "string" && j.error ? j.error : "You already have a generated dashboard that isn't kept yet."
+      };
+    }
+    return { ok: false, kind: "error", message: typeof j.error === "string" && j.error ? j.error : GENERATE_FAILED_MESSAGE };
+  } catch {
+    return { ok: false, kind: "error", message: GENERATE_FAILED_MESSAGE };
+  }
+};
+
+export const discardGeneratedDashboard = async (id: number): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/dashboards/${id}/discard-generated`, { method: "POST" });
+  if (!response.ok && response.status !== 204) {
+    await throwForStatus(response, "Failed to discard the dashboard");
   }
 };
 
@@ -947,6 +1017,9 @@ export type MaterializeFilterArgs = {
   // server rejects dynamicViewId + spatial together with 400 (mutually exclusive in
   // practice). Flows through automatically via JSON.stringify(args) below.
   dynamicViewId?: number;
+  /** 139 D-23: required for an AI view (negative dynamicViewId). */
+  aiNonce?: string;
+  aiGen?: number;
   // ActiveFilter shape is duplicated server-side at packages/server/src/lib/whereClause.ts:35-42
   // to keep the server module frontend-import-free. Field-shape parity is the contract —
   // any change to the client ActiveFilter MUST be mirrored in whereClause.ts atomically.
@@ -1294,6 +1367,10 @@ export type DynamicViewRow = {
   columns_json: { name: string; type: string }[] | string | null;
   created_at: string;
   updated_at: string;
+  /** 139 D-03: server-derived (GROUP BY / DISTINCT / LIMIT n); undefined = false. */
+  aggregated?: boolean;
+  /** 139: present only on AI session rows (negative id). */
+  ai?: { nonce: string; gen: number; spec: AiDvSpec; baseLabel: string; suggestColumn?: { name: string; kind: "date" | "string" } };
 };
 
 /** Preview response column metadata — name + Kinetica column datatype string. */
@@ -1473,6 +1550,40 @@ export const dropDynamicView = async (
     await throwForStatus(response, "Failed to drop dynamic view");
   }
   return response.json() as Promise<{ dropped: true }>;
+};
+
+/** 139: POST /api/ai/dynamic-view/materialize — the server re-validates + compiles the spec and chooses the name. */
+export const materializeAiDynamicView = async (
+  body: AiDvMaterializeRequest,
+  signal?: AbortSignal,
+): Promise<AiDvMaterializeResponse> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/dynamic-view/materialize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to build the AI view");
+  return response.json() as Promise<AiDvMaterializeResponse>;
+};
+
+/** 139: idempotent DROP of one AI view (own user+session only, server-built name). keepalive so leave/close still sends it. */
+export const dropAiDynamicView = async (body: AiDvDropRequest): Promise<{ dropped: true }> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/dynamic-view/drop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    keepalive: true,
+  });
+  if (!response.ok) await throwForStatus(response, "Failed to drop the AI view");
+  return response.json() as Promise<{ dropped: true }>;
+};
+
+/** 139: verification aid (UAT): the caller's AI views as Kinetica lists them. */
+export const listAiDynamicViews = async (): Promise<{ views: string[] }> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/dynamic-view/list`);
+  if (!response.ok) await throwForStatus(response, "Failed to list AI views");
+  return response.json() as Promise<{ views: string[] }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -2067,4 +2178,179 @@ export const preflightExportDownload = async (
     // non-JSON body: keep fallback
   }
   return { ok: false, status: r.status, message };
+};
+
+/** 137: SSE over POST. Returns the raw Response; callers must check `ok` before reading the stream. Never retried. */
+export const askAi = (body: AskRequest, signal: AbortSignal): Promise<Response> =>
+  apiFetch(`${API_BASE}/api/ai/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+export const getAiConfig = async (): Promise<{ enabled: boolean }> => {
+  const r = await apiFetch(`${API_BASE}/api/ai/config`);
+  if (!r.ok) return { enabled: false };
+  const j = (await r.json()) as { enabled?: unknown };
+  return { enabled: j.enabled === true };
+};
+
+// --- 141: Keep AI changes ---
+
+export type KeepAiResult =
+  | { ok: true; response: AiKeepResponse }
+  | { ok: false; kind: "conflict" | "permission" | "invalid" | "failed"; message: string };
+
+export const KEEP_GONE_MESSAGE = "This dashboard no longer exists, so nothing was saved. Unkept dashboards are removed when the server restarts or when they expire.";
+
+/** Never throws, never retries (a retry could double-apply). */
+export const keepAiChanges = async (dashboardId: number, body: AiKeepRequest): Promise<KeepAiResult> => {
+  const failed: KeepAiResult = { ok: false, kind: "failed", message: KEEP_FAILED_MESSAGE };
+  try {
+    const response = await apiFetch(`${API_BASE}/api/dashboards/${dashboardId}/ai-keep`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      return { ok: true, response: (await response.json()) as AiKeepResponse };
+    }
+    let json: { code?: unknown; error?: unknown } = {};
+    try {
+      const parsed = await response.json();
+      if (parsed && typeof parsed === "object") json = parsed as typeof json;
+    } catch {
+      return failed;
+    }
+    const text = typeof json.error === "string" && json.error ? json.error : null;
+    if (response.status === 409 && json.code === AI_KEEP_ERROR_CODES.conflict) {
+      return { ok: false, kind: "conflict", message: KEEP_CONFLICT_MESSAGE };
+    }
+    if (response.status === 403 && (json.code === AI_KEEP_ERROR_CODES.permission || json.code === "PERMISSION_DENIED")) {
+      return { ok: false, kind: "permission", message: text ?? "You can't save AI changes." };
+    }
+    if ((response.status === 400 || response.status === 422) && json.code === AI_KEEP_ERROR_CODES.invalid) {
+      return { ok: false, kind: "invalid", message: text ?? KEEP_FAILED_MESSAGE };
+    }
+    // The dashboard is gone, e.g. an unkept build removed by a server restart or the TTL sweep: "try again" can't help.
+    if (response.status === 404) return { ok: false, kind: "invalid", message: KEEP_GONE_MESSAGE };
+    return failed;
+  } catch {
+    return failed;
+  }
+};
+
+// ---- Phase 142 (AIGOV-V20-05): AI activity (audit read API, never row values) ----
+export type AiAuditKind = "ask" | "generate" | "keep" | "mcp"; // mcp: a Claude Desktop build (Phase 143)
+export type AiAuditDashboardState = "live" | "pending" | "deleted" | "none";
+export type AiAuditRowDto = {
+  id: number;
+  ts: number;
+  username: string;
+  dashboardId: number | null;
+  dashboardName: string | null;
+  dashboardState: AiAuditDashboardState;
+  kind: AiAuditKind;
+  question: string;
+  summary: string | null;
+  outcome: string | null;
+  outcomeDetail: string | null;
+  steps: number | null;
+  durationMs: number | null;
+};
+export type AiAuditListDto = { rows: AiAuditRowDto[]; total: number; page: number; pageSize: 50 };
+export type AiAuditDetailDto = Omit<AiAuditRowDto, "question"> & {
+  question: string;
+  answerText: string | null;
+  provider: string | null;
+  model: string | null;
+  dataAccess: string | null;
+  allowListVersion: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  tools: { name: string; result: string; stage?: string; reasons?: string[] }[] | null;
+  changes:
+    | { applied?: string[]; rejected?: { label: string; stage: string; reasons: string[] }[] }
+    | { added?: unknown; edited?: unknown; removed?: unknown }
+    | null;
+  queries: { sql: string; rowCount?: number; durationMs?: number; outcome?: string; reason?: string }[] | null;
+};
+export type AiAuditDashboardsDto = {
+  dashboards: { id: number; name: string | null; state: AiAuditDashboardState }[];
+};
+
+export const listAiAudit = async (
+  q: { from?: number; to?: number; outcomes?: string[]; dashboardId?: number; page?: number },
+  signal?: AbortSignal,
+): Promise<AiAuditListDto> => {
+  const p = new URLSearchParams();
+  if (q.from !== undefined) p.set("from", String(q.from));
+  if (q.to !== undefined) p.set("to", String(q.to));
+  if (q.outcomes && q.outcomes.length > 0) p.set("outcome", q.outcomes.join(","));
+  if (q.dashboardId !== undefined) p.set("dashboardId", String(q.dashboardId));
+  if (q.page !== undefined) p.set("page", String(q.page));
+  const qs = p.toString();
+  const response = await apiFetch(`${API_BASE}/api/ai/audit${qs ? `?${qs}` : ""}`, { signal });
+  if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
+  return (await response.json()) as AiAuditListDto;
+};
+
+/** MCP connector (143): ops an MCP client (Claude Desktop) built for this dashboard; the server hands them over once. */
+// Phase 143: mode "new" = Claude built this (unkept) dashboard; "edit" = Claude changed a saved one.
+export type McpHandoffDto = { prompt: string; answer: string; ops: AiOp[]; applied: string[]; mode?: "new" | "edit" };
+export const getMcpHandoff = async (sessionId: string, dashboardId: number): Promise<McpHandoffDto | null> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/sessions/${encodeURIComponent(sessionId)}/handoff?dashboardId=${dashboardId}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to load the Claude Desktop changes (${response.status})`);
+  return (await response.json()) as McpHandoffDto;
+};
+
+// Phase 143 (AIMCP-V20-04): personal access tokens for the Claude Desktop connector.
+export type McpTokenDto = { id: number; name: string; createdAt: string; lastUsedAt: string | null; expiresAt: string };
+export type McpTokenCreatedDto = { id: number; token: string; name: string; expiresAt: string };
+
+const mcpTokenError = async (response: Response, fallback: string): Promise<Error> => {
+  const json = await response.json().catch(() => ({}));
+  return new Error(typeof json?.error === "string" ? json.error : `${fallback} (${response.status})`);
+};
+
+export const listMcpTokens = async (): Promise<McpTokenDto[]> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/tokens`);
+  if (!response.ok) throw await mcpTokenError(response, "Failed to load access tokens");
+  return ((await response.json()) as { tokens: McpTokenDto[] }).tokens;
+};
+
+export const createMcpToken = async (name: string): Promise<McpTokenCreatedDto> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw await mcpTokenError(response, "Failed to create the access token");
+  return (await response.json()) as McpTokenCreatedDto;
+};
+
+export const revokeMcpToken = async (id: number): Promise<void> => {
+  const response = await apiFetch(`${API_BASE}/api/mcp/tokens/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await mcpTokenError(response, "Failed to revoke the access token");
+};
+
+export const getAiAuditEntry = async (id: number, signal?: AbortSignal): Promise<AiAuditDetailDto> => {
+  const response = await apiFetch(`${API_BASE}/api/ai/audit/${id}`, { signal });
+  if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
+  return (await response.json()) as AiAuditDetailDto;
+};
+
+export const listAiAuditDashboards = async (
+  q: { from?: number; to?: number },
+  signal?: AbortSignal,
+): Promise<AiAuditDashboardsDto> => {
+  const p = new URLSearchParams();
+  if (q.from !== undefined) p.set("from", String(q.from));
+  if (q.to !== undefined) p.set("to", String(q.to));
+  const qs = p.toString();
+  const response = await apiFetch(`${API_BASE}/api/ai/audit/dashboards${qs ? `?${qs}` : ""}`, { signal });
+  if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
+  return (await response.json()) as AiAuditDashboardsDto;
 };

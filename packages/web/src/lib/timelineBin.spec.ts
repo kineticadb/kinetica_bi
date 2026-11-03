@@ -5,6 +5,7 @@ import {
   buildTimelineBucket,
   buildTimelineRangeQuery,
   formatTimelineTick,
+  bucketsSpanYears,
   DEFAULT_MAX_INTERVALS,
 } from "./timelineBin";
 
@@ -165,5 +166,28 @@ describe("formatTimelineTick — granularity-matched X-axis labels", () => {
   it("returns the raw string when the bucket doesn't match the expected shape", () => {
     expect(formatTimelineTick("not-a-date", "day")).toBe("not-a-date");
     expect(formatTimelineTick("", "year")).toBe("");
+  });
+});
+
+describe("TICKYEAR: sub-month ticks name the year when the buckets cross a year", () => {
+  const BUCKET = "2009-02-22 14:30:00.000";
+
+  it.each([
+    ["week", "Feb 22 2009"],
+    ["day", "Feb 22 2009"],
+    ["hour", "Feb 22 2009 14:00"],
+    ["minute", "Feb 22 2009 14:30"],
+    ["year", "2009"],
+    ["quarter", "2009 Q1"],
+    ["month", "2009-02"],
+  ] as const)("withYear, interval '%s' → '%s'", (key, expected) => {
+    expect(formatTimelineTick(BUCKET, key, { withYear: true })).toBe(expected);
+  });
+
+  it("bucketsSpanYears is true only when the buckets cover more than one year", () => {
+    expect(bucketsSpanYears(["2009-12-30 00:00:00", "2010-01-02 00:00:00"])).toBe(true);
+    expect(bucketsSpanYears(["2009-01-01", "2009-12-31"])).toBe(false);
+    expect(bucketsSpanYears([])).toBe(false);
+    expect(bucketsSpanYears(["not-a-date", "2009-01-01"])).toBe(false);
   });
 });

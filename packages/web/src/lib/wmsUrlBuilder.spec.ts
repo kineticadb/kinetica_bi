@@ -1523,3 +1523,28 @@ describe("buildWmsParams — `_mv` cache-bust preservation (SCHEMA-V17-03 explic
     expect(trackKeys).toEqual([]);
   });
 });
+
+describe("Phase 136 heatmap value column (VAL_ATTR)", () => {
+  const hm = (o: Partial<MapWidgetConfig> = {}) =>
+    makeConfig({ renderMode: "heatmap", colormap: "plasma", blurRadius: 8, ...o });
+  it("VALATTR-1: heatmap + valueColumn emits VAL_ATTR", () => {
+    expect(buildWmsParams(hm({ valueColumn: "fare_amount" }), undefined).VAL_ATTR).toBe("fare_amount");
+  });
+  it("VALATTR-2: heatmap without valueColumn is byte-identical to the legacy request", () => {
+    const p = buildWmsParams(hm(), undefined);
+    expect(p.VAL_ATTR).toBeUndefined();
+    expect(JSON.stringify(p)).toBe(
+      '{"SERVICE":"WMS","VERSION":"1.1.1","REQUEST":"GetMap","FORMAT":"image/png","TRANSPARENT":"true","SRS":"EPSG:3857","STYLES":"heatmap","LAYERS":"demo.points","X_ATTR":"lon","Y_ATTR":"lat","BLUR_RADIUS":"8","COLORMAP":"plasma","REVERSE_COLORMAP":"FALSE"}',
+    );
+  });
+  it("VALATTR-3: empty valueColumn emits no VAL_ATTR", () => {
+    expect(buildWmsParams(hm({ valueColumn: "" }), undefined).VAL_ATTR).toBeUndefined();
+  });
+  it("VALATTR-4: raster ignores valueColumn", () => {
+    expect(buildWmsParams(makeConfig({ renderMode: "raster", valueColumn: "fare_amount" }), undefined)).not.toHaveProperty("VAL_ATTR");
+  });
+  it("VALATTR-5: non-identifier valueColumn (expression) is never emitted", () => {
+    expect(buildWmsParams(hm({ valueColumn: "a b" }), undefined).VAL_ATTR).toBeUndefined();
+    expect(buildWmsParams(hm({ valueColumn: "x)+1" }), undefined).VAL_ATTR).toBeUndefined();
+  });
+});

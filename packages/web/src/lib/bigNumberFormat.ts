@@ -70,3 +70,12 @@ export function pickBigNumberColor(
   }
   return baseColor;
 }
+
+/**
+ * The line above a Big Number's value: its label when set; else the SQL alias when it means something (a hand-written
+ * query's `AS trips`); never the generic alias "value", which says nothing the widget title doesn't.
+ */
+export function bigNumberLabel(config: { label?: unknown }, valueField: string): string {
+  if (typeof config.label === "string" && config.label !== "") return config.label;
+  return valueField === "value" ? "" : valueField;
+}

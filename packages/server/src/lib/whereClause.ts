@@ -11,11 +11,11 @@
  * Phase 13 ports that contract verbatim. Inequality / range / IN / LIKE
  * operators are deferred to v2.
  *
- * Trust boundary on the `column` field: column names are interpolated
- * DIRECTLY into the SQL without quoting or escaping. They originate from
- * server-side table metadata (`getTable(tableId).columns`), NOT from arbitrary
- * user input — so injection risk is bounded by the admin-only table-creation
- * routes. String / datetime VALUES, by contrast, ARE always escaped via
+ * Trust boundary on the `column` field: column names are CLIENT-SUPPLIED and
+ * interpolated unquoted. Every route that passes them here MUST first call
+ * assertColumnsExist / assertIdentifier (lib/columnGuard.ts). Inventory:
+ * .planning/phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-COLUMN-AUDIT.md.
+ * String / datetime VALUES, by contrast, ARE always escaped via
  * escapeKineticaStringLiteral (single-quote doubling, SQL standard).
  *
  * Pure module — zero imports beyond the Node stdlib (none used here).

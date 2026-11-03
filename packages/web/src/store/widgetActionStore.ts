@@ -28,14 +28,21 @@
  *   dynamicViewOverrides[targetId]→ Record<string, unknown>
  *
  * Derive logic:
- *   - widget/dynamicView: shallow-merge contributions across controls
- *     (Object.keys insertion order = control order; last writer per field wins).
+ *   - widget/dynamicView: shallow-merge contributions across controls in RECENCY
+ *     order (least-recent control first; most-recent writer per field wins).
+ *     Recency comes from `order` / `contributionSeq`, NOT object-key order:
+ *     integer object keys iterate ascending regardless of insertion, so
+ *     insertion order cannot express "most recent" (D-11, Phase 134).
+ *     controlId 0 is reserved for the AI session source (AI_SOURCE_ID, Plan 134-03).
  *   - layer: deep-merge the DTO shape — config sub-objects merge
  *     { ...accConfig, ...patchConfig }; top-level fields (track_config, cb_config)
  *     shallow-merge. Mirrors MapChartRenderer.effectiveLayers expectations.
  */
 
 import { create } from "zustand";
+
+/** Monotonic write counter for recency ordering. Never reset (reuse-safe). */
+let contributionSeq = 0;
 
 // ---------------------------------------------------------------------------
 // Internal contribution shape
@@ -62,6 +69,9 @@ type WidgetActionStoreState = {
    * Not read by consumers — they use the derived overlay maps below.
    */
   contributions: Record<number, ControlContribution>;
+
+  /** Per-control recency (controlId -> sequence). NOT read by consumers. */
+  order: Record<number, number>;
 
   /**
    * DERIVED — Per-widget config overlays: { [widgetId]: configPatch }.
@@ -127,6 +137,8 @@ type WidgetActionStoreState = {
    * explicit action wins.
    *
    * No-op if no contribution sets that layer/field.
+   * Caveat: it strips the field from the AI source too; the next AI rebuild
+   * re-pins it (most recent explicit action wins).
    */
   releaseLayerConfigField: (layerId: number, field: string) => void;
 
@@ -144,14 +156,18 @@ type WidgetActionStoreState = {
 /**
  * Fold all controls' contributions into the three derived per-target overlay maps.
  *
- * Traversal order: Object.keys(contributions) — insertion order (control order).
- * Last-writer-per-field wins for cross-control field conflicts.
+ * Traversal order: controls sorted by `order` (recency, D-11 Phase 134); falls
+ * back to Number(controlId) when a control has no order entry.
+ * Most-recent-writer-per-field wins for cross-control field conflicts.
  *
  * widget / dynamicView: shallow-merge { ...acc[targetId], ...patch }
  * layer: deep-merge — config sub-object merges { ...accCfg, ...patchCfg };
  *        top-level fields (track_config, cb_config) shallow-merge.
  */
-function deriveOverlays(contributions: Record<number, ControlContribution>): {
+function deriveOverlays(
+  contributions: Record<number, ControlContribution>,
+  order: Record<number, number>,
+): {
   widgetOverrides: Record<number, Record<string, unknown>>;
   layerOverrides: Record<number, Record<string, unknown>>;
   dynamicViewOverrides: Record<number, Record<string, unknown>>;
@@ -160,7 +176,10 @@ function deriveOverlays(contributions: Record<number, ControlContribution>): {
   const layerOverrides: Record<number, Record<string, unknown>> = {};
   const dynamicViewOverrides: Record<number, Record<string, unknown>> = {};
 
-  for (const controlId of Object.keys(contributions)) {
+  const controlIds = Object.keys(contributions).sort(
+    (a, b) => (order[Number(a)] ?? Number(a)) - (order[Number(b)] ?? Number(b)),
+  );
+  for (const controlId of controlIds) {
     const contrib = contributions[Number(controlId)];
 
     // Widget contributions — shallow-merge
@@ -215,6 +234,7 @@ function deriveOverlays(contributions: Record<number, ControlContribution>): {
 
 export const useWidgetActionStore = create<WidgetActionStoreState>((set) => ({
   contributions: {},
+  order: {},
   widgetOverrides: {},
   layerOverrides: {},
   dynamicViewOverrides: {},
@@ -230,9 +250,11 @@ export const useWidgetActionStore = create<WidgetActionStoreState>((set) => ({
         ...state.contributions,
         [controlId]: normalized,
       };
+      const nextOrder = { ...state.order, [controlId]: ++contributionSeq };
       return {
         contributions: nextContributions,
-        ...deriveOverlays(nextContributions),
+        order: nextOrder,
+        ...deriveOverlays(nextContributions, nextOrder),
       };
     }),
 
@@ -241,9 +263,12 @@ export const useWidgetActionStore = create<WidgetActionStoreState>((set) => ({
       if (!(controlId in state.contributions)) return state;
       const nextContributions = { ...state.contributions };
       delete nextContributions[controlId];
+      const nextOrder = { ...state.order };
+      delete nextOrder[controlId];
       return {
         contributions: nextContributions,
-        ...deriveOverlays(nextContributions),
+        order: nextOrder,
+        ...deriveOverlays(nextContributions, nextOrder),
       };
     }),
 
@@ -276,13 +301,14 @@ export const useWidgetActionStore = create<WidgetActionStoreState>((set) => ({
       if (!changed) return state;
       return {
         contributions: nextContributions,
-        ...deriveOverlays(nextContributions),
+        ...deriveOverlays(nextContributions, state.order),
       };
     }),
 
   reset: () =>
     set({
       contributions: {},
+      order: {},
       widgetOverrides: {},
       layerOverrides: {},
       dynamicViewOverrides: {},

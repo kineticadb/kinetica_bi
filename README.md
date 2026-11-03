@@ -111,7 +111,7 @@ npm run dev                      # frontend → http://localhost:5173
 npm run dev:server               # backend  → http://localhost:4000  (separate terminal)
 ```
 
-Other workspace scripts (run from the repo root): `npm run test` (frontend), `npm run test:server`, `npm run test:all`, `npm run build`, `npm run build:server`.
+Other workspace scripts (run from the repo root): `npm run test` (frontend), `npm run test:server`, `npm run test:shared`, `npm run test:all`, `npm run build`, `npm run build:server`.
 
 ## Production Deployment
 
@@ -119,12 +119,14 @@ The app is **two independently-deployed pieces**: a static frontend bundle and t
 
 ### 1. Build & run
 
+The server bundle inlines the @kinetica-bi/shared workspace package; always build with npm run build:server (plain tsc no longer produces a runnable dist).
+
 ```bash
 # From the repo root — one npm ci covers both workspaces
 npm ci
 
 # Backend  → compiled JS, run under a process supervisor (systemd / pm2 / container)
-npm run build:server    # tsc → packages/server/dist/
+npm run build:server    # tsc --noEmit + esbuild bundle (inlines packages/shared) → packages/server/dist/index.js
 NODE_ENV=production npm start --workspace @kinetica-bi/server   # node dist/index.js  (listens on $PORT, default 4000)
 
 # Frontend → static bundle; serve dist/ from a static host / CDN / nginx (NOT the API server)
@@ -219,6 +221,22 @@ Types with a dedicated renderer (`CustomConfigPanel` + a short-circuit in `Widge
 ## Environment Variables
 
 Backend config lives in `packages/server/.env` (copy `packages/server/.env.example`). **Req.** marks variables required to boot/operate; OIDC vars are required only when `AUTH_MODE=oidc`.
+
+**AI (optional, off by default).** AI stays off unless `AI_ENABLED=true`; see the commented AI block in `packages/server/.env.example` for the Gemini and Ollama examples. Misconfiguration disables AI without stopping the server (the `[ai]` line in the server log names each bad setting), and the API key is never logged.
+Governance settings (all documented in that block): `AI_MAX_ANSWERS_PER_USER_PER_HOUR` (default 30, 0 = no cap), `AI_MAX_ANSWERS_PER_DAY` (whole deployment, rolling 24 h, 0 = off; use it for shared/free-tier keys), `AI_AUDIT_RETENTION_DAYS` (default 90, 0 = keep forever; the sweep runs even when AI is off), `AI_GENERATED_TTL_HOURS` (default 24, 0 = only on logout and server start; how long a generated dashboard nobody kept survives), `AI_HISTORY_TURNS` (default 6 recent exchanges sent in full) and `AI_TOOL_MODE` (`native` default, `json` fallback for models with weak tool calling).
+Tested models (Phase 142):
+
+| Provider | Model ID | Tool mode | Result | Notes | Date |
+|----------|----------|-----------|--------|-------|------|
+| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass (live G0-G9); S6 spike borderline: json (best effort) by its rule | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s; S6 over 21 clean trials: 88.9% valid tool calls (rule needs 90%), malformed calls not repaired (0/2), second turn 2/3; malformed calls are blocked, never applied | 2026-10-23 to 2026-10-28; S6 2026-10-30, 11-02, 11-03 |
+| OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26, 2026-10-29 |
+| Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
+
+Set `AI_MODEL` to the provider's model ID (e.g. `gemini-3-flash-preview`), not a product or display name — a wrong ID fails every request with HTTP 400. Gemini 3 "thinking" models can take longer than the 60 s default on a cold first call; use `AI_TIMEOUT_MS=120000` or more. The Gemini free tier allowed only 20 requests per day per model for `gemini-3-flash-preview` when tested, and one AI ask uses several requests (one per tool step), so a free-tier key supports only a handful of asks per day — set `AI_MAX_ANSWERS_PER_DAY` accordingly. Run Ollama in Docker with `OLLAMA_CONTEXT_LENGTH=16384` (the CPU default context of 4k silently cuts the AI's instructions); the command is in the AI block of `packages/server/.env.example`. On a CPU-only machine raise `AI_TIMEOUT_MS` (up to 600000) and use a small tool-capable model.
+Use AI (`ai:use`) is granted to admin and designer by default; grant it to other roles on the Roles page.
+Designers with Use AI can tick "Generate from a table" on the New Dashboard form: the AI builds 4 to 8 charts plus the AI Assistant from one table, and the dashboard stays private to its creator until they keep it (Discard deletes it with its widgets and AI views). Admins with the existing `audit:view` permission get an "AI activity" page listing every AI answer, generation and Keep (question, answer, tools, changes and the SQL the AI ran); query results are never logged.
+
+**Claude Desktop connector (optional, off by default).** The connector routes exist only when `MCP_ENABLED=true`; it works even with the in-app AI off, and the configured AI provider is never called by it. Users with Use AI build and edit dashboards from Claude Desktop, then Keep or Discard them in the browser. `MCP_APP_URL` sets the address in the review link Claude returns, and `MCP_TOKEN_TTL_DAYS` (default 90) how long the access tokens users create on their Profile page last (password sign-in only). Setup: `packages/mcp/README.md`.
 
 **Core**
 

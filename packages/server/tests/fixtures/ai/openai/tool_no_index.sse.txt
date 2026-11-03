@@ -1,0 +1,8 @@
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"id":"call_g1","type":"function","function":{"name":"list_tables","arguments":"{\"sch"}}]}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"ema\":\"demo\"}"}}]}}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

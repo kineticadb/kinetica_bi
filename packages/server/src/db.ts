@@ -221,6 +221,43 @@ const SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS idx_rbac_audit_ts ON rbac_audit (ts);
   CREATE INDEX IF NOT EXISTS idx_rbac_audit_actor ON rbac_audit (actor);
 
+  -- v2.0 Phase 135 (AIGOV-V20-04, D-09): one row per AI answer; never row values; also the cap counter (D-12/D-13).
+  CREATE TABLE IF NOT EXISTS ai_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_ms INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    dashboard_id INTEGER,
+    request_id TEXT,
+    question TEXT NOT NULL,
+    answer_text TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    outcome TEXT,
+    outcome_detail TEXT,
+    counted INTEGER NOT NULL DEFAULT 1,
+    provider TEXT, model TEXT, data_access TEXT, allow_list_version TEXT,
+    steps INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+    tools_json TEXT,
+    changes_json TEXT,
+    duration_ms INTEGER,
+    queries_json TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_audit_ts ON ai_audit (ts_ms);
+  CREATE INDEX IF NOT EXISTS idx_ai_audit_user_ts ON ai_audit (username, ts_ms);
+
+  -- v2.0 Phase 139 (AISAFE-V20-06, D-14/D-16): live AI session dynamic views. Names/ids only - never credentials or the
+  -- view definition (its filters hold user values). Powers the per-session cap, the logout drop and the boot sweep.
+  CREATE TABLE IF NOT EXISTS ai_session_views (
+    view_name TEXT PRIMARY KEY,
+    sid TEXT NOT NULL,
+    username TEXT NOT NULL,
+    dashboard_id INTEGER NOT NULL,
+    nonce TEXT NOT NULL,
+    temp_id INTEGER NOT NULL,
+    gen INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_session_views_sid ON ai_session_views (sid);
+
   -- v1.10 Phase 55 (ACCESS-V110-02): per-dashboard view-access grants. App-local
   -- visibility layer (Kinetica creds remain the data authority). Single table with a
   -- grantee_type discriminator covers BOTH user grants (lowercased free-form username —
@@ -377,6 +414,30 @@ const SCHEMA_DDL = `
     finished_at TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_export_jobs_user ON export_jobs (username, created_at DESC);
+
+  -- v2.0 Phase 143 (AIMCP-V20-04): personal access tokens for the Claude Desktop connector. The user's Kinetica
+  -- password is encrypted with a key derived from the token itself (never stored), so a row alone cannot be used.
+  CREATE TABLE IF NOT EXISTS mcp_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL,
+    name TEXT NOT NULL,
+    token_hash BLOB NOT NULL,
+    salt BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
+    iv BLOB NOT NULL,
+    auth_tag BLOB NOT NULL,
+    kinetica_url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    expires_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_mcp_tokens_user ON mcp_tokens (username);
+  -- Sessions a token opened, so revoking the token ends them too.
+  CREATE TABLE IF NOT EXISTS mcp_token_sessions (
+    sid TEXT PRIMARY KEY,
+    token_id INTEGER NOT NULL
+  );
 `;
 
 export const createDb = (dbPath: string): Database.Database => {
@@ -395,6 +456,10 @@ export const createDb = (dbPath: string): Database.Database => {
     .prepare("PRAGMA table_info(sessions)")
     .all() as Array<{ name: string }>;
   const colNames = new Set(cols.map((c) => c.name));
+  const auditCols = new Set((instance.prepare("PRAGMA table_info(ai_audit)").all() as Array<{ name: string }>).map((c) => c.name));
+  if (!auditCols.has("queries_json")) instance.exec("ALTER TABLE ai_audit ADD COLUMN queries_json TEXT"); // 140 D-12
+  if (!auditCols.has("kind")) instance.exec("ALTER TABLE ai_audit ADD COLUMN kind TEXT"); // 142 D-20: ask | generate | keep (NULL = legacy, derived on read)
+  instance.exec("CREATE INDEX IF NOT EXISTS idx_ai_audit_dash_ts ON ai_audit (dashboard_id, ts_ms)");
   if (!colNames.has("credential_type")) {
     instance.exec(
       "ALTER TABLE sessions ADD COLUMN credential_type TEXT NOT NULL DEFAULT 'password'"
@@ -470,6 +535,19 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!dashboardColNames.has("filter_display_mode")) {
     instance.exec("ALTER TABLE dashboards ADD COLUMN filter_display_mode TEXT");
   }
+  // v2.0 Phase 141 (AISES-V20-06, D-05/D-17): dashboard-wide change counter for Keep's 409.
+  if (!dashboardColNames.has("version")) instance.exec("ALTER TABLE dashboards ADD COLUMN version INTEGER NOT NULL DEFAULT 0");
+  // v2.0 Phase 142 (AIGEN-V20-02, D-03/D-06): "generated, never kept" marker. NULL/NULL = an ordinary dashboard.
+  if (!dashboardColNames.has("generated_by")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_by TEXT");
+  if (!dashboardColNames.has("generated_pending_at")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_pending_at INTEGER");
+  // D-06 hard guarantee (race-proof); the generate route's app-level check only exists to return a friendly 409.
+  instance.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_dashboards_one_pending ON dashboards (generated_by) WHERE generated_pending_at IS NOT NULL");
+  for (const t of ["widgets", "dashboard_layers", "dashboard_dynamic_views", "dashboard_tables"] as const) {
+    instance.exec(`
+      CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_i AFTER INSERT ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = NEW.dashboard_id; END;
+      CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_u AFTER UPDATE ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = NEW.dashboard_id; END;
+      CREATE TRIGGER IF NOT EXISTS kbi_ver_${t}_d AFTER DELETE ON ${t} BEGIN UPDATE dashboards SET version = version + 1 WHERE id = OLD.dashboard_id; END;`);
+  }
 
   // v1.25 Phase 122 (SSYNC-V125-02): add columns_fingerprint TEXT to existing `tables`.
   // NULL = this table's snapshot predates precise type capture, so the first schema check
@@ -533,6 +611,7 @@ const mapDashboard = (row: any): Dashboard => ({
   // v1.20 Phase 106 (FSET-V120-02/03): coalesce NULL / anything-not-'panel' to 'topbar'
   // so the wire value is always concrete — never null (backward-compat default).
   filter_display_mode: row.filter_display_mode === "panel" ? "panel" : "topbar",
+  generated_pending: row.generated_pending_at !== null && row.generated_pending_at !== undefined,
   created_at: row.created_at,
   updated_at: row.updated_at
 });
@@ -582,9 +661,20 @@ export const listDashboards = (): Dashboard[] => {
   return db.prepare("SELECT * FROM dashboards ORDER BY updated_at DESC").all().map(mapDashboard);
 };
 
+export const listKeptDashboards = (): Dashboard[] => listDashboards().filter((d) => !d.generated_pending);
+
 export const getDashboard = (id: number): Dashboard | undefined => {
   const row = db.prepare("SELECT * FROM dashboards WHERE id = ?").get(id);
   return row ? mapDashboard(row) : undefined;
+};
+
+export const getDashboardVersion = (id: number): number | undefined =>
+  (db.prepare("SELECT version FROM dashboards WHERE id = ?").get(id) as { version: number } | undefined)?.version;
+
+export const getGeneratedPending = (id: number): { generatedBy: string; pendingAt: number } | null | undefined => {
+  const r = db.prepare("SELECT generated_by, generated_pending_at FROM dashboards WHERE id = ?").get(id) as { generated_by: string | null; generated_pending_at: number | null } | undefined;
+  if (!r) return undefined;
+  return r.generated_pending_at !== null && r.generated_by !== null ? { generatedBy: r.generated_by, pendingAt: r.generated_pending_at } : null;
 };
 
 export const createDashboard = (name: string, description?: string): Dashboard => {
@@ -596,7 +686,7 @@ export const createDashboard = (name: string, description?: string): Dashboard =
 export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name" | "description" | "filter_display_mode">>): Dashboard | undefined => {
   const existing = getDashboard(id);
   if (!existing) return undefined;
-  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, updated_at = datetime('now') WHERE id = ?").run(
+  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?").run(
     attrs.name ?? existing.name,
     attrs.description ?? existing.description,
     "filter_display_mode" in attrs ? attrs.filter_display_mode : existing.filter_display_mode,

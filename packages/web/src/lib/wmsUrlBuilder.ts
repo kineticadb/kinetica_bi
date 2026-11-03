@@ -98,6 +98,7 @@ export type MapWidgetConfig = {
   blurRadius?: number;     // Kinetica map units (PITFALL M-05)
   colormap?: string;       // Full Kinetica WMS docs catalog — see COLORMAP_GROUPS in KineticaWmsLayerForm.tsx
   reverseColormap?: boolean; // REVERSE_COLORMAP=TRUE inverts the colormap's color order
+  valueColumn?: string;    // Phase 136 (D-10): heatmap weight column -> Kinetica VAL_ATTR (docs 7.1 wms_rest). Plain identifier only.
   // Classbreak params
   cbColumn?: string;
   cbBreakType?: "categorical" | "numerical";
@@ -384,6 +385,16 @@ export function buildWmsParams(
     // existing key during merge. The slight URL bloat is the cost of
     // correctness across the operator's toggle lifecycle.
     params.REVERSE_COLORMAP = config.reverseColormap === true ? "TRUE" : "FALSE";
+    // Phase 136 (D-10): VAL_ATTR weights the heatmap by a column. Kinetica accepts
+    // expressions here, so only a plain identifier is ever emitted. Like
+    // REVERSE_COLORMAP, OL `source.updateParams()` MERGES keys, so a cleared
+    // weight must overwrite the stale value: `undefined` is dropped by
+    // JSON.stringify (fingerprint, legacy byte-identity) and by OL's URL
+    // builder, so no `VAL_ATTR=` reaches the server when unset.
+    (params as Record<string, string | undefined>).VAL_ATTR =
+      typeof config.valueColumn === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(config.valueColumn)
+        ? config.valueColumn
+        : undefined;
   } else if (config.renderMode === "classbreak") {
     // v1.7 Phase 38 (SCHEMA-V17-03/04/05): Lane C cb_raster emission per
     // 37-SPIKE-NOTES.md ## Decision. STYLES is already "cb_raster" via

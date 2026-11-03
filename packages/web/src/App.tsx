@@ -9,6 +9,7 @@ import LoginPage from "./components/LoginPage";
 import Toast from "./components/Toast";
 import { UsersPage } from "./components/UsersPage";
 import { RolesPage } from "./components/RolesPage";
+import { AiActivityPage } from "./components/AiActivityPage";
 import { ProfilePage } from "./components/ProfilePage";
 import { useAuthStore } from "./store/auth";
 import { useFilterStore } from "./store/filterStore";
@@ -27,13 +28,16 @@ import { useFilterCombinationStore } from "./store/filterCombinationStore";
 import { useMapViewportSyncStore } from "./store/mapViewportSyncStore";
 import { useFilterHighlightStore } from "./store/filterHighlightStore";
 import { useMapCurrentViewStore } from "./store/mapCurrentViewStore";
+import { useAiSessionStore } from "./store/aiSessionStore";
+import { requestLeave } from "./lib/aiLeaveGuard";
+import AiLeaveDialog from "./components/AiLeaveDialog";
 import { PERMISSIONS } from "./lib/permissions";
 import { useDeepLinkDashboard, DEEP_LINK_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkDashboard";  // Phase 114 (DLINK-V121-02/04/05)
 import { isValidDashboardId, clearDashboardUrl, hasDashboardParam, restoreDashboardUrl, type DashboardMode } from "./lib/dashboardUrl";  // Phase 115 (DLINK-V121-03)
 import { useDeepLinkTable, DEEP_LINK_TABLE_UNAVAILABLE_MESSAGE } from "./hooks/useDeepLinkTable";  // Phase 116 (TLINK-V121-02/04)
 import { hasTableParam, clearTableUrl, restoreTableUrl, isValidTableId, type TableMode } from "./lib/tableUrl";  // Phase 116
 
-type Page = "dashboards" | "datasets" | "exports" | "settings" | "users" | "roles" | "profile" | "branding";
+type Page = "dashboards" | "datasets" | "exports" | "settings" | "users" | "roles" | "profile" | "branding" | "ai-activity";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
 // Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
@@ -150,6 +154,9 @@ const App = () => {
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const markUnauthenticated = useAuthStore((s) => s.markUnauthenticated);
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  // 142: hasPermission is a stable function, so a mid-session role change would not re-run the
+  // gate effect or re-render. Subscribe to the boolean itself.
+  const canViewAudit = useAuthStore((s) => s.hasPermission(PERMISSIONS.AUDIT_VIEW));
 
   // Phase 115 (DLINK-V121-03): a dashboard id recovered from kbi_returnTo after an OIDC round
   // trip, read once at mount so the hook has it on the FIRST render (no list flash).
@@ -278,7 +285,8 @@ const App = () => {
       const dynamicViews = useDynamicViewStore.getState().views;
       for (const idStr of Object.keys(dynamicViews)) {
         const dvId = Number(idStr);
-        if (dynamicViews[dvId]?.status === "materialized") {
+        // 139: AI views have negative ids; explicit logout drops them server-side (139-06), dropDynamicView would 404.
+        if (dvId > 0 && dynamicViews[dvId]?.status === "materialized") {
           dropDynamicView(dvId).catch(() => {});
         }
       }
@@ -300,6 +308,8 @@ const App = () => {
       // session-only, no server DROP. Prevents one user's map views leaking into the next
       // session's config-panel readouts.
       useMapCurrentViewStore.getState().reset();
+      // Phase 134 (AISES-V20-07): 14th store — AI session layer; logout/401 is not promptable, reset unconditionally.
+      useAiSessionStore.getState().reset();
     }
   }, [status]);
 
@@ -415,8 +425,10 @@ const App = () => {
   // dashboards page.
   useEffect(() => {
     const onNav = () => {
-      setPage("exports");
-      setDashboardViewMode("list");
+      requestLeave(() => {
+        setPage("exports");
+        setDashboardViewMode("list");
+      });
     };
     window.addEventListener(NAVIGATE_EXPORTS_EVENT, onNav);
     return () => window.removeEventListener(NAVIGATE_EXPORTS_EVENT, onNav);
@@ -441,7 +453,9 @@ const App = () => {
         parsed.page === "profile" ||
         // Branding is permission-gated: never restore it for a user who lacks
         // branding:manage (server enforces too, but don't strand them on the page).
-        (parsed.page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE))
+        (parsed.page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE)) ||
+        // 142: AI activity is gated by audit:view (server returns 403 too).
+        (parsed.page === "ai-activity" && hasPermission(PERMISSIONS.AUDIT_VIEW))
       ) {
         setPage(parsed.page);
         if (parsed.page !== "dashboards") {
@@ -551,10 +565,14 @@ const App = () => {
   // gap where the page itself was still reachable/rendered.
   useEffect(() => {
     if (status !== "authenticated") return;
-    if (page === "branding" && !hasPermission(PERMISSIONS.BRANDING_MANAGE)) {
+    // 142: same gate for the AI activity page (audit:view).
+    if (
+      (page === "branding" && !hasPermission(PERMISSIONS.BRANDING_MANAGE)) ||
+      (page === "ai-activity" && !canViewAudit)
+    ) {
       setPage("dashboards");
     }
-  }, [status, page, hasPermission]);
+  }, [status, page, hasPermission, canViewAudit]);
 
   // Phase 11 MAP-01/MAP-02: probe WMS capabilities once per authenticated session.
   // Fires AFTER auth-status gating so it only runs when the user is authenticated
@@ -624,18 +642,20 @@ const App = () => {
             if (!window.confirm("Discard unsaved branding changes?")) return;
             brandPageGuard.revert?.();
           }
-          setPage(key as Page);
-          setDashboardViewMode("list");
+          requestLeave(() => {
+            setPage(key as Page);
+            setDashboardViewMode("list");
+          });
         }}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />
       <div className="main">
-        <Topbar onNavigateProfile={() => setPage("profile")} />
+        <Topbar onNavigateProfile={() => requestLeave(() => setPage("profile"))} />
         {unassignedCount !== null && unassignedCount > 0 && !bannerDismissed && (
           <div className="onboarding-banner" role="status">
             {unassignedCount} user{unassignedCount !== 1 ? "s are" : " is"} on the default analyst role —{" "}
-            <button className="banner-link" onClick={() => setPage("users")}>
+            <button className="banner-link" onClick={() => requestLeave(() => setPage("users"))}>
               Review in User Management
             </button>
             <button className="banner-dismiss" aria-label="Dismiss" onClick={() => setBannerDismissed(true)}>×</button>
@@ -662,10 +682,12 @@ const App = () => {
         {page === "branding" && hasPermission(PERMISSIONS.BRANDING_MANAGE) && <BrandingSettingsPage />}
         {page === "users" && <UsersPage />}
         {page === "roles" && <RolesPage />}
+        {page === "ai-activity" && canViewAudit && <AiActivityPage />}
         {page === "profile" && <ProfilePage />}
       </div>
       <BrandStyleInjector />
       <Toast />
+      <AiLeaveDialog />
     </div>
   );
 };

@@ -327,3 +327,25 @@ describe("kineticaSql ROWLIM response metadata", () => {
     expect(result).toEqual({ column_1: [1, 2] });
   });
 });
+
+describe("kineticaSql signal and tag (137-02)", () => {
+  it("KSQL-SIG-1: passes options.signal to fetch; an aborted request rejects typed without leaking the URL", async () => {
+    const fetchMock = mockFetch(200, happyBody);
+    const ac = new AbortController();
+    await kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL", signal: ac.signal });
+    expect(fetchMock.mock.calls[0][1].signal).toBe(ac.signal);
+
+    const abortErr = Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abortErr));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const p = kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL", signal: ac.signal });
+    await expect(p).rejects.toBeInstanceOf(KineticaUpstreamError);
+    await expect(p).rejects.toThrow("Kinetica request aborted");
+  });
+
+  it("KSQL-TAG-1: options.tag prefixes the posted statement", async () => {
+    const fetchMock = mockFetch(200, happyBody);
+    await kineticaSql(buildReq(), "SELECT 1", { route: ROUTE, op: "SQL", tag: "abc" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).statement).toBe("/* kbi-ai:abc */ SELECT 1");
+  });
+});

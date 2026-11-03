@@ -1,7 +1,7 @@
 // env first — see env.ts: must evaluate before modules that fail-fast on env
 // at import time (sessionStore.ts SESSION_ENCRYPTION_KEY boot validation).
 import "./env";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
@@ -14,8 +14,12 @@ import {
   verifyKineticaCredentials,
   type AuthedRequest,
 } from "./auth";
+import { isTableNotFoundError, decodeCountResult, isAggregatedTemplate, decideThreshold, decideAfterPreflight, buildOutputCountSql } from "./lib/dvThreshold";
+import { cancelKineticaJobsByTag } from "./lib/kineticaJobs";
 import { kineticaSql as kineticaSqlHelper, kineticaWms, kineticaShowTable, getRowLimitConfig } from "./kinetica";
 import { parseTemporalColumns } from "./lib/showTableTypes";
+import { createViewColumnsCache, buildViewColumnsProbeSql, parseProbeColumns } from "./lib/viewColumns";
+import { assertColumnsExist, assertIdentifier, assertSchemaTableColumn, tableLabel, ColumnGuardError, SQL_IDENT_RE } from "./lib/columnGuard";
 // v1.25 Phase 122 (SSYNC-V125-02/-03/-04): pure /show/table-body parser + three-outcome
 // diff contract for the on-demand schema-check route.
 import { tablePresence, parseColumnFingerprints, parseFingerprintSnapshot } from "./lib/schemaFingerprint";
@@ -27,7 +31,7 @@ import type { ColumnFingerprintMap } from "./lib/schemaFingerprint";
 // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): the operator-facing impact report.
 import { buildImpactReport } from "./lib/schemaImpact";
 import type { SchemaCheckResponse } from "./lib/schemaImpact";
-import { buildFilterViewName } from "./lib/viewNaming";
+import { buildFilterViewName, sanitizeForViewName } from "./lib/viewNaming";
 import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
 // composer (CONTEXT.md § D7 — _kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>).
@@ -60,8 +64,14 @@ import {
   KineticaUpstreamError,
 } from "./kineticaErrors";
 import { reconcileExportsOnBoot, startExportSweep } from "./lib/exportCleanup";
+import { dropViewsForSid, sweepAiViewsOnBoot, getAiSessionView } from "./lib/aiSessionViews";
+import { buildAiDynamicViewName } from "./lib/aiDvName";
+import { startAiAuditSweep } from "./lib/aiAudit";
+import { discardGeneratedDashboard, discardPendingForUser, sweepGeneratedOnBoot, startGeneratedSweep } from "./lib/aiGenerate";
+import { registerAiGenerateRoutes } from "./aiGenerateRoutes";
 import { getExportLimits } from "./lib/exportCaps";
-import { createSession, deleteSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
+import { loadAiConfig } from "./lib/aiConfig";
+import { createSession, deleteSession, getSession, startSessionSweep, tryDecodeAccessTokenExp } from "./sessionStore";
 import {
   createDashboard,
   createWidget,
@@ -77,6 +87,7 @@ import {
   getTable,
   getView,
   listDashboards,
+  listKeptDashboards,
   listWidgets,
   listTables,
   listViews,
@@ -119,6 +130,7 @@ import {
   listTableSyncHistory,
   getTableSyncHistoryEntry,
   deleteTableSyncHistoryEntry,
+  getTableBySchemaName,
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
@@ -149,12 +161,20 @@ import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboa
 // v1.16 Phase 81 (BRANDFND-02, SECA-V116-01): branding deps — multer upload, magic-byte
 // type detection, jsdom DOM environment, DOMPurify SVG sanitization.
 import { registerExportRoutes } from "./exportRoutes";
+import { registerAiRoutes } from "./aiRoutes";
+import { registerAiAuditRoutes } from "./aiAuditRoutes";
+import { registerAiDvRoutes } from "./aiDvRoutes";
+import { registerAiKeepRoutes } from "./aiKeepRoutes";
+import { registerMcpRoutes, registerMcpTokenLoginRoute } from "./mcpRoutes";
 import multer from "multer";
 import { fileTypeFromBuffer } from "file-type";
 import { JSDOM } from "jsdom";
 import DOMPurify from "dompurify";
 // v1.16 Phase 81 (CSS-V116-02): PostCSS AST sanitizer for custom CSS at save time.
 import { sanitizeCssPostcss } from "./lib/brandCssSanitizer";
+// v2.0 Phase 141 (D-17/D-07): own-write attribution + list read-baseline stamps.
+import { stampWrite, stampRead } from "./lib/dashboardVersion";
+import { DASHBOARD_VERSION_HEADER, DASHBOARD_VERSION_READ_HEADER } from "@kinetica-bi/shared";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -163,7 +183,10 @@ export const createApp = async (): Promise<express.Express> => {
   app.use(
     cors({
       origin: corsOrigins.length ? corsOrigins : true,
-      credentials: true
+      credentials: true,
+      // 141 D-17/D-07: expose ONLY the two dashboard-version headers. client.ts relies on
+      // Content-Disposition staying unexposed cross-origin - do not add more here.
+      exposedHeaders: [DASHBOARD_VERSION_HEADER, DASHBOARD_VERSION_READ_HEADER]
     })
   );
   app.use(express.json({ limit: "1mb" }));
@@ -199,6 +222,8 @@ export const createApp = async (): Promise<express.Express> => {
     return n;
   };
   const DEFAULT_VIEW_TTL_MINUTES = readPositiveIntEnv("DEFAULT_VIEW_TTL_MINUTES", 5);
+  // Phase 133 (AISAFE-V20-01): per-dv-view column list for the filter/materialize guard.
+  const viewColumnsCache = createViewColumnsCache({ ttlMs: DEFAULT_VIEW_TTL_MINUTES * 60 * 1000 });
   const TTL_KEEPALIVE_LEAD_MINUTES = readPositiveIntEnv("TTL_KEEPALIVE_LEAD_MINUTES", 1);
 
   // ---- Phase 90 (COMBO-V118-03): per-table combination-view ceiling ----
@@ -217,6 +242,9 @@ export const createApp = async (): Promise<express.Express> => {
   const MAX_ROWS_PER_QUERY = getRowLimitConfig().maxRowsPerQuery;
   // Phase 130 (EXPRT-V126-15, D-18): admin export caps for the Phase 131 dialog. Unset caps are null. Read once.
   const EXPORT_LIMITS = getExportLimits();
+
+  // Phase 133 (AIPRV-V20-01): AI config is read ONCE at boot. Invalid -> AI disabled + loud log; NEVER exits (D-06), NEVER calls the provider (D-07).
+  loadAiConfig(process.env);
 
   // Phase 127 caller audit: INFORMATION_SCHEMA lists feed un-paginated dropdowns; pin an explicit limit so they never inherit an admin-raised KINETICA_MAX_ROWS_PER_QUERY (and are still clamped by it if lowered).
   const DISCOVERY_ROW_LIMIT = 20_000;
@@ -436,10 +464,18 @@ export const createApp = async (): Promise<express.Express> => {
     return res.json({ user: { username, roles: rp.roles, permissions: rp.permissions } });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     // Best-effort: extract sid even if cookie is malformed; idempotent delete.
     const decoded = decodeAndVerifyJwt(req);
     if (decoded?.sid) {
+      // 139 (AISAFE-V20-06): drop this session's AI views AS the user BEFORE the session row (and its credentials) is
+      // deleted. The client cannot do it: its DROP calls run after this response clears the cookie. Bounded; never fails logout.
+      try { await dropViewsForSid(decoded.sid, { timeoutMs: 3000 }); } catch { /* swallow */ }
+      // 142 D-03a: an unkept generated dashboard does not outlive its creator's logout. Bounded; never fails logout.
+      try {
+        const s = getSession(decoded.sid);
+        if (s) await discardPendingForUser(s.username, { timeoutMs: 3000 });
+      } catch { /* swallow */ }
       try { deleteSession(decoded.sid); } catch { /* swallow — logout never fails */ }
     }
     clearSessionCookie(res);
@@ -459,7 +495,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
-    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY, exportLimits: EXPORT_LIMITS });
+    return res.json({ user: { username: loaded.session.username, roles, permissions }, authMode, ttlKeepaliveLeadMinutes: TTL_KEEPALIVE_LEAD_MINUTES, maxCombinationViewsPerTable: MAX_COMBINATION_VIEWS_PER_TABLE, dvFilterScopeDisabled: DISABLE_DV_FILTER_SCOPE, maxBarGroupBySeriesCap: MAX_BAR_GROUP_BY_SERIES, csvInBrowserMaxRows: CSV_INBROWSER_MAX_ROWS, maxRowsPerQuery: MAX_ROWS_PER_QUERY, exportLimits: EXPORT_LIMITS, mcpEnabled: process.env.MCP_ENABLED === "true" });
   });
 
   // ---- Plan 05-03: AUTH_MODE-aware routes ----
@@ -674,6 +710,9 @@ export const createApp = async (): Promise<express.Express> => {
     return res.redirect(`${webRedirectBase}/`);
   }));
 
+  // Phase 143: the Claude Desktop connector exchanges its access token for a session (no session yet).
+  if (process.env.MCP_ENABLED === "true") registerMcpTokenLoginRoute(app, { wrap: asyncHandler });
+
   // All routes below require authentication.
   app.use("/api", requireAuth);
 
@@ -880,17 +919,22 @@ export const createApp = async (): Promise<express.Express> => {
     if ("filter_display_mode" in body && body.filter_display_mode !== "topbar" && body.filter_display_mode !== "panel") {
       return res.status(400).json({ error: "filter_display_mode must be 'topbar' or 'panel'." });
     }
-    const updated = updateDashboard(id, req.body);
+    const updated = stampWrite(res, id, () => updateDashboard(id, req.body));
     if (!updated) return res.status(404).json({ error: "Dashboard not found." });
     return res.json(updated);
   });
 
-  app.delete("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_DELETE), (req, res) => {
+  app.delete("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_DELETE), asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    // 142: a pending generated dashboard goes through the one discard helper (drops its AI session views too).
+    if (getDashboard(id)?.generated_pending) {
+      const r = await discardGeneratedDashboard(id);
+      return r.deleted ? res.status(204).send() : res.status(404).json({ error: "Dashboard not found." });
+    }
     const ok = deleteDashboard(id);
     if (!ok) return res.status(404).json({ error: "Dashboard not found." });
     return res.status(204).send();
-  });
+  }));
 
   // ─── Dashboard Access Grant CRUD (ENFORCE-V110-03/04) ─────────────────────────
   // All three routes are gated by dashboards:manage_access. Admin and designer hold it
@@ -912,7 +956,9 @@ export const createApp = async (): Promise<express.Express> => {
     if ((grantee_type !== "user" && grantee_type !== "role") || typeof grantee !== "string" || grantee.trim() === "") {
       return res.status(400).json({ error: "grantee_type ('user'|'role') and grantee are required." });
     }
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    const target = getDashboard(id);
+    if (!target) return res.status(404).json({ error: "Dashboard not found." });
+    if (target.generated_pending) return res.status(409).json({ error: "This dashboard hasn't been kept yet, so it can't be shared.", code: "DASHBOARD_NOT_KEPT" });
     const actor = (req as AuthedRequest).user!.creds.username;
     const before = listDashboardGrants(id);
     const inserted = addDashboardGrant(id, grantee_type, grantee);
@@ -960,6 +1006,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    stampRead(res, id, "widgets");
     return res.json({ data: listWidgets(id) });
   });
 
@@ -982,6 +1029,14 @@ export const createApp = async (): Promise<express.Express> => {
     return res.send(JSON.stringify(payload, null, 2));
   });
 
+  // 137 (AIGOV-V20-01): adding the AI Assistant widget needs "Use AI"; the UI gate alone is not enough.
+  const denyAiWidget = (req: Request, res: Response): boolean => {
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (getEffectivePermissions(username).has(PERMISSIONS.AI_USE)) return false;
+    res.status(403).json({ error: "You need the Use AI permission to add the AI assistant.", code: "PERMISSION_DENIED", permission: PERMISSIONS.AI_USE });
+    return true;
+  };
+
   app.post("/api/dashboards/:id/widgets", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
     if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
@@ -989,25 +1044,27 @@ export const createApp = async (): Promise<express.Express> => {
     if (!input?.title || !input?.type) {
       return res.status(400).json({ error: "Widget requires 'title' and 'type'." });
     }
-    const widget = createWidget(dashboardId, {
+    if (input.type === ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
+    const widget = stampWrite(res, dashboardId, () => createWidget(dashboardId, {
       title: input.title,
       type: input.type,
       position: input.position ?? 0,
       config: input.config ?? {}
-    });
+    }));
     return res.status(201).json(widget);
   });
 
   app.patch("/api/widgets/:id", ...requirePermission(PERMISSIONS.WIDGETS_CONFIGURE), (req, res) => {
     const id = Number(req.params.id);
-    const updated = updateWidget(id, req.body);
+    if (req.body?.type === "ai" && getWidget(id) && getWidget(id)!.type !== ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
+    const updated = stampWrite(res, getWidget(id)?.dashboard_id, () => updateWidget(id, req.body));
     if (!updated) return res.status(404).json({ error: "Widget not found." });
     return res.json(updated);
   });
 
   app.delete("/api/widgets/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
-    const ok = deleteWidget(id);
+    const ok = stampWrite(res, getWidget(id)?.dashboard_id, () => deleteWidget(id));
     if (!ok) return res.status(404).json({ error: "Widget not found." });
     return res.status(204).send();
   });
@@ -1018,6 +1075,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    stampRead(res, id, "tables");
     return res.json({ data: listDashboardTables(id) });
   });
 
@@ -1027,14 +1085,14 @@ export const createApp = async (): Promise<express.Express> => {
     const { table_id } = req.body as { table_id?: number };
     if (!table_id) return res.status(400).json({ error: "table_id is required." });
     if (!getTable(table_id)) return res.status(404).json({ error: "Table not found." });
-    addDashboardTable(dashboardId, table_id);
+    stampWrite(res, dashboardId, () => addDashboardTable(dashboardId, table_id));
     return res.status(201).json({ data: listDashboardTables(dashboardId) });
   });
 
   app.delete("/api/dashboards/:dashboardId/tables/:tableId", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.dashboardId);
     const tableId = Number(req.params.tableId);
-    const ok = removeDashboardTable(dashboardId, tableId);
+    const ok = stampWrite(res, dashboardId, () => removeDashboardTable(dashboardId, tableId));
     if (!ok) return res.status(404).json({ error: "Association not found." });
     return res.status(204).send();
   });
@@ -1049,6 +1107,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const username = (req as AuthedRequest).user!.creds.username;
     if (!getDashboard(id) || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
+    stampRead(res, id, "layers");
     return res.json({ data: listDashboardLayers(id) });
   });
 
@@ -1064,7 +1123,7 @@ export const createApp = async (): Promise<express.Express> => {
     if (layer_type !== undefined && layer_type !== "KineticaWms") {
       return res.status(400).json({ error: "layer_type must be 'KineticaWms'." });
     }
-    const layer = createDashboardLayer(dashboardId, { table_id, layer_type, position, config });
+    const layer = stampWrite(res, dashboardId, () => createDashboardLayer(dashboardId, { table_id, layer_type, position, config }));
     return res.status(201).json(layer);
   });
 
@@ -1077,7 +1136,7 @@ export const createApp = async (): Promise<express.Express> => {
       return res.status(400).json({ error: "orderedIds (number[]) is required." });
     }
     try {
-      const layers = reorderDashboardLayers(dashboardId, orderedIds);
+      const layers = stampWrite(res, dashboardId, () => reorderDashboardLayers(dashboardId, orderedIds));
       return res.json({ data: layers });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "reorder failed";
@@ -1125,14 +1184,14 @@ export const createApp = async (): Promise<express.Express> => {
       const rawFilterScope = (body as any).filter_scope;
       body.filter_scope = rawFilterScope == null ? null : JSON.stringify(rawFilterScope);
     }
-    const updated = updateDashboardLayer(layerId, body);
+    const updated = stampWrite(res, getDashboardLayer(layerId)?.dashboard_id, () => updateDashboardLayer(layerId, body));
     if (!updated) return res.status(404).json({ error: "Layer not found." });
     return res.json(updated);
   });
 
   app.delete("/api/dashboards/:id/layers/:layerId", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const layerId = Number(req.params.layerId);
-    const ok = deleteDashboardLayer(layerId);
+    const ok = stampWrite(res, getDashboardLayer(layerId)?.dashboard_id, () => deleteDashboardLayer(layerId));
     if (!ok) return res.status(404).json({ error: "Layer not found." });
     return res.status(204).send();
   });
@@ -1270,6 +1329,17 @@ export const createApp = async (): Promise<express.Express> => {
 
   // v1.26 Phase 129: background export routes (requireAuth only — see boundary list above).
   registerExportRoutes(app);
+  // v2.0 Phase 135: AI routes (POST /api/ai/ask requires ai:use; GET /api/ai/config requireAuth).
+  registerAiRoutes(app);
+  registerAiAuditRoutes(app);
+  // v2.0 Phase 139: ad-hoc AI dynamic views (materialize/drop/list); session-only, registry-backed.
+  registerAiDvRoutes(app, { requireConfig, wrap: asyncHandler, ttlMinutes: DEFAULT_VIEW_TTL_MINUTES, viewColumnsCache });
+  // v2.0 Phase 141: Keep (persist the AI session's folded change set); the server is the authority.
+  registerAiKeepRoutes(app, { requireConfig, wrap: asyncHandler, viewColumnsCache });
+  // v2.0 Phase 142: Generate from a table (pending dashboard) + creator-only discard.
+  registerAiGenerateRoutes(app, { requireConfig, wrap: asyncHandler });
+  // MCP connector (143): tools for the Kinetica BI MCP server (Claude Desktop); off unless MCP_ENABLED=true.
+  if (process.env.MCP_ENABLED === "true") registerMcpRoutes(app, { wrap: asyncHandler, appUrl: process.env.MCP_APP_URL ?? "http://localhost:5173" });
 
   // ----- v1.3 Phase 13: Filter materialize (transient, session-scoped) -----
   // POST /api/filter/materialize — apply filters by creating/replacing a transient materialized view.
@@ -1294,6 +1364,9 @@ export const createApp = async (): Promise<express.Express> => {
       // When present → the dv path (filter the dv's OWN materialized view). When
       // absent → the existing table path, byte-unchanged.
       dynamicViewId?: number;
+      // 139 D-23: a NEGATIVE dynamicViewId is an AI session view; the registry name is rebuilt server-side from these + the caller's user/sid.
+      aiNonce?: string;
+      aiGen?: number;
       filters?: ActiveFilter[];
       spatialFilters?: SpatialFilter[];
       spatialTarget?: SpatialTarget;
@@ -1307,6 +1380,8 @@ export const createApp = async (): Promise<express.Express> => {
       dashboardId,
       tableId,
       dynamicViewId,
+      aiNonce,
+      aiGen,
       filters = [],
       spatialFilters,
       spatialTarget,
@@ -1345,17 +1420,46 @@ export const createApp = async (): Promise<express.Express> => {
           error: "filters must be non-empty on the dynamic-view path (use DELETE to clear).",
         });
       }
-      // dv row must exist AND belong to dashboardId (same-dashboard scoping).
-      const dvRow = getDashboardDynamicView(dynamicViewId as number);
-      if (!dvRow || dvRow.dashboard_id !== dashboardId) {
-        return res.status(404).json({ error: "Dynamic view not found." });
-      }
       const dvAuthedReq = req as AuthedRequest;
-      const dvViewName = buildDynamicViewName({
-        userId: dvAuthedReq.user!.creds.username,
-        dashboardId,
-        dynamicViewId: dynamicViewId as number,
-      });
+      let dvViewName: string;
+      let dvLabel: string;
+      if ((dynamicViewId as number) < 0) {
+        // 139 D-23: AI session view. Name rebuilt from the caller's own user+sid (never client-supplied), resolved via the registry.
+        const gen = aiGen ?? 0;
+        if (typeof aiNonce !== "string" || !/^[a-f0-9]{8}$/.test(aiNonce) || !Number.isInteger(gen) || gen < 0 || gen > 999) {
+          return res.status(400).json({ error: "aiNonce is required for an AI dynamic view." });
+        }
+        let aiName: string;
+        try {
+          aiName = buildAiDynamicViewName({
+            username: dvAuthedReq.user!.creds.username,
+            sid: dvAuthedReq.user!.sid,
+            nonce: aiNonce,
+            tempId: dynamicViewId as number,
+            gen,
+          });
+        } catch {
+          return res.status(400).json({ error: "aiNonce is required for an AI dynamic view." });
+        }
+        const aiRow = getAiSessionView(aiName);
+        if (!aiRow || aiRow.dashboardId !== dashboardId) {
+          return res.status(404).json({ error: "Dynamic view not found." });
+        }
+        dvViewName = aiName;
+        dvLabel = `AI view ${dynamicViewId}`;
+      } else {
+        // dv row must exist AND belong to dashboardId (same-dashboard scoping).
+        const dvRow = getDashboardDynamicView(dynamicViewId as number);
+        if (!dvRow || dvRow.dashboard_id !== dashboardId) {
+          return res.status(404).json({ error: "Dynamic view not found." });
+        }
+        dvViewName = buildDynamicViewName({
+          userId: dvAuthedReq.user!.creds.username,
+          dashboardId,
+          dynamicViewId: dynamicViewId as number,
+        });
+        dvLabel = dvRow.name;
+      }
       const dvFilterViewName = buildFilterViewName({
         username: dvAuthedReq.user!.creds.username,
         sessionId: dvAuthedReq.user!.sid,
@@ -1363,6 +1467,17 @@ export const createApp = async (): Promise<express.Express> => {
         dynamicViewId: dynamicViewId as number,
         combinationKey,
       });
+      // Phase 133 (AISAFE-V20-01): dv filter columns must exist on the dv's materialized view (S1-decided lookup, cached per view for the TTL window).
+      let dvColumns = viewColumnsCache.get(dvViewName);
+      if (!dvColumns) {
+        const probe = await kineticaSqlHelper(dvAuthedReq, buildViewColumnsProbeSql(dvViewName), {
+          route: "POST /api/filter/materialize",
+          op: "MATERIALIZE",
+        });
+        dvColumns = parseProbeColumns(probe);
+        if (dvColumns.length > 0) viewColumnsCache.set(dvViewName, dvColumns);
+      }
+      assertColumnsExist(dvColumns, dvFiltersArr.map((f) => (f as { column?: unknown }).column), `dynamic view "${dvLabel}"`);
       const dvWhereClause = buildServerWhereClause(dvFiltersArr);
       // FROM the dv's OWN materialized view. If that view isn't materialized yet,
       // Kinetica's "object not found" bubbles through asyncHandler → errorMiddleware
@@ -1433,6 +1548,20 @@ export const createApp = async (): Promise<express.Express> => {
     if (!table) return res.status(404).json({ error: "Table not found." });
     const tableRef = table.schema ? `${table.schema}.${table.name}` : table.name;
 
+    // Phase 133 (AISAFE-V20-01): client column names must exist in the registered snapshot (D-01/D-02). No SQL is built or sent on rejection.
+    assertColumnsExist(
+      table.columns,
+      [
+        ...filtersArr.map((f) => (f as { column?: unknown } | null)?.column),
+        ...(spatialTarget
+          ? [spatialTarget.lonCol, spatialTarget.latCol, spatialTarget.spatialCol].filter(
+              (c) => c !== undefined && c !== "",
+            )
+          : []),
+      ],
+      tableLabel(table),
+    );
+
     const authedReq = req as AuthedRequest;
     const viewName = buildFilterViewName({
       username: authedReq.user!.creds.username,
@@ -1486,10 +1615,15 @@ export const createApp = async (): Promise<express.Express> => {
     // COMBO-V118-04: direct-drop branch — client already knows the exact combination
     // view name (predicted locally via buildFilterViewName + combinationKey). Accepts
     // ?viewName=<name> and drops it without re-deriving from tableId/dynamicViewId.
-    // The same DROP TABLE IF EXISTS path is used; no new injection surface (the
-    // existing dv/table branches also interpolate a computed name).
+    // Phase 133 (AISAFE-V20-01): the name is client-supplied and interpolated into DROP
+    // TABLE, so it must be a plain identifier AND carry the caller's own
+    // _kbi_filt_u<user>_ prefix — otherwise it could drop any table or another user's view.
     const directViewName = req.query.viewName;
     if (typeof directViewName === "string" && directViewName !== "") {
+      const ownPrefix = `_kbi_filt_u${sanitizeForViewName(authedReq.user!.creds.username)}_`;
+      if (!directViewName.startsWith(ownPrefix) || !SQL_IDENT_RE.test(directViewName)) {
+        return res.status(400).json({ error: "viewName must be one of your own filter views.", code: "VIEWNAME_NOT_OWNED" });
+      }
       viewName = directViewName;
     } else if (dynamicViewId !== undefined && Number.isFinite(dynamicViewId)) {
       // dv path — drop the dv-filter view.
@@ -1571,6 +1705,7 @@ export const createApp = async (): Promise<express.Express> => {
     // Build the locked NTILE SQL via the pure lib module + run via per-user kineticaSql.
     // Kinetica permission / upstream / column-not-found / non-numeric-column errors bubble
     // through asyncHandler → errorMiddleware unchanged (typed-error middleware handles them).
+    assertSchemaTableColumn({ schema, table, column }, getTableBySchemaName);
     const sql = buildQuantileSql({ schema, table, column, n });
     const authedReq = req as AuthedRequest;
     const encoded = await kineticaSqlHelper(authedReq, sql, {
@@ -1622,6 +1757,7 @@ export const createApp = async (): Promise<express.Express> => {
       n: number;
     };
 
+    assertSchemaTableColumn({ schema, table, column }, getTableBySchemaName);
     const sql = buildTopValuesSql({ schema, table, column, n });
     const authedReq = req as AuthedRequest;
     const encoded = await kineticaSqlHelper(authedReq, sql, {
@@ -1654,6 +1790,7 @@ export const createApp = async (): Promise<express.Express> => {
     }
 
     const { schema, table, column } = body as { schema: string; table: string; column: string };
+    assertSchemaTableColumn({ schema, table, column }, getTableBySchemaName);
     const sql = buildColumnStatsSql({ schema, table, column });
     const authedReq = req as AuthedRequest;
     const encoded = await kineticaSqlHelper(authedReq, sql, {
@@ -1696,8 +1833,10 @@ export const createApp = async (): Promise<express.Express> => {
       if (!getDashboard(dashboardId) || !canViewDashboard(username, dashboardId)) {
         return res.status(404).json({ error: "Dashboard not found." });
       }
+      stampRead(res, dashboardId, "dynamic-views");
       const rows = listDashboardDynamicViews(dashboardId);
-      return res.json({ dynamic_views: rows });
+      // 139 D-03: derived (not stored) - lets the web fast-path send aggregated views to the server
+      return res.json({ dynamic_views: rows.map((r) => ({ ...r, aggregated: isAggregatedTemplate(r.template_sql) })) });
     })
   );
 
@@ -1768,13 +1907,15 @@ export const createApp = async (): Promise<express.Express> => {
           return res.status(400).json({ error: "columns_json must be null or an array of { name: string, type: string }." });
         }
       }
-      const row = createDashboardDynamicView(dashboardId, {
-        source_table_id: body.source_table_id,
-        name: body.name,
-        template_sql: body.template_sql,
-        max_records: body.max_records,
+      // Re-bind narrowed body fields as consts: TS drops narrowing inside the stampWrite closure.
+      const { source_table_id, name, template_sql, max_records } = body;
+      const row = stampWrite(res, dashboardId, () => createDashboardDynamicView(dashboardId, {
+        source_table_id,
+        name,
+        template_sql,
+        max_records,
         columns_json: columnsJsonOnCreate,
-      });
+      }));
       return res.status(201).json({ dynamic_view: row });
     })
   );
@@ -1843,7 +1984,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (typeof body.max_records === "number" && body.max_records >= 0) attrs.max_records = body.max_records;
       if (columnsJsonAttr !== undefined) attrs.columns_json = columnsJsonAttr;
 
-      const updated = updateDashboardDynamicView(id, attrs);
+      const updated = stampWrite(res, existing.dashboard_id, () => updateDashboardDynamicView(id, attrs));
       return res.json({ dynamic_view: updated });
     })
   );
@@ -1872,29 +2013,6 @@ export const createApp = async (): Promise<express.Express> => {
   //   table" (TM/SMc:1078 family) as the no_filter signal. For Preview, we use a
   //   single SELECT 1 probe up-front to choose between filter-view and
   //   bare-table substitution.
-
-  // ---- Helper: detect "table-not-found" errors from Kinetica ---------------
-  // Same matcher used by createOrReplaceMaterialized's race-recovery path
-  // (lib/materializedView.ts § isReplaceRace). Centralising the regex here
-  // keeps the two consumers in sync.
-  const isTableNotFoundError = (err: unknown): boolean => {
-    const msg = (err as Error)?.message ?? "";
-    // Kinetica returns several distinct error codes for "object/table doesn't exist"
-    // depending on which subsystem hit the miss:
-    //   - TM/SMc:1078: Table Manager / Schema Memory miss (filter-view CREATE OR REPLACE
-    //     race; persistent table lookup).
-    //   - S/SDc:1513: Schema / Schema Database error 1513 — typical for SELECT against a
-    //     materialized-view that doesn't exist (the no-filter-yet case for Preview/
-    //     materialize probes). Surfaced as: "Object '<name>' not found (S/SDc:1513)".
-    //   - Bare "Object '<name>' not found" / "Could not find the table" prose for
-    //     defense-in-depth across Kinetica versions that may not include a code suffix.
-    return (
-      msg.includes("TM/SMc:1078") ||
-      msg.includes("S/SDc:1513") ||
-      /Could not find the table/i.test(msg) ||
-      /Object\s+'[^']*'\s+not\s+found/i.test(msg)
-    );
-  };
 
   // POST /api/dynamic-view/preview — one-shot read; does NOT create a permanent view.
   app.post(
@@ -2047,6 +2165,7 @@ export const createApp = async (): Promise<express.Express> => {
         dashboardId: row.dashboard_id,
         dynamicViewId: row.id,
       });
+      viewColumnsCache.delete(dynamicViewName); // Phase 133: re-materialize may change the column list
       const expectedFilterViewName = buildFilterViewName({
         username: authedReq.user!.creds.username,
         sessionId: authedReq.user!.sid,
@@ -2058,12 +2177,6 @@ export const createApp = async (): Promise<express.Express> => {
         combinationKey: dvCombinationKey,
       });
 
-      // Decode a column-major COUNT(*) result. Kinetica returns column_1: [N].
-      const decodeCount = (result: Record<string, unknown> | null): number => {
-        const col = result?.["column_1"] as unknown[] | undefined;
-        const cell = Array.isArray(col) ? col[0] : undefined;
-        return typeof cell === "number" ? cell : typeof cell === "string" ? Number(cell) : 0;
-      };
       const dropStale = () =>
         kineticaSqlHelper(authedReq, `DROP TABLE IF EXISTS ${dynamicViewName}`, {
           route: "POST /api/dynamic-view/materialize",
@@ -2083,6 +2196,9 @@ export const createApp = async (): Promise<express.Express> => {
       const baseRef = table.schema ? `${table.schema}.${table.name}` : table.name;
       let targetRef: string;
       let responseRowCount: number;
+      // 139 D-02/D-03: aggregated templates over the source cap get an output-count preflight.
+      const aggregated = isAggregatedTemplate(row.template_sql);
+      let needsPreflight = false;
 
       let filterCountResult: Record<string, unknown> | null = null;
       let filterViewExists = true;
@@ -2099,12 +2215,14 @@ export const createApp = async (): Promise<express.Express> => {
       }
 
       if (filterViewExists) {
-        const rowCount = decodeCount(filterCountResult);
+        const rowCount = decodeCountResult(filterCountResult);
         // max_records === 0 → UNLIMITED: skip the threshold entirely.
-        if (row.max_records > 0 && rowCount >= row.max_records) {
+        const d = decideThreshold({ maxRecords: row.max_records, sourceCount: rowCount, sourceKind: "filter", aggregated });
+        if (d.kind === "over") {
           await dropStale();
           return res.json({ status: "over_threshold", reason: "exceeds_max_records", row_count: rowCount });
         }
+        needsPreflight = d.kind === "preflight";
         targetRef = expectedFilterViewName;
         responseRowCount = rowCount;
       } else {
@@ -2112,7 +2230,7 @@ export const createApp = async (): Promise<express.Express> => {
         // the fallback and report row_count.
         let baseCount: number;
         try {
-          baseCount = decodeCount(
+          baseCount = decodeCountResult(
             (await kineticaSqlHelper(authedReq, `SELECT COUNT(*) FROM ${baseRef}`, {
               route: "POST /api/dynamic-view/materialize",
               op: "DYNAMIC_MATERIALIZE",
@@ -2126,10 +2244,12 @@ export const createApp = async (): Promise<express.Express> => {
           throw baseErr;
         }
         // Unlimited (0) → always use base. Otherwise only when base is under the cap.
-        if (row.max_records > 0 && baseCount >= row.max_records) {
+        const d = decideThreshold({ maxRecords: row.max_records, sourceCount: baseCount, sourceKind: "base", aggregated });
+        if (d.kind === "over") {
           await dropStale();
           return res.json({ status: "over_threshold", reason: "no_filter" });
         }
+        needsPreflight = d.kind === "preflight";
         targetRef = baseRef;
         responseRowCount = baseCount;
       }
@@ -2148,14 +2268,62 @@ export const createApp = async (): Promise<express.Express> => {
         throw err;
       }
 
-      await createOrReplaceMaterialized({
-        req: authedReq,
-        view: dynamicViewName,
-        sqlBody: substituted,
-        ttl: DEFAULT_VIEW_TTL_MINUTES,
-        route: "POST /api/dynamic-view/materialize",
-        op: "DYNAMIC_MATERIALIZE",
-      });
+      let preflightTag: string | undefined;
+      let preflightSignal: AbortSignal | undefined;
+      if (needsPreflight) {
+        const tag = `dvp-${randomUUID()}`;
+        const ac = new AbortController();
+        const onClose = () => {
+          if (!res.writableEnded) {
+            ac.abort();
+            void cancelKineticaJobsByTag(authedReq, tag);
+          }
+        };
+        res.on("close", onClose);
+        try {
+          const countRes = (await kineticaSqlHelper(authedReq, buildOutputCountSql(substituted, row.max_records), {
+            route: "POST /api/dynamic-view/materialize",
+            op: "DYNAMIC_MATERIALIZE",
+            tag,
+            signal: ac.signal,
+          })) as Record<string, unknown> | null;
+          const outputCount = decodeCountResult(countRes);
+          const after = decideAfterPreflight({
+            maxRecords: row.max_records,
+            outputCount,
+            sourceKind: filterViewExists ? "filter" : "base",
+          });
+          if (after.kind === "over") {
+            await dropStale();
+            return res.json({ status: "over_threshold", reason: after.reason, row_count: outputCount });
+          }
+          responseRowCount = outputCount;
+          preflightTag = tag;
+          preflightSignal = ac.signal;
+          await createOrReplaceMaterialized({
+            req: authedReq,
+            view: dynamicViewName,
+            sqlBody: substituted,
+            ttl: DEFAULT_VIEW_TTL_MINUTES,
+            route: "POST /api/dynamic-view/materialize",
+            op: "DYNAMIC_MATERIALIZE",
+            tag: preflightTag,
+            signal: preflightSignal,
+          });
+        } finally {
+          res.off("close", onClose);
+        }
+      } else {
+        await createOrReplaceMaterialized({
+          req: authedReq,
+          view: dynamicViewName,
+          sqlBody: substituted,
+          ttl: DEFAULT_VIEW_TTL_MINUTES,
+          route: "POST /api/dynamic-view/materialize",
+          op: "DYNAMIC_MATERIALIZE",
+        });
+      }
+      viewColumnsCache.delete(dynamicViewName);
 
       const expiresAt = Date.now() + DEFAULT_VIEW_TTL_MINUTES * 60 * 1000;
       return res.json({
@@ -2198,6 +2366,7 @@ export const createApp = async (): Promise<express.Express> => {
         dashboardId: row.dashboard_id,
         dynamicViewId: row.id,
       });
+      viewColumnsCache.delete(dynamicViewName);
       // DROP-only — NO call to deleteDashboardDynamicView. SQLite row stays intact.
       // Errors bubble through errorMiddleware (auth/permission/upstream — frontend swallows them).
       await kineticaSqlHelper(authedReq, `DROP TABLE IF EXISTS ${dynamicViewName}`, {
@@ -2228,6 +2397,7 @@ export const createApp = async (): Promise<express.Express> => {
         dashboardId: row.dashboard_id,
         dynamicViewId: row.id,
       });
+      viewColumnsCache.delete(dynamicViewName);
       // DROP first (best-effort — DROP IF EXISTS is idempotent on missing views);
       // then delete the SQLite row. If the DROP fails for non-existence reasons
       // (auth, permission, upstream), errorMiddleware translates it and the
@@ -2236,7 +2406,7 @@ export const createApp = async (): Promise<express.Express> => {
         route: "DELETE /api/dynamic-view/:id",
         op: "DYNAMIC_MATERIALIZE",
       });
-      const deleted = deleteDashboardDynamicView(id);
+      const deleted = stampWrite(res, row.dashboard_id, () => deleteDashboardDynamicView(id));
       return res.json({ deleted, dropped: true });
     })
   );
@@ -2349,6 +2519,28 @@ export const createApp = async (): Promise<express.Express> => {
     const tableRow = getTable(body.tableId);
     if (!tableRow) {
       return res.status(404).json({ error: "Table not found." });
+    }
+
+    // Phase 133 (AISAFE-V20-01): schema/table/columns are interpolated unquoted into SQL, so
+    // they must match the registered table. All checks run BEFORE any SQL is built.
+    if (body.schema !== tableRow.schema || body.table !== tableRow.name) {
+      return res.status(400).json({ error: "schema and table must match the registered table for tableId." });
+    }
+    if (body.viewName !== undefined) assertIdentifier(body.viewName, "viewName");
+    const spatialCols =
+      body.spatialMode === "latlon"
+        ? [body.spatialColumns.lonCol, body.spatialColumns.latCol]
+        : body.spatialMode === "wkt"
+          ? [body.spatialColumns.wktCol]
+          : [body.spatialColumns.wkbCol];
+    const isTableShaped =
+      body.viewName === undefined ||
+      new RegExp(`^_kbi_filt_u[A-Za-z0-9_]*_d\\d+_t${tableRow.id}_s`).test(body.viewName);
+    if (isTableShaped) {
+      assertColumnsExist(tableRow.columns, spatialCols, tableLabel(tableRow));
+    } else {
+      // dv-backed views project columns not in the table snapshot (Tier B residual in the audit).
+      spatialCols.forEach((c) => assertIdentifier(c, "spatial column"));
     }
 
     const authedReq = req as AuthedRequest;
@@ -2588,7 +2780,7 @@ export const createApp = async (): Promise<express.Express> => {
         check: diff,
         tableId: id,
         refsInput: loadColumnRefsInput(id),
-        dashboards: listDashboards().map((d) => ({ id: d.id, name: d.name })),
+        dashboards: listKeptDashboards().map((d) => ({ id: d.id, name: d.name })),
       });
       const response: SchemaCheckResponse = { ...diff, impact };
       return res.json(response);
@@ -3272,6 +3464,10 @@ export const errorMiddleware = (
   res: Response,
   _next: NextFunction
 ): void => {
+  if (err instanceof ColumnGuardError) {
+    res.status(400).json(err.toBody());
+    return;
+  }
   if (err instanceof KineticaAuthError) {
     clearSessionCookie(res);
     res.status(401).json({ error: err.message, code: "REAUTH_REQUIRED" });
@@ -3312,7 +3508,7 @@ export const errorMiddleware = (
 
 if (process.env.NODE_ENV !== "test") {
   // Async IIFE — the bootstrap regex test (tests/bootstrap.spec.ts) verifies that this
-  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen and startExportSweep() after). All live inside the IIFE
+  // gate body contains BOTH app.listen AND startSessionSweep() (plus the Phase 130 boot reconcile before listen, startExportSweep() after, and the Phase 135 AI audit sweep and Phase 142 generated sweep last). All live inside the IIFE
   // body which is itself inside the gate's brace block, so the regex matches.
   void (async () => {
     try {
@@ -3321,6 +3517,10 @@ if (process.env.NODE_ENV !== "test") {
       // Phase 130 D-05/D-07: reconcile export jobs/files ONCE, before accepting traffic. Never inside createApp():
       // every route spec and the routes smoke call createApp() while their own exports may be in flight.
       reconcileExportsOnBoot();
+      // Phase 139 D-16: drop AI session views left by the previous process (as their users, via stored sessions); the rest fall back to the TTL. Bounded, never throws.
+      await sweepAiViewsOnBoot({ timeoutMs: 10000 });
+      // Phase 142 D-03a: delete generated dashboards nobody kept (views were just swept). Runs even when AI is off. Never throws.
+      await sweepGeneratedOnBoot({ timeoutMs: 10000 });
       app.listen(port, () => {
         console.log(`Kinetica BI backend running on http://localhost:${port}`);
       });
@@ -3330,6 +3530,10 @@ if (process.env.NODE_ENV !== "test") {
       startSessionSweep();
       // Phase 130 D-04: export expiry sweep (first pass immediately, then every 5 min, .unref()'d).
       startExportSweep();
+      // Phase 135 D-10: AI audit retention sweep — runs even when AI is disabled (rows outlive a config change).
+      startAiAuditSweep();
+      // Phase 142 D-03a: hourly AI_GENERATED_TTL_HOURS sweep (.unref()'d).
+      startGeneratedSweep();
     } catch (err) {
       console.error(
         JSON.stringify({

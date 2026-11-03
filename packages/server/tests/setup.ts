@@ -33,6 +33,29 @@ process.env.EXPORT_MAX_ROWS = "";
 process.env.EXPORT_MAX_FILE_MB = "";
 process.env.EXPORT_MAX_CONCURRENT_PER_USER = "";
 
+// Phase 133 AI env: dev .env leak guard — a developer's real AI key/flags must never reach specs.
+process.env.AI_ENABLED = "";
+process.env.AI_PROVIDER = "";
+process.env.AI_BASE_URL = "";
+process.env.AI_MODEL = "";
+process.env.AI_API_KEY = "";
+process.env.AI_DATA_ACCESS = "";
+process.env.AI_MAX_TOOL_STEPS = "";
+process.env.AI_TIMEOUT_MS = "";
+// Phase 135: caps / history / tool mode / audit retention (same leak guard).
+process.env.AI_MAX_ANSWERS_PER_USER_PER_HOUR = "";
+process.env.AI_MAX_ANSWERS_PER_DAY = "";
+process.env.AI_HISTORY_TURNS = "";
+process.env.AI_TOOL_MODE = "";
+process.env.AI_AUDIT_RETENTION_DAYS = "";
+// Phase 136: D-09 new-widget cap (same leak guard)
+process.env.AI_MAX_NEW_WIDGETS = "";
+// Phase 139: AI dynamic-view limits (same leak guard)
+process.env.AI_DV_MAX_RECORDS = "";
+process.env.AI_DV_MAX_JOINS = "";
+process.env.AI_DV_MAX_PER_SESSION = "";
+process.env.AI_DV_PREFLIGHT_TIMEOUT_MS = "";
+
 beforeEach(() => {
   // Clear any global fetch stub between tests.
   vi.restoreAllMocks();

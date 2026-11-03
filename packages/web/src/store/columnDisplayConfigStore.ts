@@ -160,3 +160,16 @@ export const resolveFormatter = (tableId: number, columnName: string): (v: unkno
   const spec = useColumnDisplayConfigStore.getState().configs[tableId]?.columns[columnName]?.format_spec;
   return spec ? buildFormatter(spec) : (v) => v;
 };
+
+/** Axis ticks at or above this magnitude are whole numbers, so a number format's decimals only add ".00". */
+const AXIS_WHOLE_TICKS_FROM = 100;
+
+/**
+ * resolveAxisFormatter — the column's formatter for a value axis whose largest value is `maxAbs`: a number format
+ * with decimals drops them once the ticks are whole numbers ("$600,000", not "$600,000.00"); "$1.20" keeps them.
+ */
+export const resolveAxisFormatter = (tableId: number, columnName: string, maxAbs: number): (v: unknown) => string | unknown => {
+  const spec = useColumnDisplayConfigStore.getState().configs[tableId]?.columns[columnName]?.format_spec;
+  if (spec?.kind === "number" && spec.decimals > 0 && maxAbs >= AXIS_WHOLE_TICKS_FROM) return buildFormatter({ ...spec, decimals: 0 });
+  return resolveFormatter(tableId, columnName);
+};

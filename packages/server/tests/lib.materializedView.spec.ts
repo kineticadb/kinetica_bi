@@ -176,4 +176,33 @@ describe("createOrReplaceMaterialized (Phase 32 DV-V16-01)", () => {
       expect(opts.op).toBe("MATERIALIZE");
     }
   });
+
+  it("MV-T1: tag + signal pass through; DDL identical; absent keys when omitted", async () => {
+    mocks.kineticaSql.mockResolvedValue({});
+    const base = { req: stubReq, view: "myview", sqlBody: "SELECT 1", ttl: 5, route: "r", op: "MATERIALIZE" as const };
+    await createOrReplaceMaterialized(base);
+    const ac = new AbortController();
+    await createOrReplaceMaterialized({ ...base, tag: "dvp-abc", signal: ac.signal });
+    const [, plainSql, plainOpts] = mocks.kineticaSql.mock.calls[0];
+    const [, taggedSql, taggedOpts] = mocks.kineticaSql.mock.calls[1];
+    expect(taggedSql).toBe(plainSql);
+    expect(Object.keys(plainOpts)).not.toContain("tag");
+    expect(Object.keys(plainOpts)).not.toContain("signal");
+    expect(taggedOpts).toEqual({ route: "r", op: "MATERIALIZE", tag: "dvp-abc", signal: ac.signal });
+  });
+
+  it("MV-T2: race recovery passes tag/signal to DROP and CREATE", async () => {
+    mocks.kineticaSql
+      .mockRejectedValueOnce(new Error(RACE_ERR_MSG))
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({});
+    const ac = new AbortController();
+    await createOrReplaceMaterialized({
+      req: stubReq, view: "myview", sqlBody: "SELECT 1", ttl: 5, route: "r", op: "MATERIALIZE",
+      tag: "dvp-abc", signal: ac.signal,
+    });
+    for (const call of mocks.kineticaSql.mock.calls) {
+      expect(call[2]).toMatchObject({ tag: "dvp-abc", signal: ac.signal });
+    }
+  });
 });

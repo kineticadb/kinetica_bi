@@ -700,6 +700,49 @@ a {
   }
 }
 
+/* Phase 137 (D-15/D-19): unsaved AI changes bar. Tokens only. */
+.ai-change-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-solid));
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.ai-change-bar-text {
+  min-width: 0;
+}
+.ai-change-bar-removed {
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+/* Phase 137 (D-18): widgets changed by the latest AI answer get an accent outline that fades over ~3 s. Tokens only. */
+.widget-card--ai-changed {
+  animation: widget-ai-fade 3s ease-out 1 forwards;
+}
+@keyframes widget-ai-fade {
+  0% {
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+  }
+  70% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent), var(--shadow);
+  }
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 0%, transparent), var(--shadow);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .widget-card--ai-changed {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+  }
+}
+
 /* Phase 108 (FSCOPE-V120-01): applies-to line + expander inside the panel chip. */
 .filter-panel-chip-applies {
   display: flex;
@@ -1118,6 +1161,12 @@ a {
   font-size: var(--text-sm);
 }
 
+/* A filled small button pairs with .ghost-sm (1px border) in .ds-actions; a transparent border makes the
+   two boxes the same height (141 UAT: btn-primary btn-sm measured 21px vs ghost-sm 23px). */
+.btn-primary.btn-sm {
+  border: 1px solid transparent;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -1362,6 +1411,11 @@ input[type="checkbox"],
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+
+/* 142 UAT: inside a .ds-form the toggle reads at the form's own text size (fields and inputs use --text-sm). */
+.ds-form .config-toggle {
+  font-size: var(--text-sm);
 }
 
 .config-color-field {

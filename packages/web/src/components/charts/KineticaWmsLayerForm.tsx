@@ -191,7 +191,16 @@ const COLORMAP_GROUPS: readonly ColormapGroup[] = [
 // and as the membership check for "is this an unknown colormap" (so we can
 // preserve a legacy persisted value in the select even if it falls outside the
 // catalog above).
-const COLORMAP_CATALOG: readonly string[] = COLORMAP_GROUPS.flatMap((g) => g.values);
+export const COLORMAP_CATALOG: readonly string[] = COLORMAP_GROUPS.flatMap((g) => g.values);
+
+// Mirrors ChartConfigPanel.tsx:85-94 numeric type set (lowercase, strip `(N)`).
+const NUMERIC_COLUMN_TYPES = new Set([
+  "int", "integer", "int8", "int16", "int32", "int64", "long", "float", "double",
+  "double precision", "decimal", "numeric", "smallint", "bigint", "real", "number", "tinyint",
+]);
+function isNumericColumnType(type: string): boolean {
+  return NUMERIC_COLUMN_TYPES.has(type.toLowerCase().replace(/\(.*\)/, "").trim());
+}
 
 // ─── KineticaWmsLayerForm ─────────────────────────────────────────────────────
 
@@ -1416,6 +1425,26 @@ export default function KineticaWmsLayerForm({
                 }
               />
               <span className="config-range-value">{(config.blurRadius as number) ?? 5}</span>
+            </label>
+
+            {/* Phase 136 (D-10): weight column -> VAL_ATTR (numeric columns only) */}
+            <label className="ds-field-label">
+              Value column
+              <select
+                className="ds-select"
+                value={(config.valueColumn as string) || ""}
+                onChange={(e) => {
+                  const next = { ...config };
+                  if (e.target.value) next.valueColumn = e.target.value;
+                  else delete next.valueColumn;
+                  onChange(next);
+                }}
+              >
+                <option value="">(none - count points)</option>
+                {columns.filter((c) => isNumericColumnType(c.type)).map((c) => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
             </label>
           </div>
         )}

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --alias:@kinetica-bi/shared=../shared/src/index.ts --outfile=dist/index.js",
     "test": "vitest",
     "wms-spike": "tsx src/spikes/wmsSpike.ts",
     "wkb-spike": "tsx src/spikes/wkbSpike.ts",
@@ -16,9 +16,12 @@
     "export-paging-spike": "tsx src/spikes/exportPagingSpike.ts",
     "export-runner-smoke": "tsx src/spikes/exportRunnerSmoke.ts",
     "export-routes-smoke": "tsx src/spikes/exportRoutesSmoke.ts",
+    "tool-call-spike": "tsx src/spikes/toolCallSpike.ts",
+    "query-mode-spike": "tsx src/spikes/queryModeSpike.ts",
     "test:gate": "node scripts/test-gate.mjs"
   },
   "dependencies": {
+    "@kinetica-bi/shared": "*",
     "@types/cookie-parser": "^1.4.10",
     "@types/jsonwebtoken": "^9.0.10",
     "better-sqlite3": "^12.8.0",
@@ -32,10 +35,13 @@
     "file-type": "^19.6.0",
     "jsdom": "^29.1.1",
     "jsonwebtoken": "^9.0.3",
+    "libpg-query": "^18.1.5",
     "multer": "^2.2.0",
     "openid-client": "^5.7.1",
     "postcss": "^8.5.15",
-    "postcss-safe-parser": "^7.0.1"
+    "postcss-safe-parser": "^7.0.1",
+    "undici": "^7.25.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

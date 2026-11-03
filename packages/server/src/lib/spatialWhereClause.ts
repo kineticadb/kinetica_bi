@@ -21,11 +21,12 @@
  *   the exact composed string for a 2-shape + 1-column-filter input to lock this
  *   out BEFORE any multi-shape UI exists (Phase 29).
  *
- * Trust boundary — identifier vs value escaping (mirrors whereClause.ts:14-21):
- *   Column-name fields (lonCol, latCol, spatialCol) are interpolated DIRECTLY
- *   into the SQL without quoting or escaping. They originate from admin-curated
- *   table metadata, NOT from arbitrary user input — injection risk is bounded by
- *   admin-only metadata routes. Shape WKT literals ARE always escaped via
+ * Trust boundary — identifier vs value escaping (mirrors whereClause.ts):
+ *   Column-name fields (lonCol, latCol, spatialCol) are CLIENT-SUPPLIED and
+ *   interpolated unquoted. Every route that passes them here MUST first call
+ *   assertColumnsExist / assertIdentifier (lib/columnGuard.ts). Inventory:
+ *   .planning/phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-COLUMN-AUDIT.md.
+ *   Shape WKT literals ARE always escaped via
  *   escapeKineticaStringLiteral (single-quote doubling, SQL standard) — this is
  *   defense-in-depth even though OL writeGeometry output never contains quotes.
  *

@@ -23,6 +23,8 @@ import registerTimeline from "./timeline";
 import registerNumericLine from "./numericline";
 import registerRadioGroup from "./radio-group";
 import registerCalendar from "./calendar";
+import registerAi from "./ai";
+import registerText from "./text";
 
 export function registerAllChartTypes() {
   registerBar();
@@ -36,9 +38,11 @@ export function registerAllChartTypes() {
   registerRecords();
   registerInfoCard();
   registerLegend();         // Phase 42 Plan 02 (WIDGET-V17-01)
+  registerText();           // kbi-mcp: markdown text widget
   registerDataFilter();     // Phase 44 Plan 02 (FILTER-V17-07): Data Filter widget
   registerTimeline();       // Phase 45 Plan 02 (TIMELINE-V17-01): Timeline Chart widget
   registerNumericLine();    // Numeric Line Chart — numeric-X, interval-binned, multi-metric
   registerRadioGroup();     // Phase 59 (RADIO-V111-01): Radio Group control widget
   registerCalendar();       // Phase 66 (CAL-V113-01): Calendar Heatmap widget
+  registerAi();             // Phase 137 (AIWID-V20-01): AI Assistant widget
 }

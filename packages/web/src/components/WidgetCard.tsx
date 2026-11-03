@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faGear, faClone } from "@fortawesome/free-solid-svg-icons";
 import type { TableDto, WidgetDto, DashboardLayerDto } from "../api/client";
 import { useFilterHighlightStore } from "../store/filterHighlightStore";
+import { useAiSessionStore, selectShowsAiEditedPill } from "../store/aiSessionStore";
+import { AI_HIGHLIGHT_MS } from "../lib/aiSession/constants";
 import WidgetRenderer from "./charts/WidgetRenderer";
 import { FilteringBadge } from "./FilteringBadge";
 import { MapFilteringBadge } from "./MapFilteringBadge";
@@ -48,6 +50,9 @@ type WidgetCardOwnProps = {
   // Phase 108-02 will pass this to register a ref-map entry for scroll-to-widget; optional
   // and unused here so this plan's extraction stays inert-when-empty.
   registerRef?: (id: number, el: HTMLDivElement | null) => void;
+  // 141 UAT: read by react-grid-layout off the child element when the child has no layout item yet (so a new
+  // child gets its real rect instead of a synthesized 1x1). Consumed here, never rendered to the DOM.
+  "data-grid"?: { x: number; y: number; w: number; h: number; minW?: number; minH?: number; static?: boolean };
 };
 
 // Extend with the standard div attributes RGL/react-resizable/react-draggable inject
@@ -76,6 +81,7 @@ function WidgetCardImpl(
     onDuplicate,
     onRemove,
     registerRef,
+    "data-grid": _dataGrid,
     className,
     style,
     children,
@@ -125,15 +131,38 @@ function WidgetCardImpl(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerRef, w.id]);
 
+  const aiEdited = useAiSessionStore((s) => selectShowsAiEditedPill(s, w.id));
+
+  // 137 D-18: nonce-keyed accent outline for widgets changed by the latest AI answer (fades ~3 s).
+  const aiNonce = useAiSessionStore((s) => (s.highlight.ids.includes(w.id) ? s.highlight.nonce : 0));
+  const [aiChanged, setAiChanged] = useState(false);
+  const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (aiNonce === 0) {
+      setAiChanged(false);
+      return;
+    }
+    setAiChanged(false);
+    void cardRef.current?.offsetWidth;
+    setAiChanged(true);
+    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    aiTimerRef.current = setTimeout(() => setAiChanged(false), AI_HIGHLIGHT_MS);
+    return () => {
+      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    };
+  }, [aiNonce]);
+
   return (
     <div
       {...rest}
       ref={mergeRefs(cardRef, forwardedRef)}
       style={style}
-      className={`widget-card${className ? ` ${className}` : ""}${isHighlighted ? " widget-card--highlighted" : ""}${flashOn ? " widget-card--flashing" : ""}`}
+      className={`widget-card${className ? ` ${className}` : ""}${isHighlighted ? " widget-card--highlighted" : ""}${flashOn ? " widget-card--flashing" : ""}${aiChanged ? " widget-card--ai-changed" : ""}`}
     >
       <div className="widget-header">
         <span className="widget-drag-handle widget-title">{w.title}</span>
+        {/* Phase 136 D-05: minimal flag display; Phase 137 owns the final highlight/badge visuals. */}
+        {w.id < 0 ? <span className="widget-filter-badge">AI added</span> : aiEdited ? <span className="widget-filter-badge">AI edited</span> : null}
         {w.type === "map" ? (
           <MapFilteringBadge tableIds={mapTableIds} />
         ) : (

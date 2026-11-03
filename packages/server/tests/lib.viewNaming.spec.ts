@@ -272,3 +272,19 @@ describe("buildFilterViewName with combinationKey (COMBO-V118-04)", () => {
     expect(out.length).toBeLessThan(200);
   });
 });
+
+describe("buildFilterViewName negative (AI) dynamicViewId (139 D-23)", () => {
+  it("DRILLDV-N1: a negative id uses a _dvn<abs> segment (no hyphen)", () => {
+    const out = buildFilterViewName({ username: "alice", sessionId: "0123456789abcdef", dashboardId: 12, dynamicViewId: -3 });
+    expect(out).toBe("_kbi_filt_ualice_d12_dvn3_s01234567");
+    expect(out).not.toContain("-");
+  });
+
+  it("DRILLDV-N2: with combinationKey appends _c<hash8>; positive dv and table paths unchanged", () => {
+    const out = buildFilterViewName({ username: "alice", sessionId: "0123456789abcdef", dashboardId: 12, dynamicViewId: -3, combinationKey: "k" });
+    expect(out).toMatch(/^_kbi_filt_ualice_d12_dvn3_s01234567_c[0-9a-z]{8}$/);
+    expect(buildFilterViewName({ username: "alice", sessionId: "0123456789abcdef", dashboardId: 12, dynamicViewId: 7 })).toBe("_kbi_filt_ualice_d12_dv7_s01234567");
+    expect(buildFilterViewName({ username: "alice", sessionId: "0123456789abcdef", dashboardId: 12, tableId: 7 })).toBe("_kbi_filt_ualice_d12_t7_s01234567");
+  });
+});
+

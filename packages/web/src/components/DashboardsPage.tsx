@@ -8,6 +8,7 @@ import {
   updateDashboard,
   deleteDashboard,
   listDashboardTables,
+  getMcpHandoff,
   addDashboardTable,
   removeDashboardTable,
   listTables,
@@ -18,6 +19,9 @@ import {
   listViews,
   createView,
   downloadDashboardExport,  // Phase 121 (DXIM-V124-01)
+  keepAiChanges,  // 141: called lazily inside onKeep (api/client spec mocks lack this export)
+  // 142: generateDashboard / discardGeneratedDashboard are imported lazily inside DashboardCreate handlers
+  // (several specs mock ../api/client without them).
   DashboardDto,
   TableDto,
   WidgetDto,
@@ -25,6 +29,8 @@ import {
   type ImportReportDto,  // Phase 121 (DXIM-V124-10)
 } from "../api/client";
 import { useApiQuery } from "../hooks/useApiQuery";
+import { setGenerateIntent } from "../lib/aiSession/generateIntent";  // 142 (D-01): take-once first ask
+import { toSessionDvRows } from "../lib/aiDv/sessionDvRows";
 import { useDynamicViewMaterializeChain } from "../hooks/useDynamicViewMaterializeChain";  // Phase 35 (DV-V16-13)
 import { useViewKeepAlive } from "../hooks/useViewKeepAlive";  // Phase 78 (TTLKEEP-V115-01)
 import { useCombinationOrchestrator } from "../hooks/useCombinationOrchestrator";  // Phase 90 (COMBO-V118-01/03)
@@ -46,6 +52,7 @@ import ImportDashboardModal from "./ImportDashboardModal";  // Phase 121 (DXIM-V
 import { useDashboardLayersStore } from "../store/dashboardLayersStore";
 import {
   listDashboardLayers,
+  listDynamicViews,
   createLayer,
   updateLayer as apiUpdateLayer,
   deleteLayer as apiDeleteLayer,
@@ -75,9 +82,32 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
+import { resolveRect, placeWidget, refitTextLayouts, textCharsPerLine, AI_DEFAULT_SIZE, AI_MIN_W, AI_MIN_H, type GridRect } from "@kinetica-bi/shared";
+import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
+import { useAiConfigured } from "../lib/aiSession/aiAvailability";
+import { AI_ASSISTANT_TYPE, AI_ASSISTANT_DEFAULT_SIZE } from "../lib/aiSession/constants";
+import { useAiSessionStore, selectHasUnsavedAiChanges, hasUnsavedAiChanges } from "../store/aiSessionStore";
+import { removesSavedContent } from "../lib/aiSession/mcpHandoff";
+import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/07)
+import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
+import { useAiSessionActions } from "../hooks/useAiSessionActions";
+import type { SessionBaseline } from "../lib/aiSession/types";
+import { AiChangeBar } from "./AiChangeBar";
+import { GeneratedPendingNote, GeneratedDiscardDialog } from "./GeneratedDashboardBar";  // 142 (D-05/D-07)
+import { runKeep, runReloadLatest, rectsFromLayouts, type KeepLists } from "../lib/aiSession/keepRunner";
+import { buildKeepPayload } from "../lib/aiSession/keepPayload";
+import { cancelAsk, type AskContext } from "../lib/aiSession/askRunner";
+import { buildAskSnapshot, type AskRect } from "../lib/aiSession/buildAskRequest";
+import { useEffectiveLayers } from "../hooks/useEffectiveLayers";
+import { applySessionToWidgets } from "../lib/aiSession/applySession";
 import { ResponsiveGridLayout, useContainerWidth, type LayoutItem, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
+
+/** MCP connector (143): MCP handoff session ids already requested in this page load (the server hands each over once). */
+const mcpHandoffsTaken = new Set<string>();
+/** Grid width minus a full-width text widget's card and body padding. */
+const MCP_TEXT_PADDING_PX = 48;
 
 type View =
   | { mode: "list" }
@@ -159,7 +189,21 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
   //  never via a `pushState`/`popstate` pair — so `popstate` itself can never observe a mismatch,
   //  and a third case would be dead code.
   useEffect(() => {
+    const openId = view.mode === "open" ? view.dashboard.id : null;
     const onPopState = () => {
+      // Phase 134 (D-15): popstate cannot be vetoed, so with unsaved AI changes we restore the
+      // entry the browser just popped and ask. Discard resets the session BEFORE proceed(), so
+      // the popstate fired by leaveDashboardUrl()'s history.back() takes the clean path.
+      // MEDIUM confidence; fallback documented in 134-08-PLAN.
+      if (openId !== null && readDashboardIdFromSearch(window.location.search) === null && hasUnsavedAiChanges()) {
+        openDashboardUrl(openId);
+        requestLeave(() => {
+          leaveDashboardUrl();
+          setViewState({ mode: "list" });
+          onViewChange?.("list");
+        });
+        return;
+      }
       if (readDashboardIdFromSearch(window.location.search) === null) {
         setViewState({ mode: "list" });
         onViewChange?.("list");
@@ -169,7 +213,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [onViewChange, view.mode]);
+  }, [onViewChange, view]);
 
   const handleDelete = (dash: DashboardDto) => {
     if (!window.confirm(`Delete dashboard "${dash.name}"?`)) return;
@@ -187,6 +231,11 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
           setView({ mode: "open", dashboard: updated });
           setDashboards((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
         }}
+        onGeneratedDiscarded={(id) => {
+          leaveDashboardUrl();
+          setDashboards((prev) => prev.filter((d) => d.id !== id));
+          setView({ mode: "list" });
+        }}
       />
     );
   }
@@ -195,6 +244,17 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
     return (
       <DashboardCreate
         onBack={() => setView({ mode: "list" })}
+        onGenerated={(d) => {
+          setDashboards((prev) => [d, ...prev]);
+          openDashboardUrl(d.id);
+          setView({ mode: "open", dashboard: d });
+        }}
+        onOpenExisting={(id) => {
+          const d = dashboards.find((x) => x.id === id);
+          if (d) { openDashboardUrl(id); setView({ mode: "open", dashboard: d }); }
+          else { refetch(); setView({ mode: "list" }); }
+        }}
+        onDiscardedExisting={(id) => setDashboards((prev) => prev.filter((x) => x.id !== id))}
         onSaved={(created) => {
           setDashboards((prev) => [created, ...prev]);
           // Phase 117 (DSET-V122-01): the first-ever linkable moment for a fresh dashboard — push.
@@ -281,7 +341,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
             </div>
             {dashboards.map((dash) => (
               <div key={dash.id} className="ds-row dash-grid">
-                <span className="ds-name">{dash.name}</span>
+                <span className="ds-name">{dash.name}{dash.generated_pending && <span className="muted"> · Not kept yet</span>}</span>
                 <span className="ds-schema">{dash.description || "—"}</span>
                 <span className="ds-meta">{new Date(dash.updated_at).toLocaleString()}</span>
                 <span className="ds-actions">
@@ -512,17 +572,52 @@ const DashboardEdit = ({
   );
 };
 
+type GridBreakpoint = "lg" | "md" | "sm" | "xs" | "xxs";
+const GRID_BREAKPOINTS: Record<GridBreakpoint, number> = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
+const GRID_COLS: Record<GridBreakpoint, number> = { lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 };
+/** The breakpoint ResponsiveGridLayout picks for this width (largest whose threshold is below it); pinned to lg in panel mode. */
+function activeGridBreakpoint(width: number, panelMode: boolean): GridBreakpoint {
+  if (panelMode) return "lg";
+  const order: GridBreakpoint[] = ["lg", "md", "sm", "xs", "xxs"];
+  return order.find((b) => width > GRID_BREAKPOINTS[b]) ?? "xxs";
+}
+
 const DashboardCreate = ({
   onBack,
-  onSaved
+  onSaved,
+  onGenerated,
+  onOpenExisting,
+  onDiscardedExisting
 }: {
   onBack: () => void;
   onSaved: (created: DashboardDto) => void;
+  onGenerated: (created: DashboardDto) => void;
+  onOpenExisting: (id: number) => void;
+  onDiscardedExisting: (id: number) => void;
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // 142 (D-01): Generate from a table. Only for ai:use users on an AI-enabled server.
+  const canAi = useAuthStore((s) => s.hasPermission)(PERMISSIONS.AI_USE);
+  const aiOn = useAiConfigured(canAi) === true;
+  const [generate, setGenerate] = useState(false);
+  const [tables, setTables] = useState<TableDto[] | null>(null);
+  const [tableId, setTableId] = useState<number | null>(null);
+  const [prompt, setPrompt] = useState("");
+  const [pending, setPending] = useState<{ id: number; name: string } | null>(null);
+  const inFlight = useRef(false);
+  const generating = generate && canAi && aiOn;
+
+  useEffect(() => {
+    if (!generating || tables !== null) return;
+    let live = true;
+    listTables()
+      .then((t) => { if (live) setTables(t); })
+      .catch((err) => { if (live) { setTables([]); setSaveError(err.message); } });
+    return () => { live = false; };
+  }, [generating, tables]);
 
   const handleSave = () => {
     setSaving(true);
@@ -531,6 +626,46 @@ const DashboardCreate = ({
       .then(onSaved)
       .catch((err) => setSaveError(err.message))
       .finally(() => setSaving(false));
+  };
+
+  const handleGenerate = async () => {
+    if (inFlight.current || tableId === null) return;
+    inFlight.current = true;
+    setSaving(true);
+    setSaveError(null);
+    setPending(null);
+    try {
+      const { generateDashboard } = await import("../api/client");
+      const r = await generateDashboard({
+        name: name.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        tableId
+      });
+      if (r.ok) {
+        setGenerateIntent(r.dashboard.id, prompt);
+        onGenerated(r.dashboard);
+      } else if (r.kind === "pending") {
+        setPending(r.existing);
+      } else {
+        setSaveError(r.message);
+      }
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  };
+
+  const discardPending = async () => {
+    if (!pending) return;
+    const { id } = pending;
+    try {
+      const { discardGeneratedDashboard } = await import("../api/client");
+      await discardGeneratedDashboard(id);
+      setPending(null);
+      onDiscardedExisting(id);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to discard the dashboard");
+    }
   };
 
   return (
@@ -548,50 +683,114 @@ const DashboardCreate = ({
             <span className="ds-field-label">Description</span>
             <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" />
           </label>
-          {saveError && <div className="error">{saveError}</div>}
-          <button className="btn-primary" onClick={handleSave} disabled={saving || !name}>
-            {saving ? "Creating…" : "Create Dashboard"}
-          </button>
+          {canAi && aiOn && (
+            <div className="config-group">
+              <label className="config-toggle">
+                <input type="checkbox" checked={generate} onChange={(e) => setGenerate(e.target.checked)} /> Generate from a table
+              </label>
+              {generate && (
+                <>
+                  <label className="ds-field">
+                    <span className="ds-field-label">Table</span>
+                    <select
+                      className="ds-select"
+                      value={tableId ?? ""}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        setTableId(id);
+                        const t = tables?.find((x) => x.id === id);
+                        if (t && !name.trim()) setName(`${t.name} overview`);
+                      }}
+                    >
+                      <option value="" disabled>Choose a table</option>
+                      {tables?.map((t) => (
+                        <option key={t.id} value={t.id}>{t.schema ? `${t.schema}.${t.name}` : t.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ds-field">
+                    <span className="ds-field-label">What do you want to see?</span>
+                    <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Optional, for example: tips by payment type" />
+                  </label>
+                  <span className="muted">The AI builds 4 to 8 charts from this table. Nothing is saved until you keep it.</span>
+                </>
+              )}
+            </div>
+          )}
+          {pending ? (
+            <div className="config-group">
+              <span>You already have a generated dashboard that isn't kept yet: "{pending.name}". Keep or discard it first.</span>
+              <div className="ds-actions">
+                <button className="btn-primary btn-sm" onClick={() => onOpenExisting(pending.id)}>Open it</button>
+                <button className="ghost-sm ghost-danger" onClick={discardPending}>Discard it</button>
+              </div>
+            </div>
+          ) : (
+            saveError && <div className="error">{saveError}</div>
+          )}
+          {generating ? (
+            <button className="btn-primary" onClick={handleGenerate} disabled={saving || !name.trim() || tableId === null}>
+              {saving ? "Generating…" : "Generate dashboard"}
+            </button>
+          ) : (
+            <button className="btn-primary" onClick={handleSave} disabled={saving || !name}>
+              {saving ? "Creating…" : "Create Dashboard"}
+            </button>
+          )}
         </div>
       </ChartCard>
     </div>
   );
 };
 
-const getVisualizationTypes = () =>
+/** 139: columns_json arrives parsed or as a JSON string (DynamicViewRow note); returns names/types only. */
+function normalizeDvColumns(v: unknown): { name: string; type: string }[] | null {
+  let arr: unknown = v;
+  if (typeof v === "string") {
+    try { arr = JSON.parse(v); } catch { return null; }
+  }
+  if (!Array.isArray(arr)) return null;
+  const out = arr
+    .filter((c): c is { name: string; type: string } => !!c && typeof (c as { name?: unknown }).name === "string" && typeof (c as { type?: unknown }).type === "string")
+    .map((c) => ({ name: c.name, type: c.type }));
+  return out.length > 0 ? out : null;
+}
+
+const getVisualizationTypes = (canUseAi: boolean) =>
   getAllChartTypes()
+    // 137 (AIGOV-V20-01): the AI Assistant is listed only for ai:use users on an AI-enabled server.
+    .filter((ct) => canUseAi || ct.type !== AI_ASSISTANT_TYPE)
     // Hide non-functional / retired types (addable:false) from the add-visualization picker.
     // They stay registered so any pre-existing widget of that type still renders.
     .filter((ct) => ct.addable !== false)
     .map((ct) => ({ value: ct.type, label: ct.label, icon: ct.icon }));
 
-const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => {
-  const saved = widget.config?.layout as Partial<LayoutItem> | undefined;
-  return {
-    i: String(widget.id),
-    x: saved?.x ?? (index % 2) * 18,
-    y: saved?.y ?? Math.floor(index / 2) * 24,
-    w: saved?.w ?? 18,
-    h: saved?.h ?? 24,
-    minW: 6,
-    minH: 6,
-  };
-};
+const getWidgetLayout = (widget: WidgetDto, index: number): LayoutItem => ({
+  i: String(widget.id),
+  ...resolveRect(widget.config?.layout as Partial<GridRect> | undefined, index),
+  minW: AI_MIN_W,
+  minH: AI_MIN_H,
+});
 
 const DashboardOpen = ({
   dashboard,
   onBack,
-  onDashboardUpdated
+  onDashboardUpdated,
+  onGeneratedDiscarded
 }: {
   dashboard: DashboardDto;
   onBack: () => void;
   onDashboardUpdated?: (dashboard: DashboardDto) => void;
+  /** 142 D-05: the unkept generated dashboard was deleted server-side; the owner returns to the list. */
+  onGeneratedDiscarded?: (id: number) => void;
 }) => {
+  const [genDiscardOpen, setGenDiscardOpen] = useState(false);
+  const pending = dashboard.generated_pending === true;
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
-  const canConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
-  const canDynamicViews = hasPermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE);
-  const canLayers       = hasPermission(PERMISSIONS.LAYERS_MANAGE);
+  const rawCanEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+  const rawCanConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
+  const rawCanDynamicViews = hasPermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE);
+  const rawCanLayers       = hasPermission(PERMISSIONS.LAYERS_MANAGE);
 
   const tablesQuery = useApiQuery<TableDto[]>(() => listDashboardTables(dashboard.id), [dashboard.id]);
   const widgetsQuery = useApiQuery<WidgetDto[]>(() => listWidgets(dashboard.id), [dashboard.id]);
@@ -602,6 +801,10 @@ const DashboardOpen = ({
   const [widgets, setWidgets] = useState<WidgetDto[]>([]);
   const [showTableModal, setShowTableModal] = useState(false);
   const [showVizModal, setShowVizModal] = useState(false);
+  // 137: fetch availability only when the picker is open and the user may use AI.
+  const canUseAiPerm = hasPermission(PERMISSIONS.AI_USE);
+  const aiConfigured = useAiConfigured(canUseAiPerm && showVizModal);
+  const canUseAi = canUseAiPerm && aiConfigured === true;
   const [showLayersModal, setShowLayersModal] = useState(false);
   const [showDynamicViewsModal, setShowDynamicViewsModal] = useState(false);  // Phase 34 (DV-V16-08)
   const [showSettingsModal, setShowSettingsModal] = useState(false);  // Phase 110 (FSET-V120-01)
@@ -611,6 +814,9 @@ const DashboardOpen = ({
   // returned dashboard back up so the Phase-107 isPanelMode XOR switch re-renders LIVE
   // (no reload). Errors propagate so DashboardSettingsModal's catch can toast.
   const handleChangeDisplayMode = async (mode: "topbar" | "panel") => {
+    // Belt-and-braces (134-RESEARCH Q4): buttons are gated by can*, but a stale closure or indirect
+    // route must not persist while AI changes are unsaved.
+    if (isAiEditLocked()) return;
     const updated = await updateDashboard(dashboard.id, { filter_display_mode: mode });
     onDashboardUpdated?.(updated);
   };
@@ -634,7 +840,17 @@ const DashboardOpen = ({
   // LayersModal. Phase 35 Plan 05: `retry` is now threaded through
   // DashboardContext so renderers' error-state Retry button can re-fire the
   // cascade for a specific dynamic-view id.
-  const { dynamicViews, retry: retryDynamicView } = useDynamicViewMaterializeChain(dashboard.id, widgets);
+  // 139: session selectors sit above the chain — AI views fold into its single merge point.
+  const sessionDerived = useAiSessionStore((s) => s.derived);
+  const dvNonce = useAiSessionStore((s) => s.dvNonce);
+  const dvGen = useAiSessionStore((s) => s.dvGen);
+  const dvColumns = useAiSessionStore((s) => s.dvColumns);
+  const sessionDvRows = useMemo(
+    () => toSessionDvRows(sessionDerived.addedDynamicViews, { dashboardId: dashboard.id, nonce: dvNonce, gen: dvGen, columns: dvColumns, tables: associatedTables }),
+    [sessionDerived.addedDynamicViews, dashboard.id, dvNonce, dvGen, dvColumns, associatedTables],
+  );
+  // 139: single merge point — saved minus session-removed, plus AI session views (negative ids).
+  const { dynamicViews, savedDynamicViews, retry: retryDynamicView, setSavedDynamicViews } = useDynamicViewMaterializeChain(dashboard.id, widgets, sessionDvRows, sessionDerived.removedDynamicViewIds);
 
   // Phase 78 (TTLKEEP-V115-01): dashboard-level keep-alive — fires a lightweight READ touch
   // against each live materialized view (filter-views + dynamic-views) ~ttlKeepaliveLeadMinutes
@@ -644,8 +860,107 @@ const DashboardOpen = ({
   useViewKeepAlive(dashboard.id);
 
   // Phase 12: Layer store subscription
-  const layers = useDashboardLayersStore((s) => s.layers);
+  // Phase 134: `savedLayers` feeds persisting/editing sites (LayersModal, auto-create);
+  // `layers` is saved + AI session add/remove for every read-only site.
+  const savedLayers = useDashboardLayersStore((s) => s.layers);
+  const layers = useEffectiveLayers();
+  const editLocked = useAiEditLock();
+  // Phase 134 (D-15): reload / tab close warns while AI changes are unsaved. Symmetric add/remove
+  // keyed on the dirty boolean keeps StrictMode (mount, cleanup, mount) at exactly one live
+  // listener. Never reset() here: the unmount cleanup chain (134-05) is what discards.
+  const aiDirty = useAiSessionStore(selectHasUnsavedAiChanges);
+  useEffect(() => {
+    if (!aiDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedAiChanges()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [aiDirty]);
+  // Phase 134 D-07: ONE lock source AND-ed into the four gates; every toolbar button,
+  // WidgetCard control, Reconfigure CTA and saved-item drag/resize reads these.
+  const canEdit         = rawCanEdit && !editLocked;
+  const canConfigure    = rawCanConfigure && !editLocked;
+  const canDynamicViews = rawCanDynamicViews && !editLocked;
+  const canLayers       = rawCanLayers && !editLocked;
+  const sessionGeometry = useAiSessionStore((s) => s.geometry);
+  const effectiveWidgets = useMemo(() => applySessionToWidgets(widgets, sessionDerived), [widgets, sessionDerived]);
+  // Saved items keep their SAVED index for the fallback position (an AI removal must not shift
+  // the others) and are `static` while AI changes are unsaved (D-13). AI items use session
+  // geometry (user drag), then derived.layout (AI set_layout), then config.layout, then placement.
+  // Phase 136 (D-07/D-08): AI overrides via derived.layout; new AI widgets gap-fill with per-type sizes (shared placeWidget).
+  const layouts = useMemo(() => {
+    const out: LayoutItem[] = widgets
+      .map((w, i) => getWidgetLayout(w, i))
+      .filter((it) => !sessionDerived.removedWidgetIds.has(Number(it.i)))
+      .map((it) => {
+        const o = sessionDerived.layout[Number(it.i)];
+        const item = o ? { ...it, ...o } : it;
+        return editLocked ? { ...item, static: true } : item;
+      });
+    for (const w of sessionDerived.addedWidgets) {
+      const g = sessionGeometry[w.id] ?? sessionDerived.layout[w.id];
+      const c = w.config?.layout as Partial<LayoutItem> | undefined;
+      const full = c && [c.x, c.y, c.w, c.h].every((n) => typeof n === "number");
+      const rect: GridRect = g ?? (full
+        ? { x: c!.x!, y: c!.y!, w: c!.w!, h: c!.h! }
+        : placeWidget(out, (AI_DEFAULT_SIZE as Record<string, { w: number; h: number }>)[w.type] ?? { w: 18, h: 24 }));
+      out.push({ i: String(w.id), x: rect.x, y: rect.y, w: rect.w, h: rect.h, minW: AI_MIN_W, minH: AI_MIN_H });
+    }
+    return out;
+  }, [widgets, sessionDerived, sessionGeometry, editLocked]);
   const setLayers = useDashboardLayersStore((s) => s.setLayers);
+
+  const maxBarGroupBySeriesCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
+  // 141 Keep: refetch the four lists, then swap them in one synchronous block (runKeep owns the order).
+  const reloadLists = async (): Promise<KeepLists> => {
+    const [w, l, t, dv] = await Promise.all([
+      listWidgets(dashboard.id),
+      listDashboardLayers(dashboard.id),
+      listDashboardTables(dashboard.id),
+      listDynamicViews(dashboard.id),
+    ]);
+    return { widgets: w, layers: l, tables: t, dynamicViews: dv.dynamic_views };
+  };
+  const applyLists = (x: KeepLists) => {
+    setWidgets(x.widgets);
+    setLayers(x.layers);
+    setAssociatedTables(x.tables);
+    setSavedDynamicViews(x.dynamicViews);
+  };
+  const runKeepNow = () =>
+    runKeep({
+      dashboardId: dashboard.id,
+      buildPayload: (baselineVersion) => {
+        const s = useAiSessionStore.getState();
+        return buildKeepPayload({
+          baselineVersion,
+          derived: s.derived,
+          savedWidgets: widgets,
+          savedLayers,
+          tempLayerVisibility: s.tempLayerVisibility,
+          rects: rectsFromLayouts(layouts),
+          overlay: { tables: associatedTables, maxBarGroupBySeriesCap },
+        });
+      },
+      keep: (id, body) => keepAiChanges(id, body), // lazy: api/client spec mocks lack this export
+      reloadLists,
+      applyLists,
+    });
+  const onKeep = async () => {
+    const o = await runKeepNow();
+    // 142 D-05: the first Keep makes a generated dashboard ordinary; learn the cleared flag from the server.
+    if (pending && (o.kind === "saved" || o.kind === "saved_no_refresh")) {
+      try {
+        const fresh = (await listDashboards()).find((d) => d.id === dashboard.id);
+        if (fresh) onDashboardUpdated?.(fresh);
+      } catch { /* the note stays until reload; harmless */ }
+    }
+    return o;
+  };
+  const onReloadLatest = () => runReloadLatest({ dashboardId: dashboard.id, reloadLists, applyLists });
 
   // Phase 90 (COMBO-V118-01 / COMBO-V118-03): dashboard-level combination-view orchestrator.
   // Fires one POST per UNIQUE resolved filter combination per filterVersion tick, ref-counts +
@@ -653,7 +968,7 @@ const DashboardOpen = ({
   // DUAL-TRIGGER (Phase 90): runs ALONGSIDE AggregatedWidgetRenderer Effect 1 — combination views
   // carry a distinct _c<hash8> suffix and are not read by any renderer until Phase 91/92.
   // Phase 92 (READ-V118-02): orchestrator now enumerates BOTH widgets and table-bound layers.
-  useCombinationOrchestrator(dashboard.id, widgets, layers, dynamicViews);
+  useCombinationOrchestrator(dashboard.id, effectiveWidgets, layers, dynamicViews);
 
   // Phase 58 Plan 02 (ENGINE-V111-02) / Phase 60 Plan 01 (RADIO-V111-03):
   // applyWidgetAction dispatch closure.
@@ -664,11 +979,11 @@ const DashboardOpen = ({
   const applyAction = useCallback(
     (action: Parameters<typeof applyWidgetAction>[0], controlId: number) =>
       applyWidgetAction(action, {
-        widgets,
+        widgets: effectiveWidgets,
         layers,
         dynamicViewIds: dynamicViews.map((dv) => dv.id),
       }, controlId),
-    [widgets, layers, dynamicViews]
+    [effectiveWidgets, layers, dynamicViews]
   );
 
   // Phase 60.2 Plan 01 (RADIOMULTI-V111-01): plural dispatch closure for multi-target options.
@@ -677,11 +992,11 @@ const DashboardOpen = ({
   const applyActions = useCallback(
     (actions: Parameters<typeof applyWidgetActions>[0], controlId: number) =>
       applyWidgetActions(actions, {
-        widgets,
+        widgets: effectiveWidgets,
         layers,
         dynamicViewIds: dynamicViews.map((dv) => dv.id),
       }, controlId),
-    [widgets, layers, dynamicViews]
+    [effectiveWidgets, layers, dynamicViews]
   );
 
   const [error, setError] = useState<string | null>(null);
@@ -729,7 +1044,8 @@ const DashboardOpen = ({
       const dynamicViews = useDynamicViewStore.getState().views;
       for (const idStr of Object.keys(dynamicViews)) {
         const dvId = Number(idStr);
-        if (dynamicViews[dvId]?.status === "materialized") {
+        // 139: negative ids are AI views; the aiDv lifecycle sink drops them on reset (dropDynamicView would 404).
+        if (dvId > 0 && dynamicViews[dvId]?.status === "materialized") {
           dropDynamicView(dvId).catch(() => {});
         }
       }
@@ -762,8 +1078,95 @@ const DashboardOpen = ({
       // Phase 111 (MAPVIEW-V121-01): 13th store — transient per-widget live map view.
       // Dashboard-A widget views MUST NOT leak into dashboard-B's config-panel readouts.
       useMapCurrentViewStore.getState().reset();
+      // Phase 134 (AISES-V20-07): 14th store — AI session layer; in-memory only, cleared on
+      // leave/switch. Idempotent; reads nothing from closures (StrictMode-safe).
+      // 137: abort a running ask first so its late result cannot land after reset (runner also checks epoch).
+      cancelAsk();
+      useAiSessionStore.getState().reset();
     };
   }, [dashboard.id]);
+
+  // Phase 134 (DEV only): console harness for scripted AI turns. The `import.meta.env.DEV` gate
+  // lets the bundler drop this import (and the harness module) from production builds.
+  const aiBaselineRef = useRef<SessionBaseline | null>(null);
+  aiBaselineRef.current = {
+    dashboardId: dashboard.id,
+    widgets,
+    layers: savedLayers,
+    // 139: SAVED views only, so the session fold is never fed its own output.
+    dynamicViewIds: savedDynamicViews.map((dv) => dv.id),
+    dynamicViewNames: Object.fromEntries(savedDynamicViews.map((dv) => [dv.id, dv.name])),
+    dynamicViewSources: Object.fromEntries(savedDynamicViews.map((dv) => [dv.id, dv.source_table_id])),
+    dynamicViewColumns: Object.fromEntries(savedDynamicViews.flatMap((dv) => { const c = normalizeDvColumns(dv.columns_json); return c ? [[dv.id, c] as const] : []; })),
+    tables: associatedTables.map((t) => ({ id: t.id, schema: t.schema, name: t.name, columns: t.columns })),
+    maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
+  };
+  const aiActions = useAiSessionActions(() => aiBaselineRef.current!);
+  // 137: ONE AskContext for every AI widget. Latest values live in a ref so the object is stable
+  // per dashboard; the snapshot is the EFFECTIVE dashboard (saved + session, incl. layout).
+  const aiSnapRef = useRef({ effectiveWidgets, layouts, layers, dynamicViews, associatedTables });
+  aiSnapRef.current = { effectiveWidgets, layouts, layers, dynamicViews, associatedTables };
+  const aiAskContext = useMemo<AskContext>(() => ({
+    dashboardId: dashboard.id,
+    getBaseline: () => aiBaselineRef.current!,
+    getSnapshot: () => {
+      const c = aiSnapRef.current;
+      const byId: Record<number, AskRect> = {};
+      for (const it of c.layouts) byId[Number(it.i)] = { x: it.x, y: it.y, w: it.w, h: it.h };
+      return buildAskSnapshot({
+        widgets: c.effectiveWidgets,
+        layouts: byId,
+        layers: c.layers,
+        dynamicViews: c.dynamicViews.map((d) => {
+          const cols = normalizeDvColumns(d.columns_json);
+          return { id: d.id, name: d.name, baseTableId: d.source_table_id, ...(d.aggregated !== undefined ? { aggregated: d.aggregated } : {}), ...(cols ? { columns: cols } : {}) };
+        }),
+        filters: useFilterStore.getState(),
+      });
+    },
+    get tables() { return aiSnapRef.current.associatedTables; },
+  }), [dashboard.id]);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let uninstall: (() => void) | undefined;
+    let cancelled = false;
+    void import("../lib/aiSession/devHarness").then((m) => {
+      if (!cancelled) uninstall = m.installAiDevHarness(aiActions, () => aiBaselineRef.current?.widgets ?? [], () => aiBaselineRef.current?.tables ?? []);
+    });
+    return () => {
+      cancelled = true;
+      uninstall?.();
+    };
+  }, [aiActions]);
+
+  // MCP connector (143): ?mcp=<session> carries what Claude Desktop built. Once the tables and widgets are loaded (widget
+  // SQL is derived from table columns), apply it as ONE unsaved AI turn: preview, the change bar and Keep as usual.
+  // Ready once the fetched lists have been copied into state (the AI baseline reads that state, one effect later).
+  // width > 0: the grid is measured, so Claude's text widgets can be sized to the real screen.
+  const mcpReady = tablesQuery.data !== undefined && associatedTables === tablesQuery.data && widgetsQuery.data !== undefined && widgets === widgetsQuery.data && width > 0;
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get("mcp");
+    if (!mcpReady || !sessionId || mcpHandoffsTaken.has(sessionId)) return;
+    mcpHandoffsTaken.add(sessionId); // module-level: StrictMode re-runs effects, and the server hands over once
+    const params = new URLSearchParams(window.location.search);
+    params.delete("mcp");
+    const qs = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+    void getMcpHandoff(sessionId, dashboard.id)
+      .then((h) => {
+        if (!h) {
+          useToastStore.getState().showToast("Nothing to load from Claude Desktop (already loaded or expired).", "error");
+          return;
+        }
+        // A new build: the server sized text for a typical laptop; resize it to this grid (full-width text minus card and
+        // body padding). An edit keeps the saved layout, so nothing is moved.
+        const ops = h.mode === "edit" ? h.ops : refitTextLayouts(h.ops, textCharsPerLine(width - MCP_TEXT_PADDING_PX));
+        // The server only hands over a saved removal the user approved in chat (confirmed: true).
+        if (removesSavedContent(ops)) useAiSessionStore.getState().approveRemoval();
+        aiActions.applyTurn({ prompt: h.prompt, answer: h.answer, ops, chat: { status: "ok", applied: h.applied, followUps: [] } });
+      })
+      .catch((e: unknown) => useToastStore.getState().showToast(e instanceof Error ? e.message : "Failed to load the Claude Desktop changes", "error"));
+  }, [mcpReady, dashboard.id, aiActions, width]);
 
   // Phase 113 (DLINK-V121-07): leaving an open dashboard by ANY route must clear the
   // address bar. App.tsx:318 renders DashboardsPage conditionally, so a sidebar click to
@@ -834,8 +1237,8 @@ const DashboardOpen = ({
   // shapes directly — re-render on shape mutation is exactly the intended trigger.
   const shapes = useSpatialFilterStore((s) => s.shapes);
   const targetsByTable = useMemo(
-    () => aggregateSpatialTargetsByTable(widgets),
-    [widgets],
+    () => aggregateSpatialTargetsByTable(effectiveWidgets),
+    [effectiveWidgets],
   );
   // Compute the set of tableIds that have any shape mapped to them (via targetsByTable.has).
   // A shape's "target tableId" is the tableId of the SpatialTarget that aggregateSpatialTargetsByTable
@@ -902,7 +1305,7 @@ const DashboardOpen = ({
   // cost class as the panel group builders below); inert in topbar mode since no
   // topbar chip ever calls onHighlight/onActivate.
   const { filterEntries, shapeEntries } = useReverseFilterMap({
-    widgets,
+    widgets: effectiveWidgets,
     layers,
     dynamicViews,
     associatedTables,
@@ -942,9 +1345,9 @@ const DashboardOpen = ({
   const topmostId = (ws: WidgetApplyEntry[]): number | undefined => {
     let best: { id: number; y: number; x: number } | undefined;
     ws.forEach((entry) => {
-      const idx = widgets.findIndex((w) => w.id === entry.widgetId);
-      if (idx < 0) return;
-      const { x, y } = getWidgetLayout(widgets[idx], idx);
+      const item = layouts.find((l) => l.i === String(entry.widgetId));
+      if (!item) return;
+      const { x, y } = item;
       if (!best || y < best.y || (y === best.y && x < best.x)) best = { id: entry.widgetId, y, x };
     });
     return best?.id;
@@ -980,7 +1383,8 @@ const DashboardOpen = ({
           text: buildChipText(f.column, f.value, f.dataType, f.operator),
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeFilter(tableId, f.column),
-          provenance: resolveProvenance(f.sourceWidgetId, widgets),
+          provenance: resolveProvenance(f.sourceWidgetId, effectiveWidgets),
+          aiApplied: f.aiApplied,
           appliesTo: appliesByFilter.get(f) ?? [],
           onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
           onClearHighlight: clearHl,
@@ -1002,7 +1406,8 @@ const DashboardOpen = ({
           text: buildChipText(f.column, f.value, f.dataType, f.operator),
           removeAriaLabel: `Remove filter ${f.column}`,
           onRemove: () => useFilterStore.getState().removeDvFilter(dvId, f.column),
-          provenance: resolveProvenance(f.sourceWidgetId, widgets),
+          provenance: resolveProvenance(f.sourceWidgetId, effectiveWidgets),
+          aiApplied: f.aiApplied,
           appliesTo: appliesByFilter.get(f) ?? [],
           onHighlight: () => highlight(appliesByFilter.get(f) ?? []),
           onClearHighlight: clearHl,
@@ -1010,6 +1415,7 @@ const DashboardOpen = ({
           onActivateWidget: activateOne,
         })),
         onClearAll: () => useFilterStore.getState().clearDvFilters(dvId),
+        aiTag: dvId < 0, // 139 D-20
       };
     });
 
@@ -1043,6 +1449,7 @@ const DashboardOpen = ({
   const refreshViews = () => viewsQuery.refetch();
 
   const handleAddTable = (tableId: number) => {
+    if (isAiEditLocked()) return;
     addDashboardTable(dashboard.id, tableId)
       .then((tables) => {
         setAssociatedTables(tables);
@@ -1061,6 +1468,7 @@ const DashboardOpen = ({
   };
 
   const handleRemoveTable = (tableId: number) => {
+    if (isAiEditLocked()) return;
     removeDashboardTable(dashboard.id, tableId)
       .then(() => {
         setAssociatedTables((prev) => prev.filter((t) => t.id !== tableId));
@@ -1070,6 +1478,8 @@ const DashboardOpen = ({
   };
 
   const handleAddVisualization = (type: string) => {
+    if (isAiEditLocked()) return;
+    if (type === AI_ASSISTANT_TYPE && !canUseAi) return;
     const chartDef = getChartType(type);
     const label = chartDef?.label ?? type;
     const defaults = chartDef?.defaultConfig ?? {};
@@ -1082,7 +1492,7 @@ const DashboardOpen = ({
     createWidget(dashboard.id, {
       title: label,
       type,
-      config: { ...defaults, layout: { x: 0, y: nextY, w: 18, h: 24 } }
+      config: { ...defaults, layout: { x: 0, y: nextY, ...(type === AI_ASSISTANT_TYPE ? AI_ASSISTANT_DEFAULT_SIZE : { w: 18, h: 24 }) } }
     })
       .then((widget) => {
         setWidgets((prev) => [...prev, widget]);
@@ -1096,6 +1506,12 @@ const DashboardOpen = ({
   // the original in local state). Reuses the create endpoint (no server change) and drops the
   // copy below all existing widgets so it never overlaps its source.
   const handleDuplicateWidget = useCallback((source: WidgetDto) => {
+    if (isAiEditLocked()) return;
+    // 137 (AIGOV-V20-01): read at call time so the callback deps do not change.
+    if (source.type === AI_ASSISTANT_TYPE && !useAuthStore.getState().hasPermission(PERMISSIONS.AI_USE)) {
+      useToastStore.getState().showToast("You need the Use AI permission to add the AI assistant.", "error");
+      return;
+    }
     const nextY = widgets.length > 0
       ? Math.max(...widgets.map((w, i) => {
           const l = getWidgetLayout(w, i);
@@ -1118,6 +1534,7 @@ const DashboardOpen = ({
   }, [widgets, dashboard.id]);
 
   const handleSaveConfig = (widget: WidgetDto, payload: { title: string; config: Record<string, unknown> }) => {
+    if (isAiEditLocked()) return;
     const layout = widget.config?.layout;
     const newConfig = { ...payload.config, layout };
     // Auto-save fires every onChange for custom-panel charts (e.g. map). Closing the
@@ -1142,6 +1559,7 @@ const DashboardOpen = ({
   };
 
   const handleRemoveWidget = useCallback((widgetId: number) => {
+    if (isAiEditLocked()) return;
     deleteWidget(widgetId)
       .then(() => setWidgets((prev) => prev.filter((w) => w.id !== widgetId)))
       .catch((err) => setError(err.message));
@@ -1150,10 +1568,41 @@ const DashboardOpen = ({
 
   // Phase 108 (FSCOPE-V120-02): stable wrapper around the setConfiguringWidget setter for
   // WidgetCard's onConfigure prop — React.memo prop-stability.
-  const handleConfigureWidget = useCallback((widget: WidgetDto) => setConfiguringWidget(widget), []);
+  // Phase 134: a modal opened before the lock engaged would otherwise still save.
+  useEffect(() => {
+    if (!editLocked) return;
+    setShowTableModal(false);
+    setShowVizModal(false);
+    setShowLayersModal(false);
+    setShowDynamicViewsModal(false);
+    setShowSettingsModal(false);
+    setConfiguringWidget(null);
+  }, [editLocked]);
+
+  const handleConfigureWidget = useCallback((widget: WidgetDto) => {
+    if (isAiEditLocked()) return;
+    setConfiguringWidget(widget);
+  }, []);
 
   const handleLayoutChange = (layout: Layout) => {
+    // 141 UAT: after a list swap (Keep) RGL first reports its stale pre-swap layout. A callback whose ids are not
+    // exactly the widgets on screen is stale; persisting it overwrote just-saved rects (and looped). Ignore it.
+    const onScreen = new Set(layouts.map((l) => l.i));
+    if (layout.length !== onScreen.size || layout.some((item) => !onScreen.has(item.i))) return;
+    // 142 UAT: below the 36-col breakpoints RGL reports its auto-generated, column-clamped fallback. It is a display
+    // reflow of the stored 36-col layout, never a user edit: persisting it corrupted saved and AI-session geometry.
+    if (GRID_COLS[activeGridBreakpoint(width, isPanelMode)] !== 36) return;
+    // Phase 134: AI-widget rects (negative temp ids) go to session geometry, never the DB.
+    for (const item of layout) {
+      if (Number(item.i) < 0) {
+        useAiSessionStore.getState().setGeometry(Number(item.i), { x: item.x, y: item.y, w: item.w, h: item.h });
+      }
+    }
+    // D-13: never persist saved geometry or reflow while AI changes are unsaved. Read via
+    // getState so a stale closure cannot bypass the lock.
+    if (isAiEditLocked()) return;
     layout.forEach((item) => {
+      if (Number(item.i) < 0) return;
       const widget = widgets.find((w) => String(w.id) === item.i);
       if (!widget) return;
       const prev = widget.config?.layout as Partial<LayoutItem> | undefined;
@@ -1164,6 +1613,7 @@ const DashboardOpen = ({
     });
     setWidgets((prev) =>
       prev.map((w) => {
+        if (w.id < 0) return w;
         const item = layout.find((l) => l.i === String(w.id));
         if (!item) return w;
         return { ...w, config: { ...w.config, layout: { x: item.x, y: item.y, w: item.w, h: item.h } } };
@@ -1193,6 +1643,7 @@ const DashboardOpen = ({
   }, [dashboard.id]);
 
   const handleLayerPatch = useCallback((layerId: number, patch: Partial<DashboardLayerDto>) => {
+    if (isAiEditLocked()) return;
     // 1. Optimistic store update (immediate UI feedback — no await)
     useDashboardLayersStore.getState().updateLayer(layerId, patch);
     // 2. Stash patch in ref (latest wins per layer)
@@ -1204,42 +1655,14 @@ const DashboardOpen = ({
   }, [flushPendingPatches]);
 
   const handleLayerCreate = useCallback(async () => {
+    if (isAiEditLocked()) return;
     if (associatedTables.length === 0) {
       useToastStore.getState().showToast("Add a table to this dashboard first.", "info");
       return;
     }
     const defaultTableId = associatedTables[0].id;
-    // Defaults MUST match the field names that `buildWmsParams` and the form
-    // controls read (camelCase, e.g. `pointOpacity` — NOT `POINTOPACITY`). The
-    // previous defaults used `POINTOPACITY` (the on-wire WMS param name),
-    // which buildWmsParams' `config.pointOpacity` check ignored — so a freshly
-    // created layer's first tile request omitted POINTOPACITY entirely, and
-    // Kinetica fell back to its own default (visually different from what the
-    // form showed). Operator workaround: drag the slider once to set
-    // `pointOpacity` in the correct case, then the tile re-rendered.
-    //
-    // Also explicitly seed style fields the form falls back to via `??`/`||`
-    // (pointShape, shapeFillColor, shapeLineColor, shapeLineWidth,
-    // antialiasing). Form fallbacks only affect the rendered SELECT/INPUT
-    // value — they don't write into config, so the WMS URL omits those params
-    // until the operator touches the control. Seeding here ensures the first
-    // tile fetch already includes everything the form claims is the default.
-    const defaultConfig = {
-      renderMode: "raster",
-      spatialMode: "latlon",
-      colormap: "viridis",
-      reverseColormap: false,
-      // 8-char AARRGGBB: FF (opaque) + 3B82F6 (blue). Stored without '#' for the WMS URL.
-      pointColor: "FF3B82F6",
-      pointSize: 5,
-      pointOpacity: 100,
-      pointShape: "circle",
-      shapeFillColor: "FFFF3838",
-      shapeLineColor: "FF000000",
-      shapeLineWidth: 1,
-      antialiasing: false,
-      visible: true,
-    };
+    // Defaults live in lib/layerDefaults (single source shared with the AI heatmap builder).
+    const defaultConfig = { ...DEFAULT_LAYER_CONFIG };
     try {
       const created = await createLayer(dashboard.id, { table_id: defaultTableId, config: defaultConfig });
       useDashboardLayersStore.getState().addLayer(created);
@@ -1251,6 +1674,7 @@ const DashboardOpen = ({
   }, [dashboard.id, associatedTables]);
 
   const handleLayerDelete = useCallback(async (layerId: number) => {
+    if (isAiEditLocked()) return;
     try {
       await apiDeleteLayer(dashboard.id, layerId);
       useDashboardLayersStore.getState().removeLayer(layerId);
@@ -1262,6 +1686,7 @@ const DashboardOpen = ({
   }, [dashboard.id]);
 
   const handleLayerDuplicate = useCallback(async (layerId: number) => {
+    if (isAiEditLocked()) return;
     const source = useDashboardLayersStore.getState().layers.find((l) => l.id === layerId);
     if (!source) return;
     try {
@@ -1275,6 +1700,7 @@ const DashboardOpen = ({
   }, [dashboard.id]);
 
   const handleLayerReorder = useCallback(async (orderedIds: number[]) => {
+    if (isAiEditLocked()) return;
     const current = useDashboardLayersStore.getState().layers;
     const reordered = orderedIds
       .map((id) => current.find((l) => l.id === id))
@@ -1299,7 +1725,8 @@ const DashboardOpen = ({
   }, [flushPendingPatches]);
 
   useEffect(() => {
-    if (showLayersModal && layers.length === 0 && associatedTables.length > 0) {
+    if (isAiEditLocked()) return;
+    if (showLayersModal && savedLayers.length === 0 && associatedTables.length > 0) {
       void handleLayerCreate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1318,7 +1745,7 @@ const DashboardOpen = ({
       <div className="dashboard-list">
         <ChartCard
           title="No access"
-          actions={<button className="ghost-sm" onClick={onBack}>Back to dashboards</button>}
+          actions={<button className="ghost-sm" onClick={() => requestLeave(onBack)}>Back to dashboards</button>}
         >
           <div className="muted" style={{ padding: "40px 0", textAlign: "center" }}>
             You don't have access to this dashboard.
@@ -1328,38 +1755,62 @@ const DashboardOpen = ({
     );
   }
 
-  const layouts = widgets.map((w, i) => getWidgetLayout(w, i));
 
   const dashboardHeader = (
     <>
       <div className="dashboard-open-title">{dashboard.name}</div>
       <div className="dashboard-toolbar">
-        {canEdit && (
-          <button className="btn-primary btn-sm" onClick={() => setShowTableModal(true)}>
+        {rawCanEdit && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowTableModal(true)}
+          >
             Tables
           </button>
         )}
-        {canDynamicViews && (
-          <button className="btn-primary btn-sm" onClick={() => setShowDynamicViewsModal(true)}>
+        {rawCanDynamicViews && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowDynamicViewsModal(true)}
+          >
             Dynamic Views
           </button>
         )}
-        {canLayers && (
-          <button className="btn-primary btn-sm" onClick={() => setShowLayersModal(true)}>
+        {rawCanLayers && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowLayersModal(true)}
+          >
             Map Layers
           </button>
         )}
-        {canEdit && (
-          <button className="btn-primary btn-sm" onClick={() => setShowVizModal(true)}>
+        {rawCanEdit && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowVizModal(true)}
+          >
             Visualizations
           </button>
         )}
-        {canEdit && (
-          <button className="btn-primary btn-sm" onClick={() => setShowSettingsModal(true)}>
+        {rawCanEdit && (
+          <button
+            className="btn-primary btn-sm"
+            disabled={editLocked}
+            title={editLocked ? LOCK_TOOLTIP : undefined}
+            onClick={() => setShowSettingsModal(true)}
+          >
             Settings
           </button>
         )}
-        <button className="ghost-sm" onClick={onBack}>Back</button>
+        <button className="ghost-sm" onClick={() => requestLeave(onBack)}>Back</button>
       </div>
     </>
   );
@@ -1372,17 +1823,18 @@ const DashboardOpen = ({
   const gridBlock = (
     <DashboardContextProvider
       dashboardId={dashboard.id}
-      widgets={widgets}
+      widgets={effectiveWidgets}
       dynamicViews={dynamicViews}
       retryDynamicView={retryDynamicView}
       applyWidgetAction={applyAction}
       applyWidgetActions={applyActions}
+      ai={aiAskContext}
     >
       <div
         ref={containerRef as React.RefObject<HTMLDivElement>}
         className={isPanelMode ? "filter-panel-grid-wrap" : undefined}
       >
-      {widgets.length > 0 && mounted && (
+      {effectiveWidgets.length > 0 && mounted && (
         <ResponsiveGridLayout
           className="dashboard-grid"
           width={width}
@@ -1404,19 +1856,20 @@ const DashboardOpen = ({
           // panel can never persist a fallback. Topbar/unset mode passes `undefined`
           // (identical to omitting the prop) — byte-identical to pre-fix behavior.
           breakpoint={(isPanelMode ? "lg" : undefined) as "lg" | "md" | "sm" | "xs" | "xxs" | undefined}
-          breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-          cols={{ lg: 36, md: 36, sm: 18, xs: 12, xxs: 6 }}
+          breakpoints={GRID_BREAKPOINTS}
+          cols={GRID_COLS}
           rowHeight={5}
           margin={[8, 8]}
           containerPadding={[8, 8]}
           layouts={{ lg: layouts }}
           onLayoutChange={(layout) => handleLayoutChange(layout)}
-          dragConfig={{ enabled: canEdit, handle: ".widget-drag-handle" }}
-          resizeConfig={{ enabled: canEdit }}
+          dragConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0, handle: ".widget-drag-handle" }}
+          resizeConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0 }}
         >
-          {widgets.map((w) => (
+          {effectiveWidgets.map((w) => (
             <WidgetCard
               key={String(w.id)}
+              data-grid={layouts.find((l) => l.i === String(w.id))}
               widget={w}
               layers={layers}
               associatedTables={associatedTables}
@@ -1440,6 +1893,24 @@ const DashboardOpen = ({
       {topbarSlotEl
         ? createPortal(dashboardHeader, topbarSlotEl)
         : <div className="dashboard-open-header">{dashboardHeader}</div>}
+
+      {/* 137 D-15: full-width Keep/Discard bar, outside the (possibly portalled) header. */}
+      {pending && !aiDirty && <GeneratedPendingNote onDiscard={() => setGenDiscardOpen(true)} />}
+      <AiChangeBar
+        onDiscardGenerated={pending ? () => setGenDiscardOpen(true) : undefined}
+        savedWidgets={widgets}
+        savedLayers={savedLayers}
+        savedDynamicViews={savedDynamicViews}
+        onKeep={onKeep}
+        onReloadLatest={onReloadLatest}
+      />
+      {genDiscardOpen && (
+        <GeneratedDiscardDialog
+          dashboardId={dashboard.id}
+          onClose={() => setGenDiscardOpen(false)}
+          onDiscarded={(id) => { setGenDiscardOpen(false); onGeneratedDiscarded?.(id); }}
+        />
+      )}
 
       {error && <div className="error">{error}</div>}
       {(tablesQuery.error || widgetsQuery.error || viewsQuery.error) && (() => {
@@ -1515,6 +1986,7 @@ const DashboardOpen = ({
                           text={buildChipText(f.column, f.value, f.dataType, f.operator)}
                           removeAriaLabel={`Remove filter ${f.column}`}
                           onRemove={() => useFilterStore.getState().removeFilter(tableId, f.column)}
+                          aiApplied={f.aiApplied}
                         />
                       ))}
                       {/* Phase 30 (CHIP-V15-01): spatial chips — one per shape, same row, same chip class. */}
@@ -1582,6 +2054,9 @@ const DashboardOpen = ({
               return (
                 <div key={`dv-${dvId}`} className="filter-bar-item">
                   <span className="filter-bar-table">{dvName}</span>
+                  {dvId < 0 && (
+                    <span className="widget-filter-badge" title="Created by the AI assistant">AI</span>
+                  )}
                   <div className="filter-bar-chips">
                     {dvFilters.map((f) => (
                       <FilterChip
@@ -1590,6 +2065,7 @@ const DashboardOpen = ({
                         text={buildChipText(f.column, f.value, f.dataType, f.operator)}
                         removeAriaLabel={`Remove filter ${f.column}`}
                         onRemove={() => useFilterStore.getState().removeDvFilter(dvId, f.column)}
+                        aiApplied={f.aiApplied}
                       />
                     ))}
                   </div>
@@ -1607,16 +2083,18 @@ const DashboardOpen = ({
         );
       })()}
 
-      {widgets.length === 0 && (
+      {effectiveWidgets.length === 0 && (
         <div className="muted" style={{ padding: "40px 0", textAlign: "center" }}>
           No visualizations yet. Click "Visualizations" to add one.
         </div>
       )}
 
-      {isPanelMode ? (
-        <div className="filter-panel-layout">
-          {gridBlock}
-          {panelCollapsed ? (
+      {/* One wrapper in both modes: gridBlock must keep its place in the tree when the mode is switched live.
+          useContainerWidth observes the node it saw on mount; remounting it left the grid at the old width. */}
+      <div className={isPanelMode ? "filter-panel-layout" : undefined}>
+        {gridBlock}
+        {isPanelMode &&
+          (panelCollapsed ? (
             <FilterPanelRail count={activeFilterCount} onExpand={() => setPanelCollapsed(false)} />
           ) : (
             <FilterPanel
@@ -1627,11 +2105,8 @@ const DashboardOpen = ({
               onCollapse={() => setPanelCollapsed(true)}
               onClearAllFilters={clearAllFilters}
             />
-          )}
-        </div>
-      ) : (
-        gridBlock
-      )}
+          ))}
+      </div>
 
       {showTableModal && (
         <TablePickerModal
@@ -1645,6 +2120,7 @@ const DashboardOpen = ({
       {showVizModal && (
         <VisualizationPickerModal
           onSelect={handleAddVisualization}
+          canUseAi={canUseAi}
           onClose={() => setShowVizModal(false)}
         />
       )}
@@ -1663,7 +2139,7 @@ const DashboardOpen = ({
 
       {showLayersModal && (
         <LayersModal
-          layers={layers}
+          layers={savedLayers}
           associatedTables={associatedTables}
           dynamicViews={dynamicViews}
           widgets={widgets}
@@ -1699,14 +2175,18 @@ const DashboardOpen = ({
   );
 };
 
+const LOCK_TOOLTIP = "Keep or discard the AI changes first";
+
 const VisualizationPickerModal = ({
   onSelect,
+  canUseAi,
   onClose
 }: {
   onSelect: (type: string) => void;
+  canUseAi: boolean;
   onClose: () => void;
 }) => {
-  const vizTypes = getVisualizationTypes();
+  const vizTypes = getVisualizationTypes(canUseAi);
 
   return (
     <div className="modal-overlay" onClick={onClose}>

@@ -199,7 +199,7 @@ const mockWidget2: WidgetDto = {
   id: 2,
   dashboard_id: 10,
   title: "My Bar",
-  type: "chart",
+  type: "bar",
   position: 1,
   config: {},
   created_at: "",

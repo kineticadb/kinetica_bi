@@ -22,12 +22,22 @@
  * - If the orchestrator's materialize of the dv source combination fails, the
  *   orchestrator sets the dv status to `error` (this hook leaves it alone: the token
  *   stays `wait:<hash>`), so the chain is never stuck in `pending`.
- * - Returns `{ dynamicViews, retry(id) }`.
+ * - Returns `{ dynamicViews, savedDynamicViews, retry(id) }`.
+ *
+ * Phase 139 (session-only AI views): the optional `sessionRows` (negative ids, from toSessionDvRows) and
+ * `removedSavedIds` are merged into the ONE `dynamicViews` list (saved minus removed, plus session rows), so
+ * every read site (DashboardContext, orphan detection, orchestrator dv:<id>, keep-alive, both map
+ * buildWmsParams sites) sees them. A session row materializes through POST /api/ai/dynamic-view/materialize
+ * (never the saved route) with the base combination hash plus `joinFilterKeys` for joined tables that have a
+ * ready combination; its token also carries the view generation and each joined table's combination so a
+ * joined-table filter change or a redo re-fires it. The request waits for that temp id's pending drop and the
+ * view is tracked at START so an in-flight CREATE is dropped on undo/discard. Aggregated views (saved or AI)
+ * skip the local no_filter fast-path (D-02/D-03): the server decides by output size.
  *
  * Mount site: `DashboardsPage.tsx` `DashboardOpen` body. Single instance per open dashboard.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useFilterStore } from "../store/filterStore";
 import { useSpatialFilterStore } from "../store/spatialFilterStore";
@@ -37,28 +47,50 @@ import { useDynamicViewStore } from "../store/dynamicViewStore";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
 import { buildDynamicViewName } from "../lib/dynamicViewName";
+import { useAiSessionStore } from "../store/aiSessionStore";
+import { trackAiDv, pendingAiDvDrop } from "../lib/aiDv/aiDvLifecycle";
+import { notifyAiDvStatus } from "../lib/aiDv/aiDvNotes";
 import {
   listDynamicViews,
   materializeDynamicView,
+  materializeAiDynamicView,
   type DynamicViewRow,
+  type MaterializeDynamicViewResponse,
   type WidgetDto,
 } from "../api/client";
+import type { AiDvMaterializeResponse } from "@kinetica-bi/shared";
 
 export type UseDynamicViewMaterializeChainResult = {
+  /** Saved (fetched) minus session-removed, plus session AI rows. */
   dynamicViews: DynamicViewRow[];
+  /** The fetched saved list, untouched by the session overlay. */
+  savedDynamicViews: DynamicViewRow[];
   retry: (dynamicViewId: number) => void;
+  /** 141: Keep swaps in the refetched saved list. */
+  setSavedDynamicViews: (rows: DynamicViewRow[]) => void;
 };
 
 const NO_WIDGETS: WidgetDto[] = [];
+const NO_ROWS: DynamicViewRow[] = [];
+const NO_IDS: ReadonlySet<number> = new Set<number>();
 
 export function useDynamicViewMaterializeChain(
   dashboardId: number,
   // Dashboard widgets: only used to resolve each source table's eligible spatial target (map
   // widgets' spatialTargets) so the hash matches the orchestrator's. Omitted => column-only.
   widgets: WidgetDto[] = NO_WIDGETS,
+  sessionRows: DynamicViewRow[] = NO_ROWS,
+  removedSavedIds: ReadonlySet<number> = NO_IDS,
 ): UseDynamicViewMaterializeChainResult {
   // --- 1. List state — refreshes on mount + when dynamicViewVersion increments ---
-  const [dynamicViews, setDynamicViews] = useState<DynamicViewRow[]>([]);
+  const [saved, setDynamicViews] = useState<DynamicViewRow[]>([]);
+  const dynamicViews = useMemo(
+    () =>
+      removedSavedIds.size === 0 && sessionRows.length === 0
+        ? saved
+        : [...saved.filter((d) => !removedSavedIds.has(d.id)), ...sessionRows],
+    [saved, sessionRows, removedSavedIds],
+  );
   const dynamicViewVersion = useDynamicViewStore((s) => s.dynamicViewVersion);
   const listAbortRef = useRef<AbortController | null>(null);
 
@@ -124,18 +156,39 @@ export function useDynamicViewMaterializeChain(
         : ready
           ? `ready:${hash}:${entry!.viewName}:${entry!.expiresAt}:${entry!.materializeVersion}`
           : `wait:${hash}`;
-    if (!force && lastTokenRef.current.get(dv.id) === token) return;
-    lastTokenRef.current.set(dv.id, token);
+    // 139: a session row's change token also covers its generation and each joined table's combination.
+    const joinKeys: Record<string, string> = {};
+    let fullToken = token;
+    if (dv.id < 0 && dv.ai) {
+      const joinPart = (dv.ai.spec.joins ?? [])
+        .map((j) => {
+          const h = currentDvSourceComboHash(j.tableId, widgetsRef.current);
+          const e = h ? useFilterCombinationStore.getState().registry[h] : undefined;
+          if (h && e && !e.materializing && e.viewName) {
+            joinKeys[String(j.tableId)] = h;
+            return `|j${j.tableId}:${h}:${e.viewName}:${e.expiresAt}`;
+          }
+          return `|j${j.tableId}:raw`;
+        })
+        .join("");
+      fullToken = `g${dv.ai.gen}|${token}${joinPart}`;
+    }
+    if (!force && lastTokenRef.current.get(dv.id) === fullToken) return;
+    lastTokenRef.current.set(dv.id, fullToken);
 
-    const viewName = buildDynamicViewName({
-      userId: username,
-      dashboardId: dv.dashboard_id,
-      dynamicViewId: dv.id,
-    });
+    // Negative ids never reach buildDynamicViewName / the server: placeholder until the server name arrives.
+    const viewName =
+      dv.id < 0
+        ? `ai-dv:${dv.id}`
+        : buildDynamicViewName({
+            userId: username,
+            dashboardId: dv.dashboard_id,
+            dynamicViewId: dv.id,
+          });
 
     // no_filter fast-path (capped dvs only). Abort any in-flight cascade for this dv so a
     // late response cannot overwrite the authoritative no_filter state.
-    if (!force && token === "nofilter" && dv.max_records > 0) {
+    if (!force && token === "nofilter" && dv.max_records > 0 && !dv.aggregated) {
       cascadeControllersRef.current.get(dv.id)?.abort();
       cascadeControllersRef.current.delete(dv.id);
       useDynamicViewStore.getState().setView(dv.id, {
@@ -143,6 +196,7 @@ export function useDynamicViewMaterializeChain(
         status: "over_threshold",
         reason: "no_filter",
       });
+      if (dv.id < 0) notifyAiDvStatus(dv, { status: "over_threshold", reason: "no_filter" });
       return;
     }
 
@@ -161,8 +215,32 @@ export function useDynamicViewMaterializeChain(
 
     useDynamicViewStore.getState().markPending(dv.id, viewName);
 
-    materializeDynamicView(dv.id, ctrl.signal, hash)
+    let request: Promise<MaterializeDynamicViewResponse | AiDvMaterializeResponse | undefined>;
+    if (dv.id < 0) {
+      const ai = dv.ai!;
+      trackAiDv({ dashboardId: dv.dashboard_id, nonce: ai.nonce, tempId: dv.id, gen: ai.gen });
+      request = (pendingAiDvDrop(dv.id) ?? Promise.resolve()).then(() =>
+        ctrl.signal.aborted
+          ? undefined
+          : materializeAiDynamicView(
+              {
+                dashboardId: dv.dashboard_id,
+                nonce: ai.nonce,
+                tempId: dv.id,
+                gen: ai.gen,
+                spec: ai.spec,
+                ...(hash ? { combination_key: hash } : {}),
+                ...(Object.keys(joinKeys).length ? { joinFilterKeys: joinKeys } : {}),
+              },
+              ctrl.signal,
+            ),
+      );
+    } else {
+      request = materializeDynamicView(dv.id, ctrl.signal, hash);
+    }
+    request
       .then((result) => {
+        if (!result) return;
         if (ctrl.signal.aborted) return;
         if (result.status === "materialized") {
           useDynamicViewStore.getState().setView(dv.id, {
@@ -170,12 +248,14 @@ export function useDynamicViewMaterializeChain(
             status: "materialized",
             expiresAt: result.expires_at,
           });
+          if (dv.id < 0 && "columns" in result) useAiSessionStore.getState().setDvColumns(dv.id, result.columns);
         } else if (result.status === "over_threshold") {
           useDynamicViewStore.getState().setView(dv.id, {
             viewName,
             status: "over_threshold",
             reason: result.reason,
           });
+          if (dv.id < 0) notifyAiDvStatus(dv, result);
         }
         // No toast on success — locked from Phase 34 research. Over-threshold is
         // surfaced via renderer empty state (Plan 35-05) and map overlay (Plan 35-06).
@@ -238,5 +318,5 @@ export function useDynamicViewMaterializeChain(
     [dynamicViews, fireCascade],
   );
 
-  return { dynamicViews, retry };
+  return { dynamicViews, savedDynamicViews: saved, retry, setSavedDynamicViews: setDynamicViews };
 }

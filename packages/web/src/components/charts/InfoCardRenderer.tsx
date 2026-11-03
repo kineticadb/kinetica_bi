@@ -20,7 +20,7 @@
  * + setSelection AND lastClickContext atomically — both popup and card observe the same store.
  */
 import { useMemo } from "react";
-import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { useEffectiveLayers } from "../../hooks/useEffectiveLayers";
 import { useInfoSelectionStore } from "../../store/infoSelectionStore";
 import InfoSelectionView from "./InfoSelectionView";
 import type { DashboardLayerDto, WidgetDto, TableDto } from "../../api/client";
@@ -35,8 +35,8 @@ type Props = {
 export default function InfoCardRenderer({ widget, tables }: Props) {
   // Dashboard-scoped eligibility — info_enabled === 1. All three spatial modes supported.
   // Sorted by position for stable dropdown order (matches popup's includedLayers order).
-  // PITFALL S-01 lock: layer list lives ONLY in useDashboardLayersStore — no local copy.
-  const allLayers = useDashboardLayersStore((s) => s.layers);
+  // PITFALL S-01 lock: layers come from the saved store merged with the Phase 134 session layer via useEffectiveLayers - still no local copy.
+  const allLayers = useEffectiveLayers();
   const eligibleLayers = useMemo<DashboardLayerDto[]>(() => {
     return allLayers
       .filter((layer) => layer.info_enabled !== 0)

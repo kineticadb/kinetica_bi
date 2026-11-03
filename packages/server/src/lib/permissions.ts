@@ -34,11 +34,13 @@ export const PERMISSIONS = {
   AUDIT_VIEW:               "audit:view",
   DATASETS_MANAGE:          "datasets:manage",
   BRANDING_MANAGE:          "branding:manage",
+  // v2.0 Phase 135 (AIGOV-V20-01, D-01): ask the AI assistant. Edit rights are enforced at Keep (141), not here (D-16).
+  AI_USE:                   "ai:use",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-// Flat array of all 18 permission strings — used by the admin bootstrap
+// Flat array of all 19 permission strings — used by the admin bootstrap
 // short-circuit (returns new Set(ALL_PERMISSIONS)) and the catalog seed.
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(PERMISSIONS);
 
@@ -63,7 +65,7 @@ export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
 // matrix.
 
 export const DEFAULT_ROLE_MAPPINGS: Record<BuiltinRole, readonly Permission[]> = {
-  // admin: all 18 permissions (bootstrap short-circuit always returns full set)
+  // admin: all 19 permissions (bootstrap short-circuit always returns full set)
   admin: [...ALL_PERMISSIONS],
 
   // designer: full dashboard lifecycle + all design tooling + dataset management +
@@ -80,6 +82,7 @@ export const DEFAULT_ROLE_MAPPINGS: Record<BuiltinRole, readonly Permission[]> =
     PERMISSIONS.DYNAMIC_VIEWS_MANAGE,
     PERMISSIONS.DATA_FILTERS_CONFIGURE,
     PERMISSIONS.DATASETS_MANAGE,
+    PERMISSIONS.AI_USE,
   ],
 
   // user_admin: least-privilege management + analyst-level dashboard view ONLY.

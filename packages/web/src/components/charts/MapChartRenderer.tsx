@@ -84,7 +84,7 @@ import { isLayerEffectivelyVisible } from "../../lib/layerVisibility";
 import { getSpatialTargets, isSpatialTargetEligible } from "../../lib/spatialTargets";
 import { resolveInitialView } from "../../lib/mapInitialView";
 import { buildSpatialColumns } from "../../lib/spatialColumns";
-import { useDashboardLayersStore } from "../../store/dashboardLayersStore";
+import { useEffectiveLayers } from "../../hooks/useEffectiveLayers";
 import { useThemeStore } from "../../store/theme";
 import type { DashboardLayerDto } from "../../api/client";
 import { useInfoSelectionStore } from "../../store/infoSelectionStore";
@@ -509,8 +509,8 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   );
 
   // ── Dashboard layers store subscription ─────────────────────────────────
-  // PITFALL S-01 lock: layer list lives ONLY in useDashboardLayersStore.
-  const allLayers = useDashboardLayersStore((s) => s.layers);
+  // PITFALL S-01 lock: layers come from the saved store merged with the Phase 134 session layer via useEffectiveLayers - still no local copy.
+  const allLayers = useEffectiveLayers();
 
   // Phase 58 Plan 02 / Phase 58.1 Plan 01 (ENGINE-V111-03 map-layer render path):
   // Subscribe to the session overlay store for layer config overlays.

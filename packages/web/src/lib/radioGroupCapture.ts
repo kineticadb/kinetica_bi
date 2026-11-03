@@ -12,14 +12,21 @@
  * LOCATION CONTRACT (Phase 58.1 v2 — single source of truth is getFieldLocation):
  *   "layer.config"  → read from layer.config[field]  (renderMode / visible / opacity)
  *   "layer"         → read from layer[field]          (track_config / cb_config — TOP-LEVEL)
- *   "widget.config" → read from widget.config[field]  (show_popup / metric / page_size / etc.)
+ *   "widget.config" → read from widget.config[field]  (real renderer key via WIDGET_OVERLAY_KEY_MAP: show_popup -> infoEnabled, page_size -> pageSize, etc.)
  *
  * IMPORTANT: renderMode (camelCase) is the ONLY render-mode key. The snake-case variant is not in the allow-list.
  * Field names in the returned patch match the allow-list key names exactly.
  */
 import { getFieldLocation } from "./actionAllowList";
+import { WIDGET_OVERLAY_KEY_MAP } from "./widgetOverlayKeys";
 import type { WidgetActionTarget } from "./widgetAction";
 import type { DashboardLayerDto, WidgetDto } from "../api/client";
+
+/** D-19: saved aggregation is UPPERCASE; the allow-list enum is lowercase. */
+export const WIDGET_CAPTURE_VALUE_TRANSFORMS: Record<string, (v: unknown) => unknown> = {
+  aggregation: (v) => String(v).toLowerCase(),
+};
+const CHART_CAPTURE_TYPES = new Set(["bar", "line", "pie", "table", "bignumber"]);
 
 // ---------------------------------------------------------------------------
 // Candidate field name lists per target kind
@@ -44,7 +51,12 @@ export const LAYER_CAPTURE_FIELDS = [
  */
 export const WIDGET_CAPTURE_FIELDS: Record<string, readonly string[]> = {
   map: ["show_popup", "show_scale_bar", "show_fullscreen"],
-  chart: ["metric", "aggregation"],
+  // D-19: keyed by real types; 136-07 maps metric -> metricColumn and normalises aggregation case
+  bar: ["metric", "aggregation"],
+  line: ["metric", "aggregation"],
+  pie: ["metric", "aggregation"],
+  table: ["metric", "aggregation"],
+  bignumber: ["metric", "aggregation"],
   records: ["page_size"],
 };
 
@@ -67,7 +79,7 @@ export const DYNAMICVIEW_CAPTURE_FIELDS = ["enabled"] as const;
  *      - "layer"         → layer?.[field]  (top-level DTO field, e.g. track_config/cb_config)
  *      - "widget.config" → widget?.config?.[field] (for kind "widget")
  *                          dynamicViewConfig?.[field] (for kind "dynamicView")
- *   3. Include in patch if value is not undefined AND not null (no value to snapshot).
+ *   3. Include in patch if value is not undefined, null or "" (no value to snapshot).
  *
  * Returns a Record<string, unknown> whose keys are the REAL allow-listed field names
  * (renderMode camelCase, cb_config / track_config snake as defined in the allow-list).
@@ -103,22 +115,34 @@ export function captureAllowListedSubset(args: {
 
     if (location === "layer.config") {
       // Nested in layer.config blob (renderMode / visible / opacity)
-      value = (layer?.config as Record<string, unknown> | undefined)?.[field];
+      const lc = layer?.config as Record<string, unknown> | undefined;
+      value = lc?.[field];
+      // D-19: opacity is stored as POINTOPACITY 0-100 by LayersModal
+      if (field === "opacity" && value === undefined && typeof lc?.POINTOPACITY === "number") {
+        value = lc.POINTOPACITY / 100;
+      }
     } else if (location === "layer") {
       // TOP-LEVEL DashboardLayerDto field (track_config / cb_config)
       value = (layer as Record<string, unknown> | undefined)?.[field];
     } else if (location === "widget.config") {
       if (target.kind === "widget") {
-        // Nested in widget.config
-        value = (widget?.config as Record<string, unknown> | undefined)?.[field];
+        // Nested in widget.config under the renderer's REAL key (GAP-134-01): the allow-list
+        // key (show_popup ...) is only the persisted option shape; saved widgets store
+        // infoEnabled / showScaleBar / showFullscreenButton / pageSize.
+        const realKey = WIDGET_OVERLAY_KEY_MAP[widgetType ?? ""]?.[field] ?? field;
+        value = (widget?.config as Record<string, unknown> | undefined)?.[realKey];
+        if (value != null && CHART_CAPTURE_TYPES.has(widgetType ?? "") && WIDGET_CAPTURE_VALUE_TRANSFORMS[field]) {
+          value = WIDGET_CAPTURE_VALUE_TRANSFORMS[field](value);
+        }
       } else if (target.kind === "dynamicView") {
         // DynamicView rows have no config blob — read from supplied dynamicViewConfig
         value = dynamicViewConfig?.[field];
       }
     }
 
-    // Include only if a real value exists (null or undefined → skip; no value to snapshot)
-    if (value !== undefined && value !== null) {
+    // Include only if a real value exists (null, undefined or "" → skip; no value to snapshot).
+    // "" occurs for saved custom-metric charts (metricColumn "") and is not a valid allow-list value.
+    if (value !== undefined && value !== null && value !== "") {
       patch[field] = value;
     }
   }

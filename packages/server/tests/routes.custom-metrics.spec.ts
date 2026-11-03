@@ -34,7 +34,7 @@
  *     - format_spec omitted -> stored + returned as null
  *
  *   Permission catalog parity:
- *     - PERMISSIONS still has exactly 18 keys
+ *     - PERMISSIONS still has exactly 19 keys
  *     - No custom-metrics-specific permission string exists
  *
  * AUTH-MODE NOTE: the JWT-cookie session path is auth-mode-agnostic.
@@ -427,8 +427,8 @@ describe("format_spec round-trip", () => {
 // ─── Permission catalog parity ────────────────────────────────────────────────
 
 describe("Permission catalog parity (METRIC-V119-02)", () => {
-  it("PERMISSIONS catalog still has exactly 18 keys (no new custom-metrics permission)", () => {
-    expect(Object.values(PERMISSIONS).length).toBe(18);
+  it("PERMISSIONS catalog still has exactly 19 keys (no new custom-metrics permission)", () => {
+    expect(Object.values(PERMISSIONS).length).toBe(19);
   });
 
   it("no custom-metrics-specific permission string exists in the catalog", () => {

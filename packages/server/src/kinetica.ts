@@ -20,6 +20,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AuthedRequest } from "./auth";
+import { tagSql } from "./lib/kineticaJobs";
 
 /**
  * The only parts of a request kineticaSql reads. A background export job (Phase 128) has no Express req: it
@@ -65,6 +66,10 @@ export type KineticaSqlOptions = {
   op: KineticaOp; // SQL | DISCOVERY | MATERIALIZE — drives log filtering
   extra?: Record<string, unknown>; // merged into the Kinetica request body's `options`
   // and TOP-LEVEL fields (matches existing /api/sql shape at index.ts:457-466)
+  /** Aborts the HTTP request only. It does NOT cancel the Kinetica job (see lib/kineticaJobs cancelKineticaJobsByTag). */
+  signal?: AbortSignal;
+  /** Prefixes the statement with a `/* kbi-ai:<tag> *\/` comment so the job can be found in /admin/show/jobs and cancelled. */
+  tag?: string;
 };
 
 export type KineticaWmsOptions = {
@@ -274,6 +279,7 @@ export const kineticaSql = async (
   const baseOffset =
     typeof reqOffset === "number" && Number.isInteger(reqOffset) && reqOffset >= 0 ? reqOffset : 0;
 
+  const statement = options.tag ? tagSql(sql, options.tag) : sql;
   const postPage = async (offset: number, limit: number): Promise<SqlPage> => {
     const response = await fetch(`${kineticaUrl.replace(/\/$/, "")}/execute/sql`, {
       method: "POST",
@@ -281,8 +287,9 @@ export const kineticaSql = async (
         "Content-Type": "application/json",
         Authorization: buildAuthHeader(req),
       },
+      signal: options.signal,
       body: JSON.stringify({
-        statement: sql,
+        statement,
         encoding: "json",
         request_schema_str: "",
         data: [],
@@ -393,6 +400,9 @@ export const kineticaSql = async (
       status: 502,
       duration_ms: Date.now() - start,
     });
+    if ((error as { name?: string } | null)?.name === "AbortError") {
+      throw new KineticaUpstreamError("Kinetica request aborted");
+    }
     console.error("[kinetica]", options.route, "network/throw", error);
     throw new KineticaUpstreamError("Failed to reach Kinetica");
   }

@@ -26,15 +26,19 @@ export type CreateOrReplaceMaterializedArgs = {
   ttl: number;        // minutes; emitted as USING TABLE PROPERTIES (TTL = <n>)
   route: string;      // for audit log entries — e.g. "POST /api/filter/materialize"
   op: KineticaOp;     // audit op tag — e.g. "MATERIALIZE"
+  /** 139 D-08: tag the DDL so it can be cancelled; omitted = byte-identical options. */
+  tag?: string;
+  signal?: AbortSignal;
 };
 
 export async function createOrReplaceMaterialized(
   args: CreateOrReplaceMaterializedArgs,
 ): Promise<void> {
-  const { req, view, sqlBody, ttl, route, op } = args;
+  const { req, view, sqlBody, ttl, route, op, tag, signal } = args;
+  const opts = { route, op, ...(tag !== undefined ? { tag } : {}), ...(signal !== undefined ? { signal } : {}) };
   const replaceDdl = `CREATE OR REPLACE MATERIALIZED VIEW ${view} AS (${sqlBody}) USING TABLE PROPERTIES (TTL = ${ttl})`;
   try {
-    await kineticaSql(req, replaceDdl, { route, op });
+    await kineticaSql(req, replaceDdl, opts);
     return;
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
@@ -44,11 +48,11 @@ export async function createOrReplaceMaterialized(
     // Race recovery: drop-if-exists + plain create. Both calls go through the
     // same audit / error-translation pipeline; if either fails the original
     // request still produces a 5xx with a meaningful body.
-    await kineticaSql(req, `DROP TABLE IF EXISTS ${view}`, { route, op });
+    await kineticaSql(req, `DROP TABLE IF EXISTS ${view}`, opts);
     await kineticaSql(
       req,
       `CREATE MATERIALIZED VIEW ${view} AS (${sqlBody}) USING TABLE PROPERTIES (TTL = ${ttl})`,
-      { route, op },
+      opts,
     );
   }
 }

@@ -116,7 +116,7 @@ describe("export routes", () => {
     process.env.KINETICA_MAX_ROWS_PER_QUERY = "";
     const dash = createDashboard("exproutes-" + Math.random());
     dashId = dash.id;
-    tableId = createTable({ name: "demo_table", schema: "demo_schema" }).id;
+    tableId = createTable({ name: "demo_table", schema: "demo_schema", columns: { id: "int", name: "string", amount: "double" } }).id;
     widgetId = createWidget(dashId, { title: "w", type: "records", position: 0, config: recordsConfig() }).id;
   });
   afterEach(() => {
@@ -406,7 +406,7 @@ describe("export routes", () => {
 
   // Regression guard (passes before and after; NOT proof of EXPRT-V126-17 — see analyst-grant-only).
   it("EXPRT129-no-new-permission: permission set unchanged and has no export permission", () => {
-    expect(Object.keys(PERMISSIONS).length).toBe(18);
+    expect(Object.keys(PERMISSIONS).length).toBe(19);
     for (const [k, v] of Object.entries(PERMISSIONS)) {
       expect(k).not.toMatch(/export/i);
       expect(v).not.toMatch(/export/i);
