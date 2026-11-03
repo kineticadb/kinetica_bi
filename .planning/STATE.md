@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: AI-Driven Dashboards
 status: in-progress
-stopped_at: "2026-11-02: audit done; Claude Desktop token + AI-off Keep PASS live; AIPRV-V20-03 accepted partial; F2/F3 fixed (7e305c8). Next: S6 day 3, then /gsd:complete-milestone v2.0 + PR"
+stopped_at: "2026-11-03: S6 Gemini spike done (21 clean, borderline json by its rule; native kept, operator decision). Next: /gsd:complete-milestone v2.0 + PR"
 last_updated: "2026-11-02T18:00:00.000Z"
 progress:
   total_phases: 6
@@ -19,13 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — all phases (133-143) complete; the Gemini S6 spike matrix needs 2 more quota days, then the milestone audit
+**Current focus:** v2.0 AI-Driven Dashboards — all phases (133-143) complete; milestone audit done, S6 spike done 2026-11-03; next `/gsd:complete-milestone v2.0` and the PR
 
 ## Current Position
 
 Milestone: v2.0 AI-Driven Dashboards
 Phase: 143 (Claude Desktop MCP Connector) — COMPLETE 2026-10-29 (AIMCP-V20-01..09; operator Claude Desktop UAT passed; live token sign-in from Claude Desktop passed 2026-11-02). Merged into `feat/ai-driven-dashboards`.
-Phase: 142 (Generate, Audit Viewer & Live Provider Proofs) — COMPLETE 2026-10-30 (11/11 plans; Gemini G0-G9 PASS; Ollama PARTIAL; S6 Gemini spike days 1-2 of 3 recorded (14/14 clean, 83% valid calls), verdict after >= 20 clean trials). Next: S6 `--runs 1` on two more quota days, then `/gsd:audit-milestone` for v2.0 and the PR to `master`.
+Phase: 142 (Generate, Audit Viewer & Live Provider Proofs) — COMPLETE 2026-10-30 (11/11 plans; Gemini G0-G9 PASS; Ollama PARTIAL; S6 Gemini spike done 2026-11-03: 21/21 clean, 88.9% valid calls, json (best effort) by its rule, borderline; native kept as the documented setting by operator decision). Next: `/gsd:complete-milestone v2.0` and the PR to `master`.
 Phase: 141 (Keep (Persist AI Changes)) — COMPLETE 2026-10-22 (14/14 plans; gates green; 141-14 operator UAT run by Claude in the operator's Chrome on Kinetica 7.2.3.12, light+dark; step 6 skipped, step 9 deferred to 142; UAT fixes e5bb56e/eaad490/3aef06f; results in `phases/141-keep-persist-ai-changes/141-14-UAT-RESULTS.md`)
 Previous phase: 140 (Query Data-Access Mode & Injection Hardening) — COMPLETE 2026-10-21 (13/13 plans; gates green apart from environmental lib.exportRunner.memory; 140-13 live spike + operator UAT run by Claude on Kinetica 7.2.3.12, light+dark; live Gemini ask deferred to 142; results in `phases/140-query-data-access-mode-injection-hardening/140-13-UAT-RESULTS.md`)
 Previous phase: 139 (Session-Only Dynamic Views) — COMPLETE 2026-10-20 (14/14 plans + gap fixes 6a26b22/4b688a9/fb38e93/a23ef71 + UAT fix 2cef90c; gates green; 139-14 operator UAT run by Claude in the operator's Chrome, light+dark; step 8/8b deferred to 142; results in `phases/139-session-only-dynamic-views/139-14-UAT-RESULTS.md`)
@@ -164,13 +164,14 @@ Last activity: 2026-10-15 — 137-12: operator UAT recorded (light/dark, harness
 - (b) Filter/combination views a user creates by hand on an unkept dashboard fall to the Kinetica TTL (not dropped by Discard).
 - (c) The TTL sweep's view drop falls back to the Kinetica TTL when the session has expired.
 - (d) A failed generation has no Keep (D-07): Retry, Discard or the sweep only.
-- (e) S6 matrix: Gemini days 1-2 of 3 (14 clean, 83% valid calls, 2nd turn 1/2; inconclusive so far); Ollama native 58.1% / json 85.7% (json best effort). Claude adapter not live-verified (AI-F11).
+- (e) S6 matrix: Gemini done 2026-11-03 (21 clean, 88.9% valid calls, repairs 0/2, 2nd turn 2/3 = json (best effort) by the rule, borderline; native stays documented, operator decision); Ollama native 58.1% / json 85.7% (json best effort). Claude adapter not live-verified (AI-F11).
 - (f) Open, model side: "by hour" read as calendar hour (app gap closed 2026-10-30 in 7985387: hour_of_day / day_of_week / month_of_year buckets, live on Kinetica; Gemini picked hour_of_day and day_of_week unprompted on 2026-11-02); an already-averaged view column sometimes summed; in query mode a plain question can get a chart. Weak models can claim changes they did not make: since 2026-10-30 (0f8e460, checked live light + dark) the app shows its own change list outside the reply and "No changes were made to the dashboard." when nothing changed, and the change record no longer sits in the model's own past replies.
 - (g) Open, minor: the server accepts an `AI_MODEL` with spaces without a warning; the "Maximum update depth" warning seen once on day 1 did not recur.
 - (h) Done 2026-10-30: "Clear this filter" is now the turn's primary button (0f8e460, todo closed).
 - (i) Not a defect (2026-11-02): the `?page=ai-activity` "deep link" was a UAT-script URL the app never supported; only `?dashboard=` and `?table=` are deep links. Pages other than those are not addressable by URL (possible future feature).
 - (k) 2026-11-02 milestone audit (`v2.0-MILESTONE-AUDIT.md`): tech_debt, 52/53 (AIPRV-V20-03 partial); 142/143 VERIFICATION.md written (human_needed, no code gaps); integration finding F1 (AI view materialize needed AI_ENABLED, broke Claude Desktop previews with AI off) fixed in df769a0; F2-F8 carried as debt; PR draft `v2.0-PR-DESCRIPTION.md`.
 - (l) 2026-11-02 evening: Claude Desktop token sign-in/revoke and Keep with AI_ENABLED off PASS live (dashboards 68, 69); map-after-cap fix fd1fa43; Keep on a removed dashboard says so (d4e43bd); connector lists only readable tables and tokens are revocable without ai:use (7e305c8); AIPRV-V20-03 accepted as PARTIAL for v2.0 by the operator.
+- (m) 2026-11-03: S6 Gemini day 3 (7/7 clean, 100% valid, 2nd turn ok); combined verdict and operator decision in 142-UAT-RESULTS.md.
 - (j) Done 2026-11-02, no quota: the connector drops its "spike" labels and reports the package version (d08359f; README: Keep works with the in-app AI off); the S6 spike refuses to start against Gemini with no key (6b76ee3); switching Settings to the right filter panel live no longer piles widgets at the left (9cf49b7, the grid's measured wrapper is now stable; checked live on dashboard 65 both ways); dashboards made by Generate and by Claude Desktop open with the right filter panel (abcc492; hand-made dashboards still default to the top bar).
 
 **Pending from Phase 133:**

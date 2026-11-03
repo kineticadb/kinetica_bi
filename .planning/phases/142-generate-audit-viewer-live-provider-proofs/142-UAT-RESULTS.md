@@ -237,6 +237,39 @@ Latency p50 9.9 s / p95 20.5 s. Decision line: inconclusive, default stays `AI_T
 
 Running total after 2 days: 14 clean trials, 0 excluded; 12 calls, 10 valid (83%), 2 malformed (both in s7, neither repaired); second turn 1/2; s1 answered in text both days; s4 never parallel. One more `--runs 1` day reaches 21 clean trials.
 
+## Gemini G10 S6 spike, day 3 and verdict (2026-11-03)
+
+Operator's terminal, `--runs 1 --rpm 6`, native, stream, output `packages/server/s6-gemini-day3.json` (git-ignored). 7/7 clean trials, 0 excluded, no 429s, no request errors.
+
+| provider | model | date | stream | tool valid% | malformed% | parallel% | 2nd-turn ok | index present | 429 delay>20s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| gemini | gemini-3-flash-preview | 2026-11-03 | true | 100% | 0% | 20% | ok | no | 0/0 | inconclusive (7 clean trials) |
+
+| Scenario | Calls | Note |
+|---|---|---|
+| s1 list_tables | none | answered in text (4 s), third day running |
+| s2 describe_table typed args | describe_table | valid |
+| s3 multi-step add bar chart | add_widget | valid |
+| s4 parallel invite | list_tables | valid call, wrong tool for the scenario, not parallel (all three days) |
+| s5 no-tool question | none | correct |
+| s6 multi-turn round-trip | list_tables | second-turn call made (1/1) |
+| s7 malformed pressure | add_widget, set_layout | parallel; both valid, no repair needed |
+
+Latency p50 10.9 s / p95 15.0 s. The spike judges one run at a time, so its decision line again reads inconclusive (7 clean trials).
+
+**Combined days 1-3 (21 clean trials, 0 excluded), computed by hand from the three output files** (the spike keeps only per-run aggregates, so the combination is per-day sums):
+
+| Measure | Day 1 | Day 2 | Day 3 | Combined | Native needs |
+|---|---|---|---|---|---|
+| Valid calls | 4/5 | 6/7 | 6/6 | 16/18 = 88.9% | >= 90% |
+| Malformed calls repaired after one refusal | 0/1 | 0/1 | none needed | 0/2 | all |
+| Second-turn call made | 0/1 | 1/1 | 1/1 | 2/3 | all |
+| 429s / delays over 20 s | 0 | 0 | 0 | 0 | - |
+
+**S6 verdict for `gemini-3-flash-preview`: json (best effort) by the spike's rule, borderline.** All three native conditions are missed narrowly (88.9% valid against 90%, repairs 0/2, second turn 2/3), and every miss is on days 1-2; day 3 is clean on all three. s1 (answers "which tables" in text instead of calling `list_tables`) and s4 (never parallel) repeat every day. Malformed calls were refused by the gateway, never applied.
+
+**Operator decision (2026-11-03): record the result as it is and keep `AI_TOOL_MODE=native` as the documented setting for Gemini.** Reason: G0-G9 passed live in the app in native mode, and json mode has not been tried live with Gemini. The README Tested models row states the borderline S6 result next to the native setting. `json` stays the documented fallback.
+
 ## Gemini check of the new time buckets (2026-11-02)
 
 Two in-app asks by Claude in the operator's Chrome (dark), scratch dashboard 64 (nyctaxi, AI widget, map), `AI_DATA_ACCESS=schema`; buckets from 7985387.
@@ -260,7 +293,7 @@ Same table as README.md "Tested models (Phase 142):".
 
 | Provider | Model ID | Tool mode | Result | Notes | Date |
 |----------|----------|-----------|--------|-------|------|
-| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass so far (the S6 spike still open) | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s | 2026-10-23 to 2026-10-28 |
+| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass (live G0-G9); S6 spike borderline: json (best effort) by its rule | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s; S6 over 21 clean trials: 88.9% valid tool calls (rule needs 90%), malformed calls not repaired (0/2), second turn 2/3; malformed calls are blocked, never applied | 2026-10-23 to 2026-10-28; S6 2026-10-30, 11-02, 11-03 |
 | OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26 |
 | Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
 

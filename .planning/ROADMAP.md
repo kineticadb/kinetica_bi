@@ -326,7 +326,7 @@ Plans:
 2. Discarding a generated dashboard leaves no dashboard, widgets or views (checked in SQLite and Kinetica).
 3. An admin with the audit permission browses the log (no row values); a user without it cannot open the page.
 4. The operator completes live runs on Gemini and on one named Ollama model, recorded in a UAT file with a tested-models matrix.
-**Completed 2026-10-30:** 11/11 plans. Live UAT on Kinetica 7.2.3.12 driven by Claude in the operator's Chrome, light and dark (`142-UAT-RESULTS.md`). SC1 PASS (Gemini Generate 4-8 widgets incl. timeline and an AI map opening on the data; refine; Keep). SC2 PASS (Discard, Cancel, logout, boot and TTL sweeps leave no dashboard, widgets or AI views; checked in SQLite). SC3 PASS (AI activity page behind audit:view, 403 for uat_analyst, no row values; queries_json SQL + counts only). SC4: Gemini `gemini-3-flash-preview` PASS (G0-G9); Ollama `qwen2.5:7b-instruct` (CPU, json mode) PARTIAL; tested-models matrix in README. Gemini S6 spike: days 1-2 of 3 (14/14 clean, 83% valid, inconclusive until >= 20 clean trials). UAT fixes: 9d91596, bc97400, dba356f, a758465, 9570676, 688ab33, 0aa5150, b601087, f0d6929, 4601291, 21fd377, 51b009d, c5b7879, 285f686, 52919a9, 0150f36, 7517ae1.
+**Completed 2026-10-30:** 11/11 plans. Live UAT on Kinetica 7.2.3.12 driven by Claude in the operator's Chrome, light and dark (`142-UAT-RESULTS.md`). SC1 PASS (Gemini Generate 4-8 widgets incl. timeline and an AI map opening on the data; refine; Keep). SC2 PASS (Discard, Cancel, logout, boot and TTL sweeps leave no dashboard, widgets or AI views; checked in SQLite). SC3 PASS (AI activity page behind audit:view, 403 for uat_analyst, no row values; queries_json SQL + counts only). SC4: Gemini `gemini-3-flash-preview` PASS (G0-G9); Ollama `qwen2.5:7b-instruct` (CPU, json mode) PARTIAL; tested-models matrix in README. Gemini S6 spike (2026-10-30, 11-02, 11-03): 21/21 clean, 88.9% valid calls, repairs 0/2, 2nd turn 2/3 = json (best effort) by the spike's rule, borderline; native stays the documented setting (operator decision 2026-11-03, G0-G9 passed live in native). UAT fixes: 9d91596, bc97400, dba356f, a758465, 9570676, 688ab33, 0aa5150, b601087, f0d6929, 4601291, 21fd377, 51b009d, c5b7879, 285f686, 52919a9, 0150f36, 7517ae1.
 **Plans:** 11 plans in 5 waves
 Plans:
 - [x] 142-01-PLAN.md — dashboards.generated_by/generated_pending_at + one-pending-per-user unique index, ai_audit.kind + (dashboard_id, ts_ms) index, DTO generated_pending, creator-only override in canViewDashboard, enumerator filter, grant refusal, Keep clears the flag in-transaction [W1]
@@ -368,7 +368,7 @@ Plans:
 | 139. Session-Only Dynamic Views | 14/14 | Complete | 2026-10-20 |
 | 140. Query Data-Access Mode & Injection Hardening | 13/13 | Complete | 2026-10-21 |
 | 141. Keep (Persist AI Changes) | 14/14 | Complete | 2026-10-22 |
-| 142. Generate, Audit Viewer & Live Provider Proofs | 11/11 | Complete (Gemini S6 matrix day 2 of 3) | 2026-10-30 |
+| 142. Generate, Audit Viewer & Live Provider Proofs | 11/11 | Complete | 2026-10-30 |
 | 143. Claude Desktop MCP Connector | 9/9 requirements | Complete (operator UAT passed; live token sign-in and AI-off Keep passed 2026-11-02) | 2026-10-29 |
 
 ---

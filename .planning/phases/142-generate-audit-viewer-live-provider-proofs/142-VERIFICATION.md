@@ -31,7 +31,7 @@ human_verification:
 | 1 | A designer picks a table and gets 4-8 widgets suited to its columns, refinable by asking and keepable | VERIFIED | `aiGenerateRoutes.ts:73-80` POST /api/dashboards/generate (auth + dashboards:create + ai:use, table readable via liveSchema, 409 on a second pending); `lib/aiGenerate.ts:34-68` one-transaction create (dashboard + table link + AI widget + pending marker, `uq_dashboards_one_pending` db.ts:544). Generate mode is server-derived (`aiRoutes.ts:88-91`, never client-supplied); `lib/ai/generateMode.ts:6-8` GEN_MIN_WIDGETS=4 / GEN_MAX_WIDGETS=8 (maxNewWidgets cap), recipe incl. timeline + map-if-geo; `runAnswer.ts:157` beforeFinish nudge, `:177-180` too-few refusal and server-owned bands. Web: `DashboardsPage.tsx:638` generate, `GeneratedDashboardBar.tsx`. UAT: dashboard 21 (6 data widgets, refine, Keep, bands survive reload), dashboard 25 (timeline used), map opens on data (dashboard 22) |
 | 2 | Discarding a generated dashboard leaves no dashboard, widgets or views | VERIFIED (SQLite live; Kinetica DROP via specs) | One helper `discardGeneratedDashboard` (`lib/aiGenerate.ts:70-81`) drops AI session views as the user then deletes in a transaction with a Keep re-check; wired to the Discard route (`aiGenerateRoutes.ts:81`), DELETE (`index.ts:927-934`), logout (`index.ts:477`), boot sweep (`index.ts:3523`), hourly TTL sweep (`index.ts:3536`). UAT G3/G3b/G3c/O3: SQLite `1|1|0|0|1|0|N -> 0|0|0|0|0|0|N`, logout and restart sweeps logged. See human item 3: no live discard had an AI view registered |
 | 3 | An admin with audit:view browses the log (no row values); a user without it cannot open the page | VERIFIED | `aiAuditRoutes.ts:110,145,160` all three GETs behind `requirePermission(AUDIT_VIEW)` (which includes requireAuth, rbac.ts:44); bound params only; no tool args; `idMap` stripped; queries expose sql/rowCount/durationMs/outcome only; unkept dashboard names hidden (`dashLookup`). Web: Sidebar.tsx:36 + App.tsx:458,571,685 gate; `AiActivityPage.tsx` calls `listAiAudit`/`getAiAuditEntry`/`listAiAuditDashboards`. D-18: answer text shown as stored (query results never stored). UAT G1 admin PASS light+dark; uat_analyst 403 on all three endpoints, no nav item |
-| 4 | Operator completes live runs on Gemini and on one named Ollama model, recorded with a tested-models matrix | PARTIAL (accepted record) | Gemini `gemini-3-flash-preview` G0-G9 PASS (2026-10-23..28) + time-bucket check 2026-11-02. Ollama `qwen2.5:7b-instruct` (CPU, json mode) PARTIAL on 2026-10-26 and re-run 2026-10-29: adapter works (streamed tool_calls, no 400s; 300 s cut fixed and confirmed live at 394 s), model fails add/rename/filter adherence and Generate times out at 600 s; every bad call refused or shown as "Changes: none". Matrix in README.md:227-233 and 142-UAT-RESULTS.md. Gemini S6 spike 14/20 clean trials (inconclusive, day 3 pending) |
+| 4 | Operator completes live runs on Gemini and on one named Ollama model, recorded with a tested-models matrix | PARTIAL (accepted record) | Gemini `gemini-3-flash-preview` G0-G9 PASS (2026-10-23..28) + time-bucket check 2026-11-02. Ollama `qwen2.5:7b-instruct` (CPU, json mode) PARTIAL on 2026-10-26 and re-run 2026-10-29: adapter works (streamed tool_calls, no 400s; 300 s cut fixed and confirmed live at 394 s), model fails add/rename/filter adherence and Generate times out at 600 s; every bad call refused or shown as "Changes: none". Matrix in README.md:227-233 and 142-UAT-RESULTS.md. Gemini S6 spike done 2026-11-03: 21 clean trials, json (best effort) by its rule, borderline (88.9% valid); native kept by operator decision |
 
 **Score:** 3/4 fully verified; SC4 Gemini half verified, Ollama half partial.
 
@@ -67,7 +67,7 @@ human_verification:
 | AIGEN-V20-01 | 142-01,02,03,05,06,07,10,11 | Pick a table, get 4-8 suited widgets to review, refine, Keep | SATISFIED | Truth 1; Gemini UAT G2/G4/G7, dashboard 21 and 25 |
 | AIGEN-V20-02 | 142-01,04,05,07,10,11 | Discard leaves no dashboard, widgets or views | SATISFIED | Truth 2; GENLIFE-5/8/10, REGV-D; UAT G3, G3b, G3c (logout + restart), O3 |
 | AIGOV-V20-05 | 142-01,04,06,08,09,10,11 | Admin browses AI log on a page gated by audit:view | SATISFIED | Truth 3; routes.aiAudit.spec + AiActivityPage.spec; UAT G1, G9 |
-| AIPRV-V20-02 | 142-04,10,11 | OpenAI-compatible provider proven live on Gemini | SATISFIED (S6 spike pending) | G0-G9 PASS live; S6 tool-call matrix 14 clean trials, verdict inconclusive until >= 20 (day 3 pending, human item 1) |
+| AIPRV-V20-02 | 142-04,10,11 | OpenAI-compatible provider proven live on Gemini | SATISFIED | G0-G9 PASS live; S6 tool-call matrix 21 clean trials (2026-11-03): json (best effort) by its rule, borderline; native stays documented (operator decision) |
 | AIPRV-V20-03 | 142-04,11 | Same provider proven live on one named local model (Ollama) | PARTIAL | qwen2.5:7b-instruct: adapter end-to-end proven, model too weak for actions/Generate in 600 s. REQUIREMENTS.md keeps it `[ ]` and "Partial", consistent with this report |
 
 All five IDs are declared across the 11 plans' frontmatter; REQUIREMENTS.md maps no other ID to Phase 142 (AIWID-V20-05's live check was completed in this phase's UAT but belongs to Phase 137). No orphaned requirements.
@@ -92,13 +92,13 @@ No TODO/placeholder stubs in the phase's code paths; no blockers.
 
 ## Human Verification Required
 
-1. **Gemini S6 spike day 3**: run `--runs 1`, reach >= 20 clean trials, record the decision line, update the README matrix row.
+1. **Gemini S6 spike day 3**: DONE 2026-11-03 (21 clean trials, verdict recorded in 142-UAT-RESULTS.md and the README row).
 2. **Accept AIPRV-V20-03 as PARTIAL** for v2.0 (or schedule a stronger local model / GPU).
 3. **(Optional)** Live discard of a generated dashboard that holds an AI dynamic view, then list `_kbi_ai_` views in Kinetica.
 
 ## Gaps Summary
 
-No code gaps. Generate, discard lifecycle and the AI activity page exist, are substantive, wired and covered by specs plus live UAT. The remaining items are live-provider evidence: the Gemini S6 matrix is incomplete (scheduled), and the Ollama proof is partial because of model strength, not the adapter.
+No code gaps. Generate, discard lifecycle and the AI activity page exist, are substantive, wired and covered by specs plus live UAT. The remaining items are live-provider evidence: the Gemini S6 matrix is complete (borderline, native kept by operator decision), and the Ollama proof is partial because of model strength, not the adapter.
 
 ---
 

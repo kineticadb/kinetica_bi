@@ -30,14 +30,14 @@ Gap gate PASS, gates run, then the Gemini UAT (`gemini-3-flash-preview`, OpenAI-
 | G7 Keep after a live ask (joined view) | PASS |
 | G8 query mode + `queries_json` | PASS |
 | G9 AI activity page, details, queries | PASS light + dark |
-| G10 S6 spike | days 1-2 of 3: 14/14 clean, 83% valid calls (10/12), 2nd turn 1/2, inconclusive (needs >= 20 clean trials); day 3 pending |
+| G10 S6 spike | done 2026-10-30, 11-02, 11-03: 21/21 clean, 88.9% valid calls (16/18), repairs 0/2, 2nd turn 2/3 = json (best effort) by the spike's rule, borderline (day 3 clean on all three). Native stays the documented setting (operator decision 2026-11-03) |
 
 UAT fixes (each red-first): 9d91596, bc97400, dba356f, a758465 / 9570676 / 688ab33, 0aa5150, b601087, f0d6929, 4601291, 21fd377, c5b7879, 285f686, 52919a9, 0150f36.
 
 ## Deviations from Plan
 - The quota plan stretched from 2-3 days to 4 plus the spike days; the day caps were set by the operator per day.
 - G4 used dashboard 21 (no dashboard-12 copy existed). The second "Show fares by type" ambiguous ask was not run; day 2 row 26 already covered an ambiguous ask offering Choices.
-- The S6 spike runs one `--runs 1` per quota day; the final verdict is recorded when >= 20 clean trials exist.
+- The S6 spike ran one `--runs 1` per quota day; the verdict over 21 clean trials is in `142-UAT-RESULTS.md` (day 3 section).
 
 ## Open observations (not blockers)
 - Model: "by hour" read as calendar hour (app gap: no hour-of-day / day-of-week buckets; closed 2026-10-30 in 7985387).
