@@ -14,7 +14,7 @@
  *   contribution; the existing render path in WidgetRenderer / MapChartRenderer
  *   deep-merges it at render time. No filter-system contact. Mirror of DataFilterRenderer.tsx lock.
  *
- * Transient semantics (CONTEXT.md lock):
+ * Transient semantics (the phase context lock):
  *   selectedOptionId is component-local transient state — NOT written to the widget's
  *   persisted config, NOT PATCHed to the server. On dashboard reload / store reset,
  *   the overlay clears; the configured defaultOptionId re-applies on next mount.

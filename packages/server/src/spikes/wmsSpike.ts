@@ -1,8 +1,8 @@
 /**
  * wmsSpike.ts — Standalone WMS GetCapabilities spike runner for Phase 11 Wave 1.
  *
- * PURPOSE: Answer the seven Open Questions from 11-RESEARCH.md by probing the deployed
- * Kinetica instance directly. Results are recorded in 11-SPIKE-NOTES.md and locked as
+ * PURPOSE: Answer the seven Open Questions from Phase 11 research by probing the deployed
+ * Kinetica instance directly. Results are recorded in Phase 11 spike notes and locked as
  * param-name sources of truth for downstream Wave 2 plans (wmsUrlBuilder.ts).
  *
  * USAGE:
@@ -157,7 +157,7 @@ for (const sql of envelopeSpellings) {
 }
 
 if (!stEnvelopeWorkingSpelling) {
-  console.log(`ST_Envelope probe: ALL SPELLINGS FAILED — see Caveats in SPIKE-NOTES.md`);
+  console.log(`ST_Envelope probe: ALL SPELLINGS FAILED — see Caveats in the spike notes`);
 }
 
 console.log("");
@@ -316,4 +316,4 @@ for (const [srs, result] of Object.entries(srsResults)) {
 }
 console.log(`POINTOPACITY: ${pointOpacityResult}`);
 console.log("");
-console.log("[spike] Done. Review output and run Task 3 to write 11-SPIKE-NOTES.md.");
+console.log("[spike] Done. Review output and run Task 3 to write Phase 11 spike notes.");

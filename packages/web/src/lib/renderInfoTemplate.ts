@@ -10,7 +10,7 @@
  * same shared `renderInfoTemplate` helper so rendering is consistent."
  *
  * NO HTML SANITIZATION — v1.4 Map Info Popup key decision: "Dashboard authors are privileged users (analogous to saved
- * SQL queries). Risk documented in PROJECT.md Key Decisions." DO NOT add a sanitizer
+ * SQL queries). Risk documented in the project decisions Key Decisions." DO NOT add a sanitizer
  * library (DOMPurify, sanitize-html, etc.). The caller will pass the returned `html`
  * string straight to React's `dangerouslySetInnerHTML`.
  *

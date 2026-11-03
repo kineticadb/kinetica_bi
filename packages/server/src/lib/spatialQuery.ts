@@ -8,7 +8,7 @@
  *   - buildWktQuery (SPATIAL-V14-02): STXY_DISTANCE(wktCol, clickLon, clickLat).
  *     Returns SRS-units of the WKT geometry's storage SRS (typically degrees for
  *     EPSG:4326). radiusGroundDistance MUST be in those same units.
- *     LOCKED DECISION (CONTEXT.md): NO ST_GEOMFROMTEXT wrap — passes raw click
+ *     LOCKED DECISION (the phase context): NO ST_GEOMFROMTEXT wrap — passes raw click
  *     coordinates directly to skip per-query WKT parsing.
  *   - buildWkbQuery (SPATIAL-V14-03 — DEFERRED): throws WkbDeferredError.
  *     Plan 18-01 spike landed NONE_ESCALATE → TECH_DEBT (TD-V14-WKB-SPIKE) on
@@ -103,7 +103,7 @@ export function buildLatLonQuery(args: SpatialQueryArgs): string {
 /**
  * SPATIAL-V14-02 — WKT STXY_DISTANCE builder.
  *
- * LOCKED DECISION (CONTEXT.md): the click point is passed directly as raw
+ * LOCKED DECISION (the phase context): the click point is passed directly as raw
  * (x, y) coordinates — NO ST_GEOMFROMTEXT('POINT(...)') wrap. This avoids
  * per-query WKT parsing on every row. STXY_DISTANCE returns the same SRS
  * units as the WKT geometry's storage SRS (typically degrees for EPSG:4326),

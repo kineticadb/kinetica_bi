@@ -13,7 +13,7 @@ import { useFilterCombinationStore } from "../store/filterCombinationStore";
  * "table" && sourceId === tableId && materializing), which the orchestrator sets on dispatch
  * and clears on resolve.
  *
- * Visual layout (15-CONTEXT.md user-lock):
+ * Visual layout (Phase 15 context user-lock):
  *   - Inline next to widget title (margin-left: 8px in CSS)
  *   - Small spinner glyph + "Filtering..." text
  *   - No threshold / grace period — appears while a combo materializes, disappears on resolve

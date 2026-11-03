@@ -123,7 +123,7 @@ const emitAudit = (fields: {
  *   - 401 → KineticaAuthError
  *   - 403 → KineticaPermissionError
  *   - 400 + body.message matches /access denied|permission/i → KineticaPermissionError
- *     (Kinetica DDL-denial signals via HTTP 400 — see SPIKE.md from 02-01)
+ *     (Kinetica DDL-denial signals via HTTP 400; Phase 2 spike)
  *   - anything else → KineticaUpstreamError
  */
 const classifyHttpError = async (response: Response): Promise<never> => {

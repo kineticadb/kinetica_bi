@@ -5,7 +5,7 @@
  *   - DrawMode is consumed by MapDrawToolbar (Plan 02), MapChartRenderer state machinery
  *     (Plan 01-05), and pure helper functions. Putting it in lib/shapeDraw.ts (not
  *     MapChartRenderer.tsx) keeps the toolbar component free of a circular import.
- *   - formatDistance / formatArea encode the km / m switchover locked by 29-UI-SPEC.md:
+ *   - formatDistance / formatArea encode the km / m switchover locked by Phase 29 UI spec:
  *     <1 km: meters with 0 decimals; ≥1 km: kilometers with 1 decimal. Same rule for area.
  *   - Pure helpers (no OL imports) so they are unit-testable without mocking the OL Map.
  *     Effect 8's drawend pipeline (Plan 04) imports formatDistance/formatArea to build the
@@ -19,7 +19,7 @@ export const DRAW_MODES = ["pan", "info", "bbox", "lasso", "circle"] as const;
 export type DrawMode = (typeof DRAW_MODES)[number];
 
 /**
- * Format a ground distance in meters per 29-UI-SPEC.md:
+ * Format a ground distance in meters per Phase 29 UI spec:
  *   - <1000 m → "{N} m" (0 decimals, Math.round)
  *   - ≥1000 m → "{N.N} km" (1 decimal via toFixed(1))
  * No thousand separator (SI typography lock).
@@ -30,7 +30,7 @@ export function formatDistance(meters: number): string {
 }
 
 /**
- * Format an area in square meters per 29-UI-SPEC.md:
+ * Format an area in square meters per Phase 29 UI spec:
  *   - <1_000_000 m² → "{N} m²" (0 decimals)
  *   - ≥1_000_000 m² → "{N.N} km²" (1 decimal)
  * Uses U+00B2 (²) literal.
@@ -80,7 +80,7 @@ export function buildDrawInteraction(mode: DrawMode, source: VectorSource): Draw
 /**
  * Phase 29 (DRAW-V15-06): degenerate-shape rejection guard.
  *   Returns true when EITHER extent dimension is less than 10 × map resolution. This
- *   is the locked interpretation from 29-RESEARCH.md Open Question 2 (recommendation b:
+ *   is the locked interpretation from Phase 29 research Open Question 2 (recommendation b:
  *   width-OR-height threshold — most user-friendly; avoids accepting thin-sliver shapes).
  *
  * @param extent OL extent in map projection (EPSG:3857 meters at the current zoom)
@@ -103,7 +103,7 @@ export function isDegenerateExtent(extent: Extent, resolution: number): boolean 
  *   - bbox:   width = getDistance(BL, BR) WGS84, height = getDistance(BL, TL) WGS84
  *             returns "{W} × {H}" via formatDistance.
  *   - circle: radius = getDistance(centerCoord, firstVertex) WGS84 — yields ~5% precision
- *             due to 64-gon approximation (locked tradeoff per 29-CONTEXT.md).
+ *             due to 64-gon approximation (locked tradeoff per Phase 29 context).
  *   - lasso:  area = getArea(polygon, { projection: 'EPSG:3857' }) — ol/sphere does the
  *             ellipsoidal correction internally; returns "{A} km²" / "{A} m²" via formatArea.
  *
@@ -112,7 +112,7 @@ export function isDegenerateExtent(extent: Extent, resolution: number): boolean 
  * the polygon directly to getArea with the projection option.
  *
  * Note on bbox corner winding: createBox()'s output ring is BL → BR → TR → TL → BL
- * (verified in 29-RESEARCH.md Pattern 10). If the winding differs, swap the index pairs.
+ * (verified in Phase 29 research Pattern 10). If the winding differs, swap the index pairs.
  */
 export function computeMeasurement(
   type: "bbox" | "lasso" | "circle",

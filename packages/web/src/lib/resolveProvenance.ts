@@ -16,5 +16,5 @@ export function resolveProvenance(
 ): string | undefined {
   if (sourceWidgetId === undefined) return undefined;
   const w = widgets.find((w) => w.id === sourceWidgetId);
-  return w ? `from ${w.title}` : undefined; // literal template locked by 107-CONTEXT.md
+  return w ? `from ${w.title}` : undefined; // literal template locked by Phase 107 context
 }

@@ -24,7 +24,7 @@
  * Test families:
  *   - ONLYTABLES-*  the criterion-2 full-ROW snapshot, on a fixture proven non-empty first,
  *                   under both a diff apply and a baseline apply; plus the no-refusal proof.
- *   - BASELINE-*    a baseline apply IS recorded (125-CONTEXT.md, locked), and a later diff
+ *   - BASELINE-*    a baseline apply IS recorded (Phase 125 context, locked), and a later diff
  *                   apply diffs rather than re-baselining.
  *   - DIFF-*        the stored report describes what was actually written.
  *   - NOOP-*        a no-op apply is NOT recorded and writes nothing at all.
@@ -39,9 +39,9 @@
  * ALL FIXTURES ARE SYNTHETIC — `demo_schema` / `demo_table`, columns `col_a`, `col_b`,
  * `col_ts`, `col_gone`. No real Kinetica table or column name appears here. The
  * base/refinement PAIRINGS (`long` + `timestamp`, `string` + `char16`) follow
- * 122-SPIKE-NOTES.md's live `/show/table` capture; the NAMES do not.
+ * Phase 122 spike notes's live `/show/table` capture; the NAMES do not.
  *
- * MUTATION PROBES: recorded in 125-03-SUMMARY.md.
+ * MUTATION PROBES: recorded in Phase 125-03 summary.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {

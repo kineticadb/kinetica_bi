@@ -23,7 +23,7 @@ import {
 } from "../src/lib/rbacDb";
 import { ALL_PERMISSIONS } from "../src/lib/permissions";
 
-// Helper: assign a role by name to a username (lowercase-stored, per CONTEXT.md).
+// Helper: assign a role by name to a username (lowercase-stored, per the phase context).
 function assignRole(db: ReturnType<typeof createDb>, username: string, roleName: string): void {
   const row = db.prepare<[string], { id: number }>("SELECT id FROM roles WHERE name = ?").get(roleName);
   if (!row) throw new Error(`Role '${roleName}' not found in test DB`);

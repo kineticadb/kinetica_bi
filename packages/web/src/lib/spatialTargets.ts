@@ -31,7 +31,7 @@ import type { WidgetDto } from "../api/client";
  * `packages/server/src/lib/spatialWhereClause.ts` line 54.
  * Note: a same-shape union also lives in `./columnTypes` (Phase 11) — separate
  * declarations for cross-module independence, mirrors the server-side local
- * declaration choice (STATE.md Phase 26 [WHERE-V15-01] decision).
+ * declaration choice (the project state notes Phase 26 [WHERE-V15-01] decision).
  */
 export type SpatialMode = "latlon" | "wkt" | "wkb";
 
@@ -97,7 +97,7 @@ export function isSpatialTargetEligible(target: SpatialTarget): boolean {
  * Phase 30 (MAT-V15-02 prerequisite): aggregate per-table spatial targets across all
  * map widgets in a dashboard.
  *
- * Resolution rules (locked by 30-CONTEXT.md `<decisions>` § "SpatialTarget resolution"):
+ * Resolution rules (locked by Phase 30 context `<decisions>` § "SpatialTarget resolution"):
  *   - Iterate ONLY widgets with widget.type === "map".
  *   - Sort by widget.id ASCENDING (deterministic across renders; survives grid reorders).
  *   - For each map widget, call getSpatialTargets(w).filter(isSpatialTargetEligible) —

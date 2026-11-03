@@ -3,7 +3,7 @@ import MapConfigPanel from "../MapConfigPanel";
 import { DEFAULT_BASEMAP_LIGHT, DEFAULT_BASEMAP_DARK } from "../../../lib/basemaps";
 
 // Phase 12: Map chart type — Phase 12 hard cutover.
-// CONTEXT.md "Decisions § Lift boundary":
+// the phase context "Decisions § Lift boundary":
 //   STAYS ON WIDGET: title, basemap, includedLayerIds
 //   MOVED TO LAYER:  all spatial/render config (now in dashboard_layers.config)
 //

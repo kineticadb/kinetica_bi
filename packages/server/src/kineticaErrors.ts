@@ -4,7 +4,7 @@
  * - KineticaAuthError:       Kinetica returned HTTP 401 (creds invalid / rotated)
  * - KineticaPermissionError: Kinetica returned HTTP 403, or HTTP 400 with a
  *                             body.message matching /access denied|permission/i
- *                             (Kinetica DDL-denial signals via 400 — see SPIKE.md)
+ *                             (Kinetica DDL-denial signals via 400; Phase 2 spike)
  * - KineticaUpstreamError:   Any other failure: 5xx, network throw, body.status==="ERROR"
  *                             with no auth/permission signal, malformed response
  *

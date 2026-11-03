@@ -162,7 +162,7 @@ describe("GET /api/wms with per-user credentials", () => {
     const auditLines = logSpy.mock.calls.map((c) => String(c[0]));
     const wmsLine = auditLines.find((s) => s.includes('"op":"WMS"'));
     expect(wmsLine).toBeDefined();
-    // WMS query string must NOT appear in the audit log (CONTEXT.md OBS-01 + bbox location-intent)
+    // WMS query string must NOT appear in the audit log (the phase context OBS-01 + bbox location-intent)
     expect(wmsLine).not.toContain("bbox=");
     expect(wmsLine).not.toContain("99,99,100,100");
     expect(wmsLine).not.toContain("width=");

@@ -49,7 +49,7 @@ export type Widget = {
 // TEXT in SQLite (JSON-encoded array of { name, type }); the mapper decodes it
 // to a typed array on read and re-encodes on write. `null` means the view has
 // never been previewed yet (Plan 02 update endpoint clears it when
-// template_sql changes — see CONTEXT.md § D3).
+// template_sql changes — see the phase context § D3).
 export type DashboardDynamicView = {
   id: number;
   dashboard_id: number;

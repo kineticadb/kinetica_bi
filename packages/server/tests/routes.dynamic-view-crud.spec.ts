@@ -174,7 +174,7 @@ describe("GET /api/dashboards/:dashboardId/dynamic-views — AUTH_MODE=password"
     expect(res.body.dynamic_views[0].id).toBeLessThan(res.body.dynamic_views[1].id);
   });
 
-  it("only returns dynamic views for the requested dashboard (FK scoping per CONTEXT.md D4)", async () => {
+  it("only returns dynamic views for the requested dashboard (FK scoping per the phase context D4)", async () => {
     const agent = await buildTestApp();
     const { dashId, tableId } = seedFixture();
     const otherDash = createDashboard("Other Dashboard", "");

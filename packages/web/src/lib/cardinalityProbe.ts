@@ -1,5 +1,5 @@
 // Phase 11: Classbreak column cardinality probe (M-06)
-// CONTEXT.md "Decisions § Classbreak" — session-cached per ${tableId}:${cbColumn}
+// the phase context "Decisions § Classbreak" — session-cached per ${tableId}:${cbColumn}
 
 import { runSql } from "../api/client";
 

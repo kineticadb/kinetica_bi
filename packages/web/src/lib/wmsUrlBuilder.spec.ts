@@ -1,7 +1,7 @@
 /**
  * Phase 11 origin → Phase 16 v1.3 cleanup: buildWmsParams spec.
  *
- * Locked param names from 11-SPIKE-NOTES.md (HIGH confidence, verified against
+ * Locked param names from Phase 11 spike notes (HIGH confidence, verified against
  * deployed Kinetica at http://kinetica.example.com:9191/gpudb-0):
  *   X_ATTR      — lon column (X axis = longitude)
  *   Y_ATTR      — lat column (Y axis = latitude)
@@ -527,7 +527,7 @@ describe("buildWmsParams — render mode: heatmap", () => {
 // ─── render mode: classbreak (legacy — superseded by Lane C cb_raster in v1.7 Phase 38) ───
 // NOTE: These legacy tests are REPLACED by the Lane C cb_raster describe blocks at the
 // bottom of this file (v1.7 Phase 38 SCHEMA-V17-03). The classbreak branch in
-// wmsUrlBuilder.ts was DELETED (hard cutover per 38-CONTEXT.md §"Legacy widget backward-compat").
+// wmsUrlBuilder.ts was DELETED (hard cutover per Phase 38 context §"Legacy widget backward-compat").
 // STYLES_BY_MODE.classbreak is now "cb_raster" and Lane A param names are gone.
 
 describe("buildWmsParams — render mode: classbreak (STYLES_BY_MODE swap — v1.7 Phase 38)", () => {
@@ -592,7 +592,7 @@ describe("buildWmsParams — render mode: contour", () => {
 });
 
 // ─── Phase 35 dynamic-view precedence (DV-V16-13) ─────────────────────────
-// Locked precedence (35-CONTEXT.md §"buildWmsParams extension"):
+// Locked precedence (Phase 35 context §"buildWmsParams extension"):
 //   1. dvEntry?.status === "materialized" → LAYERS=<dvViewName>, _mv=<dynamicViewVersion>
 //   2. dvEntry?.status is pending/over_threshold/error → return null (caller SKIPS layer)
 //   3. else if materializeVersion present → LAYERS=<tableRef>, _mv=<materializeVersion> (Phase 16)
@@ -701,7 +701,7 @@ describe("buildWmsParams — Phase 35 dynamic-view precedence (DV-V16-13)", () =
   });
 
   it("case 1: dv-materialized with dynamicViewVersion undefined → LAYERS set, _mv omitted (defensive: caller passed materialized status but no version)", () => {
-    // Pitfall 5 (35-RESEARCH.md): LAYERS distinctness (dvViewName) already busts the OL
+    // Pitfall 5 (Phase 35 research): LAYERS distinctness (dvViewName) already busts the OL
     // tile cache when the source kind changes. _mv is a within-kind cache-buster only;
     // omitting it when undefined matches the Phase 16 PT16-A lock (never emit _mv=0 sentinel).
     const result = buildWmsParams(
@@ -1217,7 +1217,7 @@ describe("buildWmsParams — track spatial mode (Phase 52)", () => {
 
 // ─── RENDER-V19-04: Track emission under spatialMode=track (NEW flow, Phase 53) ──
 //
-// EMISSION-GATE DECISION (decide-in-planning directive — documented here per 53-02-PLAN.md):
+// EMISSION-GATE DECISION (decide-in-planning directive — documented here per Phase 53-02 plan):
 //
 // The emission block (wmsUrlBuilder.ts ~432) gates on:
 //   `tc.enabled && (renderMode === "raster" || renderMode === "classbreak")`

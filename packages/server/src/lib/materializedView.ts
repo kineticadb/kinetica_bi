@@ -1,6 +1,6 @@
 /**
  * Shared helper: `CREATE OR REPLACE MATERIALIZED VIEW` with the Kinetica
- * race-recovery retry locked in v1.5 Phase 30 (32-CONTEXT.md § D5).
+ * race-recovery retry locked in v1.5 Phase 30 (Phase 32 context § D5).
  *
  * Kinetica's CREATE OR REPLACE internally looks up the existing view, drops
  * it, then creates anew — and fails with "Could not find the table"

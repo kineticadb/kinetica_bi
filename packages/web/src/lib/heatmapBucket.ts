@@ -22,7 +22,7 @@
  *            day-of-week x hour-of-day heatmap possible.
  *
  * SQL provenance: the DATE_TRUNC units below are exactly those proven against
- * Kinetica by lib/timelineBin.ts's INTERVAL_LADDER (locked in CONTEXT.md
+ * Kinetica by lib/timelineBin.ts's INTERVAL_LADDER (locked in the phase context
  * §Post-research decisions 2026-05-29). The EXTRACT form is the same construct
  * timelineBin uses for EPOCH, and the HOUR / DOW / MONTH unit keywords were
  * confirmed against a live Kinetica instance in operator UAT on 2026-09-08 —

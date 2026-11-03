@@ -84,7 +84,7 @@ describe("MapDrawToolbar (DRAW-V15-01)", () => {
     expect(onModeChange).toHaveBeenCalledWith("bbox");
   });
 
-  it("T8: clicking already-active mode is a no-op (CONTEXT.md re-click lock)", () => {
+  it("T8: clicking already-active mode is a no-op (the phase context re-click lock)", () => {
     const { onModeChange } = renderToolbar({ drawMode: "bbox" });
     fireEvent.click(screen.getByLabelText("Draw bounding box"));
     expect(onModeChange).not.toHaveBeenCalled();

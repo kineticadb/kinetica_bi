@@ -40,7 +40,7 @@ import { hasTableParam, clearTableUrl, restoreTableUrl, isValidTableId, type Tab
 type Page = "dashboards" | "datasets" | "exports" | "settings" | "users" | "roles" | "profile" | "branding" | "ai-activity";
 
 // Phase 7 (UX-06 / TS-14): return-to-page after OIDC re-auth.
-// Storage shape — top-level page + dashboard view mode are sufficient (per CONTEXT.md;
+// Storage shape — top-level page + dashboard view mode are sufficient (per the phase context;
 // deep-link state inside dashboards is OUT OF SCOPE for v1.1).
 type ReturnTo = {
   page?: Page;
@@ -174,7 +174,7 @@ const App = () => {
   // Phase 115: did the session expire in THIS document? Distinguishes "the ReturnTo sitting in
   // storage was captured by the expiry that just happened here" (its page is the MORE RECENT
   // intent — do not clobber it) from "a ReturnTo left over from a previous document, after which
-  // the user loaded a fresh URL" (the URL is then the more recent intent). Encodes 115-CONTEXT.md's
+  // the user loaded a fresh URL" (the URL is then the more recent intent). Encodes Phase 115 context's
   // "whichever signal is the more recent expression of intent wins" WITHOUT a clock — the locked
   // decision is single-use, no TTL, no timestamp.
   const expiredHereRef = useRef(false);
@@ -270,7 +270,7 @@ const App = () => {
       // Phase 131 D-12: no export poll may outlive the session (each poll would 401 anyway).
       stopAllExportTracking();
       // Plan 23-02 (CARD-V14-02): fourth reset — last-info-click context store.
-      // Pitfall 1 lock (23-RESEARCH.md): stale dashboard-A click coords MUST NOT survive a
+      // Pitfall 1 lock (Phase 23 research): stale dashboard-A click coords MUST NOT survive a
       // logout/session boundary. Session-only store; no DROP loop needed.
       useLastInfoClickContextStore.getState().reset();
       // Phase 27 STORE-V15-04: fifth reset — spatial filter store.
@@ -320,7 +320,7 @@ const App = () => {
   useEffect(() => {
     const handler = () => {
       // OIDC-only: in password mode the user re-auths in the same tab — in-memory
-      // useState<Page> survives, so no sessionStorage write is needed (CONTEXT.md).
+      // useState<Page> survives, so no sessionStorage write is needed (the phase context).
       const authMode = useAuthStore.getState().authMode;
       if (authMode === "oidc") {
         try {
@@ -373,7 +373,7 @@ const App = () => {
         const raw = sessionStorage.getItem(RETURN_TO_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as ReturnTo;
-          // Conflict rule (115-CONTEXT.md): for an EXPIRY, where you actually were wins. A 401 can
+          // Conflict rule (Phase 115 context): for an EXPIRY, where you actually were wins. A 401 can
           // outrun the deferred address-bar clear, so a STALE ?dashboard=/?table= can still sit in
           // the bar while the user was elsewhere. The expiry capture is the newer intent.
           if (parsed.page !== undefined && parsed.page !== expectedPage) return;
@@ -459,7 +459,7 @@ const App = () => {
       ) {
         setPage(parsed.page);
         if (parsed.page !== "dashboards") {
-          // Conflict rule (115-CONTEXT.md): for an EXPIRY, where you actually WERE wins. The
+          // Conflict rule (Phase 115 context): for an EXPIRY, where you actually WERE wins. The
           // ?dashboard= still in the bar is stale — a 401 outran DashboardsPage's deferred clear
           // (DashboardsPage.tsx:646-651). Mirror-image of Phase 114's rule, under one principle:
           // whichever signal is the more recent expression of intent wins. On a paste the URL is
@@ -469,7 +469,7 @@ const App = () => {
           // (`page === "dashboards"`) would only DEFER the flip — and `page` may become
           // "dashboards" later this session via a sidebar click, at which point the stale link
           // would silently reopen. That is the Phase 114 Wave-2 defect class, delayed instead of
-          // immediate (115-RESEARCH.md §Q4/§Q5 Pitfall 3). Burning the one-shot here kills it.
+          // immediate (Phase 115 research §Q4/§Q5 Pitfall 3). Burning the one-shot here kills it.
           deepLinkConsumedRef.current = true;
           // DLINK-V121-07: the bar must not describe a dashboard while the user is on Roles.
           if (hasDashboardParam(window.location.search)) clearDashboardUrl();

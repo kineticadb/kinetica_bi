@@ -3,7 +3,7 @@
  *
  * The pure core (computeReverseFilterMap) is already covered by computeReverseFilterMap.spec.ts
  * — this file tests only ENUMERATION + live store reads + reference-identity joins, per
- * 108-RESEARCH.md's Q7 test strategy.
+ * Phase 108 research's Q7 test strategy.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";

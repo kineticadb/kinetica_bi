@@ -260,7 +260,7 @@ describe("auth routes (SESS-03)", () => {
 });
 
 // Plan 06-04 Task 2: Logout symmetry — OIDC mode (SC4, UX-07).
-// CONTEXT.md: "POST /api/auth/logout (index.ts:153-161) is already correct... no
+// the phase context: "POST /api/auth/logout (index.ts:153-161) is already correct... no
 // end_session_endpoint call." This describe block is verify-only — no production code change.
 describe("logout symmetry — OIDC mode (SC4, UX-07)", () => {
   it("OIDC logout deletes session row + clears kbi_session cookie", async () => {

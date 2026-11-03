@@ -7,12 +7,12 @@
  * `/show/table` (via schemaFingerprint.ts, Plan 122-01) exposes no per-column
  * identity: `type_ids` is one id PER TABLE TYPE, not per column, and
  * `type_schemas`/`properties` are plain name-keyed maps
- * (122-SPIKE-NOTES.md Q3, verified live, not inferred from documentation).
+ * (Phase 122 spike notes Q3, verified live, not inferred from documentation).
  * There is therefore nothing to pair a removed column with an added one when
  * a column is renamed in Kinetica — the app NEVER guesses that a removal and
  * an addition are "the same column, renamed". A rename always reports as one
  * removal plus one addition. Matching column names is exact and
- * case-SENSITIVE (`CustomerID` !== `customerid`, locked in 122-CONTEXT.md) —
+ * case-SENSITIVE (`CustomerID` !== `customerid`, locked in Phase 122 context) —
  * introducing case-folding here would quietly create a second, inconsistent
  * notion of "same column" right next to the rename decision this module
  * exists to enforce.
@@ -20,7 +20,7 @@
  * Kinetica's INFORMATION_SCHEMA also exposes each column's ordinal position,
  * but it is NEVER used here, or anywhere in this module, to pair columns —
  * it is positional, not identity, and pairing on it is precisely the
- * heuristic the milestone forbids (122-SPIKE-NOTES.md, "Unplanned finding").
+ * heuristic the milestone forbids (Phase 122 spike notes, "Unplanned finding").
  *
  * This module is PURE: no `db`, no network, no Express. It only compares
  * already-parsed ColumnFingerprintMaps and (Task 2) builds the
@@ -134,7 +134,7 @@ export function diffColumnFingerprints(
 
 /**
  * The check's response contract. THREE success outcomes, matching the three locked in
- * 122-CONTEXT.md:
+ * Phase 122 context:
  *   "diff"              -> changes found (or not: `hasChanges` false with three empty groups)
  *   "baseline_required" -> this table's snapshot predates precise capture
  *   "table_missing"     -> Kinetica no longer has the table

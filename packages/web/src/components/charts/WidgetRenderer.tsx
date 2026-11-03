@@ -145,7 +145,7 @@ type Row = Record<string, unknown>;
  * Pre-checks the store state for dedupe/replace status BEFORE the addFilter
  * dispatch, so the confirmation toast fires only on first add for a previously
  * unfiltered column. Phase 9 dedupe + replace paths keep the chip change as
- * feedback (CONTEXT.md "Toast suppression rules").
+ * feedback (the phase context "Toast suppression rules").
  *
  * Caller MUST handle:
  *   - dim-peers transient via local clickedElement state
@@ -654,7 +654,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
       return; // orchestrator re-materializes on next tick; effect re-fires on combinationVersion
     }
 
-    // Phase 35 Plan 05 (Pitfall 4 lock from 35-RESEARCH.md): viewName source selection.
+    // Phase 35 Plan 05 (Pitfall 4 lock from Phase 35 research): viewName source selection.
     //   - dv-bound + materialized → combo view (Phase 94) or raw dv view (Phase 94 fallback)
     //   - legacy / non-dv-bound → combo entry viewName (existing path)
     // Pitfall 4 defense-in-depth: materialized with empty viewName is an internal error.
@@ -1814,7 +1814,7 @@ const PieRenderer = ({
     );
   };
 
-  // RESEARCH.md Pitfall 1: Pie click signature differs — slice.payload is the
+  // the phase research Pitfall 1: Pie click signature differs — slice.payload is the
   // source row, NOT slice directly.
   const handleSliceClick = (slice: unknown) => {
     if (!drillEnabled) return;
@@ -2220,7 +2220,7 @@ const RecordsTableRenderer = ({ widget }: Props) => {
   const cw = whereCustomWhere((cfg.customWhere as string | undefined) ?? "");
 
   // Phase 10 DRILL-01 + DRILL-04: drill-down config + filter subscription.
-  // RESEARCH.md Pitfall 3: RecordsTableRenderer was previously NOT subscribed to
+  // the phase research Pitfall 3: RecordsTableRenderer was previously NOT subscribed to
   // the filter store (only AggregatedWidgetRenderer was). For DRILL-04's row-tint
   // we MUST subscribe directly here — the records short-circuit at line 175 means
   // AggregatedWidgetRenderer's subscription never reaches us.

@@ -52,9 +52,9 @@ describe("useInfoSelectionStore — setSelection", () => {
     expect(entry.hasMore).toBe(false);
   });
 
-  // CONTEXT.md § Action contract lock — required regression for the v0 plan that hard-coded loading: false.
+  // the phase context § Action contract lock — required regression for the v0 plan that hard-coded loading: false.
   // Test name MUST contain "preserves prior loading" (grep-verifiable acceptance criterion).
-  it("setSelection preserves prior loading flag (CONTEXT.md § Action contract)", () => {
+  it("setSelection preserves prior loading flag (the phase context § Action contract)", () => {
     useInfoSelectionStore.getState().setLoading(1, true);
     expect(useInfoSelectionStore.getState().state[1].loading).toBe(true);
     useInfoSelectionStore.getState().setSelection(1, {
@@ -235,7 +235,7 @@ describe("useInfoSelectionStore — setError", () => {
     });
   });
 
-  // Append-fail invariant — locked in CONTEXT.md § specifics.
+  // Append-fail invariant — locked in the phase context § specifics.
   it("preserves prior rows when setError fires (append-fail UX lock)", () => {
     useInfoSelectionStore.getState().setSelection(1, { rows: [{ id: 1 }, { id: 2 }], columns: ["id"], page: 1, hasMore: true });
     useInfoSelectionStore.getState().setError(1, "Network error on page 2");

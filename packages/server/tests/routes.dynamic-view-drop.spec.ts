@@ -10,7 +10,7 @@
  *   - DELETE drops view AND removes SQLite row.
  *   - POST /api/dynamic-view/:id/drop drops view ONLY; SQLite row stays intact.
  *
- * Test list (locked by 33-CONTEXT.md):
+ * Test list (locked by Phase 33 context):
  *   AUTH_MODE=password block:
  *     1. happy path — returns 200 { dropped: true }, fires DROP TABLE IF EXISTS, row UNTOUCHED.
  *     2. 404 when id does not exist — no DROP fired.

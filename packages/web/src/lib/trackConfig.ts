@@ -3,7 +3,7 @@
  *
  * Pure helper module for track_config JSON parsing + form defaults.
  * Phase 38 kept these inline; Phase 40 form UI is the 2nd consumer (per Phase 38
- * CONTEXT.md "Phase 40 may extract if a 2nd consumer surfaces"), so the
+ * the phase context "Phase 40 may extract if a 2nd consumer surfaces"), so the
  * extraction earns its keep.
  *
  * Backward-compat: `wmsUrlBuilder.ts` re-exports TrackConfig + coalesceTrackConfig

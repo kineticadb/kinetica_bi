@@ -12,7 +12,7 @@ describe("formatLatLon", () => {
     expect(formatLatLon([0, 0])).toBe("0.00°N, 0.00°E");
   });
 
-  it("F2: NYC (CONTEXT.md-locked example) formats as '40.71°N, 74.01°W'", () => {
+  it("F2: NYC (the phase context-locked example) formats as '40.71°N, 74.01°W'", () => {
     expect(formatLatLon(to3857(-74.006, 40.7128))).toBe("40.71°N, 74.01°W");
   });
 

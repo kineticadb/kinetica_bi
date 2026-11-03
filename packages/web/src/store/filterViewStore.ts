@@ -22,7 +22,7 @@
  *   - Phase 15-02 schema extension: dashboardId field on FilterViewEntry — populated by
  *     setView/markMaterializing callers from useDashboardContext().dashboardId. Enables
  *     15-05 logout / dashboard-switch cleanup loops to fire-and-forget DROPs without
- *     external lookups (Pitfall 5 resolution per 15-RESEARCH.md).
+ *     external lookups (Pitfall 5 resolution per Phase 15 research).
  */
 
 import { create } from "zustand";
@@ -110,7 +110,7 @@ export const useFilterViewStore = create<FilterViewState>((set) => ({
   // viewName/expiresAt/materializeVersion so the next filterVersion cycle can reuse the cached
   // view if still valid. Also increments clearMaterializingVersion (used as Effect 2 dep) so
   // Effect 2 re-fires specifically on error clearance — without re-firing on markMaterializing
-  // (gate-up transition) or setView (viewName dep handles that). Reference: 17-02-PLAN.md Task 1.
+  // (gate-up transition) or setView (viewName dep handles that). Reference: Phase 17-02 plan Task 1.
   clearMaterializing: (tableId) =>
     set((state) => {
       const prev = state.views[tableId];
@@ -167,7 +167,7 @@ export const useFilterViewStore = create<FilterViewState>((set) => ({
 
   // Internal-only — Phase 15 LIFE-V13-03 / LIFE-V13-04 will wire reset() into App.tsx and
   // DashboardsPage.tsx alongside the existing useFilterStore.reset() calls. Phase 14 ships
-  // the action; no Phase 14 wiring (CONTEXT.md § "Reset wiring scope" lock).
+  // the action; no Phase 14 wiring (the phase context § "Reset wiring scope" lock).
   // Phase 63: zeroes the dvViews slice too (DVDRILL-V112-05 lifecycle — no new reset call sites).
   reset: () => set({ views: {}, dvViews: {}, clearMaterializingVersion: 0 }),
 }));

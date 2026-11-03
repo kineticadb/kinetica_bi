@@ -173,9 +173,9 @@ const Y_COLUMN_PARAM = "Y_ATTR";
 const GEOMETRY_COLUMN_PARAM = "GEO_ATTR";
 const SRS_VALUE = "EPSG:3857";
 
-// STYLES values per render mode — from 11-SPIKE-NOTES.md "STYLES values per render mode" table +
-// 37-SPIKE-NOTES.md ## Decision (Phase 37 Lane C lock: STYLES=cb_raster is the production CB
-// emission path; STYLES=classbreak Lane B remains in 37-SPIKE-NOTES.md as documentation only).
+// STYLES values per render mode — from Phase 11 spike notes "STYLES values per render mode" table +
+// Phase 37 spike notes ## Decision (Phase 37 Lane C lock: STYLES=cb_raster is the production CB
+// emission path; STYLES=classbreak Lane B remains in Phase 37 spike notes as documentation only).
 // raster/heatmap confirmed in GetCapabilities XML + GetMap probe.
 // cb_raster: confirmed by Phase 37 Lane C probes — distinct from baseline (15597 vs 27384 bytes).
 // contour: NOT in GetCapabilities XML but returns HTTP 200 on GetMap probe (dead code path —
@@ -266,13 +266,13 @@ export function buildWmsParams(
   };
 
   // ─── Phase 35 (DV-V16-13): 4-case LAYERS / _mv precedence ────────────────
-  // Locked precedence (35-CONTEXT.md §"buildWmsParams extension"):
+  // Locked precedence (Phase 35 context §"buildWmsParams extension"):
   //   1. dvEntry.status === "materialized" → LAYERS=<dvViewName>, _mv=<dynamicViewVersion>
   //   2. dvEntry.status === pending/over_threshold/error → return null (caller SKIPS layer)
   //   3. else if materializeVersion present → LAYERS=<tableRef>, _mv=<materializeVersion> (Phase 16)
   //   4. else → LAYERS=<tableRef|layerName> bare (Phase 11)
   //
-  // Pitfall 5 (35-RESEARCH.md:630-645): the LAYERS value differs across source kinds
+  // Pitfall 5 (Phase 35 research:630-645): the LAYERS value differs across source kinds
   //   (dvViewName vs filterViewName vs schema.table), so OL's per-URL cache never
   //   collides regardless of any coincidental `_mv` overlap between counters.
   if (dynamicViewEntry !== undefined) {
@@ -397,7 +397,7 @@ export function buildWmsParams(
         : undefined;
   } else if (config.renderMode === "classbreak") {
     // v1.7 Phase 38 (SCHEMA-V17-03/04/05): Lane C cb_raster emission per
-    // 37-SPIKE-NOTES.md ## Decision. STYLES is already "cb_raster" via
+    // Phase 37 spike notes ## Decision. STYLES is already "cb_raster" via
     // STYLES_BY_MODE swap. Hard cutover lock: the legacy cbColumn / cbBreakType /
     // classbreaks fields remain on MapWidgetConfig for back-compat but are
     // NEVER read by this branch — cb_config (via layerJsonFields) is the
@@ -448,7 +448,7 @@ export function buildWmsParams(
     // If cb_config is null OR not configured, NO CB_* params emit. STYLES=cb_raster
     // still emits (per STYLES_BY_MODE swap); Kinetica renders as raster-equivalent.
     // Legacy v1.2 classbreak widgets (with legacy classbreaks[] but null cb_config)
-    // hit this branch and render as raster (hard cutover lock from 38-CONTEXT.md).
+    // hit this branch and render as raster (hard cutover lock from Phase 38 context).
   } else if (config.renderMode === "contour") {
     if (config.contourColor !== undefined) {
       params.CONTOUR_COLOR = config.contourColor.toUpperCase();
@@ -463,12 +463,12 @@ export function buildWmsParams(
 
   // v1.7 Phase 38 (SCHEMA-V17-04): Track block — append additively. Gated on
   // trackConfig.enabled === true AND render mode raster|classbreak (heatmap excluded
-  // per 37-SPIKE-NOTES.md ## Decision — Track + heatmap was not probed; out of scope).
+  // per Phase 37 spike notes ## Decision — Track + heatmap was not probed; out of scope).
   //
   // Under STYLES=raster (renderMode === "raster"): single-value TRACK_* params.
   // Under STYLES=cb_raster (renderMode === "classbreak"): N comma-separated TRACK_*
   // params where N = cb_config.breaks.length (operator-confirmed comma-sep model
-  // per Phase 37 SPIKE-V17-05 + 37-SPIKE-NOTES.md ## Decision lines 312-322).
+  // per Phase 37 SPIKE-V17-05 + Phase 37 spike notes ## Decision lines 312-322).
   //
   // Backward-compat lock: trackConfig === undefined OR enabled !== true → NO Track
   // params emit; URL byte-identical to pre-v1.7 (regression spec locks).

@@ -1,7 +1,7 @@
 /**
  * View-name composition for transient Kinetica materialized views.
  *
- * Locked shape (CONTEXT.md decisions § "View-name details"):
+ * Locked shape (the phase context decisions § "View-name details"):
  *   _kbi_filt_u<sanitizedUserId>_d<dashId>_t<tableId>_s<sessionShort>
  *
  * - sanitizedUserId: alphanumeric+underscore, max 32 chars (per V13-P-08)

@@ -3,7 +3,7 @@
  *
  * Produces fully parenthesized OR chains of spatial predicates per drawn shape,
  * then composes them with the column AND-chain from the existing v1.3 filter
- * pipeline. Predicates locked by Phase 25 spike (25-SPIKE-NOTES.md §3.3):
+ * pipeline. Predicates locked by Phase 25 spike (Phase 25 spike notes §3.3):
  *
  *   LATLON:  STXY_WITHIN(<lon_col>, <lat_col>, ST_GEOMFROMTEXT('<wkt>')) = 1
  *   WKT:     ST_INTERSECTS(<geom_col>, ST_GEOMFROMTEXT('<wkt>')) = 1
@@ -104,7 +104,7 @@ export class SpatialFilterWkbDeferredError extends Error {
 /**
  * Build a fully parenthesized spatial OR-chain from an array of drawn shapes.
  *
- * SQL templates LOCKED by 25-SPIKE-NOTES.md §3.3:
+ * SQL templates LOCKED by Phase 25 spike notes §3.3:
  *   Latlon:  STXY_WITHIN(<lon_col>, <lat_col>, ST_GEOMFROMTEXT('<wkt>')) = 1
  *            Argument order (lon, lat, shape) — 25-SPIKE-NOTES §3.1.
  *            STXY_CONTAINS rejected (identical counts but reversed arg order;
@@ -173,7 +173,7 @@ export function buildSpatialOrBlock(
  * Internally delegates to buildServerWhereClause (column AND-chain) and
  * buildSpatialOrBlock (spatial OR-chain).
  *
- * Four cases (REQUIREMENTS.md WHERE-V15-02 literal):
+ * Four cases (the milestone requirements WHERE-V15-02 literal):
  *   Both non-empty → "${spatialClause} AND (${colClause})"
  *                    Column side is wrapped in an extra pair of parens.
  *                    Spatial first, column second.
@@ -203,7 +203,7 @@ export function composeWhereClause(
   const hasSpatial = spatialClause.length > 0;
   const hasCol = colClause !== "1=1";
 
-  // REQUIREMENTS.md WHERE-V15-02 literal: (spatial) AND (col)
+  // the milestone requirements WHERE-V15-02 literal: (spatial) AND (col)
   // Spatial first; column side wrapped in extra parens for AND-precedence safety.
   if (hasSpatial && hasCol) return `${spatialClause} AND (${colClause})`;
   if (hasSpatial) return spatialClause;       // already outer-parenthesized by builder

@@ -6,7 +6,7 @@
  * SPATIAL-V14-03 explicitly states the WKB function name and argument types are
  * unconfirmed. This spike is the P1 GATE for Phase 18: Plans 18-02 (SQL builders) and
  * 18-03 (endpoint) cannot define the WKB SQL template until this spike commits a
- * decision in 18-SPIKE-NOTES.md.
+ * decision in Phase 18 spike notes.
  *
  * USAGE:
  *   cd server && npm run wkb-spike
@@ -96,7 +96,7 @@ async function runSql(sql: string): Promise<{ ok: boolean; status: number; body:
     // binary, json, geojson, arrow (U/PUh:355)" — i.e. the missing `encoding` field
     // surfaced as a parameter-validation error BEFORE the SQL function-name questions
     // the spike is trying to answer were ever evaluated. Future investigators reading
-    // 18-SPIKE-NOTES.md must trust that the spike's HTTP contract matches what
+    // Phase 18 spike notes must trust that the spike's HTTP contract matches what
     // production code actually sends, so we mirror the production payload verbatim.
     response = await rawFetch(url, {
       method: "POST",
@@ -232,4 +232,4 @@ if (verdictA === "PASS") {
 
 console.log("");
 console.log(`[wkb-spike] Recommended path: ${recommended}`);
-console.log("[wkb-spike] Done. Now run Task 2 to record findings in 18-SPIKE-NOTES.md.");
+console.log("[wkb-spike] Done. Now run Task 2 to record findings in Phase 18 spike notes.");

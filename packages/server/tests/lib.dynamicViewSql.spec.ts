@@ -2,7 +2,7 @@
  * lib.dynamicViewSql.spec.ts — Phase 32 Plan 01 Task 2 (DV-V16-01).
  *
  * Unit coverage of `substituteViewToken` + `MissingViewTokenError`.
- * Locked decisions live in 32-CONTEXT.md § D1 (token regex /\{\s*view\s*\}/gi,
+ * Locked decisions live in Phase 32 context § D1 (token regex /\{\s*view\s*\}/gi,
  * case-insensitive + whitespace-tolerant + global, throw on absence).
  *
  * Mirrors lib.viewNaming.spec.ts shape (vitest, no jest globals, pure module).

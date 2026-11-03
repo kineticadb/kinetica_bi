@@ -10,7 +10,7 @@
  * boundary documented in `lib/spatialQuery.ts`.
  *
  * Numeric `n` is typed and validated by the route handler in `index.ts` BEFORE
- * calling buildQuantileSql (n integer in [2, 256] per 38-CONTEXT.md).
+ * calling buildQuantileSql (n integer in [2, 256] per Phase 38 context).
  *
  * NTILE template locked verbatim from the Phase 37 class-break/track WMS spike decision
  * (PASS HTTP 200 against deployed Kinetica with `PARTITION BY 0` form).
@@ -28,7 +28,7 @@ export type QuantileSqlArgs = {
 
 /**
  * Build the bucket-MIN wrapper NTILE quantile SQL.
- * Verbatim from 37-SPIKE-NOTES.md ## Decision (Probe NTILE-C PASS).
+ * Verbatim from Phase 37 spike notes ## Decision (Probe NTILE-C PASS).
  *
  * Emitted template (whitespace-normalized):
  *   SELECT bucket, MIN(<column>) AS boundary
@@ -60,7 +60,7 @@ export function buildQuantileSql(args: QuantileSqlArgs): string {
  * Parse Kinetica's encoded NTILE response and return the N-1 upper-boundary
  * values that define N classbreak ranges.
  *
- * Kinetica response shape (37-SPIKE-NOTES.md NTILE-C probe):
+ * Kinetica response shape (Phase 37 spike notes NTILE-C probe):
  *   { column_1: number[bucket],  column_2: number[boundary],
  *     column_headers: ["bucket","boundary"], column_datatypes: ["long","float"] }
  *

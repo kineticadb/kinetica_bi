@@ -791,7 +791,7 @@ export const updateTable = async (id: number, attrs: Partial<Pick<TableDto, "nam
 // ─── Dashboard Layers (Phase 12) ──────────────────────────────────────────
 // CRUD against /api/dashboards/:id/layers — server route in packages/server/src/index.ts (Plan 12-01).
 // PATCH /reorder is a SEPARATE endpoint registered BEFORE /:layerId (Express order matters);
-// see 12-01-PLAN.md for the precedence note.
+// see Phase 12-01 plan for the precedence note.
 
 export type LayerType = "KineticaWms";
 
@@ -806,7 +806,7 @@ export type DashboardLayerDto = {
   // DashboardLayer type. SQLite returns INTEGER as number (0 | 1) and NULL TEXT as JS null.
   // info_columns is the raw JSON-array string ('["lon","lat"]') — Phase 21 popup parses it.
   // info_template is the raw HTML template string — Phase 21 popup renders it directly
-  // (no sanitization per locked Key Decision in PROJECT.md).
+  // (no sanitization per locked Key Decision in the project decisions).
   info_enabled: number;
   info_columns: string | null;
   info_template: string | null;
@@ -1315,7 +1315,7 @@ export type InfoQueryResponse = {
   columns: string[];
   hasMore: boolean;
   page: number;
-  totalEstimate?: number;  // optional per SPATIAL-V14-04; CONTEXT.md notes it may be surfaced inline by popup (design discretion)
+  totalEstimate?: number;  // optional per SPATIAL-V14-04; the phase context notes it may be surfaced inline by popup (design discretion)
 };
 
 export const infoQuery = async (
@@ -1609,7 +1609,7 @@ export type QuantileArgs = {
 };
 
 export type QuantileResponse = {
-  breaks: number[]; // length === n - 1 (server drops bucket 1's MIN per 37-SPIKE-NOTES.md)
+  breaks: number[]; // length === n - 1 (server drops bucket 1's MIN per Phase 37 spike notes)
 };
 
 export const quantileFn = async (

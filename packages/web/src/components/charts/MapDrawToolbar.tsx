@@ -3,7 +3,7 @@
  * with 5 mutually-exclusive mode buttons (Pan / Info / Bbox / Lasso / Circle) and a
  * conditional Trash "Clear all" button.
  *
- * Anti-pattern lock (29-CONTEXT.md / STATE.md): NEVER subclass ol/control/Control.
+ * Anti-pattern lock (Phase 29 context / the project state notes): NEVER subclass ol/control/Control.
  * Root-cause family of GAP-24-01-A / GAP-24-02-A. This is a pure React component;
  * positioning is via CSS, pointer-events: none on container + pointer-events: auto
  * on buttons (V15-P-17 mitigation).
@@ -11,7 +11,7 @@
  * Stateless — receives drawMode + shapesCount via props; emits onModeChange + onClearAll.
  * All state lives in MapChartRenderer (Plans 01 + 03).
  *
- * Re-click already-active button = no-op (29-CONTEXT.md operator lock).
+ * Re-click already-active button = no-op (Phase 29 context operator lock).
  */
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -41,7 +41,7 @@ type Props = {
 // Bbox/lasso/circle buttons get the spatial-target tooltip; pan/info do not (mode-only).
 const DRAWING_MODES = new Set<DrawMode>(["bbox", "lasso", "circle"]);
 
-// Render order locked by 29-UI-SPEC.md Component Inventory.
+// Render order locked by Phase 29 UI spec Component Inventory.
 const MODE_BUTTONS: Array<{ mode: DrawMode; icon: IconDefinition; label: string }> = [
   { mode: "pan",    icon: faHand,         label: "Pan" },
   { mode: "info",   icon: faCircleInfo,   label: "Info" },
@@ -85,7 +85,7 @@ export default function MapDrawToolbar({
             disabled={disabled}
             title={isDrawing ? targetsTooltip : undefined}
             onClick={() => {
-              // 29-CONTEXT.md re-click lock: clicking the already-active mode is a no-op.
+              // Phase 29 context re-click lock: clicking the already-active mode is a no-op.
               if (isActive) return;
               onModeChange(mode);
             }}

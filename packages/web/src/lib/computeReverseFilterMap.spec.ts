@@ -103,7 +103,7 @@ describe("computeReverseFilterMap", () => {
   });
 
   // Test 4: Multiple layers of the SAME map widget both match → ONE widget entry, layerNames
-  // aggregated. Worked example from RESEARCH.md Pattern 4: Rivers excluded by allowlist while
+  // aggregated. Worked example from the phase research Pattern 4: Rivers excluded by allowlist while
   // Roads included → verify one entry with only ["Roads"].
   it("multiple layers of the same map widget: one widget entry, layerNames aggregated (Pattern 4 worked example)", () => {
     const f1 = mkFilter("region", 5);

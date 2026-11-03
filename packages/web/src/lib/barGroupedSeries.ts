@@ -27,7 +27,7 @@ export function isMultiColumnBarGroupBy(config: Record<string, unknown>): boolea
  * - row["value"] must be a finite number; null / undefined / Infinity / NaN → null
  *   (selectTopSeries treats null as 0 for ranking; pivotSeriesRows renders a gap)
  *
- * Collision note (Pitfall 3 — RESEARCH.md): the " / " delimiter can collide when a
+ * Collision note (Pitfall 3 — the phase research): the " / " delimiter can collide when a
  * column value itself contains " / ". This is an accepted known edge-case — do NOT
  * engineer around it (same trade-off as the timeline group-by separator).
  */

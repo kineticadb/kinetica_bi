@@ -61,12 +61,12 @@ import type {
 
 // -------------------------------------------------------------------------------------------
 // The ColumnRef contract. Phase 124 renders this; Phase 125 persists it. Reproduced verbatim in
-// 123-01-SUMMARY.md before either of those phases is planned further.
+// Phase 123-01 summary before either of those phases is planned further.
 // -------------------------------------------------------------------------------------------
 
 /** exact = a structured site (the value IS the column name). heuristic = a free-SQL / cached-name
  *  match. low-confidence = a free-SQL match on a short or common name. Low-confidence findings are
- *  REPORTED, never suppressed (123-CONTEXT.md, locked). */
+ *  REPORTED, never suppressed (Phase 123 context, locked). */
 export type RefConfidence = "exact" | "heuristic" | "low-confidence";
 
 export type ColumnRefRecordKind =
@@ -203,7 +203,7 @@ export const FREE_SQL_SITES: readonly ColumnRefSite[] = [
   "tableView.filter_clause",
 ];
 
-/** Keys that LOOK column-ish and are NOT columns (evidence: 123-RESEARCH.md § "Key paths that
+/** Keys that LOOK column-ish and are NOT columns (evidence: Phase 123 research § "Key paths that
  *  LOOK column-ish but are NOT"). A generic "does this string equal a known column name" walker
  *  would false-positive on every one of them — `WKT`, `name`, `type` and `Date` are all real
  *  column names in the operator's tables. The traversal is path-driven precisely so this cannot
@@ -237,7 +237,7 @@ export const isLowConfidenceColumnName = (name: string): boolean =>
   LOW_CONFIDENCE_STOPLIST.includes(name.toLowerCase());
 
 /**
- * Whole-identifier, case-INSENSITIVE match, locked verbatim in 123-CONTEXT.md. Whole identifier,
+ * Whole-identifier, case-INSENSITIVE match, locked verbatim in Phase 123 context. Whole identifier,
  * never a bare substring — there are 248 substring pairs among the operator's 564 real columns
  * (`2G` in `2G_Layer`, `Date` in `Meta_CreatedDate`, `Attr_Band` in
  * `Attr_Bandwidth`). Case-INSENSITIVE, DELIBERATELY unlike Phase 122's case-SENSITIVE
@@ -508,7 +508,7 @@ export const resolveConfigPatchTableId = (
  * - Match is EXACT, case-SENSITIVE string equality against the RAW value — the same identity
  *   question `schemaDiff.ts` answers case-sensitively. The case-INSENSITIVE rule belongs to
  *   free-SQL text scanning ONLY (`scanFreeSql` above); unifying the two is explicitly forbidden by
- *   123-CONTEXT.md.
+ *   Phase 123 context.
  * - Emit only when `resolved.tableScope === "unresolved"` OR `resolved.tableId === query.tableId`.
  *   An `unresolved` record is ALWAYS reported regardless of the queried table — fail toward
  *   reporting, per the locked rule that a missed finding is the expensive failure and a surplus
@@ -622,7 +622,7 @@ const readJsonString = (raw: string | null): { parsed: unknown; malformed: boole
  * `{ enabled: false }` on a parse failure — it SWALLOWS the error, which is correct for a renderer
  * (better a plain layer than a crash) and catastrophically wrong for an impact report. A malformed
  * blob that silently reports zero references is precisely the confidently-incomplete outcome this
- * phase exists to prevent. 123-CONTEXT.md's discretion clause is explicit: fail toward REPORTING
+ * phase exists to prevent. Phase 123 context's discretion clause is explicit: fail toward REPORTING
  * a match; a missed finding is the expensive failure and a false positive is merely noise.
  */
 const emitMalformedJsonFallback = (args: {
@@ -833,7 +833,7 @@ const visitColumnRefSites = (
           });
           // spatialCol: ZERO instances in the dev DB — no wkt-mode targets and no spatialCol
           // values anywhere in widgets.config (confirmed read-only during PLANNING, not by
-          // 123-RESEARCH.md's own zero-instance table — a NINTH zero-instance site on top of the
+          // Phase 123 research's own zero-instance table — a NINTH zero-instance site on top of the
           // eight the research listed). Its test fixture is SYNTHETIC.
           emitStructured({
             value: el.spatialCol, column, site: "widget.config.spatialTargets[].spatialCol",
@@ -1078,7 +1078,7 @@ const visitColumnRefSites = (
         // (sum/avg/min/max/count/count_distinct), an enum, not a column.
         //
         // PLANNER NOTE: this is the ONE site in COLUMN_REF_SITES that ROADMAP success criterion 2
-        // does not name. It is included because 123-CONTEXT.md's canonical_refs section states
+        // does not name. It is included because Phase 123 context's canonical_refs section states
         // plainly that `chart.metric` in the configPatch allow-list IS a column name, and because
         // it costs one block inside a traversal that already visits every configPatch. It has
         // ZERO instances in either database. Striking it (if the operator wants the inventory held
@@ -1351,7 +1351,7 @@ const visitColumnRefSites = (
   }
 
   // --- dynamicView.columns_json[].name (this plan, Task 3) — the site three code-reading sweeps
-  // would have missed. See 123-RESEARCH.md Finding 1 / Pitfall 1, 123-CONTEXT.md's "TWO SITES
+  // would have missed. See Phase 123 research Finding 1 / Pitfall 1, Phase 123 context's "TWO SITES
   // ADDED 2026-09-22" section, item 1.
   //
   // Why it exists at all: `Taxi Copy` (source table 1) and `mv view` (source table 6) both have

@@ -4,7 +4,7 @@
  * Short-circuits BEFORE AggregatedWidgetRenderer in WidgetRenderer.tsx. Owns its full
  * lifecycle:
  *   1. Mount: fetches time range via runSql(buildTimelineRangeQuery) — NOT columnStatsFn
- *      (RESEARCH.md §C-01: columnStatsFn asserts Number.isFinite on parsed values; Kinetica
+ *      (the phase research §C-01: columnStatsFn asserts Number.isFinite on parsed values; Kinetica
  *      returns datetime MIN/MAX as strings, so columnStatsFn throws on datetime columns).
  *   2. Calls pickInterval({ rangeMs, maxIntervals }) to choose the bucket interval.
  *   3. Issues N parallel runSql(buildTimelineSql) calls (one per metric); merges results

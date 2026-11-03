@@ -45,7 +45,7 @@ type FilterField = {
   kind: FilterFieldKind | ""; // empty until operator picks both column AND kind
 };
 
-// Per-column-type allowed kinds (locked in 44-CONTEXT.md "Per-column-type control variants").
+// Per-column-type allowed kinds (locked in Phase 44 context "Per-column-type control variants").
 const KINDS_BY_DATA_TYPE: Record<
   string,
   { value: FilterFieldKind; label: string }[]

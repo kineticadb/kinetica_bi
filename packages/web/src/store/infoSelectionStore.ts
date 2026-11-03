@@ -18,27 +18,27 @@
  * mutating state[layerId=A] returns a new top-level state object but entries for OTHER layerIds
  * keep their object identity. Phase 21/23 selector consumers must scope to s.state[layerId].
  *
- * activeLayerId invariant (locked in 20-CONTEXT.md § "activeLayerId invariant"):
+ * activeLayerId invariant (locked in Phase 20 context § "activeLayerId invariant"):
  *   - Type signature is `number` not `number | null` — there is NO setActiveLayer(null) path.
  *   - The only paths to activeLayerId === null are: (a) initial state, (b) reset().
  *   - Phase 21 popup dismiss (POPUP-V14-05) calls reset(), not setActiveLayer(null).
  *
- * Layer-switch state retention (locked in 20-CONTEXT.md § "Layer-switch state retention"):
+ * Layer-switch state retention (locked in Phase 20 context § "Layer-switch state retention"):
  *   - setActiveLayer(B) when current is A (A !== B) FULLY DELETES state[A] (rows, columns, page,
  *     hasMore, loading, error all gone). Returning to A re-fetches from scratch.
  *   - state[B] is NOT touched by setActiveLayer (Phase 21 click handler decides whether to
  *     overwrite via setSelection).
  *   - setActiveLayer(A) when current is A is a full no-op (no state change).
  *
- * setSelection loading-flag preservation (locked in 20-CONTEXT.md § "Action contract" line 28):
+ * setSelection loading-flag preservation (locked in Phase 20 context § "Action contract" line 28):
  *   - setSelection does NOT auto-clear `loading`. Caller toggles setLoading(true) before fetch
  *     and setLoading(false) after success/error. setSelection writes `loading: prev?.loading ?? false`
  *     so a setLoading(true) -> setSelection(payload) sequence preserves the loading flag for the
  *     caller to clear via setLoading(false). Phase 21 click handler is built against this contract.
- *   - setSelection DOES clear `error` to null (judgment call — not locked by CONTEXT.md): settled
+ *   - setSelection DOES clear `error` to null (judgment call — not locked by the phase context): settled
  *     rows obsolete the prior error. Caller does not need to setError(null) before/after setSelection.
  *
- * Append-fail rows-preserved (locked in 20-CONTEXT.md § "specifics"):
+ * Append-fail rows-preserved (locked in Phase 20 context § "specifics"):
  *   - setError leaves prior rows in place (mirrors filterViewStore.clearMaterializing preserves-fields
  *     pattern at filterViewStore.ts:104-113). Page 4 fail must NOT wipe pages 1-3 — hostile UX.
  */
@@ -114,7 +114,7 @@ export const useInfoSelectionStore = create<InfoSelectionState>((set) => ({
   activeWidgetId: null,
 
   // REPLACE semantics — fresh-click path. Caller passes page explicitly; store does NOT auto-increment.
-  // Does NOT auto-clear loading per CONTEXT.md § Action contract — preserves prev?.loading so the
+  // Does NOT auto-clear loading per the phase context § Action contract — preserves prev?.loading so the
   // caller's setLoading(true) -> setSelection(...) -> setLoading(false) sequence works as locked.
   // DOES clear error to null (settled rows obsolete the prior error — not locked, judgment call).
   setSelection: (layerId, { rows, columns, page, hasMore }) =>

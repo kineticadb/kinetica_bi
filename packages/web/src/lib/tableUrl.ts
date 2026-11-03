@@ -6,14 +6,14 @@
  * across 7 spec files / 132 tests, which ROADMAP §Phase 116 criterion 6 forbids (116-RESEARCH §Q1).
  * dashboardUrl.ts is NOT touched by this phase.
  *
- * Locked decisions inherited from 113-CONTEXT.md, unchanged for tables:
+ * Locked decisions inherited from Phase 113 context, unchanged for tables:
  *   - Query param, never a path or hash.
  *   - Numeric id, never a name/slug.
  *   - Opening pushes exactly ONE history entry, marked as ours.
  *   - Leaving pops that entry if we own it; an arrival with NO entry of ours WRITES the list url
  *     instead, because history.back() there would eject the user out of the application.
  *
- * NEW for tables (116-CONTEXT.md §"THE ONE NEW DECISION"):
+ * NEW for tables (Phase 116 context §"THE ONE NEW DECISION"):
  *   - A `mode` qualifier: ?table=12 is VIEW, ?table=12&mode=edit is EDIT.
  *   - Absent-means-view, and an UNRECOGNISED mode value also means view — never a failure. The id
  *     is the identity and it is valid; refusing to open a real table over a typo in a secondary

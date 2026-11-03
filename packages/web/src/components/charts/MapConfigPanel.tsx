@@ -6,7 +6,7 @@
  *                 sections were extracted into KineticaWmsLayerForm (Plan 12-02) and now live
  *                 inside the LayersModal (Plan 12-04). Dashboard-scope layers carry that config.
  *
- * Lift boundary lock — CONTEXT.md "Decisions § Layer↔Widget architecture":
+ * Lift boundary lock — the phase context "Decisions § Layer↔Widget architecture":
  *   STAYS ON WIDGET: title, basemap, includedLayerIds
  *   MOVED TO LAYER:  tableRef/tableId, lat/lon/wkt/wkb columns, colormap,
  *                    BLUR_RADIUS, POINTCOLOR/SIZE/OPACITY, classbreaks, contour params
@@ -152,7 +152,7 @@ export default function MapConfigPanel({ config, onChange, tables, widgetId }: C
   // ─── Phase 111 (MAPVIEW-V121-01/04) — DEFAULT VIEW ──────────────────────
   // The config modal's .modal-overlay (position: fixed; inset: 0) completely hides the map,
   // so the designer cannot see what they are about to save. The readout below IS the
-  // verification (111-CONTEXT.md lock) — never turn this into a bare button.
+  // verification (Phase 111 context lock) — never turn this into a bare button.
   //
   // SCOPED SELECTOR LOCK (RESEARCH Pitfall 4): read ONLY this widget's slot. Every mounted
   // map now publishes on every moveend, so subscribing to `s.views` (or to the whole store)
@@ -166,7 +166,7 @@ export default function MapConfigPanel({ config, onChange, tables, widgetId }: C
 
   const saveDefaultView = () => {
     if (!currentView) return;
-    // Store EPSG:3857 verbatim with the EXACT unrounded fractional zoom (111-CONTEXT.md lock):
+    // Store EPSG:3857 verbatim with the EXACT unrounded fractional zoom (Phase 111 context lock):
     // a 3857 -> 4326 -> 3857 round trip would drift the view Phase 112 reproduces.
     onChange({
       ...config,
@@ -232,7 +232,7 @@ export default function MapConfigPanel({ config, onChange, tables, widgetId }: C
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [infoPopupHeightPx]);
 
-  // Clamp-on-blur logic (locked: NO clamping while typing per 22-CONTEXT.md anti-pattern)
+  // Clamp-on-blur logic (locked: NO clamping while typing per Phase 22 context anti-pattern)
   const clampRadius = (raw: string): { value: number; clamped: boolean } => {
     const n = Number(raw);
     if (!Number.isFinite(n)) {
@@ -742,7 +742,7 @@ export default function MapConfigPanel({ config, onChange, tables, widgetId }: C
           // be invalid for the new table's column shape, which would leave the row
           // permanently broken). Stale lonCol/latCol/spatialCol are explicitly
           // cleared because the prior table's column names are meaningless for the
-          // new table. CONTEXT.md §"Per-row UX" line 57 LOCKS this behavior:
+          // new table. the phase context §"Per-row UX" line 57 LOCKS this behavior:
           // "Auto-suggest spatial mode on table pick: Reuse autoSuggestSpatialMode
           //  logic from KineticaWmsLayerForm.tsx (Phase 11)."
           const changeTable = (newTableId: number) => {

@@ -1,7 +1,7 @@
 /**
  * lib.dynamicViewName.spec.ts — Phase 32 Plan 01 Task 2 (DV-V16-01).
  *
- * Unit coverage of `buildDynamicViewName`. Locked shape per 32-CONTEXT.md § D7:
+ * Unit coverage of `buildDynamicViewName`. Locked shape per Phase 32 context § D7:
  *   _kbi_dv_u<sanitizedUserId>_d<dashboardId>_<dynamicViewId>
  *
  * Mirrors lib.viewNaming.spec.ts shape (vitest, no jest globals, pure module).

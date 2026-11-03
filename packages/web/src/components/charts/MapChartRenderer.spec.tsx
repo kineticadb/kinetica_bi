@@ -5735,7 +5735,7 @@ describe("quick-260608-rbq: WMS loading indicator", () => {
 /* ------------------------------------------------------------------ */
 
 describe("Phase 61 GAP-61-01 — in-map legend follows the runtime overlay (effectiveLayers wiring)", () => {
-  // Live UAT (61-UAT.md §1/§2) surfaced this: a radio-group widget applies a
+  // Live UAT (Phase 61 UAT §1/§2) surfaced this: a radio-group widget applies a
   // transient layer overlay (renderMode/cb_config patch) via widgetActionStore.
   // The MAP TILES switched live (effectiveLayers is overlay-merged), but the in-map
   // Layers legend stayed frozen on the SAVED config — because legendKey and

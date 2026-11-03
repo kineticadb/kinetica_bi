@@ -128,7 +128,7 @@ const SCHEMA_DDL = `
 
   -- Phase 32 (v1.6 DV-V16-01): dynamic views — saved SQL templates that re-materialize
   -- on top of an existing filter view. columns_json is refreshed on successful Preview /
-  -- Save (CONTEXT.md D3); refreshed when template_sql changes (Plan 02 update endpoint).
+  -- Save (the phase context D3); refreshed when template_sql changes (Plan 02 update endpoint).
   -- name is the user-facing label (unique per dashboard); the actual materialized Kinetica
   -- view name is computed at runtime via buildDynamicViewName() — NOT stored.
   CREATE TABLE IF NOT EXISTS dashboard_dynamic_views (
@@ -148,7 +148,7 @@ const SCHEMA_DDL = `
   -- (no ALTER needed — CREATE TABLE IF NOT EXISTS covers both fresh installs and existing
   -- v1.7 deployments). Seeded idempotently by seedRbac() in createDb (INSERT OR IGNORE).
   -- Username is the Kinetica/OIDC username; NO local users table (identity is external).
-  -- Usernames are stored LOWERCASED in user_roles (46-CONTEXT.md: OIDC casing is inconsistent;
+  -- Usernames are stored LOWERCASED in user_roles (Phase 46 context: OIDC casing is inconsistent;
   -- case-insensitive matching prevents silent role-assignment breakage).
   CREATE TABLE IF NOT EXISTS roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +161,7 @@ const SCHEMA_DDL = `
 
   -- Role → permission mapping (many-to-many). permission is a code-catalog string
   -- (lib/permissions.ts), intentionally NOT a FK; no permissions table in v1.8 per
-  -- 46-CONTEXT.md. Editable by user admin in Phase 50, including for built-in roles.
+  -- Phase 46 context. Editable by user admin in Phase 50, including for built-in roles.
   CREATE TABLE IF NOT EXISTS role_permissions (
     role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     permission TEXT NOT NULL,
@@ -551,7 +551,7 @@ export const createDb = (dbPath: string): Database.Database => {
 
   // v1.25 Phase 122 (SSYNC-V125-02): add columns_fingerprint TEXT to existing `tables`.
   // NULL = this table's snapshot predates precise type capture, so the first schema check
-  // reports baseline_required instead of diffing types (122-SPIKE-NOTES.md Q4: the stored
+  // reports baseline_required instead of diffing types (Phase 122 spike notes Q4: the stored
   // INFORMATION_SCHEMA values are actively wrong about char width, so a diff would emit a
   // false retype for every char column). Idempotent: PRAGMA guard makes a second boot a no-op.
   const tableCols = instance
@@ -810,7 +810,7 @@ export const getTableColumnsFingerprint = (id: number): string | null => {
   return row?.columns_fingerprint ?? null;
 };
 
-/** Maximum sync-history entries kept per table. Locked at 20 in 125-CONTEXT.md. */
+/** Maximum sync-history entries kept per table. Locked at 20 in Phase 125 context. */
 export const SYNC_HISTORY_CAP = 20;
 
 /**
@@ -1347,7 +1347,7 @@ export const deleteDashboardLayer = (id: number): boolean => {
 
 /**
  * Reorder layers atomically. Accepts an array of layer IDs in the desired order.
- * Normalises positions to 0..N-1. PITFALL (RESEARCH.md Pitfall 6) lock — eliminates
+ * Normalises positions to 0..N-1. PITFALL (the phase research Pitfall 6) lock — eliminates
  * gaps left by previous deletes; ALL layers for the dashboard MUST be present in
  * orderedIds (caller sends the full ordered list).
  * Throws if an id does not belong to dashboardId or if the count mismatches.

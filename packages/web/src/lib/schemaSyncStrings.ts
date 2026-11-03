@@ -5,7 +5,7 @@
  * It reaches NO response body — `index.ts` references it nowhere — and this repo has no
  * cross-package imports, so the web cannot import it. ROADMAP Phase 126 criterion 6's
  * wording ("the UI imports the constant") is therefore not literally achievable;
- * 126-CONTEXT.md records that correction and mandates this mirror instead. Adding the
+ * Phase 126 context records that correction and mandates this mirror instead. Adding the
  * constant to the apply response would be a `packages/server` change, which this phase
  * explicitly does not make.
  *

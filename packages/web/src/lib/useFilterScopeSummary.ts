@@ -3,7 +3,7 @@
  *
  * Pure helper `computeFilterScopeSummary` + thin React hook `useFilterScopeSummary`.
  *
- * Design decisions (locked in 95-01-PLAN.md):
+ * Design decisions (locked in Phase 95-01 plan):
  *   - Badge data is computed LOCALLY — do NOT read filterCombinationStore here.
  *   - REUSE resolveFilterSet (Phase 88) + resolveSpatialShapes (Phase 93.5); never reimplement.
  *   - Shapes only participate for spatial-capable table-bound widgets (spatialCapable===true).

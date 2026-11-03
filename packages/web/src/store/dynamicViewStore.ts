@@ -16,14 +16,14 @@
  * No "stale" status — TTL-expired entries are derived client-side from `expiresAt + Date.now()`
  * by Phase 35 renderers, not stored.
  *
- * Entry shape (locked by 33-CONTEXT.md § "Store shape"):
+ * Entry shape (locked by Phase 33 context § "Store shape"):
  *   { viewName: string, status, expiresAt?, error?, reason? }
  *
  * viewName invariant: always populated (deterministic via buildDynamicViewName from markPending
  * forward). Never empty/null on pending/over_threshold/error entries (except the defensive
  * setError-on-absent fallback — see action body below).
  *
- * dynamicViewVersion semantics (locked by 33-CONTEXT.md § "dynamicViewVersion semantics"):
+ * dynamicViewVersion semantics (locked by Phase 33 context § "dynamicViewVersion semantics"):
  *   - setView: always +1 (even byte-identical payload)
  *   - markPending: always +1 (even markPending-over-pending)
  *   - setError: always +1 (even setError-over-already-error)
@@ -82,7 +82,7 @@ export const useDynamicViewStore = create<DynamicViewState>((set) => ({
 
   // REPLACE semantics — caller passes full payload; store writes verbatim. ALWAYS bumps version
   // (even on byte-identical payload — mirrors filterViewStore.setView at filterViewStore.ts:59-73
-  // and 33-CONTEXT.md § "dynamicViewVersion semantics" first bullet).
+  // and Phase 33 context § "dynamicViewVersion semantics" first bullet).
   // Only spread optional fields that are present in the payload — REPLACE means a payload
   // without expiresAt MUST produce an entry without expiresAt (not a merge with prior entry).
   setView: (id, payload) =>
@@ -101,7 +101,7 @@ export const useDynamicViewStore = create<DynamicViewState>((set) => ({
     }),
 
   // Placeholder write before materializeDynamicView call. If entry exists: overwrite status to
-  // "pending", strip expiresAt/error/reason, KEEP existing viewName unchanged (locked 33-CONTEXT.md
+  // "pending", strip expiresAt/error/reason, KEEP existing viewName unchanged (locked Phase 33 context
   // § "Action contract" markPending bullet — preserves prior cached name for retry without re-fetch).
   // If entry absent: create placeholder { viewName: <caller-arg>, status: "pending" }.
   // ALWAYS bumps version (locked rule — overlapping triggers signal abort+retry; Phase 35 dedupes

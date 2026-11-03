@@ -3,14 +3,14 @@
  *
  * Card is dashboard-scoped: dropdown lists ALL dashboard layers where info_enabled === 1
  * — independent of which map widget owns the layer or whether any map currently has the
- * layer visible (locked at 23-CONTEXT.md § "Layer subscription contract & dropdown source").
+ * layer visible (locked at Phase 23 context § "Layer subscription contract & dropdown source").
  * All three spatial modes (latlon/wkt/wkb) are supported by /api/info/query.
  *
  * NO popup chrome (no anchored container, no close X, no ESC handler, no ol/Overlay).
  * Standard widget shell (drag handle, delete button) is provided by the dashboard widget grid
  * outside this component — InfoCardRenderer renders only the card body and outer wrapper class.
  *
- * Empty state copy: "Click a point on the map to see details" (ROADMAP.md verbatim — Success
+ * Empty state copy: "Click a point on the map to see details" (the roadmap verbatim — Success
  * Criterion 4). Single neutral copy across all empty/missing/error variants.
  *
  * The card does NOT initiate a fetch on mount. <InfoSelectionView /> waits for activeLayerId

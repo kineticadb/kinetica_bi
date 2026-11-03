@@ -82,7 +82,7 @@ describe("KineticaPermissionError", () => {
   });
 
   it("carries upstreamStatus from constructor arg (400 — DDL denial via HTTP 400)", () => {
-    // Kinetica returns 400 for DDL access denial — see SPIKE.md
+    // Kinetica returns 400 for DDL access denial (Phase 2 spike)
     const e = new KineticaPermissionError("Kinetica permission denied", 400);
     expect(e.upstreamStatus).toBe(400);
     expect(e.status).toBe(403); // still maps to client-facing 403

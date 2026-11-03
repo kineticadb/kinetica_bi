@@ -2,14 +2,14 @@
  * Pure SQL helper: substitute the `{view}` token in a dynamic-view template
  * with the source filter-view's materialized name.
  *
- * Locked decisions (32-CONTEXT.md § D1):
+ * Locked decisions (Phase 32 context § D1):
  *  - Single placeholder: `{view}`.
  *  - Case-insensitive (`{View}` / `{VIEW}` accepted).
  *  - Whitespace-tolerant around the token (`{ view }` accepted).
  *  - GLOBAL replace — every occurrence in the template is substituted.
  *  - If no occurrence is found, throws `MissingViewTokenError`. This is a
  *    configuration error: a dynamic view that does NOT reference the source
- *    filter view would bypass the threshold gate (CONTEXT.md D1 rationale).
+ *    filter view would bypass the threshold gate (the phase context D1 rationale).
  *
  * Pure module — zero imports beyond the JS stdlib (none used here).
  * No Express, no db, no kinetica.ts.

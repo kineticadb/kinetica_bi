@@ -4,7 +4,7 @@
  * Short-circuits BEFORE AggregatedWidgetRenderer in WidgetRenderer.tsx. Owns its full lifecycle:
  *   - On mount: fetches value universes (topValuesFn for dropdown/multi-select, columnStatsFn
  *     for number-range) with AbortController cleanup; refs base table (NOT filter view —
- *     value universes stay stable as the operator filters; not cascading per CONTEXT.md).
+ *     value universes stay stable as the operator filters; not cascading per the phase context).
  *   - Subscribes to useFilterStore.filters[tableId] so external chip dismissals (filter-bar ×)
  *     re-render the controls to reflect "not applied" state.
  *   - Stages all control values in local useState; never auto-applies.

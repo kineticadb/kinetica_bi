@@ -85,7 +85,7 @@ type WidgetActionStoreState = {
    * DTO-shaped: { config?: { renderMode?, visible?, opacity? }, track_config?, cb_config? }
    * MapChartRenderer.effectiveLayers deep-merges: { ...l, ...topLevel, config: { ...l.config, ...cfgPatch } }
    * Recomputed whenever contributions change.
-   * See [[track-config-toplevel-field]] memory and 58.1-CONTEXT.md.
+   * See [[track-config-toplevel-field]] memory and Phase 58.1 context.
    */
   layerOverrides: Record<number, Record<string, unknown>>;
 

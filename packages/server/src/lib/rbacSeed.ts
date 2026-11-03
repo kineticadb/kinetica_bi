@@ -4,7 +4,7 @@
  * Called once inside createDb() after the PRAGMA-guarded ALTER blocks and before
  * `return instance`. Runs on EVERY boot.
  *
- * Semantics (46-CONTEXT.md § Seed & upgrade semantics + addendum 2026-06-05):
+ * Semantics (Phase 46 context § Seed & upgrade semantics + addendum 2026-06-05):
  *
  *   Role rows: INSERT OR IGNORE — unchanged from original.
  *

@@ -7,7 +7,7 @@
  *   - Pre-v1.25 migration: a database built with the OLD `tables` shape (no
  *     `columns_fingerprint`) gets the column added by createDb WITHOUT touching
  *     the existing row's `columns` value — proven byte-identical against the
- *     real lossy value the 122-SPIKE-NOTES.md spike captured.
+ *     real lossy value the Phase 122 spike notes spike captured.
  *   - Idempotency: calling createDb twice on the same file does not throw.
  *   - `getTableColumnsFingerprint` accessor: null for a never-fingerprinted row,
  *     raw/unparsed TEXT when present, null for an unknown id.

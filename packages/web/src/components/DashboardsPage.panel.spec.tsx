@@ -5,7 +5,7 @@
 //
 // Mirrors the ResizeObserver/OL stubs + api/client mocks from DashboardsPage.spec.tsx (a
 // NEW standalone spec file importing DashboardsPage transitively must carry the same stubs
-// per 107-RESEARCH.md's Test Strategy note). Every dashboard fixture here explicitly sets
+// per Phase 107 research's Test Strategy note). Every dashboard fixture here explicitly sets
 // `filter_display_mode` (Open Question #4 — new tests must never rely on an implicit
 // absent-field default).
 

@@ -1,5 +1,5 @@
 // Phase 115 Plan 01 Task 3 (DLINK-V121-03): pins the password-mode logged-out deep-link
-// journey that 115-RESEARCH.md §Q1 proved (by executed test) already works end-to-end with
+// journey that Phase 115 research §Q1 proved (by executed test) already works end-to-end with
 // ZERO changes to App.tsx or LoginPage.tsx. This file is a permanent regression test for
 // that finding, adapted from §Q1's throwaway spike.
 //
@@ -18,7 +18,7 @@ vi.mock("./components/Sidebar", () => ({ default: () => <nav data-testid="sideba
 vi.mock("./components/Topbar", () => ({ default: () => <header data-testid="topbar" /> }));
 // Mirror the REAL DashboardsPage's mount-time lazy-useState capture contract — a dumb
 // prop-reflector falsely fails (App's own effects mutate the prop's upstream state after
-// mount; see App.deeplink.spec.tsx:27-32 and 115-RESEARCH.md §Q1/Pitfall 2).
+// mount; see App.deeplink.spec.tsx:27-32 and Phase 115 research §Q1/Pitfall 2).
 vi.mock("./components/DashboardsPage", () => ({
   default: ({ initialOpenDashboard }: { initialOpenDashboard?: { dashboard: { id: number }; mode: string } }) => {
     const [captured] = useState(() => initialOpenDashboard);
@@ -119,7 +119,7 @@ describe("password-mode logged-out deep link paste (AUTHLINK-115)", () => {
 
     // In-place store flip — exactly the shape a real password login() success uses.
     // No navigation, no reason left set (that would test the wrong thing — see
-    // 115-RESEARCH.md §Q5 Pitfall 1).
+    // Phase 115 research §Q5 Pitfall 1).
     setAuth({
       status: "authenticated",
       user: { username: "alice", roles: [], permissions: [] },
@@ -133,7 +133,7 @@ describe("password-mode logged-out deep link paste (AUTHLINK-115)", () => {
 
   // This is the test that justifies the locked asymmetry — OIDC writes to sessionStorage
   // because it navigates away and back (destroying the URL); password mode never writes
-  // because it never leaves the page at all (115-RESEARCH.md §Q3). A second write here would
+  // because it never leaves the page at all (Phase 115 research §Q3). A second write here would
   // create a second source to reconcile against the same URL-sourced id.
   it("AUTHLINK-115: password mode needs NO sessionStorage — kbi_returnTo is never written on this journey", async () => {
     window.history.replaceState(null, "", "/?dashboard=12");

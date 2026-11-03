@@ -9,7 +9,7 @@
  *   Stored 42 → renders "42%". We deliberately avoid d3's native "%" type specifier, which
  *   would produce 4200% (×100 is d3 convention for fractional values).
  *   Only `kind:"d3"` passes the specifier verbatim to d3, where "%" DOES ×100 (intentional
- *   escape hatch for power users — see Pitfall 1 / CONTEXT.md percent decision).
+ *   escape hatch for power users — see Pitfall 1 / the phase context percent decision).
  */
 
 import { format as d3Format } from "d3-format";
@@ -161,7 +161,7 @@ function buildNumberFormatter(spec: FormatSpecNumber): (v: unknown) => string | 
       const d3Spec = `${commas}.${spec.decimals}f`;
       const formatted = d3Format(d3Spec)(n);
 
-      // Currency prefix (placed BEFORE the number, CONTEXT.md lock)
+      // Currency prefix (placed BEFORE the number, the phase context lock)
       if (spec.currency !== false) {
         return `${spec.currency}${formatted}`;
       }
@@ -186,7 +186,7 @@ function buildD3Formatter(spec: FormatSpecD3): (v: unknown) => string | unknown 
 
     try {
       // NOTE: d3's % type DOES ×100 here — raw d3 semantics, intentional for the escape hatch
-      // (see Pitfall 1 / CONTEXT.md percent decision). Power users who type ".1%" expect ×100.
+      // (see Pitfall 1 / the phase context percent decision). Power users who type ".1%" expect ×100.
       return d3Format(spec.specifier)(n);
     } catch {
       return v; // invalid specifier → raw value, never throw

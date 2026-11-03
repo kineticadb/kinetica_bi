@@ -196,7 +196,7 @@ describe("App deep-link wiring (Phase 114 Plan 02)", () => {
   // ─── PHASE 115 AMENDMENT (DLINK-V121-03) ────────────────────────────────────────────────
   // Phase 114's test here was `DEEPLINK-114: a pasted link beats the Phase 7 ReturnTo page
   // restore`, set up as kbi_returnTo={page:"roles"} + URL ?dashboard=7, asserting the dashboard
-  // won. Phase 115's locked conflict rule (115-CONTEXT.md) reclassifies that EXACT state: a
+  // won. Phase 115's locked conflict rule (Phase 115 context) reclassifies that EXACT state: a
   // ReturnTo whose page is not "dashboards" can only have been written by the UNAUTHORIZED_EVENT
   // handler, i.e. an expiry that captured the user somewhere else — and for an expiry, where you
   // actually were wins. The app never produces that shape for a paste: the commit-time write

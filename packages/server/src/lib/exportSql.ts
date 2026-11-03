@@ -9,7 +9,7 @@
  * under the exporting user's own Kinetica credentials.
  *
  * Runtime widget-action overrides (useWidgetActionStore.widgetOverrides) are
- * NOT applied: operator answer Q-D in 128-SPIKE-NOTES.md = "Phase 131
+ * NOT applied: operator answer Q-D in Phase 128 spike notes = "Phase 131
  * follow-up". Columns = cfg.columns in order (IDENT_RE-filtered), or all
  * columns in schema order when none are configured (operator answer Q-C).
  *
@@ -24,7 +24,7 @@ import type { Widget } from "../types";
 export const EXPORT_IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_.]*$/; // same as WidgetRenderer.tsx:1909
 
 export type ExportPagingMechanism = "paging_table" | "offset";
-/** Approved at the Phase 128 spike checkpoint — see 128-SPIKE-NOTES.md "## Decision". */
+/** Approved at the Phase 128 spike checkpoint — see Phase 128 spike notes "## Decision". */
 export const EXPORT_PAGING_MECHANISM: ExportPagingMechanism = "offset";
 
 export type ExportSpec = {
@@ -142,7 +142,7 @@ export function buildExportPlan(input: BuildExportPlanInput): ExportPlan {
     }
     // Phase 133 (AISAFE-V20-01): client-supplied columns must exist on the REGISTERED table
     // snapshot (regex checks above stay first so malformed names keep their invalid_* codes).
-    // cfg.columns / cfg.sortField are SERVER-HELD widget config: residual in 133-COLUMN-AUDIT.md.
+    // cfg.columns / cfg.sortField are SERVER-HELD widget config: residual in Phase 133 column audit.
     if (row) {
       const clientCols: unknown[] = [
         ...filters.map((f) => f.column),
@@ -230,7 +230,7 @@ export function buildBatchRequest(
       extra: {
         offset,
         limit,
-        // 128-SPIKE-NOTES.md: paging_table_ttl accepted as string minutes ("30"/"1").
+        // Phase 128 spike notes: paging_table_ttl accepted as string minutes ("30"/"1").
         options: { paging_table: plan.pagingTable, paging_table_ttl: String(pagingTtlMinutes) },
       },
     };

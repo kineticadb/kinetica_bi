@@ -27,7 +27,7 @@
  * CERTAINTY PROSE LIVES HERE, RENDERED VERBATIM.
  * ------------------------------------------------
  * The wording that decides whether an operator trusts a finding is too important to be invented in
- * the rendering layer, where it can drift or soften across a re-render — 124-CONTEXT.md locks this.
+ * the rendering layer, where it can drift or soften across a re-render — Phase 124 context locks this.
  * One source (`certaintyProse`, below), consistent everywhere.
  */
 
@@ -58,7 +58,7 @@ export type { ImpactSeverity, ImpactAdvisory };
 
 // -------------------------------------------------------------------------------------------
 // The ImpactReport contract. Phase 125 persists this; Phase 126 renders it. Reproduced verbatim
-// in 124-03-SUMMARY.md before either of those phases is planned further.
+// in Phase 124-03 summary before either of those phases is planned further.
 // -------------------------------------------------------------------------------------------
 
 /** Which diff group a column came from. Severity is a function of this plus, for a retype, the
@@ -73,7 +73,7 @@ export type ImpactReference = {
   /** The machine-readable tier, straight from ColumnRef. */
   confidence: RefConfidence;
   tableScope: ColumnRefTableScope;
-  /** Report-ready prose the UI renders VERBATIM. Locked in 124-CONTEXT.md: the tier AND the
+  /** Report-ready prose the UI renders VERBATIM. Locked in Phase 124 context: the tier AND the
    *  prose, one source, so the wording cannot drift or soften in the rendering layer. */
   certainty: string;
   /** Matched line, 1-based line number and 0-based in-line offset, per free-SQL match. Empty for
@@ -84,7 +84,7 @@ export type ImpactReference = {
 /** One record affected by one column's change. ALL of that record's reference sites for that
  *  column are grouped here — a widget that matches through both a structured field AND its own
  *  config.sql appears ONCE, with two references. Grouping by record is REQUIRED, not optional
- *  (124-CONTEXT.md, carried from Phase 123). */
+ *  (Phase 124 context, carried from Phase 123). */
 export type ImpactRecord = {
   recordKind: ColumnRefRecordKind;
   /** null ONLY for a column-format rule, whose key is (table_id, column_name). */
@@ -177,7 +177,7 @@ export function certaintyProse(
 }
 
 /**
- * The one recorded KNOWN GAP (124-CONTEXT.md's deferred item): `dynamicView.columns_json[].type`
+ * The one recorded KNOWN GAP (Phase 124 context's deferred item): `dynamicView.columns_json[].type`
  * is a SECOND frozen type cache alongside a widget's `drillDownColumnType`, and a retype leaves it
  * stale in exactly the same way. It does not fit the severity model cheaply — unlike
  * `drillDownColumn`, `columnRefs.ts` enumerates no site for `columns_json[].type` (only
@@ -200,7 +200,7 @@ export const COLUMNS_JSON_TYPE_GAP =
  * frozen CLASS correct, so flagging it would be noise.
  *
  * This is a FILTER over findings collectColumnRefs already produced, not a new traversal
- * (124-RESEARCH.md §3.1): the `widget.config.drillDownColumn` site is already enumerated, and the
+ * (Phase 124 research §3.1): the `widget.config.drillDownColumn` site is already enumerated, and the
  * frozen value is read off the widget row already present in ColumnRefsInput.
  */
 const STALE_DRILL_DOWN_SITE: ColumnRefSite = "widget.config.drillDownColumn";
@@ -248,7 +248,7 @@ export function buildImpactReport(input: ImpactInput): ImpactReport {
   const { check, tableId, refsInput, dashboards } = input;
 
   // Step 1: walked columns are removed + retyped ONLY. Added columns are deliberately excluded
-  // (124-CONTEXT.md discretion #2 / locked_design item 4) — a pre-existing reference to a name
+  // (Phase 124 context discretion #2 / locked_design item 4) — a pre-existing reference to a name
   // that has just started existing describes something already broken and now FIXED.
   const walkedColumns = [
     ...check.removed.map((r) => r.column),

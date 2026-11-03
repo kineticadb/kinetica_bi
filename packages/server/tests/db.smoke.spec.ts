@@ -486,7 +486,7 @@ describe("db.ts module shape (Wave 0)", () => {
     expect(byName.dynamic_view_id.dflt_value).toBeNull();
 
     // table_id stays NOT NULL — dv-bound layers will set table_id = dv.source_table_id
-    // at the picker layer; no schema relaxation in Phase 35 (CONTEXT.md lock).
+    // at the picker layer; no schema relaxation in Phase 35 (the phase context lock).
     expect(byName.table_id.notnull).toBe(1);
   });
 

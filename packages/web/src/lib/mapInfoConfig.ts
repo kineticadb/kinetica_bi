@@ -5,19 +5,19 @@
  * default the missing values to the locked v1.4 defaults so legacy widgets render
  * the popup at the standard click radius without a migration.
  *
- * LOCKED DEFAULTS (from REQUIREMENTS.md CONFIG-V14-02 + ROADMAP Phase 19 Notes):
+ * LOCKED DEFAULTS (from the milestone requirements CONFIG-V14-02 + ROADMAP Phase 19 Notes):
  *   infoEnabled  → true   (per-widget click popup is opt-out, not opt-in)
  *   infoRadiusPx → 3      (click radius in pixels — tightened from the
  *                          original v1.4 default of 20 to reduce overlap noise)
  *
  * Phase 19 ships these helpers DORMANT. Phase 21 (map-click-popup) is the first
  * caller — it imports getInfoEnabled to decide whether to register the OL click
- * listener at all (kill switch lock per STATE.md v1.4 architecture decisions:
+ * listener at all (kill switch lock per the project state notes v1.4 architecture decisions:
  * "Per-widget infoEnabled: false disables the OL click listener entirely (no listener
  * registration)"). Phase 22 (config-ui) writes explicit values via MapConfigPanel.
  *
  * NO CLAMPING / VALIDATION HERE — Phase 22 UI is responsible for min/max enforcement
- * (REQUIREMENTS.md CONFIG-V14-04: "numeric input for infoRadiusPx (pixel radius,
+ * (the milestone requirements CONFIG-V14-04: "numeric input for infoRadiusPx (pixel radius,
  * integer, min 1, max 200, default 3)"). These helpers are pure reads; they pass
  * through whatever value is set, including 0 / negative / non-integer / NaN. Phase 22
  * is where the user-facing bound is enforced.

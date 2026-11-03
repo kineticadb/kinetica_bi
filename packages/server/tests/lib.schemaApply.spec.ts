@@ -25,7 +25,7 @@ import {
 // ALL FIXTURES IN THIS FILE ARE SYNTHETIC. No real table, schema or column
 // name from any deployment appears here -- neutral names only (`demo_table`,
 // `col_a`, `col_b`, `col_ts`). The base/refinement PAIRINGS follow
-// 122-SPIKE-NOTES.md's live /show/table capture; the NAMES do not.
+// Phase 122 spike notes's live /show/table capture; the NAMES do not.
 // ---------------------------------------------------------------------------
 
 const fp = (base: string, refinements: string[] = []): ColumnFingerprint => ({ base, refinements });
@@ -132,7 +132,7 @@ describe("canonicalFingerprintJson / isStaleAgainst", () => {
 // renderColumnsMap — the tables.columns vocabulary
 // ===========================================================================
 
-// SYNTHETIC fixtures. The base/refinement pairings follow 122-SPIKE-NOTES.md's live
+// SYNTHETIC fixtures. The base/refinement pairings follow Phase 122 spike notes's live
 // /show/table capture (char1/char4/char16 as `properties` markers on a `string` base;
 // int8/int16 on an `int` base; `timestamp` on a `long` base). Column names are neutral.
 const FIXTURES: Array<{ col: string; fp: ColumnFingerprint; rendered: string }> = [
