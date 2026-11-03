@@ -33,7 +33,7 @@ export type OidcConfig = {
   usernameRegex?: string;
 };
 
-// ---- Friendly error code vocabulary (LOCKED in CONTEXT.md; Phase 7 frontend asserts these strings) ----
+// ---- Friendly error code vocabulary (LOCKED in the phase context; Phase 7 frontend asserts these strings) ----
 export type OidcFriendlyCode =
   | "oidc_denied"
   | "oidc_invalid"

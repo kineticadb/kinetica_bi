@@ -6,7 +6,7 @@
  * `mapHeightPx`) and the click latitude (`clickLat`). The server computes
  * the ground-distance threshold here so the SQL WHERE clause can use it
  * directly — avoiding any client-side trigonometry duplication
- * (SPATIAL-V14-05 architecture lock; see PROJECT.md Key Decisions).
+ * (SPATIAL-V14-05 architecture lock; see the project decisions Key Decisions).
  *
  * Two helpers exported:
  *
@@ -24,7 +24,7 @@
  *   zoom levels (city / neighborhood / building) but degrades at world
  *   view (where the bbox spans many degrees of latitude and the cos
  *   factor varies meaningfully across it). Acceptable for v1.4 use
- *   cases per CONTEXT.md.
+ *   cases per the phase context.
  *
  * Pure module — zero imports beyond the Node stdlib (`Math.cos`, `Math.PI`,
  * `Math.max` are V8 built-ins). Mirrors `whereClause.ts` + `viewNaming.ts`.

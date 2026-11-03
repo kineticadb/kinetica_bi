@@ -1,4 +1,4 @@
-// Phase 133 (AISAFE-V20-01, SSYNC-F6): PURE module — zero express/db/kinetica imports. Identifier trust is EARNED by membership in the registered snapshot, never assumed. See 133-COLUMN-AUDIT.md.
+// Phase 133 (AISAFE-V20-01, SSYNC-F6): PURE module — zero express/db/kinetica imports. Identifier trust is EARNED by membership in the registered snapshot, never assumed. See Phase 133 column audit.
 
 export const SQL_IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

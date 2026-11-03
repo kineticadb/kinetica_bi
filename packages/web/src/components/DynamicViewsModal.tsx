@@ -144,7 +144,7 @@ export default function DynamicViewsModal({
   const [saving, setSaving] = useState(false);
 
   // ---- AbortController refs ----
-  // AbortController inventory (4 total, per CONTEXT.md "AbortController scope"):
+  // AbortController inventory (4 total, per the phase context "AbortController scope"):
   //   1. abortRef          — Plan 34-02; mount-time, scoped to listDynamicViews call.
   //   2. previewAbortRef   — Plan 34-03; operation-scoped, aborted on next Preview click + unmount.
   //   3. saveAbortRef      — Plan 34-04 (this plan); operation-scoped, wraps CRUD + materialize.

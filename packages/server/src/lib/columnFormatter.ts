@@ -147,7 +147,7 @@ function buildNumberFormatter(spec: FormatSpecNumber): (v: unknown) => string | 
       const d3Spec = `${commas}.${spec.decimals}f`;
       const formatted = d3Format(d3Spec)(n);
 
-      // Currency prefix (placed BEFORE the number, CONTEXT.md lock)
+      // Currency prefix (placed BEFORE the number, the phase context lock)
       if (spec.currency !== false) {
         return `${spec.currency}${formatted}`;
       }
@@ -172,7 +172,7 @@ function buildD3Formatter(spec: FormatSpecD3): (v: unknown) => string | unknown 
 
     try {
       // NOTE: d3's % type DOES ×100 here — raw d3 semantics, intentional for the escape hatch
-      // (see Pitfall 1 / CONTEXT.md percent decision). Power users who type ".1%" expect ×100.
+      // (see Pitfall 1 / the phase context percent decision). Power users who type ".1%" expect ×100.
       return d3Format(spec.specifier)(n);
     } catch {
       return v; // invalid specifier → raw value, never throw

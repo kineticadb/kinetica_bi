@@ -3,7 +3,7 @@
  *
  * Coverage:
  *   - Fresh-install path: createDb on an empty DB creates `dashboard_dynamic_views`
- *     with the exact 9-column shape locked in 32-CONTEXT.md + a per-dashboard index.
+ *     with the exact 9-column shape locked in Phase 32 context + a per-dashboard index.
  *   - Idempotency: calling createDb twice on the same file path does not throw.
  *   - Pre-v1.6 migration: a database that predates v1.6 (no dashboard_dynamic_views)
  *     gets the table added by CREATE TABLE IF NOT EXISTS without dropping existing data.
@@ -58,7 +58,7 @@ describe("dashboard_dynamic_views migration (Phase 32 DV-V16-01)", () => {
       "updated_at",
     ]);
 
-    // Type / nullable / default sanity per CONTEXT.md § D7 + Endpoints section
+    // Type / nullable / default sanity per the phase context § D7 + Endpoints section
     const info = x
       .prepare("PRAGMA table_info(dashboard_dynamic_views)")
       .all() as Array<{

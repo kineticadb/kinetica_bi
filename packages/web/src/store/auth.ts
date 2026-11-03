@@ -68,7 +68,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   mcpEnabled: false,
   bootstrap: async () => {
     // Step 1: pre-auth config read. Failure → silent fallback (LoginPage falls back to password form).
-    // CONTEXT.md / PITFALL I-03/I-04: must NOT throw out of bootstrap.
+    // the phase context / PITFALL I-03/I-04: must NOT throw out of bootstrap.
     try {
       const config = await fetchAuthConfig();
       set({ authMode: config.authMode });

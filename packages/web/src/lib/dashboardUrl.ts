@@ -5,7 +5,7 @@
  * browser address bar in sync with which dashboard, if any, is open. Native
  * History API only — no router, no new dependency.
  *
- * Locked decisions (113-CONTEXT.md):
+ * Locked decisions (Phase 113 context):
  *   - URL shape is a query param (`?dashboard=12`), never a path or hash.
  *   - Identifier is the numeric dashboard id, never a slug (names are not unique).
  *   - The app's Back IS the browser's Back: opening pushes ONE history entry;

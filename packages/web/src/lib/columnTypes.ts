@@ -23,7 +23,7 @@ export type DrillDownDataType = "string" | "number" | "boolean" | "datetime" | "
 
 // PITFALL D-01 lock: Kinetica geometry + large-text types excluded from drill-down picker.
 // Type strings are lowercased Kinetica DATA_TYPE values from INFORMATION_SCHEMA.COLUMNS
-// (packages/server/src/index.ts:642-654). MEDIUM confidence per .planning/phases/10-existing-chart-drill-down/10-RESEARCH.md
+// (packages/server/src/index.ts:642-654). MEDIUM confidence per Phase 10 research
 // Open Question #1 — conservative pass-through for unknown types means an unknown spatial
 // type would slip into the picker (acceptable: over-exclusion would hide valid columns).
 const EXCLUDED_DRILLDOWN_TYPES: ReadonlySet<string> = new Set([
@@ -182,7 +182,7 @@ function formatDatetimeRange(loIso: string, hiIso: string): string {
  * DISPLAY ONLY — does NOT SQL-escape. SQL safety is in packages/server/src/lib/whereClause.ts.
  *
  * Phase 44 (FILTER-V17-05): extended for `in` / `between` operators. Format mirrors
- * the locked chip text contract in 44-RESEARCH.md §D:
+ * the locked chip text contract in Phase 44 research §D:
  *   - in:      `column in ('a', 'b')`              (lowercase 'in'; single-quoted strings)
  *   - in (num):`column in (1, 2, 3)`               (unquoted numbers)
  *   - between: `column between x and y`            (numbers unquoted; strings/dates unquoted in display)
@@ -237,7 +237,7 @@ export function buildChipText(
 }
 
 // Phase 11: Spatial column helpers (MAP-02)
-// CONTEXT.md "Spatial-column-mode picker" lock; RESEARCH.md Pattern 6.
+// the phase context "Spatial-column-mode picker" lock; the phase research Pattern 6.
 
 export type SpatialMode = "latlon" | "wkt" | "wkb" | "track";
 export type Column = { name: string; type: string };
@@ -297,7 +297,7 @@ export function autoSuggestSpatialMode(
 ): SpatialMode {
   const preferWkt = options?.preferWktOverWkb === true;
 
-  // Precedence (RESEARCH.md Pattern 6):
+  // Precedence (the phase research Pattern 6):
   // 1. Any KINETICA_GEOMETRY_TYPES column → wkb (default) OR wkt (when preferWktOverWkb).
   //    `preferWktOverWkb: true` is used by Phase 28 MapConfigPanel spatial-filter targets
   //    where WKB is deferred (TD-V14-WKB-SPIKE) and produces an unusable "Incomplete" row.

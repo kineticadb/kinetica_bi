@@ -7,7 +7,7 @@
  * Why a static source read rather than an import: the server constant reaches NO response
  * body (`grep SCHEMA_APPLY_TEXT_WIDTH_GAP packages/server/src/index.ts` = 0) and this repo
  * has no cross-package imports, so the web CANNOT import it. ROADMAP criterion 6's "the UI
- * imports the constant" is not literally achievable; 126-CONTEXT.md records that correction
+ * imports the constant" is not literally achievable; Phase 126 context records that correction
  * and mandates this mirror-plus-parity-guard instead. Adding the constant to the apply
  * response would be a `packages/server` change and is explicitly NOT wanted.
  *

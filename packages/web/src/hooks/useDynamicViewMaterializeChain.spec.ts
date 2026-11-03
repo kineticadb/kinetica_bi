@@ -2,7 +2,7 @@
  * Phase 35 Plan 03 (DV-V16-13) + quick-261009-jg6: chain hook spec (driven by filterVersion +
  * filterCombinationStore readiness; see DVCOMBO-C1..C8 at the bottom).
  *
- * Covers the 17 locked behaviors from 35-03-orchestrator-hook-PLAN.md task 1:
+ * Covers the 17 locked behaviors from 35-03-orchestrator-hook-the plan task 1:
  *   T1  list-fetch on mount
  *   T2  cold-start no-filter fast-path (capped dv)
  *   T3  wait state (combination view not ready) -> pending, no HTTP

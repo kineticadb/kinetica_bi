@@ -5,7 +5,7 @@
  * widget, so MapConfigPanel can show a live readout of the view it would capture as the
  * widget's default. The config modal's `.modal-overlay` (position: fixed; inset: 0)
  * completely hides the map, so the panel MUST be able to read the view it is about to
- * save — a blind save was explicitly rejected in 111-CONTEXT.md.
+ * save — a blind save was explicitly rejected in Phase 111 context.
  *
  * WHY NOT mapViewportSyncStore (Phase 104): it publishes ONLY when the per-map
  * "Sync viewport" toggle is on (default OFF), and it is keyed by dashboardId — a single
@@ -31,7 +31,7 @@ import { create } from "zustand";
 /** The live OL view of one map widget, in OL's native projection. */
 export type MapCurrentView = {
   center: [number, number]; // EPSG:3857 — matches view.getCenter()
-  zoom: number;             // fractional OL zoom, UNROUNDED (111-CONTEXT.md lock)
+  zoom: number;             // fractional OL zoom, UNROUNDED (Phase 111 context lock)
 };
 
 type State = {

@@ -17,7 +17,7 @@
  * The `columns_fingerprint` writes in this file are raw test SQL
  * (`db.prepare("UPDATE tables SET columns_fingerprint = ? WHERE id = ?")...`)
  * precisely because Phase 122 intentionally ships NO writer for this column —
- * Phase 125's apply step owns it (see 122-02-SUMMARY.md).
+ * Phase 125's apply step owns it (see Phase 122-02 summary).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { buildTestApp } from "./helpers/app";
@@ -159,7 +159,7 @@ const STABLE_LIVE_BODY = {
   ],
 };
 
-// Real body -- 122-SPIKE-NOTES.md Q5, the no_error_if_not_exists: true probe.
+// Real body -- Phase 122 spike notes Q5, the no_error_if_not_exists: true probe.
 const MISSING_BODY = {
   table_name: "demo.nyctaxi",
   table_names: [] as string[],
@@ -187,7 +187,7 @@ const NO_TABLE_NAMES_BODY = {
 };
 
 // Rename fixture -- stored has customer_id, live has customer_identifier instead
-// (same type). No per-column identity exists (122-SPIKE-NOTES.md Q3): this must
+// (same type). No per-column identity exists (Phase 122 spike notes Q3): this must
 // report as one removal plus one addition, never a pairing.
 const RENAME_STORED = {
   customer_id: { base: "string", refinements: ["char8"] },

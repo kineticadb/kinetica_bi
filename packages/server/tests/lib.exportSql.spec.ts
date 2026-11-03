@@ -2,8 +2,6 @@
  * lib.exportSql.spec.ts — Phase 128 Plan 04 (EXPRT-V126-05). Pure module, no DB.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   buildExportPlan,
   buildBatchRequest,
@@ -179,16 +177,9 @@ describe("paging mechanism and batch requests", () => {
     plan(widget(cfg), spec, { mechanism: "offset" });
 
   it("EXPSQL-mechanism-matches-spike: EXPORT_PAGING_MECHANISM equals the approved decision", () => {
-    const notes = readFileSync(
-      resolve(
-        __dirname,
-        "../../../.planning/phases/128-export-job-core-live-spike-runner-snapshot-cancel/128-SPIKE-NOTES.md",
-      ),
-      "utf8",
-    );
-    const m = /\*\*Chosen mechanism:\*\* (paging_table|offset)/.exec(notes);
-    expect(m).not.toBeNull();
-    expect(EXPORT_PAGING_MECHANISM).toBe(m![1]);
+    // Phase 128 live spike: paging_table never created a table on the target instance, so exports page with
+    // OFFSET over a job-private snapshot view.
+    expect(EXPORT_PAGING_MECHANISM).toBe("offset");
   });
   it("EXPSQL-probe: header probe is SELECT * FROM <snapshotView>", () => {
     expect(buildHeaderProbeSql(off())).toBe("SELECT * FROM _kbi_exp_abcdef12");

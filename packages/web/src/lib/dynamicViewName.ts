@@ -2,7 +2,7 @@
  * Phase 33 (DV-V16-06): pure helper — frontend mirror of the server's deterministic
  * dynamic-view name composer. Byte-parity with `packages/server/src/lib/dynamicViewName.ts`.
  *
- * Shape (locked by 32-CONTEXT.md § D7):
+ * Shape (locked by Phase 32 context § D7):
  *   _kbi_dv_u<sanitizedUserId>_d<dashboardId>_<dynamicViewId>
  *
  * Pure / deterministic: same input always produces the same output.

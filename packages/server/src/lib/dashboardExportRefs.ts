@@ -2,7 +2,7 @@
  * Phase 119 Plan 01 / Phase 120 Plan 01 — the single source of truth for WHERE ids hide inside a
  * persisted dashboard's JSON (widgets.config, dashboard_layers.filter_scope) and its FK columns.
  *
- * Research (119-RESEARCH.md §Q1, confirmed again in 120-RESEARCH.md) found EIGHT reference kinds
+ * Research (Phase 119 research §Q1, confirmed again in Phase 120 research) found EIGHT reference kinds
  * inside `widgets.config`, plus a sixth site carrying the same shape on the
  * `dashboard_layers.filter_scope` DB column. Phase 121 found a NINTH (REF-9) that all three
  * earlier sweeps missed — see the note under REF-9 below:
@@ -102,7 +102,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
  * Called once per reference SITE found by the traversal.
  * Return a number    -> that value is written back AT THAT SITE.
  * Return `undefined` -> the reference is unresolvable and the site is STRIPPED per its own rule.
- *                        NEVER left as the original id (see Pitfall 3 in 120-RESEARCH.md).
+ *                        NEVER left as the original id (see Pitfall 3 in Phase 120 research).
  * The identity visitor (`(site) => site.id`) turns this into a pure, non-mutating COLLECT pass.
  */
 export type RefVisitor = (site: { kind: RefKind; id: number }) => number | undefined;
@@ -494,7 +494,7 @@ export type RemapOutcome = {
 /**
  * Rewrite every reference site inside a widget's `config` to its NEW id, per `maps`. Any old id
  * with no entry in the matching map is STRIPPED (never left in place — see Pitfall 3,
- * 120-RESEARCH.md: an unmapped old id in the TARGET environment silently points at whatever
+ * Phase 120 research: an unmapped old id in the TARGET environment silently points at whatever
  * happens to carry that id there). The visitor below never falls back to the site's own original
  * value on a lookup miss — a missing map entry always resolves to `undefined`, i.e. strip.
  */

@@ -24,7 +24,7 @@ describe("heatmapBucket — SQL expressions", () => {
 
   it("only uses DATE_TRUNC units already proven against Kinetica by timelineBin", () => {
     // Guards against someone adding a unit the backend rejects: every trunc unit
-    // must appear in INTERVAL_LADDER, which CONTEXT.md locked after research.
+    // must appear in INTERVAL_LADDER, which the phase context locked after research.
     const proven = new Set(
       INTERVAL_LADDER.map((i) => i.dateTrunc).filter((u): u is string => u !== null),
     );

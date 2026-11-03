@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useToastStore } from "./toast";
 
 // PITFALL C-04 / AP-4 lock: filters MUST be Record<tableId, ActiveFilter[]> from day 1.
-// Retrofit cost is very high — see .planning/research/PITFALLS.md C-04.
+// Retrofit cost is very high (research pitfall C-04).
 //
 // distinction note: this store is the CLIENT-TRANSIENT drill-down filter set.
 // The existing `views.filter_clause` field on the server (see ViewDto in src/api/client.ts)
@@ -45,7 +45,7 @@ export type FilterState = {
   filterVersion: number;
   // Phase 63 (DVDRILL-V112-05): dv-scoped PARALLEL slice keyed by dynamicViewId.
   // A dv id and a table id are BOTH numbers — filters[dvId] would COLLIDE with filters[tableId].
-  // The LOCKED approach (63-CONTEXT.md <decisions>) is a parallel dv-keyed map, NOT re-keying
+  // The LOCKED approach (Phase 63 context <decisions>) is a parallel dv-keyed map, NOT re-keying
   // the existing one: the table path (filters + addFilter/removeFilter/clearFilters/setBulkFilters)
   // stays byte-unchanged. The dv actions below mirror the table-keyed ones verbatim and reuse the
   // SAME filterVersion counter (WidgetRenderer Effect 1 keys re-fire off it).
@@ -53,7 +53,7 @@ export type FilterState = {
   addDvFilter: (dynamicViewId: number, filter: ActiveFilter) => void;
   removeDvFilter: (dynamicViewId: number, column: string) => void;
   clearDvFilters: (dynamicViewId: number) => void;
-  // Open Question #1 resolution (RESEARCH.md): tableId is a SEPARATE param, not on ActiveFilter.
+  // Open Question #1 resolution (the phase research): tableId is a SEPARATE param, not on ActiveFilter.
   addFilter: (tableId: number, filter: ActiveFilter) => void;
   // Phase 44 (FILTER-V17-02): Apply button on Data Filter widget calls this to batch
   // N column replacements into ONE filterVersion tick — avoids N×materialize cycles.

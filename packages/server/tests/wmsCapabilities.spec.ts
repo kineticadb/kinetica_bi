@@ -8,7 +8,7 @@
  * Fixture: server/src/wmsCapabilities.xml (42507-char GetCapabilities XML from
  * deployed Kinetica at http://kinetica.example.com:9191/gpudb-0, captured in Phase 11 Plan 01 Task 2).
  *
- * Key findings from SPIKE-NOTES.md:
+ * Key findings from the spike notes:
  *   - GetCapabilities XML lists only "heatmap" and "raster" per layer Style blocks
  *   - classbreak / contour return HTTP 200 but are NOT in the XML — do NOT gate UI on XML
  *   - SRS values in fixture: EPSG:900913, EPSG:4326, EPSG:102100, EPSG:3857
@@ -56,7 +56,7 @@ describe("parseWmsCapabilities", () => {
     // Both heatmap and raster are present in the fixture
     expect(result.renderModes).toContain("heatmap");
     expect(result.renderModes).toContain("raster");
-    // classbreak and contour are NOT in GetCapabilities XML (per SPIKE-NOTES.md)
+    // classbreak and contour are NOT in GetCapabilities XML (per the spike notes)
     expect(result.renderModes).not.toContain("classbreak");
     expect(result.renderModes).not.toContain("contour");
   });

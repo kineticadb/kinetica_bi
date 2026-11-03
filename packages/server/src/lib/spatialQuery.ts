@@ -8,7 +8,7 @@
  *   - buildWktQuery (SPATIAL-V14-02): STXY_DISTANCE(wktCol, clickLon, clickLat).
  *     Returns SRS-units of the WKT geometry's storage SRS (typically degrees for
  *     EPSG:4326). radiusGroundDistance MUST be in those same units.
- *     LOCKED DECISION (CONTEXT.md): NO ST_GEOMFROMTEXT wrap — passes raw click
+ *     LOCKED DECISION (the phase context): NO ST_GEOMFROMTEXT wrap — passes raw click
  *     coordinates directly to skip per-query WKT parsing.
  *   - buildWkbQuery (SPATIAL-V14-03 — DEFERRED): throws WkbDeferredError.
  *     Plan 18-01 spike landed NONE_ESCALATE → TECH_DEBT (TD-V14-WKB-SPIKE) on
@@ -16,13 +16,13 @@
  *     not characterize the WKB code path. Function signature stays exported for
  *     type stability so Plan 18-03 can route by spatialMode without conditional
  *     imports (the route handler returns HTTP 501 BEFORE invoking this stub).
- *     See: .planning/phases/18-spatial-spike-and-endpoint/18-SPIKE-NOTES.md ## Decision.
+ *     See the Phase 18 spatial spike decision.
  *
  * Trust boundary on `schema`, `table`, and column-name fields (`lonCol`, `latCol`,
  * `wktCol`, `wkbCol`): names are interpolated DIRECTLY into the SQL without
  * quoting or escaping, and are CLIENT-SUPPLIED. Every route that passes them
  * here MUST first call assertColumnsExist / assertIdentifier (lib/columnGuard.ts).
- * Inventory: .planning/phases/133-ai-contract-shared-package-ssync-f6-fix-spikes/133-COLUMN-AUDIT.md.
+ * Inventory: the Phase 133 column audit.
  *
  * Numeric click coordinates and radius are typed as `number` in
  * SpatialQueryArgs; the route handler in Plan 18-03 validates `typeof === "number"`
@@ -103,7 +103,7 @@ export function buildLatLonQuery(args: SpatialQueryArgs): string {
 /**
  * SPATIAL-V14-02 — WKT STXY_DISTANCE builder.
  *
- * LOCKED DECISION (CONTEXT.md): the click point is passed directly as raw
+ * LOCKED DECISION (the phase context): the click point is passed directly as raw
  * (x, y) coordinates — NO ST_GEOMFROMTEXT('POINT(...)') wrap. This avoids
  * per-query WKT parsing on every row. STXY_DISTANCE returns the same SRS
  * units as the WKT geometry's storage SRS (typically degrees for EPSG:4326),

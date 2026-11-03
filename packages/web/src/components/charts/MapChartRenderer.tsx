@@ -149,7 +149,7 @@ type TileErrorState = { count: number; lastAt: number } | null;
 const LAYER_Z_BASE = 1000;
 
 /**
- * Phase 29 (SHAPE-V15-01): Per-type fixed color palette — locked by 29-UI-SPEC.md.
+ * Phase 29 (SHAPE-V15-01): Per-type fixed color palette — locked by Phase 29 UI spec.
  * Bbox = blue, Lasso = green, Circle = orange. Fill = 10% opacity of the stroke color.
  * Overlap-additive fills produce darker areas on multi-shape overlap (semantically correct
  * for OR-composed spatial filters).
@@ -311,11 +311,10 @@ export function pickPopupAnchor(
 // GAP-24-01-A ROOT CAUSE (Phase 24-04 Task 1, 2026-05-11):
 //   Symptom: toggling a layer's visibility OFF in LayersModal blanks the entire app
 //            (dark-blue background, no dashboard, no widgets, no topbar). Page refresh
-//            required to recover. Screenshot:
-//            .planning/phases/24-verification/screenshots/24-01-task1-layer-visibility-blank-app.png
+//            required to recover.
 //   Captured stack: Live capture not possible from this execution environment (no dev
 //            browser). Static-code root-cause via the four-hypothesis grid in
-//            .planning/phases/24-verification/24-04-PLAN.md <interfaces>. Live re-walk
+//            the Phase 24-04 plan. Live re-walk
 //            after the fix is the verification gate (Task 3 vitest + STEP 24-01 re-walk).
 //   Failing file:line: src/components/charts/MapChartRenderer.tsx:468-469
 //            (source.on("imageloaderror", handleTileError) / source.on("imageloadend",
@@ -370,8 +369,7 @@ export function pickPopupAnchor(
 //            followed by `Uncaught NotFoundError: Failed to execute 'insertBefore' on 'Node':
 //            The node before which the new node is to be inserted is not a child of this
 //            node.` Dashboard B does NOT render — operator sees the dark-blue
-//            dashboard-switch-crash background. Screenshot:
-//            .planning/phases/24-verification/screenshots/24-02-task2-dashboard-switch-crash.png
+//            dashboard-switch-crash background.
 //   Captured stack: `NotFoundError` originates in OpenLayers' internal `ImageWMS#renderFrame`
 //            path which calls `insertBefore` on the OL canvas-container parent node. That
 //            parent was already detached from the DOM at the React-unmount step
@@ -384,7 +382,7 @@ export function pickPopupAnchor(
 //            scheduler then bubbles the resulting DOM-insert failure up the call stack —
 //            React surfaces it at the most-recent addLayer call site, hence line 583.
 //   Root cause: **async OL image-load completing AFTER React unmount**. The crash
-//            timeline (from 24-06-PLAN.md <interfaces>):
+//            timeline (from Phase 24-06 plan <interfaces>):
 //              t0  Dashboard A mounted; Effect 2 attached an ImageWMS source with
 //                  `setImageLoadFunction(imageLoadFunctionFor())` (XHR-based loader).
 //              t1  Dashboard A's WMS request fires; XHR is in flight.
@@ -416,7 +414,7 @@ export function pickPopupAnchor(
 //     GAP-24-01-A), but does NOT stop the orphan XHR → OL renderFrame → insertBefore
 //     chain. The fix below stops the chain at the XHR onreadystatechange site.
 //   Fix shape (Task 2): mountedRef cleanup-gate. Mirrors v1.3 Phase 15's
-//   materializeAbortRef threading pattern (STATE.md Phase 15 LIFE-V13-04 decision).
+//   materializeAbortRef threading pattern (the project state notes Phase 15 LIFE-V13-04 decision).
 //     1. `const mountedRef = useRef<boolean>(true);` at component top (alongside other refs).
 //     2. Effect 1's cleanup return sets `mountedRef.current = false;` as the FIRST line
 //        (BEFORE map.setTarget(undefined) + map.dispose() — so any callback firing during
@@ -617,7 +615,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       .join("|"),
   );
 
-  // Phase 35 (DV-V16-13) — Pitfall 7 lock (35-RESEARCH.md §"Pitfall 7" verbatim):
+  // Phase 35 (DV-V16-13) — Pitfall 7 lock (Phase 35 research §"Pitfall 7" verbatim):
   // dynamic-view-bound layers need their own primitive key so Effects 2 + 3 re-fire when
   // a dv re-materializes. The filter-view path's viewsKey doesn't move when only the dv
   // store changes (dv viewName/status are tracked in useDynamicViewStore.views, NOT in
@@ -808,7 +806,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
 
   // Names of tables for which this map widget has an eligible spatial-filter target
   // (Phase 30 hover-tooltip on draw buttons). Empty array signals "no targets configured"
-  // → drawing produces no chip and no materialize (CONTEXT.md orphan-shape behavior).
+  // → drawing produces no chip and no materialize (the phase context orphan-shape behavior).
   // WKB / incomplete targets are filtered out by isSpatialTargetEligible.
   const eligibleTargetTableNames = useMemo<string[]>(() => {
     const targets = getSpatialTargets({
@@ -886,10 +884,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   const isSyncDrivenRef = useRef<boolean>(false);
 
   // ── Phase 29 (DRAW-V15-02 + V15-P-01 mode-guard FIRST-CODE-CHANGE) ────────
-  // Component-local mode state. NOT in useSpatialFilterStore (out-of-Phase-27 scope per 29-CONTEXT.md).
+  // Component-local mode state. NOT in useSpatialFilterStore (out-of-Phase-27 scope per Phase 29 context).
   // The ref mirror (drawModeRef) is what Effect 6's singleclick handler reads imperatively — so
   // we do NOT have to widen Effect 6's deps array (which would tear down/recreate the listener
-  // on every mode change). See 29-RESEARCH.md Pattern 6 + Pitfall 2 for the stale-closure trap.
+  // on every mode change). See Phase 29 research Pattern 6 + Pitfall 2 for the stale-closure trap.
   const [drawMode, setDrawMode] = useState<DrawMode>("info");
   const drawModeRef = useRef<DrawMode>("info");
   // previousModeRef tracks the last non-draw mode so drawend / ESC can auto-restore (DRAW-V15-02).
@@ -944,7 +942,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // Phase 35 (DV-V16-13/14): "Some layers over threshold" overlay state. Set by Effect 2's
   // post-loop reconciliation after counting layers whose dv-bound + non-materialized status
   // caused buildWmsParams to return null. The overlay surfaces silently — no toast fires
-  // per the locked status-aware-rendering taxonomy (35-CONTEXT.md §"Status → render mapping").
+  // per the locked status-aware-rendering taxonomy (Phase 35 context §"Status → render mapping").
   const [hasOverThresholdLayers, setHasOverThresholdLayers] = useState<boolean>(false);
   // quick-260608-rbq: aggregate loading state. True when ANY configured layer's ImageWMS
   // source is mid-load. Drives the top-center "Loading…" badge render (badge shows iff
@@ -1078,7 +1076,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
 
     // ── Phase 29 (SHAPE-V15-01): VectorLayer + VectorSource for committed shapes ─
     // Pitfall 6 lock: zIndex 10000 puts shapes above all WMS image layers (max ~1000).
-    // The style function reads feature.get("shapeType") for per-type color (29-UI-SPEC.md).
+    // The style function reads feature.get("shapeType") for per-type color (Phase 29 UI spec).
     // selectedShapeIdRef is added by Plan 05; in this plan all features render unselected (width 2).
     const vectorSource = new VectorSource();
     vectorSourceRef.current = vectorSource;
@@ -1094,7 +1092,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
           stroke: new Stroke({ color: palette.stroke, width: isSelected ? 4 : 2 }),
         });
         if (!isSelected) return baseStyle;
-        // Selection halo (29-UI-SPEC.md): inner white halo over the per-type stroke.
+        // Selection halo (Phase 29 UI spec): inner white halo over the per-type stroke.
         // Returning Style[] layers strokes — OL paints in order.
         const haloStyle = new Style({
           stroke: new Stroke({ color: "rgba(255,255,255,0.6)", width: 1 }),
@@ -1556,7 +1554,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     // Functional setState — only triggers a render when the boolean flips.
     const nextHas = overThresholdCount > 0;
     setHasOverThresholdLayers((prev) => (prev === nextHas ? prev : nextHas));
-    // PITFALL S-02 + Pitfall 7 (35-RESEARCH.md): dynamicViewsKey added so Effect 2 re-fires
+    // PITFALL S-02 + Pitfall 7 (Phase 35 research): dynamicViewsKey added so Effect 2 re-fires
     // when any bound dv's viewName or status changes (e.g. pending → materialized after
     // orchestrator cascade completes).
     // Phase 92 (READ-V118-02): comboViewsKey (per-layer combo dep-key) replaces viewsKey.
@@ -1719,10 +1717,10 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     if (!getInfoEnabled(widgetConfig as MapWidgetConfig)) return;  // POPUP-V14-06 kill switch
 
     const handler = async (event: { coordinate: [number, number] }) => {
-      // PHASE 29 V15-P-01 MODE-GUARD — FIRST LINE (locked by STATE.md as the FIRST code change
+      // PHASE 29 V15-P-01 MODE-GUARD — FIRST LINE (locked by the project state notes as the FIRST code change
       // of Phase 29). Reads drawModeRef imperatively to avoid stale closure WITHOUT widening
       // Effect 6's deps array (which would tear down/recreate the singleclick listener on every
-      // mode change, racing the cleanup gate). See 29-RESEARCH.md Pattern 6 + Pitfall 2.
+      // mode change, racing the cleanup gate). See Phase 29 research Pattern 6 + Pitfall 2.
       const mode = drawModeRef.current;
       if (mode !== "pan" && mode !== "info") return;
 
@@ -2205,7 +2203,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const id = selectedShapeIdRef.current;
-      if (!id) return; // silent no-op (29-CONTEXT.md lock)
+      if (!id) return; // silent no-op (Phase 29 context lock)
       useSpatialFilterStore.getState().removeShape(id);
       setSelectedShapeId(null);
     };
@@ -2214,7 +2212,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   }, [drawMode]);
 
   // ── Phase 29 (SHAPE-V15-04): clear selection when switching to non-draw mode ──
-  // 29-CONTEXT.md: "Selection cleared automatically when switching to Info/Pan mode."
+  // Phase 29 context: "Selection cleared automatically when switching to Info/Pan mode."
   // Switching between draw modes (bbox↔lasso↔circle) PRESERVES selection.
   useEffect(() => {
     if (drawMode === "pan" || drawMode === "info") {
@@ -2250,7 +2248,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // NO listener is attached and publish is never called (MAPSYNC-V119-06 byte-identical).
   // Echo-guard: isSyncDrivenRef.current is checked first; if set, we suppress the
   // publish AND reset the flag INSIDE the moveend handler (Pitfall 3 — safest site;
-  // avoids animate-callback / moveend ordering uncertainty per Q2 in RESEARCH.md).
+  // avoids animate-callback / moveend ordering uncertainty per Q2 in the phase research).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -2275,7 +2273,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   }, [syncEnabled, dashboardId, widget.id]);
 
   // Effect 9b (SUBSCRIBE): apply an incoming viewport from another sync-enabled map.
-  // Skips own publishes via originWidgetId check (Q6 in RESEARCH.md).
+  // Skips own publishes via originWidgetId check (Q6 in the phase research).
   // Sets isSyncDrivenRef BEFORE animate so the resulting moveend sees the guard (Q2).
   // duration:0 = immediate/atomic — still fires moveend (Pattern 3; Q2 default).
   useEffect(() => {
@@ -2295,7 +2293,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // Effect 9c (Phase 111 MAPVIEW-V121-01): ALWAYS-ON publish of THIS widget's live view
   // into the widgetId-keyed mapCurrentViewStore, so MapConfigPanel can show a live readout
   // of the view it would capture as the widget's default. The config modal's opaque
-  // .modal-overlay hides the map, so a blind save was explicitly rejected (111-CONTEXT.md).
+  // .modal-overlay hides the map, so a blind save was explicitly rejected (Phase 111 context).
   //
   // DELIBERATELY UNGATED — the ONLY guard is `if (!map) return;`. Do NOT copy Effect 9a's
   // `if (!syncEnabled || dashboardId === undefined) return;` gate: syncViewport defaults to
@@ -2320,7 +2318,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       if (!center || zoom === undefined) return; // same guard as Effect 9a
       useMapCurrentViewStore.getState().publish(widget.id, {
         center: center as [number, number],
-        zoom, // EXACT fractional zoom — never rounded here (111-CONTEXT.md lock)
+        zoom, // EXACT fractional zoom — never rounded here (Phase 111 context lock)
       });
     };
     publishCurrent(); // initial value, before any moveend fires

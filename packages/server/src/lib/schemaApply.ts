@@ -12,7 +12,7 @@
  * What lives here:
  *   - `isStaleAgainst` / `SCHEMA_APPLY_STALE_MESSAGE` — the optimistic-concurrency refusal.
  *     Apply re-reads Kinetica and REFUSES if reality moved after the operator's report was
- *     built, so the operator never applies something they did not see (125-CONTEXT.md,
+ *     built, so the operator never applies something they did not see (Phase 125 context,
  *     locked).
  *   - `renderColumnType` / `renderColumnsMap` / `TYPE_NAMING_REFINEMENTS` — the renderer
  *     that turns a precise fingerprint into the `tables.columns` string every config panel
@@ -182,7 +182,7 @@ export function renderColumnsMap(live: ColumnFingerprintMap): Record<string, str
  *   "no_changes"   -- live already matches the stored snapshot. NOTHING was written: no row
  *                     update, no updated_at bump, no history entry. An apply that changed
  *                     nothing wrote nothing worth remembering, and recording it would consume
- *                     one of the 20 capped slots for no information (125-CONTEXT.md).
+ *                     one of the 20 capped slots for no information (Phase 125 context).
  *   "stale"        -- Kinetica moved after the report was built. NOTHING was written.
  *   "table_missing"-- the registered table id does not exist locally. NOTHING was written.
  *
@@ -311,7 +311,7 @@ export function applySchemaSync(input: {
 
   if (stored === null) {
     // 4a. Baseline. No changeset and no report exist to record, because there was nothing
-    //     comparable to diff against -- that is what a baseline IS (122-CONTEXT.md).
+    //     comparable to diff against -- that is what a baseline IS (Phase 122 context).
     kind = "baseline";
   } else {
     const diff = diffResult(input.table, stored, input.live);
@@ -348,7 +348,7 @@ export function applySchemaSync(input: {
   // 5. Both halves of the snapshot, BOTH derived from the freshly re-read live map -- never
   //    from the client's echoed one. The two serialisers are NOT interchangeable:
   //    `canonicalFingerprintJson` is equality-only and is never stored; the stored form is
-  //    `serializeFingerprintSnapshot` (125-02-SUMMARY.md).
+  //    `serializeFingerprintSnapshot` (Phase 125-02 summary).
   const columns = renderColumnsMap(input.live);
   const fingerprintJson = serializeFingerprintSnapshot(input.live);
 

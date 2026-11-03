@@ -184,7 +184,7 @@ const APPLY_REPORTED_LIVE = {
   col_ts: { base: "long", refinements: ["timestamp"] },
 };
 
-// Real body -- 122-SPIKE-NOTES.md Q5, the no_error_if_not_exists: true probe.
+// Real body -- Phase 122 spike notes Q5, the no_error_if_not_exists: true probe.
 const MISSING_BODY = {
   table_name: QUALIFIED,
   table_names: [] as string[],

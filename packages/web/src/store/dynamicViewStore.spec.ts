@@ -1,7 +1,7 @@
 /**
  * dynamicViewStore.spec.ts — Phase 33 Plan 01 Task 2 (DV-V16-06).
  *
- * Vitest coverage for useDynamicViewStore. Locked semantics from 33-CONTEXT.md
+ * Vitest coverage for useDynamicViewStore. Locked semantics from Phase 33 context
  * § "Action contract" + § "dynamicViewVersion semantics".
  *
  * Test infra:
@@ -96,7 +96,7 @@ describe("markPending", () => {
       .getState()
       .markPending(1, "different_name_should_be_ignored");
     const e = useDynamicViewStore.getState().views[1];
-    // CONTEXT.md § "Action contract" markPending bullet: "keep viewName unchanged".
+    // the phase context § "Action contract" markPending bullet: "keep viewName unchanged".
     expect(e.viewName).toBe("_kbi_dv_a");
     expect(e.status).toBe("pending");
     expect("expiresAt" in e).toBe(false);

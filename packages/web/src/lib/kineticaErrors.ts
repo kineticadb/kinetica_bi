@@ -9,7 +9,7 @@
  * error class, so we inspect err.message. throwForStatus's body.error
  * extraction populates message with the Kinetica string verbatim.
  *
- * Pattern lock (.planning/STATE.md Phase 13 lock + .planning/phases/15-chart-filtering/15-RESEARCH.md § Pattern 4):
+ * Pattern lock (Phase 13, Phase 15 research Pattern 4):
  *   - Substring match: /SqlEngine: Object '[^']+' not found/i (case-insensitive)
  *   - AND substring match: "S/SDc:1513" (Kinetica internal error code — exact)
  *

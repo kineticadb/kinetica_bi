@@ -17,7 +17,7 @@
  * Label format (locked): `{TypeCapitalized} {N}` — "Bbox 1", "Circle 2", "Lasso 3" — session-wide
  * single counter (NOT per-type). Capitalization: bbox→Bbox, lasso→Lasso, circle→Circle.
  *
- * spatialFilterVersion semantics (locked by 27-CONTEXT.md):
+ * spatialFilterVersion semantics (locked by Phase 27 context):
  *   - addShape: +1
  *   - removeShape(existing id): +1
  *   - removeShape(non-existent id): NO-OP (state reference preserved)
@@ -105,7 +105,7 @@ export const useSpatialFilterStore = create<State>((set) => ({
       return {
         shapes: next,
         spatialFilterVersion: s.spatialFilterVersion + 1,
-        // shapeCounter intentionally NOT touched — monotonic no-recycle rule (27-CONTEXT.md).
+        // shapeCounter intentionally NOT touched — monotonic no-recycle rule (Phase 27 context).
       };
     }),
 

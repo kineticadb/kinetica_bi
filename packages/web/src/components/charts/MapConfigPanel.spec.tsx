@@ -895,7 +895,7 @@ describe("MapConfigPanel — Phase 28 Spatial filter targets section", () => {
   // geometry-only table flips the row's spatialMode to 'wkt' automatically via
   // autoSuggestSpatialMode. The prior spatialMode ('latlon') is NOT preserved —
   // it would be invalid for a table with no lat/lon numeric columns.
-  // Source: CONTEXT.md §"Per-row UX" line 57 LOCKED decision; LayersModal.tsx
+  // Source: the phase context §"Per-row UX" line 57 LOCKED decision; LayersModal.tsx
   // handleTableChange (lines 147-165) canonical pattern.
   // auto-suggest-on-table-change
   it("changing table to one whose columns suggest a different mode flips spatialMode automatically (auto-suggest-on-table-change)", () => {
@@ -1481,7 +1481,7 @@ describe("MapConfigPanel — Phase 111 DEFAULT VIEW (MAPVIEW-V121-01/04)", () =>
     expect(next.basemap).toBe("osm");
   });
 
-  // D5 — both values shown before overwrite (111-CONTEXT.md lock)
+  // D5 — both values shown before overwrite (Phase 111 context lock)
   it("shows both the saved default and the pending live replacement before overwrite", () => {
     const onChange = vi.fn();
     _currentViewState.views[WIDGET_ID] = { center: [1000, 2000], zoom: 12.437 };

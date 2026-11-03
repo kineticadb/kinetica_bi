@@ -1029,7 +1029,7 @@ const DashboardOpen = ({
       // Session-only store (STORE-V14-02) — no server-side DROP loop needed.
       useInfoSelectionStore.getState().reset();
       // Plan 23-02 (CARD-V14-02): fourth reset — last-info-click context store.
-      // Pitfall 1 lock (23-RESEARCH.md): stale dashboard-A click coords MUST NOT survive a
+      // Pitfall 1 lock (Phase 23 research): stale dashboard-A click coords MUST NOT survive a
       // dashboard-switch. Session-only store; no DROP loop needed.
       useLastInfoClickContextStore.getState().reset();
       // Phase 27 STORE-V15-04: fifth reset — spatial filter store.
@@ -1269,7 +1269,7 @@ const DashboardOpen = ({
   // Phase 107 Plan 02 (FPANEL-V120-05): collapse state persists per-dashboard via
   // localStorage (client-only, mirrors App.tsx's SIDEBAR_COLLAPSED_KEY pattern).
   // A STORED preference always WINS over the narrow-viewport default (Open Question
-  // #2 in 107-RESEARCH.md); the matchMedia check only supplies the INITIAL default
+  // #2 in Phase 107 research); the matchMedia check only supplies the INITIAL default
   // when no stored value exists yet for this dashboard.id.
   const collapsedKey = `kbi_filterPanelCollapsed_${dashboard.id}`;
   const [panelCollapsed, setPanelCollapsed] = useState<boolean>(() => {
@@ -1341,7 +1341,7 @@ const DashboardOpen = ({
     el?.scrollIntoView({ behavior: prefersReduced() ? "auto" : "smooth", block: "nearest" });
   };
   // "Topmost" = smallest layout y, tie-break smallest x (react-grid-layout absolute-positions,
-  // so DOM order must NOT be used — see 108-RESEARCH.md Q4).
+  // so DOM order must NOT be used — see Phase 108 research Q4).
   const topmostId = (ws: WidgetApplyEntry[]): number | undefined => {
     let best: { id: number; y: number; x: number } | undefined;
     ws.forEach((entry) => {
@@ -1365,7 +1365,7 @@ const DashboardOpen = ({
 
   // Phase 107 Plan 02 (FPANEL-V120-07): three explicit collections in the LOCKED
   // stable order tables -> dynamic views -> spatial (NOT a straight reuse of the
-  // top bar's per-table interleaved loop — see 107-RESEARCH.md "grouping-shape
+  // top bar's per-table interleaved loop — see Phase 107 research "grouping-shape
   // mismatch" pitfall). Only built/used when isPanelMode; harmless to compute
   // unconditionally (same cost class as the top-bar IIFE that already runs every render).
   const panelTableGroups: FilterPanelGroupData[] = Object.entries(allStoreFilters)
@@ -2011,7 +2011,7 @@ const DashboardOpen = ({
                           useFilterStore.getState().clearFilters(tableId);
                         }
                         // Phase 30 (CHIP-V15-02) spatial branch: also remove every shape whose target
-                        // tableId includes this row's tableId. Per CONTEXT.md `<decisions>` § "FilterBar
+                        // tableId includes this row's tableId. Per the phase context `<decisions>` § "FilterBar
                         // chip placement": multi-target shapes are nuked GLOBALLY (their chips disappear
                         // from other rows too) — operator-locked. The semantic is "Clear all means this
                         // row is empty afterward".

@@ -7,8 +7,8 @@ Claude can build a new dashboard or change one you can edit (`list_dashboards`, 
 ## 1. Run Kinetica BI with the MCP routes on
 
 ```
-cd packages/server && MCP_ENABLED=true npm run dev     # or add MCP_ENABLED=true to packages/server/.env
-cd packages/web && npx vite
+MCP_ENABLED=true npm run dev:server     # from the repo root, or add MCP_ENABLED=true to packages/server/.env
+npm run dev                            # the web app, in a second terminal
 ```
 
 The in-app AI does not need to be on: with `MCP_ENABLED=true`, Claude Desktop can build and you can Keep even when `AI_ENABLED` is off (Keep is refused only when both are off). The configured AI provider is never called by MCP.

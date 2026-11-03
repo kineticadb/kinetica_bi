@@ -17,7 +17,7 @@ export type SessionPayload = {
   v: 1;
 };
 
-// AuthedRequest.user shape — flat per ARCHITECTURE.md "requireAuth Changes":
+// AuthedRequest.user shape — flat per the architecture research "requireAuth Changes":
 //   - credentialType lives at the TOP LEVEL of `user`, not inside `creds`
 //   - creds always contains BOTH password AND token (mutually empty strings, never undefined)
 //   - rationale: avoids null-guard noise in helper consumers (Phase 6 buildAuthHeader)

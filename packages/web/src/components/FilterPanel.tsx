@@ -8,7 +8,7 @@
 //
 // Group order is a hard-locked prop-order contract, NOT computed here: caller
 // passes tableGroups, then dvGroups, then spatialGroup — this component renders
-// them in exactly that order (tables -> dynamic views -> spatial, 107-CONTEXT.md).
+// them in exactly that order (tables -> dynamic views -> spatial, Phase 107 context).
 //
 // Phase 109 Plan 01 (FCLEAR-V120-01): .filter-panel-header-actions now also renders a
 // count-gated "Clear all filters" button (before the collapse button), wired via

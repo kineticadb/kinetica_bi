@@ -8,7 +8,7 @@
  * (`grep -c resolveMetricExpr packages/web/src/components/charts/WidgetRenderer.tsx` -> 0). So
  * bar/line/pie/scatter/table/bignumber/heatmap widgets keep computing whatever expression was in
  * force when Apply was last pressed — the SOURCE environment's after an import, or a stale one
- * after any in-place metric edit. See `.planning/defect-frozen-config-sql-metric-expression.md`.
+ * after any in-place metric edit (the frozen config.sql metric-expression defect).
  *
  * Decision: a targeted, positional select-item swap at render time — NOT a full SQL rebuild.
  * `AggregatedWidgetRenderer` does not have the inputs a rebuild needs (`columnTypeMap` for the

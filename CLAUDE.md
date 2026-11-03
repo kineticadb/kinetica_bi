@@ -1,7 +1,7 @@
 # Kinetica BI — Project Instructions
 
 Monorepo: `packages/web` (React + Vite + zustand) and `packages/server` (Express + SQLite, ESM).
-Read `.planning/codebase/CONVENTIONS.md` for the fuller code-style picture.
+For the fuller code-style picture, read `.planning/codebase/CONVENTIONS.md` (local planning docs, not in the repo).
 
 ## UI Conventions (READ BEFORE WRITING ANY COMPONENT)
 

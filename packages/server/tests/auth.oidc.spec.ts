@@ -343,7 +343,7 @@ describe("GET /api/auth/oidc/callback (oidc mode)", () => {
 });
 
 // ---------- /api/auth/oidc/callback: parametrized "every exit clears oidc_state" ----------
-// Per CONTEXT.md locked decision: "cookie cleared on every callback exit — success + all errors".
+// Per the phase context locked decision: "cookie cleared on every callback exit — success + all errors".
 // This single parametrized test exercises ALL 11 exit branches and asserts Set-Cookie clearing
 // on each. Without this, only 2 of ~11 branches were covered, and a regression in any of the
 // other 9 (e.g., a wrapped early-return) would silently pass.
@@ -436,7 +436,7 @@ describe("GET /api/auth/oidc/callback: every exit clears oidc_state cookie", () 
 
   // ----- password-mode branch (1) -----
   // The password-mode 400 path returns BEFORE clearCookie runs in the current implementation
-  // (the route guard at the top short-circuits). CONTEXT.md scopes "every exit clears the cookie"
+  // (the route guard at the top short-circuits). the phase context scopes "every exit clears the cookie"
   // to the OIDC-mode callback path (where the cookie is meaningfully set in /oidc/start). In
   // password mode, /oidc/start returns 400 and never sets oidc_state, so /oidc/callback in
   // password mode has no cookie to clear. This test asserts the 400 branch returns the locked
@@ -451,7 +451,7 @@ describe("GET /api/auth/oidc/callback: every exit clears oidc_state cookie", () 
     expect(res.body).toEqual({ error: "OIDC is not enabled." });
     // No assertion on Set-Cookie clearing: in password mode /oidc/start cannot run, so a real
     // browser will never have an oidc_state cookie to clear. The 400 branch short-circuits
-    // before any cookie logic. CONTEXT.md's "every exit clears oidc_state" applies to the
+    // before any cookie logic. the phase context's "every exit clears oidc_state" applies to the
     // oidc-mode callback path, all 10 branches covered above.
   });
 });
@@ -496,7 +496,7 @@ describe("POST /api/auth/login (oidc mode gate)", () => {
 });
 
 // Plan 06-03: opaque-token warning at /oidc/callback (PITFALL T-05).
-// CONTEXT.md "Opaque access token handling": once-per-login structured warn before
+// the phase context "Opaque access token handling": once-per-login structured warn before
 // createSession when tryDecodeAccessTokenExp(accessToken) === null.
 describe("GET /api/auth/oidc/callback: opaque-token warning (Plan 06-03)", () => {
   // Build a valid 3-segment JWT with parseable exp claim.

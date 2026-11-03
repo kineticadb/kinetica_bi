@@ -110,7 +110,7 @@ const TRACK_BBOX_ENV = process.env.TRACK_BBOX; // optional override; falls back 
 
 const TRACK_PROBES_ENABLED = Boolean(TRACK_TABLE && TRACK_ID_COL && TRACK_ORDER_COL && TRACK_X_COL && TRACK_Y_COL);
 if (!TRACK_PROBES_ENABLED) {
-  console.log("[cb-track-spike] WARNING: TRACK_TABLE/TRACK_ID_COL/TRACK_ORDER_COL/TRACK_X_COL/TRACK_Y_COL not all set in .env — Track probes will SKIP with DEFERRED status per 37-CONTEXT.md fallback");
+  console.log("[cb-track-spike] WARNING: TRACK_TABLE/TRACK_ID_COL/TRACK_ORDER_COL/TRACK_X_COL/TRACK_Y_COL not all set in .env — Track probes will SKIP with DEFERRED status per Phase 37 context fallback");
 }
 
 console.log(`[cb-track-spike] Deployed Kinetica: ${redactedUrl}`);
@@ -122,7 +122,7 @@ console.log(`[cb-track-spike] BBOX (CB probes, Manhattan locked): -74.05,40.65,-
 console.log(`[cb-track-spike] BBOX (Track probes): ${TRACK_BBOX_ENV ?? "-74.05,40.65,-73.85,40.85 (defaulting to BBOX — set TRACK_BBOX in .env if track data lives outside Manhattan)"}`);
 console.log("");
 
-// ── Constants (CONTEXT.md-locked) ────────────────────────────────────────────
+// ── Constants (the phase context-locked) ────────────────────────────────────────────
 
 const BBOX = "-74.05,40.65,-73.85,40.85"; // EPSG:4326, Manhattan ±0.1°; matches Phase 25 anchor
 const WIDTH = 512;
@@ -155,7 +155,7 @@ async function runSql(sql: string): Promise<{ ok: boolean; status: number; body:
     // at preprocessing with: "Value: '' not a valid parameter. Valid values are:
     // binary, json, geojson, arrow (U/PUh:355)" — i.e. the missing `encoding` field
     // surfaced as a parameter-validation error BEFORE the SQL function the spike
-    // is trying to probe was ever evaluated. Future investigators reading 37-SPIKE-NOTES.md
+    // is trying to probe was ever evaluated. Future investigators reading Phase 37 spike notes
     // must trust that the spike's HTTP contract matches what production code actually sends,
     // so we mirror the production payload verbatim. Payload-parity reference: commit d458408.
     response = await rawFetch(url, {
@@ -287,8 +287,8 @@ function extractMessage(body: unknown): string {
 }
 
 // ── Probe matrix ─────────────────────────────────────────────────────────────
-// ALL probes execute unconditionally (no early-exit). CONTEXT.md mandates
-// capturing ALL outputs so every lane has evidence in 37-SPIKE-NOTES.md
+// ALL probes execute unconditionally (no early-exit). the phase context mandates
+// capturing ALL outputs so every lane has evidence in Phase 37 spike notes
 // regardless of PASS/FAIL. Decision Record summarises which naming + format
 // worked per render mode per fixture.
 
@@ -486,7 +486,7 @@ console.log("");
 // Operator's high-confidence domain note: "most of the raster options even
 // POINTCOLORS, POINTSIZES, etc can be used for class breaks. You need to
 // comma separate the values like this POINTSIZES=4,5,2"
-// Lane C is the highest-confidence path per 37-CONTEXT.md.
+// Lane C is the highest-confidence path per Phase 37 context.
 
 console.log(`=== Probe C-NUM-8: Lane C numeric, STYLES=cb_raster, 8-char colors, comma-separated POINTCOLORS/POINTSIZES/POINTSHAPES ===`);
 console.log(`[cb-track-spike] params: STYLES=cb_raster CB_ATTR=${CB_NUMERIC_COLUMN} CB_VALS=10,25,50,100,200 POINTCOLORS=FF112233,FF445566,FF7788AA,FFCC1100,FF00CC11 POINTSIZES=4,5,6,7,8 POINTSHAPES=circle,circle,circle,circle,circle`);
@@ -901,7 +901,7 @@ if (TRACK_PROBES_ENABLED) {
 } else {
   console.log("=== Track probes: DEFERRED ===");
   console.log("[cb-track-spike] TRACK_TABLE / TRACK_ID_COL / TRACK_ORDER_COL / TRACK_X_COL / TRACK_Y_COL not all set in .env");
-  console.log("[cb-track-spike] Track probes skipped per 37-CONTEXT.md fallback: Phase 40 ships operator-override-only path");
+  console.log("[cb-track-spike] Track probes skipped per Phase 37 context fallback: Phase 40 ships operator-override-only path");
   console.log("[cb-track-spike] Re-runnable via `npm run cb-track-spike` once a track table is reachable in .env");
   console.log("");
 }
@@ -974,7 +974,7 @@ console.log(`[cb-track-spike] Lane B HTTP-precondition: ${laneBHttpPass ? "PASS"
 console.log(`[cb-track-spike] Lane C HTTP-precondition: ${laneCHttpPass ? "PASS" : "FAIL"}`);
 
 if (!laneAHttpPass && !laneBHttpPass && !laneCHttpPass) {
-  console.log("[cb-track-spike] Overall: NONE_ESCALATE → BLOCK_V17 (all three CB lanes failed across both fixtures per 37-CONTEXT.md 'Total-fail escalation policy' — milestone re-scope required)");
+  console.log("[cb-track-spike] Overall: NONE_ESCALATE → BLOCK_V17 (all three CB lanes failed across both fixtures per Phase 37 context 'Total-fail escalation policy' — milestone re-scope required)");
 } else {
   console.log(`[cb-track-spike] Overall: HTTP preconditions met on ${[laneAHttpPass ? "A" : null, laneBHttpPass ? "B" : null, laneCHttpPass ? "C" : null].filter(Boolean).join("+")} — VISUAL tile diff confirmation required for strong PASS (compare tiles against 37-baseline-{num,cat}.png)`);
 }

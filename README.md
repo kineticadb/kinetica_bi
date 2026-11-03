@@ -1,15 +1,29 @@
 # Kinetica BI
 
-A modern business intelligence dashboard application that connects to Kinetica (GPU-accelerated database).
+A business intelligence dashboard application for data stored in **Kinetica** (GPU-accelerated database). Users build dashboards of charts, maps and tables on Kinetica tables, click any chart element to filter the whole dashboard to that slice, and can ask an optional AI assistant to change the dashboard for them.
+
+Main features:
+
+- **Dashboards** of charts (bar, line, pie, scatter, timeline, calendar heatmap, big number, tables), maps with WMS layers (heatmap, raster, class-break, track) and record viewers, on a drag-and-resize grid.
+- **Click-through filtering**: a click on a chart, a map selection or a filter control narrows every widget on the same table, through server-side Kinetica views.
+- **Dynamic views**: saved SQL templates materialized on top of the current filter.
+- **Exports**: CSV download in the browser, or a background export job for large tables (resumable, optional .zip).
+- **Roles and permissions**, per-dashboard sharing, dashboard export/import and links, white-label theming (light and dark).
+- **AI assistant** (optional, off by default): ask a question and the AI answers by changing the dashboard; changes are checked by the server and saved only when you press **Keep**.
+- **Claude Desktop connector** (optional, off by default): build and edit dashboards from Claude Desktop through the same checks.
 
 ## Architecture
 
-Kinetica BI is a TypeScript monorepo (npm workspaces) with two independently-run parts:
+Kinetica BI is a TypeScript monorepo (npm workspaces):
 
-- **Frontend** (`packages/web/`) — a React 18 + Vite single-page app.
-- **Backend** (`packages/server/`) — a Node/Express API that proxies analytics queries to **Kinetica** and stores dashboard metadata in **SQLite**.
+| Package | What it is |
+|---|---|
+| `packages/web` | React 18 + Vite single-page app |
+| `packages/server` | Node/Express API; proxies analytics queries to Kinetica and stores dashboard metadata in SQLite |
+| `packages/shared` | Code used by both web and server (the AI change contract and the widget-action allow-list, zod schemas) |
+| `packages/mcp` | The Claude Desktop connector (an MCP server over stdio that calls the API) |
 
-The backend holds **no Kinetica credentials at runtime**: every Kinetica call is made with the **signed-in user's** credentials (OIDC bearer token or basic auth), so data access is enforced by Kinetica per user.
+The backend holds **no Kinetica credentials for analytics**: every Kinetica query runs with the **signed-in user's** credentials (OIDC bearer token or basic auth), so Kinetica enforces data access per user.
 
 ### Request flow
 
@@ -20,151 +34,172 @@ Browser (React SPA, :5173)
 Express backend (:4000)
   ├─ app metadata ─────────►  SQLite  (packages/server/data/kinetica.db)
   │                           dashboards, widgets, registered tables,
-  │                           dynamic views, map layers
+  │                           dynamic views, map layers, roles, AI audit
   │
-  └─ analytics (per-user) ─►  Kinetica (GPU DB)
-        POST /execute/sql        SQL: charts, aggregations, drill-downs
-        GET  /wms                map tiles (WMS)
-        /show/table              column metadata
+  ├─ analytics (per-user) ─►  Kinetica (GPU DB)
+  │     POST /execute/sql        SQL: charts, aggregations, drill-downs
+  │     GET  /wms                map tiles (WMS)
+  │     /show/table              column metadata
+  │
+  └─ AI (optional) ────────►  AI provider (OpenAI-compatible API, or Claude)
 ```
 
-SQLite holds everything *about* the dashboards (layout + configs); it never holds analytics data. Kinetica holds the data.
+SQLite holds everything *about* the dashboards (layout and configuration); it never holds analytics data.
 
 ### Frontend
 
 | Concern | Tech |
 |---|---|
 | UI / build | React 18, Vite 5, TypeScript |
-| State | Zustand — small per-domain stores (filters, filter-views, dynamic-views, dashboard-layers, theme, auth, toast) |
-| Charts | Recharts — bar / line / pie / scatter / timeline / numeric-line / big-number |
-| Map | OpenLayers (`ol`) — WMS layers, draw-to-filter tools, info popups |
+| State | Zustand: small per-domain stores (filters, filter views, dynamic views, dashboard layers, AI session, theme, auth, toast) |
+| Charts | Recharts |
+| Map | OpenLayers (`ol`): WMS layers, draw-to-filter tools, info popups |
 | Dashboard grid | react-grid-layout (drag / resize) |
-| Editors | CodeMirror (`@uiw/react-codemirror`) for SQL + HTML templates |
-| Theming | CSS variables in `src/styles/global.css`; light/dark via `data-theme` on `<html>` (`store/theme.ts`) |
+| Editors | CodeMirror (`@uiw/react-codemirror`) for SQL and HTML templates |
+| Theming | CSS variables in `src/styles/global.css`; light/dark via `data-theme` on `<html>` |
 | Tests | Vitest + Testing Library (jsdom) |
-
-Widgets render through a **chart-type registry** (see [Chart Configuration System](#chart-configuration-system)). In `WidgetRenderer.tsx`, the `map`, `timeline`, `numericline`, `records`, `info-card`, `legend`, and `datafilter` types short-circuit to dedicated renderers that own their full data lifecycle; all other types flow through the generic `AggregatedWidgetRenderer` (group-by + aggregate SQL → Recharts).
 
 ### Backend
 
 | Concern | Tech / file |
 |---|---|
-| HTTP API | Express 4 (`packages/server/src/index.ts`); dev via `tsx watch`, prod via `tsc` → `node dist` |
-| Kinetica access | `packages/server/src/kinetica.ts` — per-request auth header; audited SQL / WMS / show-table helpers |
-| App metadata | better-sqlite3 (`packages/server/src/db.ts`) — schema + migrations in code |
-| Auth | `auth.ts` / `oidc.ts` / `sessionStore.ts` — `AUTH_MODE=oidc` (openid-client) or `password` (basic); encrypted server-side sessions + cookie |
-| Analytics SQL | `packages/server/src/lib/*` — materialized views, spatial WHERE clauses, quantile / top-values / column-stats builders |
+| HTTP API | Express 4 (`src/index.ts`); dev via `tsx watch`, production via an esbuild bundle (`dist/index.js`) |
+| Kinetica access | `src/kinetica.ts`: per-request auth header; audited SQL / WMS / show-table helpers |
+| App metadata | better-sqlite3 (`src/db.ts`): schema and migrations in code, applied at boot |
+| Auth | `auth.ts` / `oidc.ts` / `sessionStore.ts`: `AUTH_MODE=password` (basic) or `oidc` (openid-client); encrypted server-side sessions |
+| Analytics SQL | `src/lib/*`: materialized views, spatial WHERE clauses, quantile / top-values / column-stats builders, exports |
+| AI | `src/lib/ai/*`: provider adapters, agent loop and the gateway that checks every AI change |
 
-### Filtering & dynamic views
+### Filtering and dynamic views
 
-- **Filter pipeline:** applying a filter materializes a per-user, TTL'd Kinetica **filter view** (`_kbi_filt_…`). Widgets on that table then re-query the filter view instead of the base table, so the whole dashboard narrows together.
-- **Dynamic views:** a saved SQL template (`{view}` token) materialized on top of the filter view — or the unfiltered base table when no filter is applied (when unlimited or under the row cap) — producing `_kbi_dv_…` under a configurable `max_records` cap (`0` = unlimited).
+- **Filter pipeline:** applying a filter materializes a per-user, time-limited Kinetica **filter view** (`_kbi_filt_…`). Widgets on that table query the filter view instead of the base table, so the whole dashboard narrows together.
+- **Dynamic views:** a saved SQL template (`{view}` token) materialized on top of the filter view, or on the base table when no filter is applied, producing `_kbi_dv_…` under a configurable `max_records` cap (`0` = unlimited).
 
 ### Repository layout
 
 ```
 .
-├── package.json                  # workspace root (no code): workspaces: ["packages/*"]
-├── packages/
-│   ├── web/                      # frontend (React + Vite) — @kinetica-bi/web
-│   │   ├── vite.config.ts
-│   │   └── src/
-│   │       ├── components/       # UI: charts/, map, modals, dashboard shell
-│   │       ├── store/            # Zustand stores
-│   │       ├── lib/              # pure helpers (SQL builders, binning, theming)
-│   │       ├── api/client.ts     # typed fetch wrapper to the backend
-│   │       └── styles/global.css # CSS-variable theme (light / dark)
-│   └── server/                   # backend (Express) — @kinetica-bi/server
-│       ├── src/
-│       │   ├── index.ts          # routes
-│       │   ├── kinetica.ts       # per-user Kinetica proxy
-│       │   ├── db.ts             # SQLite schema + accessors
-│       │   ├── auth.ts / oidc.ts # auth + sessions
-│       │   └── lib/              # SQL builders, view naming, spatial
-│       └── data/kinetica.db      # SQLite metadata file (gitignored)
-└── README.md
+├── package.json              # workspace root: workspaces ["packages/*"]
+├── Dockerfile                # multi-stage build: web (nginx) and server images
+├── docker/                   # nginx config + container notes
+├── .github/workflows/        # CI (tests on PRs and master) and image publishing on release tags
+├── RELEASING.md              # versioning and release steps
+└── packages/
+    ├── web/src/
+    │   ├── components/       # UI: charts/, map, modals, dashboard shell, AI widget
+    │   ├── store/            # Zustand stores
+    │   ├── lib/              # pure helpers (SQL builders, binning, theming, AI session)
+    │   ├── api/client.ts     # typed fetch wrapper to the backend
+    │   └── styles/global.css # CSS-variable theme (light / dark)
+    ├── server/src/
+    │   ├── index.ts          # routes
+    │   ├── kinetica.ts       # per-user Kinetica proxy
+    │   ├── db.ts             # SQLite schema + accessors
+    │   ├── auth.ts, oidc.ts  # auth + sessions
+    │   ├── lib/              # SQL builders, view naming, spatial, exports, AI
+    │   └── spikes/           # diagnostic scripts (not part of the app)
+    ├── shared/src/           # contract shared by web and server
+    └── mcp/src/              # Claude Desktop connector
 ```
 
-## Ports
+## Getting started
 
-| Service  | Default Port | Config                          |
-|----------|--------------|---------------------------------|
-| Frontend | `5173`       | `packages/web/vite.config.ts`            |
-| Backend  | `4000`       | `PORT` env var in `packages/server/.env` |
+Requires Node.js 20 and a reachable Kinetica instance.
+
+```bash
+npm install                                            # installs every workspace
+cp packages/server/.env.example packages/server/.env   # set KINETICA_URL, AUTH_SECRET, SESSION_ENCRYPTION_KEY
+cp packages/web/.env.example packages/web/.env         # optional, every var has a default
+
+npm run dev:server     # backend  → http://localhost:4000
+npm run dev            # frontend → http://localhost:5173  (separate terminal)
+```
+
+Sign in with a Kinetica username and password (or through your identity provider with `AUTH_MODE=oidc`). The user named by `APP_ADMIN_USERNAME` (default `admin`) has every permission; grant others roles on the Roles page.
+
+### Tests
+
+Run from the repo root:
+
+| Command | Runs |
+|---|---|
+| `npm run test` | web tests |
+| `npm run test:server` | server tests |
+| `npm run test:server:gate` | server tests with the CI gate (see `RELEASING.md`: a known set of files only fails when run together with the rest) |
+| `npm run test:shared` | shared package tests |
+| `npm run test:mcp` | connector tests |
+| `npm run test:all` | all of the above except the gate |
+
+Type checks: `npx tsc --noEmit` in each package.
+
+## Production deployment
+
+The app is two pieces: a static frontend bundle and the Node/Express API. The dev commands above are not suitable for production.
+
+**Containers.** The `Dockerfile` builds a `web` image (nginx serving the SPA and proxying `/api`) and a `server` image. Release tags publish both to GHCR. See `docker/README.md` to build and run them and `RELEASING.md` for the release steps.
+
+**Without containers:**
+
+```bash
+npm ci                                                        # on the build host; node_modules is not committed
+npm run build:server                                          # tsc --noEmit + esbuild bundle (inlines packages/shared) → packages/server/dist/index.js
+NODE_ENV=production npm start --workspace @kinetica-bi/server # node dist/index.js, listens on $PORT (default 4000)
+VITE_API_URL=https://api.your-domain.com npm run build        # → packages/web/dist/, serve from a static host / CDN / nginx
+```
+
+Always build the server with `npm run build:server`; plain `tsc` does not produce a runnable bundle.
+
+Things that matter in production:
+
+1. **HTTPS and `NODE_ENV=production`.** Session and OIDC cookies are `Secure` in production, so they are only sent over HTTPS; serving the public URL over plain HTTP silently breaks login.
+2. **`VITE_API_URL` is fixed at build time.** Vite inlines it during `npm run build`; set it to the production API origin before building. Unset means `http://localhost:4000`; an empty value means the same origin, which the container image uses so nginx can proxy `/api`.
+3. **Persist the SQLite database.** `DB_PATH` (default `./data/kinetica.db`) holds every dashboard, widget, layer, role and AI audit row and is created on first boot. Put it on durable storage or every deploy starts empty. Large exports are written under `EXPORT_DIR` (default `./data/exports`).
+4. **Environment.** At minimum: `NODE_ENV=production`, `PORT`, `KINETICA_URL`, strong and stable `AUTH_SECRET` and `SESSION_ENCRYPTION_KEY` (rotating the key signs everyone out), `CORS_ORIGIN` (the frontend origin), `DB_PATH`. For SSO: `AUTH_MODE=oidc`, the `AUTH_OIDC_*` settings with an `AUTH_OIDC_REDIRECT_URI` that exactly matches the HTTPS callback registered at your IdP (`https://api.your-domain.com/api/auth/oidc/callback`), and `WEB_REDIRECT_BASE` (the SPA's URL).
+5. **AI streaming through proxies.** AI answers stream as server-sent events; any proxy in front of the API must not buffer `/api/ai/ask` (see `docker/README.md`).
 
 ## Basemaps
 
-Map widgets default to **OpenStreetMap**, which needs no API key. Its look is a per-theme CSS concern rather than a second basemap (`packages/web/src/lib/basemaps.ts`): unstyled in the light theme, dark-filtered in the dark theme.
+Map widgets default to **OpenStreetMap**, which needs no API key. Its look is a per-theme CSS setting (`packages/web/src/lib/basemaps.ts`): unstyled in the light theme, dark-filtered in the dark theme.
 
-Each map widget has **Light / Dark mode basemap CSS** fields, pre-filled with that theme's default CSS, so a customer can tune the look per widget and per theme (`filter` and `opacity`; blank re-tracks the default). Under each field, **Dark map / Light Gray Map / None** buttons set a style in one click without touching CSS, and highlight whichever matches the current value. The CSS applies to the basemap alone — OL renders it in its own canvas container, so data layers are never filtered.
+Each map widget has **Light / Dark mode basemap CSS** fields, pre-filled with that theme's default, so the look can be tuned per widget and per theme (`filter` and `opacity`; blank restores the default). **Dark map / Light Gray Map / None** buttons set a style in one click. The CSS applies to the basemap only; data layers are never filtered.
 
-The **CartoDB Voyager / Dark Matter** options remain selectable, but `basemaps.cartocdn.com` now watermarks unauthenticated tiles. A key is free within CARTO's fair-use limit ([request one](https://carto.com/basemaps/apikey)); set `VITE_CARTO_API_KEY` in `packages/web/.env` and it is appended to CARTO tile requests. Without it the config panel labels those options "(API key required)". CARTO's raster basemaps are being retired in favour of vector, so treat them as a stopgap.
+The **CartoDB Voyager / Dark Matter** basemaps remain selectable, but `basemaps.cartocdn.com` watermarks tiles without a key. A key is free within CARTO's fair-use limit ([request one](https://carto.com/basemaps/apikey)); set `VITE_CARTO_API_KEY` in `packages/web/.env`. Without it the config panel labels those options "(API key required)". CARTO is retiring its raster basemaps in favour of vector ones, so treat them as a stopgap.
 
-## Getting Started
+## AI assistant (optional)
 
-```bash
-npm install                      # installs frontend + server (npm workspaces)
-cp packages/server/.env.example packages/server/.env   # fill in Kinetica credentials
-cp packages/web/.env.example packages/web/.env         # optional — all vars have defaults
+Off unless `AI_ENABLED=true`. When it is on:
 
-npm run dev                      # frontend → http://localhost:5173
-npm run dev:server               # backend  → http://localhost:4000  (separate terminal)
-```
+- An **AI Assistant** widget on a dashboard takes questions. The AI answers by changing the dashboard: it adds, edits, moves and removes charts and heatmap map layers, applies filters and builds temporary dynamic views. Each answer lists what it changed and can be reverted.
+- Changes are visible only to the person asking until they press **Keep** (one save that checks edit rights and refuses if someone else changed the dashboard meanwhile). **Discard** or a reload reverts them.
+- Designers can tick **Generate from a table** on the New Dashboard form: the AI builds a starter dashboard of 4 to 8 widgets that stays private until kept.
+- Admins with `audit:view` get an **AI activity** page listing every AI answer, generation and Keep (question, answer, tools, changes and any SQL the AI ran; never query results).
+- The **Use AI** permission (`ai:use`) is granted to admin and designer by default.
 
-Other workspace scripts (run from the repo root): `npm run test` (frontend), `npm run test:server`, `npm run test:shared`, `npm run test:all`, `npm run build`, `npm run build:server`.
+Every change the model proposes goes through one server gateway that checks it against the shared contract, the user's permissions and the live table schema; the model never writes SQL for charts or views. With `AI_DATA_ACCESS=schema` (default) the AI sees table structure only, never row values. `AI_DATA_ACCESS=query` also lets it run read-only, guarded SELECTs as the signed-in user, with row, size and time limits.
 
-## Production Deployment
+Configure the provider with `AI_PROVIDER` (`openai-compatible` or `claude`), `AI_BASE_URL`, `AI_MODEL` and `AI_API_KEY`; the commented AI block in `packages/server/.env.example` documents every setting with its range, plus working Gemini and Ollama examples. Invalid settings turn AI off without stopping the server (the `[ai]` line in the server log names each one), and the API key is never logged.
 
-The app is **two independently-deployed pieces**: a static frontend bundle and the Node/Express API. The dev commands above are **not** suitable for production — do the following instead.
+Tested models:
 
-### 1. Build & run
+| Provider | Model ID | Tool mode | Result | Notes |
+|---|---|---|---|---|
+| OpenAI-compatible (Gemini, Google AI Studio) | `gemini-3-flash-preview` | `native` | Pass | Every in-app check passed live. Set `AI_TIMEOUT_MS=120000` (cold first calls can exceed 60 s). The free tier allows about 20 requests per day per model and one answer uses several, so set `AI_MAX_ANSWERS_PER_DAY`. In a tool-calling benchmark (21 trials) 88.9% of tool calls were valid; invalid calls are refused by the server, never applied. |
+| OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | `json` | Partial | The adapter works, but this model on 4 CPUs is too weak for most changes and Generate does not finish in 600 s. Run Ollama with `OLLAMA_CONTEXT_LENGTH=16384` (the 4k CPU default silently cuts the AI's instructions) and raise `AI_TIMEOUT_MS`. |
+| Claude | — | — | Not live-tested | Unit-tested against Anthropic's documented responses only. |
 
-The server bundle inlines the @kinetica-bi/shared workspace package; always build with npm run build:server (plain tsc no longer produces a runnable dist).
+Set `AI_MODEL` to the provider's model ID, not a product name: a wrong ID fails every request with HTTP 400.
 
-```bash
-# From the repo root — one npm ci covers both workspaces
-npm ci
+## Claude Desktop connector (optional)
 
-# Backend  → compiled JS, run under a process supervisor (systemd / pm2 / container)
-npm run build:server    # tsc --noEmit + esbuild bundle (inlines packages/shared) → packages/server/dist/index.js
-NODE_ENV=production npm start --workspace @kinetica-bi/server   # node dist/index.js  (listens on $PORT, default 4000)
+Off unless `MCP_ENABLED=true`. Users with Use AI create an access token on their Profile page and add the connector to Claude Desktop; Claude then builds or edits dashboards through the same server checks, and the user reviews the result in the browser and presses Keep or Discard. It works with the in-app AI off and never calls the configured AI provider. `MCP_APP_URL` sets the address in the review link Claude returns; `MCP_TOKEN_TTL_DAYS` (default 90) sets how long tokens last (password sign-in only). Setup: `packages/mcp/README.md`.
 
-# Frontend → static bundle; serve dist/ from a static host / CDN / nginx (NOT the API server)
-VITE_API_URL=https://api.your-domain.com npm run build   # → packages/web/dist/
-```
+## Chart configuration system
 
-`node_modules/` is not committed, so `npm ci` is required on the build host.
+Each widget type is registered in a chart-type registry with its own config fields; the visualization picker, config modal and persistence are driven from it.
 
-### 2. Serve over HTTPS + set `NODE_ENV=production`
+### Adding a chart type
 
-In production the session and OIDC cookies are set `Secure` (`auth.ts`), so they are only sent over **HTTPS**. Serving the public URL over plain HTTP will silently break login. Always set `NODE_ENV=production` and terminate TLS in front of both the SPA and the API.
-
-### 3. `VITE_API_URL` is baked at **build time**
-
-The frontend reads `import.meta.env.VITE_API_URL` (defaults to `http://localhost:4000`). It is inlined by Vite during `npm run build`, so set it to your production API origin **before building** — it cannot be changed at runtime; point it elsewhere by rebuilding.
-
-### 4. Persist the SQLite database
-
-`DB_PATH` (default `./data/kinetica.db`) holds all dashboard/widget/layer definitions and is auto-created on first boot. Point it at **durable storage / a mounted volume** so it survives restarts and redeploys — otherwise every deploy starts with zero dashboards. (Analytics data lives in Kinetica, not here.)
-
-### 5. Production environment
-
-Set real values in the backend environment (see [Environment Variables](#environment-variables)). Minimum for a TLS SSO deployment:
-
-- `NODE_ENV=production`, `PORT`
-- `KINETICA_URL` → production Kinetica
-- `AUTH_SECRET`, `SESSION_ENCRYPTION_KEY` — strong and **stable** (rotating `SESSION_ENCRYPTION_KEY` force-logs-out all users)
-- `CORS_ORIGIN` → the frontend's production origin(s), comma-separated
-- `DB_PATH` → durable path/volume
-- `AUTH_MODE=oidc` (for SSO) + `AUTH_OIDC_ISSUER_URL` / `AUTH_OIDC_CLIENT_ID` / `AUTH_OIDC_CLIENT_SECRET`, an `AUTH_OIDC_REDIRECT_URI` matching the **exact** prod HTTPS callback registered at your IdP (`https://api.your-domain.com/api/auth/oidc/callback`), and `WEB_REDIRECT_BASE` → the SPA's production URL
-
-## Chart Configuration System
-
-Each visualization type has its own configuration panel with type-specific settings (colors, axis mappings, display options, etc.). The system is built on an extensible registry pattern.
-
-### Adding a New Chart Type
-
-1. Create a definition file in `src/components/charts/definitions/` (e.g. `funnel.ts`):
+1. Create a definition file in `packages/web/src/components/charts/definitions/` (for example `funnel.ts`):
 
 ```ts
 import { registerChartType } from "../registry";
@@ -177,7 +212,6 @@ export default function register() {
     fields: [
       { key: "valueField", label: "Value Field", type: "text", defaultValue: "", group: "Data" },
       { key: "color", label: "Color", type: "color", defaultValue: "#22c55e", group: "Appearance" },
-      // ... more fields
     ],
     defaultConfig: { valueField: "", color: "#22c55e" },
   });
@@ -186,116 +220,103 @@ export default function register() {
 
 2. Import and call the register function in `definitions/index.ts`.
 
-The visualization picker, config modal, and persistence all wire up automatically from the registry.
+Field types: `text`, `number`, `boolean`, `select`, `color`, `range`. For UI beyond simple fields, set `CustomConfigPanel` on the definition.
 
-**Supported field types:** `text`, `number`, `boolean`, `select`, `color`, `range`
+### Widget types
 
-**Custom config UI:** For charts needing UI beyond simple fields, set `CustomConfigPanel` on the definition to provide a custom React component.
+`definitions/` has one file per type: `bar`, `line`, `pie`, `scatter`, `table` (data table), `bignumber`, `heatmap`, `calendar` (calendar heatmap), `timeline` and `numericline` (binned multi-metric lines), `map`, `records` (raw records with CSV/export), `info-card` (single record), `legend` (a map's legend), `data-filter` and `radio-group` (dashboard controls), `text` (markdown) and `ai` (AI Assistant).
 
-### File Structure
+Types with a custom config panel and a dedicated renderer in `WidgetRenderer.tsx` own their data loading; the rest go through the generic aggregated path (group-by + aggregate SQL → Recharts).
 
-```
-src/components/charts/
-├── registry.ts              # registerChartType(), getChartType(), getAllChartTypes()
-├── ChartConfigPanel.tsx     # Generic config form renderer
-└── definitions/             # One file per chart type
-    ├── index.ts             # Registers all types on startup
-    ├── bar.ts
-    ├── line.ts
-    ├── pie.ts
-    ├── scatter.ts
-    ├── table.ts
-    ├── bignumber.ts
-    ├── heatmap.ts
-    ├── map.ts
-    ├── timeline.ts          # time-binned multi-metric line (custom renderer)
-    ├── numericline.ts       # numeric-X interval-binned multi-metric line (custom renderer)
-    ├── records.ts           # raw record viewer
-    ├── info-card.ts         # single-record info card
-    ├── legend.ts            # standalone map legend widget
-    └── data-filter.ts       # dashboard filter control
-```
+## Environment variables
 
-Types with a dedicated renderer (`CustomConfigPanel` + a short-circuit in `WidgetRenderer.tsx`) own their own data lifecycle; the rest use the generic aggregated path.
-
-## Environment Variables
-
-Backend config lives in `packages/server/.env` (copy `packages/server/.env.example`). **Req.** marks variables required to boot/operate; OIDC vars are required only when `AUTH_MODE=oidc`.
-
-**AI (optional, off by default).** AI stays off unless `AI_ENABLED=true`; see the commented AI block in `packages/server/.env.example` for the Gemini and Ollama examples. Misconfiguration disables AI without stopping the server (the `[ai]` line in the server log names each bad setting), and the API key is never logged.
-Governance settings (all documented in that block): `AI_MAX_ANSWERS_PER_USER_PER_HOUR` (default 30, 0 = no cap), `AI_MAX_ANSWERS_PER_DAY` (whole deployment, rolling 24 h, 0 = off; use it for shared/free-tier keys), `AI_AUDIT_RETENTION_DAYS` (default 90, 0 = keep forever; the sweep runs even when AI is off), `AI_GENERATED_TTL_HOURS` (default 24, 0 = only on logout and server start; how long a generated dashboard nobody kept survives), `AI_HISTORY_TURNS` (default 6 recent exchanges sent in full) and `AI_TOOL_MODE` (`native` default, `json` fallback for models with weak tool calling).
-Tested models (Phase 142):
-
-| Provider | Model ID | Tool mode | Result | Notes | Date |
-|----------|----------|-----------|--------|-------|------|
-| OpenAI-compatible (Gemini, AI Studio) | `gemini-3-flash-preview` | native | pass (live G0-G9); S6 spike borderline: json (best effort) by its rule | `AI_TIMEOUT_MS=120000`; free tier ~20 requests/day/model; asks take 3-25 s, Generate 8-12 s; S6 over 21 clean trials: 88.9% valid tool calls (rule needs 90%), malformed calls not repaired (0/2), second turn 2/3; malformed calls are blocked, never applied | 2026-10-23 to 2026-10-28; S6 2026-10-30, 11-02, 11-03 |
-| OpenAI-compatible (Ollama in Docker, CPU) | `qwen2.5:7b-instruct` | json | partial | `OLLAMA_CONTEXT_LENGTH=16384`, `AI_TIMEOUT_MS=600000`; 4 CPUs: asks 26-97 s, Generate did not finish in 600 s; S6 valid tool calls 86% json vs 58% native; malformed calls are blocked, never applied | 2026-10-26, 2026-10-29 |
-| Claude | — | — | not live-verified | unit-tested against doc-derived fixtures only (no Anthropic key, AI-F11) | — |
-
-Set `AI_MODEL` to the provider's model ID (e.g. `gemini-3-flash-preview`), not a product or display name — a wrong ID fails every request with HTTP 400. Gemini 3 "thinking" models can take longer than the 60 s default on a cold first call; use `AI_TIMEOUT_MS=120000` or more. The Gemini free tier allowed only 20 requests per day per model for `gemini-3-flash-preview` when tested, and one AI ask uses several requests (one per tool step), so a free-tier key supports only a handful of asks per day — set `AI_MAX_ANSWERS_PER_DAY` accordingly. Run Ollama in Docker with `OLLAMA_CONTEXT_LENGTH=16384` (the CPU default context of 4k silently cuts the AI's instructions); the command is in the AI block of `packages/server/.env.example`. On a CPU-only machine raise `AI_TIMEOUT_MS` (up to 600000) and use a small tool-capable model.
-Use AI (`ai:use`) is granted to admin and designer by default; grant it to other roles on the Roles page.
-Designers with Use AI can tick "Generate from a table" on the New Dashboard form: the AI builds 4 to 8 charts plus the AI Assistant from one table, and the dashboard stays private to its creator until they keep it (Discard deletes it with its widgets and AI views). Admins with the existing `audit:view` permission get an "AI activity" page listing every AI answer, generation and Keep (question, answer, tools, changes and the SQL the AI ran); query results are never logged.
-
-**Claude Desktop connector (optional, off by default).** The connector routes exist only when `MCP_ENABLED=true`; it works even with the in-app AI off, and the configured AI provider is never called by it. Users with Use AI build and edit dashboards from Claude Desktop, then Keep or Discard them in the browser. `MCP_APP_URL` sets the address in the review link Claude returns, and `MCP_TOKEN_TTL_DAYS` (default 90) how long the access tokens users create on their Profile page last (password sign-in only). Setup: `packages/mcp/README.md`.
+Backend settings live in `packages/server/.env` (copy `packages/server/.env.example`, which documents each one). **Req.** marks settings required to start. Tuning settings are read once at boot; an invalid value falls back to the default with a warning in the server log.
 
 **Core**
 
 | Variable | Default | Req. | Description |
-|----------|---------|------|-------------|
-| `PORT` | `4000` | – | Backend server port |
-| `KINETICA_URL` | `https://localhost:9191` | ✓ | Kinetica database base URL |
-| `CORS_ORIGIN` | `http://localhost:5173` | – | Allowed CORS origins (comma-separated) |
-| `DB_PATH` | `./data/kinetica.db` | – | SQLite metadata file path (directory auto-created) |
-| `NODE_ENV` | – | – | `production` hardens cookies / trims error output |
+|---|---|---|---|
+| `PORT` | `4000` | – | Backend port |
+| `KINETICA_URL` | `https://localhost:9191` | ✓ | Kinetica base URL |
+| `CORS_ORIGIN` | `http://localhost:5173` | – | Allowed browser origins (comma-separated) |
+| `DB_PATH` | `./data/kinetica.db` | – | SQLite metadata file (directory created automatically) |
+| `NODE_ENV` | – | – | `production` makes cookies `Secure` and trims error output |
 
-**Auth & sessions**
-
-| Variable | Default | Req. | Description |
-|----------|---------|------|-------------|
-| `AUTH_MODE` | `password` | – | Auth flow: `password` or `oidc` |
-| `AUTH_SECRET` | – | ✓ | Secret used to sign session cookies (≥16 chars; `openssl rand -hex 32`) |
-| `SESSION_ENCRYPTION_KEY` | – | ✓ | 64 hex chars (32 bytes) — AES-256-GCM key encrypting session credentials at rest |
-| `WEB_REDIRECT_BASE` | – | – | Absolute base URL the SPA is redirected back to after the OIDC callback (e.g. `http://localhost:5173`) |
-
-**OIDC SSO** — required when `AUTH_MODE=oidc`
+**Auth and sessions**
 
 | Variable | Default | Req. | Description |
-|----------|---------|------|-------------|
-| `AUTH_OIDC_ISSUER_URL` | – | ✓* | OIDC issuer base (host of `/.well-known/openid-configuration`) |
-| `AUTH_OIDC_CLIENT_ID` | – | ✓* | OIDC client ID registered at the IdP |
-| `AUTH_OIDC_CLIENT_SECRET` | – | ✓* | OIDC client secret (confidential client — keep out of version control) |
-| `AUTH_OIDC_REDIRECT_URI` | – | ✓* | Exact callback URL registered at the IdP (e.g. `http://localhost:4000/api/auth/oidc/callback`) |
-| `AUTH_OIDC_USERNAME_CLAIM` | `preferred_username` | – | `id_token` claim used as the Kinetica username |
-| `AUTH_OIDC_USERNAME_REGEX` | – | – | Optional regex applied to the claim (capture group 1, else full match) |
+|---|---|---|---|
+| `AUTH_MODE` | `password` | – | `password` or `oidc` |
+| `AUTH_SECRET` | – | ✓ | Signs session cookies (16+ chars; `openssl rand -hex 32`) |
+| `SESSION_ENCRYPTION_KEY` | – | ✓ | 64 hex chars; AES-256-GCM key for session credentials at rest |
+| `WEB_REDIRECT_BASE` | – | – | SPA URL to return to after the OIDC callback (e.g. `http://localhost:5173`) |
+| `APP_ADMIN_USERNAME` | `admin` | – | Bootstrap admin: always has every permission (case-insensitive). In OIDC mode set it to the admin's OIDC username, or the server logs `rbac_bootstrap_admin_warning` |
 
-<sub>✓* = required only in `oidc` mode.</sub>
+**OIDC SSO** (required when `AUTH_MODE=oidc`)
 
-**v1.8 RBAC**
+| Variable | Default | Description |
+|---|---|---|
+| `AUTH_OIDC_ISSUER_URL` | – | Issuer base (host of `/.well-known/openid-configuration`) |
+| `AUTH_OIDC_CLIENT_ID` | – | Client ID registered at the IdP |
+| `AUTH_OIDC_CLIENT_SECRET` | – | Client secret (keep out of version control) |
+| `AUTH_OIDC_REDIRECT_URI` | – | Exact callback URL registered at the IdP (e.g. `http://localhost:4000/api/auth/oidc/callback`) |
+| `AUTH_OIDC_USERNAME_CLAIM` | `preferred_username` | `id_token` claim used as the Kinetica username |
+| `AUTH_OIDC_USERNAME_REGEX` | – | Optional regex applied to the claim (capture group 1, else the full match) |
 
-| Variable | Default | Req. | Description |
-|----------|---------|------|-------------|
-| `APP_ADMIN_USERNAME` | `admin` | – | Bootstrap admin username — always resolves to all permissions (short-circuit before DB lookup). Case-insensitive. In OIDC mode, set to the intended admin's OIDC username (post-regex claim value); otherwise the server logs an `rbac_bootstrap_admin_warning` at boot. |
+**Kinetica service account** (optional). Used only for the anonymous WMS GetCapabilities probe and by the diagnostic scripts; user queries never use it.
 
-**Kinetica service account** — backs the anonymous WMS GetCapabilities probe (and `password`-mode validation). Per-user analytics queries use the signed-in user's own credentials, **not** these (see [Architecture](#architecture)).
+| Variable | Description |
+|---|---|
+| `KINETICA_USERNAME` | Service-account username |
+| `KINETICA_PASSWORD` | Service-account password |
 
-| Variable | Default | Req. | Description |
-|----------|---------|------|-------------|
-| `KINETICA_USERNAME` | – | – | Service-account username |
-| `KINETICA_PASSWORD` | – | – | Service-account password |
+**Views, queries and charts**
 
-> Dev-only diagnostic scripts read additional `CB_*`, `TRACK_*`, `WKB_PROBE_*`, `PROBE_*`, `LATLON_*`, and `WKT_*` variables — not needed to run the app. See [Diagnostic Scripts](#diagnostic-scripts-kinetica-probes) below.
+| Variable | Default | Description |
+|---|---|---|
+| `DEFAULT_VIEW_TTL_MINUTES` | `5` | Lifetime of filter views and dynamic views in Kinetica |
+| `TTL_KEEPALIVE_LEAD_MINUTES` | `1` | How long before expiry the browser keeps an open view alive |
+| `MAX_COMBINATION_VIEWS_PER_TABLE` | `10` | Max per-widget filter-combination views per table; beyond it widgets use the all-filters view |
+| `DISABLE_DV_FILTER_SCOPE` | `false` | `true` turns off per-widget filter scope for dynamic views |
+| `MAX_BAR_GROUP_BY_SERIES` | `12` | Max colored series on a grouped bar or line chart (top series kept, a note shows the cut) |
+| `KINETICA_MAX_ROWS_PER_QUERY` | `20000` | Max rows any app query returns |
+| `KINETICA_MAX_RECORDS_PER_CALL` | `20000` | Max rows per Kinetica call; keep at or below the server's `max_get_records_size` |
+| `CSV_INBROWSER_MAX_ROWS` | `100000` | Ceiling for the in-browser CSV download |
 
-## Diagnostic Scripts (Kinetica probes)
+**Exports**
 
-`packages/server/src/spikes/` holds standalone CLI "spike" runners — **not part of the Express app** and not imported by any runtime code. Each one probes the live Kinetica instance to confirm a contract (WMS params, spatial SQL, classbreak/track styling). Their findings are already baked into production (`lib/wmsUrlBuilder.ts`, `lib/spatialQuery.ts`, `lib/spatialWhereClause.ts`, `/api/quantile`); they're kept as **re-runnable verification tools** for when the Kinetica server version changes.
+| Variable | Default | Description |
+|---|---|---|
+| `EXPORT_DIR` | `./data/exports` | Where export files are written |
+| `EXPORT_TTL_HOURS` | `24` | How long a finished export (and its history row) is kept |
+| `EXPORT_MAX_ROWS` | unlimited | Max rows per export; larger exports fail before writing |
+| `EXPORT_MAX_FILE_MB` | unlimited | Max export file size in MiB |
+| `EXPORT_MAX_CONCURRENT_PER_USER` | `2` | Queued plus running exports per user |
+| `EXPORT_VIEW_TTL_MINUTES` | `60` | Lifetime of an export's snapshot view in Kinetica |
 
-Run from `packages/server/` (each reads `packages/server/.env` via `dotenv`):
+**AI and Claude Desktop:** `AI_*` and `MCP_*`, see [AI assistant](#ai-assistant-optional), [Claude Desktop connector](#claude-desktop-connector-optional) and the commented blocks in `packages/server/.env.example`.
 
-| Script | Purpose | Required env (beyond `KINETICA_URL` / `KINETICA_USERNAME` / `KINETICA_PASSWORD`) |
-|--------|---------|----------------------------------------------------------------------------------|
-| `npm run wms-spike` | WMS `GetCapabilities` + render-param probes → `src/spikes/wmsCapabilities.xml` (gitignored) | — |
-| `npm run wkb-spike` | Spatial-proximity function against a WKB geometry column | `WKB_PROBE_SCHEMA`, `WKB_PROBE_TABLE`, `WKB_PROBE_COLUMN`, `WKB_PROBE_LON`, `WKB_PROBE_LAT` |
-| `npm run spatial-predicate-spike` | bbox / circle / lasso predicates in latlon + WKT modes | `LATLON_TABLE`, `LATLON_LON_COL`, `LATLON_LAT_COL`, `WKT_TABLE`, `WKT_GEOM_COL`, `PROBE_CENTER_LON`, `PROBE_CENTER_LAT`, `PROBE_HALF_DEG` |
-| `npm run cb-track-spike` | Classbreak (`CB_*`) + track (`TRACK_*`) WMS params; writes tiles to `packages/server/spike-output/` (gitignored) | `CB_NUMERIC_TABLE`, `CB_NUMERIC_COLUMN`, `CB_CATEGORICAL_TABLE`, `CB_CATEGORICAL_COLUMN`, `CB_X_COL`, `CB_Y_COL`, `TRACK_TABLE`, `TRACK_ID_COL`, `TRACK_ORDER_COL`, `TRACK_X_COL`, `TRACK_Y_COL`, `TRACK_BBOX` |
+**Frontend** (`packages/web/.env`, fixed at build time; never put a secret here)
 
-All three Kinetica vars (`KINETICA_URL`, `KINETICA_USERNAME`, `KINETICA_PASSWORD`) are required by every spike. These scripts run with a **service account** (basic auth), independent of the app's per-user auth.
+| Variable | Default | Description |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:4000` | Backend base URL |
+| `VITE_CARTO_API_KEY` | – | Key for the CARTO basemaps |
+| `VITE_CARTO_API_KEY_PARAM` | `api_key` | Query parameter the CARTO key is sent under |
+
+## Diagnostic scripts
+
+`packages/server/src/spikes/` holds standalone command-line probes. They are **not part of the app** and nothing imports them. They check behaviour the app relies on against a live Kinetica (and, for the tool-call probe, an AI provider), which is useful after a Kinetica or model upgrade. Run them from `packages/server/`; each reads `packages/server/.env`.
+
+| Script | Checks | Extra settings |
+|---|---|---|
+| `npm run wms-spike` | WMS GetCapabilities and render parameters; writes `src/spikes/wmsCapabilities.xml` (git-ignored) | — |
+| `npm run wkb-spike` | Spatial proximity against a WKB geometry column | `WKB_PROBE_SCHEMA`, `WKB_PROBE_TABLE`, `WKB_PROBE_COLUMN`, `WKB_PROBE_LON`, `WKB_PROBE_LAT` |
+| `npm run spatial-predicate-spike` | Box, circle and lasso filters in lat/lon and WKT modes | `LATLON_TABLE`, `LATLON_LON_COL`, `LATLON_LAT_COL`, `WKT_TABLE`, `WKT_GEOM_COL`, `PROBE_CENTER_LON`, `PROBE_CENTER_LAT`, `PROBE_HALF_DEG` |
+| `npm run cb-track-spike` | Class-break and track WMS styling; writes tiles to `spike-output/` (git-ignored) | `CB_NUMERIC_TABLE`, `CB_NUMERIC_COLUMN`, `CB_CATEGORICAL_TABLE`, `CB_CATEGORICAL_COLUMN`, `CB_X_COL`, `CB_Y_COL`, `TRACK_TABLE`, `TRACK_ID_COL`, `TRACK_ORDER_COL`, `TRACK_X_COL`, `TRACK_Y_COL`, `TRACK_BBOX` |
+| `npm run export-runner-smoke` | The background export job end to end against a real table | `EXPORT_SMOKE_TABLE` (schema.table) |
+| `npm run export-routes-smoke` | The export HTTP routes (start, progress, resumable download, cancel) | `EXPORT_SMOKE_TABLE`, optional `EXPORT_SMOKE_COLUMNS` |
+| `npm run query-mode-spike` | The AI query mode's guard, row cap, timeout and job cancel (no AI provider needed; `--dry-run` runs offline) | see the script header |
+| `npm run tool-call-spike` | How reliably an AI model makes tool calls (uses provider quota) | the `AI_*` provider settings |
+
+The Kinetica probes need `KINETICA_URL`, `KINETICA_USERNAME` and `KINETICA_PASSWORD` and run as that account, not as a signed-in user.

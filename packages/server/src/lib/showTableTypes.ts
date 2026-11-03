@@ -13,12 +13,8 @@
  * The authoritative source for the sub-type is the native `/show/table`
  * response's per-column `properties` array, which carries the markers
  * "timestamp" / "date" / "time" / "datetime". This was flagged but never wired
- * during v1.2 map work — see:
- *   - .planning/research/_archive_v1.2/PITFALLS.md (~L122): "/show/table returns
- *     a column_type field ... type_spec containing wkb"
- *   - .planning/research/FEATURES.md (~L212): "Kinetica's /show/table response
- *     likely includes this metadata but it's not surfaced in the current
- *     column-discovery route".
+ * during v1.2 map work (v1.2 research: /show/table carries the type metadata but the
+ * column-discovery route did not surface it).
  *
  * Without this, the Timeline chart's Time-column picker (which filters to
  * datetime types via inferDataTypeFromColumn) finds NO datetime columns on a

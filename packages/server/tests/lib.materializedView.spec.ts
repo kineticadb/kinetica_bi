@@ -3,7 +3,7 @@
  *
  * Unit coverage of `createOrReplaceMaterialized` — the shared helper extracted
  * from POST /api/filter/materialize so Plan 03's dynamic-view materialize
- * route can reuse the TM/SMc:1078 race-recovery retry pattern (32-CONTEXT.md
+ * route can reuse the TM/SMc:1078 race-recovery retry pattern (Phase 32 context
  * § D5). Mocks `kineticaSql` directly (the helper is the only consumer that
  * matters for this test); the broader contract-preservation check lives in
  * routes.filter-materialize.spec.ts (run separately).

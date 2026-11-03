@@ -153,7 +153,7 @@ describe("createApp boot fail-fast in AUTH_MODE=oidc", () => {
 });
 
 // Plan 06-03: oidc_boot structured log + unauthenticated /version reachability probe.
-// CONTEXT.md "Kinetica trust boot signal (PITFALL I-06)": OIDC mode only; fire-and-forget
+// the phase context "Kinetica trust boot signal (PITFALL I-06)": OIDC mode only; fire-and-forget
 // probe; warn-and-continue on failure; no fail-fast.
 describe("oidc boot probe (Plan 06-03)", () => {
   const stubOidcEnv = () => {

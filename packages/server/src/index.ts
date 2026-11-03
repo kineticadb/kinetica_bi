@@ -34,7 +34,7 @@ import type { SchemaCheckResponse } from "./lib/schemaImpact";
 import { buildFilterViewName, sanitizeForViewName } from "./lib/viewNaming";
 import { createOrReplaceMaterialized } from "./lib/materializedView";
 // v1.6 Phase 32 Plan 03: dynamic-view materialize + delete need the Kinetica view-name
-// composer (CONTEXT.md § D7 — _kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>).
+// composer (the phase context § D7 — _kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>).
 import { buildDynamicViewName } from "./lib/dynamicViewName";
 // v1.24 Phase 119 (DXIM-V124-01/-02/-08): dashboard export assembler + download filename helper.
 import { buildDashboardExport, exportFileName } from "./lib/dashboardExport";
@@ -134,7 +134,7 @@ import {
 } from "./db";
 import { DashboardLayer, Table, Widget } from "./types";
 // v1.6 Phase 32 Plan 02: substituteViewToken validates that operator-supplied
-// template_sql contains `{view}` at create + update time (CONTEXT.md D1).
+// template_sql contains `{view}` at create + update time (the phase context D1).
 // Throwing MissingViewTokenError → route returns 400 BEFORE persistence.
 import { substituteViewToken, MissingViewTokenError } from "./lib/dynamicViewSql";
 import {
@@ -337,14 +337,14 @@ export const createApp = async (): Promise<express.Express> => {
 
     // Unauthenticated reachability probe — fire-and-forget.
     // NOT an OIDC-trust test (no token to send); catches DNS/TLS/connectivity at boot.
-    // Failure → structured warn + continue (CONTEXT.md: "Don't fail-fast on Kinetica unreachability").
+    // Failure → structured warn + continue (the phase context: "Don't fail-fast on Kinetica unreachability").
     // Wrapped in async IIFE so any sync throw, async rejection, or non-thenable return
     // from fetch() is fully contained and never propagates to createApp's caller.
     const kineticaUrl = process.env.KINETICA_URL;
     if (kineticaUrl) {
       const probeUrl = `${kineticaUrl.replace(/\/$/, "")}/version`;
       // TODO: Could be made env-configurable via KINETICA_HEALTHCHECK_PATH if any
-      // deployment lacks /version. Default hardcoded per CONTEXT.md design discretion.
+      // deployment lacks /version. Default hardcoded per the phase context design discretion.
       void (async () => {
         try {
           const response = await fetch(probeUrl);
@@ -386,7 +386,7 @@ export const createApp = async (): Promise<express.Express> => {
   // asyncHandler: wraps async route handlers so that thrown errors (including typed Kinetica errors)
   // are forwarded to Express's error middleware via next(err). Without this, Express 4 silently
   // swallows promise rejections from async handlers. Plan 03-02 uses Option A (file-local helper,
-  // zero new deps) per the CONTEXT.md interface note.
+  // zero new deps) per the phase context interface note.
   const asyncHandler =
     <T extends Request = Request>(
       fn: (req: T, res: Response, next: NextFunction) => Promise<unknown>
@@ -491,7 +491,7 @@ export const createApp = async (): Promise<express.Express> => {
       return res.status(401).json({ error: "Not authenticated.", code: "REAUTH_REQUIRED" });
     }
     // Phase 7 (UX-08 / D-3): include authMode top-level. Closes over the boot-captured const at
-    // line 82 — NEVER re-read process.env here (ARCHITECTURE.md AP-5).
+    // line 82 — NEVER re-read process.env here (the architecture research AP-5).
     // Phase 48 (GATE-V18-01): extend with roles + permissions for frontend hasPermission gating.
     // Bootstrap-admin short-circuit and analyst fallback are handled inside getEffectiveRolesAndPermissions.
     const { roles, permissions } = getEffectiveRolesAndPermissions(loaded.session.username);
@@ -565,7 +565,7 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // GET /api/auth/oidc/start — generates state+nonce, sets oidc_state httpOnly cookie, 302→IdP.
-  // Returns 400 in password mode (route mounted but inactive, per CONTEXT.md).
+  // Returns 400 in password mode (route mounted but inactive, per the phase context).
   app.get("/api/auth/oidc/start", (req, res) => {
     if (authMode !== "oidc") {
       return res.status(400).json({ error: "OIDC is not enabled." });
@@ -584,7 +584,7 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // GET /api/auth/oidc/callback — uses asyncHandler so errors forward to errorMiddleware.
-  // Every exit path clears the oidc_state cookie (CONTEXT.md locked).
+  // Every exit path clears the oidc_state cookie (the phase context locked).
   // All errors redirect to /login?error=<friendlyCode>; never 500/blank (Phase 5 SC2).
   app.get("/api/auth/oidc/callback", asyncHandler(async (req, res) => {
     if (authMode !== "oidc") {
@@ -592,7 +592,7 @@ export const createApp = async (): Promise<express.Express> => {
     }
 
     // Parse stored state cookie. Clear it UNCONDITIONALLY before any other logic
-    // (CONTEXT.md: cookie cleared on every callback exit — success + all errors).
+    // (the phase context: cookie cleared on every callback exit — success + all errors).
     const rawCookie = (req.cookies as Record<string, string | undefined> | undefined)?.oidc_state;
     res.clearCookie("oidc_state", { path: "/" });
 
@@ -747,7 +747,7 @@ export const createApp = async (): Promise<express.Express> => {
   // SVG is XML with NO magic bytes, so fileTypeFromBuffer() returns undefined for
   // every SVG. NEVER decide "is this an SVG?" from file-type OR from the client's
   // req.file.mimetype — an attacker can upload SVG bytes with Content-Type: image/png
-  // to skip sanitization (RESEARCH.md Pitfall 2). Instead: content-sniff the buffer
+  // to skip sanitization (the phase research Pitfall 2). Instead: content-sniff the buffer
   // for SVG/XML markers (independent of declared/detected MIME) and ALWAYS run
   // DOMPurify on anything that looks like SVG; only accept rasters that file-type's
   // magic bytes positively identify; reject everything else with 415.
@@ -1025,7 +1025,7 @@ export const createApp = async (): Promise<express.Express> => {
     res.setHeader("Content-Disposition", `attachment; filename="${exportFileName(payload.dashboard)}"`);
     // Explicit send of a pre-stringified body: res.json() would re-derive Content-Type and would
     // minify. Pretty-print is deliberate — the file exists to be reviewed, diffed and attached to
-    // a ticket (CONTEXT.md locked decision 1).
+    // a ticket (the phase context locked decision 1).
     return res.send(JSON.stringify(payload, null, 2));
   });
 
@@ -1242,7 +1242,7 @@ export const createApp = async (): Promise<express.Express> => {
   // PHASE 3 NOTE: Materialize keeps its try/catch because it must call updateViewStatus("error")
   // as a side effect on every failure path (status persistence). The catch block does the side
   // effect, then forwards via next(err) so the middleware translates the HTTP response.
-  // (CONTEXT.md §"Single exception: materialize")
+  // (the phase context §"Single exception: materialize")
   app.post("/api/views/:id/materialize", requireConfig, ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), asyncHandler(async (req, res, next) => {
     const id = Number(req.params.id);
     const view = getView(id);
@@ -1352,7 +1352,7 @@ export const createApp = async (): Promise<express.Express> => {
   //   - NO try/catch — typed errors bubble through asyncHandler → errorMiddleware (no side effects to persist)
   //
   // V13-P-08: Username sanitization happens inside buildFilterViewName (lib/viewNaming.ts).
-  // CONTEXT.md decisions § View-name details: shape is _kbi_filt_u<userId>_d<dashId>_t<tableId>_s<sessionShort>.
+  // the phase context decisions § View-name details: shape is _kbi_filt_u<userId>_d<dashId>_t<tableId>_s<sessionShort>.
   // S4 outcome: BOTH qualified and unqualified WMS LAYERS forms work — endpoint returns the
   // UNQUALIFIED bare view name (no schema lookup needed; Plan 13-02 builder takes no schema param).
 
@@ -1579,7 +1579,7 @@ export const createApp = async (): Promise<express.Express> => {
     );
     // Phase 32 Plan 01: extracted to lib/materializedView.ts so dynamic-view
     // materialize (Plan 03) shares the same Kinetica race-recovery retry.
-    // CONTEXT.md § D5: same retry pattern across filter-view and dynamic-view.
+    // the phase context § D5: same retry pattern across filter-view and dynamic-view.
     // Happy path remains a single CREATE OR REPLACE; on the specific race
     // ('Could not find the table' from Kinetica's internal drop step) the
     // helper retries with DROP IF EXISTS + plain CREATE.
@@ -1659,9 +1659,9 @@ export const createApp = async (): Promise<express.Express> => {
   // NTILE bucket-MIN quantile query backing Phase 39 Auto-suggest classbreak boundaries.
   // Per-user Kinetica passthrough via kineticaSql (same auth + audit pipeline as
   // /api/filter/materialize + /api/dynamic-view/*). No caching (single round-trip per
-  // operator click — see 38-CONTEXT.md § /api/quantile endpoint contract).
+  // operator click — see Phase 38 context § /api/quantile endpoint contract).
   //
-  // SQL template locked verbatim from .planning/phases/37-cb-track-wms-spike/37-SPIKE-NOTES.md
+  // SQL template locked verbatim from the Phase 37 class-break/track WMS spike
   // ## Decision § NTILE syntax locked (PARTITION BY 0 form + bucket-MIN wrapper).
   //
   // AUTH_MODE-agnostic — works under both password and OIDC modes via the existing
@@ -1803,14 +1803,14 @@ export const createApp = async (): Promise<express.Express> => {
   }));
 
   // ===== v1.6 Phase 32 Plan 02: Dynamic Views CRUD (DV-V16-01) =====
-  // CONTEXT.md § "CRUD (round-out)": list / create / update only.
+  // the phase context § "CRUD (round-out)": list / create / update only.
   // Preview / materialize / delete live in Plan 03 (separate route surface
   // — appended below this block; do not interleave handlers).
   //
   // Validation pattern: at create + update time, call substituteViewToken with
   // a dummy view name to detect MissingViewTokenError BEFORE persistence.
   // This guarantees the DB never holds a template that materialize cannot run.
-  // CONTEXT.md § D1: "{view} absent → 400, configuration error not runtime degrade".
+  // the phase context § D1: "{view} absent → 400, configuration error not runtime degrade".
   //
   // INSERTION ANCHOR (for Plan 03): Plan 03 routes MUST be appended AFTER the
   // closing of the PUT /api/dynamic-views/:id handler below and BEFORE the
@@ -1876,7 +1876,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (typeof body.max_records !== "number" || body.max_records < 0) {
         return res.status(400).json({ error: "max_records is required and must be 0 (unlimited) or a positive number." });
       }
-      // CONTEXT.md § D1: template must contain {view} token. substituteViewToken throws on absence.
+      // the phase context § D1: template must contain {view} token. substituteViewToken throws on absence.
       try {
         substituteViewToken(body.template_sql, "_dummy_validation_view_name_");
       } catch (err) {
@@ -1954,7 +1954,7 @@ export const createApp = async (): Promise<express.Express> => {
           throw err;
         }
       }
-      // CONTEXT.md § D3: when template_sql changes, columns_json MUST be cleared.
+      // the phase context § D3: when template_sql changes, columns_json MUST be cleared.
       // Operator must run Preview again before the next Save populates columns_json afresh.
       // If the caller explicitly supplies columns_json in the same request body, the caller's
       // value wins (Plan 34 flow: Preview returns new columns, UI sends template_sql +
@@ -1993,14 +1993,14 @@ export const createApp = async (): Promise<express.Express> => {
   // ===== v1.6 Phase 32 Plan 03: Dynamic Views runtime endpoints =====
   // DV-V16-03 preview, DV-V16-04 materialize, DV-V16-05 delete.
   //
-  // CONTEXT.md locked decisions wired here:
+  // the phase context locked decisions wired here:
   //   - D1: substituteViewToken (case-insensitive, whitespace-tolerant, throws on absence)
   //   - D2: no filter view → return over_threshold + drop dynamic view
   //   - D5: TM/SMc:1078 retry — delegated to createOrReplaceMaterialized helper
   //   - D6: TTL=5 minutes on materialized dynamic view
   //   - D7: buildDynamicViewName produces `_kbi_dv_u<userId>_d<dashboardId>_<dynamicViewId>`
   //
-  // Architectural note (deviation from PLAN.md — see SUMMARY.md):
+  // Architectural note (deviation from the plan — see the plan summary):
   //   The original plan attempted to detect "active filter view" via a
   //   `dashboard_table_views` row with `status === "ready"`. That status value
   //   doesn't exist (DashboardTableView.status is "pending" | "created" | "error")
@@ -2043,7 +2043,7 @@ export const createApp = async (): Promise<express.Express> => {
       }
       const previewCombinationKey =
         typeof body.combination_key === "string" && body.combination_key !== "" ? body.combination_key : undefined;
-      // Clamp sample_limit to [1, 1000] (1000 caps Preview cost; default 100 matches CONTEXT.md endpoint example).
+      // Clamp sample_limit to [1, 1000] (1000 caps Preview cost; default 100 matches the phase context endpoint example).
       const sampleLimit = typeof body.sample_limit === "number" && body.sample_limit > 0
         ? Math.min(body.sample_limit, 1000)
         : 100;
@@ -2066,7 +2066,7 @@ export const createApp = async (): Promise<express.Express> => {
       // Probe Kinetica for the session-scoped filter view. If it exists, use
       // its name as the {view} substitution; otherwise fall back to the bare
       // source-table reference so operators can develop SQL without first
-      // applying a filter (CONTEXT.md § Preview).
+      // applying a filter (the phase context § Preview).
       let sourceForSubstitution: string;
       try {
         await kineticaSqlHelper(
@@ -2083,7 +2083,7 @@ export const createApp = async (): Promise<express.Express> => {
         }
       }
 
-      // CONTEXT.md § D1: substituteViewToken throws MissingViewTokenError if {view} is absent.
+      // the phase context § D1: substituteViewToken throws MissingViewTokenError if {view} is absent.
       let substituted: string;
       try {
         substituted = substituteViewToken(body.template_sql, sourceForSubstitution);
@@ -2203,7 +2203,7 @@ export const createApp = async (): Promise<express.Express> => {
       let filterCountResult: Record<string, unknown> | null = null;
       let filterViewExists = true;
       try {
-        // CONTEXT.md § D2 + DV-V16-04: COUNT(*) doubles as existence check + threshold input.
+        // the phase context § D2 + DV-V16-04: COUNT(*) doubles as existence check + threshold input.
         filterCountResult = (await kineticaSqlHelper(
           authedReq,
           `SELECT COUNT(*) FROM ${expectedFilterViewName}`,
@@ -2417,7 +2417,7 @@ export const createApp = async (): Promise<express.Express> => {
   // spatial-distance. Backed by Plan 18-02's pure SQL builders (spatialQuery.ts)
   // + radius-conversion helpers (radiusConversion.ts).
   //
-  // Request body shape (locked in REQUIREMENTS.md SPATIAL-V14-04):
+  // Request body shape (locked in the milestone requirements SPATIAL-V14-04):
   //   { layerId, tableId, schema, table, spatialMode, spatialColumns,
   //     clickLon, clickLat, radiusPx, mapBbox, mapWidthPx, mapHeightPx, page }
   //
@@ -2448,7 +2448,7 @@ export const createApp = async (): Promise<express.Express> => {
   //     body { error: 'WKB mode deferred', td: 'TD-V14-WKB-SPIKE' }. The
   //     buildWkbQuery function in spatialQuery.ts throws WkbDeferredError by
   //     design — the endpoint early-returns 501 BEFORE invoking it (and
-  //     intentionally does NOT import it). See 18-SPIKE-NOTES.md ## Decision.
+  //     intentionally does NOT import it). See Phase 18 spike notes ## Decision.
   app.post("/api/info/query", requireConfig, asyncHandler(async (req, res) => {
     const body = (req.body ?? {}) as Partial<{
       layerId: number;
@@ -2714,7 +2714,7 @@ export const createApp = async (): Promise<express.Express> => {
   // kinetica.ts maps to KineticaUpstreamError — the SAME class a connection failure throws — so
   // "your table was deleted" and "the network blipped" become indistinguishable. WITH it, a
   // missing table is HTTP 200 / status:"OK" / table_names: [], which no failure can imitate.
-  // Verified live: 122-SPIKE-NOTES.md Q5.
+  // Verified live: Phase 122 spike notes Q5.
   //
   // INFORMATION_SCHEMA is deliberately NOT consulted: it reports character(256) for char1,
   // char4 and char16 alike (spike Q4), so it cannot contribute anything the fingerprint may
@@ -3430,7 +3430,7 @@ export const createApp = async (): Promise<express.Express> => {
   });
 
   // Global error-handling middleware — translates typed Kinetica errors to user-visible responses.
-  // Must be mounted before the 404 handler (CONTEXT.md §"Backend global error middleware" → "Mount location").
+  // Must be mounted before the 404 handler (the phase context §"Backend global error middleware" → "Mount location").
   // 4-arg signature is Express's contract for error middleware.
   app.use(errorMiddleware);
 
@@ -3447,7 +3447,7 @@ export const createApp = async (): Promise<express.Express> => {
  * Translates Phase 2's typed Kinetica errors into the user-visible HTTP responses
  * Phase 3 promises (UX-01/02/03). Exported so tests can mount it standalone.
  *
- * Translation rules (CONTEXT.md §"Backend global error middleware"):
+ * Translation rules (the phase context §"Backend global error middleware"):
  *   - KineticaAuthError       → 401 + { error, code: "REAUTH_REQUIRED" } + clearSessionCookie
  *   - KineticaPermissionError → 403 + { error }  (NO code field)
  *   - KineticaUpstreamError   → 502 + { error }  (NO code field)
@@ -3456,7 +3456,7 @@ export const createApp = async (): Promise<express.Express> => {
  *   - Anything else           → 500 + generic error message + console.error
  *
  * NOTE: The middleware does NOT call deleteSession — orphaned rows are GC'd by the
- * Phase 1 sweep within 1 hour. (CONTEXT.md §"401-REAUTH cookie clearing" para 3.)
+ * Phase 1 sweep within 1 hour. (the phase context §"401-REAUTH cookie clearing" para 3.)
  */
 export const errorMiddleware = (
   err: unknown,

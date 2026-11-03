@@ -13,7 +13,7 @@
  *     env vars (same vars the spike runner uses — GetCapabilities does NOT go through kineticaWms
  *     which requires an AuthedRequest; GetCapabilities is a server-to-server probe, not per-user).
  *   - classbreak / contour are NOT listed in this Kinetica's GetCapabilities XML Style blocks
- *     (confirmed in SPIKE-NOTES.md). The parser intentionally intersects with only the 4 known modes;
+ *     (confirmed in the spike notes). The parser intentionally intersects with only the 4 known modes;
  *     downstream code must NOT use renderModes to gate classbreak/contour (use GetMap probe instead).
  *   - colormaps: Kinetica's GetCapabilities has no <Colormap> element; always returns the 8-entry
  *     default list (all verified HTTP 200 in spike).

@@ -9,7 +9,7 @@ import {
   type ColumnFingerprint,
 } from "../src/lib/schemaFingerprint";
 
-// Real body, captured live against demo.nyctaxi — 122-SPIKE-NOTES.md Q1/Q2.
+// Real body, captured live against demo.nyctaxi — Phase 122 spike notes Q1/Q2.
 // vendor_id/payment_type/store_and_fwd_flag share Avro base "string" but differ
 // on char width (char4/char16/char1); passenger_count/rate_code_id/cab_type share
 // base "int" but differ on int width (int8/int16).
@@ -48,7 +48,7 @@ const nyctaxiShowTable = {
   ],
 };
 
-// Real body — 122-SPIKE-NOTES.md Q5, the no_error_if_not_exists: true probe.
+// Real body — Phase 122 spike notes Q5, the no_error_if_not_exists: true probe.
 const missingShowTable = {
   table_name: "demo.__schema_spike_missing_table__",
   table_names: [],
@@ -57,7 +57,7 @@ const missingShowTable = {
   info: { WARNING_0: "Could not find the table: '…' (TM/SMc:1046)" },
 };
 
-// Real body — 122-SPIKE-NOTES.md Addendum, pg_catalog.pg_views. The ONLY real
+// Real body — Phase 122 spike notes Addendum, pg_catalog.pg_views. The ONLY real
 // fixture that carries an Avro union type AND a "nullable" property marker.
 const pgViewsShowTable = {
   table_names: ["pg_catalog.pg_views"],

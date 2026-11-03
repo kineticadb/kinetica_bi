@@ -5,19 +5,18 @@
  *   - Phase 21 InfoPopup.tsx (src/components/charts/InfoPopup.tsx) — map click popup body.
  *   - Phase 23 Info Card renderer — info-card chart type.
  * Both use this single helper so the popup and the Info Card render IDENTICALLY for the
- * same (template, row, info_columns) tuple. Locked at .planning/STATE.md § "Key v1.4
- * Architecture Decisions" — "Both Phase 21 (popup) and Phase 23 (Info Card) must use the
+ * same (template, row, info_columns) tuple. Locked as a v1.4 architecture
+ * decision — "Both Phase 21 (popup) and Phase 23 (Info Card) must use the
  * same shared `renderInfoTemplate` helper so rendering is consistent."
  *
- * NO HTML SANITIZATION — locked at .planning/PROJECT.md § "Current Milestone: v1.4 Map
- * Info Popup" Key Decision: "Dashboard authors are privileged users (analogous to saved
- * SQL queries). Risk documented in PROJECT.md Key Decisions." DO NOT add a sanitizer
+ * NO HTML SANITIZATION — v1.4 Map Info Popup key decision: "Dashboard authors are privileged users (analogous to saved
+ * SQL queries). Risk documented in the project decisions Key Decisions." DO NOT add a sanitizer
  * library (DOMPurify, sanitize-html, etc.). The caller will pass the returned `html`
  * string straight to React's `dangerouslySetInnerHTML`.
  *
  * Token substitution syntax: {column_name} — Tableau/Grafana convention. Literal
- * substitution only. No expressions, no escaping, no logic. Locked at
- * .planning/phases/21-map-click-popup/21-CONTEXT.md § Template rendering.
+ * substitution only. No expressions, no escaping, no logic. Locked in
+ * Phase 21 (template rendering).
  *
  * info_columns lenient parse: when the JSON parse fails OR the parsed value is not a
  * non-empty array, the helper falls back to using all response columns (the `columns`

@@ -58,7 +58,7 @@ export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
 
 // ─── Default role→permission mappings ────────────────────────────────────────
 //
-// Locked defaults from 46-CONTEXT.md. The seed (rbacSeed.ts) INSERT-OR-IGNOREs
+// Locked defaults from Phase 46 context. The seed (rbacSeed.ts) INSERT-OR-IGNOREs
 // these on every boot so new catalog permissions land on built-in defaults while
 // operator edits persist; there is NO reset-to-defaults in v1.8 (deferred v1.9)
 // — to repair a broken built-in role, re-apply these mappings manually via the

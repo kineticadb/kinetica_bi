@@ -5,7 +5,7 @@
  * This module is PURE: it reads only already-loaded rows the caller has fetched (widgets, layers,
  * dynamic views, custom metrics, dashboards) — no db, no express, no fetch.
  *
- * The governing principle, quoted from 124-CONTEXT.md § "Naming — the report nudges the operator to
+ * The governing principle, quoted from Phase 124 context § "Naming — the report nudges the operator to
  * fix their naming rather than papering over it": the report NUDGES the operator to fix their
  * naming rather than silently compensating. So an id is a DISAMBIGUATOR (a title collides within
  * its own dashboard) and a FALLBACK (a record has no name at all) — never the default — and it never
@@ -26,7 +26,7 @@ import type { ColumnRefRecordKind, ColumnRefsInput } from "./columnRefs";
 export type ImpactAdvisoryKind = "unnamed-record" | "ambiguous-name";
 
 /** A naming advisory. `message` is report-ready prose the UI renders VERBATIM — never re-worded,
- *  never re-assembled downstream. Locked in 124-CONTEXT.md: the advisory appears BOTH on the
+ *  never re-assembled downstream. Locked in Phase 124 context: the advisory appears BOTH on the
  *  individual finding and once, summarised, at report level. */
 export type ImpactAdvisory = { kind: ImpactAdvisoryKind; message: string };
 
@@ -239,7 +239,7 @@ export function resolveRecordName(
 }
 
 /**
- * The report-level half of the locked BOTH-places rule (124-CONTEXT.md). Finding-level advisories
+ * The report-level half of the locked BOTH-places rule (Phase 124 context). Finding-level advisories
  * alone risk the pattern going unnoticed across twenty findings; a report-level line alone leaves
  * the operator guessing which findings it refers to. So the same fact is stated in both places,
  * and both strings are composed HERE so they cannot drift apart.

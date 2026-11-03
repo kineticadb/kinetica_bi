@@ -5,7 +5,7 @@
  * render-mode picker, mode-specific param groups (raster/heatmap/classbreak/contour),
  * and the classbreak builder. Receives layer config via {config, onChange, columns}.
  *
- * NO TABLE PICKER. Per CONTEXT.md, the layer's table binding is a top-level field on
+ * NO TABLE PICKER. Per the phase context, the layer's table binding is a top-level field on
  * DashboardLayerDto (`layer.table_id`), not a JSON-blob field. The table dropdown is
  * rendered by LayersModal (Plan 04) ABOVE this form. When the user changes the table,
  * LayersModal runs autoSuggestSpatialMode + clears stale columns + calls
@@ -17,7 +17,7 @@
  *   - MapConfigPanel (Phase 12 Plan 05) — shrinks to title + basemap + layer-inclusion picker;
  *     layer config is edited via the LayersModal, NOT inside the widget config panel
  *
- * PITFALL locks (carried over from MapConfigPanel — see STATE.md Phase 11 decisions):
+ * PITFALL locks (carried over from MapConfigPanel — see the project state notes Phase 11 decisions):
  * - PITFALL M-05 — BLUR_RADIUS / CONTOUR_BANDWIDTH labelled "Kinetica map units"
  * - PITFALL M-06 — classbreak cardinality probe; warn at >100, hard cap at 256
  */
@@ -135,7 +135,7 @@ const ALL_SPATIAL_MODES: SpatialMode[] = ["latlon", "wkt", "wkb", "track"];
 const ALL_RENDER_MODES: RenderMode[] = ["raster", "heatmap", "classbreak", "contour"];
 
 // Full Kinetica colormap catalog, grouped per the Kinetica WMS docs. The original
-// SPIKE-NOTES.md catalog covered only 8 entries (viridis/plasma/inferno/magma/
+// the spike notes catalog covered only 8 entries (viridis/plasma/inferno/magma/
 // cividis/turbo/jet/hot); the operator requested the complete docs-canonical set.
 // Groups render as <optgroup>s in the select for scan-by-category usability.
 //
@@ -494,7 +494,7 @@ export default function KineticaWmsLayerForm({
   const handleInsertColumn = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const col = e.target.value;
     if (!col) return;
-    // Insert-at-end (deferred: cursor-position injection per 22-CONTEXT.md design discretion).
+    // Insert-at-end (deferred: cursor-position injection per Phase 22 context design discretion).
     const next = (infoTemplate ?? "") + `{${col}}`;
     onChangeInfoConfig?.({ info_template: next });
     // Reset the select to the placeholder option (re-pick same column would otherwise be a no-op).
@@ -770,7 +770,7 @@ export default function KineticaWmsLayerForm({
 
           {/* Phase 39 (CB-V17-01): contour hidden from picker; RenderMode type unchanged.
               Existing layers with renderMode="contour" still render the contour params
-              block below (Pitfall 6 mitigation per 39-RESEARCH.md).
+              block below (Pitfall 6 mitigation per Phase 39 research).
 
               classbreak is NOT gated on allowedRenderModes: the deployed Kinetica's
               GetCapabilities XML does not advertise the cb_raster/classbreak Style, but
@@ -1667,11 +1667,11 @@ export default function KineticaWmsLayerForm({
               placeholder="— leave blank to render as a key-value table."
             />
           </div>
-          {/* Inline syntax note (locked verbatim by 22-CONTEXT.md) */}
+          {/* Inline syntax note (locked verbatim by Phase 22 context) */}
           <div className="info-popup-config-syntax-note">
             {`Use {column_name} to insert values.`}
           </div>
-          {/* Inline security warning (locked verbatim by 22-CONTEXT.md) */}
+          {/* Inline security warning (locked verbatim by Phase 22 context) */}
           <div className="info-popup-config-security-note">
             HTML is rendered as-is — do not paste templates from untrusted sources.
           </div>

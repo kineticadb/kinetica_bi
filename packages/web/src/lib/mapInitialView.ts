@@ -15,7 +15,7 @@
  * the world view first — the "visible world-view flash" MAPVIEW-V121-02 forbids.
  *
  * DO NOT reproject the centre here: it is already EPSG:3857, which is exactly why
- * Phase 111 chose that projection (111-CONTEXT.md lock). Reprojecting would corrupt it.
+ * Phase 111 chose that projection (Phase 111 context lock). Reprojecting would corrupt it.
  * DO NOT round the zoom here: mapViewFormat.ts is DISPLAY-ONLY and lives on the other side
  * of this boundary.
  */

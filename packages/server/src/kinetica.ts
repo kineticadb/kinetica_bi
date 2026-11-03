@@ -123,7 +123,7 @@ const emitAudit = (fields: {
  *   - 401 → KineticaAuthError
  *   - 403 → KineticaPermissionError
  *   - 400 + body.message matches /access denied|permission/i → KineticaPermissionError
- *     (Kinetica DDL-denial signals via HTTP 400 — see SPIKE.md from 02-01)
+ *     (Kinetica DDL-denial signals via HTTP 400; Phase 2 spike)
  *   - anything else → KineticaUpstreamError
  */
 const classifyHttpError = async (response: Response): Promise<never> => {
@@ -426,8 +426,7 @@ export const kineticaSql = async (
  * `status: "ERROR"` body — which this function maps to `KineticaUpstreamError`, the
  * SAME class a genuine connection failure produces. Without that option, "table
  * missing" and "could not reach Kinetica" are indistinguishable by exception type.
- * Verified against the live instance — see
- * `.planning/phases/122-schema-diff-table-missing-detection/122-SPIKE-NOTES.md` Q5.
+ * Verified against the live instance (Phase 122 spike, Q5).
  */
 export const kineticaShowTable = async (
   req: AuthedRequest,

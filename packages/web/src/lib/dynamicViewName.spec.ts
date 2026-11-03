@@ -2,7 +2,7 @@
  * lib/dynamicViewName.spec.ts — Phase 33 Plan 01 Task 1 (DV-V16-06).
  *
  * Round-trip identity coverage for the pure helper. The output shape is locked
- * by 32-CONTEXT.md § D7 and the byte-parity contract requires identical strings
+ * by Phase 32 context § D7 and the byte-parity contract requires identical strings
  * to the server helper at `packages/server/src/lib/dynamicViewName.ts` for
  * any given { userId, dashboardId, dynamicViewId } input.
  *

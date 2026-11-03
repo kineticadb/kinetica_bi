@@ -290,7 +290,7 @@ describe("TimelineRenderer", () => {
 
   it("Test 4 (TIMELINE-V17-06): renders multi-axis YAxis with yAxisId per metric (2 metrics) — static source assertion", async () => {
     // Recharts in JSDOM does not render real SVG with dimension-dependent class selectors like
-    // .recharts-yAxis (RESEARCH.md §C-08 Gotchas). Use static source assertions to verify the
+    // .recharts-yAxis (the phase research §C-08 Gotchas). Use static source assertions to verify the
     // multi-axis architecture: N <YAxis yAxisId=...> mapped per metric index.
     const path = resolve(__dirname, "TimelineRenderer.tsx");
     const src = readFileSync(path, "utf-8");
@@ -398,7 +398,7 @@ describe("TimelineRenderer", () => {
     render(<TimelineRenderer widget={makeWidget()} tables={TABLES} />);
     // Renderer transitions from loading → data-render state
     await waitFor(() => expect(screen.getByTestId("timeline-renderer")).toBeInTheDocument());
-    // Recharts SVG rendering in JSDOM is dimension-fragile (RESEARCH.md §C-08):
+    // Recharts SVG rendering in JSDOM is dimension-fragile (the phase research §C-08):
     // .recharts-reference-area requires actual SVG layout. The static assertion above
     // verifies the architectural contract; the waitFor above confirms the render path completes.
   });

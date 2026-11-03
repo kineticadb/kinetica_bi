@@ -39,7 +39,7 @@
  * -------------------------------------------
  * A Kinetica TIMESTAMP fingerprint is `{ base: "long", refinements:
  * ["timestamp"] }` — LIVE-VERIFIED against the deployed instance
- * (2026-09-23 probe, `124-RESEARCH.md`'s ADDENDUM). `"long"` is a member of
+ * (2026-09-23 probe, `Phase 124 research`'s ADDENDUM). `"long"` is a member of
  * `NUMERIC_TYPES`, so a rule that classifies on `base` alone calls this
  * column `"number"`, and a `timestamp -> bigint` retype (which changes
  * nothing about the base, only the refinement) would then grade as
@@ -60,7 +60,7 @@
  * -----------------------------------------------------
  * `timestamp` (`base=long, refinements=[timestamp]`) and `numeric(p,s)`
  * (`base=double, refinements=[]`) are LIVE-VERIFIED against the deployed
- * instance (2026-09-23 probe, recorded in `124-RESEARCH.md`'s ADDENDUM —
+ * instance (2026-09-23 probe, recorded in `Phase 124 research`'s ADDENDUM —
  * which CORRECTS the research body's docs-derived claim that decimal sits on
  * base `string`; the real instance returns `base=double` with no
  * refinement). `boolean`, `date`, `time` and `datetime` are
@@ -85,7 +85,7 @@ import type { ColumnFingerprint } from "./schemaFingerprint";
  */
 export type ColumnTypeClass = "string" | "number" | "boolean" | "datetime" | "unknown";
 
-/** Locked in 124-CONTEXT.md § "Severity — three levels, not two". */
+/** Locked in Phase 124 context § "Severity — three levels, not two". */
 export type ImpactSeverity = "breaking" | "changed" | "harmless";
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ export function classifyFingerprint(fp: ColumnFingerprint): ColumnTypeClass {
 
 /**
  * A removed column is ALWAYS breaking — including one whose only reference
- * is a heuristic free-SQL match. 124-CONTEXT.md locks that: such a finding
+ * is a heuristic free-SQL match. Phase 124 context locks that: such a finding
  * stays in the breaking section with its certainty stated, never demoted to
  * a separate "possibly affected" area. A genuinely referenced dropped column
  * is the worst case this feature exists to catch; a false positive costs the

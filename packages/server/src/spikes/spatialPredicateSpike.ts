@@ -131,7 +131,7 @@ async function runSql(sql: string): Promise<{ ok: boolean; status: number; body:
     // binary, json, geojson, arrow (U/PUh:355)" — i.e. the missing `encoding` field
     // surfaced as a parameter-validation error BEFORE the SQL function-name questions
     // the spike is trying to answer were ever evaluated. Future investigators reading
-    // 25-SPIKE-NOTES.md must trust that the spike's HTTP contract matches what
+    // Phase 25 spike notes must trust that the spike's HTTP contract matches what
     // production code actually sends, so we mirror the production payload verbatim.
     // Payload-parity reference: commit d458408.
     response = await rawFetch(url, {
@@ -284,7 +284,7 @@ function extractMessage(body: unknown): string {
 
 // ── Probe matrix — 12 sequential probes ─────────────────────────────────────
 // ALL 12 probes execute unconditionally (no early-exit).
-// CONTEXT.md mandates capturing ALL outputs so future re-runs know whether the
+// the phase context mandates capturing ALL outputs so future re-runs know whether the
 // fallback candidate ALSO works, and to isolate V15-P-03 SQL-length-cap failures
 // (only lasso shapes: L-A3, L-B3, W-A3, W-B3 are affected if the limit is hit).
 //
@@ -448,7 +448,7 @@ for (const k of ["W_A1", "W_A2", "W_A3", "W_B1", "W_B2", "W_B3"] as const) {
 console.log("");
 
 // Determine first-PASS predicate per mode.
-// Decision-locking rules per CONTEXT.md:
+// Decision-locking rules per the phase context:
 //   - Latlon: STXY_WITHIN preferred (probes L-A*) before STXY_CONTAINS (probes L-B*)
 //   - WKT: ST_WITHIN preferred (probes W-A*) before ST_INTERSECTS (probes W-B*)
 // A mode's candidate passes only if ALL THREE shapes (bbox + circle + lasso) PASS.
@@ -463,7 +463,7 @@ const wktChoice    = wktAPass    ? "ST_WITHIN"   : wktBPass    ? "ST_INTERSECTS"
 console.log(`[spatial-predicate-spike] Latlon mode recommendation: ${latlonChoice}`);
 console.log(`[spatial-predicate-spike] WKT mode recommendation: ${wktChoice}`);
 if (latlonChoice === "NONE_ESCALATE" || wktChoice === "NONE_ESCALATE") {
-  console.log("[spatial-predicate-spike] Overall: NONE_ESCALATE → BLOCK_V15 (CONTEXT.md mandates milestone re-scope on any mode FAIL)");
+  console.log("[spatial-predicate-spike] Overall: NONE_ESCALATE → BLOCK_V15 (the phase context mandates milestone re-scope on any mode FAIL)");
 } else {
   console.log("[spatial-predicate-spike] Overall: PASS — Phase 26 buildSpatialOrBlock authorized");
 }

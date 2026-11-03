@@ -5,7 +5,7 @@
  *   - Plan 45-02 TimelineConfigPanel.tsx (TimelineMetric/TimelineAggregation types + DEFAULT_MAX_INTERVALS)
  *   - Plan 45-03 TimelineRenderer.tsx (pickInterval + buildTimelineBucket + buildTimelineRangeQuery)
  *
- * CRITICAL GOTCHA (RESEARCH.md §C-01): columnStatsFn cannot be used for datetime
+ * CRITICAL GOTCHA (the phase research §C-01): columnStatsFn cannot be used for datetime
  * time-range fetch — its parser asserts Number.isFinite(v) but Kinetica returns
  * MIN/MAX as date strings for datetime columns. Use buildTimelineRangeQuery's
  * EXTRACT(EPOCH FROM ...) SQL via runSql instead.
@@ -62,7 +62,7 @@ export const DEFAULT_MAX_INTERVALS = 500;
 // dateTrunc is non-null for Kinetica-native DATE_TRUNC intervals.
 // dateTrunc is null for sub-hour multi-unit intervals that require the
 // FLOOR-epoch fallback: TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM col) / N) * N).
-// Per CONTEXT.md §Post-research decisions 2026-05-29.
+// Per the phase context §Post-research decisions 2026-05-29.
 export const INTERVAL_LADDER: readonly TimelineInterval[] = [
   { key: "year",    ms: 31_536_000_000, dateTrunc: "year"    },
   { key: "quarter", ms:  7_889_400_000, dateTrunc: "quarter" },
@@ -123,7 +123,7 @@ export function pickInterval(args: {
  *
  * The FLOOR-epoch fallback handles sub-hour multi-unit intervals (12h, 6h, 30min,
  * 15min, 5min) that Kinetica's DATE_TRUNC does not natively support as multiplied
- * units. Locked in CONTEXT.md §Post-research decisions 2026-05-29.
+ * units. Locked in the phase context §Post-research decisions 2026-05-29.
  */
 export function buildTimelineBucket(
   timeCol: string,
@@ -145,7 +145,7 @@ export function buildTimelineBucket(
  *
  * CRITICAL: columnStatsFn CANNOT be used for datetime columns — its parser
  * asserts Number.isFinite(v) but Kinetica returns datetime MIN/MAX as date
- * strings. This dedicated query is the solution (RESEARCH.md §D + CONTEXT.md
+ * strings. This dedicated query is the solution (the phase research §D + the phase context
  * §Post-research decisions 2026-05-29).
  *
  * Empty-schema (DV-bound) → unprefixed FROM. Mirrors Phase 44 follow-up pattern

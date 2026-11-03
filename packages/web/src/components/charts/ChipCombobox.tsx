@@ -1,7 +1,7 @@
 /**
  * Phase 22 (CONFIG-V14-03) — Custom chip-combobox for the layer info-popup column picker.
  *
- * Why custom (not a library): bundle target was <20 KB gzip per 22-CONTEXT.md; smallest
+ * Why custom (not a library): bundle target was <20 KB gzip per Phase 22 context; smallest
  * mainstream React combobox libraries (react-select v5: ~30KB, @headlessui/react Combobox:
  * ~12KB but requires Tailwind ergonomics, cmdk: ~7KB but command-palette UX), so a 50-line
  * custom build that matches existing config-group styling wins on bundle + visual parity.

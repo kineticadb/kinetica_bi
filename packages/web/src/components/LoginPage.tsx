@@ -28,7 +28,7 @@ const LoginPage = ({ deepLinkPending = false, deepLinkTablePending = false, onSi
 
   // Phase 115 (DLINK-V121-03): ONE banner slot, never stacked. The session-ended message wins
   // outright when both apply — it is the more urgent and more informative fact, and the user
-  // already knew which dashboard they were on (115-CONTEXT.md).
+  // already knew which dashboard they were on (Phase 115 context).
   // Non-leak check (v1.10): the deep-link line reveals only that a dashboard id was in the URL
   // the visitor pasted themselves. It says nothing about whether that id exists or who may see it.
   // Reuses the existing .login-banner class — no new class (CLAUDE.md).

@@ -1,13 +1,13 @@
 /**
  * Phase 111 (MAPVIEW-V121-01/04): DISPLAY-ONLY formatting for a map's view.
  *
- * OL holds the view centre in EPSG:3857 (metres). 111-CONTEXT.md locks the readout to
+ * OL holds the view centre in EPSG:3857 (metres). Phase 111 context locks the readout to
  * human-readable degrees with hemisphere letters ("40.71°N, 74.01°W") so a designer can
  * tell at a glance whether they framed New York or the Atlantic — the config modal's
  * opaque overlay hides the map itself.
  *
  * DISPLAY ONLY. The value PERSISTED in config.defaultView stays EPSG:3857 with the exact
- * unrounded fractional zoom (111-CONTEXT.md lock) — never round-trip a stored centre
+ * unrounded fractional zoom (Phase 111 context lock) — never round-trip a stored centre
  * through these functions.
  */
 

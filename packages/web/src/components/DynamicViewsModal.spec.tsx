@@ -1,7 +1,7 @@
 /**
  * Phase 34 Plan 02 (DV-V16-08, DV-V16-11): DynamicViewsModal spec — shell + left list + delete flow.
  *
- * Coverage matrix (M1-M12) per 34-02-PLAN.md:
+ * Coverage matrix (M1-M12) per Phase 34-02 plan:
  *   M1  — Mount + initial render (no views) — loading, empty state
  *   M2  — Mount + initial render (with views) — row text, trash btn, right-pane placeholder
  *   M3  — Row selection (active class + right-pane heading)

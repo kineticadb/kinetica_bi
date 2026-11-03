@@ -401,7 +401,7 @@ export type ResolveMetricsResult = {
 
 /**
  * Metric-label conflict policy — LOCKED by the operator, 2026-09-16 (recorded in
- * `120-CONTEXT.md` §"Custom-metric label conflict — OPERATOR DECISION", closing a provenance gap
+ * `Phase 120 context` §"Custom-metric label conflict — OPERATOR DECISION", closing a provenance gap
  * the plan checker flagged: the decision was made in session before that file existed).
  *
  * When the matched table already has a metric with the SAME label but a DIFFERENT expression,

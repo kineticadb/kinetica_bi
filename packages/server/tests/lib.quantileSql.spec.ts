@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildQuantileSql, parseQuantileResponse } from "../src/lib/quantileSql";
 
-describe("buildQuantileSql — NTILE template (37-SPIKE-NOTES.md ## Decision locked)", () => {
+describe("buildQuantileSql — NTILE template (Phase 37 spike notes ## Decision locked)", () => {
   it("interpolates schema/table/column/n into the locked PARTITION BY 0 form", () => {
     const sql = buildQuantileSql({ schema: "demo", table: "nyctaxi", column: "fare_amount", n: 5 });
     expect(sql).toContain("NTILE(5)");

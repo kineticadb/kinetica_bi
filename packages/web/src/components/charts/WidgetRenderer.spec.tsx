@@ -1858,7 +1858,7 @@ describe("Phase 30 — spatial materialize trigger (MAT-V15-01/02/03 — Phase 9
 //   + Effect 1 regression (filter-view materialize trigger UNCHANGED)
 //   + Effect 2 suspend-gate extension (dvStatus === "pending" suspends chart query)
 //
-// Locks (35-CONTEXT.md):
+// Locks (Phase 35 context):
 // - Over-threshold message verbatim ROADMAP (single, regardless of reason)
 // - Orphan message verbatim
 // - Retry calls retryDynamicView(dynamicViewId) from DashboardContext

@@ -2,7 +2,7 @@
  * Phase 12: LayersModal — two-pane dashboard-scope layer manager.
  *
  * Pattern: mirrors TablePickerModal / VisualizationPickerModal (DashboardsPage.tsx:616-643)
- * for the modal-overlay/portal shell. Larger (.modal-layers max-width 900px) per CONTEXT.md.
+ * for the modal-overlay/portal shell. Larger (.modal-layers max-width 900px) per the phase context.
  *
  * Right pane composition:
  *   1. Table dropdown (this file) — patches top-level layer.table_id; runs autoSuggestSpatialMode

@@ -9,7 +9,7 @@
  *   3. Metrics — N-row builder (max 4): column picker (numeric+safe) + aggregation + color swatch + label
  *   4. Options — maxIntervals / showLegend / showTooltip / colorTheme / dateFormatOverride
  *
- * Color theme default: "Set2" (locked in CONTEXT.md 2026-05-29 post-research decisions —
+ * Color theme default: "Set2" (locked in the phase context 2026-05-29 post-research decisions —
  * Tableau-10 from earlier RESEARCH was not in ColorBrewer; Set2 is 8-color qualitative).
  *
  * NO data fetch. NO Apply/Clear. This is config-only; Plan 45-03 ships the renderer.
@@ -122,7 +122,7 @@ export default function TimelineConfigPanel({
   );
   const columns: Record<string, string> = selectedTable?.columns ?? {};
 
-  // Datetime columns for time-col picker (inferDataTypeFromColumn-based per CONTEXT.md 2026-05-29 lock).
+  // Datetime columns for time-col picker (inferDataTypeFromColumn-based per the phase context 2026-05-29 lock).
   const timeColumns = useMemo(
     () =>
       Object.keys(columns).filter(

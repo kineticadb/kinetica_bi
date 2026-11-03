@@ -1,7 +1,7 @@
 /**
  * View-name composition for transient Kinetica materialized views.
  *
- * Locked shape (CONTEXT.md decisions § "View-name details"):
+ * Locked shape (the phase context decisions § "View-name details"):
  *   _kbi_filt_u<sanitizedUserId>_d<dashId>_t<tableId>_s<sessionShort>
  *
  * - sanitizedUserId: alphanumeric+underscore, max 32 chars (per V13-P-08)
@@ -17,8 +17,7 @@
  * S4 outcome (SPIKE-V13-04): BOTH FORMS WORK. Both `ki_home._kbi_filt_...`
  * (qualified) and `_kbi_filt_...` (unqualified) render PNG tiles via WMS
  * GetMap. Endpoint returns the UNQUALIFIED bare view name — no schema
- * lookup required, no `schema` parameter on this builder. See
- * .planning/phases/13-spikes-and-endpoint/13-SPIKE-NOTES.md § S4.
+ * lookup required, no `schema` parameter on this builder (Phase 13 spike S4).
  *
  * Pure module — zero imports beyond the Node stdlib (none used here).
  * No Express, db, or kinetica.ts dependencies — keeps the unit-test

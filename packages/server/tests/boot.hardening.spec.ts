@@ -14,7 +14,7 @@
  * The bootstrap IIFE only runs when NODE_ENV !== "test", so we cannot import
  * src/index.ts and trigger the IIFE directly in the test environment. Instead, the
  * test reproduces the IIFE body verbatim in a test-local `runBootstrap` helper
- * (CONTEXT.md "Test strategy" allows this) and asserts the catch behavior. The
+ * (the phase context "Test strategy" allows this) and asserts the catch behavior. The
  * helper's JSON shape is a verbatim copy of the production shape at index.ts ~747-756
  * (post-Task-1). If production drifts, Test 1's `message` field check against
  * AUTH_OIDC_ISSUER_URL still mitigates: that string only appears in production via
@@ -82,7 +82,7 @@ import { db } from "../src/db";
 
 // Test-local reproduction of the production bootstrap IIFE catch shape (index.ts ~747-756
 // post-Task-1). Asserts that the production-shape JSON log is emitted on createApp() rejection.
-// CONTEXT.md "Test strategy" sanctions this duplication-by-design.
+// the phase context "Test strategy" sanctions this duplication-by-design.
 const runBootstrap = async (): Promise<void> => {
   try {
     await createApp();

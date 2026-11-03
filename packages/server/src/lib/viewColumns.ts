@@ -1,4 +1,4 @@
-// Phase 133 (AISAFE-V20-01): dv column source = the S1-decided Kinetica lookup (133-SPIKES.md). NEVER dashboard_dynamic_views.columns_json — it is client-asserted.
+// Phase 133 (AISAFE-V20-01): dv column source = the S1-decided Kinetica lookup (Phase 133 spike notes). NEVER dashboard_dynamic_views.columns_json — it is client-asserted.
 // Pure helpers + an injectable-clock TTL cache (no express/kinetica imports).
 
 export function buildViewColumnsProbeSql(viewName: string): string {

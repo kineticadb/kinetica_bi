@@ -5,7 +5,7 @@
  *
  * WHY THIS EXISTS
  * ----------------
- * The v1.25 Schema Sync spike (122-SPIKE-NOTES.md) proved that
+ * The v1.25 Schema Sync spike (Phase 122 spike notes) proved that
  * `INFORMATION_SCHEMA.COLUMNS.DATA_TYPE` — the source the app already reads —
  * reports `character(256)` for a char1, char4 AND char16 column alike. It is
  * not merely lossy about width, it is actively wrong: every char column
@@ -75,7 +75,7 @@ type ShowTableBody = {
  * A malformed body must NEVER read as "your table was deleted" — that is the
  * whole point of the three-state return. Only an explicitly empty
  * `table_names` array (the documented shape a `no_error_if_not_exists: true`
- * call returns for a table Kinetica does not have — 122-SPIKE-NOTES.md Q5)
+ * call returns for a table Kinetica does not have — Phase 122 spike notes Q5)
  * means "missing". Anything structurally unexpected is "unreadable".
  */
 export function tablePresence(body: unknown): TablePresence {
@@ -209,7 +209,7 @@ export function formatFingerprint(fp: ColumnFingerprint): string {
  * written by this module) and a corrupt snapshot both land here identically,
  * and NEITHER is an error condition — both simply mean "establish a baseline
  * on the next successful check", per the locked "old snapshots" decision in
- * 122-CONTEXT.md.
+ * Phase 122 context.
  */
 export function parseFingerprintSnapshot(
   raw: string | null | undefined,
@@ -246,7 +246,7 @@ export function parseFingerprintSnapshot(
  * Serialize a ColumnFingerprintMap into the stored snapshot string format.
  *
  * Provided for Phase 125's apply step — Phase 122 never calls this outside
- * tests; this phase writes nothing to the database (locked in 122-CONTEXT.md).
+ * tests; this phase writes nothing to the database (locked in Phase 122 context).
  */
 export function serializeFingerprintSnapshot(columns: ColumnFingerprintMap): string {
   const snapshot: FingerprintSnapshot = { v: 1, columns };

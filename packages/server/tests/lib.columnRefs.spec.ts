@@ -177,7 +177,7 @@ describe("COLUMN_REF_SITES", () => {
 // -----------------------------------------------------------------------------------------------
 
 describe("isLowConfidenceColumnName", () => {
-  // The 26 real low-confidence names, from 123-RESEARCH.md (computed over the operator's
+  // The 26 real low-confidence names, from Phase 123 research (computed over the operator's
   // 564 real column names — 26/564 = 4.6%).
   const REAL_LOW_CONFIDENCE = [
     "n1", "n2", "n3", "Date", "ABC", "DEF", "NAME", "Time", "WKT", "X", "Y", "alt", "date", "edt",
@@ -419,7 +419,7 @@ describe("free-SQL sites", () => {
   });
 
   it("a widget produces BOTH an exact-site finding and a config.sql finding for the same column, with different paths", () => {
-    // NOTE (123-01 scope, flagged in 123-01-SUMMARY.md): structured "exact" sites (e.g.
+    // NOTE (123-01 scope, flagged in Phase 123-01 summary): structured "exact" sites (e.g.
     // widget.config.metricColumn) are implemented in Plan 123-02, not this plan — see
     // visitColumnRefSites's numbered TODOs. As written, this test cannot yet assert a real
     // "exact" ColumnRef, because no exact-site block exists in the traversal until 123-02 lands.
@@ -429,7 +429,7 @@ describe("free-SQL sites", () => {
     // non-colliding COLUMN_REF_SITES path conventions, and the config.sql heuristic finding this
     // plan implements already fires independently. Once 123-02 lands, widget4Config's
     // metricColumn="fare_amount" will additionally produce an exact finding at
-    // "config.metricColumn" for the SAME column — the CONTEXT.md-locked "operator chose
+    // "config.metricColumn" for the SAME column — the phase context-locked "operator chose
     // completeness over a quieter report" consequence that Phase 124 must group by record for
     // display (see the SUMMARY's Phase-124 note).
     expect(COLUMN_REF_SITES).toContain("widget.config.metricColumn");
@@ -443,7 +443,7 @@ describe("free-SQL sites", () => {
     expect(sqlHit?.path).toBe("config.sql");
     expect(sqlHit?.path).not.toBe("config.metricColumn");
 
-    // Granularity is one finding per SITE, not one per occurrence (locked in 123-CONTEXT.md):
+    // Granularity is one finding per SITE, not one per occurrence (locked in Phase 123 context):
     // widget4Config.sql mentions "vendor_id" TWICE ("SELECT vendor_id, ... GROUP BY vendor_id").
     // A correct implementation collapses both occurrences into the SAME ColumnRef, carrying both
     // matches — never two separate config.sql findings for the same column.
@@ -457,7 +457,7 @@ describe("free-SQL sites", () => {
     // Table 7 (analytics.tbl_seven) has ABC/DEF; table 8
     // (analytics.tbl_eight) has abc/def. Widget 59 is bound to table 8. This is the
     // direct, intended consequence of two already-locked decisions (case-insensitive matching +
-    // free-SQL asserts no table) and is NOT a duplicate-detection bug — 123-RESEARCH.md Pitfall 3.
+    // free-SQL asserts no table) and is NOT a duplicate-detection bug — Phase 123 research Pitfall 3.
     const widget = makeWidget({
       id: 59, type: "timeline", config: { customWhere: widget59CustomWhere },
     });
@@ -1291,7 +1291,7 @@ describe("excluded look-alike keys", () => {
     const input = makeInput({ widgets: [widget] });
     const refs = collectColumnRefs(input, { tableId: 2, columns: ["WKT"] });
     // A value-equality walker would ALSO fire on spatialMode:"wkt" (case-insensitively) — that is
-    // the collision 123-RESEARCH.md names, and the reason identification is path-driven.
+    // the collision Phase 123 research names, and the reason identification is path-driven.
     expect(refs.map((r) => r.site)).toEqual(["widget.config.spatialTargets[].spatialCol"]);
   });
 

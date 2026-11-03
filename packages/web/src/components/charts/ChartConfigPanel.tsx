@@ -329,7 +329,7 @@ const ChartConfigPanel = ({
   const usesMultiColumnGroupBy = isBar || isTable || isHeatmap || isLine;
   // Soft cap on the number of group-by columns in the builder (distinct from maxBarGroupBySeriesCap
   // which caps SERIES at render time). 6 columns is a reasonable UI ceiling before the
-  // GROUP BY becomes unreadable — not an env-driven value per CONTEXT.md.
+  // GROUP BY becomes unreadable — not an env-driven value per the phase context.
   const MAX_BAR_GROUP_BY_COLUMNS = isHeatmap ? 2 : 6;
   // Phase 132 (D-02/D-05): the builder's seeded column list, hoisted so Apply can validate it.
   // Legacy single-column widgets seed from `groupByColumn`; a Line with no group-by seeds one
@@ -413,7 +413,7 @@ const ChartConfigPanel = ({
     };
     return (
       <div className="config-panel">
-        {/* ChartConfigPanel — custom panel scaffold (Phase 11-10 fix; addresses 11-VERIFICATION.md Criterion 1 RED) */}
+        {/* ChartConfigPanel — custom panel scaffold (Phase 11-10 fix; addresses Phase 11 verification Criterion 1 RED) */}
         <div className="config-panel-body">
           {/* Title section — identical to non-custom branch */}
           <div className="config-group">
@@ -518,10 +518,10 @@ const ChartConfigPanel = ({
   }
 
   // Phase 10 DRILL-02: compute default drillDownColumn per chart type when none is set yet.
-  // CONTEXT.md "Drill-down column picker (DRILL-02)" defaults rule (LOCKED):
+  // the phase context "Drill-down column picker (DRILL-02)" defaults rule (LOCKED):
   //   - bar/line/pie: default to current groupByColumn (the category dimension)
   //   - scatter: default to the configured x-axis key (handled in its own branch BEFORE
-  //     the bar/line/pie catch-all per CONTEXT.md lock; today scatter has no dedicated
+  //     the bar/line/pie catch-all per the phase context lock; today scatter has no dedicated
   //     xAxisKey field — its x-axis column is resolved from groupByColumn by
   //     WidgetRenderer's resolveKeys() — so the branch reads groupByColumn for now.
   //     If scatter ever gains a dedicated xAxisKey field, update this branch only.)
@@ -539,7 +539,7 @@ const ChartConfigPanel = ({
     if (drillFollowsGroupBy) return (draft.groupByColumn as string) || "";
     // An explicit pick wins for the remaining (non-aggregated / records) types.
     if (currentDrillDownColumn !== "") return currentDrillDownColumn;
-    // Scatter: configured x-axis key (CONTEXT.md lock). Today derived from groupByColumn
+    // Scatter: configured x-axis key (the phase context lock). Today derived from groupByColumn
     // because scatter has no separate xAxisKey field; future-proofed by being its own branch.
     if (widgetType === "scatter") return (draft.groupByColumn as string) || "";
     // Other aggregated (no group-by, e.g. scalar): groupByColumn fallback.
@@ -929,7 +929,7 @@ const ChartConfigPanel = ({
           disabled={!customPanelValid || lineMissingXColumn}
           title={lineMissingXColumn ? "Group By column 1 is required" : (!customPanelValid ? "Add at least 2 break rows" : undefined)}
           onClick={() => {
-            // Phase 10 DRILL-02 + RESEARCH.md Pitfall 2: persist drillDownColumn AND
+            // Phase 10 DRILL-02 + the phase research Pitfall 2: persist drillDownColumn AND
             // drillDownColumnType at save time so renderers don't need TableDto.columns
             // at render time. The default fallback (per-chart-type, including the scatter
             // x-axis-key branch from Step 3) is locked into the persisted config — no implicit

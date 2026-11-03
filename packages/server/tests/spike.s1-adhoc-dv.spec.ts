@@ -3,7 +3,7 @@
  *
  * Proves, without any Kinetica, that createOrReplaceMaterialized takes an inline
  * (session-bound) view name and has no dependency on a dashboard_dynamic_views row.
- * The live half (non-admin create / view-of-view / WMS / TTL) is src/spikes/adhocDvSpike.ts.
+ * The live half (non-admin create / view-of-view / WMS / TTL) was checked once by a Phase 133 spike.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createOrReplaceMaterialized } from "../src/lib/materializedView";

@@ -107,7 +107,7 @@
   --color-chart-axis: #6b6490;
 }
 
-/* ── Light theme — warm off-white Aurora palette (CONTEXT.md decision 2026-06-23) ── */
+/* ── Light theme — warm off-white Aurora palette (the phase context decision 2026-06-23) ── */
 /* Only color tokens flip — spacing/radius/type/motion scales are mode-independent. */
 :root[data-theme="light"] {
   color-scheme: light;
@@ -465,56 +465,6 @@ a {
   color: #0b1224;
   border-radius: var(--radius-lg);
   font-weight: var(--font-weight-bold);
-}
-
-.dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-4);
-}
-
-.kpi-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: var(--space-5);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-}
-
-.kpi-label {
-  color: var(--muted);
-  font-size: var(--text-lg);
-}
-
-.kpi-value {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: var(--font-weight-bold);
-  margin: var(--space-2) 0;
-}
-
-.kpi-delta {
-  font-size: var(--text-lg);
-}
-
-.kpi-delta.up {
-  color: var(--accent-text);
-}
-
-.kpi-delta.down {
-  color: #ef4444;
-}
-
-.grid-2 {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: var(--space-4);
 }
 
 .card {
@@ -1618,7 +1568,7 @@ input[type="checkbox"],
 
 /* --- Phase 107 Plan 01 (FPANEL-V120-09): panel-variant chip CSS ---
    Pre-added here so Plan 107-02 (the filter panel) can consume them; unreferenced
-   until then, harmless per PITFALLS.md #6. Copied VERBATIM from 107-UI-SPEC.md's
+   until then, harmless per the research pitfalls #6. Copied VERBATIM from Phase 107 UI spec's
    Class Manifest "ADD to global.css" table — tokens/color-mix only, no raw hex/rgba. */
 .filter-panel-chip {
   display: flex;
@@ -1662,7 +1612,7 @@ input[type="checkbox"],
 }
 
 /* --- Phase 107 Plan 02 (FPANEL-V120-01..07): panel shell + rail + groups ---
-   Copied VERBATIM from 107-UI-SPEC.md's Class Manifest "ADD to global.css" table —
+   Copied VERBATIM from Phase 107 UI spec's Class Manifest "ADD to global.css" table —
    tokens/color-mix only, no raw hex/rgba. Only rendered when
    dashboard.filter_display_mode === "panel" (isPanelMode branch in DashboardsPage.tsx);
    topbar mode never references any of these classes (backward-compat). */
@@ -1823,7 +1773,7 @@ input[type="checkbox"],
 }
 
 /* Narrow-viewport: expanding the panel must OVERLAY, never reflow (Pitfall 9 /
-   107-CONTEXT.md lock). Reuses the SAME 900px breakpoint already gating #root's
+   Phase 107 context lock). Reuses the SAME 900px breakpoint already gating #root's
    sidebar collapse (global.css ~210), so "narrow" has one consistent definition
    app-wide. No width-transition here (discrete conditional render — Pitfall 3 lock). */
 @media (max-width: 900px) {
@@ -2372,7 +2322,7 @@ input[type="checkbox"],
 }
 
 /* === Phase 11: Map Chart =============================================
-   Source: .planning/phases/11-map-chart/11-UI-SPEC.md Component Inventory
+   Source: the Phase 11 UI spec component inventory
    Spacing: strict multiples of 4 (4/8/12/16/20/24)
    Color: --bg / --panel / --card / --border / --accent / --muted / #ef4444 (destructive)
    ============================================ */
@@ -2506,7 +2456,7 @@ input[type="checkbox"],
    - pointer-events: none on container; pointer-events: auto on individual buttons
      (V15-P-17 lock: prevents accidental OL event swallowing in gaps between buttons).
    - Vertical column of 36×36 icon buttons; visually abuts the OL zoom control (top-left).
-   - Active-mode styling: filled accent background + white icon (29-CONTEXT.md operator lock).
+   - Active-mode styling: filled accent background + white icon (Phase 29 context operator lock).
    ============================================================ */
 /* MapZoomToolbar — custom zoom +/- bar at top-left, replaces the default OL zoom
    control. Shares .map-draw-toolbar-btn for button styling so the two bars match. */
@@ -2561,8 +2511,8 @@ input[type="checkbox"],
   border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
-/* Active state: filled accent background + WHITE icon (29-CONTEXT.md operator lock).
-   Plan advisory: plan specified #0b1224 (dark icon) but CONTEXT.md locked decision
+/* Active state: filled accent background + WHITE icon (Phase 29 context operator lock).
+   Plan advisory: plan specified #0b1224 (dark icon) but the phase context locked decision
    requires white icon on active. Using #ffffff per operator intent. */
 .map-draw-toolbar-btn.is-active {
   background: var(--accent);
@@ -2599,7 +2549,7 @@ input[type="checkbox"],
    Phase 29 (SHAPE-V15-03): Shape measurement pill.
    - Shared CSS class for the persistent measurement label (Plan 03) and the live tooltip
      during draw (Plan 04). Same dark pill, same white text, same font — single class for
-     visual continuity (29-CONTEXT.md locked).
+     visual continuity (Phase 29 context locked).
    - position is set by ol/Overlay (no positioning here); pointer-events: none so clicks
      pass through to the map canvas (selection / draw interactions).
    ============================================================ */
@@ -5290,7 +5240,7 @@ input[type="checkbox"],
    `.data-table` sets `font-size: var(--text-lg)` (14px) at :571, while this panel's report
    text is `--text-sm` (11px) -- correct for `.data-table`'s original dense-grid context,
    wrong inside a compact modal detail view.
-   `.data-table` is ALSO used by DatasetsPage (x2) and DataTable.tsx, so it is NOT changed
+   `.data-table` is ALSO used by DatasetsPage (x2), so it is NOT changed
    globally; the override is scoped to this modal's sections only. Padding is tightened for
    the same reason -- `--space-3` row padding suits a full-width grid, not a nested detail. */
 .schema-sync-section .data-table {

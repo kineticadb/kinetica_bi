@@ -12,7 +12,7 @@
  *
  * Three tables are deliberately absent from the payload, by construction (never imported, never
  * read) rather than by after-the-fact filtering. Their accessors are not imported into this file
- * at all — see 119-RESEARCH.md / 119-CONTEXT.md for the full names:
+ * at all — see Phase 119 research / Phase 119 context for the full names:
  *   - the runtime materialized-view bookkeeping table — tied to a specific Kinetica cluster +
  *     TTL; meaningless outside this deployment.
  *   - the access-grant table — operator-excluded (DXIM-V124-08); who-can-view is a local
