@@ -835,6 +835,56 @@ the milestone's only `packages/web` diff in Phase 126.
 
 ---
 
+## Milestone: v2.0 — AI-Driven Dashboards
+
+**Shipped:** 2026-11-03
+**Phases:** 11 (133-143) | **Plans:** 116 + the 143 spike | **Commits:** 544 (201 `feat`, 53 `fix`) | **Timeline:** 26 days (2026-10-08 → 2026-11-03)
+
+### What Was Built
+
+- A shared zod contract and one server gateway for every AI change, with schema-only access by default and an optional guarded query mode run as the user.
+- A per-user session layer with per-answer revert, and Keep as one transaction with conflict checks.
+- The AI widget (full chat, inline or drawer), AI filters, session-only dynamic views from a structured spec.
+- Generate from a table, an AI activity page, and four provider adapters (Gemini live, Ollama partial, Claude unit-tested).
+- A Claude Desktop connector (`packages/mcp`) over the same gateway, with revocable tokens and a browser Keep.
+
+52/53 requirements; AIPRV-V20-03 partial by operator decision.
+
+### What Worked
+
+- **The server validates, the model proposes.** Every refusal came back with a reason the model could repair, and no malformed call was ever applied, which made a borderline S6 result and a weak local model safe to ship.
+- **Spikes before contracts** (S1-S7): the Kinetica abort-vs-cancel finding (S7) and the tool-call matrix (S6) changed designs before code depended on them.
+- **Live UAT driven by Claude over CDP in a separate Chrome profile**, with the operator only signing in and editing `.env`; it found real defects (map default view, timeline recipe, Cancel re-send) in every phase.
+- **A milestone audit with an integration checker found a real break (F1)** that every phase verification had passed: AI views needed `AI_ENABLED` even when only MCP was on.
+- **The spike branch became a phase** (143) with its own requirements and live UAT rather than being merged as-is.
+
+### What Was Inefficient
+
+- **The free tier dictated the schedule.** About 20 requests per day per model spread Phase 142 over four quota days and S6 over three more; one S6 day was lost to a run with no key in the shell (the spike now refuses to start without one).
+- **Server edits during operator UAT deleted an unkept build** (tsx watch restart → boot sweep), and the Keep error did not say why.
+- **Config confusion cost a test cycle:** the token went into the wrong Claude Desktop server entry, so revoke appeared not to work.
+- **A test passed before its fix** (AIDV-1b) because config is read at app creation; caught only by the stash-and-rerun habit.
+
+### Patterns Established
+
+- One gateway, many callers: in-app asks, Generate and MCP all go through `checkAiOp`; new entry points add routes, not rules.
+- Tools give recipes, the server only validates (e.g. the map recipe); a refusal names the fix ("leave out tableId; add the data with add_heatmap_layer").
+- No server source edits while the operator holds an unkept build.
+- Combine per-run spike aggregates by hand from the output files, and say so in the record.
+
+### Key Lessons
+
+1. **A rule-based verdict needs the record of how close it was.** "json by the rule, 88.9% vs 90%, day 3 clean" lets the operator decide; a bare verdict would not.
+2. **Gate checks must follow the feature's real switches.** Anything reachable with `MCP_ENABLED` alone must not test `AI_ENABLED`.
+3. **Write a new test, then prove it fails without the fix**, especially when config is read once at startup.
+
+### Cost Observations
+
+- Sessions: many, often split around the provider's daily quota.
+- Notable: Claude-driven browser UAT kept operator time to sign-ins, `.env` edits, Claude Desktop config and decisions.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -849,6 +899,7 @@ the milestone's only `packages/web` diff in Phase 126.
 | v1.20 | 8 (incl. 2 inserted) | 12 | Mid-milestone phase insertion when a config UI was found to be inert (109.1/109.2); gate evidence RE-RUN at attestation time rather than trusted from capture; one shared read-path resolver returning every caller's needs so duplication can be retired |
 | v1.25 | 5 | 21 | Registry built from an adversarial sweep of real data; approved-prose checkpoints before UI; `total_changes()` row-write budgets; cross-package mirror guards read the other package's source; milestone audit remediated in-session |
 | v1.26 | 6 | 41 | Live spike settled an open architecture question before code; orchestrator-run live smokes per server phase; mutation-proven snapshot isolation; post-checkpoint double code review; portal-rendered modals |
+| v2.0 | 11 | 116 + spike | First LLM feature: one validating gateway for every caller; Claude-driven CDP browser UAT; provider quota-day scheduling; spike branch promoted to a phase; integration-checker audit caught a cross-phase break |
 
 *Rows for v1.5–v1.19 were never backfilled into this table; see each milestone's section above.*
 
@@ -865,6 +916,7 @@ the milestone's only `packages/web` diff in Phase 126.
 | v1.20 | 3439/3439 frontend (154 files) + server SET-BASED ⊆ TD-V16-TEST-ISOLATION | +6358/−491 across 56 files in `packages/` (71 commits) | passed (SC1–SC4 attested; operator UAT 8/8 PASS, zero gaps; 19/19 requirements) |
 | v1.25 | 4162/4162 frontend (185 files) + server 1490/1543, GATE PASSED (8 documented failing files) | +13,138/−21 across 39 files in `packages/` (130 commits) | tech_debt (19/19; no blockers; F1/F2/PG-3 fixed same day; operator UAT 14/14) |
 | v1.26 | 4434/4434 frontend (203 files) + server 1803/1857, GATE PASSED (8 known + 1 contamination-only file) | +13,427/−245 across 115 files in `packages/` (170 commits) | tech_debt (21/21; no blockers; operator UAT 131 V1–V13 + Z1–Z5, 132 V1–V9) |
+| v2.0 | 5186 passed / 1 skipped frontend + server set-based gate (known set + contamination-only files) + mcp 10/10 | +52,218/−1,260 across 464 files in `packages/` (544 commits) | tech_debt (52/53; AIPRV-V20-03 partial by operator decision; no blockers) |
 
 *Rows for v1.6–v1.19 were never backfilled into this table; see each milestone's section above.*
 

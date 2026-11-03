@@ -1,5 +1,41 @@
 # Milestones
 
+## v2.0 AI-Driven Dashboards (Shipped: 2026-11-03)
+
+**Phases completed:** 11 phases (133-143), 116 plans (133-142) plus Phase 143 built from a spike
+
+**Delivered:** A user asks a question in an AI widget and the AI answers by changing the dashboard: it adds, edits, moves and removes charts and heatmap map layers, applies filters through the existing filter path and builds session-only dynamic views from a structured spec. Every change is checked by one server gateway against a shared zod contract and the live schema, can be reverted per answer, and is saved only by Keep (one transaction, edit rights per item, 409 on a foreign write). Designers generate a starter dashboard from a table, admins browse an AI activity log, and Claude Desktop builds and edits dashboards through the same gateway with revocable personal tokens. AI and the connector are off by default and env-configured. 52/53 requirements; AIPRV-V20-03 (Ollama) Partial by operator decision. Live UAT on Kinetica 7.2.3.12 for every phase, light and dark; Gemini `gemini-3-flash-preview` G0-G9 PASS. 544 commits since v1.26 close (201 `feat`, 53 `fix`), 26 days (2026-10-08 → 2026-11-03), 464 package files, +52,218 / −1,260 (new packages `shared` and `mcp`).
+
+**Key accomplishments:**
+
+- **One contract and one gateway for every AI change** (133, 135, 136) — a shared zod op contract (`packages/shared`), AI env validated at boot, and a server gateway (shape → allow-list → permission → reference → live schema) that refuses bad calls with reasons the model can repair. Schema-only data access by default, proven with a canary egress matrix; the key never reaches logs, SSE, config, audit or errors. OpenAI-compatible (Gemini, Ollama), Gemini-native and Claude (`fetch`, unit-tested only) adapters; `ai:use` permission; per-user, per-day and per-answer caps. The v1.11 column-interpolation hole (SSYNC-F6) closed first.
+- **A session layer instead of a chat transcript** (134, 137, 138) — a per-user op log and effective widget/layer lists, so AI changes apply at once, other viewers never see them, and each answer can be reverted. The AI widget shows a full chat inline or as a drawer by tile size, with progress, Cancel, follow-ups, clarifying choices, highlights, an app-owned change list and a Keep/Discard bar. AI filters reuse the click path and never clobber a user's later filter.
+- **Dynamic views and guarded queries without model-written SQL** (139, 140) — views are a structured spec compiled server-side (joins, hour/weekday/month buckets), materialized under server-chosen names with a full lifecycle (undo, discard, switch, logout, boot sweep). Optional query mode runs a guarded read-only SELECT (libpg-query) as the user, with a row cap, timeout and Kinetica job cancel (abort alone leaves the job running, spike S7).
+- **Keep that cannot lose or overwrite work** (141) — the client folds the session into a change set, the server re-validates and writes it in one SQLite transaction with temp-id remapping, and a trigger-driven `dashboards.version` returns 409 on a foreign write while own layout saves do not.
+- **Generate, AI activity and live provider proofs** (142) — a private, unkept starter dashboard per user (4-8 widgets, timeline and map recipes) with one discard helper behind Discard, DELETE, logout, boot and TTL sweeps; an AI activity page on `audit:view` (no row values). Gemini live G0-G9 PASS; Ollama `qwen2.5:7b-instruct` on CPU PARTIAL.
+- **Claude Desktop connector** (143) — `packages/mcp` (stdio) lets a Claude subscription build and edit dashboards through the same gateway; personal access tokens on the Profile page (revocable, listed even without Use AI), a browser handoff to Keep/Discard, Keep with the in-app AI off, a text widget and fit-to-screen layout. Token sign-in/revoke and AI-off Keep verified live 2026-11-02.
+
+**Known gaps and standing costs — recorded here deliberately, not smoothed over:**
+
+- **AIPRV-V20-03 is partial.** The adapter works against Ollama, but `qwen2.5:7b-instruct` on 4 CPUs fails action asks and Generate does not finish in 600 s. Accepted for v2.0 by the operator.
+- **The Gemini S6 tool-call spike came out borderline against native.** Over 21 clean trials on three free-tier days: 88.9% valid calls (rule needs 90%), malformed calls never repaired (0/2), second turn 2/3, so the spike's rule says json (best effort); day 3 was clean on all three. Native stays documented because G0-G9 passed live in native and json was never tried live with Gemini. Malformed calls were refused by the gateway, never applied.
+- **The Claude adapter was never live-verified** (no Anthropic key, AI-F11).
+- **The free tier shaped the whole UAT.** About 20 requests per day per model stretched Phase 142 over four quota days and S6 over three more.
+- **Server edits during UAT destroyed an operator build.** A `tsx watch` restart ran the boot sweep and deleted an unkept Claude Desktop dashboard before Keep; Keep now says the dashboard is gone instead of a generic error.
+- **Phase 143 has no plan files.** It started as `spike/kbi-mcp`; its evidence is commits, specs and `143-UAT-RESULTS.md`. Phases 133/136 SUMMARYs list no requirement IDs (paperwork only).
+- **Audit finding F1 was a real break caught late:** AI view materialize still required `AI_ENABLED`, so a Claude-built view previewed empty with the in-app AI off (fixed df769a0, live-checked).
+
+**Open tech debt carried to the backlog:**
+- F4: an MCP edit session validates against the snapshot taken at `open_dashboard`, so a foreign edit before handoff is not a 409.
+- F5 (pre-dates v2.0): DELETE/PATCH `/api/dashboards/:id` and POST widgets skip `canViewDashboard` for another user's unkept dashboard.
+- F6: logout deletes a build Claude is still making; unfinished MCP sessions are not audited; rejected-call audit keeps raw args; no per-user `/call` rate cap.
+- F7: Generate and MCP start need `dashboards:create`, Keep needs `dashboards:edit` (custom create-only roles only).
+- F8: with `AI_DATA_ACCESS=query`, Claude Desktop receives value data from read tools.
+- PENDVIS-3 parallel-load flake; Phase 141 debt (a)-(f) and Phase 142 debt (a)-(g) in `STATE.md`.
+- Carried: `TD-V16-TEST-ISOLATION`, the theme-guard `global.css` exemption, `TD-V20-EXPORT-CANCEL`, OIDC never browser-verified.
+
+---
+
 ## v1.26 Large Exports & Fixes (Shipped: 2026-10-08)
 
 **Phases completed:** 6 phases (127, 128, 129, 130, 131, 132), 41 plans

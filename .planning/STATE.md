@@ -2,28 +2,28 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: AI-Driven Dashboards
-status: in-progress
-stopped_at: "2026-11-03: S6 Gemini spike done (21 clean, borderline json by its rule; native kept, operator decision). Next: /gsd:complete-milestone v2.0 + PR"
-last_updated: "2026-11-02T18:00:00.000Z"
+status: milestone-complete
+stopped_at: "2026-11-03: v2.0 milestone complete and archived (local tag v2.0.0). Next: PR feat/ai-driven-dashboards -> master (operator OK to push), then /gsd:new-milestone"
+last_updated: "2026-11-03T12:00:00.000Z"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 41
-  completed_plans: 41
+  total_phases: 11
+  completed_phases: 11
+  total_plans: 116
+  completed_plans: 116
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-08 — v2.0 AI-Driven Dashboards started)
+See: .planning/PROJECT.md (updated 2026-11-03 — v2.0 AI-Driven Dashboards shipped)
 
 **Core value:** Click-through data exploration — users drill into chart elements and the entire dashboard filters to that slice of data, enabling fast iterative analysis without writing SQL.
-**Current focus:** v2.0 AI-Driven Dashboards — all phases (133-143) complete; milestone audit done, S6 spike done 2026-11-03; next `/gsd:complete-milestone v2.0` and the PR
+**Current focus:** v2.0 AI-Driven Dashboards SHIPPED 2026-11-03 (archived to `milestones/v2.0-*`); next the PR to `master`, then `/gsd:new-milestone` (no REQUIREMENTS.md until then)
 
 ## Current Position
 
-Milestone: v2.0 AI-Driven Dashboards
+Milestone: v2.0 AI-Driven Dashboards — COMPLETE 2026-11-03 (11 phases, 52/53 requirements, AIPRV-V20-03 partial by operator decision; audit `milestones/v2.0-MILESTONE-AUDIT.md`)
 Phase: 143 (Claude Desktop MCP Connector) — COMPLETE 2026-10-29 (AIMCP-V20-01..09; operator Claude Desktop UAT passed; live token sign-in from Claude Desktop passed 2026-11-02). Merged into `feat/ai-driven-dashboards`.
 Phase: 142 (Generate, Audit Viewer & Live Provider Proofs) — COMPLETE 2026-10-30 (11/11 plans; Gemini G0-G9 PASS; Ollama PARTIAL; S6 Gemini spike done 2026-11-03: 21/21 clean, 88.9% valid calls, json (best effort) by its rule, borderline; native kept as the documented setting by operator decision). Next: `/gsd:complete-milestone v2.0` and the PR to `master`.
 Phase: 141 (Keep (Persist AI Changes)) — COMPLETE 2026-10-22 (14/14 plans; gates green; 141-14 operator UAT run by Claude in the operator's Chrome on Kinetica 7.2.3.12, light+dark; step 6 skipped, step 9 deferred to 142; UAT fixes e5bb56e/eaad490/3aef06f; results in `phases/141-keep-persist-ai-changes/141-14-UAT-RESULTS.md`)
