@@ -236,6 +236,8 @@ Set `AI_MODEL` to the provider's model ID (e.g. `gemini-3-flash-preview`), not a
 Use AI (`ai:use`) is granted to admin and designer by default; grant it to other roles on the Roles page.
 Designers with Use AI can tick "Generate from a table" on the New Dashboard form: the AI builds 4 to 8 charts plus the AI Assistant from one table, and the dashboard stays private to its creator until they keep it (Discard deletes it with its widgets and AI views). Admins with the existing `audit:view` permission get an "AI activity" page listing every AI answer, generation and Keep (question, answer, tools, changes and the SQL the AI ran); query results are never logged.
 
+**Claude Desktop connector (optional, off by default).** The connector routes exist only when `MCP_ENABLED=true`; it works even with the in-app AI off, and the configured AI provider is never called by it. Users with Use AI build and edit dashboards from Claude Desktop, then Keep or Discard them in the browser. `MCP_APP_URL` sets the address in the review link Claude returns, and `MCP_TOKEN_TTL_DAYS` (default 90) how long the access tokens users create on their Profile page last (password sign-in only). Setup: `packages/mcp/README.md`.
+
 **Core**
 
 | Variable | Default | Req. | Description |
