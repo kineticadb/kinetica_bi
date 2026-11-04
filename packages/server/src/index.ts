@@ -851,6 +851,16 @@ export const createApp = async (): Promise<express.Express> => {
   );
 
   // Dashboard persistence
+  // 144 (ACCESS-V21-01): a dashboard-scoped write on a dashboard the caller cannot open gets the same 404 as opening it.
+  // Runs AFTER requirePermission (403 first, like ai-keep) and before any validation, write or Kinetica call.
+  // Returns true when it has already sent the 404 (mirrors denyAiWidget).
+  const denyHiddenDashboard = (req: Request, res: Response, dashboardId: number | undefined): boolean => {
+    const username = (req as AuthedRequest).user!.creds.username;
+    if (dashboardId !== undefined && Number.isFinite(dashboardId) && getDashboard(dashboardId) && canViewDashboard(username, dashboardId)) return false;
+    res.status(404).json({ error: "Dashboard not found." });
+    return true;
+  };
+
   // ENFORCE-V110-01: server-side filter — bypass users (manage_access) get all;
   // everyone else gets only dashboards for which canViewDashboard returns true.
   app.get("/api/dashboards", (req, res) => {
@@ -915,6 +925,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.patch("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
+    if (denyHiddenDashboard(req, res, id)) return;
     const body = req.body as { filter_display_mode?: unknown };
     if ("filter_display_mode" in body && body.filter_display_mode !== "topbar" && body.filter_display_mode !== "panel") {
       return res.status(400).json({ error: "filter_display_mode must be 'topbar' or 'panel'." });
@@ -926,6 +937,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.delete("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_DELETE), asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    if (denyHiddenDashboard(req, res, id)) return;
     // 142: a pending generated dashboard goes through the one discard helper (drops its AI session views too).
     if (getDashboard(id)?.generated_pending) {
       const r = await discardGeneratedDashboard(id);
@@ -956,8 +968,8 @@ export const createApp = async (): Promise<express.Express> => {
     if ((grantee_type !== "user" && grantee_type !== "role") || typeof grantee !== "string" || grantee.trim() === "") {
       return res.status(400).json({ error: "grantee_type ('user'|'role') and grantee are required." });
     }
-    const target = getDashboard(id);
-    if (!target) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, id)) return;
+    const target = getDashboard(id)!;
     if (target.generated_pending) return res.status(409).json({ error: "This dashboard hasn't been kept yet, so it can't be shared.", code: "DASHBOARD_NOT_KEPT" });
     const actor = (req as AuthedRequest).user!.creds.username;
     const before = listDashboardGrants(id);
@@ -983,7 +995,7 @@ export const createApp = async (): Promise<express.Express> => {
     if ((grantee_type !== "user" && grantee_type !== "role") || typeof grantee !== "string" || grantee.trim() === "") {
       return res.status(400).json({ error: "grantee_type ('user'|'role') and grantee are required." });
     }
-    if (!getDashboard(id)) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, id)) return;
     const actor = (req as AuthedRequest).user!.creds.username;
     const before = listDashboardGrants(id);
     const removed = removeDashboardGrant(id, grantee_type, grantee);
@@ -1039,7 +1051,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.post("/api/dashboards/:id/widgets", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
-    if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, dashboardId)) return;
     const input = req.body as Omit<Widget, "id" | "dashboard_id" | "created_at" | "updated_at">;
     if (!input?.title || !input?.type) {
       return res.status(400).json({ error: "Widget requires 'title' and 'type'." });
@@ -1056,15 +1068,21 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.patch("/api/widgets/:id", ...requirePermission(PERMISSIONS.WIDGETS_CONFIGURE), (req, res) => {
     const id = Number(req.params.id);
-    if (req.body?.type === "ai" && getWidget(id) && getWidget(id)!.type !== ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
-    const updated = stampWrite(res, getWidget(id)?.dashboard_id, () => updateWidget(id, req.body));
+    const widget = getWidget(id);
+    if (!widget) return res.status(404).json({ error: "Widget not found." });
+    if (denyHiddenDashboard(req, res, widget.dashboard_id)) return;
+    if (req.body?.type === "ai" && widget.type !== ("ai" as Widget["type"]) && denyAiWidget(req, res)) return;
+    const updated = stampWrite(res, widget.dashboard_id, () => updateWidget(id, req.body));
     if (!updated) return res.status(404).json({ error: "Widget not found." });
     return res.json(updated);
   });
 
   app.delete("/api/widgets/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
-    const ok = stampWrite(res, getWidget(id)?.dashboard_id, () => deleteWidget(id));
+    const widget = getWidget(id);
+    if (!widget) return res.status(404).json({ error: "Widget not found." });
+    if (denyHiddenDashboard(req, res, widget.dashboard_id)) return;
+    const ok = stampWrite(res, widget.dashboard_id, () => deleteWidget(id));
     if (!ok) return res.status(404).json({ error: "Widget not found." });
     return res.status(204).send();
   });
@@ -1081,7 +1099,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.post("/api/dashboards/:id/tables", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
-    if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, dashboardId)) return;
     const { table_id } = req.body as { table_id?: number };
     if (!table_id) return res.status(400).json({ error: "table_id is required." });
     if (!getTable(table_id)) return res.status(404).json({ error: "Table not found." });
@@ -1092,6 +1110,7 @@ export const createApp = async (): Promise<express.Express> => {
   app.delete("/api/dashboards/:dashboardId/tables/:tableId", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.dashboardId);
     const tableId = Number(req.params.tableId);
+    if (denyHiddenDashboard(req, res, dashboardId)) return;
     const ok = stampWrite(res, dashboardId, () => removeDashboardTable(dashboardId, tableId));
     if (!ok) return res.status(404).json({ error: "Association not found." });
     return res.status(204).send();
@@ -1113,7 +1132,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.post("/api/dashboards/:id/layers", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const dashboardId = Number(req.params.id);
-    if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, dashboardId)) return;
     const { table_id, layer_type, position, config } = req.body as {
       table_id?: number; layer_type?: "KineticaWms"; position?: number; config?: Record<string, unknown>;
     };
@@ -1130,7 +1149,7 @@ export const createApp = async (): Promise<express.Express> => {
   // REORDER — must precede :layerId
   app.patch("/api/dashboards/:id/layers/reorder", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const dashboardId = Number(req.params.id);
-    if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, dashboardId)) return;
     const { orderedIds } = req.body as { orderedIds?: number[] };
     if (!Array.isArray(orderedIds) || orderedIds.some((n) => typeof n !== "number")) {
       return res.status(400).json({ error: "orderedIds (number[]) is required." });
@@ -1146,6 +1165,9 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.patch("/api/dashboards/:id/layers/:layerId", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const layerId = Number(req.params.layerId);
+    const layer = getDashboardLayer(layerId);
+    if (!layer) return res.status(404).json({ error: "Layer not found." });
+    if (denyHiddenDashboard(req, res, layer.dashboard_id)) return;
     // v1.4 Phase 19 (CONFIG-V14-01): pass-through forwarding of info_enabled / info_columns /
     // info_template alongside existing table_id / position / config. No strict validation here —
     // Phase 22 UI will validate; Phase 19 keeps the existing pass-through pattern.
@@ -1184,14 +1206,17 @@ export const createApp = async (): Promise<express.Express> => {
       const rawFilterScope = (body as any).filter_scope;
       body.filter_scope = rawFilterScope == null ? null : JSON.stringify(rawFilterScope);
     }
-    const updated = stampWrite(res, getDashboardLayer(layerId)?.dashboard_id, () => updateDashboardLayer(layerId, body));
+    const updated = stampWrite(res, layer.dashboard_id, () => updateDashboardLayer(layerId, body));
     if (!updated) return res.status(404).json({ error: "Layer not found." });
     return res.json(updated);
   });
 
   app.delete("/api/dashboards/:id/layers/:layerId", ...requirePermission(PERMISSIONS.LAYERS_MANAGE), (req, res) => {
     const layerId = Number(req.params.layerId);
-    const ok = stampWrite(res, getDashboardLayer(layerId)?.dashboard_id, () => deleteDashboardLayer(layerId));
+    const layer = getDashboardLayer(layerId);
+    if (!layer) return res.status(404).json({ error: "Layer not found." });
+    if (denyHiddenDashboard(req, res, layer.dashboard_id)) return;
+    const ok = stampWrite(res, layer.dashboard_id, () => deleteDashboardLayer(layerId));
     if (!ok) return res.status(404).json({ error: "Layer not found." });
     return res.status(204).send();
   });
@@ -1207,7 +1232,7 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.post("/api/dashboards/:id/views", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const dashboardId = Number(req.params.id);
-    if (!getDashboard(dashboardId)) return res.status(404).json({ error: "Dashboard not found." });
+    if (denyHiddenDashboard(req, res, dashboardId)) return;
     const { table_id, view_name, filter_clause } = req.body as {
       table_id?: number;
       view_name?: string;
@@ -1223,6 +1248,9 @@ export const createApp = async (): Promise<express.Express> => {
 
   app.patch("/api/views/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
+    const existingView = getView(id);
+    if (!existingView) return res.status(404).json({ error: "View not found." });
+    if (denyHiddenDashboard(req, res, existingView.dashboard_id)) return;
     const { filter_clause } = req.body as { filter_clause?: string };
     if (filter_clause === undefined) return res.status(400).json({ error: "filter_clause is required." });
     const updated = updateViewFilter(id, filter_clause);
@@ -1234,6 +1262,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const view = getView(id);
     if (!view) return res.status(404).json({ error: "View not found." });
+    if (denyHiddenDashboard(req, res, view.dashboard_id)) return;
     deleteView(id);
     return res.status(204).send();
   });
@@ -1247,6 +1276,7 @@ export const createApp = async (): Promise<express.Express> => {
     const id = Number(req.params.id);
     const view = getView(id);
     if (!view) return res.status(404).json({ error: "View not found." });
+    if (denyHiddenDashboard(req, res, view.dashboard_id)) return;
 
     const table = getTable(view.table_id);
     if (!table) return res.status(404).json({ error: "Source table not found." });
@@ -1849,6 +1879,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (!Number.isFinite(dashboardId)) {
         return res.status(400).json({ error: "dashboardId path param must be numeric." });
       }
+      if (denyHiddenDashboard(req, res, dashboardId)) return;
       const body = (req.body ?? {}) as {
         source_table_id?: number;
         name?: string;
@@ -1933,6 +1964,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (!existing) {
         return res.status(404).json({ error: "Dynamic view not found." });
       }
+      if (denyHiddenDashboard(req, res, existing.dashboard_id)) return;
       const body = (req.body ?? {}) as {
         source_table_id?: number;
         name?: string;
@@ -2391,6 +2423,7 @@ export const createApp = async (): Promise<express.Express> => {
       if (!row) {
         return res.status(404).json({ error: "Dynamic view not found." });
       }
+      if (denyHiddenDashboard(req, res, row.dashboard_id)) return;
       const authedReq = req as AuthedRequest;
       const dynamicViewName = buildDynamicViewName({
         userId: authedReq.user!.creds.username,
