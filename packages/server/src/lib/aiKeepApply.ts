@@ -15,6 +15,7 @@ import {
   listWidgets,
   listDashboardLayers,
 } from "../db";
+import { addDashboardGrant } from "./dashboardAccessDb";
 import { UnmappedTempRefError, collectSignedWidgetConfigRefs, emptyRefIdMaps, remapTempFilterSelection, remapTempRefs } from "./dashboardExportRefs";
 
 export class KeepConflict extends Error {
@@ -33,6 +34,7 @@ export type KeepPreparedInput = {
   dynamicViews: { tempId: number; name: string; sourceTableId: number; templateSql: string; maxRecords: number; columns: { name: string; type: string }[] }[];
   warnings: string[];
 };
+export type KeepApplyOpts = { expectPending?: boolean; grantCreator?: string };
 export type KeepApplied = { before: number; version: number; idMap: AiKeepIdMap; warnings: string[]; removedDynamicViewIds: number[] };
 
 const assertNoTempIds = (config: Record<string, unknown>): Record<string, unknown> => {
@@ -46,13 +48,21 @@ const assertNoTempIds = (config: Record<string, unknown>): Record<string, unknow
  * Keep (141): persist a folded AI change set in ONE synchronous better-sqlite3 transaction.
  * No await, no Kinetica, no fetch: a throw anywhere rolls every row (dashboards.version too) back.
  */
-export function applyKeep(dashboardId: number, change: AiKeepRequest, prepared: KeepPreparedInput): KeepApplied {
+export function applyKeep(dashboardId: number, change: AiKeepRequest, prepared: KeepPreparedInput, opts: KeepApplyOpts = {}): KeepApplied {
   const run = db.transaction((): KeepApplied => {
     const cur = getDashboardVersion(dashboardId);
     if (cur === undefined) throw new KeepInvalid(["dashboard not found"]);
     if (cur !== change.baselineVersion) throw new KeepConflict();
+    if (opts.expectPending) {
+      // 145: a create-only right is only valid while the dashboard is still unkept; re-check inside the transaction.
+      const row = db.prepare("SELECT generated_pending_at FROM dashboards WHERE id = ?").get(dashboardId) as { generated_pending_at: number | null } | undefined;
+      if (!row || row.generated_pending_at === null) throw new KeepConflict();
+    }
     // 142 D-05: the first Keep makes a generated dashboard ordinary. Same transaction: a rollback restores the flag.
-    db.prepare("UPDATE dashboards SET generated_by = NULL, generated_pending_at = NULL WHERE id = ? AND generated_pending_at IS NOT NULL").run(dashboardId);
+    const cleared =
+      db.prepare("UPDATE dashboards SET generated_by = NULL, generated_pending_at = NULL WHERE id = ? AND generated_pending_at IS NOT NULL").run(dashboardId).changes === 1;
+    // 145: a creator without manage access keeps sight of the dashboard they just kept (operator decision).
+    if (opts.grantCreator && cleared) addDashboardGrant(dashboardId, "user", opts.grantCreator, db);
 
     const maps = emptyRefIdMaps();
     const mapDv = (x: number | null | undefined): number | null => {

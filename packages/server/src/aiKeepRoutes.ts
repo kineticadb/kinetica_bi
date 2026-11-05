@@ -1,6 +1,7 @@
 // Phase 141: POST /api/dashboards/:id/ai-keep. The client sends a folded change set; the server re-checks rights,
 // ownership, shape and the live schema, compares the dashboard version, then writes everything in ONE transaction
 // (applyKeep). Kinetica side effects (dropping removed saved views) happen only after commit. D-04: server = authority.
+// 145: a create-only role keeps its own unkept dashboard with dashboards:create alone; saved dashboards still need dashboards:edit + per-item rights.
 import type { Express, Request, RequestHandler, Response, NextFunction } from "express";
 import {
   AiKeepRequestSchema,
@@ -13,11 +14,10 @@ import {
   type AiKeepRequest,
   type AiKeepIdMap,
 } from "@kinetica-bi/shared";
-import type { AuthedRequest } from "./auth";
-import { requirePermission } from "./rbac";
+import { requireAuth, type AuthedRequest } from "./auth";
 import { PERMISSIONS } from "./lib/permissions";
 import { aiCheckLimits } from "./lib/aiConfig";
-import { getDashboard, getDashboardVersion, getDashboardDynamicView } from "./db";
+import { getDashboard, getDashboardVersion, getGeneratedPending, getDashboardDynamicView } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getEffectivePermissions } from "./lib/rbacDb";
 import { kineticaSql } from "./kinetica";
@@ -41,6 +41,18 @@ const countsOf = (c: AiKeepRequest) => ({
   removed: { widgets: c.widgets.remove.length, layers: c.layers.remove.length, dynamicViews: c.dynamicViews.remove.length },
 });
 
+// Route-level entry gate: dashboards:edit OR dashboards:create (create-only creators may keep their own unkept build).
+// Same refusal body and log line as requirePermission(DASHBOARDS_EDIT) so callers with neither right see no change.
+const keepEntryGate: RequestHandler = (req, res, next) => {
+  const username = (req as AuthedRequest).user!.creds.username;
+  const perms = getEffectivePermissions(username);
+  if (perms.has(PERMISSIONS.DASHBOARDS_EDIT) || perms.has(PERMISSIONS.DASHBOARDS_CREATE)) return next();
+  console.warn(
+    JSON.stringify({ ts: new Date().toISOString(), level: "warn", event: "permission_denied", username, route: req.path, method: req.method, permission: PERMISSIONS.DASHBOARDS_EDIT, outcome: "denied" }),
+  );
+  return res.status(403).json({ error: `Permission denied: ${PERMISSIONS.DASHBOARDS_EDIT} is required`, code: "PERMISSION_DENIED", permission: PERMISSIONS.DASHBOARDS_EDIT });
+};
+
 export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void {
   const handler = async (req: Request, res: Response): Promise<unknown> => {
     const started = Date.now();
@@ -50,6 +62,14 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0 || !getDashboard(id) || !canViewDashboard(username, id)) {
       return res.status(404).json({ error: "Dashboard not found." });
+    }
+    // 145 (KEEP-V21-01/02): the caller's own unkept dashboard (the 404 above already proved the caller is its creator)
+    // can be kept with dashboards:create alone; any other dashboard needs dashboards:edit plus the per-item rights.
+    const perms = getEffectivePermissions(username);
+    const ownUnkept = getGeneratedPending(id) != null;
+    const createOnlyKeep = ownUnkept && perms.has(PERMISSIONS.DASHBOARDS_CREATE);
+    if (!createOnlyKeep && !perms.has(PERMISSIONS.DASHBOARDS_EDIT)) {
+      return res.status(403).json({ error: `Permission denied: ${PERMISSIONS.DASHBOARDS_EDIT} is required`, code: "PERMISSION_DENIED", permission: PERMISSIONS.DASHBOARDS_EDIT });
     }
     // 143: Keep also serves Claude Desktop builds, so it works when the in-app AI is off but the connector is on.
     const limits = aiCheckLimits();
@@ -80,10 +100,12 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
     };
 
     // d. rights the change set actually needs (D-01/D-02)
-    const missing = missingRights(requiredRights(c), getEffectivePermissions(username));
-    if (missing.length > 0) {
-      audit("keep_denied", missing[0]);
-      return res.status(403).json({ error: keepPermissionMessage(missing[0]!), code: AI_KEEP_ERROR_CODES.permission, permission: missing[0], missing });
+    if (!createOnlyKeep) {
+      const missing = missingRights(requiredRights(c), perms);
+      if (missing.length > 0) {
+        audit("keep_denied", missing[0]);
+        return res.status(403).json({ error: keepPermissionMessage(missing[0]!), code: AI_KEEP_ERROR_CODES.permission, permission: missing[0], missing });
+      }
     }
 
     // f. cheap stale-baseline pre-check: no Kinetica call has happened yet. Runs BEFORE the reference checks so a
@@ -109,7 +131,10 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
     // h. the real guard: version compare + every write in one synchronous transaction
     let out: ReturnType<typeof applyKeep>;
     try {
-      out = applyKeep(id, c, prep.prepared);
+      out = applyKeep(id, c, prep.prepared, {
+        expectPending: createOnlyKeep,
+        ...(createOnlyKeep && !perms.has(PERMISSIONS.DASHBOARDS_MANAGE_ACCESS) ? { grantCreator: username } : {}),
+      });
     } catch (e) {
       if (e instanceof KeepConflict) return conflict("in_txn_conflict");
       if (e instanceof KeepInvalid) return refuse(e.reasons);
@@ -135,5 +160,5 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
     return res.json({ idMap: out.idMap, version: out.version, warnings: [...check.warnings, ...out.warnings] });
   };
 
-  app.post("/api/dashboards/:id/ai-keep", deps.requireConfig, ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), deps.wrap(handler));
+  app.post("/api/dashboards/:id/ai-keep", deps.requireConfig, requireAuth, keepEntryGate, deps.wrap(handler));
 }
