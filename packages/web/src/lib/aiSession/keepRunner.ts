@@ -36,7 +36,8 @@ export function rectsFromLayouts(items: readonly { i: string; x: number; y: numb
 
 export async function runKeep(d: KeepRunDeps): Promise<KeepRunOutcome> {
   const versions = useDashboardVersionStore.getState();
-  const baseline = versions.baseline(d.dashboardId);
+  const floor = useAiSessionStore.getState().keepBaselineFloor;
+  const baseline = versions.baseline(d.dashboardId, floor ?? undefined);
   if (baseline === undefined) return failed;
 
   let body: AiKeepRequest;

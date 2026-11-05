@@ -102,6 +102,9 @@ export type AiSessionState = {
   /** 141 D-08/Pattern 4: "conflict" = a 409 happened and the user chose Stay; "committed" = saved but the refresh failed. Keep stays disabled until reset(). */
   keepBlocked: null | "conflict" | "committed";
   setKeepBlocked(v: null | "conflict" | "committed"): void;
+  /** 145: the Claude Desktop handoff's server-held baseline (version at open_dashboard, advanced by the user's own writes). Cleared by reset() and completeKeep(). */
+  keepBaselineFloor: number | null;
+  setKeepBaselineFloor(v: number | null): void;
   /** 141 D-11/D-18: read-only archive of kept turns plus notes; cleared by reset(). */
   savedTurns: SavedChatItem[];
   /** 141 D-11: after a successful Keep. NOT reset(): keeps the transcript (as savedTurns) and filters; clears history, approval, overlay; drops temp views. */
@@ -170,6 +173,7 @@ const initial = {
   pendingLeave: null as { proceed: () => void } | null,
   savedTurns: [] as SavedChatItem[],
   keepBlocked: null as null | "conflict" | "committed",
+  keepBaselineFloor: null as number | null,
 };
 
 export const useAiSessionStore = create<AiSessionState>((set, get) => ({
@@ -258,6 +262,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   },
 
   setKeepBlocked: (v) => set({ keepBlocked: v }),
+  setKeepBaselineFloor: (v) => set({ keepBaselineFloor: v }),
 
   // 141 D-21: Keep calls completeKeep(), NOT reset() - reset() would drop the transcript (D-18) and is for
   // discard/switch/leave only. Do not change this back. Filters are NOT undone (D-13): aiFilterSink is never called.
@@ -276,7 +281,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       savedTurns: [...s.savedTurns, ...archived, ...notes],
       baseEntries: [], droppedCount: 0, turns: [], cursor: -1, geometry: {}, derived: EMPTY_DERIVED,
       removalApproved: false, highlight: { ids: [], nonce: s.highlight.nonce + 1 }, tempLayerVisibility: {},
-      keepBlocked: null, pendingLeave: null, epoch: s.epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {},
+      keepBlocked: null, keepBaselineFloor: null, pendingLeave: null, epoch: s.epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {},
     });
     aiDvSink?.onReset();
     const wa = useWidgetActionStore.getState();

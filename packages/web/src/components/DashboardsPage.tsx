@@ -1164,6 +1164,7 @@ const DashboardOpen = ({
         // The server only hands over a saved removal the user approved in chat (confirmed: true).
         if (removesSavedContent(ops)) useAiSessionStore.getState().approveRemoval();
         aiActions.applyTurn({ prompt: h.prompt, answer: h.answer, ops, chat: { status: "ok", applied: h.applied, followUps: [] } });
+        if (typeof h.baselineVersion === "number") useAiSessionStore.getState().setKeepBaselineFloor(h.baselineVersion); // 145: a save by someone else while Claude worked must block Keep
       })
       .catch((e: unknown) => useToastStore.getState().showToast(e instanceof Error ? e.message : "Failed to load the Claude Desktop changes", "error"));
   }, [mcpReady, dashboard.id, aiActions, width]);
