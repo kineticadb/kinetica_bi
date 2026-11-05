@@ -23,6 +23,7 @@ import { getEffectivePermissions } from "./lib/rbacDb";
 import { kineticaSql } from "./kinetica";
 import { createLiveSchema } from "./lib/ai/liveSchema";
 import { buildDynamicViewName } from "./lib/dynamicViewName";
+import { noteMcpOwnWrite } from "./lib/mcp/mcpSessions";
 import { applyKeep, KeepConflict, KeepInvalid } from "./lib/aiKeepApply";
 import { requiredRights, missingRights, checkKeepChange, prepareKeep } from "./lib/aiKeepValidate";
 import { recordAiKeep, type AiKeepAuditOutcome } from "./lib/aiAudit";
@@ -145,6 +146,7 @@ export function registerAiKeepRoutes(app: Express, deps: AiKeepRouteDeps): void 
 
     // i. committed: header, best-effort drops of the removed saved views' materializations, audit, body
     res.setHeader(DASHBOARD_VERSION_HEADER, formatVersionWriteHeader(id, out.before, out.version));
+    noteMcpOwnWrite(id, username, out.before, out.version); // 145: an own in-app Keep is an own write for an open Claude Desktop edit
     await Promise.allSettled(
       out.removedDynamicViewIds.map(async (dvId) => {
         const name = buildDynamicViewName({ userId: username, dashboardId: id, dynamicViewId: dvId });

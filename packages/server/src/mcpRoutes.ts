@@ -11,7 +11,8 @@
  *                                           creator-only, Discard/logout/boot/TTL delete it, Keep clears the mark)
  *   POST /api/mcp/sessions/:id/call         { name, args } -> { ok, text } | { ok: false, stage, reasons }
  *   POST /api/mcp/sessions/:id/finish       { summary } -> { url }
- *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied } (once; the browser)
+ *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied, mode, baselineVersion } (once; the browser)
+ *                                              145: baselineVersion = version at open, advanced only by the user's own writes; the browser's Keep sends no later baseline.
  *
  * Phase 143 (AIMCP-V20-04) personal access tokens, so Claude Desktop's config holds a revocable token, not a password:
  *   GET    /api/mcp/tokens                  the user's tokens (never the token itself)
@@ -29,7 +30,7 @@ import { createMcpToken, listMcpTokens, recordMcpTokenSession, redeemMcpToken, r
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 import { aiCheckLimits } from "./lib/aiConfig";
-import { getDashboard, getDashboardDynamicView, getTable, listDashboardTables, listTables, listWidgets } from "./db";
+import { getDashboard, getDashboardDynamicView, getDashboardVersion, getTable, listDashboardTables, listTables, listWidgets } from "./db";
 import { createGeneratedDashboard, discardGeneratedDashboard, findPendingForUser, GeneratePendingError } from "./lib/aiGenerate";
 import { principalForSession, SessionEndedError } from "./lib/exportRunner";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
@@ -43,7 +44,7 @@ import { isClassAllowed } from "./lib/ai/outbound";
 import { stampMapDefaultViews } from "./lib/ai/mapDefaultView";
 import { applyFitBands } from "./lib/ai/generateMode";
 import { buildToolRegistry } from "./lib/ai/tools/registry";
-import { createMcpSession, getMcpSession, takeMcpHandoff, MCP_MAX_AUDITED_CALLS, type McpSession } from "./lib/mcp/mcpSessions";
+import { createMcpSession, getMcpSession, mcpKeepBaseline, takeMcpHandoff, MCP_MAX_AUDITED_CALLS, type McpSession } from "./lib/mcp/mcpSessions";
 import { recordMcpBuild, type AiToolAuditEntry } from "./lib/aiAudit";
 import { ALLOW_LIST_VERSION, type AiOp } from "@kinetica-bi/shared";
 
@@ -217,7 +218,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         const d = getDashboard(id);
         if (!d || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
         if (!perms.has(PERMISSIONS.DASHBOARDS_EDIT)) return res.status(403).json({ error: "You can't edit dashboards." });
-        const s = createMcpSession(username, id, { mode: "edit", snapshot: snapshotForDashboard(id) });
+        const s = createMcpSession(username, id, { mode: "edit", snapshot: snapshotForDashboard(id), baseVersion: getDashboardVersion(id) });
         return res.status(201).json({ sessionId: s.id, dashboardId: id, name: d.name });
       }
       if (!perms.has(PERMISSIONS.DASHBOARDS_CREATE)) return res.status(403).json({ error: "You can't create dashboards." });
@@ -242,7 +243,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       }
       try {
         const d = createGeneratedDashboard({ username, name, tableIds, assistant: false });
-        const s = createMcpSession(username, d.id);
+        const s = createMcpSession(username, d.id, { baseVersion: getDashboardVersion(d.id) });
         return res.status(201).json({ sessionId: s.id, dashboardId: d.id });
       } catch (e) {
         if (e instanceof GeneratePendingError) return pending409(res, e.existing);
@@ -391,6 +392,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.get("/api/mcp/sessions/:id/handoff", requireAuth, (req, res) => {
     const s = takeMcpHandoff(String(req.params.id), usernameOf(req), Number(req.query.dashboardId));
     if (!s) return res.status(404).json({ error: "Nothing to load from Claude Desktop (already loaded or expired)." });
-    return res.json({ prompt: MCP_PROMPT, answer: s.summary ?? "", ops: s.ops, applied: s.applied, mode: s.mode });
+    const baselineVersion = mcpKeepBaseline(s);
+    return res.json({ prompt: MCP_PROMPT, answer: s.summary ?? "", ops: s.ops, applied: s.applied, mode: s.mode, ...(baselineVersion === null ? {} : { baselineVersion }) });
   });
 }
