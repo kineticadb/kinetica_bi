@@ -118,12 +118,11 @@ describe("Claude Desktop Keep conflict check", () => {
 
   it("MKC-4 a new Claude Desktop build hands over the current version and keeps as before", async () => {
     const c = dee();
-    const t2 = createTable({ name: "trips2", schema: "fleet", columns: {} }).id;
-    const start = await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ name: "Build", tableIds: [t2] });
+    const start = await request(app).post("/api/mcp/sessions").set("Cookie", c).send({ name: "Build", tableIds: [T] });
     expect(start.status).toBe(201);
     const sid = start.body.sessionId as string;
     const nd = start.body.dashboardId as number;
-    expect((await call(sid, c, "add_widget", addWidgetArgs(t2))).body).toMatchObject({ ok: true });
+    expect((await call(sid, c, "add_widget", addWidgetArgs(T))).body).toMatchObject({ ok: true });
     await request(app).post(`/api/mcp/sessions/${sid}/finish`).set("Cookie", c).send({ summary: "Built." });
     const h = await request(app).get(`/api/mcp/sessions/${sid}/handoff?dashboardId=${nd}`).set("Cookie", c);
     expect(h.body.baselineVersion).toBe(getDashboardVersion(nd));
@@ -131,7 +130,7 @@ describe("Claude Desktop Keep conflict check", () => {
       baselineVersion: h.body.baselineVersion,
       dynamicViews: { add: [], remove: [] },
       layers: { add: [], edit: [], remove: [] },
-      widgets: { add: [{ tempId: -1, type: "bar", title: "Built bar", config: { tableId: t2 }, rect: { x: 0, y: 0, w: 12, h: 10 } }], edit: [], remove: [] },
+      widgets: { add: [{ tempId: -1, type: "bar", title: "Built bar", config: { tableId: T }, rect: { x: 0, y: 0, w: 12, h: 10 } }], edit: [], remove: [] },
     });
     expect(r.status).toBe(200);
     expect(getDashboard(nd)!.generated_pending).toBe(false);
