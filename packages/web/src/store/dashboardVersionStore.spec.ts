@@ -58,4 +58,19 @@ describe("dashboardVersionStore", () => {
     reads(12, [8, 8, 8, 8]);
     expect(s().baseline(12)).toBe(8);
   });
+  it("KVS-F1: a lower floor holds the baseline below the reads", () => {
+    reads(12, [10, 10, 10, 10]);
+    expect(s().baseline(12, 8)).toBe(8);
+    s().noteWrite(12, 8, 9);
+    expect(s().baseline(12, 8)).toBe(9);
+    expect(s().baseline(12)).toBe(10);
+  });
+  it("KVS-F2: a floor at or above the reads changes nothing", () => {
+    expect(s().baseline(12, 5)).toBeUndefined();
+    reads(12, [10, 10, 10, 10]);
+    expect(s().baseline(12, 10)).toBe(10);
+    expect(s().baseline(12, 12)).toBe(10);
+    s().noteWrite(12, 10, 11);
+    expect(s().baseline(12, 10)).toBe(11);
+  });
 });
