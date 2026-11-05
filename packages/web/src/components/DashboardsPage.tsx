@@ -1904,6 +1904,7 @@ const DashboardOpen = ({
         savedDynamicViews={savedDynamicViews}
         onKeep={onKeep}
         onReloadLatest={onReloadLatest}
+        ownUnkept={pending}
       />
       {genDiscardOpen && (
         <GeneratedDiscardDialog
