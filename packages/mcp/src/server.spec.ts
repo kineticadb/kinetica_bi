@@ -144,6 +144,23 @@ describe("kbi-mcp server", () => {
     expect(textOf(next)).toBe("No dashboard in progress. Call start_dashboard first.");
   });
 
+  it("MCPS-LIMIT a call-limit 429 comes back as the server's message and keeps the session", async () => {
+    const LIMIT_MSG = "Claude Desktop call limit reached: 3 calls per hour for each user. Nothing was changed. finish_dashboard still works. Try again in about 5 minutes.";
+    let limited = true;
+    const { client, calls } = fakeKbi((c) => {
+      if (c.path === "/api/mcp/sessions/s1/call" && limited) { limited = false; return new KbiError(429, LIMIT_MSG); }
+      return routes(c);
+    });
+    const mcp = await connect(client);
+    await mcp.callTool({ name: "start_dashboard", arguments: { name: "Trips", tableIds: [7] } });
+    const r = await mcp.callTool({ name: "add_widget", arguments: { tempId: -1, type: "bar", aggregation: "sum" } });
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toBe(`Kinetica BI: ${LIMIT_MSG}`);
+    const again = await mcp.callTool({ name: "add_widget", arguments: { tempId: -1, type: "bar", aggregation: "sum" } });
+    expect(again.isError).toBeFalsy();
+    expect(calls.at(-1)?.path).toBe("/api/mcp/sessions/s1/call");
+  });
+
   it("MCPS-4 server errors come back as tool errors with the server's message", async () => {
     const mcp = await connect(fakeKbi(() => new KbiError(403, "dashboards:create is required")).client);
     const r = await mcp.callTool({ name: "start_dashboard", arguments: { name: "x", tableIds: [1] } });
