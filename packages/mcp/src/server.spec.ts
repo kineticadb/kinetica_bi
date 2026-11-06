@@ -6,6 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { KbiClient, KbiError, type KbiResponse } from "./kbiClient.js";
 import { createKbiMcpServer } from "./server.js";
 
+const GONE = "This dashboard no longer exists: it was discarded, deleted or expired, so there is nothing to review. Start a new dashboard.";
 type Call = { method: string; path: string; body?: unknown };
 
 function fakeKbi(reply: (c: Call) => KbiResponse | KbiError): { client: KbiClient; calls: Call[] } {
@@ -40,8 +41,10 @@ function routes(c: Call): KbiResponse | KbiError {
   if (c.path === "/api/mcp/sessions") {
     const b = c.body as { name: string; replace?: boolean };
     if (b.name === "Busy" && !b.replace) return new KbiError(409, 'You already have an unkept dashboard, "Old". Open it and Keep or Discard it, or start again with replace to discard it.');
+    if (b.name === "Gone") return { status: 201, body: { sessionId: "s3", dashboardId: 43 } };
     return { status: 201, body: { sessionId: "s1", dashboardId: 42 } };
   }
+  if (c.path === "/api/mcp/sessions/s3/finish") return new KbiError(410, GONE);
   if (c.path === "/api/mcp/sessions/s1/call") {
     const args = (c.body as { args: { aggregation?: string } }).args;
     return args.aggregation
@@ -128,6 +131,17 @@ describe("kbi-mcp server", () => {
     expect(calls.find((c) => c.path === "/api/mcp/sessions")?.body).toEqual({ dashboardId: 5 });
     await mcp.callTool({ name: "add_widget", arguments: { tempId: -1, type: "bar", aggregation: "sum" } });
     expect(calls.at(-1)?.path).toBe("/api/mcp/sessions/s2/call");
+  });
+
+  it("MCPS-GONE a gone build: finish_dashboard returns the server's message, no link, and the session is forgotten", async () => {
+    const mcp = await connect(fakeKbi(routes).client);
+    await mcp.callTool({ name: "start_dashboard", arguments: { name: "Gone", tableIds: [7] } });
+    const fin = await mcp.callTool({ name: "finish_dashboard", arguments: { summary: "x" } });
+    expect(fin.isError).toBe(true);
+    expect(textOf(fin)).toContain("no longer exists");
+    expect(textOf(fin)).not.toMatch(/https?:\/\//);
+    const next = await mcp.callTool({ name: "add_widget", arguments: {} });
+    expect(textOf(next)).toBe("No dashboard in progress. Call start_dashboard first.");
   });
 
   it("MCPS-4 server errors come back as tool errors with the server's message", async () => {
