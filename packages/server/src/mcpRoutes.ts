@@ -17,6 +17,8 @@
  *
  * MCP_DATA_ACCESS (schema default | query, independent of AI_DATA_ACCESS) decides whether Claude Desktop gets run_query / get_column_profile and row values; query runs through the in-app AI's guarded query port as the user.
  *
+ * MCP_MAX_CALLS_PER_USER_PER_HOUR (default 300, 0 = off): per-user rolling-hour cap on tables/sessions/call -> 429 MCP_CALL_LIMIT; finish is exempt; in memory, resets on restart.
+ *
  * Phase 143 (AIMCP-V20-04) personal access tokens, so Claude Desktop's config holds a revocable token, not a password:
  *   GET    /api/mcp/tokens                  the user's tokens (never the token itself)
  *   POST   /api/mcp/tokens                  { name } -> { id, token, name, expiresAt }   (token shown once)
@@ -34,6 +36,7 @@ import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 import { aiCheckLimits, type AiDataAccess } from "./lib/aiConfig";
 import { loadMcpConfig, mcpQueryLimits } from "./lib/mcp/mcpConfig";
+import { createMcpCallLimiter, mcpCallLimitMessage } from "./lib/mcp/mcpCallLimit";
 import { getDashboard, getDashboardDynamicView, getDashboardVersion, getTable, listDashboardDynamicViews, listDashboardTables, listTables, listWidgets } from "./db";
 import { createGeneratedDashboard, discardGeneratedDashboard, findPendingForUser, GeneratePendingError } from "./lib/aiGenerate";
 import { principalForSession, SessionEndedError } from "./lib/exportRunner";
@@ -143,6 +146,14 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
     return limits;
   };
   const mcp = loadMcpConfig();
+  const limiter = createMcpCallLimiter({ maxPerHour: mcp.maxCallsPerUserPerHour });
+  // Claude Desktop calls count (tables, start/open, call). finish_dashboard is exempt so a build can always be handed over; the tool listing, tokens and the browser's handoff do not count either.
+  const limitCall: RequestHandler = (req, res, next) => {
+    const t = limiter.take(usernameOf(req));
+    if (t.ok) return next();
+    res.set("Retry-After", String(t.retryAfterSec));
+    res.status(429).json({ code: "MCP_CALL_LIMIT", error: mcpCallLimitMessage(limiter.maxPerHour, t.retryAfterSec), retryAfterSeconds: t.retryAfterSec });
+  };
   const toolNames = mcpToolNames(mcp.dataAccess);
   const registry = () => buildToolRegistry({ dataAccess: mcp.dataAccess, extraTools: [...QUERY_TOOLS] });
 
@@ -181,6 +192,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.get(
     "/api/mcp/tables",
     ...requirePermission(PERMISSIONS.AI_USE),
+    limitCall,
     deps.wrap(async (req, res) => {
       const config = aiConfig(res);
       if (!config) return;
@@ -222,6 +234,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.post(
     "/api/mcp/sessions",
     ...requirePermission(PERMISSIONS.AI_USE),
+    limitCall,
     deps.wrap(async (req, res) => {
       if (!aiConfig(res)) return;
       const { creds, sid } = (req as AuthedRequest).user!;
@@ -271,6 +284,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.post(
     "/api/mcp/sessions/:id/call",
     ...requirePermission(PERMISSIONS.AI_USE),
+    limitCall,
     deps.wrap(async (req, res) => {
       const config = aiConfig(res);
       if (!config) return;

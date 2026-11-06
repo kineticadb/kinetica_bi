@@ -76,8 +76,9 @@ describe("Claude Desktop call limit", () => {
   });
 
   it("MCPLIM-2 another user is unaffected", async () => {
-    const app = await boot("1");
+    const app = await boot("2");
     const c = dee();
+    expect((await request(app).get("/api/mcp/tables").set("Cookie", c)).status).toBe(200);
     expect((await request(app).get("/api/mcp/tables").set("Cookie", c)).status).toBe(200);
     expect((await request(app).get("/api/mcp/tables").set("Cookie", c)).status).toBe(429);
     const eve = sessionFor("eve", ["designer"]).cookie;
