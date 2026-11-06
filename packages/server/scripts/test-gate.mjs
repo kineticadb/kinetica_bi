@@ -24,7 +24,9 @@
  * DEFAULT_VIEW_TTL_MINUTES is forced empty: the dev `packages/server/.env` sets
  * it to 3 and `src/env.ts` calls dotenv.config() at import time, so a developer
  * running this locally would otherwise see TTL specs falsely redden. CI has no
- * .env and is unaffected either way.
+ * .env and is unaffected either way. MCP_DATA_ACCESS and
+ * MCP_MAX_CALLS_PER_USER_PER_HOUR are forced empty for the same reason: a dev
+ * .env value would change the connector's tool list and limits under test.
  *
  * Usage:  node scripts/test-gate.mjs         (from packages/server)
  *         npm run test:gate --workspace @kinetica-bi/server
@@ -72,7 +74,7 @@ function runVitest(files, label) {
   const res = spawnSync("npx", args, {
     cwd: CWD,
     encoding: "utf-8",
-    env: { ...process.env, DEFAULT_VIEW_TTL_MINUTES: "" },
+    env: { ...process.env, DEFAULT_VIEW_TTL_MINUTES: "", MCP_DATA_ACCESS: "", MCP_MAX_CALLS_PER_USER_PER_HOUR: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let report;
