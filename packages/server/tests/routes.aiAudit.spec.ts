@@ -119,6 +119,19 @@ describe("AUDAPI-3 outcome filter", () => {
   });
 });
 
+describe("AUDAPI-3b unfinished Claude Desktop row", () => {
+  it("an unfinished Claude Desktop row is listed and filterable", async () => {
+    const id = ins("unfinished", { kind: "mcp", outcome: "unfinished", detail: "discarded", q: 'Started "Trips" in Claude Desktop (not finished)' });
+    const res = await get("/api/ai/audit?outcome=unfinished");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.rows.map((r: any) => r.id)).toEqual([id]);
+    expect(body.rows[0]).toMatchObject({ outcome: "unfinished", kind: "mcp" });
+    const d = await json(`/api/ai/audit/${id}`);
+    expect(d.outcomeDetail).toBe("discarded");
+  });
+});
+
 describe("AUDAPI-4 dashboard filter", () => {
   it("filters and validates", async () => {
     const b = await json(`/api/ai/audit?dashboardId=${L}`);

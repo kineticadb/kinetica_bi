@@ -88,6 +88,17 @@ describe("AiActivityPage", () => {
     expect(within(table).getByText('Built "NYC" in Claude Desktop')).toBeTruthy();
   });
 
+  it("AUDPAGE-UNF: an unfinished Claude Desktop build reads Unfinished and is a filter option", async () => {
+    vi.mocked(listAiAudit).mockResolvedValue(list([row({ id: 9, kind: "mcp", question: 'Started "NYC" in Claude Desktop (not finished)', outcome: "unfinished" })]));
+    render(<AiActivityPage />);
+    const table = await screen.findByRole("table");
+    expect(await within(table).findByText("Unfinished")).toBeTruthy();
+    expect(within(table).queryByText("unfinished")).toBeNull();
+    expect(screen.getByRole("option", { name: "Unfinished" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Outcome"), { target: { value: "unfinished" } });
+    await waitFor(() => expect(lastCall().outcomes).toEqual(["unfinished"]));
+  });
+
   it("AUDPAGE-4: dashboard states", async () => {
     vi.mocked(listAiAudit).mockResolvedValue(list([
       row({ id: 1, dashboardName: "Live one" }),
