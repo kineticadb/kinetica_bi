@@ -7,8 +7,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("mcpConfig", () => {
   it("MCPCFG-1 unset and empty give schema with no warnings", () => {
-    expect(parseMcpConfig({})).toEqual({ config: { dataAccess: "schema" }, warnings: [] });
-    expect(parseMcpConfig({ MCP_DATA_ACCESS: "" })).toEqual({ config: { dataAccess: "schema" }, warnings: [] });
+    expect(parseMcpConfig({})).toMatchObject({ config: { dataAccess: "schema" }, warnings: [] });
+    expect(parseMcpConfig({ MCP_DATA_ACCESS: "" })).toMatchObject({ config: { dataAccess: "schema" }, warnings: [] });
   });
 
   it("MCPCFG-2 query and schema are accepted, trimmed", () => {
@@ -55,5 +55,35 @@ describe("mcpConfig", () => {
     const off: AiConfigResult = { enabled: false, reason: "not_enabled" };
     expect(mcpQueryLimits(off)).toEqual(MCP_QUERY_DEFAULTS);
     expect(MCP_QUERY_DEFAULTS).toEqual({ maxRows: 200, maxChars: 20000, timeoutMs: 30000, maxPerAnswer: 5 });
+  });
+  it("MCPCFG-7 MCP_MAX_CALLS_PER_USER_PER_HOUR unset or empty gives 300, 0 gives 0, numbers are trimmed", () => {
+    const f = (v?: string) => parseMcpConfig(v === undefined ? {} : { MCP_MAX_CALLS_PER_USER_PER_HOUR: v });
+    expect(f().config.maxCallsPerUserPerHour).toBe(300);
+    expect(f().warnings).toEqual([]);
+    expect(f("").config.maxCallsPerUserPerHour).toBe(300);
+    expect(f("").warnings).toEqual([]);
+    expect(f("0").config.maxCallsPerUserPerHour).toBe(0);
+    expect(f("25").config.maxCallsPerUserPerHour).toBe(25);
+    expect(f(" 25 ").config.maxCallsPerUserPerHour).toBe(25);
+  });
+
+  it("MCPCFG-8 invalid call limits give 300 and one warning naming the value", () => {
+    for (const bad of ["-1", "1.5", "abc", "100001"]) {
+      const r = parseMcpConfig({ MCP_MAX_CALLS_PER_USER_PER_HOUR: bad });
+      expect(r.config.maxCallsPerUserPerHour).toBe(300);
+      expect(r.warnings).toHaveLength(1);
+      expect(r.warnings[0]).toContain(`MCP_MAX_CALLS_PER_USER_PER_HOUR="${bad}"`);
+      expect(r.warnings[0]).toContain("using 300");
+    }
+  });
+
+  it("MCPCFG-9 the info line shows the call limit, off when 0", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    loadMcpConfig({});
+    expect(String(log.mock.calls[0][0])).toContain("maxCallsPerUserPerHour=300");
+    log.mockClear();
+    loadMcpConfig({ MCP_MAX_CALLS_PER_USER_PER_HOUR: "0" });
+    expect(String(log.mock.calls[0][0])).toContain("maxCallsPerUserPerHour=off");
   });
 });
