@@ -95,6 +95,7 @@ export type McpRouteDeps = {
 const usernameOf = (req: Request): string => (req as AuthedRequest).user!.creds.username;
 /** finish_dashboard re-lays out every widget, so the gateway's first-fit position would mislead Claude and the audit. */
 const withoutPlacement = (label: string): string => label.replace(/ (at row \d+, column \d+|below existing content)$/, "");
+// Refusals are recorded with tool name, stage and reasons only, never the arguments the client sent (like the in-app audit).
 const logCall = (s: McpSession, entry: AiToolAuditEntry): void => {
   if (s.tools.length < MCP_MAX_AUDITED_CALLS) s.tools.push(entry);
 };
@@ -282,7 +283,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       if (tool.kind === "read") {
         const parsed = tool.args.safeParse(args ?? {});
         if (!parsed.success) {
-          logCall(s, { name: tool.name, args, result: "rejected", stage: "shape", reasons: ["Invalid arguments for this tool."] });
+          logCall(s, { name: tool.name, result: "rejected", stage: "shape", reasons: ["Invalid arguments for this tool."] });
           return res.json({ ok: false, stage: "shape", reasons: ["Invalid arguments for this tool."] });
         }
         const out = await tool.run(parsed.data, {
@@ -302,7 +303,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
 
       if (tool.name === "add_widget" && liveNewWidgets(s.ops) >= MCP_MAX_NEW_WIDGETS) {
         const reasons = [`limit of ${MCP_MAX_NEW_WIDGETS} new widgets reached`];
-        logCall(s, { name: tool.name, args, result: "rejected", stage: "cap", reasons });
+        logCall(s, { name: tool.name, result: "rejected", stage: "cap", reasons });
         s.rejected.push({ label: tool.name, stage: "cap", reasons });
         return res.json({ ok: false, stage: "cap", reasons });
       }
@@ -327,10 +328,10 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       );
       if (!g.ok) {
         if (g.stage === "clarification" && REMOVE_TOOLS.has(tool.name)) {
-          logCall(s, { name: tool.name, args, result: "rejected", stage: g.stage, reasons: [CONFIRM_REASON] });
+          logCall(s, { name: tool.name, result: "rejected", stage: g.stage, reasons: [CONFIRM_REASON] });
           return res.json({ ok: false, stage: g.stage, reasons: [CONFIRM_REASON] });
         }
-        logCall(s, { name: tool.name, args, result: "rejected", stage: g.stage, reasons: g.reasons });
+        logCall(s, { name: tool.name, result: "rejected", stage: g.stage, reasons: g.reasons });
         s.rejected.push({ label: tool.name, stage: g.stage, reasons: g.reasons });
         return res.json({ ok: false, stage: g.stage, reasons: g.reasons });
       }
