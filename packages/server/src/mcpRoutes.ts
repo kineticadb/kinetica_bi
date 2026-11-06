@@ -15,6 +15,8 @@
  *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied, mode, baselineVersion } (once; the browser)
  *                                              145: baselineVersion = version at open, advanced only by the user's own writes; the browser's Keep sends no later baseline.
  *
+ * MCP_DATA_ACCESS (schema default | query, independent of AI_DATA_ACCESS) decides whether Claude Desktop gets run_query / get_column_profile and row values; query runs through the in-app AI's guarded query port as the user.
+ *
  * Phase 143 (AIMCP-V20-04) personal access tokens, so Claude Desktop's config holds a revocable token, not a password:
  *   GET    /api/mcp/tokens                  the user's tokens (never the token itself)
  *   POST   /api/mcp/tokens                  { name } -> { id, token, name, expiresAt }   (token shown once)
@@ -30,8 +32,9 @@ import { createSession } from "./sessionStore";
 import { createMcpToken, listMcpTokens, recordMcpTokenSession, redeemMcpToken, revokeMcpToken } from "./lib/mcp/mcpTokens";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
-import { aiCheckLimits } from "./lib/aiConfig";
-import { getDashboard, getDashboardDynamicView, getDashboardVersion, getTable, listDashboardTables, listTables, listWidgets } from "./db";
+import { aiCheckLimits, type AiDataAccess } from "./lib/aiConfig";
+import { loadMcpConfig, mcpQueryLimits } from "./lib/mcp/mcpConfig";
+import { getDashboard, getDashboardDynamicView, getDashboardVersion, getTable, listDashboardDynamicViews, listDashboardTables, listTables, listWidgets } from "./db";
 import { createGeneratedDashboard, discardGeneratedDashboard, findPendingForUser, GeneratePendingError } from "./lib/aiGenerate";
 import { principalForSession, SessionEndedError } from "./lib/exportRunner";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
@@ -44,7 +47,10 @@ import { gatewayDvLimits } from "./lib/ai/dvDeps";
 import { isClassAllowed } from "./lib/ai/outbound";
 import { stampMapDefaultViews } from "./lib/ai/mapDefaultView";
 import { applyFitBands } from "./lib/ai/generateMode";
-import { buildToolRegistry } from "./lib/ai/tools/registry";
+import { buildToolRegistry, QUERY_TOOL_NAMES } from "./lib/ai/tools/registry";
+import { QUERY_TOOLS } from "./lib/ai/tools/query";
+import { buildQueryScope } from "./lib/ai/queryScope";
+import { createQueryPort } from "./lib/ai/queryRunner";
 import { createMcpSession, getMcpSession, mcpKeepBaseline, takeMcpHandoff, MCP_MAX_AUDITED_CALLS, type McpSession } from "./lib/mcp/mcpSessions";
 import { recordMcpBuild, type AiToolAuditEntry } from "./lib/aiAudit";
 import { ALLOW_LIST_VERSION, type AiOp } from "@kinetica-bi/shared";
@@ -58,6 +64,10 @@ export const MCP_TOOL_NAMES = [
   // Phase 143 (AIMCP-V20-09): session-only, like the in-app AI's; Keep does not save filters.
   "apply_filter", "clear_filter",
 ] as const;
+/** Tools the connector exposes for a data-access mode: the query tools only in query mode. */
+export function mcpToolNames(access: AiDataAccess): readonly string[] {
+  return access === "query" ? [...MCP_TOOL_NAMES, ...QUERY_TOOL_NAMES] : MCP_TOOL_NAMES;
+}
 const REMOVE_TOOLS: ReadonlySet<string> = new Set(["remove_widget", "remove_layer", "remove_dynamic_view"]);
 const CONFIRM_REASON = "Removing saved content needs the user's approval: ask the user, then call again with confirmed: true.";
 export const MCP_MAX_NEW_WIDGETS = 12;
@@ -132,7 +142,9 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
     if (!limits) res.status(503).json({ error: "AI is not configured on this server.", code: "AI_NOT_CONFIGURED" });
     return limits;
   };
-  const registry = () => buildToolRegistry({ dataAccess: "schema" });
+  const mcp = loadMcpConfig();
+  const toolNames = mcpToolNames(mcp.dataAccess);
+  const registry = () => buildToolRegistry({ dataAccess: mcp.dataAccess, extraTools: [...QUERY_TOOLS] });
 
   // Listing and revoking need only a session: someone who lost ai:use can still see and revoke the tokens they made.
   app.get("/api/mcp/tokens", requireAuth, (req, res) => {
@@ -178,7 +190,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const out = await tool.run({}, {
         username,
         dashboardId: 0,
-        dataAccess: config.dataAccess,
+        dataAccess: mcp.dataAccess,
         dashboardView: () => {
           throw new Error("no dashboard before start_dashboard");
         },
@@ -186,13 +198,13 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
         liveSchema: createLiveSchema({ username, principal: () => req as AuthedRequest }),
       });
-      const text = out.parts.filter((p) => isClassAllowed(config.dataAccess, p.cls)).map((p) => p.text).join("\n");
+      const text = out.parts.filter((p) => isClassAllowed(mcp.dataAccess, p.cls)).map((p) => p.text).join("\n");
       return res.json({ ok: !out.isError, text });
     }),
   );
 
   app.get("/api/mcp/tools", ...requirePermission(PERMISSIONS.AI_USE), (_req, res) => {
-    const specs = registry().specs.filter((s) => (MCP_TOOL_NAMES as readonly string[]).includes(s.name));
+    const specs = registry().specs.filter((s) => toolNames.includes(s.name));
     // The in-app AI asks the user in its own UI before removing saved content; Claude asks in chat and says so with `confirmed`.
     return res.json({
       tools: specs.map((t) => {
@@ -278,8 +290,8 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         args = rest;
       }
       const reg = registry();
-      const tool = typeof name === "string" && (MCP_TOOL_NAMES as readonly string[]).includes(name) ? reg.byName.get(name) : undefined;
-      if (!tool) return res.status(400).json({ error: `Unknown tool. Use one of: ${MCP_TOOL_NAMES.join(", ")}.` });
+      const tool = typeof name === "string" && toolNames.includes(name) ? reg.byName.get(name) : undefined;
+      if (!tool) return res.status(400).json({ error: `Unknown tool. Use one of: ${toolNames.join(", ")}.` });
 
       const liveSchema = createLiveSchema({ username, principal: () => authedReq });
       const dashboardTableIds = () => listDashboardTables(s.dashboardId).map((t) => t.id);
@@ -290,17 +302,36 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
           logCall(s, { name: tool.name, result: "rejected", stage: "shape", reasons: ["Invalid arguments for this tool."] });
           return res.json({ ok: false, stage: "shape", reasons: ["Invalid arguments for this tool."] });
         }
+        // Query mode only: a fresh port per call (one call, one query), scoped to the dashboard's tables and saved views.
+        const query =
+          mcp.dataAccess === "query" && (QUERY_TOOL_NAMES as readonly string[]).includes(tool.name)
+            ? createQueryPort({
+                requestId: randomUUID(),
+                principal: () => authedReq,
+                scope: buildQueryScope({
+                  username,
+                  dashboardId: s.dashboardId,
+                  dashboardTables: listDashboardTables(s.dashboardId).map((t) => ({ id: t.id, schema: t.schema, name: t.name })),
+                  savedViews: listDashboardDynamicViews(s.dashboardId).map((v) => ({ id: v.id, name: v.name, columns: v.columns_json })),
+                  aiViews: [],
+                }),
+                liveSchema,
+                limits: mcpQueryLimits(),
+                dashboardTableIds,
+              })
+            : undefined;
         const out = await tool.run(parsed.data, {
           username,
           dashboardId: s.dashboardId,
-          dataAccess: config.dataAccess,
+          dataAccess: mcp.dataAccess,
+          ...(query ? { query } : {}),
           dashboardView: () => projectSnapshot({ dashboardId: s.dashboardId, question: "-", snapshot: s.snapshot, turns: [] }, { id: s.dashboardId }),
           dashboardTableIds,
           registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
           liveSchema,
         });
         // Same egress rule as a provider request: classes the data-access mode does not allow never leave the server.
-        const text = out.parts.filter((p) => isClassAllowed(config.dataAccess, p.cls)).map((p) => p.text).join("\n");
+        const text = out.parts.filter((p) => isClassAllowed(mcp.dataAccess, p.cls)).map((p) => p.text).join("\n");
         logCall(s, { name: tool.name, args: parsed.data, result: out.isError ? "error" : "ok" });
         return res.json({ ok: !out.isError, text });
       }
@@ -382,7 +413,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
           dashboardName: getDashboard(s.dashboardId)?.name ?? "",
           mode: s.mode,
           summary: s.summary,
-          dataAccess: config.dataAccess,
+          dataAccess: mcp.dataAccess,
           allowListVersion: ALLOW_LIST_VERSION,
           tools: s.tools,
           changes: { applied: s.applied, rejected: s.rejected },
