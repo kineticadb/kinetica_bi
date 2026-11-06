@@ -1,5 +1,5 @@
 // Phase 142 (AIGEN-V20-01/02): generated-dashboard lifecycle. ONE create path (a single SQLite transaction, one pending
-// dashboard per user, race-proof via uq_dashboards_one_pending) and ONE discard helper shared by Discard, DELETE, logout,
+// dashboard per user, race-proof via uq_dashboards_one_pending) and ONE discard helper shared by Discard, DELETE, logout (in-app builds only),
 // the boot sweep and the TTL sweep. ai_audit rows are kept on purpose (D-21): the audit trail outlives the dashboard.
 import { GENERATE_AI_RECT } from "@kinetica-bi/shared";
 import { db, getDashboard, deleteDashboard, createWidget, getGeneratedPending } from "../db";
@@ -94,9 +94,13 @@ const idsOf = (sql: string, ...args: unknown[]): number[] => {
   }
 };
 
+/**
+ * Called only by browser logout. A Claude Desktop build (generated_source 'mcp') is spared: Claude Desktop has its own
+ * session and may still be building. Discard, the TTL sweep and the boot sweep still remove it.
+ */
 export async function discardPendingForUser(username: string, deps: DropDeps = {}): Promise<number> {
   try {
-    return await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL AND generated_by = ?", norm(username)), deps);
+    return await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL AND generated_by = ? AND generated_source IS NULL", norm(username)), deps);
   } catch {
     return 0;
   }
