@@ -77,6 +77,12 @@ export function createMcpSession(
   return s;
 }
 
+/** 146-03: the live session of an unkept Claude Desktop build, if memory still has it (no sweep, no touch). */
+export function findMcpBuildSession(dashboardId: number): McpSession | undefined {
+  for (const s of sessions.values()) if (s.mode === "new" && s.dashboardId === dashboardId) return s;
+  return undefined;
+}
+
 /** 145: a stamped write by `username` on the dashboard took it from `before` to `after`; live sessions of that user record the edge. */
 export function noteMcpOwnWrite(dashboardId: number, username: string, before: number, after: number): void {
   if (!(after > before)) return;

@@ -1,9 +1,12 @@
 // Phase 142 (AIGEN-V20-01/02): generated-dashboard lifecycle. ONE create path (a single SQLite transaction, one pending
 // dashboard per user, race-proof via uq_dashboards_one_pending) and ONE discard helper shared by Discard, DELETE, logout (in-app builds only),
 // the boot sweep and the TTL sweep. ai_audit rows are kept on purpose (D-21): the audit trail outlives the dashboard.
-import { GENERATE_AI_RECT } from "@kinetica-bi/shared";
+// An unfinished Claude Desktop build (discarded, expired or swept) gets one 'unfinished' row, written in the delete transaction.
+import { GENERATE_AI_RECT, ALLOW_LIST_VERSION } from "@kinetica-bi/shared";
 import { db, getDashboard, deleteDashboard, createWidget, getGeneratedPending } from "../db";
 import type { Dashboard, Widget } from "../types";
+import { recordMcpUnfinished, type McpUnfinishedReason } from "./aiAudit";
+import { findMcpBuildSession } from "./mcp/mcpSessions";
 import { dropViewsForDashboard, type DropDeps } from "./aiSessionViews";
 
 export const AI_ASSISTANT_TITLE = "AI Assistant";
@@ -63,24 +66,38 @@ export function createGeneratedDashboard(input: {
   }
 }
 
-export async function discardGeneratedDashboard(id: number, deps: DropDeps = {}): Promise<{ deleted: boolean; views: { dropped: number; failed: number } }> {
+export async function discardGeneratedDashboard(id: number, deps: DropDeps = {}, reason: McpUnfinishedReason = "discarded"): Promise<{ deleted: boolean; views: { dropped: number; failed: number } }> {
   if (!getGeneratedPending(id)) return { deleted: false, views: { dropped: 0, failed: 0 } };
   const views = await dropViewsForDashboard(id, deps);
   // Re-check inside the transaction: a Keep that commits during the (slow) view drop wins.
   const deleted = db.transaction((): boolean => {
-    if (!getGeneratedPending(id)) return false;
+    const pending = getGeneratedPending(id);
+    if (!pending) return false;
+    try {
+      const d = db.prepare("SELECT name, generated_source FROM dashboards WHERE id = ?").get(id) as { name: string; generated_source: string | null } | undefined;
+      if (d?.generated_source === "mcp") {
+        const s = findMcpBuildSession(id);
+        recordMcpUnfinished({
+          username: pending.generatedBy, dashboardId: id, dashboardName: d.name, pendingAt: pending.pendingAt, reason,
+          tools: s?.tools, changes: s ? { applied: s.applied, rejected: s.rejected } : undefined, startedAt: s?.startedAt,
+          allowListVersion: ALLOW_LIST_VERSION, now: Date.now(),
+        });
+      }
+    } catch {
+      console.warn(JSON.stringify({ event: "ai_mcp_unfinished_audit_failed", dashboard_id: id }));
+    }
     db.prepare("DELETE FROM ai_session_views WHERE dashboard_id = ?").run(id);
     return deleteDashboard(id);
   })();
-  console.log(JSON.stringify({ event: "ai_generated_discard", dashboard_id: id, deleted }));
+  console.log(JSON.stringify({ event: "ai_generated_discard", dashboard_id: id, reason, deleted }));
   return { deleted, views };
 }
 
-async function discardAll(ids: number[], deps: DropDeps): Promise<number> {
+async function discardAll(ids: number[], deps: DropDeps, reason: McpUnfinishedReason): Promise<number> {
   let n = 0;
   for (const id of ids) {
     try {
-      if ((await discardGeneratedDashboard(id, deps)).deleted) n++;
+      if ((await discardGeneratedDashboard(id, deps, reason)).deleted) n++;
     } catch { /* never throws; the next sweep retries */ }
   }
   return n;
@@ -100,7 +117,7 @@ const idsOf = (sql: string, ...args: unknown[]): number[] => {
  */
 export async function discardPendingForUser(username: string, deps: DropDeps = {}): Promise<number> {
   try {
-    return await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL AND generated_by = ? AND generated_source IS NULL", norm(username)), deps);
+    return await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL AND generated_by = ? AND generated_source IS NULL", norm(username)), deps, "discarded");
   } catch {
     return 0;
   }
@@ -109,7 +126,7 @@ export async function discardPendingForUser(username: string, deps: DropDeps = {
 export async function sweepGeneratedOnBoot(deps: DropDeps = {}): Promise<{ deleted: number }> {
   let deleted = 0;
   try {
-    deleted = await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL"), deps);
+    deleted = await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL"), deps, "server_restart");
   } catch { /* never throws */ }
   console.log(`[ai] boot sweep: deleted ${deleted} unkept generated dashboards`);
   return { deleted };
@@ -141,7 +158,7 @@ export async function runGeneratedTtlSweepOnce(
   if (hours === 0) return { deleted: 0 };
   let deleted = 0;
   try {
-    deleted = await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL AND generated_pending_at < ?", now - hours * 3_600_000), deps);
+    deleted = await discardAll(idsOf("SELECT id FROM dashboards WHERE generated_pending_at IS NOT NULL AND generated_pending_at < ?", now - hours * 3_600_000), deps, "expired");
   } catch { /* never throws */ }
   if (deleted > 0) console.log(`[ai] generated sweep: deleted ${deleted} unkept generated dashboards older than ${hours} h`);
   return { deleted };

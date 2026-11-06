@@ -208,3 +208,57 @@ export function recordMcpBuild(input: McpBuildAuditInput, conn: Database.Databas
     });
   return Number(info.lastInsertRowid);
 }
+
+/** 146-03: why a Claude Desktop build ended without finish. Stored as ai_audit.outcome_detail. */
+export type McpUnfinishedReason = "discarded" | "expired" | "server_restart";
+
+/**
+ * One ai_audit row for a Claude Desktop build that never finished. Exactly once: skipped when any kind 'mcp' row exists for
+ * the dashboard since it went pending (a finished build already has its ok row). Never throws; session data is optional and
+ * is serialised defensively. Meant to run inside the discard transaction.
+ */
+export function recordMcpUnfinished(
+  input: {
+    username: string;
+    dashboardId: number;
+    dashboardName: string;
+    pendingAt: number;
+    reason: McpUnfinishedReason;
+    tools?: AiToolAuditEntry[];
+    changes?: FinalizeInput["changes"];
+    startedAt?: number;
+    allowListVersion: string;
+    now: number;
+  },
+  conn: Database.Database = db,
+): boolean {
+  try {
+    const exists = conn.prepare("SELECT 1 FROM ai_audit WHERE kind = 'mcp' AND dashboard_id = ? AND ts_ms >= ?").get(input.dashboardId, input.pendingAt);
+    if (exists) return false;
+    const tools = Array.isArray(input.tools) ? input.tools : [];
+    const ch = input.changes;
+    const changes = {
+      applied: Array.isArray(ch?.applied) ? ch.applied : [],
+      rejected: Array.isArray(ch?.rejected) ? ch.rejected : [],
+    };
+    let toolsJson = "[]";
+    let changesJson = '{"applied":[],"rejected":[]}';
+    try { toolsJson = JSON.stringify(tools); } catch { /* keep fallback */ }
+    try { changesJson = JSON.stringify(changes); } catch { /* keep fallback */ }
+    conn
+      .prepare(
+        `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, answer_text, status, outcome, outcome_detail, counted, provider, model, data_access,
+           allow_list_version, steps, tools_json, changes_json, duration_ms, kind)
+         VALUES (?, lower(?), ?, ?, ?, NULL, 'final', 'unfinished', ?, 0, 'claude-desktop', '', NULL, ?, ?, ?, ?, ?, 'mcp')`,
+      )
+      .run(
+        input.now, input.username, input.dashboardId, `mcp-unfinished-${input.now}-${input.dashboardId}`,
+        `Started "${input.dashboardName}" in Claude Desktop (not finished)`, input.reason,
+        input.allowListVersion, tools.length, toolsJson, changesJson, Math.max(0, input.now - (input.startedAt ?? input.pendingAt)),
+      );
+    return true;
+  } catch {
+    console.warn(JSON.stringify({ event: "ai_mcp_unfinished_audit_failed", dashboard_id: input.dashboardId }));
+    return false;
+  }
+}
