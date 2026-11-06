@@ -8,7 +8,8 @@
  *   GET  /api/mcp/tools                     tool specs (name, description, JSON schema)
  *   POST /api/mcp/sessions                  { name, tableIds, replace? } -> { sessionId, dashboardId }
  *                                           Phase 143 (AIMCP-V20-05): creates an UNKEPT dashboard (Generate's lifecycle:
- *                                           creator-only, Discard/logout/boot/TTL delete it, Keep clears the mark)
+ *                                           creator-only, Discard/boot/TTL delete it (browser logout does not); Keep clears the pending mark, after which
+ *                                           generated_source is inert (only read for pending rows))
  *   POST /api/mcp/sessions/:id/call         { name, args } -> { ok, text } | { ok: false, stage, reasons }
  *   POST /api/mcp/sessions/:id/finish       { summary } -> { url } | 410 MCP_DASHBOARD_GONE when the dashboard no longer exists
  *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied, mode, baselineVersion } (once; the browser)
@@ -245,7 +246,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         await discardGeneratedDashboard(existing.id);
       }
       try {
-        const d = createGeneratedDashboard({ username, name, tableIds, assistant: false });
+        const d = createGeneratedDashboard({ username, name, tableIds, assistant: false, source: "mcp" });
         const s = createMcpSession(username, d.id, { baseVersion: getDashboardVersion(d.id) });
         return res.status(201).json({ sessionId: s.id, dashboardId: d.id });
       } catch (e) {

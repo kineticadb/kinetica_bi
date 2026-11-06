@@ -540,6 +540,8 @@ export const createDb = (dbPath: string): Database.Database => {
   // v2.0 Phase 142 (AIGEN-V20-02, D-03/D-06): "generated, never kept" marker. NULL/NULL = an ordinary dashboard.
   if (!dashboardColNames.has("generated_by")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_by TEXT");
   if (!dashboardColNames.has("generated_pending_at")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_pending_at INTEGER");
+  // 'mcp' marks a Claude Desktop build (browser logout spares it); NULL = in-app generated or ordinary. Only read for pending rows, so a kept dashboard's leftover value is inert.
+  if (!dashboardColNames.has("generated_source")) instance.exec("ALTER TABLE dashboards ADD COLUMN generated_source TEXT");
   // D-06 hard guarantee (race-proof); the generate route's app-level check only exists to return a friendly 409.
   instance.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_dashboards_one_pending ON dashboards (generated_by) WHERE generated_pending_at IS NOT NULL");
   for (const t of ["widgets", "dashboard_layers", "dashboard_dynamic_views", "dashboard_tables"] as const) {
