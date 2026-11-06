@@ -10,7 +10,7 @@
  *                                           Phase 143 (AIMCP-V20-05): creates an UNKEPT dashboard (Generate's lifecycle:
  *                                           creator-only, Discard/logout/boot/TTL delete it, Keep clears the mark)
  *   POST /api/mcp/sessions/:id/call         { name, args } -> { ok, text } | { ok: false, stage, reasons }
- *   POST /api/mcp/sessions/:id/finish       { summary } -> { url }
+ *   POST /api/mcp/sessions/:id/finish       { summary } -> { url } | 410 MCP_DASHBOARD_GONE when the dashboard no longer exists
  *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied, mode, baselineVersion } (once; the browser)
  *                                              145: baselineVersion = version at open, advanced only by the user's own writes; the browser's Keep sends no later baseline.
  *
@@ -95,6 +95,8 @@ export type McpRouteDeps = {
 const usernameOf = (req: Request): string => (req as AuthedRequest).user!.creds.username;
 /** finish_dashboard re-lays out every widget, so the gateway's first-fit position would mislead Claude and the audit. */
 const withoutPlacement = (label: string): string => label.replace(/ (at row \d+, column \d+|below existing content)$/, "");
+export const MCP_DASHBOARD_GONE_MESSAGE = "This dashboard no longer exists: it was discarded, deleted or expired, so there is nothing to review. Start a new dashboard.";
+const gone410 = (res: Response) => res.status(410).json({ code: "MCP_DASHBOARD_GONE", error: MCP_DASHBOARD_GONE_MESSAGE });
 // Refusals are recorded with tool name, stage and reasons only, never the arguments the client sent (like the in-app audit).
 const logCall = (s: McpSession, entry: AiToolAuditEntry): void => {
   if (s.tools.length < MCP_MAX_AUDITED_CALLS) s.tools.push(entry);
@@ -264,6 +266,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const s = getMcpSession(String(req.params.id), username);
       if (!s) return res.status(404).json({ error: "Session not found or expired. Start a new dashboard." });
       if (s.finished) return res.status(409).json({ error: "This dashboard was already handed to the browser." });
+      if (!getDashboard(s.dashboardId)) return gone410(res);
       const { name, args: rawArgs } = (req.body ?? {}) as { name?: unknown; args?: unknown };
       // `confirmed` is the connector's removal approval, not a tool argument (the tools' schemas are strict).
       let confirmed = false;
@@ -353,6 +356,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const username = usernameOf(req);
       const s = getMcpSession(String(req.params.id), username);
       if (!s) return res.status(404).json({ error: "Session not found or expired." });
+      if (!getDashboard(s.dashboardId)) return gone410(res);
       if (s.ops.length === 0) return res.status(400).json({ error: "Nothing was added yet." });
       const summary = (req.body as { summary?: unknown } | undefined)?.summary;
       if (!s.finished) {

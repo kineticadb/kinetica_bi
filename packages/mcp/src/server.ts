@@ -160,7 +160,10 @@ export function createKbiMcpServer(client: KbiClient, log: (msg: string) => void
       if (body.ok) return text(body.text ?? "OK");
       return text(`Rejected (${body.stage ?? "invalid"}): ${(body.reasons ?? []).join("; ")}. Fix it and call again with the same tempId.`, true);
     } catch (e) {
-      if (e instanceof KbiError) return text(`Kinetica BI: ${e.message}`, true);
+      if (e instanceof KbiError) {
+        if (e.status === 410) session = undefined;
+        return text(`Kinetica BI: ${e.message}`, true);
+      }
       log(`[kbi-mcp] ${name} failed: ${e instanceof Error ? e.message : "unknown error"}`);
       return text("The tool failed; check that Kinetica BI is running.", true);
     }
