@@ -32,7 +32,7 @@ describe("AI audit", () => {
   it("AUD-3 exact column list, no row-value column", () => {
     const c = buildInMemoryDb();
     const cols = (c.prepare("PRAGMA table_info(ai_audit)").all() as { name: string }[]).map((x) => x.name);
-    expect(cols).toEqual(["id","ts_ms","username","dashboard_id","request_id","question","answer_text","status","outcome","outcome_detail","counted","provider","model","data_access","allow_list_version","steps","input_tokens","output_tokens","tools_json","changes_json","duration_ms","queries_json","kind"]);
+    expect(cols).toEqual(["id","ts_ms","username","dashboard_id","request_id","question","answer_text","status","outcome","outcome_detail","counted","provider","model","data_access","allow_list_version","steps","input_tokens","output_tokens","tools_json","changes_json","duration_ms","queries_json","kind","rating","rating_reasons","rating_note","rated_ts_ms"]);
   });
   it("AUD-4 log line has metadata only", () => {
     const c = buildInMemoryDb();
@@ -94,6 +94,30 @@ describe("Phase 140 query audit", () => {
     const out = spy.mock.calls.map((a) => a.join(" ")).join("\n");
     expect(out).toContain('"event":"ai_answer"');
     expect(out).not.toContain("SELECT 1 FROM demo.t");
+  });
+});
+
+describe("Phase 149 rating migration", () => {
+  it("RATEMIG-1 pre-149 database gains rating columns and ai_user_prefs, idempotent", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kbi-ratemig-"));
+    const file = path.join(dir, "t.db");
+    try {
+      const old = new Database(file);
+      old.exec(`CREATE TABLE ai_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, ts_ms INTEGER NOT NULL, username TEXT NOT NULL, dashboard_id INTEGER, request_id TEXT, question TEXT NOT NULL, answer_text TEXT, status TEXT NOT NULL DEFAULT 'running', outcome TEXT, outcome_detail TEXT, counted INTEGER NOT NULL DEFAULT 1, provider TEXT, model TEXT, data_access TEXT, allow_list_version TEXT, steps INTEGER, input_tokens INTEGER, output_tokens INTEGER, tools_json TEXT, changes_json TEXT, duration_ms INTEGER, queries_json TEXT, kind TEXT);`);
+      old.prepare("INSERT INTO ai_audit (ts_ms, username, question) VALUES (1, 'ann', 'keep-me')").run();
+      old.close();
+      const a = createDb(file);
+      const cols = (a.prepare("PRAGMA table_info(ai_audit)").all() as { name: string }[]).map((x) => x.name);
+      for (const c of ["rating", "rating_reasons", "rating_note", "rated_ts_ms"]) expect(cols).toContain(c);
+      expect(a.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_user_prefs'").get()).toBeTruthy();
+      expect((a.prepare("SELECT question FROM ai_audit").get() as { question: string }).question).toBe("keep-me");
+      a.close();
+      const b = createDb(file);
+      expect((b.prepare("SELECT COUNT(*) n FROM ai_audit").get() as { n: number }).n).toBe(1);
+      b.close();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

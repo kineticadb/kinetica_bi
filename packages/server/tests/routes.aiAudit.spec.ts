@@ -238,3 +238,53 @@ describe("AUDAPI-12 facet", () => {
     ]);
   });
 });
+
+// Phase 149 (FEEDBACK-V22-02): rating in the AI activity API.
+describe("AUDRATE-1 list carries rating", () => {
+  it("up / down / null", async () => {
+    db.prepare("UPDATE ai_audit SET rating='up' WHERE id=?").run(ids.ask);
+    db.prepare("UPDATE ai_audit SET rating='down' WHERE id=?").run(ids.gen);
+    const b = await json("/api/ai/audit");
+    const by = (k: string) => b.rows.find((r: any) => r.id === ids[k]);
+    expect(by("ask").rating).toBe("up");
+    expect(by("gen").rating).toBe("down");
+    expect(by("legacyask").rating).toBeNull();
+  });
+});
+
+describe("AUDRATE-2 rating filter", () => {
+  it("up / down / none, validated and gated", async () => {
+    db.prepare("UPDATE ai_audit SET rating='up' WHERE id=?").run(ids.ask);
+    db.prepare("UPDATE ai_audit SET rating='down' WHERE id=?").run(ids.gen);
+    ins("mcpok", { kind: "mcp", req: "mcp-1-1" });
+    expect((await json("/api/ai/audit?rating=up")).rows.map((r: any) => r.id)).toEqual([ids.ask]);
+    expect((await json("/api/ai/audit?rating=down")).rows.map((r: any) => r.id)).toEqual([ids.gen]);
+    const p1 = await json("/api/ai/audit?rating=none");
+    // rateable in-window rows: ask, gen, legacyask, deleted, nodash, long, badjson + 60 pg = 67, minus the 2 rated = 65
+    expect(p1.total).toBe(65);
+    const p2 = await json("/api/ai/audit?rating=none&page=2");
+    const all = [...p1.rows, ...p2.rows].map((r: any) => r.id);
+    expect(all).toContain(ids.legacyask);
+    for (const k of ["ask", "gen", "kept", "conflict", "capped", "deadline", "interrupted", "mcpok"]) expect(all).not.toContain(ids[k]);
+    expect((await json("/api/ai/audit?rating=up&outcome=ok")).rows.map((r: any) => r.id)).toEqual([ids.ask]);
+    const bad = await get("/api/ai/audit?rating=bogus");
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ code: "AI_AUDIT_BAD_REQUEST" });
+    expect((await get("/api/ai/audit?rating=up", dee)).status).toBe(403);
+  });
+});
+
+describe("AUDRATE-3 detail", () => {
+  it("reasons filtered to known codes, raw note, null when absent", async () => {
+    const note = "<img src=x onerror=alert(1)>";
+    db.prepare("UPDATE ai_audit SET rating='down', rating_reasons=?, rating_note=? WHERE id=?").run('["wrong_chart","bogus"]', note, ids.gen);
+    const d = await json(`/api/ai/audit/${ids.gen}`);
+    expect(d.rating).toBe("down");
+    expect(d.ratingReasons).toEqual(["wrong_chart"]);
+    expect(d.ratingNote).toBe(note);
+    const l = await json(`/api/ai/audit/${ids.legacyask}`);
+    expect(l).toMatchObject({ rating: null, ratingReasons: null, ratingNote: null });
+    db.prepare("UPDATE ai_audit SET rating='down', rating_reasons='not json' WHERE id=?").run(ids.long);
+    expect((await json(`/api/ai/audit/${ids.long}`)).ratingReasons).toBeNull();
+  });
+});
