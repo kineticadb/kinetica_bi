@@ -150,6 +150,21 @@ describe("AiChat rating", () => {
     expect(rateAiAnswer).toHaveBeenLastCalledWith(7, { rating: "down", reasons: ["other"] });
   });
 
+  it("RATECHAT-10: opening the reason row scrolls Send feedback into view", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      seed([turn(0)]);
+      render(<AiChat ctx={ctx} variant="inline" />);
+      scroll.mockClear();
+      await userEvent.click(bad());
+      const target = scroll.mock.contexts.find((el) => (el as Element).contains(screen.getByRole("button", { name: "Send feedback" })));
+      expect(target).toBeTruthy();
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
   it("RATECHAT-5: clarification-only answer has thumbs and no Revert", () => {
     seed([
       turn(0, {
