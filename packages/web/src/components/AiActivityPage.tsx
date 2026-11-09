@@ -16,6 +16,9 @@ import type {
   AiAuditDashboardsDto,
   AiAuditDashboardState,
 } from "../api/client";
+import type { AiAnswerRating, AiRatingReason } from "../api/client";
+import { ThumbUpIcon, ThumbDownIcon } from "./charts/AiRatingIcons";
+import { AI_RATING_REASON_LABEL } from "./charts/AiRatingRow";
 import "./AiActivityPage.css";
 
 const KIND_LABEL = { ask: "Ask", generate: "Generate", keep: "Keep", mcp: "Claude Desktop" } as const;
@@ -39,6 +42,13 @@ export const AI_ACTIVITY_COPY = {
   noTools: "No tools recorded.",
   timeoutTools: "The tools list can be incomplete for answers that timed out.",
 } as const;
+
+const RATING_FILTERS = [
+  ["", "All ratings"],
+  ["up", "Up"],
+  ["down", "Down"],
+  ["none", "Not rated"],
+] as const;
 
 const DAY_MS = 86_400_000;
 const PAGE_SIZE = 50;
@@ -71,6 +81,24 @@ const dashboardLabel = (id: number | null, name: string | null, state: AiAuditDa
 const orDash = (v: string | number | null | undefined): string =>
   v === null || v === undefined || v === "" ? "—" : String(v);
 
+function RatingCell({ rating }: { rating: AiAnswerRating | null }) {
+  if (rating === "up") {
+    return (
+      <span role="img" aria-label="Rated up" className="text-accent">
+        <ThumbUpIcon filled />
+      </span>
+    );
+  }
+  if (rating === "down") {
+    return (
+      <span role="img" aria-label="Rated down" className="text-accent">
+        <ThumbDownIcon filled />
+      </span>
+    );
+  }
+  return <>{orDash(null)}</>;
+}
+
 function DashboardCell({ row }: { row: AiAuditRowDto }) {
   if (row.dashboardState === "none" || row.dashboardId === null) return <>—</>;
   if (row.dashboardState === "live") return <>{row.dashboardName ?? `Dashboard #${row.dashboardId}`}</>;
@@ -102,6 +130,7 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
   const applied = Array.isArray(changes?.applied) ? changes!.applied! : [];
   const rejected = Array.isArray(changes?.rejected) ? changes!.rejected!.map(rejectedLine) : [];
   const rejectedCount = rejected.length;
+  const ratingReasons = Array.isArray(d.ratingReasons) ? d.ratingReasons : [];
   const hasChanges = !!changes && (applied.length > 0 || rejectedCount > 0);
   const modelText =
     d.provider || d.model ? `${orDash(d.provider)} / ${orDash(d.model)}` : "—";
@@ -120,6 +149,22 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
         <div className="config-group">
           <span className="config-group-label">Answer</span>
           <div className="ai-activity-text">{orDash(d.answerText)}</div>
+        </div>
+      )}
+      {d.rating !== null && d.rating !== undefined && (
+        <div className="config-group">
+          <span className="config-group-label">Rating</span>
+          <div>{d.rating === "up" ? "Thumbs up" : "Thumbs down"}</div>
+          {ratingReasons.length > 0 && (
+            <div className="filter-bar-chips">
+              {ratingReasons.map((c) => (
+                <span key={c} className="filter-bar-chip">
+                  {AI_RATING_REASON_LABEL[c as AiRatingReason] ?? c}
+                </span>
+              ))}
+            </div>
+          )}
+          {d.ratingNote && <div className="ai-activity-text">{d.ratingNote}</div>}
         </div>
       )}
       {d.kind !== "keep" && (
@@ -203,6 +248,7 @@ export function AiActivityPage() {
   const [from, setFrom] = useState(() => to0 - 7 * DAY_MS);
   const [to, setTo] = useState(to0);
   const [outcome, setOutcome] = useState("");
+  const [rating, setRating] = useState<"" | "up" | "down" | "none">("");
   const [dashboardId, setDashboardId] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
 
@@ -218,7 +264,7 @@ export function AiActivityPage() {
     const c = new AbortController();
     setLoading(true);
     listAiAudit(
-      { from, to, outcomes: outcome ? [outcome] : undefined, dashboardId, page },
+      { from, to, outcomes: outcome ? [outcome] : undefined, dashboardId, page, rating: rating || undefined },
       c.signal,
     )
       .then((r) => {
@@ -234,7 +280,7 @@ export function AiActivityPage() {
         setLoading(false);
       });
     return () => c.abort();
-  }, [from, to, outcome, dashboardId, page]);
+  }, [from, to, outcome, rating, dashboardId, page]);
 
   useEffect(() => {
     const c = new AbortController();
@@ -311,6 +357,22 @@ export function AiActivityPage() {
           </select>
         </div>
         <div className="ds-field">
+          <label className="ds-field-label" htmlFor="ai-activity-rating">Rating</label>
+          <select
+            id="ai-activity-rating"
+            className="ds-select"
+            value={rating}
+            onChange={(e) => {
+              setRating(e.target.value as "" | "up" | "down" | "none");
+              setPage(1);
+            }}
+          >
+            {RATING_FILTERS.map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="ds-field">
           <label className="ds-field-label" htmlFor="ai-activity-dashboard">Dashboard</label>
           <select
             id="ai-activity-dashboard"
@@ -342,7 +404,7 @@ export function AiActivityPage() {
           <table className="users-table">
             <thead>
               <tr>
-                {["Time", "User", "Dashboard", "Kind", "Question", "Outcome", "Steps", "Duration"].map((h) => (
+                {["Time", "User", "Dashboard", "Kind", "Question", "Outcome", "Rating", "Steps", "Duration"].map((h) => (
                   <th key={h} className="users-th">{h}</th>
                 ))}
               </tr>
@@ -366,6 +428,7 @@ export function AiActivityPage() {
                   <td className="users-td">
                     {r.outcome === null ? "Running" : (OUTCOME_LABEL[r.outcome] ?? r.outcome)}
                   </td>
+                  <td className="users-td"><RatingCell rating={r.rating} /></td>
                   <td className="users-td">{orDash(r.steps)}</td>
                   <td className="users-td">{formatDuration(r.durationMs)}</td>
                 </tr>

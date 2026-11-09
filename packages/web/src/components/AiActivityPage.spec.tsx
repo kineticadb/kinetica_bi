@@ -164,7 +164,8 @@ describe("AiActivityPage", () => {
     expect(del.closest("a,button")).toBeNull();
     expect(tbl.getByText("Dashboard #13 (not kept yet)").className).toContain("muted");
     const rows = screen.getAllByRole("row");
-    expect(within(rows[4]).getByText("—", { selector: "td, td *" })).toBeTruthy();
+    // the unrated Rating cell also renders a dash, so assert on the Dashboard cell itself
+    expect(within(rows[4]).getAllByRole("cell")[2].textContent).toBe("—");
   });
 
   it("AUDPAGE-5: filters refetch; no user filter", async () => {

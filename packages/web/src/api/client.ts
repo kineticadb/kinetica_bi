@@ -2299,10 +2299,13 @@ export type AiAuditRowDto = {
   outcomeDetail: string | null;
   steps: number | null;
   durationMs: number | null;
+  rating: AiAnswerRating | null;
 };
 export type AiAuditListDto = { rows: AiAuditRowDto[]; total: number; page: number; pageSize: 50 };
 export type AiAuditDetailDto = Omit<AiAuditRowDto, "question"> & {
   question: string;
+  ratingReasons: string[] | null;
+  ratingNote: string | null;
   answerText: string | null;
   provider: string | null;
   model: string | null;
@@ -2322,7 +2325,7 @@ export type AiAuditDashboardsDto = {
 };
 
 export const listAiAudit = async (
-  q: { from?: number; to?: number; outcomes?: string[]; dashboardId?: number; page?: number },
+  q: { from?: number; to?: number; outcomes?: string[]; dashboardId?: number; page?: number; rating?: "up" | "down" | "none" },
   signal?: AbortSignal,
 ): Promise<AiAuditListDto> => {
   const p = new URLSearchParams();
@@ -2331,6 +2334,7 @@ export const listAiAudit = async (
   if (q.outcomes && q.outcomes.length > 0) p.set("outcome", q.outcomes.join(","));
   if (q.dashboardId !== undefined) p.set("dashboardId", String(q.dashboardId));
   if (q.page !== undefined) p.set("page", String(q.page));
+  if (q.rating) p.set("rating", q.rating);
   const qs = p.toString();
   const response = await apiFetch(`${API_BASE}/api/ai/audit${qs ? `?${qs}` : ""}`, { signal });
   if (!response.ok) throw new Error(`Failed to load AI activity (${response.status})`);
