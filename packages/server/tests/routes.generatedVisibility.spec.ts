@@ -67,10 +67,13 @@ describe("generated pending visibility (PENDVIS)", () => {
     }
   });
 
-  it("PENDVIS-4 granting a pending dashboard is refused", async () => {
+  it("PENDVIS-4 granting a pending dashboard: creator 409, others 404", async () => {
     const r = await request(app).post(`/api/dashboards/${P}/access`).set("Cookie", ck.ann!).send({ grantee_type: "user", grantee: "bob" });
-    expect(r.status).toBe(409);
-    expect(r.body).toEqual({ code: "DASHBOARD_NOT_KEPT", error: "This dashboard hasn't been kept yet, so it can't be shared." });
+    expect(r.status).toBe(404);
+    expect(r.body).toEqual({ error: "Dashboard not found." });
+    const own = await request(app).post(`/api/dashboards/${P}/access`).set("Cookie", ck.dee!).send({ grantee_type: "user", grantee: "bob" });
+    expect(own.status).toBe(409);
+    expect(own.body).toEqual({ code: "DASHBOARD_NOT_KEPT", error: "This dashboard hasn't been kept yet, so it can't be shared." });
     expect(db.prepare("SELECT 1 FROM dashboard_access_grants WHERE dashboard_id = ? AND grantee = 'bob'").get(P)).toBeUndefined();
     const ok = await request(app).post(`/api/dashboards/${O}/access`).set("Cookie", ck.ann!).send({ grantee_type: "user", grantee: "bob" });
     expect(ok.status).toBe(201);

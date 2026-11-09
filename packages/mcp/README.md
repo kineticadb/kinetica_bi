@@ -58,7 +58,15 @@ Ask Claude, for example: *"Using kinetica-bi, build a dashboard for demo.nyctaxi
 | `edit_widget`, `rename_widget`, `change_widget_type`, `set_layout`, `edit_heatmap_layer`, `set_layer_visibility` | Change saved or new items |
 | `remove_widget`, `remove_layer`, `remove_dynamic_view` | Saved items need `confirmed: true` after you approve in chat |
 | `apply_filter`, `clear_filter` | Narrow the dashboard while you review (not saved by Keep) |
+| `run_query`, `get_column_profile` | Only when the server sets `MCP_DATA_ACCESS=query`: read rows or profile a column, as you, through the same guarded, limited path as the in-app AI |
 | `finish_dashboard` | Returns the review link (Keep or Discard there; the build is logged on the AI activity page as Claude Desktop) |
+
+## Data access and call limit
+
+Two server settings (in the Kinetica BI server's environment, not Claude Desktop's) control what Claude can reach.
+
+- `MCP_DATA_ACCESS`: `schema` (default) gives structure only, never row values, regardless of `AI_DATA_ACCESS`. `query` adds the two query tools. The values they return reach the Claude Desktop conversation, so Anthropic sees them. Each Claude Desktop query is a separate call, so the in-app per-answer query cap (`AI_QUERY_MAX_PER_ANSWER`) does not apply; the hourly call limit is what bounds query volume, and with the limit at 0 nothing bounds it. An invalid value falls back to `schema` with a server-log warning.
+- `MCP_MAX_CALLS_PER_USER_PER_HOUR`: default 300, 0 = no limit. Counted: `list_tables`, `start_dashboard`/`open_dashboard` and every Kinetica BI tool call. `finish_dashboard` is exempt and always returns the review link. Over the limit the tool returns "Claude Desktop call limit reached: ..." and nothing is changed; call again after the wait. Refused calls are not audited and do not count. Counts are in server memory and reset when the server restarts.
 
 ## Tests
 

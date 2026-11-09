@@ -208,4 +208,37 @@ describe("keepRunner", () => {
       ]),
     ).toEqual({ 12: { x: 0, y: 0, w: 6, h: 8 }, [-1]: { x: 6, y: 0, w: 6, h: 8 } });
   });
+
+  it("KRUN-F1: Keep sends the Claude Desktop floor when it is below this tab's reads", async () => {
+    seedSession();
+    seedBaseline(10);
+    st().setKeepBaselineFloor(8);
+    const d = deps();
+    await runKeep(d);
+    expect(d.buildPayload).toHaveBeenCalledWith(8);
+  });
+
+  it("KRUN-F2: no floor or a floor at the reads leaves the baseline as today", async () => {
+    seedSession();
+    seedBaseline(10);
+    const d1 = deps();
+    await runKeep(d1);
+    expect(d1.buildPayload).toHaveBeenCalledWith(10);
+    seedSession();
+    seedBaseline(10);
+    st().setKeepBaselineFloor(10);
+    const d2 = deps();
+    await runKeep(d2);
+    expect(d2.buildPayload).toHaveBeenCalledWith(10);
+  });
+
+  it("KRUN-F3: reset() and completeKeep() forget the floor", () => {
+    st().setKeepBaselineFloor(8);
+    st().reset();
+    expect(st().keepBaselineFloor).toBeNull();
+    seedSession();
+    st().setKeepBaselineFloor(8);
+    st().completeKeep();
+    expect(st().keepBaselineFloor).toBeNull();
+  });
 });

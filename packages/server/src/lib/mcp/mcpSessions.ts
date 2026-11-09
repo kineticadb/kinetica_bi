@@ -1,6 +1,7 @@
 // MCP connector (143): an MCP client (Claude Desktop) builds a dashboard through the SAME tools and gateway as the in-app
 // AI, but the client's model does the thinking. Accepted ops collect here, in memory; the browser takes them once
 // (handoff) and applies them as an unsaved AI session (applyAiTurn), so preview, the change bar and Keep are unchanged.
+// 145 (MCPSAFE-V21-01/02): baseVersion + the owner's own write edges give the browser a Keep baseline that a foreign save breaks.
 import { randomUUID } from "node:crypto";
 import type { AiOp, AskRequest } from "@kinetica-bi/shared";
 import { createShadow, type ShadowState } from "../ai/shadow";
@@ -30,6 +31,10 @@ export type McpSession = {
   summary?: string;
   finished: boolean;
   touchedAt: number;
+  /** 145: dashboard version when the session was created (open_dashboard / new build). */
+  baseVersion: number | null;
+  /** 145: the owner's own write edges on this dashboard while the session is live (before -> after). */
+  ownEdges: Record<number, number>;
 };
 
 const sessions = new Map<string, McpSession>();
@@ -44,7 +49,7 @@ const EMPTY: AskRequest["snapshot"] = { widgets: [], layers: [], dynamicViews: [
 export function createMcpSession(
   username: string,
   dashboardId: number,
-  opts: { mode?: "new" | "edit"; snapshot?: AskRequest["snapshot"] } = {},
+  opts: { mode?: "new" | "edit"; snapshot?: AskRequest["snapshot"]; baseVersion?: number } = {},
   now = Date.now(),
 ): McpSession {
   sweep(now);
@@ -65,9 +70,38 @@ export function createMcpSession(
     startedAt: now,
     finished: false,
     touchedAt: now,
+    baseVersion: opts.baseVersion ?? null,
+    ownEdges: {},
   };
   sessions.set(s.id, s);
   return s;
+}
+
+/** 146-03: the live session of an unkept Claude Desktop build, if memory still has it (no sweep, no touch). */
+export function findMcpBuildSession(dashboardId: number): McpSession | undefined {
+  for (const s of sessions.values()) if (s.mode === "new" && s.dashboardId === dashboardId) return s;
+  return undefined;
+}
+
+/** 145: a stamped write by `username` on the dashboard took it from `before` to `after`; live sessions of that user record the edge. */
+export function noteMcpOwnWrite(dashboardId: number, username: string, before: number, after: number): void {
+  if (!(after > before)) return;
+  const owner = username.toLowerCase();
+  for (const s of sessions.values()) {
+    if (s.dashboardId === dashboardId && s.username === owner) s.ownEdges[before] = Math.max(s.ownEdges[before] ?? after, after);
+  }
+}
+
+/** 145: the version at open, advanced only along the owner's own writes (mirrors the browser's dashboardVersionStore.baseline walk). */
+export function mcpKeepBaseline(s: McpSession): number | null {
+  if (s.baseVersion === null) return null;
+  let v = s.baseVersion;
+  for (let i = 0; i < 10000; i++) {
+    const n = s.ownEdges[v];
+    if (n === undefined || n <= v) break;
+    v = n;
+  }
+  return v;
 }
 
 /** The caller's live session, or undefined (missing, expired and someone else's all look the same). */

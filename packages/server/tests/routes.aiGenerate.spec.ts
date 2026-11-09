@@ -145,7 +145,10 @@ describe("DELETE /api/dashboards/:id on a pending dashboard", () => {
       registerAiSessionView({ viewName: buildAiDynamicViewName({ username: "dee", sid: SID, nonce: "0a1b2c3d", tempId, gen: 0 }), sid: SID, username: "dee", dashboardId: d, nonce: "0a1b2c3d", tempId, gen: 0 });
     }
     const ann = sessionFor("ann", ["admin"]).cookie;
-    expect((await request(app).delete(`/api/dashboards/${d}`).set("Cookie", ann)).status).toBe(204);
+    // 144: a non-creator cannot see (so cannot delete) another user's unkept dashboard; the creator discards it.
+    expect((await request(app).delete(`/api/dashboards/${d}`).set("Cookie", ann)).status).toBe(404);
+    expect(exists(d)).toBe(true);
+    expect((await request(app).delete(`/api/dashboards/${d}`).set("Cookie", c)).status).toBe(204);
     expect(exists(d)).toBe(false);
     expect((db.prepare("SELECT COUNT(*) AS n FROM ai_session_views WHERE dashboard_id = ?").get(d) as { n: number }).n).toBe(0);
     const plain = createDashboard("ordinary", "").id;

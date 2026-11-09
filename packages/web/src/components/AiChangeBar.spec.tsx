@@ -14,7 +14,7 @@ import type { KeepRunOutcome } from "../lib/aiSession/keepRunner";
 const widgets = [recordsWidget(50), { ...recordsWidget(51), title: "Revenue" }];
 const baseline = () => baselineFixture({ widgets: [...widgets] });
 const apply = (ops: unknown[]) => useAiSessionStore.getState().applyTurn({ prompt: "x", ops }, baseline());
-const bar = (p: { onKeep?: () => Promise<KeepRunOutcome>; onReloadLatest?: () => Promise<void> } = {}) => (
+const bar = (p: { onKeep?: () => Promise<KeepRunOutcome>; onReloadLatest?: () => Promise<void>; ownUnkept?: boolean } = {}) => (
   <AiChangeBar savedWidgets={widgets} savedLayers={[]} {...p} />
 );
 const asUser = (permissions: string[]) =>
@@ -293,5 +293,29 @@ describe("AiChangeBar", () => {
     render(bar());
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(screen.getByRole("dialog").textContent).toContain(AI_CHAT_COPY.discardTitle);
+  });
+
+  it("KBAR-OWN-1: a create-only user sees an enabled Keep on their own unkept dashboard", () => {
+    asUser(["dashboards:view", "dashboards:create"]);
+    apply([addWidgetOp(-1)]);
+    render(bar({ onKeep: vi.fn(), ownUnkept: true }));
+    expect(keepBtn().disabled).toBe(false);
+    expect(screen.queryByText("Only editors can save AI changes")).toBeNull();
+  });
+
+  it("KBAR-OWN-2: the same user sees no Keep on a saved dashboard", () => {
+    asUser(["dashboards:view", "dashboards:create"]);
+    apply([addWidgetOp(-1)]);
+    render(bar({ onKeep: vi.fn() }));
+    expect(screen.queryByRole("button", { name: "Keep" })).toBeNull();
+    expect(screen.getByText("Only editors can save AI changes")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeTruthy();
+  });
+
+  it("KBAR-OWN-3: ownUnkept without dashboards:create shows no Keep", () => {
+    asUser(["dashboards:view"]);
+    apply([addWidgetOp(-1)]);
+    render(bar({ onKeep: vi.fn(), ownUnkept: true }));
+    expect(screen.queryByRole("button", { name: "Keep" })).toBeNull();
   });
 });

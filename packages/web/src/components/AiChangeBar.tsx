@@ -22,6 +22,7 @@ export function AiChangeBar({
   onKeep,
   onReloadLatest,
   onDiscardGenerated,
+  ownUnkept,
 }: {
   savedWidgets: readonly WidgetDto[];
   savedLayers: readonly DashboardLayerDto[];
@@ -33,6 +34,8 @@ export function AiChangeBar({
   onReloadLatest?: () => Promise<void>;
   /** 142 D-05: while the dashboard is an unkept generated one, Discard deletes it (owner shows GeneratedDiscardDialog). */
   onDiscardGenerated?: () => void;
+  /** 145: the dashboard is the caller's own unkept generated / Claude Desktop build (only its creator can open it). dashboards:create is then enough to Keep. */
+  ownUnkept?: boolean;
 }) {
   const visible = useAiSessionStore(selectHasUnsavedAiChanges);
   const derived = useAiSessionStore((s) => s.derived);
@@ -40,7 +43,8 @@ export function AiChangeBar({
   const running = useAiSessionStore((s) => s.run.status === "running");
   // 141 Pitfall 11: the RAW dashboards:edit permission, deliberately NOT the lock-ANDed canEdit (the AI lock would
   // always hide Keep). Partial rights (D-04) still see Keep and get the server's named refusal.
-  const canKeep = useAuthStore((s) => s.hasPermission)(PERMISSIONS.DASHBOARDS_EDIT);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canKeep = hasPermission(PERMISSIONS.DASHBOARDS_EDIT) || (ownUnkept === true && hasPermission(PERMISSIONS.DASHBOARDS_CREATE));
   const [confirming, setConfirming] = useState(false);
   const [keepOpen, setKeepOpen] = useState(false);
   const [saving, setSaving] = useState(false);

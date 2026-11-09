@@ -10,7 +10,7 @@ import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 
 export const AI_AUDIT_PAGE_SIZE = 50;
-export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed"] as const;
+export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed", "unfinished"] as const;
 
 type DashState = "live" | "pending" | "deleted" | "none";
 const DAY_MS = 86_400_000;
@@ -45,7 +45,7 @@ const intStr = (re: RegExp) => z.string().regex(re).transform(Number);
 const WindowShape = { from: intStr(/^\d{1,15}$/).optional(), to: intStr(/^\d{1,15}$/).optional() };
 const ListQuery = z.object({
   ...WindowShape,
-  outcome: z.string().transform((s) => s.split(",")).pipe(z.array(z.enum(AI_AUDIT_OUTCOMES)).min(1).max(10)).optional(),
+  outcome: z.string().transform((s) => s.split(",")).pipe(z.array(z.enum(AI_AUDIT_OUTCOMES)).min(1).max(AI_AUDIT_OUTCOMES.length)).optional(),
   dashboardId: intStr(/^[1-9]\d{0,9}$/).optional(),
   page: intStr(/^[1-9]\d{0,5}$/).optional(),
 });

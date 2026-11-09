@@ -30,6 +30,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   keep_denied: "Keep denied",
   keep_invalid: "Keep invalid",
   keep_failed: "Keep failed",
+  unfinished: "Unfinished",
 };
 export const AI_ACTIVITY_COPY = {
   title: "AI activity",

@@ -8,10 +8,16 @@
  *   GET  /api/mcp/tools                     tool specs (name, description, JSON schema)
  *   POST /api/mcp/sessions                  { name, tableIds, replace? } -> { sessionId, dashboardId }
  *                                           Phase 143 (AIMCP-V20-05): creates an UNKEPT dashboard (Generate's lifecycle:
- *                                           creator-only, Discard/logout/boot/TTL delete it, Keep clears the mark)
+ *                                           creator-only, Discard/boot/TTL delete it (browser logout does not); Keep clears the pending mark, after which
+ *                                           generated_source is inert (only read for pending rows))
  *   POST /api/mcp/sessions/:id/call         { name, args } -> { ok, text } | { ok: false, stage, reasons }
- *   POST /api/mcp/sessions/:id/finish       { summary } -> { url }
- *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied } (once; the browser)
+ *   POST /api/mcp/sessions/:id/finish       { summary } -> { url } | 410 MCP_DASHBOARD_GONE when the dashboard no longer exists
+ *   GET  /api/mcp/sessions/:id/handoff      ?dashboardId= -> { prompt, answer, ops, applied, mode, baselineVersion } (once; the browser)
+ *                                              145: baselineVersion = version at open, advanced only by the user's own writes; the browser's Keep sends no later baseline.
+ *
+ * MCP_DATA_ACCESS (schema default | query, independent of AI_DATA_ACCESS) decides whether Claude Desktop gets run_query / get_column_profile and row values; query runs through the in-app AI's guarded query port as the user.
+ *
+ * MCP_MAX_CALLS_PER_USER_PER_HOUR (default 300, 0 = off): per-user rolling-hour cap on tables/sessions/call -> 429 MCP_CALL_LIMIT; finish is exempt; in memory, resets on restart.
  *
  * Phase 143 (AIMCP-V20-04) personal access tokens, so Claude Desktop's config holds a revocable token, not a password:
  *   GET    /api/mcp/tokens                  the user's tokens (never the token itself)
@@ -28,8 +34,10 @@ import { createSession } from "./sessionStore";
 import { createMcpToken, listMcpTokens, recordMcpTokenSession, redeemMcpToken, revokeMcpToken } from "./lib/mcp/mcpTokens";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
-import { aiCheckLimits } from "./lib/aiConfig";
-import { getDashboard, getDashboardDynamicView, getTable, listDashboardTables, listTables, listWidgets } from "./db";
+import { aiCheckLimits, type AiDataAccess } from "./lib/aiConfig";
+import { loadMcpConfig, mcpQueryLimits } from "./lib/mcp/mcpConfig";
+import { createMcpCallLimiter, mcpCallLimitMessage } from "./lib/mcp/mcpCallLimit";
+import { getDashboard, getDashboardDynamicView, getDashboardVersion, getTable, listDashboardDynamicViews, listDashboardTables, listTables, listWidgets } from "./db";
 import { createGeneratedDashboard, discardGeneratedDashboard, findPendingForUser, GeneratePendingError } from "./lib/aiGenerate";
 import { principalForSession, SessionEndedError } from "./lib/exportRunner";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
@@ -42,8 +50,11 @@ import { gatewayDvLimits } from "./lib/ai/dvDeps";
 import { isClassAllowed } from "./lib/ai/outbound";
 import { stampMapDefaultViews } from "./lib/ai/mapDefaultView";
 import { applyFitBands } from "./lib/ai/generateMode";
-import { buildToolRegistry } from "./lib/ai/tools/registry";
-import { createMcpSession, getMcpSession, takeMcpHandoff, MCP_MAX_AUDITED_CALLS, type McpSession } from "./lib/mcp/mcpSessions";
+import { buildToolRegistry, QUERY_TOOL_NAMES } from "./lib/ai/tools/registry";
+import { QUERY_TOOLS } from "./lib/ai/tools/query";
+import { buildQueryScope } from "./lib/ai/queryScope";
+import { createQueryPort } from "./lib/ai/queryRunner";
+import { createMcpSession, getMcpSession, mcpKeepBaseline, takeMcpHandoff, MCP_MAX_AUDITED_CALLS, type McpSession } from "./lib/mcp/mcpSessions";
 import { recordMcpBuild, type AiToolAuditEntry } from "./lib/aiAudit";
 import { ALLOW_LIST_VERSION, type AiOp } from "@kinetica-bi/shared";
 
@@ -56,6 +67,10 @@ export const MCP_TOOL_NAMES = [
   // Phase 143 (AIMCP-V20-09): session-only, like the in-app AI's; Keep does not save filters.
   "apply_filter", "clear_filter",
 ] as const;
+/** Tools the connector exposes for a data-access mode: the query tools only in query mode. */
+export function mcpToolNames(access: AiDataAccess): readonly string[] {
+  return access === "query" ? [...MCP_TOOL_NAMES, ...QUERY_TOOL_NAMES] : MCP_TOOL_NAMES;
+}
 const REMOVE_TOOLS: ReadonlySet<string> = new Set(["remove_widget", "remove_layer", "remove_dynamic_view"]);
 const CONFIRM_REASON = "Removing saved content needs the user's approval: ask the user, then call again with confirmed: true.";
 export const MCP_MAX_NEW_WIDGETS = 12;
@@ -94,6 +109,9 @@ export type McpRouteDeps = {
 const usernameOf = (req: Request): string => (req as AuthedRequest).user!.creds.username;
 /** finish_dashboard re-lays out every widget, so the gateway's first-fit position would mislead Claude and the audit. */
 const withoutPlacement = (label: string): string => label.replace(/ (at row \d+, column \d+|below existing content)$/, "");
+export const MCP_DASHBOARD_GONE_MESSAGE = "This dashboard no longer exists: it was discarded, deleted or expired, so there is nothing to review. Start a new dashboard.";
+const gone410 = (res: Response) => res.status(410).json({ code: "MCP_DASHBOARD_GONE", error: MCP_DASHBOARD_GONE_MESSAGE });
+// Refusals are recorded with tool name, stage and reasons only, never the arguments the client sent (like the in-app audit).
 const logCall = (s: McpSession, entry: AiToolAuditEntry): void => {
   if (s.tools.length < MCP_MAX_AUDITED_CALLS) s.tools.push(entry);
 };
@@ -127,7 +145,17 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
     if (!limits) res.status(503).json({ error: "AI is not configured on this server.", code: "AI_NOT_CONFIGURED" });
     return limits;
   };
-  const registry = () => buildToolRegistry({ dataAccess: "schema" });
+  const mcp = loadMcpConfig();
+  const limiter = createMcpCallLimiter({ maxPerHour: mcp.maxCallsPerUserPerHour });
+  // Claude Desktop calls count (tables, start/open, call). finish_dashboard is exempt so a build can always be handed over; the tool listing, tokens and the browser's handoff do not count either.
+  const limitCall: RequestHandler = (req, res, next) => {
+    const t = limiter.take(usernameOf(req));
+    if (t.ok) return next();
+    res.set("Retry-After", String(t.retryAfterSec));
+    res.status(429).json({ code: "MCP_CALL_LIMIT", error: mcpCallLimitMessage(limiter.maxPerHour, t.retryAfterSec), retryAfterSeconds: t.retryAfterSec });
+  };
+  const toolNames = mcpToolNames(mcp.dataAccess);
+  const registry = () => buildToolRegistry({ dataAccess: mcp.dataAccess, extraTools: [...QUERY_TOOLS] });
 
   // Listing and revoking need only a session: someone who lost ai:use can still see and revoke the tokens they made.
   app.get("/api/mcp/tokens", requireAuth, (req, res) => {
@@ -164,6 +192,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.get(
     "/api/mcp/tables",
     ...requirePermission(PERMISSIONS.AI_USE),
+    limitCall,
     deps.wrap(async (req, res) => {
       const config = aiConfig(res);
       if (!config) return;
@@ -173,7 +202,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const out = await tool.run({}, {
         username,
         dashboardId: 0,
-        dataAccess: config.dataAccess,
+        dataAccess: mcp.dataAccess,
         dashboardView: () => {
           throw new Error("no dashboard before start_dashboard");
         },
@@ -181,13 +210,13 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
         liveSchema: createLiveSchema({ username, principal: () => req as AuthedRequest }),
       });
-      const text = out.parts.filter((p) => isClassAllowed(config.dataAccess, p.cls)).map((p) => p.text).join("\n");
+      const text = out.parts.filter((p) => isClassAllowed(mcp.dataAccess, p.cls)).map((p) => p.text).join("\n");
       return res.json({ ok: !out.isError, text });
     }),
   );
 
   app.get("/api/mcp/tools", ...requirePermission(PERMISSIONS.AI_USE), (_req, res) => {
-    const specs = registry().specs.filter((s) => (MCP_TOOL_NAMES as readonly string[]).includes(s.name));
+    const specs = registry().specs.filter((s) => toolNames.includes(s.name));
     // The in-app AI asks the user in its own UI before removing saved content; Claude asks in chat and says so with `confirmed`.
     return res.json({
       tools: specs.map((t) => {
@@ -205,6 +234,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.post(
     "/api/mcp/sessions",
     ...requirePermission(PERMISSIONS.AI_USE),
+    limitCall,
     deps.wrap(async (req, res) => {
       if (!aiConfig(res)) return;
       const { creds, sid } = (req as AuthedRequest).user!;
@@ -217,7 +247,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         const d = getDashboard(id);
         if (!d || !canViewDashboard(username, id)) return res.status(404).json({ error: "Dashboard not found." });
         if (!perms.has(PERMISSIONS.DASHBOARDS_EDIT)) return res.status(403).json({ error: "You can't edit dashboards." });
-        const s = createMcpSession(username, id, { mode: "edit", snapshot: snapshotForDashboard(id) });
+        const s = createMcpSession(username, id, { mode: "edit", snapshot: snapshotForDashboard(id), baseVersion: getDashboardVersion(id) });
         return res.status(201).json({ sessionId: s.id, dashboardId: id, name: d.name });
       }
       if (!perms.has(PERMISSIONS.DASHBOARDS_CREATE)) return res.status(403).json({ error: "You can't create dashboards." });
@@ -241,8 +271,8 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         await discardGeneratedDashboard(existing.id);
       }
       try {
-        const d = createGeneratedDashboard({ username, name, tableIds, assistant: false });
-        const s = createMcpSession(username, d.id);
+        const d = createGeneratedDashboard({ username, name, tableIds, assistant: false, source: "mcp" });
+        const s = createMcpSession(username, d.id, { baseVersion: getDashboardVersion(d.id) });
         return res.status(201).json({ sessionId: s.id, dashboardId: d.id });
       } catch (e) {
         if (e instanceof GeneratePendingError) return pending409(res, e.existing);
@@ -254,6 +284,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.post(
     "/api/mcp/sessions/:id/call",
     ...requirePermission(PERMISSIONS.AI_USE),
+    limitCall,
     deps.wrap(async (req, res) => {
       const config = aiConfig(res);
       if (!config) return;
@@ -262,6 +293,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const s = getMcpSession(String(req.params.id), username);
       if (!s) return res.status(404).json({ error: "Session not found or expired. Start a new dashboard." });
       if (s.finished) return res.status(409).json({ error: "This dashboard was already handed to the browser." });
+      if (!getDashboard(s.dashboardId)) return gone410(res);
       const { name, args: rawArgs } = (req.body ?? {}) as { name?: unknown; args?: unknown };
       // `confirmed` is the connector's removal approval, not a tool argument (the tools' schemas are strict).
       let confirmed = false;
@@ -272,8 +304,8 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
         args = rest;
       }
       const reg = registry();
-      const tool = typeof name === "string" && (MCP_TOOL_NAMES as readonly string[]).includes(name) ? reg.byName.get(name) : undefined;
-      if (!tool) return res.status(400).json({ error: `Unknown tool. Use one of: ${MCP_TOOL_NAMES.join(", ")}.` });
+      const tool = typeof name === "string" && toolNames.includes(name) ? reg.byName.get(name) : undefined;
+      if (!tool) return res.status(400).json({ error: `Unknown tool. Use one of: ${toolNames.join(", ")}.` });
 
       const liveSchema = createLiveSchema({ username, principal: () => authedReq });
       const dashboardTableIds = () => listDashboardTables(s.dashboardId).map((t) => t.id);
@@ -281,27 +313,46 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       if (tool.kind === "read") {
         const parsed = tool.args.safeParse(args ?? {});
         if (!parsed.success) {
-          logCall(s, { name: tool.name, args, result: "rejected", stage: "shape", reasons: ["Invalid arguments for this tool."] });
+          logCall(s, { name: tool.name, result: "rejected", stage: "shape", reasons: ["Invalid arguments for this tool."] });
           return res.json({ ok: false, stage: "shape", reasons: ["Invalid arguments for this tool."] });
         }
+        // Query mode only: a fresh port per call (one call, one query), scoped to the dashboard's tables and saved views.
+        const query =
+          mcp.dataAccess === "query" && (QUERY_TOOL_NAMES as readonly string[]).includes(tool.name)
+            ? createQueryPort({
+                requestId: randomUUID(),
+                principal: () => authedReq,
+                scope: buildQueryScope({
+                  username,
+                  dashboardId: s.dashboardId,
+                  dashboardTables: listDashboardTables(s.dashboardId).map((t) => ({ id: t.id, schema: t.schema, name: t.name })),
+                  savedViews: listDashboardDynamicViews(s.dashboardId).map((v) => ({ id: v.id, name: v.name, columns: v.columns_json })),
+                  aiViews: [],
+                }),
+                liveSchema,
+                limits: mcpQueryLimits(),
+                dashboardTableIds,
+              })
+            : undefined;
         const out = await tool.run(parsed.data, {
           username,
           dashboardId: s.dashboardId,
-          dataAccess: config.dataAccess,
+          dataAccess: mcp.dataAccess,
+          ...(query ? { query } : {}),
           dashboardView: () => projectSnapshot({ dashboardId: s.dashboardId, question: "-", snapshot: s.snapshot, turns: [] }, { id: s.dashboardId }),
           dashboardTableIds,
           registeredTables: () => listTables().map((t) => ({ id: t.id, schema: t.schema, name: t.name, ...(t.description ? { description: t.description } : {}) })),
           liveSchema,
         });
         // Same egress rule as a provider request: classes the data-access mode does not allow never leave the server.
-        const text = out.parts.filter((p) => isClassAllowed(config.dataAccess, p.cls)).map((p) => p.text).join("\n");
+        const text = out.parts.filter((p) => isClassAllowed(mcp.dataAccess, p.cls)).map((p) => p.text).join("\n");
         logCall(s, { name: tool.name, args: parsed.data, result: out.isError ? "error" : "ok" });
         return res.json({ ok: !out.isError, text });
       }
 
       if (tool.name === "add_widget" && liveNewWidgets(s.ops) >= MCP_MAX_NEW_WIDGETS) {
         const reasons = [`limit of ${MCP_MAX_NEW_WIDGETS} new widgets reached`];
-        logCall(s, { name: tool.name, args, result: "rejected", stage: "cap", reasons });
+        logCall(s, { name: tool.name, result: "rejected", stage: "cap", reasons });
         s.rejected.push({ label: tool.name, stage: "cap", reasons });
         return res.json({ ok: false, stage: "cap", reasons });
       }
@@ -326,10 +377,10 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       );
       if (!g.ok) {
         if (g.stage === "clarification" && REMOVE_TOOLS.has(tool.name)) {
-          logCall(s, { name: tool.name, args, result: "rejected", stage: g.stage, reasons: [CONFIRM_REASON] });
+          logCall(s, { name: tool.name, result: "rejected", stage: g.stage, reasons: [CONFIRM_REASON] });
           return res.json({ ok: false, stage: g.stage, reasons: [CONFIRM_REASON] });
         }
-        logCall(s, { name: tool.name, args, result: "rejected", stage: g.stage, reasons: g.reasons });
+        logCall(s, { name: tool.name, result: "rejected", stage: g.stage, reasons: g.reasons });
         s.rejected.push({ label: tool.name, stage: g.stage, reasons: g.reasons });
         return res.json({ ok: false, stage: g.stage, reasons: g.reasons });
       }
@@ -351,6 +402,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
       const username = usernameOf(req);
       const s = getMcpSession(String(req.params.id), username);
       if (!s) return res.status(404).json({ error: "Session not found or expired." });
+      if (!getDashboard(s.dashboardId)) return gone410(res);
       if (s.ops.length === 0) return res.status(400).json({ error: "Nothing was added yet." });
       const summary = (req.body as { summary?: unknown } | undefined)?.summary;
       if (!s.finished) {
@@ -375,7 +427,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
           dashboardName: getDashboard(s.dashboardId)?.name ?? "",
           mode: s.mode,
           summary: s.summary,
-          dataAccess: config.dataAccess,
+          dataAccess: mcp.dataAccess,
           allowListVersion: ALLOW_LIST_VERSION,
           tools: s.tools,
           changes: { applied: s.applied, rejected: s.rejected },
@@ -391,6 +443,7 @@ export function registerMcpRoutes(app: Express, deps: McpRouteDeps): void {
   app.get("/api/mcp/sessions/:id/handoff", requireAuth, (req, res) => {
     const s = takeMcpHandoff(String(req.params.id), usernameOf(req), Number(req.query.dashboardId));
     if (!s) return res.status(404).json({ error: "Nothing to load from Claude Desktop (already loaded or expired)." });
-    return res.json({ prompt: MCP_PROMPT, answer: s.summary ?? "", ops: s.ops, applied: s.applied, mode: s.mode });
+    const baselineVersion = mcpKeepBaseline(s);
+    return res.json({ prompt: MCP_PROMPT, answer: s.summary ?? "", ops: s.ops, applied: s.applied, mode: s.mode, ...(baselineVersion === null ? {} : { baselineVersion }) });
   });
 }

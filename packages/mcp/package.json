@@ -1,6 +1,6 @@
 {
   "name": "@kinetica-bi/mcp",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "kbi-mcp: an MCP server that lets Claude Desktop build Kinetica BI dashboards",
