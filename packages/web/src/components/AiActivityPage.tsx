@@ -158,7 +158,7 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
           {ratingReasons.length > 0 && (
             <div className="filter-bar-chips">
               {ratingReasons.map((c) => (
-                <span key={c} className="filter-bar-chip">
+                <span key={c} className="filter-bar-chip ai-activity-reason">
                   {AI_RATING_REASON_LABEL[c as AiRatingReason] ?? c}
                 </span>
               ))}

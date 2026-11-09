@@ -29,6 +29,11 @@
   word-break: break-word;
 }
 
+/* 149: rating reasons reuse the accent chip but are words, not column values, so no monospace. */
+.filter-bar-chip.ai-activity-reason {
+  font-family: inherit;
+}
+
 .ai-activity-sql {
   white-space: pre-wrap;
   word-break: break-word;

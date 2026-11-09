@@ -1,5 +1,5 @@
 // 149 (FEEDBACK-V22-01): per-answer thumbs + optional down-vote reasons. Plain text only; the note is never sent to the AI.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { rateAiAnswer, AI_RATING_REASONS, type AiRatingReason } from "../../api/client";
 import { useAiSessionStore } from "../../store/aiSessionStore";
 import { useToastStore } from "../../store/toast";
@@ -82,6 +82,11 @@ function ReasonForm({ answerId }: { answerId: number }) {
   const [picked, setPicked] = useState<ReadonlySet<AiRatingReason>>(() => new Set());
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  // The row opens at the end of the chat log; bring Send/Skip into view (no-op where scrollIntoView is missing, e.g. jsdom).
+  useEffect(() => {
+    actionsRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
 
   function toggle(c: AiRatingReason) {
     setPicked((prev) => {
@@ -129,7 +134,7 @@ function ReasonForm({ answerId }: { answerId: number }) {
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
-      <div className="ds-actions">
+      <div className="ds-actions" ref={actionsRef}>
         <button type="button" className="btn-primary btn-sm" disabled={sending} onClick={() => void send()}>
           {AI_RATING_COPY.send}
         </button>
