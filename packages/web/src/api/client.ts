@@ -2195,6 +2195,48 @@ export const getAiConfig = async (): Promise<{ enabled: boolean }> => {
   return { enabled: j.enabled === true };
 };
 
+// --- 149: answer rating + per-user AI prefs ---
+
+export const AI_RATING_REASONS = ["wrong_data", "wrong_chart", "not_what_asked", "other"] as const;
+export type AiRatingReason = (typeof AI_RATING_REASONS)[number];
+export type AiAnswerRating = "up" | "down";
+
+async function failFrom(r: Response, what: string): Promise<never> {
+  const j = (await r.json().catch(() => ({}))) as { error?: string };
+  throw new Error(j.error ?? `${what} failed (${r.status})`);
+}
+
+export const rateAiAnswer = async (
+  answerId: number,
+  body: { rating: AiAnswerRating | null; reasons?: AiRatingReason[]; note?: string },
+): Promise<{ rating: AiAnswerRating | null }> => {
+  const r = await apiFetch(`${API_BASE}/api/ai/answers/${answerId}/rating`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) return failFrom(r, "Rating");
+  return (await r.json()) as { rating: AiAnswerRating | null };
+};
+
+export type AiPrefsDto = { showRatingButtons: boolean };
+
+export const getAiPrefs = async (): Promise<AiPrefsDto> => {
+  const r = await apiFetch(`${API_BASE}/api/ai/prefs`);
+  if (!r.ok) return failFrom(r, "Loading AI preferences");
+  return (await r.json()) as AiPrefsDto;
+};
+
+export const setAiPrefs = async (patch: Partial<AiPrefsDto>): Promise<AiPrefsDto> => {
+  const r = await apiFetch(`${API_BASE}/api/ai/prefs`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) return failFrom(r, "Saving AI preferences");
+  return (await r.json()) as AiPrefsDto;
+};
+
 // --- 141: Keep AI changes ---
 
 export type KeepAiResult =

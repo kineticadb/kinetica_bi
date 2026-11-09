@@ -28,7 +28,7 @@
  */
 import { create } from "zustand";
 import type {
-  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem,
+  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem, TurnChat,
 } from "../lib/aiSession/types";
 import { AI_SOURCE_ID, AI_KEPT_VIEW_TOGGLES_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
 import { evaluateTurn, foldSession, isFilterOp } from "../lib/aiSession/foldSession";
@@ -88,6 +88,8 @@ export type AiSessionState = {
   setDraft(text: string): void;
   setHighlight(ids: number[]): void;
   markChoicePicked(turnIndex: number, pick: { clarificationIndex: number; optionId: string }): void;
+  /** 149: set/clear the rating on the live and kept turn whose chat.answerId matches. */
+  setTurnRating(answerId: number, next: Pick<TurnChat, "rating" | "ratingReasons" | "ratingNote" | "ratingFollowUp">): void;
   /** 138: store what a filter op changed so Revert/Forward/Discard can invert it per column. */
   attachEntryFilterDeltas(turnId: string, entryIndex: number, deltas: FilterDelta[]): void;
   /** 138: display-only answer notes (never sent to the provider) + D-17 empty-result offers. */
@@ -320,6 +322,23 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       const turns = s.turns.slice();
       turns[turnIndex] = { ...t, chat: { status: "ok", ...t.chat, pickedChoice: pick } };
       return { turns };
+    }),
+
+  setTurnRating: (answerId, next) =>
+    set((s) => {
+      let hit = false;
+      const apply = (chat: TurnChat | undefined): TurnChat | undefined => {
+        if (!chat || chat.answerId !== answerId) return chat;
+        hit = true;
+        const merged: TurnChat = { ...chat, rating: undefined, ratingReasons: undefined, ratingNote: undefined, ratingFollowUp: undefined, ...next };
+        for (const k of ["rating", "ratingReasons", "ratingNote", "ratingFollowUp"] as const) {
+          if (merged[k] === undefined) delete merged[k];
+        }
+        return merged;
+      };
+      const turns = s.turns.map((t) => (t.chat?.answerId === answerId ? { ...t, chat: apply(t.chat) } : t));
+      const savedTurns = s.savedTurns.map((x) => (x.kind === "turn" && x.chat?.answerId === answerId ? { ...x, chat: apply(x.chat) } : x));
+      return hit ? { turns, savedTurns } : s;
     }),
 
   attachEntryFilterDeltas: (turnId, entryIndex, deltas) =>

@@ -6,7 +6,7 @@
 // "drop the log". D-01's inverse/snapshot data is satisfied by replayability; inverses would be
 // dead code and a bug surface.
 import type { AiOp, AiClarification, AskSkipped, AskQueryEntry, AiFilterSource, AiDvSpec, AiDvOutputColumn } from "@kinetica-bi/shared";
-import type { WidgetDto, DashboardLayerDto } from "../../api/client";
+import type { WidgetDto, DashboardLayerDto, AiRatingReason } from "../../api/client";
 import type { ActiveFilter } from "../../store/filterStore";
 
 /** 139: an AI-created session dynamic view (folded from add_dynamic_view). Never persisted; Keep (141) saves it as a normal dv row. */
@@ -54,6 +54,11 @@ export type TurnChat = {
   queries?: AskQueryEntry[]; // 140 D-11: display only ("Ran N queries"); never sent to the provider
   filterNotes?: string[]; // display only, never sent to the provider
   emptyFilters?: { source: FilterSourceRef; column: string }[]; // D-17 "matched no rows" offers
+  // 149: display/client state only, never sent to the provider (buildAskTurns ignores it)
+  rating?: "up" | "down";
+  ratingReasons?: AiRatingReason[];
+  ratingNote?: string;
+  ratingFollowUp?: "ask" | "thanks" | "skipped";
 };
 export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number; chat?: TurnChat };
 /** 141 D-11/D-18: read-only archive of kept turns (never reverted; still sent as provider history by 141-10). */

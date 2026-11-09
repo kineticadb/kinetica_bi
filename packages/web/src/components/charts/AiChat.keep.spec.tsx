@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  getAiPrefs: vi.fn(async () => ({ showRatingButtons: true })),
+  setAiPrefs: vi.fn(async (p: object) => ({ showRatingButtons: true, ...p })),
+  rateAiAnswer: vi.fn(async () => ({ rating: null })),
+}));
 vi.mock("../../lib/aiSession/askRunner", async () => {
   const actual = await vi.importActual<typeof import("../../lib/aiSession/askRunner")>("../../lib/aiSession/askRunner");
   return { ...actual, runAsk: vi.fn(async () => {}), cancelAsk: vi.fn() };
