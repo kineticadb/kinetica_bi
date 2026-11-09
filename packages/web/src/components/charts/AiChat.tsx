@@ -9,6 +9,8 @@ import { buildStarterQuestions, buildTemplateFollowUps } from "../../lib/aiSessi
 import { useFilterStore } from "../../store/filterStore";
 import { currentFilter, clearFilterAsUser } from "../../lib/aiOps/aiFilterApplier";
 import { AI_FILTER_COPY } from "../../lib/aiOps/aiFilterCopy";
+import { useAiPrefsStore, loadAiPrefs, setShowRatingButtons } from "../../lib/aiSession/aiPrefs";
+import { AiRatingButtons, AiRatingReason, AI_RATING_COPY } from "./AiRatingRow";
 import "./AiWidget.css";
 
 const MAX_LEN = 2000;
@@ -111,6 +113,11 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
   // 138: re-render the zero-row clear offer when filters change (primitive selector).
   useFilterStore((s) => s.filterVersion);
   const logRef = useRef<HTMLDivElement>(null);
+  // 149: per-user "Show rating buttons" (default shown until loaded; load is deduped in the module).
+  const showRating = useAiPrefsStore((s) => s.showRatingButtons);
+  useEffect(() => {
+    void loadAiPrefs();
+  }, []);
   // 140 D-11: which turns have their "Ran N queries" list expanded (collapsed by default).
   const [openQueries, setOpenQueries] = useState<ReadonlySet<string>>(() => new Set());
   function toggleQueries(id: string) {
@@ -167,6 +174,14 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                   </div>
                 ) : null;
               })}
+              {showRating && (x.chat?.status ?? "ok") === "ok" && typeof x.chat?.answerId === "number" && (
+                <>
+                  <div className="ai-chat-turn-actions">
+                    <AiRatingButtons answerId={x.chat.answerId} chat={x.chat} />
+                  </div>
+                  <AiRatingReason answerId={x.chat.answerId} chat={x.chat} />
+                </>
+              )}
             </div>
           ),
         )}
@@ -186,6 +201,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
           const changedSomething = turn.entries.some((e) => e.result.status === "applied");
           const showRevert = !hasChoices || changedSomething;
           const changes = status === "ok" ? turnChanges(turn) : null;
+          const canRate = showRating && status === "ok" && typeof chat?.answerId === "number";
           return (
             <div key={turn.id} className={`ai-chat-turn${i > cursor ? " ai-chat-turn--ahead" : ""}`}>
               <div className="ai-chat-bubble ai-chat-bubble--user">{turn.prompt}</div>
@@ -289,18 +305,22 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                       ))}
                     </div>
                   )}
-                  {showRevert && (
+                  {(showRevert || canRate) && (
                     <div className="ai-chat-turn-actions">
-                      <button
-                        type="button"
-                        className="ghost-sm"
-                        disabled={i === cursor || running}
-                        onClick={() => useAiSessionStore.getState().setCursor(i, ctx.getBaseline())}
-                      >
-                        {AI_CHAT_COPY.revert}
-                      </button>
+                      {showRevert && (
+                        <button
+                          type="button"
+                          className="ghost-sm"
+                          disabled={i === cursor || running}
+                          onClick={() => useAiSessionStore.getState().setCursor(i, ctx.getBaseline())}
+                        >
+                          {AI_CHAT_COPY.revert}
+                        </button>
+                      )}
+                      {canRate && <AiRatingButtons answerId={chat!.answerId!} chat={chat!} />}
                     </div>
                   )}
+                  {canRate && <AiRatingReason answerId={chat!.answerId!} chat={chat!} />}
                 </>
               )}
               {status === "cancelled" && <div className="ai-chat-note muted">{AI_CHAT_COPY.cancelled}</div>}
@@ -326,6 +346,10 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
           </div>
         )}
       </div>
+      <label className="config-toggle">
+        <input type="checkbox" checked={showRating} onChange={(e) => void setShowRatingButtons(e.target.checked)} />
+        {AI_RATING_COPY.showToggle}
+      </label>
       <AiAskBox ctx={ctx} />
     </div>
   );

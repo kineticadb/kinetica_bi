@@ -150,3 +150,15 @@
 /* 137-12 UAT: answered (disabled) choices read as greyed out; the picked one stays legible. */
 .ai-chat-choices .ghost-sm:disabled { opacity: 0.5; cursor: default; }
 .ai-chat-choices .ghost-sm:disabled[aria-pressed="true"] { opacity: 0.8; border-color: var(--accent); }
+
+/* 149: answer rating. ONE new class (.ai-chat-rate); other rules target existing classes. Tokens only (no hex, no rgba). Light/dark verified by the operator. */
+.ai-chat-rate { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; padding: var(--space-1); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); cursor: pointer; }
+.ai-chat-rate:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ai-chat-rate[aria-pressed="true"] { color: var(--accent); }
+.ai-chat-rate:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ai-chat-rate:disabled { cursor: default; }
+.ai-chat-turn-actions:has(> .ai-chat-rate) { align-self: stretch; }
+.ai-chat-turn-actions > .ai-chat-rate:first-child,
+.ai-chat-turn-actions > :not(.ai-chat-rate) + .ai-chat-rate { margin-left: auto; }
+.ai-chat-choices .ghost-sm[aria-pressed="true"]:not(:disabled) { border-color: var(--accent); }
+.ai-chat > .config-toggle { align-self: flex-end; font-size: var(--text-xs); color: var(--muted); padding: 0 var(--space-2); }
