@@ -65,10 +65,6 @@ export function AiRatingButtons({ answerId, chat }: { answerId: number; chat: Tu
 }
 
 export function AiRatingReason({ answerId, chat }: { answerId: number; chat: TurnChat }) {
-  const [picked, setPicked] = useState<ReadonlySet<AiRatingReason>>(() => new Set());
-  const [note, setNote] = useState("");
-  const [sending, setSending] = useState(false);
-
   if (chat.rating !== "down") return null;
   if (chat.ratingFollowUp === "thanks") {
     return (
@@ -78,6 +74,14 @@ export function AiRatingReason({ answerId, chat }: { answerId: number; chat: Tur
     );
   }
   if (chat.ratingFollowUp !== "ask") return null;
+  return <ReasonForm answerId={answerId} />;
+}
+
+/** Mounted only while the row is open, so every new down vote starts with no chips, no note and Send enabled. */
+function ReasonForm({ answerId }: { answerId: number }) {
+  const [picked, setPicked] = useState<ReadonlySet<AiRatingReason>>(() => new Set());
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
 
   function toggle(c: AiRatingReason) {
     setPicked((prev) => {
