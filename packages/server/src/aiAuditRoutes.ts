@@ -8,6 +8,7 @@ import { z } from "zod/v4";
 import { db, getDashboard, getGeneratedPending } from "./db";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
+import { AI_RATING_REASONS } from "./lib/aiFeedback";
 
 export const AI_AUDIT_PAGE_SIZE = 50;
 export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed", "unfinished"] as const;
@@ -46,6 +47,7 @@ const WindowShape = { from: intStr(/^\d{1,15}$/).optional(), to: intStr(/^\d{1,1
 const ListQuery = z.object({
   ...WindowShape,
   outcome: z.string().transform((s) => s.split(",")).pipe(z.array(z.enum(AI_AUDIT_OUTCOMES)).min(1).max(AI_AUDIT_OUTCOMES.length)).optional(),
+  rating: z.enum(["up", "down", "none"]).optional(),
   dashboardId: intStr(/^[1-9]\d{0,9}$/).optional(),
   page: intStr(/^[1-9]\d{0,5}$/).optional(),
 });
@@ -100,9 +102,14 @@ function baseDto(r: any, dash: ReturnType<typeof dashLookup>) {
     outcomeDetail: (r.outcome_detail ?? null) as string | null,
     steps: (r.steps ?? null) as number | null,
     durationMs: (r.duration_ms ?? null) as number | null,
+    rating: (r.rating === "up" || r.rating === "down" ? r.rating : null) as "up" | "down" | null,
   };
 }
 
+const ratingReasons = (raw: unknown): string[] | null => {
+  const v = safeParse(raw);
+  return Array.isArray(v) ? v.filter((c): c is string => typeof c === "string" && (AI_RATING_REASONS as readonly string[]).includes(c)) : null;
+};
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const numOpt = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
@@ -119,6 +126,13 @@ export function registerAiAuditRoutes(app: Express): void {
       where += ` AND outcome IN (${p.data.outcome.map((_, i) => `@o${i}`).join(",")})`;
       p.data.outcome.forEach((o, i) => (params[`o${i}`] = o));
     }
+    // 149: "Not rated" = finished rateable answers (ok ask/generate) with no rating
+    if (p.data.rating === "up" || p.data.rating === "down") {
+      where += " AND rating = @rating";
+      params.rating = p.data.rating;
+    } else if (p.data.rating === "none") {
+      where += " AND rating IS NULL AND outcome = 'ok' AND COALESCE(kind,'ask') IN ('ask','generate') AND (request_id IS NULL OR (request_id NOT LIKE 'keep-%' AND request_id NOT LIKE 'mcp-%'))";
+    }
     if (p.data.dashboardId !== undefined) {
       where += " AND dashboard_id = @d";
       params.d = p.data.dashboardId;
@@ -126,7 +140,7 @@ export function registerAiAuditRoutes(app: Express): void {
     const total = (db.prepare(`SELECT COUNT(*) AS n FROM ai_audit ${where}`).get(params) as { n: number }).n;
     const raw = db
       .prepare(
-        `SELECT id, ts_ms, username, dashboard_id, kind, request_id, question, outcome, outcome_detail, steps, duration_ms, changes_json FROM ai_audit ${where} ORDER BY ts_ms DESC, id DESC LIMIT @limit OFFSET @offset`,
+        `SELECT id, ts_ms, username, dashboard_id, kind, request_id, question, outcome, outcome_detail, steps, duration_ms, changes_json, rating FROM ai_audit ${where} ORDER BY ts_ms DESC, id DESC LIMIT @limit OFFSET @offset`,
       )
       .all({ ...params, limit: AI_AUDIT_PAGE_SIZE, offset: (page - 1) * AI_AUDIT_PAGE_SIZE }) as any[];
     const dash = dashLookup();
@@ -210,6 +224,8 @@ export function registerAiAuditRoutes(app: Express): void {
       tools,
       changes,
       queries,
+      ratingReasons: ratingReasons(r.rating_reasons),
+      ratingNote: typeof r.rating_note === "string" ? r.rating_note : null,
     });
   });
 }
