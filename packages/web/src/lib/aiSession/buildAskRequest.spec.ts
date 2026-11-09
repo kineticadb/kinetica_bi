@@ -48,6 +48,15 @@ describe("buildAskRequest", () => {
     const none = buildAskSnapshot({ widgets: [w(1, "bar")], layouts: {}, layers: [layer(10)], dynamicViews: [] });
     expect(none.layers).toEqual([]);
   });
+  it("LEAK-R1: rating fields never reach the ask turns", () => {
+    const chat = { status: "ok", rating: "down", ratingReasons: ["wrong_chart"], ratingNote: "SECRET_NOTE", ratingFollowUp: "thanks" } as Turn["chat"];
+    const out = buildAskTurns([turn(0, chat)], 0, [{ kind: "turn", id: "s1", prompt: "sp", answer: "sa", chat }]);
+    expect(out).toHaveLength(2);
+    const s = JSON.stringify(out);
+    expect(s).not.toContain("SECRET_NOTE");
+    expect(s).not.toContain("wrong_chart");
+    expect(s).not.toContain("rating");
+  });
   it("BAR-4: only ok turns up to cursor; changes from applied+skipped", () => {
     const turns = [
       turn(0, { status: "ok", applied: ["Added bar"], skipped: [{ label: "Remove X", stage: "s", reasons: ["r".repeat(300), "r2"] }] }),
