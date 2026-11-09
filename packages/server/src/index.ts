@@ -163,6 +163,7 @@ import { canViewDashboard, listDashboardGrants, addDashboardGrant, removeDashboa
 import { registerExportRoutes } from "./exportRoutes";
 import { registerAiRoutes } from "./aiRoutes";
 import { registerAiAuditRoutes } from "./aiAuditRoutes";
+import { registerAiFeedbackRoutes } from "./aiFeedbackRoutes";
 import { registerAiDvRoutes } from "./aiDvRoutes";
 import { registerAiKeepRoutes } from "./aiKeepRoutes";
 import { registerMcpRoutes, registerMcpTokenLoginRoute } from "./mcpRoutes";
@@ -1362,6 +1363,7 @@ export const createApp = async (): Promise<express.Express> => {
   // v2.0 Phase 135: AI routes (POST /api/ai/ask requires ai:use; GET /api/ai/config requireAuth).
   registerAiRoutes(app);
   registerAiAuditRoutes(app);
+  registerAiFeedbackRoutes(app);
   // v2.0 Phase 139: ad-hoc AI dynamic views (materialize/drop/list); session-only, registry-backed.
   registerAiDvRoutes(app, { requireConfig, wrap: asyncHandler, ttlMinutes: DEFAULT_VIEW_TTL_MINUTES, viewColumnsCache });
   // v2.0 Phase 141: Keep (persist the AI session's folded change set); the server is the authority.

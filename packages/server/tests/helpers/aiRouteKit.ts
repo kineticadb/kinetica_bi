@@ -66,7 +66,7 @@ export function makeTableOn(dashboardId: number, schema = "fleet", name = "trips
 }
 
 export function resetAiTables(): void {
-  for (const t of ["ai_audit", "sessions", "user_roles", "dashboard_access_grants", "dashboard_tables", "tables", "dashboards"]) db.exec(`DELETE FROM ${t}`);
+  for (const t of ["ai_audit", "ai_user_prefs", "sessions", "user_roles", "dashboard_access_grants", "dashboard_tables", "tables", "dashboards"]) db.exec(`DELETE FROM ${t}`);
   db.exec("DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE built_in = 0)");
   db.exec("DELETE FROM roles WHERE built_in = 0");
 }

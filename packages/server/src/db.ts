@@ -258,6 +258,9 @@ const SCHEMA_DDL = `
   );
   CREATE INDEX IF NOT EXISTS idx_ai_session_views_sid ON ai_session_views (sid);
 
+  -- v2.2 Phase 149 (FEEDBACK-V22-01): per-user AI preferences, one column per preference (Phase 150 adds approve_first by ALTER).
+  CREATE TABLE IF NOT EXISTS ai_user_prefs (username TEXT PRIMARY KEY, show_rating_buttons INTEGER NOT NULL DEFAULT 1, updated_ms INTEGER NOT NULL);
+
   -- v1.10 Phase 55 (ACCESS-V110-02): per-dashboard view-access grants. App-local
   -- visibility layer (Kinetica creds remain the data authority). Single table with a
   -- grantee_type discriminator covers BOTH user grants (lowercased free-form username —
@@ -459,6 +462,10 @@ export const createDb = (dbPath: string): Database.Database => {
   const auditCols = new Set((instance.prepare("PRAGMA table_info(ai_audit)").all() as Array<{ name: string }>).map((c) => c.name));
   if (!auditCols.has("queries_json")) instance.exec("ALTER TABLE ai_audit ADD COLUMN queries_json TEXT"); // 140 D-12
   if (!auditCols.has("kind")) instance.exec("ALTER TABLE ai_audit ADD COLUMN kind TEXT"); // 142 D-20: ask | generate | keep (NULL = legacy, derived on read)
+  if (!auditCols.has("rating")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating TEXT"); // 149: answer rating 'up' | 'down' | NULL
+  if (!auditCols.has("rating_reasons")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating_reasons TEXT"); // 149: JSON array of reason codes
+  if (!auditCols.has("rating_note")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating_note TEXT"); // 149: user text, never logged
+  if (!auditCols.has("rated_ts_ms")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rated_ts_ms INTEGER"); // 149
   instance.exec("CREATE INDEX IF NOT EXISTS idx_ai_audit_dash_ts ON ai_audit (dashboard_id, ts_ms)");
   if (!colNames.has("credential_type")) {
     instance.exec(
