@@ -132,6 +132,24 @@ describe("AiChat rating", () => {
     expect(screen.queryByText("Thanks for the feedback.")).toBeNull();
   });
 
+  it("RATECHAT-9: a second down vote opens a fresh, sendable reason row", async () => {
+    seed([turn(0)]);
+    render(<AiChat ctx={ctx} variant="inline" />);
+    await userEvent.click(bad());
+    await userEvent.click(screen.getByRole("button", { name: "Wrong chart" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Tell us more (optional)" }), "first");
+    await userEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    await userEvent.click(bad());
+    await userEvent.click(bad());
+    expect(screen.getByRole("button", { name: "Wrong chart" }).getAttribute("aria-pressed")).toBe("false");
+    expect((screen.getByRole("textbox", { name: "Tell us more (optional)" }) as HTMLTextAreaElement).value).toBe("");
+    const send = screen.getByRole("button", { name: "Send feedback" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Other" }));
+    await userEvent.click(send);
+    expect(rateAiAnswer).toHaveBeenLastCalledWith(7, { rating: "down", reasons: ["other"] });
+  });
+
   it("RATECHAT-5: clarification-only answer has thumbs and no Revert", () => {
     seed([
       turn(0, {
