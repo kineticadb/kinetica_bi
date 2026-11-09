@@ -167,6 +167,8 @@ export const WRITE_ROUTE_CLASSIFICATION: Record<string, string> = {
   "POST /api/ai/ask": "exempt: session/materialize only, no dashboard row written",
   "POST /api/ai/dynamic-view/drop": "exempt: session/materialize only, no dashboard row written",
   "POST /api/ai/dynamic-view/materialize": "exempt: session/materialize only, no dashboard row written",
+  "PUT /api/ai/answers/:id/rating": "exempt: writes an ai_audit rating column only, no dashboard row written",
+  "PUT /api/ai/prefs": "exempt: writes ai_user_prefs only, no dashboard row written",
   "POST /api/auth/login": "exempt: auth/session, not dashboard state",
   "POST /api/auth/logout": "exempt: auth/session, not dashboard state",
   "POST /api/branding/logo": "exempt: branding is global, not dashboard state",
