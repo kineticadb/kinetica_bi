@@ -20,7 +20,7 @@ import { AiActivityPage } from "./AiActivityPage";
 const row = (o: Partial<AiAuditRowDto>): AiAuditRowDto => ({
   id: 1, ts: 1_700_000_000_000, username: "alice", dashboardId: 5, dashboardName: "Sales",
   dashboardState: "live", kind: "ask", question: "How many trips?", summary: null,
-  outcome: "ok", outcomeDetail: null, steps: 4, durationMs: 1200, ...o,
+  outcome: "ok", outcomeDetail: null, steps: 4, durationMs: 1200, rating: null, ...o,
 });
 const list = (rows: AiAuditRowDto[], total = rows.length, page = 1) => ({ rows, total, page, pageSize: 50 as const });
 const detail = (o: Partial<AiAuditDetailDto> = {}): AiAuditDetailDto => ({
@@ -28,7 +28,7 @@ const detail = (o: Partial<AiAuditDetailDto> = {}): AiAuditDetailDto => ({
   dataAccess: "user-scoped", allowListVersion: "v7", inputTokens: 1200, outputTokens: 300,
   tools: [{ name: "describe_table", result: "ok" }], changes: null,
   queries: [{ sql: "SELECT COUNT(*) FROM trips", rowCount: 200, durationMs: 35, outcome: "ok" }],
-  outcomeDetail: "all good", ...o,
+  outcomeDetail: "all good", ratingReasons: null, ratingNote: null, ...o,
 });
 const lastCall = () => vi.mocked(listAiAudit).mock.calls.at(-1)![0];
 
@@ -48,6 +48,56 @@ describe("AiActivityPage", () => {
     for (const h of ["Time", "User", "Dashboard", "Kind", "Question", "Outcome", "Steps", "Duration"]) {
       expect(screen.getByRole("columnheader", { name: h })).toBeTruthy();
     }
+  });
+
+  it("AUDPAGE-R1: Rating column shows thumbs or a dash", async () => {
+    vi.mocked(listAiAudit).mockResolvedValue(list([
+      row({ id: 1, rating: "up" }), row({ id: 2, rating: "down" }), row({ id: 3, rating: null }),
+    ]));
+    render(<AiActivityPage />);
+    expect(await screen.findByRole("columnheader", { name: "Rating" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Rated up" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Rated down" })).toBeTruthy();
+    const idx = screen.getAllByRole("columnheader").findIndex((h) => h.textContent === "Rating");
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(within(rows[2]).getAllByRole("cell")[idx].textContent).toBe("—");
+  });
+
+  it("AUDPAGE-R2: Rating filter narrows the list", async () => {
+    render(<AiActivityPage />);
+    await screen.findByText("How many trips?");
+    const sel = screen.getByLabelText("Rating") as HTMLSelectElement;
+    expect(sel.id).toBe("ai-activity-rating");
+    expect(Array.from(sel.options).map((o) => o.text)).toEqual(["All ratings", "Up", "Down", "Not rated"]);
+    fireEvent.change(sel, { target: { value: "down" } });
+    await waitFor(() => expect(lastCall()).toMatchObject({ rating: "down", page: 1 }));
+    fireEvent.change(sel, { target: { value: "none" } });
+    await waitFor(() => expect(lastCall()).toMatchObject({ rating: "none" }));
+    fireEvent.change(sel, { target: { value: "" } });
+    await waitFor(() => expect(lastCall().rating).toBeUndefined());
+  });
+
+  it("AUDPAGE-R3: detail shows rating, reasons and the note as text", async () => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({
+      rating: "down", ratingReasons: ["wrong_data", "not_what_asked"], ratingNote: "<img src=x onerror=alert(1)>",
+    }));
+    const { container } = render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    expect(within(panel).getByText("Thumbs down")).toBeTruthy();
+    expect(within(panel).getByText("Wrong data")).toBeTruthy();
+    expect(within(panel).getByText("Didn't do what I asked")).toBeTruthy();
+    expect(within(panel).getByText("<img src=x onerror=alert(1)>")).toBeTruthy();
+    expect(container.querySelector("img[src='x']")).toBeNull();
+  });
+
+  it("AUDPAGE-R4: unrated detail has no rating group", async () => {
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    expect(within(panel).queryByText("Thumbs up")).toBeNull();
+    expect(within(panel).queryByText("Thumbs down")).toBeNull();
+    expect(within(panel).queryByText("Rating")).toBeNull();
   });
 
   it("AUDPAGE-2: default range is last 7 days, no other params", async () => {
