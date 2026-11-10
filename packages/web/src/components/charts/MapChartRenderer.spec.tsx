@@ -750,6 +750,7 @@ import FullScreen from "ol/control/FullScreen";
 import OlView from "ol/View";
 import { useSpatialFilterStore } from "../../store/spatialFilterStore";
 import { useThemeStore } from "../../store/theme";
+import { useAiSessionStore } from "../../store/aiSessionStore";
 import { DashboardContextProvider } from "../DashboardContext";
 
 /* ------------------------------------------------------------------ */
@@ -7073,5 +7074,35 @@ describe("Phase 136 AI heatmap layers on both buildWmsParams sites", () => {
     const arg = src.updateParams.mock.calls[src.updateParams.mock.calls.length - 1][0];
     expect(Object.prototype.hasOwnProperty.call(arg, "VAL_ATTR")).toBe(true);
     expect(arg.VAL_ATTR).toBeUndefined();
+  });
+});
+
+describe("MapChartRenderer - proposal ghost layers (150)", () => {
+  beforeEach(() => {
+    _layersState.layers = [];
+    allImageLayerInstances.length = 0;
+    allImageWmsInstances.length = 0;
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+  afterEach(() => {
+    useAiSessionStore.getState().setProposalGhosts(null);
+  });
+  const ghost = (id: number) => makeLayer({ id, table_id: 10, config: { spatialMode: "latlon", latColumn: "lat", lonColumn: "lon", renderMode: "heatmap", visible: true, POINTOPACITY: 40 } });
+  const wmsOpacities = () => allImageLayerInstances.map((l) => l._opts?.opacity);
+
+  it("APPRGHOST-10: renders ghost layers hosted on this widget, dimmed, and not those hosted elsewhere", async () => {
+    useAiSessionStore.getState().setProposalGhosts({ widgets: [], rects: {}, layers: [ghost(-2), ghost(-3)], layerHosts: { [-2]: 10, [-3]: 99 } });
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    expect(allImageLayerInstances.length).toBe(1);
+    expect(wmsOpacities()).toEqual([0.4]);
+  });
+
+  it("APPRGHOST-10: with no ghosts nothing extra renders", async () => {
+    await act(async () => {
+      render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
+    });
+    expect(allImageLayerInstances.length).toBe(0);
   });
 });

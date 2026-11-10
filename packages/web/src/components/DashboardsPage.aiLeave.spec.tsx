@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { seedDesignerStore } from "../test/seedAuthStore";
-import { useAiSessionStore } from "../store/aiSessionStore";
+import { useAiSessionStore, selectHasUnsavedAiChanges } from "../store/aiSessionStore";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useFilterStore } from "../store/filterStore";
 import { baselineFixture, addWidgetOp } from "../test/aiSessionHarness";
@@ -257,5 +257,39 @@ describe("DashboardsPage AI leave guard (Phase 134 Plan 08)", () => {
     expect(live()).toBe(0);
     add.mockRestore();
     remove.mockRestore();
+  });
+
+  const pendingTurn = () =>
+    act(() => {
+      useAiSessionStore.getState().applyTurn(
+        { prompt: "t", ops: [], chat: { status: "ok", answerId: 7, followUps: [], applied: [], proposal: { ops: [addWidgetOp(-1, "records", "Proposed rec")], ticked: [0], status: "pending" } } },
+        baselineFixture({ widgets: saved as any, layers: [], dynamicViewIds: [], dashboardId }),
+      );
+    });
+
+  it("APPRLEAVE-2: a pending proposal alone parks Back behind the dialog", async () => {
+    await openDashboard();
+    pendingTurn();
+    await userEvent.click(screen.getByRole("button", { name: /^back$/i }));
+    expect(await screen.findByRole("dialog", { name: "Proposed changes are waiting" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^open$/i })).toBeNull();
+  });
+
+  it("APPRLEAVE-3: beforeunload is cancelled while a proposal is pending", async () => {
+    await openDashboard();
+    const fire = () => {
+      const ev = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    };
+    expect(fire()).toBe(false);
+    pendingTurn();
+    expect(fire()).toBe(true);
+  });
+
+  it("APPRLEAVE-4: a pending proposal does not trip the edit lock", async () => {
+    await openDashboard();
+    pendingTurn();
+    expect(selectHasUnsavedAiChanges(useAiSessionStore.getState())).toBe(false);
   });
 });

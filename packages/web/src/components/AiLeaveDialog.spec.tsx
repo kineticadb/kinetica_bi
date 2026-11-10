@@ -114,3 +114,31 @@ describe("AiLeaveDialog", () => {
     expect(dlg.textContent).not.toMatch(/Keep them first/);
   });
 });
+
+describe("AiLeaveDialog - pending proposal (150)", () => {
+  const pending = () =>
+    useAiSessionStore.getState().applyTurn(
+      { prompt: "x", ops: [], chat: { status: "ok", answerId: 7, followUps: [], applied: [], proposal: { ops: [addWidgetOp(-1)], ticked: [0], status: "pending" } } },
+      baselineFixture(),
+    );
+
+  it("APPRLEAVE-1: only a pending proposal shows the proposal copy", () => {
+    seedDesignerStore();
+    pending();
+    render(<AiLeaveDialog />);
+    const fn = vi.fn();
+    act(() => requestLeave(fn));
+    expect(fn).not.toHaveBeenCalled();
+    const dlg = screen.getByRole("dialog", { name: "Proposed changes are waiting" });
+    expect(dlg.textContent).toContain("Leaving will drop the proposed changes; they will be recorded as not decided.");
+  });
+
+  it("APPRLEAVE-1: with applied changes as well, today's copy stays", () => {
+    seedDesignerStore();
+    pending();
+    dirty();
+    render(<AiLeaveDialog />);
+    act(() => requestLeave(() => {}));
+    expect(screen.getByRole("dialog", { name: "You have unsaved AI changes" })).toBeInTheDocument();
+  });
+});

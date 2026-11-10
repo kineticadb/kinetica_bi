@@ -271,3 +271,20 @@ describe("WidgetCard — AI badge (Phase 136 D-05)", () => {
     expect(screen.queryByText("AI edited")).toBeNull();
   });
 });
+
+describe("WidgetCard - proposed ghost (150)", () => {
+  it("APPRGHOST-6: proposed prop dims the card, badges Proposed and shows no edit controls", () => {
+    render(<WidgetCard widget={makeWidget(-4)} {...baseProps} proposed />);
+    const card = screen.getByText("Widget -4").closest(".widget-card") as HTMLElement;
+    expect(card.className).toContain("widget-card--proposed");
+    expect(screen.getByText("Proposed")).toBeInTheDocument();
+    expect(screen.queryByText("AI added")).toBeNull();
+    expect(screen.queryByRole("button", { name: /configure|duplicate|remove/i })).toBeNull();
+  });
+
+  it("APPRGHOST-6: without the prop a negative id still shows AI added", () => {
+    render(<WidgetCard widget={makeWidget(-5)} {...baseProps} />);
+    expect(screen.getByText("AI added")).toBeInTheDocument();
+    expect(screen.queryByText("Proposed")).toBeNull();
+  });
+});
