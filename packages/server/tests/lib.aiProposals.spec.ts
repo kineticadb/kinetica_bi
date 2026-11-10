@@ -127,7 +127,7 @@ describe("150-06 neutral proposal wording", () => {
     expect(neutralProposalLabel("Filter on vendor_id")).toBe("Filter on vendor_id");
   });
   it("FIX150-2: instruction says changes are not applied yet", () => {
-    expect(PROPOSE_SYSTEM_PART).toContain("NOT been applied");
+    expect(PROPOSE_SYSTEM_PART).toContain("have NOT been applied");
     expect(PROPOSE_SYSTEM_PART).toContain("never write \"I've added\"");
   });
 });

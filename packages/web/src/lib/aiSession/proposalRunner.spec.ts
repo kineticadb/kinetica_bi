@@ -157,7 +157,7 @@ describe("proposalRunner", () => {
 
   it("APPRRUN-12: Keep archives a pending proposal as expired with no ops", () => {
     seed([bar(), flt()]);
-    st().setProposalGhosts({ widgets: [], rects: {}, layers: [], layerHosts: {} });
+    st().setProposalGhosts({ widgets: [], rects: {} });
     st().completeKeep();
     const item = st().savedTurns.find((x) => x.kind === "turn");
     expect(item && item.kind === "turn" && item.chat?.proposal).toMatchObject({ ops: [], status: "expired" });

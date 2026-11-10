@@ -47,8 +47,6 @@ export type TurnProposal = { ops: unknown[]; ticked: number[]; status: ProposalS
 export type ProposalGhosts = {
   widgets: WidgetDto[];
   rects: Record<number, { x: number; y: number; w: number; h: number }>;
-  layers: DashboardLayerDto[];
-  layerHosts: Record<number, number>;
 };
 export type TurnChat = {
   status: "ok" | "error" | "cancelled";
