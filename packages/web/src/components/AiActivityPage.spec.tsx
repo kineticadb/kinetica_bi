@@ -292,4 +292,46 @@ describe("AiActivityPage", () => {
     expect(err.className).toContain("error");
     r.unmount();
   });
+  it("AUDPAGE-A1: the four proposal outcomes are labelled and filterable", async () => {
+    vi.mocked(listAiAudit).mockResolvedValue(list([
+      row({ id: 1, question: "qa", outcome: "applied" }), row({ id: 2, question: "qb", outcome: "partly_applied" }),
+      row({ id: 3, question: "qc", outcome: "rejected" }), row({ id: 4, question: "qd", outcome: "not_decided" }),
+    ]));
+    render(<AiActivityPage />);
+    await screen.findByText("qa");
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getAllByRole("cell").some((c) => ["Applied", "Partly applied", "Rejected", "Not decided"].includes(c.textContent ?? "")))).toEqual([true, true, true, true]);
+    const sel = screen.getByLabelText("Outcome") as HTMLSelectElement;
+    for (const [v, t] of [["applied", "Applied"], ["partly_applied", "Partly applied"], ["rejected", "Rejected"], ["not_decided", "Not decided"]]) {
+      const o = Array.from(sel.options).find((x) => x.value === v);
+      expect(o?.text).toBe(t);
+    }
+  });
+
+  it("AUDPAGE-A2: detail lists left-unticked changes and re-check failures", async () => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({
+      outcome: "partly_applied",
+      changes: { applied: ["Add bar"], rejected: [{ label: "Add pie", stage: "recheck", reasons: ["column gone"] }], unticked: ["Filter on vendor"], proposed: ["Add bar", "Add pie", "Filter on vendor"] },
+    }));
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    const group = within(panel).getByText("Left unticked").closest(".config-group") as HTMLElement;
+    expect(within(group).getByText("Filter on vendor")).toBeTruthy();
+    expect(within(panel).getByText("Add pie: column gone")).toBeTruthy();
+    expect(within(panel).queryByText("Proposed changes")).toBeNull();
+  });
+
+  it("AUDPAGE-A3: a not decided row shows the proposed changes", async () => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({
+      outcome: "not_decided",
+      changes: { applied: [], rejected: [], proposed: ["Add bar", "Filter on vendor"] },
+    }));
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    const group = within(panel).getByText("Proposed changes").closest(".config-group") as HTMLElement;
+    expect(within(group).getByText("Add bar")).toBeTruthy();
+    expect(within(group).getByText("Filter on vendor")).toBeTruthy();
+  });
 });

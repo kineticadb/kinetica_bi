@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../../api/client", async (importOriginal) => ({
@@ -167,5 +167,27 @@ describe("AiWidgetRenderer", () => {
     ai.unmount();
     const bar = render(wrap(<WidgetRenderer widget={w(LARGE, "bar")} />));
     expect(bar.container.querySelector(".ai-widget")).toBeNull();
+  });
+  it("APPRCHAT-9: a pending proposal opens the drawer by itself and the tile line says so", async () => {
+    const small = { x: 0, y: 0, w: 6, h: 10 };
+    const { container } = render(wrap(<AiWidgetRenderer widget={w(small)} />));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => {
+      useAiSessionStore.getState().applyTurn(
+        { prompt: "q", answer: "plan", ops: [], chat: { status: "ok", answerId: 3, followUps: [], applied: [], proposal: { ops: [], ticked: [], status: "pending" } } },
+        baseline,
+      );
+    });
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(container.querySelector(".ai-tile-last")?.textContent).toBe("Changes proposed \u2014 review");
+  });
+
+  it("APPRCHAT-10: a normal answer does not open the drawer", async () => {
+    const small = { x: 0, y: 0, w: 6, h: 10 };
+    render(wrap(<AiWidgetRenderer widget={w(small)} />));
+    await act(async () => {
+      useAiSessionStore.getState().applyTurn({ prompt: "q", answer: "plain", ops: [], chat: { status: "ok", answerId: 3, followUps: [] } }, baseline);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
