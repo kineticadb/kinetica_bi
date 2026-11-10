@@ -46,7 +46,7 @@ beforeEach(() => {
 
 describe("proposalRunner", () => {
   it("APPRRUN-4: ticks stay closed under dependencies", () => {
-    const id = seed([{ op: "add_dynamic_view", tempId: -1 }, { op: "add_widget", tempId: -2, type: "bar", title: "b", config: { dynamicViewId: -1 } }, addWidgetOp(-3)]);
+    const id = seed([addWidgetOp(-1), { op: "set_widget_title", id: -1, title: "Renamed" }, addWidgetOp(-3)]);
     toggleProposalTick(id, 0, false);
     expect(proposal().ticked).toEqual([2]);
     toggleProposalTick(id, 1, true);
