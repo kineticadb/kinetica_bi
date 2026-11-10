@@ -6,7 +6,7 @@
 // lost connection apply zero ops. A late result after reset() (Discard / dashboard switch) is
 // dropped by the epoch check.
 import type { AiClarification, AskRequest, AskResultEvent } from "@kinetica-bi/shared";
-import { useAiSessionStore } from "../../store/aiSessionStore";
+import { useAiSessionStore, hasPendingProposal } from "../../store/aiSessionStore";
 import { useToastStore } from "../../store/toast";
 import { streamAsk, AskHttpError, AI_CONNECTION_LOST } from "./askStream";
 import { buildAskRequest } from "./buildAskRequest";
@@ -43,6 +43,28 @@ export function cancelAsk(): void {
 }
 
 function applyResult(ctx: AskContext, question: string, r: AskResultEvent): void {
+  // 150: a proposal is NOT folded: no filters, no views, no highlight, no edit lock until Apply.
+  if (r.proposed) {
+    useAiSessionStore.getState().applyTurn(
+      {
+        prompt: question,
+        answer: r.text,
+        ops: [],
+        chat: {
+          status: "ok",
+          answerId: r.answerId,
+          followUps: r.followUps ?? [],
+          clarifications: r.clarifications,
+          skipped: r.skipped,
+          applied: [],
+          proposal: { ops: [...r.ops], ticked: r.ops.map((_, i) => i), status: "pending" },
+          ...(r.queries && r.queries.length > 0 ? { queries: r.queries } : {}),
+        },
+      },
+      ctx.getBaseline(),
+    );
+    return;
+  }
   // 138: one apply path shared with the DEV harness (session turn + filters + deltas + outline + notes).
   applyAiTurn(
     {
@@ -76,7 +98,7 @@ function recordError(baseline: SessionBaseline, question: string, err: { code: s
 export async function runAsk(ctx: AskContext, question: string, opts?: { pick?: AskPick }): Promise<void> {
   const q = question.trim();
   const store = useAiSessionStore.getState();
-  if (!q || store.run.status === "running") return;
+  if (!q || store.run.status === "running" || hasPendingProposal()) return;
   if (opts?.pick) {
     if (opts.pick.approveRemoval) store.approveRemoval();
     store.markChoicePicked(opts.pick.turnIndex, {

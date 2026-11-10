@@ -22,7 +22,7 @@ const st = () => useAiSessionStore.getState();
 const baseline = baselineFixture();
 const snap = { widgets: [], layers: [], dynamicViews: [], filters: [] };
 const ctx: AskContext = { dashboardId: 1, getBaseline: () => baseline, getSnapshot: () => snap, tables: [] };
-const bar = () => addWidgetOp(-1, "bar", "Bar A");
+const bar = () => addWidgetOp(-1, "records", "Bar A");
 const flt = () => applyFilterRaw({ kind: "table", id: 5 }, "vendor_id", "V1");
 const toasts = () => useToastStore.getState().toasts.map((t) => t.message);
 

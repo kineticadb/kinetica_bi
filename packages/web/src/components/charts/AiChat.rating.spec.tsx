@@ -9,8 +9,8 @@ vi.mock("../../lib/aiSession/askRunner", async () => {
 vi.mock("../../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/client")>()),
   rateAiAnswer: vi.fn(async () => ({ rating: null })),
-  getAiPrefs: vi.fn(async () => ({ showRatingButtons: true })),
-  setAiPrefs: vi.fn(async (p: object) => ({ showRatingButtons: true, ...p })),
+  getAiPrefs: vi.fn(async () => ({ showRatingButtons: true, approveFirst: false })),
+  setAiPrefs: vi.fn(async (p: object) => ({ showRatingButtons: true, approveFirst: false, ...p })),
 }));
 
 import type { AskContext } from "../../lib/aiSession/askRunner";
@@ -201,7 +201,7 @@ describe("AiChat rating", () => {
   });
 
   it("RATECHAT-7: loaded false pref hides thumbs; drawer has the checkbox; failed save reverts", async () => {
-    vi.mocked(getAiPrefs).mockResolvedValueOnce({ showRatingButtons: false });
+    vi.mocked(getAiPrefs).mockResolvedValueOnce({ showRatingButtons: false, approveFirst: false });
     seed([turn(0)]);
     const { unmount } = render(<AiChat ctx={ctx} variant="drawer" />);
     const cb = screen.getByRole("checkbox", { name: "Show rating buttons" }) as HTMLInputElement;

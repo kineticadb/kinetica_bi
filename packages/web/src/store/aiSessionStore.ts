@@ -28,7 +28,7 @@
  */
 import { create } from "zustand";
 import type {
-  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem, TurnChat,
+  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem, TurnChat, TurnProposal, ProposalGhosts,
 } from "../lib/aiSession/types";
 import { AI_SOURCE_ID, AI_KEPT_VIEW_TOGGLES_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
 import { evaluateTurn, foldSession, isFilterOp } from "../lib/aiSession/foldSession";
@@ -68,6 +68,11 @@ export type AiSessionState = {
   bumpDvGen(tempId: number): void;
   setDvColumns(tempId: number, cols: AiDvOutputColumn[]): void;
   appendFollowUps(turnId: string, followUps: string[]): void;
+  /** 150: ghost previews of a pending proposal (computed by the UI); cleared on every decision/reset/keep. */
+  proposalGhosts: ProposalGhosts | null;
+  setProposalGhosts(g: ProposalGhosts | null): void;
+  /** 150: merge into a turn's proposal; a non-pending result clears the ghosts. */
+  setProposal(turnId: string, patch: Partial<TurnProposal>): void;
   dashboardId: number | null;
   baseEntries: TurnEntry[];
   droppedCount: number;
@@ -117,6 +122,13 @@ export type AiSessionState = {
 };
 
 let turnSeq = 0;
+
+/** 150: a still-pending proposal cannot survive Keep (the server copy is gone with the session): archive it expired and without ops. */
+function archiveChat(chat: TurnChat): TurnChat {
+  const p = chat.proposal;
+  if (!p) return chat;
+  return { ...chat, proposal: { ...p, ops: [], busy: false, status: p.status === "pending" ? "expired" : p.status } };
+}
 
 function writeAiContribution(d: SessionDerived): void {
   const c = d.contribution;
@@ -176,6 +188,7 @@ const initial = {
   savedTurns: [] as SavedChatItem[],
   keepBlocked: null as null | "conflict" | "committed",
   keepBaselineFloor: null as number | null,
+  proposalGhosts: null as ProposalGhosts | null,
 };
 
 export const useAiSessionStore = create<AiSessionState>((set, get) => ({
@@ -205,21 +218,37 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       return { turns };
     }),
 
+  setProposalGhosts: (g) => set({ proposalGhosts: g }),
+  setProposal: (turnId, patch) =>
+    set((s) => {
+      const ti = s.turns.findIndex((t) => t.id === turnId);
+      const t = s.turns[ti];
+      if (!t?.chat?.proposal) return s;
+      const proposal = { ...t.chat.proposal, ...patch };
+      const turns = s.turns.slice();
+      turns[ti] = { ...t, chat: { ...t.chat, proposal } };
+      return proposal.status === "pending" ? { turns } : { turns, proposalGhosts: null };
+    }),
+
   applyTurn: (input, baseline) => {
     if (get().dashboardId !== null && baseline.dashboardId !== get().dashboardId) get().reset();
     const s = get();
     const kept = s.turns.slice(0, s.cursor + 1);
-    const prior = [...s.baseEntries, ...kept.flatMap((t) => t.entries)];
+    // 150: replaceTurnId folds an approved proposal into its own (last kept) turn instead of appending.
+    const last = kept[kept.length - 1];
+    const replacing = input.replaceTurnId !== undefined && last?.id === input.replaceTurnId ? last : null;
+    const priorTurns = replacing ? kept.slice(0, -1) : kept;
+    const prior = [...s.baseEntries, ...priorTurns.flatMap((t) => t.entries)];
     const entries = evaluateTurn(baseline, prior, input.ops, { removalApproved: s.removalApproved, currentFilters: input.currentFilters });
     const turn: Turn = {
-      id: `turn-${++turnSeq}`,
+      id: replacing ? replacing.id : `turn-${++turnSeq}`,
       prompt: input.prompt,
       answer: input.answer ?? "",
       entries,
-      createdAt: Date.now(),
+      createdAt: replacing ? replacing.createdAt : Date.now(),
       ...(input.chat ? { chat: input.chat } : {}),
     };
-    let turns = [...kept, turn];
+    let turns = [...priorTurns, turn];
     let baseEntries = s.baseEntries;
     let droppedCount = s.droppedCount;
     if (turns.length > SESSION_TURN_CAP) {
@@ -239,7 +268,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     }
     for (const [k, v] of Object.entries(s.geometry)) if (live.has(Number(k)) && !moved.has(Number(k))) geometry[Number(k)] = v;
     const derived = foldSession(baseline, all);
-    set({ dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
+    set({ ...(replacing ? { proposalGhosts: null } : {}), dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
     aiDvSink?.onDerived(derived);
     return { turnId: turn.id, entries };
@@ -272,7 +301,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const s = get();
     const toggles = s.derived.contribution.dynamicView; // D-20: captured BEFORE the derived state is cleared
     const archived: SavedChatItem[] = s.turns.slice(0, s.cursor + 1).map((t) => ({
-      kind: "turn" as const, id: t.id, prompt: t.prompt, answer: t.answer, ...(t.chat ? { chat: t.chat } : {}),
+      kind: "turn" as const, id: t.id, prompt: t.prompt, answer: t.answer, ...(t.chat ? { chat: archiveChat(t.chat) } : {}),
     }));
     const texts = [
       opts?.viewTogglesNotSaved ? `${AI_CHAT_COPY.keepSaved} ${AI_CHAT_COPY.viewTogglesNotSaved}` : AI_CHAT_COPY.keepSaved,
@@ -283,7 +312,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       savedTurns: [...s.savedTurns, ...archived, ...notes],
       baseEntries: [], droppedCount: 0, turns: [], cursor: -1, geometry: {}, derived: EMPTY_DERIVED,
       removalApproved: false, highlight: { ids: [], nonce: s.highlight.nonce + 1 }, tempLayerVisibility: {},
-      keepBlocked: null, keepBaselineFloor: null, pendingLeave: null, epoch: s.epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {},
+      keepBlocked: null, keepBaselineFloor: null, pendingLeave: null, proposalGhosts: null, epoch: s.epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {},
     });
     aiDvSink?.onReset();
     const wa = useWidgetActionStore.getState();
@@ -397,6 +426,19 @@ export function selectAiEditedWidgetIds(s: AiSessionState): ReadonlySet<number> 
  */
 export function selectShowsAiEditedPill(s: AiSessionState, id: number): boolean {
   return s.derived.aiEditedWidgetIds.has(id) || s.derived.aiLayerHostWidgetIds.has(id);
+}
+
+/** 150: the proposal awaiting a decision at the cursor turn, if any. */
+export function selectPendingProposal(s: AiSessionState): { turnId: string; turnIndex: number; answerId: number; proposal: TurnProposal } | null {
+  const turnIndex = s.cursor;
+  const t = s.turns[turnIndex];
+  const proposal = t?.chat?.proposal;
+  if (!t || !proposal || proposal.status !== "pending" || typeof t.chat?.answerId !== "number") return null;
+  return { turnId: t.id, turnIndex, answerId: t.chat.answerId, proposal };
+}
+
+export function hasPendingProposal(): boolean {
+  return selectPendingProposal(useAiSessionStore.getState()) !== null;
 }
 
 export function hasUnsavedAiChanges(): boolean {

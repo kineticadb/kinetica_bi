@@ -40,6 +40,16 @@ export type TurnEntry = {
   /** 138: on the entry (not a side map) so the 50-turn squash carries it. */
   filterDeltas?: FilterDelta[];
 };
+export type ProposalStatus = "pending" | "applied" | "partly_applied" | "rejected" | "expired";
+export type ProposalFailure = { index: number; label: string; stage: string; reasons: string[] };
+/** 150: display/client state of an Approve-first answer. Never sent to the provider (buildAskTurns copies explicit fields only). ops are cleared once decided. */
+export type TurnProposal = { ops: unknown[]; ticked: number[]; status: ProposalStatus; failed?: ProposalFailure[]; unticked?: string[]; busy?: boolean };
+export type ProposalGhosts = {
+  widgets: WidgetDto[];
+  rects: Record<number, { x: number; y: number; w: number; h: number }>;
+  layers: DashboardLayerDto[];
+  layerHosts: Record<number, number>;
+};
 export type TurnChat = {
   status: "ok" | "error" | "cancelled";
   answerId?: number;
@@ -59,13 +69,14 @@ export type TurnChat = {
   ratingReasons?: AiRatingReason[];
   ratingNote?: string;
   ratingFollowUp?: "ask" | "thanks" | "skipped";
+  proposal?: TurnProposal; // 150
 };
 export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number; chat?: TurnChat };
 /** 141 D-11/D-18: read-only archive of kept turns (never reverted; still sent as provider history by 141-10). */
 export type SavedChatItem =
   | { kind: "turn"; id: string; prompt: string; answer: string; chat?: TurnChat }
   | { kind: "note"; id: string; text: string };
-export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[]; chat?: TurnChat; currentFilters?: CurrentFilterColumns };
+export type TurnInput = { prompt: string; answer?: string; ops: readonly unknown[]; chat?: TurnChat; currentFilters?: CurrentFilterColumns; /** 150: replace this (last kept) turn in place instead of appending. */ replaceTurnId?: string };
 export type SessionBaseline = {
   dashboardId: number;
   widgets: readonly WidgetDto[];

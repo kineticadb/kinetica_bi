@@ -244,7 +244,7 @@ describe("askRunner", () => {
 });
 
 describe("askRunner approve first (150)", () => {
-  const bar = () => addWidgetOp(-1, "bar", "Bar A");
+  const bar = () => addWidgetOp(-1, "records", "Bar A");
   const flt = () => applyFilterRaw({ kind: "table", id: 5 }, "vendor_id", "V1");
   const proposed = (over: Record<string, unknown> = {}) =>
     result({ answerId: 7, text: "Here is the plan.", ops: [bar(), flt()], applied: [], proposed: true, ...over });

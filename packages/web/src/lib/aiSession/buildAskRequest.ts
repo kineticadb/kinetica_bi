@@ -28,6 +28,16 @@ export function buildAskTurns(turns: readonly Turn[], cursor: number, saved: rea
         ...(reason !== undefined ? { reason: reason.slice(0, 200) } : {}),
       });
     }
+    // 150: tell the model what was NOT made. Labels/reasons only; the proposal's ops are never read.
+    const pr = t.chat?.proposal;
+    if (pr?.status === "rejected") changes.push({ label: "The user rejected the proposed changes; none were made", status: "skipped" });
+    else if (pr?.status === "expired" || pr?.status === "pending") changes.push({ label: "The proposed changes were not applied (the proposal expired)", status: "skipped" });
+    else if (pr) {
+      for (const label of pr.unticked ?? []) changes.push({ label: label.slice(0, 200), status: "skipped", reason: "left unticked by the user" });
+      for (const f of pr.failed ?? []) {
+        if (f.reasons[0] !== undefined) changes.push({ label: f.label.slice(0, 200), status: "skipped", reason: f.reasons[0].slice(0, 200) });
+      }
+    }
     return {
       question: t.prompt.slice(0, 2000),
       answer: i >= firstRecent ? t.answer.slice(0, RECENT_ANSWER_CHARS) : "",

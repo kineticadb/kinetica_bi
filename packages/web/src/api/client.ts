@@ -2219,7 +2219,36 @@ export const rateAiAnswer = async (
   return (await r.json()) as { rating: AiAnswerRating | null };
 };
 
-export type AiPrefsDto = { showRatingButtons: boolean };
+export type AiPrefsDto = { showRatingButtons: boolean; approveFirst: boolean };
+
+// --- 150: Approve changes first ---
+
+export type AiProposalFailure = { index: number; label: string; stage: string; reasons: string[] };
+export type AiProposalApplyDto = {
+  outcome: "applied" | "partly_applied" | "none";
+  accepted: unknown[];
+  acceptedIndexes: number[];
+  applied: string[];
+  failed: AiProposalFailure[];
+  unticked: string[];
+};
+export type AiProposalCall<T> = { ok: true; data: T } | { ok: false; status: number; code?: string; message?: string };
+
+async function proposalCall<T>(url: string, body: unknown): Promise<AiProposalCall<T>> {
+  const r = await apiFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.ok) return { ok: true, data: (await r.json()) as T };
+  const j = (await r.json().catch(() => ({}))) as { error?: string; code?: string; message?: string };
+  return { ok: false, status: r.status, code: j.code, message: typeof j.error === "string" ? j.error : j.message };
+}
+
+/** Network failures throw (caller toasts and leaves the proposal pending); HTTP errors resolve as { ok: false }. */
+export const applyAiProposal = async (
+  answerId: number,
+  body: { selected: number[]; snapshot: AskRequest["snapshot"] },
+): Promise<AiProposalCall<AiProposalApplyDto>> => proposalCall(`${API_BASE}/api/ai/proposals/${answerId}/apply`, body);
+
+export const rejectAiProposal = async (answerId: number): Promise<AiProposalCall<{ outcome: "rejected" }>> =>
+  proposalCall(`${API_BASE}/api/ai/proposals/${answerId}/reject`, {});
 
 export const getAiPrefs = async (): Promise<AiPrefsDto> => {
   const r = await apiFetch(`${API_BASE}/api/ai/prefs`);
