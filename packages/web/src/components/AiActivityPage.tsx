@@ -34,6 +34,10 @@ const OUTCOME_LABEL: Record<string, string> = {
   keep_invalid: "Keep invalid",
   keep_failed: "Keep failed",
   unfinished: "Unfinished",
+  applied: "Applied",
+  partly_applied: "Partly applied",
+  rejected: "Rejected",
+  not_decided: "Not decided",
 };
 export const AI_ACTIVITY_COPY = {
   title: "AI activity",
@@ -123,6 +127,8 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
   const changes = d.changes as {
     applied?: string[];
     rejected?: unknown[];
+    unticked?: unknown;
+    proposed?: unknown;
     added?: unknown;
     edited?: unknown;
     removed?: unknown;
@@ -130,6 +136,9 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
   const applied = Array.isArray(changes?.applied) ? changes!.applied! : [];
   const rejected = Array.isArray(changes?.rejected) ? changes!.rejected!.map(rejectedLine) : [];
   const rejectedCount = rejected.length;
+  const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === "string" && v !== "") : []);
+  const unticked = strings(changes?.unticked);
+  const proposed = d.outcome === "not_decided" ? strings(changes?.proposed) : [];
   const ratingReasons = Array.isArray(d.ratingReasons) ? d.ratingReasons : [];
   const hasChanges = !!changes && (applied.length > 0 || rejectedCount > 0);
   const modelText =
@@ -198,6 +207,26 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
               {rejected.map((l, i) => (l ? <li key={i}>{l}</li> : null))}
             </ul>
           )}
+        </div>
+      )}
+      {unticked.length > 0 && (
+        <div className="config-group">
+          <span className="config-group-label">Left unticked</span>
+          <ul>
+            {unticked.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {proposed.length > 0 && (
+        <div className="config-group">
+          <span className="config-group-label">Proposed changes</span>
+          <ul>
+            {proposed.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
         </div>
       )}
       {queries.length > 0 && (

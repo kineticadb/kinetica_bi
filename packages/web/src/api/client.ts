@@ -2344,7 +2344,7 @@ export type AiAuditDetailDto = Omit<AiAuditRowDto, "question"> & {
   outputTokens: number | null;
   tools: { name: string; result: string; stage?: string; reasons?: string[] }[] | null;
   changes:
-    | { applied?: string[]; rejected?: { label: string; stage: string; reasons: string[] }[] }
+    | { applied?: string[]; rejected?: { label: string; stage: string; reasons: string[] }[]; unticked?: string[]; proposed?: string[] }
     | { added?: unknown; edited?: unknown; removed?: unknown }
     | null;
   queries: { sql: string; rowCount?: number; durationMs?: number; outcome?: string; reason?: string }[] | null;
