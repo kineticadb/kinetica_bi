@@ -6,6 +6,9 @@ export const AI_RATING_REASONS = ["wrong_data", "wrong_chart", "not_what_asked",
 export type AiRatingReason = (typeof AI_RATING_REASONS)[number];
 export type AiRating = "up" | "down";
 export const AI_RATING_NOTE_MAX = 500;
+/** 150: outcomes of a finished, rateable answer; a not_decided proposal is not one yet. Constants only, safe to inline in SQL. */
+export const RATEABLE_OUTCOMES = ["ok", "applied", "partly_applied", "rejected"] as const;
+export const RATEABLE_OUTCOME_SQL = `(${RATEABLE_OUTCOMES.map((o) => `'${o}'`).join(",")})`;
 export type RateResult = "ok" | "not_found" | "not_rateable";
 
 export function rateAiAnswer(
@@ -18,7 +21,7 @@ export function rateAiAnswer(
   const info = conn
     .prepare(
       `UPDATE ai_audit SET rating=@rating, rating_reasons=@reasons, rating_note=@note, rated_ts_ms=@now
-       WHERE id=@id AND lower(username)=lower(@user) AND status='final' AND outcome='ok'
+       WHERE id=@id AND lower(username)=lower(@user) AND status='final' AND outcome IN ${RATEABLE_OUTCOME_SQL}
          AND COALESCE(kind,'ask') IN ('ask','generate')
          AND (request_id IS NULL OR (request_id NOT LIKE 'keep-%' AND request_id NOT LIKE 'mcp-%'))`,
     )

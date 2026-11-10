@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Server } from "node:http";
 import { createApp } from "../src/index";
 import { db } from "../src/db";
-import { addDashboardGrant } from "../src/lib/dashboardAccessDb";
+import { addDashboardGrant, removeDashboardGrant } from "../src/lib/dashboardAccessDb";
 import { __setAiProviderFactoryForTest } from "../src/lib/ai/providers";
 import { ScriptedProvider, type ScriptStep } from "../src/lib/ai/providers/scripted";
 import { __clearLiveSchemaCacheForTest } from "../src/lib/ai/liveSchema";
@@ -180,9 +180,18 @@ describe("apply", () => {
   });
 
   it("APPRROUTE-10: apply 404s once the user can no longer view the dashboard", async () => {
-    const { answerId } = await propose(twoBars());
-    addDashboardGrant(dashId, "role", makeRole("others", ["dashboards:view"]));
-    const r = await apply(answerId, sel([0, 1]));
+    const role = makeRole("viewers", ["dashboards:view", "ai:use"]);
+    const dash = makeDashboard([role]);
+    const t = makeTableOn(dash.id, "fleet", "trips2");
+    const ann = sessionFor("ann", [role]);
+    setAiPrefs("ann", { approveFirst: true }, Date.now());
+    forbidProviderNetwork(mockKinetica({ probes: { "fleet.trips": ["zone", "fare"], "fleet.trips2": ["zone", "fare"] } }));
+    __setAiProviderFactoryForTest(() => new ScriptedProvider([[toolCall("a", "add_widget", addWidgetArgs(t.id, { tempId: -1 })), TOOLS_DONE], finalText("One.")]));
+    const res = await realFetch(`${base}/api/ai/ask`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: ann.cookie }, body: JSON.stringify(validAsk(dash.id, { snapshot: SNAPSHOT })) });
+    const answerId = (await readSse(res)).find((e) => e.event === "result")!.data.answerId;
+    removeDashboardGrant(dash.id, "role", role);
+    addDashboardGrant(dash.id, "role", makeRole("others", ["dashboards:view"]));
+    const r = await apply(answerId, sel([0]), ann);
     expect(r.status).toBe(404);
     expect(rowOf(answerId).outcome).toBe("not_decided");
   });

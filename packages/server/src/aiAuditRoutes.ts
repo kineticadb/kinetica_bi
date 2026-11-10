@@ -8,10 +8,10 @@ import { z } from "zod/v4";
 import { db, getDashboard, getGeneratedPending } from "./db";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
-import { AI_RATING_REASONS } from "./lib/aiFeedback";
+import { AI_RATING_REASONS, RATEABLE_OUTCOME_SQL } from "./lib/aiFeedback";
 
 export const AI_AUDIT_PAGE_SIZE = 50;
-export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed", "unfinished"] as const;
+export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed", "unfinished", "applied", "partly_applied", "rejected", "not_decided"] as const;
 
 type DashState = "live" | "pending" | "deleted" | "none";
 const DAY_MS = 86_400_000;
@@ -131,7 +131,7 @@ export function registerAiAuditRoutes(app: Express): void {
       where += " AND rating = @rating";
       params.rating = p.data.rating;
     } else if (p.data.rating === "none") {
-      where += " AND rating IS NULL AND outcome = 'ok' AND COALESCE(kind,'ask') IN ('ask','generate') AND (request_id IS NULL OR (request_id NOT LIKE 'keep-%' AND request_id NOT LIKE 'mcp-%'))";
+      where += ` AND rating IS NULL AND outcome IN ${RATEABLE_OUTCOME_SQL} AND COALESCE(kind,'ask') IN ('ask','generate') AND (request_id IS NULL OR (request_id NOT LIKE 'keep-%' AND request_id NOT LIKE 'mcp-%'))`;
     }
     if (p.data.dashboardId !== undefined) {
       where += " AND dashboard_id = @d";
