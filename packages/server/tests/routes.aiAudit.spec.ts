@@ -288,3 +288,27 @@ describe("AUDRATE-3 detail", () => {
     expect((await json(`/api/ai/audit/${ids.long}`)).ratingReasons).toBeNull();
   });
 });
+
+describe("APPRAUD approve-first outcomes (Phase 150)", () => {
+  const CH = JSON.stringify({ applied: ["A"], rejected: [], unticked: ["B"], proposed: ["A", "B"] });
+  it("APPRAUD-1: the Outcome filter accepts the four new values", async () => {
+    for (const o of ["applied", "partly_applied", "rejected", "not_decided"]) {
+      const id = ins(`appr-${o}`, { outcome: o, changes: CH, ts: NOW - 500 });
+      const body = await json(`/api/ai/audit?outcome=${o}`);
+      expect(body.rows.map((r: any) => r.id)).toEqual([id]);
+    }
+  });
+  it("APPRAUD-2: Not rated includes an unrated applied row and excludes a not_decided one", async () => {
+    const a = ins("appr-a", { outcome: "applied", ts: NOW - 400 });
+    const n = ins("appr-n", { outcome: "not_decided", ts: NOW - 400 });
+    const ids2 = (await json("/api/ai/audit?rating=none&outcome=applied,not_decided")).rows.map((r: any) => r.id);
+    expect(ids2).toContain(a);
+    expect(ids2).not.toContain(n);
+  });
+  it("APPRAUD-3: the detail keeps unticked and proposed labels", async () => {
+    const id = ins("appr-d", { outcome: "partly_applied", changes: CH });
+    const d = await json(`/api/ai/audit/${id}`);
+    expect(d.changes.unticked).toEqual(["B"]);
+    expect(d.changes.proposed).toEqual(["A", "B"]);
+  });
+});

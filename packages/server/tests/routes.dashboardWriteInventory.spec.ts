@@ -53,6 +53,8 @@ export const DASHBOARD_WRITE_ACCESS: Record<string, string> = {
   "POST /api/ai/dynamic-view/materialize": "exempt: per-user session/Kinetica view, no dashboard row written",
   "POST /api/ai/dynamic-view/drop": "exempt: per-user session/Kinetica view, no dashboard row written",
   "PUT /api/ai/answers/:id/rating": "exempt: writes an ai_audit rating column only, no dashboard row written",
+  "POST /api/ai/proposals/:id/apply": "exempt: re-checks a held AI proposal for the session view; writes one ai_audit row only, no dashboard row written",
+  "POST /api/ai/proposals/:id/reject": "exempt: writes one ai_audit row only, no dashboard row written",
   "PUT /api/ai/prefs": "exempt: writes ai_user_prefs only, no dashboard row written",
   "POST /api/dynamic-view/materialize": "exempt: per-user Kinetica view, no dashboard row written",
   "POST /api/dynamic-view/:id/drop": "exempt: per-user Kinetica view, no dashboard row written",

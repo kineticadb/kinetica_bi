@@ -262,3 +262,19 @@ describe("PREFS", () => {
     expect((await putPrefs({ showRatingButtons: false }, nora)).status).toBe(403);
   });
 });
+
+describe("APPRRATE rateable outcomes (Phase 150)", () => {
+  it("APPRRATE-1: applied / partly_applied / rejected can be rated, not_decided cannot", async () => {
+    for (const outcome of ["applied", "partly_applied", "rejected"]) {
+      const id = answer({ outcome });
+      const r = await rate(id, { rating: "up" });
+      expect(r.status).toBe(200);
+      expect(stored(id).rating).toBe("up");
+    }
+    const nd = answer({ outcome: "not_decided" });
+    const r = await rate(nd, { rating: "up" });
+    expect(r.status).toBe(409);
+    expect((await r.json()).code).toBe("AI_NOT_RATEABLE");
+    expect(stored(nd).rating).toBeNull();
+  });
+});
