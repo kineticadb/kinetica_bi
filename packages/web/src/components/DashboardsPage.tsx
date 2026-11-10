@@ -86,11 +86,12 @@ import { resolveRect, placeWidget, refitTextLayouts, textCharsPerLine, AI_DEFAUL
 import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
 import { useAiConfigured } from "../lib/aiSession/aiAvailability";
 import { AI_ASSISTANT_TYPE, AI_ASSISTANT_DEFAULT_SIZE } from "../lib/aiSession/constants";
-import { useAiSessionStore, selectHasUnsavedAiChanges, hasUnsavedAiChanges } from "../store/aiSessionStore";
+import { useAiSessionStore, selectHasUnsavedAiChanges, selectPendingProposal, hasUnsavedAiChanges, hasPendingProposal } from "../store/aiSessionStore";
 import { removesSavedContent } from "../lib/aiSession/mcpHandoff";
 import { requestLeave } from "../lib/aiLeaveGuard";  // Phase 134 (AISES-V20-01/07)
 import { useAiEditLock, isAiEditLocked } from "../hooks/useAiEditLock";
 import { useAiSessionActions } from "../hooks/useAiSessionActions";
+import { useProposalGhosts } from "../hooks/useProposalGhosts";
 import type { SessionBaseline } from "../lib/aiSession/types";
 import { AiChangeBar } from "./AiChangeBar";
 import { GeneratedPendingNote, GeneratedDiscardDialog } from "./GeneratedDashboardBar";  // 142 (D-05/D-07)
@@ -195,7 +196,7 @@ const DashboardsPage = ({ onViewChange, initialOpenDashboard }: {
       // entry the browser just popped and ask. Discard resets the session BEFORE proceed(), so
       // the popstate fired by leaveDashboardUrl()'s history.back() takes the clean path.
       // MEDIUM confidence; fallback documented in 134-08-PLAN.
-      if (openId !== null && readDashboardIdFromSearch(window.location.search) === null && hasUnsavedAiChanges()) {
+      if (openId !== null && readDashboardIdFromSearch(window.location.search) === null && (hasUnsavedAiChanges() || hasPendingProposal())) {
         openDashboardUrl(openId);
         requestLeave(() => {
           leaveDashboardUrl();
@@ -869,16 +870,19 @@ const DashboardOpen = ({
   // keyed on the dirty boolean keeps StrictMode (mount, cleanup, mount) at exactly one live
   // listener. Never reset() here: the unmount cleanup chain (134-05) is what discards.
   const aiDirty = useAiSessionStore(selectHasUnsavedAiChanges);
+  // 150: a pending proposal also arms the warning (leave checks only; the edit lock stays on aiDirty).
+  const aiPending = useAiSessionStore((s) => selectPendingProposal(s) !== null);
+  const aiLeaveArmed = aiDirty || aiPending;
   useEffect(() => {
-    if (!aiDirty) return;
+    if (!aiLeaveArmed) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!hasUnsavedAiChanges()) return;
+      if (!hasUnsavedAiChanges() && !hasPendingProposal()) return;
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [aiDirty]);
+  }, [aiLeaveArmed]);
   // Phase 134 D-07: ONE lock source AND-ed into the four gates; every toolbar button,
   // WidgetCard control, Reconfigure CTA and saved-item drag/resize reads these.
   const canEdit         = rawCanEdit && !editLocked;
@@ -1101,10 +1105,28 @@ const DashboardOpen = ({
     tables: associatedTables.map((t) => ({ id: t.id, schema: t.schema, name: t.name, columns: t.columns })),
     maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
   };
+  // 150: dimmed previews of a pending proposal. Render-only; never in derived, geometry, the lock or the snapshot.
+  const ghosts = useProposalGhosts(() => aiBaselineRef.current);
+  const ghostIds = useMemo(() => new Set((ghosts?.widgets ?? []).map((g) => g.id)), [ghosts]);
+  const gridWidgets = useMemo(
+    () => (ghosts ? [...effectiveWidgets, ...ghosts.widgets.filter((g) => !effectiveWidgets.some((w) => w.id === g.id))] : effectiveWidgets),
+    [effectiveWidgets, ghosts],
+  );
+  const gridLayouts = useMemo(() => {
+    if (!ghosts) return layouts;
+    const out: LayoutItem[] = [...layouts];
+    for (const g of ghosts.widgets) {
+      if (out.some((l) => l.i === String(g.id))) continue;
+      const rect: GridRect = ghosts.rects[g.id] ?? placeWidget(out, (AI_DEFAULT_SIZE as Record<string, { w: number; h: number }>)[g.type] ?? { w: 18, h: 24 });
+      out.push({ i: String(g.id), x: rect.x, y: rect.y, w: rect.w, h: rect.h, minW: AI_MIN_W, minH: AI_MIN_H, static: true });
+    }
+    return out;
+  }, [layouts, ghosts]);
   const aiActions = useAiSessionActions(() => aiBaselineRef.current!);
   // 137: ONE AskContext for every AI widget. Latest values live in a ref so the object is stable
   // per dashboard; the snapshot is the EFFECTIVE dashboard (saved + session, incl. layout).
   const aiSnapRef = useRef({ effectiveWidgets, layouts, layers, dynamicViews, associatedTables });
+  // 150: never the ghost lists - Apply re-checks against this snapshot
   aiSnapRef.current = { effectiveWidgets, layouts, layers, dynamicViews, associatedTables };
   const aiAskContext = useMemo<AskContext>(() => ({
     dashboardId: dashboard.id,
@@ -1588,14 +1610,14 @@ const DashboardOpen = ({
   const handleLayoutChange = (layout: Layout) => {
     // 141 UAT: after a list swap (Keep) RGL first reports its stale pre-swap layout. A callback whose ids are not
     // exactly the widgets on screen is stale; persisting it overwrote just-saved rects (and looped). Ignore it.
-    const onScreen = new Set(layouts.map((l) => l.i));
+    const onScreen = new Set(gridLayouts.map((l) => l.i));
     if (layout.length !== onScreen.size || layout.some((item) => !onScreen.has(item.i))) return;
     // 142 UAT: below the 36-col breakpoints RGL reports its auto-generated, column-clamped fallback. It is a display
     // reflow of the stored 36-col layout, never a user edit: persisting it corrupted saved and AI-session geometry.
     if (GRID_COLS[activeGridBreakpoint(width, isPanelMode)] !== 36) return;
     // Phase 134: AI-widget rects (negative temp ids) go to session geometry, never the DB.
     for (const item of layout) {
-      if (Number(item.i) < 0) {
+      if (Number(item.i) < 0 && !ghostIds.has(Number(item.i))) {
         useAiSessionStore.getState().setGeometry(Number(item.i), { x: item.x, y: item.y, w: item.w, h: item.h });
       }
     }
@@ -1835,7 +1857,7 @@ const DashboardOpen = ({
         ref={containerRef as React.RefObject<HTMLDivElement>}
         className={isPanelMode ? "filter-panel-grid-wrap" : undefined}
       >
-      {effectiveWidgets.length > 0 && mounted && (
+      {gridWidgets.length > 0 && mounted && (
         <ResponsiveGridLayout
           className="dashboard-grid"
           width={width}
@@ -1862,21 +1884,22 @@ const DashboardOpen = ({
           rowHeight={5}
           margin={[8, 8]}
           containerPadding={[8, 8]}
-          layouts={{ lg: layouts }}
+          layouts={{ lg: gridLayouts }}
           onLayoutChange={(layout) => handleLayoutChange(layout)}
           dragConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0, handle: ".widget-drag-handle" }}
           resizeConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0 }}
         >
-          {effectiveWidgets.map((w) => (
+          {gridWidgets.map((w) => (
             <WidgetCard
               key={String(w.id)}
-              data-grid={layouts.find((l) => l.i === String(w.id))}
+              data-grid={gridLayouts.find((l) => l.i === String(w.id))}
               widget={w}
               layers={layers}
               associatedTables={associatedTables}
               targetsByTable={targetsByTable}
-              canEdit={canEdit}
-              canConfigure={canConfigure}
+              canEdit={canEdit && !ghostIds.has(w.id)}
+              canConfigure={canConfigure && !ghostIds.has(w.id)}
+              proposed={ghostIds.has(w.id)}
               onConfigure={handleConfigureWidget}
               onDuplicate={handleDuplicateWidget}
               onRemove={handleRemoveWidget}

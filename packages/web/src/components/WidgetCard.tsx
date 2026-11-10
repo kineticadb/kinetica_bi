@@ -47,6 +47,8 @@ type WidgetCardOwnProps = {
   onConfigure: (w: WidgetDto) => void;
   onDuplicate: (w: WidgetDto) => void;
   onRemove: (id: number) => void;
+  /** 150: dimmed ghost preview of a proposed (not applied) chart. */
+  proposed?: boolean;
   // Phase 108-02 will pass this to register a ref-map entry for scroll-to-widget; optional
   // and unused here so this plan's extraction stays inert-when-empty.
   registerRef?: (id: number, el: HTMLDivElement | null) => void;
@@ -80,6 +82,7 @@ function WidgetCardImpl(
     onConfigure,
     onDuplicate,
     onRemove,
+    proposed,
     registerRef,
     "data-grid": _dataGrid,
     className,
@@ -157,12 +160,12 @@ function WidgetCardImpl(
       {...rest}
       ref={mergeRefs(cardRef, forwardedRef)}
       style={style}
-      className={`widget-card${className ? ` ${className}` : ""}${isHighlighted ? " widget-card--highlighted" : ""}${flashOn ? " widget-card--flashing" : ""}${aiChanged ? " widget-card--ai-changed" : ""}`}
+      className={`widget-card${className ? ` ${className}` : ""}${isHighlighted ? " widget-card--highlighted" : ""}${flashOn ? " widget-card--flashing" : ""}${aiChanged ? " widget-card--ai-changed" : ""}${proposed ? " widget-card--proposed" : ""}`}
     >
       <div className="widget-header">
         <span className="widget-drag-handle widget-title">{w.title}</span>
         {/* Phase 136 D-05: minimal flag display; Phase 137 owns the final highlight/badge visuals. */}
-        {w.id < 0 ? <span className="widget-filter-badge">AI added</span> : aiEdited ? <span className="widget-filter-badge">AI edited</span> : null}
+        {proposed ? <span className="widget-filter-badge">Proposed</span> : w.id < 0 ? <span className="widget-filter-badge">AI added</span> : aiEdited ? <span className="widget-filter-badge">AI edited</span> : null}
         {w.type === "map" ? (
           <MapFilteringBadge tableIds={mapTableIds} />
         ) : (

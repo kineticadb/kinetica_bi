@@ -693,6 +693,16 @@ a {
   }
 }
 
+/* 150: dimmed preview of a proposed AI chart (not applied). Tokens only. */
+.widget-card--proposed {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+.widget-card--proposed > .widget-body {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 /* Phase 108 (FSCOPE-V120-01): applies-to line + expander inside the panel chip. */
 .filter-panel-chip-applies {
   display: flex;

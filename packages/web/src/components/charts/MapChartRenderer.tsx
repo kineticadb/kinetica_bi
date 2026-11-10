@@ -26,6 +26,7 @@
  *   (a SQLite column on dashboard_layers). The config field for tableId is always undefined in Phase 12.
  */
 
+import { useAiSessionStore } from "../../store/aiSessionStore";
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
 import OlMap from "ol/Map";
@@ -509,6 +510,7 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
   // ── Dashboard layers store subscription ─────────────────────────────────
   // PITFALL S-01 lock: layers come from the saved store merged with the Phase 134 session layer via useEffectiveLayers - still no local copy.
   const allLayers = useEffectiveLayers();
+  const proposalGhosts = useAiSessionStore((s) => s.proposalGhosts);
 
   // Phase 58 Plan 02 / Phase 58.1 Plan 01 (ENGINE-V111-03 map-layer render path):
   // Subscribe to the session overlay store for layer config overlays.
@@ -579,7 +581,11 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
       ids === undefined || ids.length === 0
         ? effectiveLayers
         : effectiveLayers.filter((l) => ids.includes(l.id));
-    const visible = filtered.filter((l) => {
+    // 150: ghost layers of a pending proposal hosted on THIS map (dimmed copies, render-only; useEffectiveLayers never sees them).
+    const ghostLayers = (proposalGhosts?.layers ?? []).filter(
+      (l) => proposalGhosts!.layerHosts[l.id] === widget.id && !filtered.some((f) => f.id === l.id),
+    );
+    const visible = [...filtered, ...ghostLayers].filter((l) => {
       const userVisible =
         (l.config as { visible?: boolean }).visible !== false;
       if (!userVisible) return false;
@@ -594,6 +600,8 @@ export default function MapChartRenderer({ widget, tables = [] }: Props) {
     return visible.slice().sort((a, b) => a.position - b.position);
   }, [
     effectiveLayers,
+    proposalGhosts,
+    widget.id,
     widgetConfig.includedLayerIds,
     tables,
     dashboardDynamicViews,

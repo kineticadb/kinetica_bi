@@ -6,6 +6,7 @@ import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { seedDesignerStore } from "../test/seedAuthStore";
 import { useAiSessionStore, selectHasUnsavedAiChanges } from "../store/aiSessionStore";
+import { toggleProposalTick } from "../lib/aiSession/proposalRunner";
 import { useWidgetActionStore } from "../store/widgetActionStore";
 import { useFilterStore } from "../store/filterStore";
 import { baselineFixture, addWidgetOp } from "../test/aiSessionHarness";
@@ -160,7 +161,7 @@ const pending = () =>
         ops: [],
         chat: {
           status: "ok", answerId: 7, followUps: [], applied: [],
-          proposal: { ops: [{ ...addWidgetOp(-1, "records", "Ghost rec", { tableId: 5 }), layout: { x: 0, y: 30, w: 18, h: 24 } }], ticked: [0], status: "pending" },
+          proposal: { ops: [{ ...addWidgetOp(-1, "records", "Ghost rec"), layout: { x: 0, y: 30, w: 18, h: 24 } }], ticked: [0], status: "pending" },
         },
       },
       baselineFixture({ widgets: saved as any, layers: [], dynamicViewIds: [], dashboardId }),
