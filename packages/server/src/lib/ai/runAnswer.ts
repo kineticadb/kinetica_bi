@@ -17,7 +17,7 @@ import { stampMapDefaultViews } from "./mapDefaultView";
 import { buildQueryScope, type QueryScope } from "./queryScope";
 import { createQueryPort, type QueryPort } from "./queryRunner";
 import { part } from "./outbound";
-import { PROPOSE_SYSTEM_PART, registerProposal } from "../aiProposals";
+import { PROPOSE_SYSTEM_PART, neutralProposalLabel, registerProposal } from "../aiProposals";
 import { parseReplyTrailer, toChoiceClarification } from "./replyTrailer";
 import { getAiProviderFactory } from "./providers";
 import { defaultSleep } from "./retry";
@@ -213,7 +213,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           }))
         : [];
       proposing = propose && result.ops.length > 0;
-      if (proposing) registerProposal({ auditId: input.auditId, username, dashboardId: input.dashboard.id, ops: result.ops, labels: result.applied, approvals: body.approvals, now: now() });
+      if (proposing) registerProposal({ auditId: input.auditId, username, dashboardId: input.dashboard.id, ops: result.ops, labels: result.applied.map(neutralProposalLabel), approvals: body.approvals, now: now() });
       sse.send("result", {
         answerId: input.auditId, text: trailer.text, ops: result.ops, skipped: result.skipped, clarifications, followUps: trailer.followUps,
         applied: proposing ? [] : result.applied,
@@ -238,7 +238,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       ...(queryPort ? { queries: [...queryPort.entries()] } : {}),
     };
     // 150: a proposal is finalized as not_decided/proposed; the Apply/Reject routes decide it later.
-    if (proposing) finalize = { ...finalize, outcome: "not_decided", detail: "proposed", changes: { applied: [], rejected: result.rejected, proposed: result.applied } };
+    if (proposing) finalize = { ...finalize, outcome: "not_decided", detail: "proposed", changes: { applied: [], rejected: result.rejected, proposed: result.applied.map(neutralProposalLabel) } };
   } catch (e) {
     const ended = e instanceof SessionEndedError;
     const code: AiErrorCode = ended ? "AI_SESSION_ENDED" : "AI_INTERNAL";

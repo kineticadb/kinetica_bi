@@ -6,7 +6,19 @@ import { db } from "../db";
 export const AI_PROPOSAL_TTL_MS = 60 * 60_000;
 export const AI_PROPOSAL_MAX_PER_USER = 20;
 export const PROPOSE_SYSTEM_PART =
-  "The user approves dashboard changes before they happen. Every change you make in this answer is only a proposal that the user will apply or reject, so describe it as proposed (for example \"I'd add ...\" or \"I've prepared ...\"), never as already done.";
+  "The user approves dashboard changes before they happen. Every change you make in this answer is only a proposal that the user will apply or reject, so NONE of it has been applied yet (these changes have NOT been applied): the dashboard is unchanged until the user clicks Apply. Phrase your reply as a proposal (for example \"I can add ...\", \"Proposed: ...\" or \"I've prepared ...\"); never write \"I've added\", \"I've filtered\", \"Done\" or any wording that says the change already happened.";
+
+/** Strips the gateway's placement suffix (row / column or "below existing content"). Shared with the MCP routes. */
+export const withoutPlacement = (label: string): string => label.replace(/ (at row \d+, column \d+|below existing content)$/, "");
+
+const IMPERATIVE: [string, string][] = [["Removed ", "Remove "], ["Changed ", "Change "], ["Renamed ", "Rename "], ["Rearranged ", "Rearrange "], ["Cleared ", "Clear "], ["Filtered ", "Filter "]];
+/** A change that is not applied must not read as done: no placement, no past tense ("Added bar" -> "Bar"). */
+export function neutralProposalLabel(label: string): string {
+  const l = withoutPlacement(label);
+  if (l.startsWith("Added ")) return l.charAt(6).toUpperCase() + l.slice(7);
+  for (const [from, to] of IMPERATIVE) if (l.startsWith(from)) return to + l.slice(from.length);
+  return l;
+}
 
 export type HeldProposal = {
   auditId: number;

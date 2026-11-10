@@ -25,6 +25,7 @@
  *   DELETE /api/mcp/tokens/:id              revoke; ends the sessions it opened
  *   POST   /api/mcp/token-login             { token } -> session cookie (no session needed; checked with Kinetica)
  */
+import { withoutPlacement } from "./lib/aiProposals";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Express, Request, RequestHandler, Response, NextFunction } from "express";
@@ -108,7 +109,6 @@ export type McpRouteDeps = {
 
 const usernameOf = (req: Request): string => (req as AuthedRequest).user!.creds.username;
 /** finish_dashboard re-lays out every widget, so the gateway's first-fit position would mislead Claude and the audit. */
-const withoutPlacement = (label: string): string => label.replace(/ (at row \d+, column \d+|below existing content)$/, "");
 export const MCP_DASHBOARD_GONE_MESSAGE = "This dashboard no longer exists: it was discarded, deleted or expired, so there is nothing to review. Start a new dashboard.";
 const gone410 = (res: Response) => res.status(410).json({ code: "MCP_DASHBOARD_GONE", error: MCP_DASHBOARD_GONE_MESSAGE });
 // Refusals are recorded with tool name, stage and reasons only, never the arguments the client sent (like the in-app audit).
