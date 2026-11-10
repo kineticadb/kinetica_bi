@@ -137,7 +137,9 @@ describe("AI dynamic views e2e (scripted provider, real tools + gateway + loop)"
   });
 
   it("E2EDV-4b runAnswer builds the gateway limits with gatewayDvLimits(config) (structural; runAnswer needs a DB so it is not driven here)", () => {
-    const src = readFileSync(new URL("../src/lib/ai/runAnswer.ts", import.meta.url), "utf8");
+    // 150: the literal moved into buildGatewayDeps (shared with the Apply re-check); runAnswer must call it.
+    expect(readFileSync(new URL("../src/lib/ai/runAnswer.ts", import.meta.url), "utf8")).toContain("gateway: buildGatewayDeps(");
+    const src = readFileSync(new URL("../src/lib/ai/gatewayDeps.ts", import.meta.url), "utf8");
     expect(src).toContain("aiDv: gatewayDvLimits(config)");
     expect(src).toContain("sourceTableId: r.source_table_id");
   });

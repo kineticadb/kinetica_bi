@@ -184,6 +184,11 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
   if (!parsed.success) {
     return fail("shape", parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`));
   }
+  return checkAiCandidate(deps, tool.toOp(parsed.data));
+}
+
+/** 150: everything after argument parsing. The Apply re-check (aiProposalRoutes) feeds stored ops through here, so there is ONE gateway. */
+export async function checkAiCandidate(deps: GatewayDeps, candidate: unknown): Promise<GatewayResult> {
   const shadow = deps.shadow;
   const dvLimits = { maxRecords: deps.aiDv?.maxRecords ?? 100000, maxJoins: deps.aiDv?.maxJoins ?? 2 };
   const dvMaxPerSession = deps.aiDv?.maxPerSession ?? 5;
@@ -196,7 +201,6 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
     const i = deps.dynamicViewInfo?.(id);
     return i ? { name: i.name, ...(i.sourceTableId !== undefined ? { baseTableId: i.sourceTableId } : {}), columns: i.columns } : undefined;
   };
-  const candidate = tool.toOp(parsed.data);
   // 139 D-24: an add_layer bound to a view without a tableId takes the view's base table.
   if (isRec(candidate) && candidate.op === "add_layer" && typeof candidate.dynamicViewId === "number" && candidate.tableId === undefined) {
     const b = dvMeta(candidate.dynamicViewId)?.baseTableId;

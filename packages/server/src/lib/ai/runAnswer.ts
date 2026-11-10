@@ -11,7 +11,7 @@ import { principalForSession, SessionEndedError } from "../exportRunner";
 import { AI_USER_MESSAGES, runAgentLoop, type AgentLoopResult } from "./agentLoop";
 import { buildGenerateRecipe, countDataWidgetAdds, applyGenerateBands, generateLimits, generateNudge, GEN_MIN_WIDGETS, GENERATE_TOO_FEW_MESSAGE } from "./generateMode";
 import { buildConversationMessages, buildSystemParts, projectSnapshot } from "./context";
-import { gatewayDvLimits } from "./dvDeps";
+import { buildGatewayDeps } from "./gatewayDeps";
 import { createLiveSchema } from "./liveSchema";
 import { stampMapDefaultViews } from "./mapDefaultView";
 import { buildQueryScope, type QueryScope } from "./queryScope";
@@ -135,21 +135,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
           liveSchema,
           ...(queryPort ? { query: queryPort } : {}),
         },
-        gateway: {
-          username,
-          dashboardId: input.dashboard.id,
-          shadow,
-          liveSchema,
-          getPermissions: (u) => getEffectivePermissions(u),
-          canViewDashboard: (u, id) => canViewDashboard(u, id),
-          dashboardTableIds: () => listDashboardTables(input.dashboard.id).map((t) => t.id),
-          approvals: body.approvals,
-          aiDv: gatewayDvLimits(config),
-          dynamicViewInfo: (id) => {
-            const r = getDashboardDynamicView(id);
-            return r && r.dashboard_id === input.dashboard.id ? { name: r.name, columns: r.columns_json ?? null, sourceTableId: r.source_table_id } : undefined;
-          },
-        },
+        gateway: buildGatewayDeps({ username, dashboardId: input.dashboard.id, shadow, liveSchema, config, approvals: body.approvals }),
         dataAccess: config.dataAccess,
         maxToolSteps: limits.maxToolSteps,
         timeoutMs: config.timeoutMs,

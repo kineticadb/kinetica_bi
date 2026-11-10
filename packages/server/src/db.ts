@@ -466,6 +466,8 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!auditCols.has("rating_reasons")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating_reasons TEXT"); // 149: JSON array of reason codes
   if (!auditCols.has("rating_note")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating_note TEXT"); // 149: user text, never logged
   if (!auditCols.has("rated_ts_ms")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rated_ts_ms INTEGER"); // 149
+  const prefCols = new Set((instance.prepare("PRAGMA table_info(ai_user_prefs)").all() as Array<{ name: string }>).map((c) => c.name));
+  if (!prefCols.has("approve_first")) instance.exec("ALTER TABLE ai_user_prefs ADD COLUMN approve_first INTEGER NOT NULL DEFAULT 0"); // 150 APPROVE-V22-01
   instance.exec("CREATE INDEX IF NOT EXISTS idx_ai_audit_dash_ts ON ai_audit (dashboard_id, ts_ms)");
   if (!colNames.has("credential_type")) {
     instance.exec(

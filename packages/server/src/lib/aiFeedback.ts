@@ -35,23 +35,26 @@ export function rateAiAnswer(
   return own ? "not_rateable" : "not_found";
 }
 
-export type AiPrefs = { showRatingButtons: boolean };
-export const AI_PREFS_DEFAULTS: AiPrefs = { showRatingButtons: true };
+export type AiPrefs = { showRatingButtons: boolean; approveFirst: boolean };
+export const AI_PREFS_DEFAULTS: AiPrefs = { showRatingButtons: true, approveFirst: false };
 
 export function getAiPrefs(username: string, conn: Database.Database = db): AiPrefs {
-  const row = conn.prepare("SELECT show_rating_buttons FROM ai_user_prefs WHERE username = lower(?)").get(username) as
-    | { show_rating_buttons: number }
+  const row = conn.prepare("SELECT show_rating_buttons, approve_first FROM ai_user_prefs WHERE username = lower(?)").get(username) as
+    | { show_rating_buttons: number; approve_first: number }
     | undefined;
-  return { showRatingButtons: row ? row.show_rating_buttons === 1 : AI_PREFS_DEFAULTS.showRatingButtons };
+  return {
+    showRatingButtons: row ? row.show_rating_buttons === 1 : AI_PREFS_DEFAULTS.showRatingButtons,
+    approveFirst: row ? row.approve_first === 1 : AI_PREFS_DEFAULTS.approveFirst,
+  };
 }
 
 export function setAiPrefs(username: string, patch: Partial<AiPrefs>, now: number, conn: Database.Database = db): AiPrefs {
   const merged: AiPrefs = { ...getAiPrefs(username, conn), ...patch };
   conn
     .prepare(
-      `INSERT INTO ai_user_prefs (username, show_rating_buttons, updated_ms) VALUES (lower(@u), @s, @now)
-       ON CONFLICT(username) DO UPDATE SET show_rating_buttons = excluded.show_rating_buttons, updated_ms = excluded.updated_ms`,
+      `INSERT INTO ai_user_prefs (username, show_rating_buttons, approve_first, updated_ms) VALUES (lower(@u), @s, @a, @now)
+       ON CONFLICT(username) DO UPDATE SET show_rating_buttons = excluded.show_rating_buttons, approve_first = excluded.approve_first, updated_ms = excluded.updated_ms`,
     )
-    .run({ u: username, s: merged.showRatingButtons ? 1 : 0, now });
+    .run({ u: username, s: merged.showRatingButtons ? 1 : 0, a: merged.approveFirst ? 1 : 0, now });
   return merged;
 }

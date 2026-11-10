@@ -22,7 +22,7 @@ const RateBody = z
   .strict()
   .refine((b) => b.rating === "down" || (b.reasons === undefined && b.note === undefined));
 const PrefsBody = z
-  .object({ showRatingButtons: z.boolean() })
+  .object({ showRatingButtons: z.boolean(), approveFirst: z.boolean() })
   .partial()
   .strict()
   .refine((p) => Object.keys(p).length > 0);
