@@ -420,14 +420,16 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
           </div>
         )}
       </div>
-      <label className="config-toggle">
-        <input type="checkbox" checked={showRating} onChange={(e) => void setShowRatingButtons(e.target.checked)} />
-        {AI_RATING_COPY.showToggle}
-      </label>
-      <label className="config-toggle">
-        <input type="checkbox" checked={approveFirst} onChange={(e) => void setApproveFirst(e.target.checked)} />
-        {PROPOSAL_COPY.switchLabel}
-      </label>
+      <div className="ai-chat-toggles">
+        <label className="config-toggle">
+          <input type="checkbox" checked={showRating} onChange={(e) => void setShowRatingButtons(e.target.checked)} />
+          {AI_RATING_COPY.showToggle}
+        </label>
+        <label className="config-toggle">
+          <input type="checkbox" checked={approveFirst} onChange={(e) => void setApproveFirst(e.target.checked)} />
+          {PROPOSAL_COPY.switchLabel}
+        </label>
+      </div>
       <AiAskBox ctx={ctx} />
     </div>
   );

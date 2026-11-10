@@ -177,4 +177,6 @@
 .ai-chat-turn-actions > .ai-chat-rate:first-child,
 .ai-chat-turn-actions > :not(.ai-chat-rate) + .ai-chat-rate { margin-left: auto; }
 .ai-chat-choices .ghost-sm[aria-pressed="true"]:not(:disabled) { border-color: var(--accent); }
-.ai-chat > .config-toggle { align-self: flex-end; font-size: var(--text-xs); color: var(--muted); padding: 0 var(--space-2); }
+/* 150-06: both switches in one right-aligned block whose rows share a left edge, so the checkboxes line up */
+.ai-chat-toggles { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-start; padding: 0 var(--space-2); }
+.ai-chat-toggles > .config-toggle { font-size: var(--text-xs); color: var(--muted); padding: 0; }
