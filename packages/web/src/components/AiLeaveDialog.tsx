@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useAiSessionStore } from "../store/aiSessionStore";
+import { useAiSessionStore, selectHasUnsavedAiChanges, selectPendingProposal } from "../store/aiSessionStore";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
 import { AI_CHAT_COPY } from "../lib/aiSession/chatText";
+import { PROPOSAL_COPY } from "../lib/aiSession/proposalText";
 
 /**
  * D-15 leave confirmation. Mounted once in App.tsx; renders null unless a leave is pending.
@@ -12,6 +13,7 @@ import { AI_CHAT_COPY } from "../lib/aiSession/chatText";
 export default function AiLeaveDialog() {
   const pendingLeave = useAiSessionStore((s) => s.pendingLeave);
   const open = pendingLeave !== null;
+  const onlyProposal = useAiSessionStore((s) => !selectHasUnsavedAiChanges(s) && selectPendingProposal(s) !== null);
   const canKeep = useAuthStore((s) => s.hasPermission)(PERMISSIONS.DASHBOARDS_EDIT);
   const stayRef = useRef<HTMLButtonElement>(null);
 
@@ -50,11 +52,11 @@ export default function AiLeaveDialog() {
       >
         <div className="modal-header">
           <div className="modal-title" id="ai-leave-dialog-title">
-            You have unsaved AI changes
+            {onlyProposal ? PROPOSAL_COPY.leaveTitle : "You have unsaved AI changes"}
           </div>
         </div>
         <div className="modal-body">
-          <p>{canKeep ? AI_CHAT_COPY.leaveBody : AI_CHAT_COPY.leaveBodyNeutral}</p>
+          <p>{onlyProposal ? PROPOSAL_COPY.leaveBody : canKeep ? AI_CHAT_COPY.leaveBody : AI_CHAT_COPY.leaveBodyNeutral}</p>
           <div className="ds-actions">
             <button ref={stayRef} type="button" className="btn-primary btn-sm" onClick={stay}>
               Stay
