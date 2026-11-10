@@ -161,9 +161,11 @@ export const AskResultEventSchema = z
     followUps: z.array(z.string().min(1).max(AI_FOLLOWUP_MAX_CHARS)).max(AI_FOLLOWUP_MAX),
     applied: z.array(z.string().max(300)),
     queries: z.array(AskQueryEntrySchema).max(AI_QUERY_LIST_MAX).optional(),
+    // 150: set only when the user's "Approve changes first" is on and the answer has changes; the client must not apply ops
+    proposed: z.literal(true).optional(),
   })
   .strict();
-export type AskResultEvent = z.infer<typeof AskResultEventSchema>;
+export type AskResultEvent= z.infer<typeof AskResultEventSchema>;
 export type AskSkipped = z.infer<typeof AskSkippedSchema>;
 export type AskStreamEvent =
   | { event: "status"; data: { phase: "thinking" | "tool" | "waiting_provider"; label: string; seconds?: number } }

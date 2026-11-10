@@ -188,7 +188,7 @@ describe("Phase 139 dynamic view ops", () => {
 describe("Phase 150 op dependencies", () => {
   const rect = { x: 0, y: 0, w: 6, h: 6 };
   const OPS: unknown[] = [
-    { op: "add_dynamic_view", tempId: -1, name: "v", spec: { base: { tableId: 7 }, columns: [] } },
+    { op: "add_dynamic_view", tempId: -1, name: "v", spec: { baseTableId: 7, columns: [{ column: "a" }] } },
     { op: "add_widget", tempId: -2, type: "bar", title: "t", config: { dynamicViewId: -1 } },
     { op: "apply_filter", source: { kind: "dynamicView", id: -1 }, filters: [{ column: "c", operator: "eq", value: "x" }] },
     { op: "add_widget", tempId: -3, type: "map", title: "m", config: {} },

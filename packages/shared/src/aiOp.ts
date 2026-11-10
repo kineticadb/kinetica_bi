@@ -155,3 +155,86 @@ export function parseAiOp(raw: unknown): { ok: true; op: AiOp } | { ok: false; e
     errors: r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
   };
 }
+
+// Phase 150 (APPROVE-V22-02/03): which ops of ONE answer need which earlier ops. Phase 151 reuses this.
+const isNum = (v: unknown): v is number => typeof v === "number";
+
+/** Ids an op reads (saved positive or temp negative). */
+function referencedIds(op: AiOp): number[] {
+  const out: number[] = [];
+  const push = (v: unknown) => { if (isNum(v)) out.push(v); };
+  const pushAll = (v: readonly unknown[] | undefined) => v?.forEach(push);
+  switch (op.op) {
+    case "add_widget": push(op.config.dynamicViewId); break;
+    case "add_layer": push(op.widgetId); push(op.dynamicViewId); break;
+    case "patch": push(op.action.target.id); push(op.action.configPatch.dynamicViewId); break;
+    case "remove_widget": case "remove_layer": case "change_widget_type": case "set_widget_title": push(op.id); break;
+    case "remove_dynamic_view":
+      push(op.id);
+      pushAll(op.repoint?.widgetIds); pushAll(op.repoint?.layerIds);
+      pushAll(op.drop?.widgetIds); pushAll(op.drop?.layerIds);
+      break;
+    case "set_layout": op.items.forEach((i) => push(i.id)); break;
+    case "apply_filter": case "clear_filter": if (op.source?.kind === "dynamicView") push(op.source.id); break;
+    default: break;
+  }
+  return out;
+}
+
+export function aiOpDependencies(ops: readonly unknown[]): number[][] {
+  const parsed = ops.map((raw) => { const r = parseAiOp(raw); return r.ok ? r.op : null; });
+  const introducedBy = new Map<number, number>();
+  parsed.forEach((op, i) => {
+    if (op && (op.op === "add_widget" || op.op === "add_layer" || op.op === "add_dynamic_view") && !introducedBy.has(op.tempId)) introducedBy.set(op.tempId, i);
+  });
+  return parsed.map((op, j) => {
+    if (!op) return [];
+    const deps = new Set<number>();
+    for (const id of referencedIds(op)) {
+      const i = id < 0 ? introducedBy.get(id) : undefined;
+      if (i !== undefined && i < j) deps.add(i);
+    }
+    if (op.op === "clear_filter") {
+      for (let i = 0; i < j; i++) {
+        const prev = parsed[i];
+        if (!prev || prev.op !== "apply_filter") continue;
+        if (!op.source) { deps.add(i); continue; }
+        if (prev.source.kind !== op.source.kind || prev.source.id !== op.source.id) continue;
+        if (op.column === undefined || prev.filters.some((f) => f.column === op.column)) deps.add(i);
+      }
+    }
+    return [...deps].sort((a, b) => a - b);
+  });
+}
+
+/** The selection plus every (transitive) prerequisite, ascending, unique. */
+export function closeSelection(selected: Iterable<number>, deps: readonly number[][]): number[] {
+  const out = new Set<number>();
+  const visit = (i: number): void => {
+    if (out.has(i)) return;
+    out.add(i);
+    for (const d of deps[i] ?? []) visit(d);
+  };
+  for (const i of selected) visit(i);
+  return [...out].sort((a, b) => a - b);
+}
+
+/** Every op that (transitively) needs `index`, ascending, excluding `index`. */
+export function dependentsOf(index: number, deps: readonly number[][]): number[] {
+  const out = new Set<number>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    deps.forEach((d, k) => {
+      if (k === index || out.has(k)) return;
+      if (d.some((x) => x === index || out.has(x))) { out.add(k); grew = true; }
+    });
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+export function isClosedSelection(selected: Iterable<number>, deps: readonly number[][]): boolean {
+  const set = new Set(selected);
+  for (const i of set) for (const d of deps[i] ?? []) if (!set.has(d)) return false;
+  return true;
+}
