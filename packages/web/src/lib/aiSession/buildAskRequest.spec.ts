@@ -57,6 +57,23 @@ describe("buildAskRequest", () => {
     expect(s).not.toContain("wrong_chart");
     expect(s).not.toContain("rating");
   });
+  it("APPRRUN-13: decided proposals tell the model what was not made", () => {
+    const mk = (proposal: NonNullable<Turn["chat"]>["proposal"]) => buildAskTurns([turn(0, { status: "ok", proposal })], 0)[0].changes;
+    expect(mk({ ops: [], ticked: [], status: "rejected" })).toContainEqual({ label: "The user rejected the proposed changes; none were made", status: "skipped" });
+    expect(mk({ ops: [], ticked: [], status: "expired" })).toContainEqual({ label: "The proposed changes were not applied (the proposal expired)", status: "skipped" });
+    const partly = mk({ ops: [], ticked: [], status: "partly_applied", unticked: ["Filter on vendor"], failed: [{ index: 1, label: "Add pie", stage: "s", reasons: ["r1"] }] });
+    expect(partly).toContainEqual({ label: "Filter on vendor", status: "skipped", reason: "left unticked by the user" });
+    expect(partly).toContainEqual({ label: "Add pie", status: "skipped", reason: "r1" });
+  });
+  it("LEAK-P1: proposal ops never reach the ask turns", () => {
+    const ops = [{ op: "add_widget", title: "LEAK_SENTINEL_150" }, { op: "apply_filter", filters: [{ value: "LEAK_VALUE_150" }] }];
+    for (const status of ["pending", "applied", "rejected"] as const) {
+      const out = buildAskTurns([turn(0, { status: "ok", proposal: { ops, ticked: [0, 1], status } })], 0);
+      const s = JSON.stringify(out);
+      expect(s).not.toContain("LEAK_SENTINEL_150");
+      expect(s).not.toContain("LEAK_VALUE_150");
+    }
+  });
   it("BAR-4: only ok turns up to cursor; changes from applied+skipped", () => {
     const turns = [
       turn(0, { status: "ok", applied: ["Added bar"], skipped: [{ label: "Remove X", stage: "s", reasons: ["r".repeat(300), "r2"] }] }),

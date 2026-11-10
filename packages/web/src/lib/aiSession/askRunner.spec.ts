@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runAsk, cancelAsk, choiceQuestion, type AskContext } from "./askRunner";
-import { useAiSessionStore, selectHasUnsavedAiChanges } from "../../store/aiSessionStore";
+import { useAiSessionStore, selectHasUnsavedAiChanges, hasPendingProposal, selectPendingProposal } from "../../store/aiSessionStore";
 import { useToastStore } from "../../store/toast";
 import { baselineFixture, mapWidget, savedLayer, addWidgetOp, addLayerOp, patchLayerOp, removeLayerOp } from "../../test/aiSessionHarness";
 import { AI_CHAT_COPY } from "./chatText";
@@ -240,5 +240,54 @@ describe("askRunner", () => {
     const body = String((f.mock.calls[1][1] as RequestInit).body);
     expect(body).toContain("q1");
     expect(body).not.toContain("zzq_marker");
+  });
+});
+
+describe("askRunner approve first (150)", () => {
+  const bar = () => addWidgetOp(-1, "bar", "Bar A");
+  const flt = () => applyFilterRaw({ kind: "table", id: 5 }, "vendor_id", "V1");
+  const proposed = (over: Record<string, unknown> = {}) =>
+    result({ answerId: 7, text: "Here is the plan.", ops: [bar(), flt()], applied: [], proposed: true, ...over });
+  const seed = async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(sseResponse([proposed(), frame("done", { answerId: 7, outcome: "proposed", steps: 1 })]));
+    await runAsk(mkCtx(), "make it");
+  };
+
+  it("APPRRUN-1: a proposed result is held, not folded", async () => {
+    const v0 = useFilterStore.getState().filterVersion;
+    await seed();
+    expect(st().turns).toHaveLength(1);
+    expect(st().turns[0].entries).toEqual([]);
+    expect(st().turns[0].chat?.proposal).toEqual({ ops: [bar(), flt()], ticked: [0, 1], status: "pending" });
+    expect(st().turns[0].chat?.applied).toEqual([]);
+    expect(st().derived.addedWidgets).toHaveLength(0);
+    expect(st().derived.appliedOpCount).toBe(0);
+    expect(useFilterStore.getState().filterVersion).toBe(v0);
+    expect(selectHasUnsavedAiChanges(st())).toBe(false);
+    expect(hasPendingProposal()).toBe(true);
+    const p = selectPendingProposal(st());
+    expect(p).toMatchObject({ turnId: st().turns[0].id, turnIndex: 0, answerId: 7 });
+    expect(p?.proposal.status).toBe("pending");
+  });
+
+  it("APPRRUN-2: without proposed the same ops fold as today", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(sseResponse([result({ ops: [bar(), flt()], applied: ["x"] })]));
+    await runAsk(mkCtx(), "make it");
+    expect(st().turns[0].entries.length).toBe(2);
+    expect(st().derived.addedWidgets).toHaveLength(1);
+    expect(st().turns[0].chat?.proposal).toBeUndefined();
+  });
+
+  it("APPRRUN-3: no ask starts while a proposal is pending", async () => {
+    await seed();
+    const spy = vi.spyOn(globalThis, "fetch");
+    spy.mockClear();
+    const mark = vi.spyOn(st(), "markChoicePicked");
+    await runAsk(mkCtx(), "next");
+    await runAsk(mkCtx(), "pick", { pick: { turnIndex: 0, clarificationIndex: 0, optionId: "a" } });
+    expect(spy).not.toHaveBeenCalled();
+    expect(mark).not.toHaveBeenCalled();
+    expect(st().run.status).toBe("idle");
+    expect(st().turns).toHaveLength(1);
   });
 });
