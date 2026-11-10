@@ -12,7 +12,6 @@ describe("buildProposalGhosts", () => {
     const w = { ...addWidgetOp(-1, "records", "Bar A", { tableId: 5 }), layout: { x: 0, y: 0, w: 12, h: 8 } };
     const g = build([w, applyFilterRaw({ kind: "table", id: 5 }, "vendor_id", "V1")], [0, 1])!;
     expect(g.widgets.map((x) => x.id)).toEqual([-1]);
-    expect(g.layers).toEqual([]);
     expect(g.rects[-1]).toEqual({ x: 0, y: 0, w: 12, h: 8 });
   });
 
@@ -25,16 +24,12 @@ describe("buildProposalGhosts", () => {
     expect(g.widgets.map((x) => x.id)).toEqual([-3]);
   });
 
-  it("APPRGHOST-4: ghost layers are dimmed to 40% and mapped to their host", () => {
+  it("APPRGHOST-4: proposed layers are words only - no layer ghost, host map still ghosts", () => {
     const g = build([addWidgetOp(-1, "map", "M"), addLayerOp(-2, -1)], [0, 1])!;
     expect(g.widgets.map((x) => x.id)).toEqual([-1]);
-    expect(g.layers.map((l) => l.id)).toEqual([-2]);
-    expect(g.layers[0].config.POINTOPACITY).toBe(40);
-    expect(g.layerHosts).toEqual({ [-2]: -1 });
-    const half = build([{ ...addLayerOp(-2, 42), style: { opacity: 0.5 } }], [0])!;
-    expect(half.layers[0].config.POINTOPACITY).toBe(20);
-    expect(half.layerHosts).toEqual({ [-2]: 42 });
-    expect(half.widgets).toEqual([]);
+    expect(g).not.toHaveProperty("layers");
+    expect(g).not.toHaveProperty("layerHosts");
+    expect(build([addLayerOp(-2, 42)], [0])).toBeNull();
   });
 
   it("APPRGHOST-5: pure - the store derived state is untouched", () => {

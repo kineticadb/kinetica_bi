@@ -7090,13 +7090,13 @@ describe("MapChartRenderer - proposal ghost layers (150)", () => {
   const ghost = (id: number) => makeLayer({ id, table_id: 10, config: { spatialMode: "latlon", latColumn: "lat", lonColumn: "lon", renderMode: "heatmap", visible: true, POINTOPACITY: 40 } });
   const wmsOpacities = () => allImageLayerInstances.map((l) => l._opts?.opacity);
 
-  it("APPRGHOST-10: renders ghost layers hosted on this widget, dimmed, and not those hosted elsewhere", async () => {
-    useAiSessionStore.getState().setProposalGhosts({ widgets: [], rects: {}, layers: [ghost(-2), ghost(-3)], layerHosts: { [-2]: 10, [-3]: 99 } });
+  it("APPRGHOST-10: no layer ghost is drawn even if stale ghost data carries layers", async () => {
+    useAiSessionStore.getState().setProposalGhosts({ widgets: [], rects: {}, layers: [ghost(-2), ghost(-3)], layerHosts: { [-2]: 10, [-3]: 99 } } as never);
     await act(async () => {
       render(<MapChartRenderer widget={makeWidget()} tables={defaultTables} />);
     });
-    expect(allImageLayerInstances.length).toBe(1);
-    expect(wmsOpacities()).toEqual([0.4]);
+    expect(allImageLayerInstances.length).toBe(0);
+    expect(wmsOpacities()).toEqual([]);
   });
 
   it("APPRGHOST-10: with no ghosts nothing extra renders", async () => {
