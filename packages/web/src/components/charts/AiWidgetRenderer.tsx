@@ -7,11 +7,12 @@ import type { WidgetDto } from "../../api/client";
 import { useAuthStore } from "../../store/auth";
 import { PERMISSIONS } from "../../lib/permissions";
 import { useDashboardContextOptional } from "../DashboardContext";
-import { useAiSessionStore } from "../../store/aiSessionStore";
+import { useAiSessionStore, selectPendingProposal } from "../../store/aiSessionStore";
 import { useAiConfigured } from "../../lib/aiSession/aiAvailability";
 import { runAsk } from "../../lib/aiSession/askRunner";
 import { takeGenerateIntent } from "../../lib/aiSession/generateIntent";
 import { AI_CHAT_COPY } from "../../lib/aiSession/chatText";
+import { PROPOSAL_COPY } from "../../lib/aiSession/proposalText";
 import { isSmallAiTile } from "../../lib/aiSession/constants";
 import { AiChat, AiAskBox, AiRunStatus } from "./AiChat";
 import { AiDrawer } from "./AiDrawer";
@@ -25,6 +26,13 @@ export function AiWidgetRenderer({ widget }: { widget: WidgetDto }) {
   const historyRef = useRef<HTMLButtonElement>(null);
   const lastTurn = useAiSessionStore((s) => (s.turns.length ? s.turns[s.turns.length - 1] : null));
   const running = useAiSessionStore((s) => s.run.status === "running");
+
+  // 150: a proposal needs a decision, so a small tile opens its drawer on it. Opening is idempotent and is NOT an ask
+  // (the "asks start only from user handlers" rule is untouched).
+  const pendingTurnId = useAiSessionStore((s) => selectPendingProposal(s)?.turnId ?? null);
+  useEffect(() => {
+    if (pendingTurnId) setOpen(true);
+  }, [pendingTurnId]);
 
   // 142 Pattern 3: the one exception to "asks start only from user handlers". The New Dashboard form stored a
   // TAKE-ONCE intent; reading it clears it, so StrictMode's second effect run (or any re-render) finds nothing
@@ -54,7 +62,8 @@ export function AiWidgetRenderer({ widget }: { widget: WidgetDto }) {
   }
 
   let lastLine = "";
-  if (lastTurn && !running) {
+  if (pendingTurnId) lastLine = PROPOSAL_COPY.tileLine;
+  else if (lastTurn && !running) {
     const status = lastTurn.chat?.status ?? "ok";
     if (status === "ok") lastLine = (lastTurn.answer ?? "").split("\n")[0];
     else if (status === "cancelled") lastLine = AI_CHAT_COPY.cancelled;

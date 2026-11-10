@@ -2,19 +2,26 @@
 // Reads the shared aiSessionStore; asks start ONLY from user handlers (never effects: StrictMode).
 // All text renders as plain text (no HTML injection).
 import { useEffect, useRef, useState } from "react";
-import { useAiSessionStore } from "../../store/aiSessionStore";
+import { useAiSessionStore, selectPendingProposal } from "../../store/aiSessionStore";
 import { runAsk, cancelAsk, choiceQuestion, type AskContext } from "../../lib/aiSession/askRunner";
 import { AI_CHAT_COPY, turnChanges, formatElapsed, describeSkipped, formatQueriesToggle, describeQueryEntry } from "../../lib/aiSession/chatText";
 import { buildStarterQuestions, buildTemplateFollowUps } from "../../lib/aiSession/starterQuestions";
 import { useFilterStore } from "../../store/filterStore";
 import { currentFilter, clearFilterAsUser } from "../../lib/aiOps/aiFilterApplier";
 import { AI_FILTER_COPY } from "../../lib/aiOps/aiFilterCopy";
-import { useAiPrefsStore, loadAiPrefs, setShowRatingButtons } from "../../lib/aiSession/aiPrefs";
+import { useAiPrefsStore, loadAiPrefs, setShowRatingButtons, setApproveFirst } from "../../lib/aiSession/aiPrefs";
+import { PROPOSAL_COPY, describeProposal, proposalNamesFrom } from "../../lib/aiSession/proposalText";
+import { toggleProposalTick, applyPendingProposal, rejectPendingProposal } from "../../lib/aiSession/proposalRunner";
 import { AiRatingButtons, AiRatingReason, AI_RATING_COPY } from "./AiRatingRow";
 import "./AiWidget.css";
 
 const MAX_LEN = 2000;
 const MAX_FOLLOWUPS = 3;
+
+/** 150: thumbs only once a proposal (if any) is decided; a pending or expired one is never rated. */
+function isDecided(p: { status: string } | undefined): boolean {
+  return !p || p.status === "applied" || p.status === "partly_applied" || p.status === "rejected";
+}
 
 /** One status line while an answer is running (renders nothing when idle). */
 export function AiRunStatus() {
@@ -44,6 +51,8 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
   const draft = useAiSessionStore((s) => s.draft);
   const setDraft = useAiSessionStore((s) => s.setDraft);
   const running = useAiSessionStore((s) => s.run.status === "running");
+  // 150: a pending proposal must be applied or rejected before another ask.
+  const pending = useAiSessionStore((s) => selectPendingProposal(s) !== null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -61,6 +70,7 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
 
   function send() {
     if (useAiSessionStore.getState().run.status === "running") return;
+    if (useAiSessionStore.getState().turns.some((t) => t.chat?.proposal?.status === "pending")) return;
     if (!draft.trim()) return;
     void runAsk(ctx, draft);
   }
@@ -78,7 +88,8 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
         className="ds-select ai-chat-textarea"
         rows={1}
         maxLength={MAX_LEN}
-        placeholder={AI_CHAT_COPY.askPlaceholder}
+        disabled={pending}
+        placeholder={pending ? PROPOSAL_COPY.askDisabled : AI_CHAT_COPY.askPlaceholder}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -96,7 +107,7 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
           Cancel
         </button>
       ) : (
-        <button key="send" type="submit" className="btn-primary btn-sm" disabled={!draft.trim()}>
+        <button key="send" type="submit" className="btn-primary btn-sm" disabled={!draft.trim() || pending}>
           Send
         </button>
       )}
@@ -115,6 +126,9 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
   const logRef = useRef<HTMLDivElement>(null);
   // 149: per-user "Show rating buttons" (default shown until loaded; load is deduped in the module).
   const showRating = useAiPrefsStore((s) => s.showRatingButtons);
+  const approveFirst = useAiPrefsStore((s) => s.approveFirst);
+  // 150: primitive selector (turn id) so the list does not re-render on unrelated store changes.
+  const pendingId = useAiSessionStore((s) => selectPendingProposal(s)?.turnId ?? null);
   useEffect(() => {
     void loadAiPrefs();
   }, []);
@@ -174,7 +188,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                   </div>
                 ) : null;
               })}
-              {showRating && (x.chat?.status ?? "ok") === "ok" && typeof x.chat?.answerId === "number" && (
+              {showRating && (x.chat?.status ?? "ok") === "ok" && typeof x.chat?.answerId === "number" && isDecided(x.chat?.proposal) && (
                 <>
                   <div className="ai-chat-turn-actions">
                     <AiRatingButtons answerId={x.chat.answerId} chat={x.chat} />
@@ -201,7 +215,11 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
           const changedSomething = turn.entries.some((e) => e.result.status === "applied");
           const showRevert = !hasChoices || changedSomething;
           const changes = status === "ok" ? turnChanges(turn) : null;
-          const canRate = showRating && status === "ok" && typeof chat?.answerId === "number";
+          const proposal = chat?.proposal;
+          const pendingHere = proposal?.status === "pending";
+          const canRate = showRating && status === "ok" && typeof chat?.answerId === "number" && isDecided(proposal);
+          const proposalLines = pendingHere ? describeProposal(proposal.ops, proposalNamesFrom(ctx.getSnapshot(), ctx.getBaseline())) : [];
+          const applied = !proposal || proposal.status === "applied" || proposal.status === "partly_applied";
           return (
             <div key={turn.id} className={`ai-chat-turn${i > cursor ? " ai-chat-turn--ahead" : ""}`}>
               <div className="ai-chat-bubble ai-chat-bubble--user">{turn.prompt}</div>
@@ -215,7 +233,63 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                       ))}
                     </ul>
                   )}
-                  {changes?.kind === "none" && <div className="ai-chat-note muted">{AI_CHAT_COPY.noChanges}</div>}
+                  {pendingHere && (
+                    <>
+                      <div className="ai-chat-turn-actions">
+                        <span className="widget-filter-badge">{PROPOSAL_COPY.marker}</span>
+                      </div>
+                      <ul className="ai-chat-changes ai-chat-proposal" aria-label={PROPOSAL_COPY.listLabel}>
+                        {proposalLines.map((line, k) => {
+                          const failed = proposal.failed?.find((f) => f.index === k);
+                          return (
+                            <li key={k}>
+                              <label className="config-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={proposal.ticked.includes(k)}
+                                  disabled={!!proposal.busy}
+                                  onChange={(e) => toggleProposalTick(turn.id, k, e.target.checked)}
+                                />
+                                {line}
+                              </label>
+                              {failed && <div className="ai-chat-note muted">{failed.reasons.join("; ")}</div>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {(proposal.failed?.length ?? 0) > 0 && <div className="ai-chat-note muted">{PROPOSAL_COPY.allFailed}</div>}
+                      <div className="ds-actions">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          disabled={!!proposal.busy || proposal.ticked.length === 0}
+                          onClick={() => void applyPendingProposal(ctx)}
+                        >
+                          {PROPOSAL_COPY.apply}
+                        </button>
+                        <button type="button" className="ghost-sm" disabled={!!proposal.busy} onClick={() => void rejectPendingProposal()}>
+                          {PROPOSAL_COPY.reject}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {changes?.kind === "none" && applied && <div className="ai-chat-note muted">{AI_CHAT_COPY.noChanges}</div>}
+                  {proposal?.status === "partly_applied" && (
+                    <>
+                      {(proposal.unticked ?? []).map((l, ui) => (
+                        <div key={`un-${ui}`} className="ai-chat-note muted">
+                          {PROPOSAL_COPY.leftUnticked(l)}
+                        </div>
+                      ))}
+                      {(proposal.failed ?? []).map((f, fi) => (
+                        <div key={`na-${fi}`} className="ai-chat-note muted">
+                          {PROPOSAL_COPY.notApplied(f.label, f.reasons)}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {proposal?.status === "rejected" && <div className="ai-chat-note muted">{PROPOSAL_COPY.rejected}</div>}
+                  {proposal?.status === "expired" && <div className="ai-chat-note muted">{PROPOSAL_COPY.expired}</div>}
                   {(chat?.filterNotes ?? []).map((n, ni) => (
                     <div key={`fn-${ni}`} className="ai-chat-note muted">
                       {n}
@@ -266,7 +340,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                   })}
                   {(chat?.clarifications ?? []).map((c, ci) => {
                     const picked = chat?.pickedChoice?.clarificationIndex === ci ? chat.pickedChoice.optionId : undefined;
-                    const enabled = isLast && !chat?.pickedChoice && !running;
+                    const enabled = isLast && !chat?.pickedChoice && !running && pendingId === null;
                     return (
                       <div key={ci} className="ai-chat-choices">
                         {/* 137-12 UAT: the answer bubble usually already asks the question */}
@@ -299,7 +373,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                   {followUps.length > 0 && (
                     <div className="ai-chat-followups">
                       {followUps.slice(0, MAX_FOLLOWUPS).map((f) => (
-                        <button key={f} type="button" className="ghost-sm" disabled={running} onClick={() => void runAsk(ctx, f)}>
+                        <button key={f} type="button" className="ghost-sm" disabled={running || pendingId !== null} onClick={() => void runAsk(ctx, f)}>
                           {f}
                         </button>
                       ))}
@@ -311,7 +385,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                         <button
                           type="button"
                           className="ghost-sm"
-                          disabled={i === cursor || running}
+                          disabled={i === cursor || running || pendingId !== null}
                           onClick={() => useAiSessionStore.getState().setCursor(i, ctx.getBaseline())}
                         >
                           {AI_CHAT_COPY.revert}
@@ -329,7 +403,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                   <div className="ai-chat-bubble ai-chat-bubble--ai ai-chat-bubble--error">{chat?.message}</div>
                   {chat?.retryable && (
                     <div className="ai-chat-turn-actions">
-                      <button type="button" className="ghost-sm" disabled={running} onClick={() => void runAsk(ctx, turn.prompt)}>
+                      <button type="button" className="ghost-sm" disabled={running || pendingId !== null} onClick={() => void runAsk(ctx, turn.prompt)}>
                         {AI_CHAT_COPY.retry}
                       </button>
                     </div>
@@ -349,6 +423,10 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
       <label className="config-toggle">
         <input type="checkbox" checked={showRating} onChange={(e) => void setShowRatingButtons(e.target.checked)} />
         {AI_RATING_COPY.showToggle}
+      </label>
+      <label className="config-toggle">
+        <input type="checkbox" checked={approveFirst} onChange={(e) => void setApproveFirst(e.target.checked)} />
+        {PROPOSAL_COPY.switchLabel}
       </label>
       <AiAskBox ctx={ctx} />
     </div>

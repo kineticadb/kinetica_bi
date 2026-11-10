@@ -122,7 +122,7 @@ describe("AiChat approve first", () => {
     expect(ta.placeholder).toBe("Apply or reject the proposed changes first.");
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Try something else" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Revert" }) as HTMLButtonElement | null)?.disabled ?? true).toBe(true);
+    expect((screen.getByRole("button", { name: "Revert dashboard to this state" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("APPRCHAT-6: thumbs only once decided; rejected and expired notes", () => {

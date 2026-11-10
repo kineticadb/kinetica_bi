@@ -78,6 +78,22 @@
   overflow-wrap: anywhere;
 }
 
+/* 150: a proposal is a list of checkbox rows, not a past-tense tick list */
+.ai-chat-proposal li::before {
+  content: none;
+}
+
+.ai-chat-proposal li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ai-chat-proposal .config-toggle {
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
 /* 140 D-11: long SQL lines wrap inside the chat column (no colour: theme tokens untouched) */
 .ai-chat-query {
   white-space: pre-wrap;
