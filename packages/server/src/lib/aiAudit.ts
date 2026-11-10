@@ -9,7 +9,8 @@ import type Database from "better-sqlite3";
 import { db } from "../db";
 import type { AiKeepIdMap } from "@kinetica-bi/shared";
 
-export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited";
+export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited" | "not_decided";
+export type AiProposalOutcome = "applied" | "partly_applied" | "rejected";
 export type AiAuditKind = "ask" | "generate" | "keep" | "mcp";
 export type AiToolAuditEntry = { name: string; args?: unknown; result: "ok" | "rejected" | "error"; stage?: string; reasons?: string[] };
 export type AdmitInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number; capPerHour: number; capPerDay: number; kind?: "ask" | "generate" };
@@ -20,7 +21,7 @@ export type AdmitResult =
 export type AiQueryOutcome = "ok" | "refused" | "timed_out" | "cancelled" | "error";
 /** 140 D-12: one AI query. SQL text (may hold literal filter values the user/model typed) — NEVER result values. */
 export type AiQueryAuditEntry = { sql: string; rowCount?: number; durationMs: number; outcome: AiQueryOutcome; reason?: string };
-export type FinalizeInput = { auditId: number; outcome: AiOutcome; detail?: string; answerText?: string; steps: number; inputTokens?: number; outputTokens?: number; tools: AiToolAuditEntry[]; changes: { applied: string[]; rejected: { label: string; stage: string; reasons: string[] }[] }; durationMs: number; queries?: AiQueryAuditEntry[] };
+export type FinalizeInput = { auditId: number; outcome: AiOutcome; detail?: string; answerText?: string; steps: number; inputTokens?: number; outputTokens?: number; tools: AiToolAuditEntry[]; changes: { applied: string[]; rejected: { label: string; stage: string; reasons: string[] }[]; proposed?: string[] }; durationMs: number; queries?: AiQueryAuditEntry[] };
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;

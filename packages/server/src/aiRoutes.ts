@@ -24,6 +24,7 @@ import { AI_CONTRACT_VERSION } from "./lib/aiContract";
 import { admitAiAnswer, finalizeAiAnswer, type AiQueryAuditEntry, type FinalizeInput } from "./lib/aiAudit";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getDashboard, listWidgets } from "./db";
+import { getAiPrefs } from "./lib/aiFeedback";
 import { runAnswer } from "./lib/ai/runAnswer";
 import { createSseWriter } from "./lib/ai/sseWriter";
 import { AI_USER_MESSAGES } from "./lib/ai/agentLoop";
@@ -91,6 +92,8 @@ export function registerAiRoutes(app: Express): void {
       dashboard.generated_pending === true &&
       listWidgets(dashboard.id).every((w) => String(w.type) === "ai") &&
       body.snapshot.widgets.every((w) => w.type === "ai");
+    // 150: Approve first is read at ask time; the switch affects the next answer only.
+    const propose = !generate && getAiPrefs(username).approveFirst;
     if (inflight.has(key)) {
       return res.status(409).json({ error: "An AI answer is already in progress.", code: "AI_BUSY" });
     }
@@ -179,6 +182,7 @@ export function registerAiRoutes(app: Express): void {
           dashboard: { id: dashboard.id, title: dashboard.name },
           config,
           generate,
+          propose,
           signal: ac.signal,
           sse,
           queryLog,

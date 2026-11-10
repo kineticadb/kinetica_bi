@@ -17,6 +17,7 @@ import { stampMapDefaultViews } from "./mapDefaultView";
 import { buildQueryScope, type QueryScope } from "./queryScope";
 import { createQueryPort, type QueryPort } from "./queryRunner";
 import { part } from "./outbound";
+import { PROPOSE_SYSTEM_PART, registerProposal } from "../aiProposals";
 import { parseReplyTrailer, toChoiceClarification } from "./replyTrailer";
 import { getAiProviderFactory } from "./providers";
 import { defaultSleep } from "./retry";
@@ -36,6 +37,8 @@ export type RunAnswerInput = {
   config: AiConfig;
   /** 142: server-derived generate mode (pending dashboard, empty of data widgets). Never client-supplied. */
   generate?: boolean;
+  /** 150: server-derived from the user's approveFirst pref; never client-supplied. Ignored in generate mode. */
+  propose?: boolean;
   signal: AbortSignal;
   sse: ReturnType<typeof createSseWriter>;
   now?: () => number;
@@ -110,10 +113,12 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       if (input.queryLog) input.queryLog.current = () => port.entries();
       queryRules = { maxRows: config.queryMaxRows, maxPerAnswer: config.queryMaxPerAnswer, views: scope.views };
     }
+    const propose = input.propose === true && !input.generate;
     const limits = input.generate ? generateLimits(config) : { maxToolSteps: config.maxToolSteps, maxNewWidgets: config.maxNewWidgets };
     const system = [
       ...buildSystemParts({ view, dashboardTables, maxToolSteps: limits.maxToolSteps, dataAccess: config.dataAccess, ...(queryRules ? { query: queryRules } : {}) }),
       ...(input.generate ? [part.system(buildGenerateRecipe(config.dataAccess))] : []),
+      ...(propose ? [part.system(PROPOSE_SYSTEM_PART)] : []),
     ];
     const messages = buildConversationMessages(body.turns, body.question, config.historyTurns);
     const registry = buildToolRegistry({ dataAccess: config.dataAccess, extraTools: [...QUERY_TOOLS] });
@@ -191,6 +196,7 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       result.ops.length === 0 &&
       result.clarifications.length === 0 &&
       result.skipped.length === 0;
+    let proposing = false;
     if (tooFew) {
       sse.send("error", { code: "AI_PROVIDER_ERROR", message: GENERATE_TOO_FEW_MESSAGE });
     } else if (empty) {
@@ -206,7 +212,14 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
             ...(q.reason ? { reason: q.reason.slice(0, 300) } : {}),
           }))
         : [];
-      sse.send("result", { answerId: input.auditId, text: trailer.text, ops: result.ops, skipped: result.skipped, clarifications, followUps: trailer.followUps, applied: result.applied, ...(queries.length > 0 ? { queries } : {}) });
+      proposing = propose && result.ops.length > 0;
+      if (proposing) registerProposal({ auditId: input.auditId, username, dashboardId: input.dashboard.id, ops: result.ops, labels: result.applied, approvals: body.approvals, now: now() });
+      sse.send("result", {
+        answerId: input.auditId, text: trailer.text, ops: result.ops, skipped: result.skipped, clarifications, followUps: trailer.followUps,
+        applied: proposing ? [] : result.applied,
+        ...(proposing ? { proposed: true } : {}),
+        ...(queries.length > 0 ? { queries } : {}),
+      });
     } else {
       const code = errorCodeFor(result);
       sse.send("error", { code, message: result.message ?? FALLBACK_MESSAGE[code] });
@@ -224,6 +237,8 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
       durationMs: durationMs(),
       ...(queryPort ? { queries: [...queryPort.entries()] } : {}),
     };
+    // 150: a proposal is finalized as not_decided/proposed; the Apply/Reject routes decide it later.
+    if (proposing) finalize = { ...finalize, outcome: "not_decided", detail: "proposed", changes: { applied: [], rejected: result.rejected, proposed: result.applied } };
   } catch (e) {
     const ended = e instanceof SessionEndedError;
     const code: AiErrorCode = ended ? "AI_SESSION_ENDED" : "AI_INTERNAL";

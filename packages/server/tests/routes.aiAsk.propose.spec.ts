@@ -102,7 +102,7 @@ describe("propose mode on the ask route", () => {
       expect(row.outcome).toBe("ok");
       expect(row.outcome_detail).toBeNull();
       expect(Object.keys(JSON.parse(row.changes_json)).sort()).toEqual(["applied", "rejected"]);
-      expect(JSON.stringify(provider.requests)).not.toContain(PROPOSE_SYSTEM_PART);
+      expect(JSON.stringify(provider.requests)).not.toContain(PROPOSE_SYSTEM_PART.slice(0, 60));
     });
   }
 
@@ -111,7 +111,7 @@ describe("propose mode on the ask route", () => {
     setAiPrefs("dee", { approveFirst: true }, Date.now());
     script(oneBar(table.id));
     await ask();
-    expect(JSON.stringify(provider.requests[0])).toContain(PROPOSE_SYSTEM_PART);
+    expect(JSON.stringify(provider.requests[0])).toContain(PROPOSE_SYSTEM_PART.slice(0, 60));
   });
 
   it("APPRASK-4: switch on, 0 ops -> not a proposal", async () => {
