@@ -7,7 +7,7 @@ import { __setAiProviderFactoryForTest } from "../src/lib/ai/providers";
 import { ScriptedProvider, type ScriptStep } from "../src/lib/ai/providers/scripted";
 import { __clearLiveSchemaCacheForTest } from "../src/lib/ai/liveSchema";
 import { setAiPrefs } from "../src/lib/aiFeedback";
-import { getProposal, PROPOSE_SYSTEM_PART, __resetProposalsForTest } from "../src/lib/aiProposals";
+import { getProposal, neutralProposalLabel, PROPOSE_SYSTEM_PART, __resetProposalsForTest } from "../src/lib/aiProposals";
 import { forbidProviderNetwork } from "./helpers/aiTestKit";
 import { enableAiEnv, sessionFor, makeDashboard, makeTableOn, resetAiTables, mockKinetica, validAsk, readSse, listenApp, toolCall, TOOLS_DONE, finalText, addWidgetArgs } from "./helpers/aiRouteKit";
 
@@ -78,7 +78,7 @@ describe("propose mode on the ask route", () => {
     expect(r.ops).toHaveLength(1);
     const row = auditRow();
     expect(row).toMatchObject({ status: "final", outcome: "not_decided", outcome_detail: "proposed" });
-    expect(JSON.parse(row.changes_json)).toEqual({ applied: [], rejected: [], proposed: off.applied });
+    expect(JSON.parse(row.changes_json)).toEqual({ applied: [], rejected: [], proposed: off.applied.map(neutralProposalLabel) });
     expect(getProposal(r.answerId, "dee")?.ops).toHaveLength(1);
   });
 

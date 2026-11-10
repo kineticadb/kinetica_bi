@@ -4,7 +4,7 @@ import type { AiOp } from "@kinetica-bi/shared";
 import { db } from "../src/db";
 import {
   registerProposal, getProposal, stripStamped, decideAiProposal, proposalRowState,
-  AI_PROPOSAL_TTL_MS, AI_PROPOSAL_MAX_PER_USER, __resetProposalsForTest,
+  AI_PROPOSAL_TTL_MS, AI_PROPOSAL_MAX_PER_USER, __resetProposalsForTest, neutralProposalLabel, PROPOSE_SYSTEM_PART,
 } from "../src/lib/aiProposals";
 import { checkAiCandidate, type GatewayDeps } from "../src/lib/ai/gateway";
 import { createShadow } from "../src/lib/ai/shadow";
@@ -114,5 +114,20 @@ describe("decision", () => {
     expect(proposalRowState(pending, "eve")).toBe("not_found");
     expect(proposalRowState(999999, "dee")).toBe("not_found");
     expect(proposalRowState(running, "dee")).toBe("not_found");
+  });
+});
+
+describe("150-06 neutral proposal wording", () => {
+  it("FIX150-1: labels lose past tense and placement", () => {
+    expect(neutralProposalLabel('Added bar "Trips by Vendor" below existing content')).toBe('Bar "Trips by Vendor"');
+    expect(neutralProposalLabel('Added bar "T" at row 3, column 4')).toBe('Bar "T"');
+    expect(neutralProposalLabel('Added dynamic view "Top 10"')).toBe('Dynamic view "Top 10"');
+    expect(neutralProposalLabel('Filtered table 3 on vendor_id')).toBe("Filter table 3 on vendor_id");
+    expect(neutralProposalLabel('Removed widget "A"')).toBe('Remove widget "A"');
+    expect(neutralProposalLabel("Filter on vendor_id")).toBe("Filter on vendor_id");
+  });
+  it("FIX150-2: instruction says changes are not applied yet", () => {
+    expect(PROPOSE_SYSTEM_PART).toContain("NOT been applied");
+    expect(PROPOSE_SYSTEM_PART).toContain("never write \"I've added\"");
   });
 });
