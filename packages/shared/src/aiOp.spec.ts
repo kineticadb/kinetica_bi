@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { AiOpSchema, AI_OP_KINDS, parseAiOp } from "./aiOp";
+import { AiOpSchema, AI_OP_KINDS, parseAiOp, aiOpDependencies, closeSelection, dependentsOf, isClosedSelection } from "./aiOp";
 import { WidgetActionTargetSchema } from "./widgetAction";
 
 const patch = (id: number, extra: Record<string, unknown> = {}) => ({
@@ -182,5 +182,66 @@ describe("Phase 139 dynamic view ops", () => {
   });
   it("DVOP-6: no new op kind", () => {
     expect(AI_OP_KINDS.length).toBe(12);
+  });
+});
+
+describe("Phase 150 op dependencies", () => {
+  const rect = { x: 0, y: 0, w: 6, h: 6 };
+  const OPS: unknown[] = [
+    { op: "add_dynamic_view", tempId: -1, name: "v", spec: { base: { tableId: 7 }, columns: [] } },
+    { op: "add_widget", tempId: -2, type: "bar", title: "t", config: { dynamicViewId: -1 } },
+    { op: "apply_filter", source: { kind: "dynamicView", id: -1 }, filters: [{ column: "c", operator: "eq", value: "x" }] },
+    { op: "add_widget", tempId: -3, type: "map", title: "m", config: {} },
+    { op: "add_layer", tempId: -4, widgetId: -3, tableId: 7, renderMode: "heatmap", spatialMode: "wkt", wktColumn: "g" },
+    { op: "set_layout", items: [{ id: -2, ...rect }, { id: 5, ...rect }] },
+    { op: "apply_filter", source: { kind: "table", id: 7 }, filters: [{ column: "vendor", operator: "eq", value: "x" }] },
+    { op: "clear_filter", source: { kind: "table", id: 7 }, column: "vendor" },
+    { op: "set_widget_title", id: -2, title: "n" },
+    { op: "remove_widget", id: 12 },
+  ];
+  const deps = () => aiOpDependencies(OPS);
+  it("APPRDEP-1: per-op prerequisites", () => {
+    expect(deps()).toEqual([[], [0], [0], [], [3], [1], [], [6], [1], []]);
+  });
+  it("APPRDEP-2: patch, change type, remove and rebind references", () => {
+    const base = OPS.slice(0, 5);
+    const d = (extra: unknown) => aiOpDependencies([...base, extra])[5];
+    expect(d({ op: "patch", action: { target: { kind: "widget", id: -2 }, configPatch: { title: "x" } } })).toEqual([1]);
+    expect(d({ op: "patch", action: { target: { kind: "widget", id: 9 }, configPatch: { dynamicViewId: -1 } } })).toEqual([0]);
+    expect(d({ op: "change_widget_type", id: -2, type: "line" })).toEqual([1]);
+    expect(d({ op: "remove_layer", id: -4 })).toEqual([4]);
+    expect(d({ op: "remove_dynamic_view", id: -1, drop: { widgetIds: [-2], layerIds: [] } })).toEqual([0, 1]);
+    expect(d({ op: "add_layer", tempId: -9, widgetId: 5, tableId: 7, renderMode: "heatmap", spatialMode: "wkt", wktColumn: "g", dynamicViewId: -1 })).toEqual([0]);
+  });
+  it("APPRDEP-3: clear_filter depends on the filters it undoes", () => {
+    const af = (kind: string, id: number, column: string) => ({ op: "apply_filter", source: { kind, id }, filters: [{ column, operator: "eq", value: "x" }] });
+    const pre = [af("table", 7, "vendor"), af("table", 8, "zone")];
+    const d = (extra: unknown) => aiOpDependencies([...pre, extra])[2];
+    expect(d({ op: "clear_filter" })).toEqual([0, 1]);
+    expect(d({ op: "clear_filter", source: { kind: "table", id: 7 } })).toEqual([0]);
+    expect(d({ op: "clear_filter", source: { kind: "table", id: 9 } })).toEqual([]);
+  });
+  it("APPRDEP-4: foreign temp ids and unparsable entries add nothing", () => {
+    const r = aiOpDependencies([{ op: "bogus" }, { op: "set_widget_title", id: -50, title: "n" }, { op: "remove_widget", id: -1 }]);
+    expect(r).toEqual([[], [], []]);
+    const r2 = aiOpDependencies([{ op: "bogus" }, OPS[1]]);
+    expect(r2).toEqual([[], []]);
+  });
+  it("APPRDEP-5: closeSelection adds prerequisites", () => {
+    expect(closeSelection([5], deps())).toEqual([0, 1, 5]);
+    expect(closeSelection([4, 9], deps())).toEqual([3, 4, 9]);
+    expect(closeSelection([9, 4, 4], deps())).toEqual([3, 4, 9]);
+  });
+  it("APPRDEP-6: dependentsOf is transitive", () => {
+    expect(dependentsOf(0, deps())).toEqual([1, 2, 5, 8]);
+    expect(dependentsOf(3, deps())).toEqual([4]);
+    expect(dependentsOf(9, deps())).toEqual([]);
+  });
+  it("APPRDEP-7: isClosedSelection", () => {
+    expect(isClosedSelection([1], deps())).toBe(false);
+    expect(isClosedSelection([0, 1], deps())).toBe(true);
+    expect(isClosedSelection([], deps())).toBe(true);
+    expect(isClosedSelection([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], deps())).toBe(true);
+    expect(isClosedSelection([7], deps())).toBe(false);
   });
 });

@@ -1,8 +1,13 @@
 // Phase 149 (FEEDBACK-V22-01): answer rating + per-user AI prefs. RATE-1..8, PREFS-1..5.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Server } from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
 import { createApp } from "../src/index";
-import { db } from "../src/db";
+import { db, createDb } from "../src/db";
+import { getAiPrefs } from "../src/lib/aiFeedback";
 import { sessionFor, makeRole, resetAiTables, listenApp } from "./helpers/aiRouteKit";
 
 let servers: Server[] = [];
@@ -194,27 +199,60 @@ describe("PREFS", () => {
   it("PREFS-1: default shows rating buttons", async () => {
     const r = await getPrefs();
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ showRatingButtons: true });
+    expect(await r.json()).toEqual({ showRatingButtons: true, approveFirst: false });
   });
   it("PREFS-2: persists per lower-cased username across sessions", async () => {
     const r = await putPrefs({ showRatingButtons: false });
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ showRatingButtons: false });
-    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: false });
-    expect(await (await getPrefs(sessionFor("dee", ["designer"]))).json()).toEqual({ showRatingButtons: false });
-    expect(await (await getPrefs(sessionFor("DEE", ["designer"]))).json()).toEqual({ showRatingButtons: false });
+    expect(await r.json()).toEqual({ showRatingButtons: false, approveFirst: false });
+    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: false, approveFirst: false });
+    expect(await (await getPrefs(sessionFor("dee", ["designer"]))).json()).toEqual({ showRatingButtons: false, approveFirst: false });
+    expect(await (await getPrefs(sessionFor("DEE", ["designer"]))).json()).toEqual({ showRatingButtons: false, approveFirst: false });
     expect((await putPrefs({ showRatingButtons: true })).status).toBe(200);
-    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: true });
+    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: true, approveFirst: false });
   });
   it("PREFS-3: other users are unaffected", async () => {
     await putPrefs({ showRatingButtons: false });
-    expect(await (await getPrefs(eve)).json()).toEqual({ showRatingButtons: true });
+    expect(await (await getPrefs(eve)).json()).toEqual({ showRatingButtons: true, approveFirst: false });
   });
   it("PREFS-4: strict partial body, else 400", async () => {
-    for (const b of [{}, { showRatingButtons: "no" }, { showRatingButtons: true, approveFirst: true }]) {
+    for (const b of [{}, { showRatingButtons: "no" }, { approveFirst: "yes" }, { approveFirst: true, extra: 1 }]) {
       const r = await putPrefs(b);
       expect(r.status, JSON.stringify(b)).toBe(400);
       expect(await r.json()).toMatchObject({ code: "AI_PREFS_BAD_REQUEST" });
+    }
+  });
+  it("APPRPREF-1: approveFirst persists per user", async () => {
+    const r = await putPrefs({ approveFirst: true });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ showRatingButtons: true, approveFirst: true });
+    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: true, approveFirst: true });
+    expect(await (await getPrefs(sessionFor("DEE", ["designer"]))).json()).toMatchObject({ approveFirst: true });
+    expect(await (await getPrefs(eve)).json()).toMatchObject({ approveFirst: false });
+  });
+  it("APPRPREF-2: partial patches do not reset each other", async () => {
+    await putPrefs({ showRatingButtons: false });
+    await putPrefs({ approveFirst: true });
+    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: false, approveFirst: true });
+    await putPrefs({ approveFirst: false });
+    expect(await (await getPrefs()).json()).toEqual({ showRatingButtons: false, approveFirst: false });
+  });
+  it("APPRPREF-3: legacy ai_user_prefs gains approve_first, idempotent", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kbi-apprpref-"));
+    const file = path.join(dir, "t.db");
+    try {
+      const old = new Database(file);
+      old.exec("CREATE TABLE ai_user_prefs (username TEXT PRIMARY KEY, show_rating_buttons INTEGER NOT NULL DEFAULT 1, updated_ms INTEGER NOT NULL);");
+      old.prepare("INSERT INTO ai_user_prefs (username, show_rating_buttons, updated_ms) VALUES ('dee', 0, 1)").run();
+      old.close();
+      const a = createDb(file);
+      const cols = (a.prepare("PRAGMA table_info(ai_user_prefs)").all() as { name: string }[]).map((c) => c.name);
+      expect(cols).toContain("approve_first");
+      expect(getAiPrefs("dee", a)).toEqual({ showRatingButtons: false, approveFirst: false });
+      a.close();
+      createDb(file).close();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
   it("PREFS-5: 401 and 403 gates on GET and PUT", async () => {

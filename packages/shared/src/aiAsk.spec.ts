@@ -94,6 +94,13 @@ describe("Phase 137 result contract", () => {
     expect(AskResultEventSchema.safeParse({ ...res(), followUps: ["a", "b", "c", "d"] }).success).toBe(false);
     expect(AskResultEventSchema.safeParse({ ...res(), followUps: ["x".repeat(121)] }).success).toBe(false);
   });
+  it("APPRDEP-8: optional proposed flag", () => {
+    expect(AskResultEventSchema.safeParse({ ...res(), proposed: true }).success).toBe(true);
+    expect(AskResultEventSchema.safeParse({ ...res(), proposed: false }).success).toBe(false);
+    expect(AskResultEventSchema.safeParse({ ...res(), proposed: "yes" }).success).toBe(false);
+    expect(AskResultEventSchema.safeParse(res()).success).toBe(true);
+    expect("proposed" in res()).toBe(false);
+  });
   it("ASKC-3: AI_WIDGET_TYPES excludes ai", () => {
     expect((AI_WIDGET_TYPES as readonly string[]).includes("ai")).toBe(false);
   });
