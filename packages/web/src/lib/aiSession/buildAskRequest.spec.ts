@@ -237,3 +237,30 @@ describe("KHIST saved turns as provider history (141 D-18)", () => {
     expect(body.turns[0].question).toBe("Q1");
   });
 });
+
+describe("buildAskTurns undone changes (151)", () => {
+  const entryOf = (label: string, undone?: true) =>
+    ({ raw: {}, op: { op: "set_widget_title", id: 1, title: label }, result: { status: "applied" }, ...(undone ? { undone } : {}) }) as unknown as Turn["entries"][number];
+  const liveTurn = (entries: Turn["entries"], chat: Turn["chat"]): Turn => ({ ...turn(0, chat), entries });
+
+  it("UNDOHIST-1: an aligned undone entry is sent as skipped 'undone by the user'", () => {
+    const t = liveTurn([entryOf("A"), entryOf("B", true)], { status: "ok", applied: ['Added records "A"', 'Added records "B"'] });
+    expect(buildAskTurns([t], 0)[0].changes).toEqual([
+      { label: 'Added records "A"', status: "applied" },
+      { label: 'Added records "B"', status: "skipped", reason: "undone by the user" },
+    ]);
+  });
+  it("UNDOHIST-2: a saved turn's undoneLabels are sent the same way", () => {
+    const saved = [{ kind: "turn" as const, id: "s", prompt: "q", answer: "a", chat: { status: "ok" as const, applied: ["A"], undoneLabels: ["B"] } }];
+    expect(buildAskTurns([], -1, saved)[0].changes).toEqual([
+      { label: "A", status: "applied" },
+      { label: "B", status: "skipped", reason: "undone by the user" },
+    ]);
+  });
+  it("UNDOHIST-3: a misaligned live turn with an undone entry does not throw", () => {
+    const t = liveTurn([entryOf("A"), entryOf("B", true)], { status: "ok", applied: ["only one"] });
+    const changes = buildAskTurns([t], 0)[0].changes;
+    expect(changes[0]).toEqual({ label: "only one", status: "applied" });
+    expect(changes.filter((c) => c.reason === "undone by the user")).toHaveLength(1);
+  });
+});
