@@ -2,6 +2,8 @@
 // (AIGOV-V20-02). Filters are reported as source + column + operator names only. The binding key set is CLOSED: no other widget config key is ever copied.
 import type { AskRequest } from "@kinetica-bi/shared";
 import type { Turn, SavedChatItem } from "./types";
+import { AI_UNDO_COPY } from "./chatText";
+import { splitAppliedLabels } from "./undoPlan";
 
 // Phase 143: the snapshot builder moved to @kinetica-bi/shared so the server can build the same snapshot.
 export { buildAskSnapshot, type AskRect } from "@kinetica-bi/shared";
@@ -19,7 +21,11 @@ export function buildAskTurns(turns: readonly Turn[], cursor: number, saved: rea
   const firstRecent = Math.max(0, kept.length - RECENT_ANSWER_TURNS);
   return kept.map((t, i) => {
     const changes: AskRequest["turns"][number]["changes"] = [];
-    for (const label of t.chat?.applied ?? []) changes.push({ label: label.slice(0, 200), status: "applied" });
+    const split = splitAppliedLabels(t);
+    for (const label of split.applied) changes.push({ label: label.slice(0, 200), status: "applied" });
+    for (const label of [...split.undone, ...(t.chat?.undoneLabels ?? [])]) {
+      changes.push({ label: label.slice(0, 200), status: "skipped", reason: AI_UNDO_COPY.historyReason });
+    }
     for (const s of t.chat?.skipped ?? []) {
       const reason = s.reasons[0];
       changes.push({

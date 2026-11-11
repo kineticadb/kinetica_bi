@@ -5,7 +5,8 @@ import type { FilterDelta, TurnEntry } from "../aiSession/types";
 import { undoFilterDeltas, redoFilterDeltas } from "./aiFilterApplier";
 
 export function deltasOfEntries(entries: readonly TurnEntry[]): FilterDelta[] {
-  return entries.flatMap((e) => e.filterDeltas ?? []);
+  // 151: an undone entry's deltas were already reverted; replaying them on Forward/Discard would re-apply or double-undo.
+  return entries.flatMap((e) => (e.undone ? [] : e.filterDeltas ?? []));
 }
 
 /** Idempotent (assigns, never appends): StrictMode/double mount safe. */
