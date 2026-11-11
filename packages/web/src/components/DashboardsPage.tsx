@@ -1644,6 +1644,14 @@ const DashboardOpen = ({
     );
   };
 
+  // 151: a finished drag/resize of an AI item is a hand edit (Undo warns it will be lost). onLayoutChange also fires for
+  // first placement and reflow, so it cannot tell; never persist anything here (handleLayoutChange owns geometry).
+  const handleAiItemStop = (_layout: Layout, _old: LayoutItem | null, item: LayoutItem | null) => {
+    const id = Number(item?.i);
+    if (!item || !Number.isFinite(id) || id >= 0 || ghostIds.has(id)) return;
+    useAiSessionStore.getState().markUserMoved([id]);
+  };
+
   // ─── Phase 12: Layers debounced auto-save ──────────────────────────────
   // PITFALL (RESEARCH Pitfall 5): debounce reads from a ref so it sees the LATEST patch
   // at fire time, not the patch from when the timeout was scheduled.
@@ -1886,6 +1894,8 @@ const DashboardOpen = ({
           containerPadding={[8, 8]}
           layouts={{ lg: gridLayouts }}
           onLayoutChange={(layout) => handleLayoutChange(layout)}
+          onDragStop={handleAiItemStop}
+          onResizeStop={handleAiItemStop}
           dragConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0, handle: ".widget-drag-handle" }}
           resizeConfig={{ enabled: canEdit || sessionDerived.addedWidgets.length > 0 }}
         >
