@@ -12,6 +12,7 @@ import { AI_FILTER_COPY } from "../../lib/aiOps/aiFilterCopy";
 import { useAiPrefsStore, loadAiPrefs, setShowRatingButtons, setApproveFirst } from "../../lib/aiSession/aiPrefs";
 import { PROPOSAL_COPY, describeProposal, proposalNamesFrom } from "../../lib/aiSession/proposalText";
 import { toggleProposalTick, applyPendingProposal, rejectPendingProposal } from "../../lib/aiSession/proposalRunner";
+import { AiChangeList } from "./AiChangeList";
 import { AiRatingButtons, AiRatingReason, AI_RATING_COPY } from "./AiRatingRow";
 import "./AiWidget.css";
 
@@ -212,7 +213,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
               : hasChoices
                 ? []
                 : buildTemplateFollowUps(ctx.tables, turn.prompt);
-          const changedSomething = turn.entries.some((e) => e.result.status === "applied");
+          const changedSomething = turn.entries.some((e) => e.result.status === "applied" && !e.undone);
           const showRevert = !hasChoices || changedSomething;
           const changes = status === "ok" ? turnChanges(turn) : null;
           const proposal = chat?.proposal;
@@ -227,11 +228,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
                 <>
                   <div className="ai-chat-bubble ai-chat-bubble--ai">{turn.answer}</div>
                   {changes?.kind === "applied" && (
-                    <ul className="ai-chat-changes" aria-label="Dashboard changes">
-                      {changes.labels.map((c, ci) => (
-                        <li key={ci}>{c}</li>
-                      ))}
-                    </ul>
+                    <AiChangeList ctx={ctx} turn={turn} turnIndex={i} offerUndo={i <= cursor && !pendingHere} disabled={running || pendingId !== null} fallbackLabels={changes.labels} />
                   )}
                   {pendingHere && (
                     <>

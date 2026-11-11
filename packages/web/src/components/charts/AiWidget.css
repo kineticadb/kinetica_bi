@@ -78,6 +78,22 @@
   overflow-wrap: anywhere;
 }
 
+/* 151: an undone change stays listed, struck through and muted, without the tick */
+.ai-chat-changes li.ai-chat-change--undone::before {
+  content: none;
+}
+.ai-chat-change--undone > span:first-child {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.ai-chat-changes li > button,
+.ai-chat-changes li > .widget-filter-badge {
+  margin-left: var(--space-1);
+}
+.ai-chat-changes li > .ds-actions {
+  margin-top: var(--space-1);
+}
+
 /* 150: a proposal is a list of checkbox rows, not a past-tense tick list */
 .ai-chat-proposal li::before {
   content: none;
