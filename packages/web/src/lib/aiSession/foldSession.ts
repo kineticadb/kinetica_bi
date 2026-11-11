@@ -295,7 +295,7 @@ function buildSim(baseline: SessionBaseline, prior: readonly TurnEntry[]): Sim {
     filters: new Map(),
   };
   for (const e of prior) {
-    if (!e.op) continue;
+    if (!e.op || e.undone) continue;
     noteTemp(sim, e.op);
     if (e.result.status === "applied") simApply(sim, e.op);
   }
@@ -584,7 +584,7 @@ export function foldSession(baseline: SessionBaseline, entries: Iterable<TurnEnt
   };
 
   for (const e of entries) {
-    if (e.result.status !== "applied" || !e.op) continue;
+    if (e.result.status !== "applied" || !e.op || e.undone) continue;
     if (isFilterOp(e.op)) continue; // 138 D-09: filters are view state, never derived/counted
     applied++;
     const op = e.op;

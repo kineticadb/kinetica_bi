@@ -123,7 +123,7 @@ describe("undo planner (151)", () => {
     const turns = build(b, [[addWidgetOp(-1)]]);
     expect(planUndo(b, { baseEntries: [], turns, userMoved: { [-1]: true } }, ref("t0", 0))!.handEdited).toBe(true);
     expect(planUndo(b, { baseEntries: [], turns, userMoved: { [-9]: true } }, ref("t0", 0))!.handEdited).toBe(false);
-    const withLayer = build(b, [[addWidgetOp(-1), addLayerOp(-5, -1)]]);
+    const withLayer = build(b, [[addWidgetOp(-1, "map"), addLayerOp(-5, -1)]]);
     expect(planUndo(b, { baseEntries: [], turns: withLayer, tempLayerVisibility: { [-5]: false } }, ref("t0", 1))!.handEdited).toBe(true);
     expect(planUndo(b, { baseEntries: [], turns: withLayer, tempLayerVisibility: { [-7]: false } }, ref("t0", 1))!.handEdited).toBe(false);
   });

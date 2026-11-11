@@ -39,7 +39,11 @@ export type TurnEntry = {
   result: OpResult;
   /** 138: on the entry (not a side map) so the 50-turn squash carries it. */
   filterDeltas?: FilterDelta[];
+  /** 151: undone by the user (per-step undo); the fold and the evaluator skip it. On the entry so revert/forward and the 50-turn squash carry it. */
+  undone?: true;
 };
+/** 151: identifies one entry of a live turn (or of the squashed baseEntries, turnId BASE_TURN_ID). */
+export type EntryRef = { turnId: string; entryIndex: number };
 export type ProposalStatus = "pending" | "applied" | "partly_applied" | "rejected" | "expired";
 export type ProposalFailure = { index: number; label: string; stage: string; reasons: string[] };
 /** 150: display/client state of an Approve-first answer. Never sent to the provider (buildAskTurns copies explicit fields only). ops are cleared once decided. */
@@ -68,6 +72,7 @@ export type TurnChat = {
   ratingNote?: string;
   ratingFollowUp?: "ask" | "thanks" | "skipped";
   proposal?: TurnProposal; // 150
+  undoneLabels?: string[]; // 151: kept turns only - labels of changes the user undid (history note)
 };
 export type Turn = { id: string; prompt: string; answer: string; entries: TurnEntry[]; createdAt: number; chat?: TurnChat };
 /** 141 D-11/D-18: read-only archive of kept turns (never reverted; still sent as provider history by 141-10). */

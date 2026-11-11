@@ -149,3 +149,17 @@ export function describeQueryEntry(q: AskQueryEntry): string {
       return q.reason ? `failed: ${q.reason}` : "failed";
   }
 }
+
+export const AI_UNDO_COPY = {
+  undo: "Undo",
+  redo: "Redo",
+  undoneTag: "Undone",
+  undoAll: "Undo all",
+  cancel: "Cancel",
+  dependsOn: (names: readonly string[], total: number) => `These depend on it: ${names.join(", ")}. Undo all ${total}?`,
+  editsLost: "Undoing it means your edits to it will be lost.",
+  confirmOne: "Undo this change?",
+  redoRefused: (why: string) => `Can't be redone now: ${why}`,
+  historyReason: "undone by the user",
+  answerRef: (n: number) => `answer ${n}`,
+} as const;

@@ -8,6 +8,8 @@ import type { SessionDerived } from "./types";
 export const AI_SOURCE_ID = 0;
 /** 141 D-20: widgetActionStore controlId for view on/off toggles kept as render-time state after Keep (not saved). MIN_SAFE_INTEGER collides with no saved id (>0), AI_SOURCE_ID (0) or temp ids (small negatives). */
 export const AI_KEPT_VIEW_TOGGLES_SOURCE_ID = Number.MIN_SAFE_INTEGER;
+/** 151: EntryRef.turnId for squashed baseEntries. */
+export const BASE_TURN_ID = "__base__";
 /** D-06 safety cap on retained turns. */
 export const SESSION_TURN_CAP = 50;
 
