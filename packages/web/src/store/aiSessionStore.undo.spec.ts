@@ -77,7 +77,7 @@ describe("aiSessionStore per-step undo (151)", () => {
     const { turnId } = st().applyTurn({ prompt: "p", ops: [addWidgetOp(-1, "map"), addWidgetOp(-2), addLayerOp(-5, -1)] }, base);
     st().setGeometry(-2, { x: 0, y: 0, w: 4, h: 4 });
     st().markUserMoved([-1, -2, 42]);
-    expect(Object.keys(st().userMoved).map(Number).sort()).toEqual([-2, -1]);
+    expect(Object.keys(st().userMoved).map(Number).sort((a, b) => b - a)).toEqual([-1, -2]);
     st().setTempLayerVisible(-5, false);
     st().setEntriesUndone([ref(turnId, 1)], true, base);
     expect(st().geometry[-2]).toBeUndefined();

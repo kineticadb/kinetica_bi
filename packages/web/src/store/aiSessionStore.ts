@@ -28,12 +28,13 @@
  */
 import { create } from "zustand";
 import type {
-  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem, TurnChat, TurnProposal, ProposalGhosts,
+  Turn, TurnEntry, TurnInput, SessionBaseline, SessionDerived, SessionRect, FilterDelta, FilterSourceRef, SavedChatItem, TurnChat, TurnProposal, ProposalGhosts, EntryRef,
 } from "../lib/aiSession/types";
-import { AI_SOURCE_ID, AI_KEPT_VIEW_TOGGLES_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED } from "../lib/aiSession/constants";
+import { AI_SOURCE_ID, AI_KEPT_VIEW_TOGGLES_SOURCE_ID, SESSION_TURN_CAP, EMPTY_DERIVED, BASE_TURN_ID } from "../lib/aiSession/constants";
 import { evaluateTurn, foldSession, isFilterOp } from "../lib/aiSession/foldSession";
 import { useWidgetActionStore } from "./widgetActionStore";
 import { AI_CHAT_COPY } from "../lib/aiSession/chatText";
+import { splitAppliedLabels } from "../lib/aiSession/undoPlan";
 import { AI_FOLLOWUP_MAX, AI_FOLLOWUP_MAX_CHARS, type AiDvOutputColumn } from "@kinetica-bi/shared";
 
 export type AiRun = { status: "idle" | "running"; question: string; startedAt: number; line: string; waitSeconds?: number };
@@ -117,6 +118,11 @@ export type AiSessionState = {
   /** 141 D-11: after a successful Keep. NOT reset(): keeps the transcript (as savedTurns) and filters; clears history, approval, overlay; drops temp views. */
   completeKeep(opts?: { warnings?: readonly string[]; viewTogglesNotSaved?: boolean }): void;
   setGeometry(tempId: number, rect: SessionRect): void;
+  /** 151: user drag/resize-stop of AI (negative id) items; drives the "your edits will be lost" note. */
+  userMoved: Record<number, true>;
+  markUserMoved(ids: readonly number[]): void;
+  /** 151: per-step undo; one set(); the UI calls lib/aiOps/undoAiOp, never this directly. */
+  setEntriesUndone(refs: readonly EntryRef[], undone: boolean, baseline: SessionBaseline): void;
   allocateTempId(): number;
   setPendingLeave(p: { proceed: () => void } | null): void;
 };
@@ -124,10 +130,15 @@ export type AiSessionState = {
 let turnSeq = 0;
 
 /** 150: a still-pending proposal cannot survive Keep (the server copy is gone with the session): archive it expired and without ops. */
-function archiveChat(chat: TurnChat): TurnChat {
+function archiveChat(chat: TurnChat, turn?: Turn): TurnChat {
   const p = chat.proposal;
-  if (!p) return chat;
-  return { ...chat, proposal: { ...p, ops: [], busy: false, status: p.status === "pending" ? "expired" : p.status } };
+  let out: TurnChat = chat;
+  if (turn) {
+    const split = splitAppliedLabels(turn);
+    if (split.undone.length > 0) out = { ...out, applied: split.applied, undoneLabels: split.undone };
+  }
+  if (!p) return out;
+  return { ...out, proposal: { ...p, ops: [], busy: false, status: p.status === "pending" ? "expired" : p.status } };
 }
 
 function writeAiContribution(d: SessionDerived): void {
@@ -155,7 +166,7 @@ function minTempId(entries: TurnEntry[]): number {
 function addedTempIds(entries: TurnEntry[]): Set<number> {
   const s = new Set<number>();
   for (const e of entries) {
-    if (e.result.status !== "applied" || !e.op) continue;
+    if (e.result.status !== "applied" || !e.op || e.undone) continue;
     const id = (e.op as { tempId?: unknown }).tempId;
     if (typeof id === "number" && (e.op.op === "add_widget" || e.op.op === "add_layer")) s.add(id);
   }
@@ -178,6 +189,7 @@ const initial = {
   turns: [] as Turn[],
   cursor: -1,
   geometry: {} as Record<number, SessionRect>,
+  userMoved: {} as Record<number, true>,
   derived: EMPTY_DERIVED,
   removalApproved: false,
   run: IDLE_RUN,
@@ -267,8 +279,10 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       if (e.result.status === "applied" && e.op?.op === "set_layout") for (const it of e.op.items) moved.add(it.id);
     }
     for (const [k, v] of Object.entries(s.geometry)) if (live.has(Number(k)) && !moved.has(Number(k))) geometry[Number(k)] = v;
+    const userMoved: Record<number, true> = {};
+    for (const k of Object.keys(s.userMoved)) if (live.has(Number(k))) userMoved[Number(k)] = true;
     const derived = foldSession(baseline, all);
-    set({ ...(replacing ? { proposalGhosts: null } : {}), dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
+    set({ ...(replacing ? { proposalGhosts: null } : {}), dashboardId: baseline.dashboardId, turns, baseEntries, droppedCount, cursor, nextTempId, geometry, userMoved, derived, tempLayerVisibility: pruneTempVisibility(s.tempLayerVisibility, derived) });
     writeAiContribution(derived);
     aiDvSink?.onDerived(derived);
     return { turnId: turn.id, entries };
@@ -301,7 +315,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const s = get();
     const toggles = s.derived.contribution.dynamicView; // D-20: captured BEFORE the derived state is cleared
     const archived: SavedChatItem[] = s.turns.slice(0, s.cursor + 1).map((t) => ({
-      kind: "turn" as const, id: t.id, prompt: t.prompt, answer: t.answer, ...(t.chat ? { chat: archiveChat(t.chat) } : {}),
+      kind: "turn" as const, id: t.id, prompt: t.prompt, answer: t.answer, ...(t.chat ? { chat: archiveChat(t.chat, t) } : {}),
     }));
     const texts = [
       opts?.viewTogglesNotSaved ? `${AI_CHAT_COPY.keepSaved} ${AI_CHAT_COPY.viewTogglesNotSaved}` : AI_CHAT_COPY.keepSaved,
@@ -310,7 +324,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
     const notes: SavedChatItem[] = texts.map((text) => ({ kind: "note" as const, id: `keep-note-${++turnSeq}`, text }));
     set({
       savedTurns: [...s.savedTurns, ...archived, ...notes],
-      baseEntries: [], droppedCount: 0, turns: [], cursor: -1, geometry: {}, derived: EMPTY_DERIVED,
+      baseEntries: [], droppedCount: 0, turns: [], cursor: -1, geometry: {}, userMoved: {}, derived: EMPTY_DERIVED,
       removalApproved: false, highlight: { ids: [], nonce: s.highlight.nonce + 1 }, tempLayerVisibility: {},
       keepBlocked: null, keepBaselineFloor: null, pendingLeave: null, proposalGhosts: null, epoch: s.epoch + 1, dvNonce: newDvNonce(), dvGen: {}, dvColumns: {},
     });
@@ -330,6 +344,56 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
       if (cur && cur.x === rect.x && cur.y === rect.y && cur.w === rect.w && cur.h === rect.h) return s;
       return { geometry: { ...s.geometry, [tempId]: rect } };
     }),
+
+  markUserMoved: (ids) =>
+    set((s) => {
+      const add = ids.filter((id) => id < 0 && !s.userMoved[id]);
+      if (add.length === 0) return s;
+      const userMoved = { ...s.userMoved };
+      for (const id of add) userMoved[id] = true;
+      return { userMoved };
+    }),
+
+  setEntriesUndone: (refs, undone, baseline) => {
+    if (refs.length === 0) return;
+    const s = get();
+    const mark = (e: TurnEntry): TurnEntry => {
+      if (undone) return { ...e, undone: true };
+      const { undone: _u, ...rest } = e;
+      return rest;
+    };
+    const idxOf = (turnId: string) => refs.filter((r) => r.turnId === turnId).map((r) => r.entryIndex);
+    const removed: number[] = [];
+    const apply = (entries: TurnEntry[], turnId: string): TurnEntry[] => {
+      const hit = idxOf(turnId).filter((i) => entries[i]);
+      if (hit.length === 0) return entries;
+      const next = entries.slice();
+      for (const i of hit) {
+        next[i] = mark(entries[i]);
+        const op = entries[i].op;
+        if (undone && op && (op.op === "add_widget" || op.op === "add_layer" || op.op === "add_dynamic_view")) removed.push(op.tempId);
+      }
+      return next;
+    };
+    const baseEntries = apply(s.baseEntries, BASE_TURN_ID);
+    const turns = s.turns.map((t) => {
+      const entries = apply(t.entries, t.id);
+      return entries === t.entries ? t : { ...t, entries };
+    });
+    const derived = foldSession(baseline, prefixEntries(baseEntries, turns, s.cursor));
+    const drop = new Set(removed);
+    const geometry = { ...s.geometry };
+    const userMoved = { ...s.userMoved };
+    const vis = { ...s.tempLayerVisibility };
+    for (const id of drop) {
+      delete geometry[id];
+      delete userMoved[id];
+      delete vis[id];
+    }
+    set({ baseEntries, turns, derived, geometry, userMoved, tempLayerVisibility: pruneTempVisibility(vis, derived) });
+    writeAiContribution(derived);
+    aiDvSink?.onDerived(derived);
+  },
 
   allocateTempId: () => {
     const id = get().nextTempId;
@@ -372,6 +436,12 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
 
   attachEntryFilterDeltas: (turnId, entryIndex, deltas) =>
     set((s) => {
+      if (turnId === BASE_TURN_ID) {
+        if (!s.baseEntries[entryIndex]) return s;
+        const baseEntries = s.baseEntries.slice();
+        baseEntries[entryIndex] = { ...baseEntries[entryIndex], filterDeltas: deltas };
+        return { baseEntries };
+      }
       const ti = s.turns.findIndex((t) => t.id === turnId);
       const t = s.turns[ti];
       if (!t || !t.entries[entryIndex]) return s;
@@ -408,7 +478,7 @@ export const useAiSessionStore = create<AiSessionState>((set, get) => ({
   setPendingLeave: (p) => set({ pendingLeave: p }),
 }));
 
-const isApplied = (e: TurnEntry) => e.result.status === "applied" && !isFilterOp(e.op); // 138 D-09: filter-only answers never lock, show the bar or arm the leave warning
+const isApplied = (e: TurnEntry) => e.result.status === "applied" && !e.undone && !isFilterOp(e.op); // 151: undone entries do not count (Keep bar hides, editing unlocks, leave warning drops); // 138 D-09: filter-only answers never lock, show the bar or arm the leave warning
 
 /** True once any non-filter op has applied, regardless of cursor (Pitfall 5); op-less turns do not count (D-17); filter ops are excluded (D-09). */
 export function selectHasUnsavedAiChanges(s: AiSessionState): boolean {
