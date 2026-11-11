@@ -476,3 +476,29 @@ describe("filter ops (138)", () => {
     expect(es[0].result.status).toBe("applied");
   });
 });
+
+describe("undone entries (151)", () => {
+  const undone = (e: TurnEntry): TurnEntry => ({ ...e, undone: true as const });
+  const rec = (id: number) => ({ op: "add_widget", tempId: id, type: "records", title: `R${id}`, config: {} });
+  it("UNDOFOLD-1: an undone entry adds nothing and is not counted; the others still fold", () => {
+    const es = evaluateTurn(baseline, [], [rec(-1), rec(-2), rec(-3)]);
+    const d = foldSession(baseline, [es[0], undone(es[1]), es[2]]);
+    expect(d.addedWidgets.map((x) => x.id)).toEqual([-1, -3]);
+    expect(d.appliedOpCount).toBe(2);
+  });
+  it("UNDOFOLD-2: an undone title patch leaves no meta for the saved widget", () => {
+    const [e] = evaluateTurn(baseline, [], [setTitleOp(50, "Renamed")]);
+    expect(e.result.status).toBe("applied");
+    const d = foldSession(baseline, [undone(e)]);
+    expect(d.widgetMeta[50]).toBeUndefined();
+    expect(d.aiEditedWidgetIds.has(50)).toBe(false);
+  });
+  it("UNDOFOLD-3: a later answer is evaluated as if the undone entry never happened", () => {
+    const [add] = evaluateTurn(baseline, [], [rec(-1)]);
+    const prior = [undone(add)];
+    const again = evaluateTurn(baseline, prior, [rec(-1), setTitleOp(-1, "x")]);
+    expect(again.map((e) => e.result.status)).toEqual(["applied", "applied"]);
+    const orphan = evaluateTurn(baseline, prior, [setTitleOp(-1, "x")]);
+    expect(orphan[0].result).toMatchObject({ status: "skipped", reason: "target_not_found" });
+  });
+});
