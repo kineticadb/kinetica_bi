@@ -46,7 +46,11 @@ function findComposite(node: unknown): string | null {
   return null;
 }
 
-export function buildToolRegistry(opts: { dataAccess: AiDataAccess; extraTools?: AiTool[] }): ToolRegistry {
+export function buildToolRegistry(opts: {
+  dataAccess: AiDataAccess; extraTools?: AiTool[];
+  // 152: narrows ONLY specs (what the model is offered); tools/byName stay complete so a hidden-tool call reaches the gateway's Viewer AI refusal, not "Unknown tool".
+  offered?: (tool: AiTool) => boolean;
+}): ToolRegistry {
   const queryNames: readonly string[] = QUERY_TOOL_NAMES;
   const extras = (opts.extraTools ?? []).filter((t) => !queryNames.includes(t.name) || opts.dataAccess === "query");
   const tools: AiTool[] = [...READ_TOOLS, ...MUTATE_TOOLS, ...extras];
@@ -58,7 +62,7 @@ export function buildToolRegistry(opts: { dataAccess: AiDataAccess; extraTools?:
     const jsonSchema = sanitizeToolSchema(z.toJSONSchema(tool.args) as Record<string, unknown>);
     const bad = findComposite(jsonSchema);
     if (bad) throw new Error(`tool ${tool.name} schema is not flat (${bad})`);
-    specs.push({ name: tool.name, description: tool.description, jsonSchema });
+    if (!opts.offered || opts.offered(tool)) specs.push({ name: tool.name, description: tool.description, jsonSchema });
   }
   return { tools, specs, byName };
 }

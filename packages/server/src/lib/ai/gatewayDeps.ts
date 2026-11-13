@@ -2,6 +2,7 @@
 import { getDashboardDynamicView, listDashboardTables } from "../../db";
 import { canViewDashboard } from "../dashboardAccessDb";
 import { getEffectivePermissions } from "../rbacDb";
+import { resolveViewerAi } from "../viewerAi";
 import type { AiConfig } from "../aiConfig";
 import type { GatewayDeps } from "./gateway";
 import { gatewayDvLimits } from "./dvDeps";
@@ -25,6 +26,8 @@ export function buildGatewayDeps(input: {
     getPermissions: (u) => getEffectivePermissions(u),
     canViewDashboard: (u, id) => canViewDashboard(u, id),
     dashboardTableIds: () => listDashboardTables(dashboardId).map((t) => t.id),
+    // 152: per op, like getPermissions; both runAnswer and the Apply re-check get it.
+    viewerRestriction: () => { const v = resolveViewerAi(username, dashboardId); return v.restricted ? v.mode : null; },
     approvals: input.approvals,
     aiDv: gatewayDvLimits(config),
     dynamicViewInfo: (id) => {

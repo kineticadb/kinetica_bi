@@ -12,7 +12,7 @@ import { sessionFor, makeRole, makeDashboard, resetAiTables } from "./helpers/ai
 const AF = "Viewer AI: answers and filters only";
 const OFF = "Viewer AI: off for this dashboard";
 const CHANGE = ["add_widget", "edit_widget", "rename_widget", "change_widget_type", "set_layout", "add_heatmap_layer", "edit_heatmap_layer", "set_layer_visibility", "patch", "add_dynamic_view", "remove_widget", "remove_layer", "remove_dynamic_view"];
-const rawOp: MutateTool = { kind: "mutate", name: "raw", description: "", args: z.object({}).passthrough(), toOp: (a) => a };
+const rawOp: MutateTool = { kind: "mutate", name: "apply_filter", description: "", args: z.object({}).passthrough(), toOp: (a) => a };
 const tool = (n: string) => MUTATE_TOOLS.find((t) => t.name === n)!;
 const snap = () => ({ widgets: [{ id: 42, type: "bar", title: "Fares", tableId: 5 }], layers: [], dynamicViews: [], filters: [] });
 const T5 = { id: 5, schema: "demo", name: "trips", columns: [{ name: "payment_type", type: "string" }, { name: "fare_amount", type: "double" }] };
@@ -38,7 +38,7 @@ describe("gateway Viewer AI (152)", () => {
 
   it("VAIGW-2: apply_filter still passes in Answers and filters", async () => {
     const r = await checkAiOp(af(), rawOp, JSON.stringify(applyF));
-    expect(r.ok).toBe(true);
+    expect(r).toMatchObject({ ok: true });
   });
 
   it("VAIGW-3: absent, null and session_only restrictions leave today's behaviour", async () => {

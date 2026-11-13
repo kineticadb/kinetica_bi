@@ -24,9 +24,11 @@ import {
   type AiFilterSource,
   type AiOp,
   type AiWidgetType,
+  type ViewerAiMode,
 } from "@kinetica-bi/shared";
 import { validateAiDvSpec, compileAiDvSpec, type AiDvTable } from "../aiDvCompile";
 import type { GatewayResult, GatewayStage, LiveSchemaPort, MutateTool } from "./tools/types";
+import { isOpAllowedForViewerMode, isToolAllowedForViewerMode, viewerAiRefusalReason } from "../viewerAi";
 import { applyOpToShadow, describeIntent, describeOp, shadowRects, type ShadowState } from "./shadow";
 
 // Literal on purpose (see PERMISSIONS.AI_USE in lib/permissions.ts; kept local to avoid a catalog import cycle in specs).
@@ -52,6 +54,8 @@ export type GatewayDeps = {
   dynamicViewInfo?: (dvId: number) => { name: string; columns: { name: string; type?: string }[] | null; sourceTableId?: number } | undefined;
   /** 139: AI dynamic-view limits from AiConfig; defaults when absent. */
   aiDv?: { maxRecords: number; maxJoins: number; maxPerSession: number };
+  /** 152: the caller's Viewer AI restriction, re-read per op; null/absent = can edit the dashboard (unrestricted). */
+  viewerRestriction?: () => ViewerAiMode | null;
 };
 
 type FailExtras = { refKey?: string; slot?: string; label?: string; clarification?: AiClarification };
@@ -173,6 +177,8 @@ const NOT_TEMPORAL = (c: string) => `column ${c} is not a date or time column`;
 const TABLE_KEYS = ["tableId", "table_id", "table"];
 
 export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: string): Promise<GatewayResult> {
+  const vr = deps.viewerRestriction?.() ?? null;
+  if (vr && !isToolAllowedForViewerMode(tool.name, vr)) return fail("permission", [viewerAiRefusalReason(vr)], { label: tool.name });
   // a. shape
   let json: unknown;
   try {
@@ -189,6 +195,11 @@ export async function checkAiOp(deps: GatewayDeps, tool: MutateTool, argsRaw: st
 
 /** 150: everything after argument parsing. The Apply re-check (aiProposalRoutes) feeds stored ops through here, so there is ONE gateway. */
 export async function checkAiCandidate(deps: GatewayDeps, candidate: unknown): Promise<GatewayResult> {
+  const vr = deps.viewerRestriction?.() ?? null;
+  if (vr) {
+    const opName = isRec(candidate) && typeof candidate.op === "string" ? candidate.op : "";
+    if (!isOpAllowedForViewerMode(opName, vr)) return fail("permission", [viewerAiRefusalReason(vr)]);
+  }
   const shadow = deps.shadow;
   const dvLimits = { maxRecords: deps.aiDv?.maxRecords ?? 100000, maxJoins: deps.aiDv?.maxJoins ?? 2 };
   const dvMaxPerSession = deps.aiDv?.maxPerSession ?? 5;
@@ -366,7 +377,7 @@ export async function checkAiCandidate(deps: GatewayDeps, candidate: unknown): P
   }
 
   // c. permission - re-read for EVERY op (no caching) so a mid-answer revocation rejects the next op.
-  // D-16: NO edit-right checks here; session-only changes are allowed for any ai:use user. Edit rights are enforced at Keep (Phase 141).
+  // D-16: no edit-right checks here (Keep enforces edit rights). 152: the Viewer AI mode for users without edit rights is enforced at the top of checkAiOp / checkAiCandidate.
   if (!deps.getPermissions(deps.username).has(AI_USE)) return f("permission", ["the AI assistant is not enabled for this user"]);
   if (!deps.canViewDashboard(deps.username, deps.dashboardId)) return f("permission", ["this dashboard is not available"]);
 

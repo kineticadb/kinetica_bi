@@ -83,7 +83,7 @@ describe("checkAiCandidate", () => {
     const config = { dvMaxRecords: 1000, dvMaxJoins: 2, dvMaxPerSession: 5 } as never;
     const withA = buildGatewayDeps({ username: "dee", dashboardId: 1, shadow: createShadow(snap()), liveSchema: live(), config, approvals: { removeSaved: true } });
     const without = buildGatewayDeps({ username: "dee", dashboardId: 1, shadow: createShadow(snap()), liveSchema: live(), config });
-    const keys = ["aiDv", "approvals", "canViewDashboard", "dashboardId", "dashboardTableIds", "dynamicViewInfo", "getPermissions", "liveSchema", "shadow", "username"];
+    const keys = ["aiDv", "approvals", "canViewDashboard", "dashboardId", "dashboardTableIds", "dynamicViewInfo", "getPermissions", "liveSchema", "shadow", "username", "viewerRestriction"];
     expect(Object.keys(withA).sort()).toEqual(keys);
     expect(Object.keys(without).sort()).toEqual(keys);
     expect(without.approvals).toBeUndefined();
