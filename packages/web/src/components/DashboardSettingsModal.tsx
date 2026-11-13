@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { VIEWER_AI_MODES, VIEWER_AI_LABEL, type ViewerAiMode } from "@kinetica-bi/shared";
 import { useToastStore } from "../store/toast";
 
 // v1.20 Phase 110 Plan 01 (FSET-V120-01): dashboard-settings modal — its first (and
@@ -9,13 +10,19 @@ import { useToastStore } from "../store/toast";
 // .modal-body); the segmented control reuses RadioGroupRenderer's existing
 // .radiogroup--buttons/.radiogroup-button/.radiogroup-button--selected classes verbatim —
 // NO new CSS classes introduced.
+// 152: second occupant — the Viewer AI three-segment field (shown only when `onViewerAiChange` is passed),
+// same save-on-change contract and the same classes.
 export const DashboardSettingsModal = ({
   mode,
   onModeChange,
+  viewerAi,
+  onViewerAiChange,
   onClose,
 }: {
   mode: "topbar" | "panel";
   onModeChange: (mode: "topbar" | "panel") => Promise<void> | void;
+  viewerAi?: ViewerAiMode;
+  onViewerAiChange?: (mode: ViewerAiMode) => Promise<void> | void;
   onClose: () => void;
 }) => {
   const [saving, setSaving] = useState(false);
@@ -25,6 +32,20 @@ export const DashboardSettingsModal = ({
     setSaving(true);
     try {
       await onModeChange(next);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update dashboard settings";
+      useToastStore.getState().showToast(message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentViewerAi = viewerAi ?? "session_only";
+  const handleViewerAi = async (next: ViewerAiMode) => {
+    if (!onViewerAiChange || next === currentViewerAi || saving) return;
+    setSaving(true);
+    try {
+      await onViewerAiChange(next);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update dashboard settings";
       useToastStore.getState().showToast(message, "error");
@@ -62,6 +83,24 @@ export const DashboardSettingsModal = ({
               </button>
             </div>
           </div>
+          {onViewerAiChange && (
+            <div className="ds-field">
+              <span className="ds-field-label">Viewer AI</span>
+              <div className="radiogroup--buttons">
+                {VIEWER_AI_MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`radiogroup-button${currentViewerAi === m ? " radiogroup-button--selected" : ""}`}
+                    disabled={saving}
+                    onClick={() => handleViewerAi(m)}
+                  >
+                    {VIEWER_AI_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

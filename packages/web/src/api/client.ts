@@ -5,7 +5,7 @@ import { useToastStore } from "../store/toast";
 import type { FormatSpec } from "../lib/columnFormatter";
 import { comboShortHash } from "../lib/stableComboHash";
 import type { ExportJobStatus } from "../lib/exportFormat";
-import type { AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest, AiKeepRequest, AiKeepResponse, AiOp } from "@kinetica-bi/shared";
+import type { ViewerAiMode, AskRequest, AiDvSpec, AiDvMaterializeRequest, AiDvMaterializeResponse, AiDvDropRequest, AiKeepRequest, AiKeepResponse, AiOp } from "@kinetica-bi/shared";
 import {
   DASHBOARD_VERSION_HEADER,
   DASHBOARD_VERSION_READ_HEADER,
@@ -370,6 +370,7 @@ export type DashboardDto = {
   updated_at: string;
   // v2.0 Phase 142 (D-03/D-04): true while a generated dashboard has never been kept.
   generated_pending?: boolean;
+  viewer_ai?: ViewerAiMode; // 152: absent = Session only (optional so existing fixtures stay valid)
 };
 
 export const createDashboard = async (input: Pick<DashboardDto, "name"> & Partial<Pick<DashboardDto, "description">>): Promise<DashboardDto> => {
@@ -384,7 +385,7 @@ export const createDashboard = async (input: Pick<DashboardDto, "name"> & Partia
   return response.json() as Promise<DashboardDto>;
 };
 
-export const updateDashboard = async (id: number, attrs: Partial<Pick<DashboardDto, "name" | "description" | "filter_display_mode">>): Promise<DashboardDto> => {
+export const updateDashboard = async (id: number, attrs: Partial<Pick<DashboardDto, "name" | "description" | "filter_display_mode" | "viewer_ai">>): Promise<DashboardDto> => {
   const response = await apiFetch(`${API_BASE}/api/dashboards/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

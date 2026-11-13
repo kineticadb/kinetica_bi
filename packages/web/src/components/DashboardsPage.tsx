@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuthStore } from "../store/auth";
 import { PERMISSIONS } from "../lib/permissions";
@@ -82,6 +82,8 @@ import { aggregateSpatialTargetsByTable } from "../lib/spatialTargets";
 import { buildChipText } from "../lib/columnTypes";
 import { getAllChartTypes, getChartType } from "./charts/registry";
 import { openDashboardUrl, leaveDashboardUrl, clearDashboardUrl, readDashboardIdFromSearch, readDashboardModeFromSearch, setDashboardMode, type DashboardMode } from "../lib/dashboardUrl";  // Phase 113 (DLINK-V121-01/06/07) + Phase 117 (DSET-V122-01/02/06)
+import type { ViewerAiMode } from "@kinetica-bi/shared";
+import { useViewerAiStore, isViewerAiRestricted } from "../store/viewerAiStore";
 import { resolveRect, placeWidget, refitTextLayouts, textCharsPerLine, AI_DEFAULT_SIZE, AI_MIN_W, AI_MIN_H, type GridRect } from "@kinetica-bi/shared";
 import { DEFAULT_LAYER_CONFIG } from "../lib/layerDefaults";
 import { useAiConfigured } from "../lib/aiSession/aiAvailability";
@@ -789,6 +791,7 @@ const DashboardOpen = ({
   const pending = dashboard.generated_pending === true;
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const rawCanEdit         = hasPermission(PERMISSIONS.DASHBOARDS_EDIT);
+  const canCreatePerm      = hasPermission(PERMISSIONS.DASHBOARDS_CREATE);
   const rawCanConfigure    = hasPermission(PERMISSIONS.WIDGETS_CONFIGURE);
   const rawCanDynamicViews = hasPermission(PERMISSIONS.DYNAMIC_VIEWS_MANAGE);
   const rawCanLayers       = hasPermission(PERMISSIONS.LAYERS_MANAGE);
@@ -821,6 +824,24 @@ const DashboardOpen = ({
     const updated = await updateDashboard(dashboard.id, { filter_display_mode: mode });
     onDashboardUpdated?.(updated);
   };
+
+  const handleChangeViewerAi = async (mode: ViewerAiMode) => {
+    if (isAiEditLocked()) return;
+    const updated = await updateDashboard(dashboard.id, { viewer_ai: mode });
+    onDashboardUpdated?.(updated);
+  };
+
+  // 152: publish the effective Viewer AI mode for THIS user before paint, so a restricted user never sees an ask
+  // box flash. RAW edit permission (not the lock-ANDed canEdit), exactly as AiChangeBar decides canKeep.
+  useLayoutEffect(() => {
+    useViewerAiStore.getState().set({
+      dashboardId: dashboard.id,
+      mode: dashboard.viewer_ai ?? "session_only",
+      restricted: isViewerAiRestricted({ canEdit: rawCanEdit, ownUnkept: pending, canCreate: canCreatePerm }),
+    });
+  }, [dashboard.id, dashboard.viewer_ai, rawCanEdit, pending, canCreatePerm]);
+  // 152: leaving or switching dashboards drops the mode.
+  useEffect(() => () => useViewerAiStore.getState().reset(), [dashboard.id]);
 
   // v1.16 Aurora single-bar layout: hoist this dashboard's title + toolbar into the
   // topbar strip via a portal, instead of a separate header row below the topbar.
@@ -2203,6 +2224,8 @@ const DashboardOpen = ({
         <DashboardSettingsModal
           mode={dashboard.filter_display_mode}
           onModeChange={handleChangeDisplayMode}
+          viewerAi={dashboard.viewer_ai ?? "session_only"}
+          onViewerAiChange={handleChangeViewerAi}
           onClose={() => setShowSettingsModal(false)}
         />
       )}
