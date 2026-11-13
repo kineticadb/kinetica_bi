@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { ColumnDisplayConfigRow, CustomMetricRow, Dashboard, DashboardDynamicView, DashboardLayer, DashboardTableView, Table, Widget } from "./types";
 import { seedRbac } from "./lib/rbacSeed";
+import { DEFAULT_VIEWER_AI_MODE, isViewerAiMode } from "@kinetica-bi/shared";
 // v1.25 Phase 124 (SSYNC-V125-06/-09/-10/-11/-12): type-only import for loadColumnRefsInput's
 // return shape. No value import from this module — db.ts stays the SELECT-only data layer.
 import type { ColumnRefsInput } from "./lib/columnRefs";
@@ -465,6 +466,7 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!auditCols.has("rating")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating TEXT"); // 149: answer rating 'up' | 'down' | NULL
   if (!auditCols.has("rating_reasons")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating_reasons TEXT"); // 149: JSON array of reason codes
   if (!auditCols.has("rating_note")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rating_note TEXT"); // 149: user text, never logged
+  if (!auditCols.has("viewer_ai")) instance.exec("ALTER TABLE ai_audit ADD COLUMN viewer_ai TEXT"); // 152: mode at ask time for users without edit rights; NULL for editors
   if (!auditCols.has("rated_ts_ms")) instance.exec("ALTER TABLE ai_audit ADD COLUMN rated_ts_ms INTEGER"); // 149
   const prefCols = new Set((instance.prepare("PRAGMA table_info(ai_user_prefs)").all() as Array<{ name: string }>).map((c) => c.name));
   if (!prefCols.has("approve_first")) instance.exec("ALTER TABLE ai_user_prefs ADD COLUMN approve_first INTEGER NOT NULL DEFAULT 0"); // 150 APPROVE-V22-01
@@ -544,6 +546,7 @@ export const createDb = (dbPath: string): Database.Database => {
   if (!dashboardColNames.has("filter_display_mode")) {
     instance.exec("ALTER TABLE dashboards ADD COLUMN filter_display_mode TEXT");
   }
+  if (!dashboardColNames.has("viewer_ai")) instance.exec("ALTER TABLE dashboards ADD COLUMN viewer_ai TEXT"); // 152: NULL = session_only
   // v2.0 Phase 141 (AISES-V20-06, D-05/D-17): dashboard-wide change counter for Keep's 409.
   if (!dashboardColNames.has("version")) instance.exec("ALTER TABLE dashboards ADD COLUMN version INTEGER NOT NULL DEFAULT 0");
   // v2.0 Phase 142 (AIGEN-V20-02, D-03/D-06): "generated, never kept" marker. NULL/NULL = an ordinary dashboard.
@@ -622,6 +625,7 @@ const mapDashboard = (row: any): Dashboard => ({
   // v1.20 Phase 106 (FSET-V120-02/03): coalesce NULL / anything-not-'panel' to 'topbar'
   // so the wire value is always concrete — never null (backward-compat default).
   filter_display_mode: row.filter_display_mode === "panel" ? "panel" : "topbar",
+  viewer_ai: isViewerAiMode(row.viewer_ai) ? row.viewer_ai : DEFAULT_VIEWER_AI_MODE,
   generated_pending: row.generated_pending_at !== null && row.generated_pending_at !== undefined,
   created_at: row.created_at,
   updated_at: row.updated_at
@@ -694,13 +698,14 @@ export const createDashboard = (name: string, description?: string): Dashboard =
   return getDashboard(Number(result.lastInsertRowid)) as Dashboard;
 };
 
-export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name" | "description" | "filter_display_mode">>): Dashboard | undefined => {
+export const updateDashboard = (id: number, attrs: Partial<Pick<Dashboard, "name" | "description" | "filter_display_mode" | "viewer_ai">>): Dashboard | undefined => {
   const existing = getDashboard(id);
   if (!existing) return undefined;
-  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?").run(
+  db.prepare("UPDATE dashboards SET name = ?, description = ?, filter_display_mode = ?, viewer_ai = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?").run(
     attrs.name ?? existing.name,
     attrs.description ?? existing.description,
     "filter_display_mode" in attrs ? attrs.filter_display_mode : existing.filter_display_mode,
+    "viewer_ai" in attrs ? attrs.viewer_ai : existing.viewer_ai,
     id
   );
   return getDashboard(id);

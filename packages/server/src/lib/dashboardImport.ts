@@ -26,6 +26,7 @@
  */
 import type { CustomMetricRow, Table } from "../types";
 import type { DashboardExportFile, DanglingReference } from "./dashboardExport";
+import { isViewerAiMode } from "@kinetica-bi/shared";
 import {
   asId,
   collectDynamicViewRefs,
@@ -538,6 +539,9 @@ export const applyDashboardImport = (file: DashboardExportFile): ImportReport =>
     if (f.dashboard.filter_display_mode === "topbar" || f.dashboard.filter_display_mode === "panel") {
       updateDashboard(newDashboard.id, { filter_display_mode: f.dashboard.filter_display_mode });
     }
+    // 152: an older file without viewer_ai imports as Session only
+    const fileViewerAi: unknown = (f.dashboard as { viewer_ai?: unknown }).viewer_ai;
+    if (isViewerAiMode(fileViewerAi)) updateDashboard(newDashboard.id, { viewer_ai: fileViewerAi });
 
     // 3. Dynamic views. An unresolvable source table means there is nothing valid to bind to —
     // skip the dv, report it, and do NOT add it to maps.dynamicView (widgets pointing at it will

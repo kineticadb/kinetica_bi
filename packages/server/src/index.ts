@@ -176,7 +176,7 @@ import DOMPurify from "dompurify";
 import { sanitizeCssPostcss } from "./lib/brandCssSanitizer";
 // v2.0 Phase 141 (D-17/D-07): own-write attribution + list read-baseline stamps.
 import { stampWrite, stampRead } from "./lib/dashboardVersion";
-import { DASHBOARD_VERSION_HEADER, DASHBOARD_VERSION_READ_HEADER } from "@kinetica-bi/shared";
+import { DASHBOARD_VERSION_HEADER, DASHBOARD_VERSION_READ_HEADER, isViewerAiMode } from "@kinetica-bi/shared";
 
 export const createApp = async (): Promise<express.Express> => {
   const app = express();
@@ -928,9 +928,12 @@ export const createApp = async (): Promise<express.Express> => {
   app.patch("/api/dashboards/:id", ...requirePermission(PERMISSIONS.DASHBOARDS_EDIT), (req, res) => {
     const id = Number(req.params.id);
     if (denyHiddenDashboard(req, res, id)) return;
-    const body = req.body as { filter_display_mode?: unknown };
+    const body = req.body as { filter_display_mode?: unknown; viewer_ai?: unknown };
     if ("filter_display_mode" in body && body.filter_display_mode !== "topbar" && body.filter_display_mode !== "panel") {
       return res.status(400).json({ error: "filter_display_mode must be 'topbar' or 'panel'." });
+    }
+    if ("viewer_ai" in body && !isViewerAiMode(body.viewer_ai)) {
+      return res.status(400).json({ error: "viewer_ai must be 'off', 'answers_filters' or 'session_only'." });
     }
     const updated = stampWrite(res, id, () => updateDashboard(id, req.body));
     if (!updated) return res.status(404).json({ error: "Dashboard not found." });

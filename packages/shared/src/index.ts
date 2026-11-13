@@ -10,3 +10,4 @@ export * from "./aiColumnRefs";
 export * from "./aiKeep";
 export * from "./mapView";
 export * from "./aiSnapshot";
+export * from "./viewerAi";

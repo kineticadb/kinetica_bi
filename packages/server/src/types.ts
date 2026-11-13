@@ -1,3 +1,4 @@
+import type { ViewerAiMode } from "@kinetica-bi/shared";
 export type Dashboard = {
   id: number;
   name: string;
@@ -8,6 +9,8 @@ export type Dashboard = {
   filter_display_mode: "topbar" | "panel";
   // v2.0 Phase 142 (D-03/D-04): true while a generated dashboard has never been kept. generated_by is never exposed.
   generated_pending: boolean;
+  // 152: NULL column = Session only (coalesced by mapDashboard; wire value always concrete)
+  viewer_ai: ViewerAiMode;
   created_at: string;
   updated_at: string;
 };
