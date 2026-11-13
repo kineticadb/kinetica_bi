@@ -312,3 +312,24 @@ describe("APPRAUD approve-first outcomes (Phase 150)", () => {
     expect(d.changes.proposed).toEqual(["A", "B"]);
   });
 });
+
+describe("152 Viewer AI audit", () => {
+  it("VAIAUD-1: the Outcome filter accepts viewer_ai_off", async () => {
+    const id = ins("vai-off", { outcome: "viewer_ai_off", detail: "viewer_ai_off", ts: NOW - 300 });
+    const res = await get("/api/ai/audit?outcome=viewer_ai_off");
+    expect(res.status).toBe(200);
+    expect((await res.json()).rows.map((r: any) => r.id)).toEqual([id]);
+  });
+  it("VAIAUD-2: the detail returns viewerAi for a restricted row and null otherwise", async () => {
+    const a = ins("vai-af", { ts: NOW - 300 });
+    db.prepare("UPDATE ai_audit SET viewer_ai='answers_filters' WHERE id=?").run(a);
+    expect((await json(`/api/ai/audit/${a}`)).viewerAi).toBe("answers_filters");
+    expect((await json(`/api/ai/audit/${ids.ask}`)).viewerAi).toBeNull();
+  });
+  it("VAIAUD-3: a viewer_ai_off row is not rateable", async () => {
+    const id = ins("vai-rate", { user: "dee", outcome: "viewer_ai_off", ts: NOW - 300 });
+    const res = await fetch(`${base}/api/ai/answers/${id}/rating`, { method: "PUT", headers: { "Content-Type": "application/json", Cookie: dee.cookie }, body: JSON.stringify({ rating: "up" }) });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "AI_NOT_RATEABLE" });
+  });
+});
