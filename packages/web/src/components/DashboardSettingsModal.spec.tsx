@@ -136,4 +136,53 @@ describe("DashboardSettingsModal", () => {
     expect(screen.queryByRole("button", { name: /^save$/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /^cancel$/i })).toBeNull();
   });
+
+  describe("Viewer AI field (152)", () => {
+    const labels = ["Off", "Answers and filters", "Session only"];
+    const renderVai = (over: Record<string, unknown> = {}) =>
+      render(
+        <DashboardSettingsModal
+          mode="topbar"
+          onModeChange={vi.fn()}
+          viewerAi="session_only"
+          onViewerAiChange={vi.fn()}
+          onClose={vi.fn()}
+          {...over}
+        />
+      );
+    const vaiField = (c: HTMLElement) =>
+      Array.from(c.querySelectorAll(".ds-field")).find((f) => f.querySelector(".ds-field-label")?.textContent === "Viewer AI");
+
+    it("VAIMOD-1: three segments in order, Session only selected", () => {
+      const { container } = renderVai();
+      const field = vaiField(container)!;
+      expect(field).toBeTruthy();
+      const buttons = Array.from(field.querySelectorAll(".radiogroup--buttons .radiogroup-button"));
+      expect(buttons.map((b) => b.textContent)).toEqual(labels);
+      expect(buttons.map((b) => b.classList.contains("radiogroup-button--selected"))).toEqual([false, false, true]);
+    });
+
+    it("VAIMOD-2: click calls onViewerAiChange once; the selected one is a no-op", async () => {
+      const onViewerAiChange = vi.fn();
+      renderVai({ onViewerAiChange });
+      await userEvent.click(screen.getByRole("button", { name: "Answers and filters" }));
+      expect(onViewerAiChange).toHaveBeenCalledTimes(1);
+      expect(onViewerAiChange).toHaveBeenCalledWith("answers_filters");
+      await userEvent.click(screen.getByRole("button", { name: "Session only" }));
+      expect(onViewerAiChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("VAIMOD-3: a rejected change toasts and keeps the modal open", async () => {
+      const onViewerAiChange = vi.fn().mockRejectedValue(new Error("nope"));
+      renderVai({ onViewerAiChange });
+      await userEvent.click(screen.getByRole("button", { name: "Off" }));
+      await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.message === "nope")).toBe(true));
+      expect(screen.getByText("Dashboard Settings")).toBeInTheDocument();
+    });
+
+    it("VAIMOD-4: without onViewerAiChange the field is absent", () => {
+      const { container } = render(<DashboardSettingsModal mode="topbar" onModeChange={vi.fn()} onClose={vi.fn()} />);
+      expect(vaiField(container)).toBeUndefined();
+    });
+  });
 });

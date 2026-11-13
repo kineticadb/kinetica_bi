@@ -19,6 +19,8 @@ import { useAiConfigured } from "../../lib/aiSession/aiAvailability";
 import type { AskContext } from "../../lib/aiSession/askRunner";
 import { useAiSessionStore } from "../../store/aiSessionStore";
 import { useAuthStore } from "../../store/auth";
+import { useViewerAiStore } from "../../store/viewerAiStore";
+import { afterEach } from "vitest";
 import { DashboardContextProvider } from "../DashboardContext";
 import type { WidgetDto } from "../../api/client";
 import type { Turn } from "../../lib/aiSession/types";
@@ -189,5 +191,58 @@ describe("AiWidgetRenderer", () => {
       useAiSessionStore.getState().applyTurn({ prompt: "q", answer: "plain", ops: [], chat: { status: "ok", answerId: 3, followUps: [] } }, baseline);
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("AiWidgetRenderer Viewer AI (152)", () => {
+  const SMALL = { x: 0, y: 0, w: 6, h: 10 };
+  const setVai = (mode: "off" | "answers_filters" | "session_only", restricted: boolean) =>
+    useViewerAiStore.getState().set({ dashboardId: 1, mode, restricted });
+  afterEach(() => useViewerAiStore.getState().reset());
+
+  it("VAITILE-1: restricted + off, large tile -> note only", () => {
+    setVai("off", true);
+    render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    const note = screen.getByRole("note");
+    expect(note.textContent).toBe("AI is off for this dashboard.");
+    expect(note.classList.contains("ai-widget-notice")).toBe(true);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("VAITILE-2: restricted + off, small tile -> note, no history, no textbox", () => {
+    setVai("off", true);
+    render(wrap(<AiWidgetRenderer widget={w(SMALL)} />));
+    expect(screen.getByRole("note").textContent).toBe("AI is off for this dashboard.");
+    expect(screen.queryByRole("button", { name: "Open conversation" })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("VAITILE-3: NOT restricted + off -> normal ask box", () => {
+    setVai("off", false);
+    render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    expect(screen.getByPlaceholderText("Ask a question about this dashboard")).toBeTruthy();
+  });
+
+  it.each([["large", LARGE], ["small", SMALL]])("VAITILE-4: restricted + answers_filters placeholder (%s)", (_n, layout) => {
+    setVai("answers_filters", true);
+    render(wrap(<AiWidgetRenderer widget={w(layout)} />));
+    expect(screen.getByPlaceholderText("Ask a question or filter the dashboard")).toBeTruthy();
+  });
+
+  it("VAITILE-5: answers_filters hides starters; session_only keeps them", () => {
+    const starter = "Show total fare_amount by payment_type";
+    setVai("answers_filters", true);
+    const r = render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    expect(screen.queryByRole("button", { name: starter })).toBeNull();
+    r.unmount();
+    setVai("session_only", true);
+    render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    expect(screen.getByRole("button", { name: starter })).toBeTruthy();
+  });
+
+  it("VAITILE-6: store untouched -> today's placeholder and starters", () => {
+    render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    expect(screen.getByPlaceholderText("Ask a question about this dashboard")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show total fare_amount by payment_type" })).toBeTruthy();
   });
 });

@@ -120,6 +120,7 @@ vi.mock("../api/client", async (importOriginal) => {
     createLayer: vi.fn(),
     updateLayer: vi.fn(),
     deleteLayer: vi.fn(),
+    updateDashboard: vi.fn(),
   };
 });
 
@@ -152,7 +153,7 @@ import DashboardsPage from "./DashboardsPage";
 import {
   listDashboards, listWidgets, listViews, listDashboardTables,
   createWidget, updateWidget, deleteWidget,
-  createLayer, updateLayer, deleteLayer,
+  createLayer, updateLayer, deleteLayer, updateDashboard,
 } from "../api/client";
 
 const dashboardId = 1;
@@ -184,8 +185,8 @@ const baseline = (w: any[] = saved) => baselineFixture({ widgets: w as any, laye
 const turn = (w: any[] = saved) =>
   act(() => { useAiSessionStore.getState().applyTurn({ prompt: "t", ops: [addWidgetOp(-1, "records", "AI records")] }, baseline(w)); });
 
-const openDashboard = async (widgets: any[] = saved, tables: any[] = []) => {
-  (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dashboard]);
+const openDashboard = async (widgets: any[] = saved, tables: any[] = [], dash: any = dashboard) => {
+  (listDashboards as ReturnType<typeof vi.fn>).mockResolvedValue([dash]);
   (listDashboardTables as ReturnType<typeof vi.fn>).mockResolvedValue(tables);
   (listViews as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (listWidgets as ReturnType<typeof vi.fn>).mockResolvedValue(widgets);
@@ -303,5 +304,35 @@ describe("DashboardsPage AI widget wiring (Phase 137 Plan 11)", () => {
     expect(cancelLog).toHaveLength(1);
     expect(cancelLog[0]).toBeGreaterThan(0); // session still populated when cancelAsk ran
     expect(useAiSessionStore.getState().derived.appliedOpCount).toBe(0); // and reset afterwards
+  });
+
+  describe("Viewer AI (152)", () => {
+    const OFF = "AI is off for this dashboard.";
+    const asViewer = () =>
+      useAuthStore.setState((s) => ({
+        user: { ...s.user!, permissions: [PERMISSIONS.DASHBOARDS_VIEW, PERMISSIONS.AI_USE] },
+      }));
+
+    it("VAIPAGE-1: a viewer with Use AI sees the Off line, no ask box", async () => {
+      asViewer();
+      await openDashboard([...saved, aiWidget], [], { ...dashboard, viewer_ai: "off" });
+      expect(await screen.findByText(OFF)).toBeTruthy();
+      expect(screen.queryByPlaceholderText("Ask a question about this dashboard")).toBeNull();
+    });
+
+    it("VAIPAGE-2: an editor keeps the ask box under Off", async () => {
+      grantAi();
+      await openDashboard([...saved, aiWidget], [], { ...dashboard, viewer_ai: "off" });
+      expect(await screen.findByPlaceholderText("Ask a question about this dashboard")).toBeTruthy();
+      expect(screen.queryByText(OFF)).toBeNull();
+    });
+
+    it("VAIPAGE-3: clicking Off in Dashboard Settings PATCHes viewer_ai", async () => {
+      vi.mocked(updateDashboard).mockResolvedValue({ ...dashboard, viewer_ai: "off" } as any);
+      await openDashboard();
+      await userEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+      await userEvent.click(await screen.findByRole("button", { name: "Off" }));
+      await waitFor(() => expect(updateDashboard).toHaveBeenCalledWith(dashboardId, { viewer_ai: "off" }));
+    });
   });
 });
