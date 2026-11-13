@@ -335,3 +335,37 @@ describe("AiActivityPage", () => {
     expect(within(group).getByText("Filter on vendor")).toBeTruthy();
   });
 });
+
+describe("AiActivityPage Viewer AI", () => {
+  it("VAIACT-1: the Viewer AI off outcome is a filter option and a row label", async () => {
+    vi.mocked(listAiAudit).mockResolvedValue(list([row({ id: 3, outcome: "viewer_ai_off" })]));
+    render(<AiActivityPage />);
+    const table = await screen.findByRole("table");
+    expect(await within(table).findByText("Viewer AI off")).toBeTruthy();
+    const opt = screen.getByRole("option", { name: "Viewer AI off" }) as HTMLOptionElement;
+    expect(opt.value).toBe("viewer_ai_off");
+  });
+
+  it.each([
+    ["answers_filters", "Answers and filters"],
+    ["session_only", "Session only"],
+    ["off", "Off"],
+  ] as const)("VAIACT-2: detail with viewerAi %s shows %s", async (mode, label) => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({ viewerAi: mode }));
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    const dt = await within(panel).findByText("Viewer AI");
+    expect(dt.tagName).toBe("DT");
+    expect(dt.nextElementSibling?.tagName).toBe("DD");
+    expect(dt.nextElementSibling?.textContent).toBe(label);
+  });
+
+  it("VAIACT-3: a detail without viewerAi has no Viewer AI row", async () => {
+    vi.mocked(getAiAuditEntry).mockResolvedValue(detail({ viewerAi: null }));
+    render(<AiActivityPage />);
+    fireEvent.click(await screen.findByText("How many trips?"));
+    const panel = await screen.findByLabelText("AI activity detail");
+    expect(within(panel).queryByText("Viewer AI")).toBeNull();
+  });
+});

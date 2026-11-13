@@ -6,6 +6,7 @@ import { baselineFixture, mapWidget, savedLayer, addWidgetOp, addLayerOp, patchL
 import { AI_CHAT_COPY } from "./chatText";
 import { useFilterStore } from "../../store/filterStore";
 import { recordsWidget, applyFilterRaw } from "../../test/aiSessionHarness";
+import { useViewerAiStore, selectEffectiveViewerAi } from "../../store/viewerAiStore";
 
 vi.mock("../aiOps/aiFilterZeroRows", () => ({
   checkZeroRowFilters: vi.fn().mockResolvedValue(undefined),
@@ -289,5 +290,45 @@ describe("askRunner approve first (150)", () => {
     expect(mark).not.toHaveBeenCalled();
     expect(st().run.status).toBe("idle");
     expect(st().turns).toHaveLength(1);
+  });
+});
+
+describe("askRunner Viewer AI refusals", () => {
+  const eff = () => selectEffectiveViewerAi(useViewerAiStore.getState());
+  const errToasts = () => useToastStore.getState().toasts.filter((t) => t.kind === "error").length;
+  beforeEach(() => useViewerAiStore.getState().set({ dashboardId: 1, mode: "session_only", restricted: true }));
+  afterEach(() => useViewerAiStore.getState().reset());
+
+  it("VAIREF-1: a 423 AI_VIEWER_OFF switches to Off with no error turn and no toast", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ error: "AI is off for this dashboard.", code: "AI_VIEWER_OFF", message: "AI is off for this dashboard.", mode: "off" }, 423));
+    await runAsk(mkCtx(), "hello");
+    expect(eff()).toBe("off");
+    expect(st().turns).toHaveLength(0);
+    expect(errToasts()).toBe(0);
+    expect(st().run.status).toBe("idle");
+  });
+
+  it("VAIREF-2: a 403 PERMISSION_DENIED still records the no-access turn and leaves the mode", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ code: "PERMISSION_DENIED", message: "nope" }, 403));
+    await runAsk(mkCtx(), "hello");
+    expect(st().turns[0].chat).toMatchObject({ message: AI_CHAT_COPY.noAccess });
+    expect(eff()).toBe("session_only");
+  });
+
+  it("VAIREF-3: an answers-and-filters skipped reason switches the mode after applying the turn", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([result({ skipped: [{ label: "Added bar", stage: "permission", reasons: ["Viewer AI: answers and filters only"] }] })]),
+    );
+    await runAsk(mkCtx(), "add a bar");
+    expect(st().turns).toHaveLength(1);
+    expect(eff()).toBe("answers_filters");
+  });
+
+  it("VAIREF-4: an unrelated skipped reason leaves the mode unchanged", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([result({ skipped: [{ label: "Added bar", stage: "permission", reasons: ["Something else"] }] })]),
+    );
+    await runAsk(mkCtx(), "add a bar");
+    expect(eff()).toBe("session_only");
   });
 });

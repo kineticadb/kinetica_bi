@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../../api/client", async (orig) => ({
   ...(await orig<object>()),
@@ -16,6 +16,7 @@ import type { AskContext } from "./askRunner";
 import { useAiSessionStore, hasPendingProposal, selectPendingProposal } from "../../store/aiSessionStore";
 import { useFilterStore } from "../../store/filterStore";
 import { useToastStore } from "../../store/toast";
+import { useViewerAiStore, selectEffectiveViewerAi } from "../../store/viewerAiStore";
 import { baselineFixture, addWidgetOp, applyFilterRaw } from "../../test/aiSessionHarness";
 
 const st = () => useAiSessionStore.getState();
@@ -163,5 +164,40 @@ describe("proposalRunner", () => {
     expect(item && item.kind === "turn" && item.chat?.proposal).toMatchObject({ ops: [], status: "expired" });
     expect(st().proposalGhosts).toBeNull();
     expect(selectPendingProposal(st())).toBeNull();
+  });
+});
+
+describe("proposalRunner Viewer AI refusals", () => {
+  const eff = () => selectEffectiveViewerAi(useViewerAiStore.getState());
+  beforeEach(() => useViewerAiStore.getState().set({ dashboardId: 1, mode: "session_only", restricted: true }));
+  afterEach(() => useViewerAiStore.getState().reset());
+
+  it("VAIREF-5: an Apply refused with AI_VIEWER_OFF expires the proposal and switches to Off, no toast", async () => {
+    seed([bar(), flt()]);
+    vi.mocked(applyAiProposal).mockResolvedValueOnce({ ok: false, status: 423, code: "AI_VIEWER_OFF", message: "AI is off for this dashboard." });
+    await applyPendingProposal(ctx);
+    expect(proposal()).toMatchObject({ status: "expired", busy: false });
+    expect(eff()).toBe("off");
+    expect(toasts()).toEqual([]);
+  });
+
+  it("VAIREF-6: a 409 still expires and toasts the decided copy", async () => {
+    seed([bar(), flt()]);
+    vi.mocked(applyAiProposal).mockResolvedValueOnce({ ok: false, status: 409, message: "x" });
+    await applyPendingProposal(ctx);
+    expect(proposal()).toMatchObject({ status: "expired" });
+    expect(toasts()).toContain("These changes were already decided.");
+    expect(eff()).toBe("session_only");
+  });
+
+  it("VAIREF-7: a failed op with the answers-and-filters reason switches the mode", async () => {
+    seed([bar(), flt()]);
+    vi.mocked(applyAiProposal).mockResolvedValueOnce({
+      ok: true,
+      data: dto({ outcome: "partly_applied", accepted: [flt()], acceptedIndexes: [1], failed: [{ index: 0, label: "Added bar", stage: "permission", reasons: ["Viewer AI: answers and filters only"] }] }),
+    });
+    await applyPendingProposal(ctx);
+    expect(proposal().status).toBe("partly_applied");
+    expect(eff()).toBe("answers_filters");
   });
 });
