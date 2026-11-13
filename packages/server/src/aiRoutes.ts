@@ -15,13 +15,14 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
-import { AskRequestSchema, ASK_REQUEST_MAX_BYTES } from "@kinetica-bi/shared";
+import { AskRequestSchema, ASK_REQUEST_MAX_BYTES, VIEWER_AI_OFF_CODE, VIEWER_AI_OFF_MESSAGE } from "@kinetica-bi/shared";
 import { requireAuth, type AuthedRequest } from "./auth";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 import { getAiConfig } from "./lib/aiConfig";
 import { AI_CONTRACT_VERSION } from "./lib/aiContract";
-import { admitAiAnswer, finalizeAiAnswer, type AiQueryAuditEntry, type FinalizeInput } from "./lib/aiAudit";
+import { resolveViewerAi } from "./lib/viewerAi";
+import { admitAiAnswer, finalizeAiAnswer, recordViewerAiOff, type AiQueryAuditEntry, type FinalizeInput } from "./lib/aiAudit";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
 import { getDashboard, listWidgets } from "./db";
 import { getAiPrefs } from "./lib/aiFeedback";
@@ -94,6 +95,15 @@ export function registerAiRoutes(app: Express): void {
       body.snapshot.widgets.every((w) => w.type === "ai");
     // 150: Approve first is read at ask time; the switch affects the next answer only.
     const propose = !generate && getAiPrefs(username).approveFirst;
+    // 152: Viewer AI. Checked on EVERY ask (clarification answers, Retry, chips and follow-ups are asks too). Editors and the
+    // creator of their own unkept build are never restricted. Off: refused before admit (no provider call, not counted).
+    // 423 on purpose: 403 reads as "no access" and 409 collides with AI_BUSY.
+    const viewer = resolveViewerAi(username, dashboard.id);
+    if (viewer.restricted && viewer.mode === "off") {
+      recordViewerAiOff({ username: key, dashboardId: dashboard.id, requestId: randomUUID(), question: body.question, provider: config.provider, model: config.model, dataAccess: config.dataAccess, allowListVersion: AI_CONTRACT_VERSION, now: Date.now() });
+      return res.status(423).json({ error: VIEWER_AI_OFF_MESSAGE, code: VIEWER_AI_OFF_CODE, mode: "off" });
+    }
+    const viewerAi = viewer.restricted ? viewer.mode : undefined;
     if (inflight.has(key)) {
       return res.status(409).json({ error: "An AI answer is already in progress.", code: "AI_BUSY" });
     }
@@ -112,6 +122,7 @@ export function registerAiRoutes(app: Express): void {
       capPerHour: config.maxAnswersPerUserPerHour,
       capPerDay: config.maxAnswersPerDay,
       kind: generate ? "generate" : "ask",
+      ...(viewerAi ? { viewerAi } : {}),
     });
     if (!admit.ok) {
       res.setHeader("Retry-After", String(admit.retryAfterSeconds));
@@ -183,6 +194,7 @@ export function registerAiRoutes(app: Express): void {
           config,
           generate,
           propose,
+          ...(viewerAi ? { viewerAi } : {}),
           signal: ac.signal,
           sse,
           queryLog,

@@ -6,12 +6,13 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod/v4";
 import { db, getDashboard, getGeneratedPending } from "./db";
+import { isViewerAiMode } from "@kinetica-bi/shared";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 import { AI_RATING_REASONS, RATEABLE_OUTCOME_SQL } from "./lib/aiFeedback";
 
 export const AI_AUDIT_PAGE_SIZE = 50;
-export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed", "unfinished", "applied", "partly_applied", "rejected", "not_decided"] as const;
+export const AI_AUDIT_OUTCOMES = ["ok", "cancelled", "capped", "provider_error", "rate_limited", "kept", "keep_conflict", "keep_denied", "keep_invalid", "keep_failed", "unfinished", "applied", "partly_applied", "rejected", "not_decided", "viewer_ai_off"] as const;
 
 type DashState = "live" | "pending" | "deleted" | "none";
 const DAY_MS = 86_400_000;
@@ -212,6 +213,7 @@ export function registerAiAuditRoutes(app: Express): void {
 
     return res.json({
       ...dto,
+      viewerAi: isViewerAiMode(r.viewer_ai) ? r.viewer_ai : null,
       question: dto.kind === "keep" ? "" : String(r.question ?? ""),
       summary: dto.kind === "keep" ? keepSummary(dto.outcome, r.changes_json ?? null) : null,
       answerText: r.answer_text ?? null,

@@ -1,6 +1,7 @@
 // Phase 135-10: one admitted ask -> streamed SSE events + the FinalizeInput for the audit row. Never throws.
 // Events: status / step / result {answerId,text,ops,skipped,clarifications,followUps,applied} (ONLY on outcome ok, once) / error / done. Nothing from a non-ok answer is applied.
-import { AI_QUERY_LIST_MAX, type AskRequest } from "@kinetica-bi/shared";
+import { AI_QUERY_LIST_MAX, type AskRequest, type ViewerAiMode } from "@kinetica-bi/shared";
+import { VIEWER_AI_AF_PART, isToolAllowedForViewerMode } from "../viewerAi";
 import { getDashboardDynamicView, listDashboardDynamicViews, listDashboardTables, listTables } from "../../db";
 import type { AiConfig } from "../aiConfig";
 import type { AiQueryAuditEntry, FinalizeInput } from "../aiAudit";
@@ -39,6 +40,8 @@ export type RunAnswerInput = {
   generate?: boolean;
   /** 150: server-derived from the user's approveFirst pref; never client-supplied. Ignored in generate mode. */
   propose?: boolean;
+  /** 152: server-derived; set only for users without edit rights. "answers_filters" narrows the offered tools and adds the system note. */
+  viewerAi?: ViewerAiMode;
   signal: AbortSignal;
   sse: ReturnType<typeof createSseWriter>;
   now?: () => number;
@@ -115,13 +118,15 @@ export async function runAnswer(input: RunAnswerInput): Promise<FinalizeInput> {
     }
     const propose = input.propose === true && !input.generate;
     const limits = input.generate ? generateLimits(config) : { maxToolSteps: config.maxToolSteps, maxNewWidgets: config.maxNewWidgets };
+    const af = input.viewerAi === "answers_filters";
     const system = [
       ...buildSystemParts({ view, dashboardTables, maxToolSteps: limits.maxToolSteps, dataAccess: config.dataAccess, ...(queryRules ? { query: queryRules } : {}) }),
       ...(input.generate ? [part.system(buildGenerateRecipe(config.dataAccess))] : []),
       ...(propose ? [part.system(PROPOSE_SYSTEM_PART)] : []),
+      ...(af ? [part.system(VIEWER_AI_AF_PART)] : []),
     ];
     const messages = buildConversationMessages(body.turns, body.question, config.historyTurns);
-    const registry = buildToolRegistry({ dataAccess: config.dataAccess, extraTools: [...QUERY_TOOLS] });
+    const registry = buildToolRegistry({ dataAccess: config.dataAccess, extraTools: [...QUERY_TOOLS], ...(af ? { offered: (t) => isToolAllowedForViewerMode(t.name, "answers_filters") } : {}) });
     const shadow = createShadow(body.snapshot);
     const provider = getAiProviderFactory()(config);
 

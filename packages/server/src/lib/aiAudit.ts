@@ -7,13 +7,15 @@
  */
 import type Database from "better-sqlite3";
 import { db } from "../db";
-import type { AiKeepIdMap } from "@kinetica-bi/shared";
+import type { AiKeepIdMap, ViewerAiMode } from "@kinetica-bi/shared";
 
-export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited" | "not_decided";
+export type AiOutcome = "ok" | "cancelled" | "capped" | "provider_error" | "rate_limited" | "not_decided"
+  | "viewer_ai_off"; // 152: an ask refused because Viewer AI is Off for a user without edit rights; never counted
 export type AiProposalOutcome = "applied" | "partly_applied" | "rejected";
 export type AiAuditKind = "ask" | "generate" | "keep" | "mcp";
 export type AiToolAuditEntry = { name: string; args?: unknown; result: "ok" | "rejected" | "error"; stage?: string; reasons?: string[] };
-export type AdmitInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number; capPerHour: number; capPerDay: number; kind?: "ask" | "generate" };
+export type AdmitInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number; capPerHour: number; capPerDay: number; kind?: "ask" | "generate";
+  /** 152: stored only for users without edit rights; NULL for editors. */ viewerAi?: ViewerAiMode };
 export type AdmitResult =
   | { ok: true; auditId: number }
   | { ok: false; code: "AI_USER_CAP"; message: string; retryAfterSeconds: number }
@@ -39,13 +41,23 @@ export function formatStepCapMessage(maxSteps: number): string {
 
 const INSERT_REFUSAL = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, provider, model, data_access, allow_list_version, steps, kind)
   VALUES (@now, @username, @dashboardId, @requestId, @question, 'final', 'capped', @detail, 0, @provider, @model, @dataAccess, @allowListVersion, 0, @kind)`;
-const INSERT_RUNNING = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, counted, provider, model, data_access, allow_list_version, kind)
-  VALUES (@now, @username, @dashboardId, @requestId, @question, 'running', 1, @provider, @model, @dataAccess, @allowListVersion, @kind)`;
+const INSERT_RUNNING = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, counted, provider, model, data_access, allow_list_version, kind, viewer_ai)
+  VALUES (@now, @username, @dashboardId, @requestId, @question, 'running', 1, @provider, @model, @dataAccess, @allowListVersion, @kind, @viewerAi)`;
+const INSERT_VIEWER_OFF = `INSERT INTO ai_audit (ts_ms, username, dashboard_id, request_id, question, status, outcome, outcome_detail, counted, provider, model, data_access, allow_list_version, steps, kind, viewer_ai)
+  VALUES (@now, @username, @dashboardId, @requestId, @question, 'final', 'viewer_ai_off', 'viewer_ai_off', 0, @provider, @model, @dataAccess, @allowListVersion, 0, 'ask', 'off')`;
+
+export type ViewerAiOffInput = { username: string; dashboardId: number; requestId: string; question: string; provider: string; model: string; dataAccess: string; allowListVersion: string; now: number };
+/** 152: one final, uncounted row for an ask refused because Viewer AI is Off. Returns the row id. */
+export function recordViewerAiOff(input: ViewerAiOffInput, conn: Database.Database = db): number {
+  const info = conn.prepare(INSERT_VIEWER_OFF).run(input);
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level: "info", event: "ai_viewer_off", username: input.username, dashboard_id: input.dashboardId }));
+  return Number(info.lastInsertRowid);
+}
 
 export function admitAiAnswer(input: AdmitInput, conn: Database.Database = db): AdmitResult {
   const run = conn.transaction((): AdmitResult => {
     const { now, capPerHour, capPerDay } = input;
-    const row = { ...input, kind: input.kind ?? "ask" };
+    const row = { ...input, kind: input.kind ?? "ask", viewerAi: input.viewerAi ?? null };
     if (capPerHour > 0) {
       const rows = conn
         .prepare("SELECT ts_ms FROM ai_audit WHERE username = ? AND counted = 1 AND ts_ms > ? ORDER BY ts_ms ASC")
