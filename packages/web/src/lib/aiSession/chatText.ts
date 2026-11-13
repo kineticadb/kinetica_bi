@@ -1,7 +1,9 @@
 // 137: all user-facing copy for the AI widget/bar lives here so UI and specs share exact text.
-import type { AskQueryEntry } from "@kinetica-bi/shared";
+import { VIEWER_AI_OFF_MESSAGE, type AskQueryEntry } from "@kinetica-bi/shared";
 
 export const AI_CHAT_COPY = {
+  viewerAiOff: VIEWER_AI_OFF_MESSAGE, // 152: "AI is off for this dashboard."
+  askPlaceholderAnswersFilters: "Ask a question or filter the dashboard", // 152
   emptyHint: "Ask about this dashboard's data",
   noAccess: "You don't have access to the AI assistant",
   notConfigured: "The AI assistant isn't set up on this server.",

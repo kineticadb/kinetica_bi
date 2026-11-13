@@ -7,6 +7,7 @@ import type { WidgetDto } from "../../api/client";
 import { useAuthStore } from "../../store/auth";
 import { PERMISSIONS } from "../../lib/permissions";
 import { useDashboardContextOptional } from "../DashboardContext";
+import { useViewerAiStore, selectEffectiveViewerAi } from "../../store/viewerAiStore";
 import { useAiSessionStore, selectPendingProposal } from "../../store/aiSessionStore";
 import { useAiConfigured } from "../../lib/aiSession/aiAvailability";
 import { runAsk } from "../../lib/aiSession/askRunner";
@@ -22,6 +23,7 @@ export function AiWidgetRenderer({ widget }: { widget: WidgetDto }) {
   const canUse = useAuthStore((s) => s.hasPermission)(PERMISSIONS.AI_USE);
   const configured = useAiConfigured(canUse);
   const ctx = useDashboardContextOptional()?.ai;
+  const viewerAi = useViewerAiStore(selectEffectiveViewerAi); // 152
   const [open, setOpen] = useState(false);
   const historyRef = useRef<HTMLButtonElement>(null);
   const lastTurn = useAiSessionStore((s) => (s.turns.length ? s.turns[s.turns.length - 1] : null));
@@ -51,6 +53,7 @@ export function AiWidgetRenderer({ widget }: { widget: WidgetDto }) {
   if (!canUse) return notice(AI_CHAT_COPY.noAccess);
   if (configured === false) return notice(AI_CHAT_COPY.notConfigured);
   if (!ctx) return notice(AI_CHAT_COPY.unavailable);
+  if (viewerAi === "off") return notice(AI_CHAT_COPY.viewerAiOff); // 152: tile keeps its grid place; no ask box, no history drawer
 
   const rect = resolveRect(widget.config?.layout as Partial<GridRect> | undefined, 0);
   if (!isSmallAiTile(rect)) {

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAiSessionStore, selectPendingProposal } from "../../store/aiSessionStore";
 import { runAsk, cancelAsk, choiceQuestion, type AskContext } from "../../lib/aiSession/askRunner";
 import { AI_CHAT_COPY, turnChanges, formatElapsed, describeSkipped, formatQueriesToggle, describeQueryEntry } from "../../lib/aiSession/chatText";
+import { useViewerAiStore, selectEffectiveViewerAi } from "../../store/viewerAiStore";
 import { buildStarterQuestions, buildTemplateFollowUps } from "../../lib/aiSession/starterQuestions";
 import { useFilterStore } from "../../store/filterStore";
 import { currentFilter, clearFilterAsUser } from "../../lib/aiOps/aiFilterApplier";
@@ -54,6 +55,7 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
   const running = useAiSessionStore((s) => s.run.status === "running");
   // 150: a pending proposal must be applied or rejected before another ask.
   const pending = useAiSessionStore((s) => selectPendingProposal(s) !== null);
+  const viewerAi = useViewerAiStore(selectEffectiveViewerAi); // 152
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -90,7 +92,11 @@ export function AiAskBox({ ctx }: { ctx: AskContext }) {
         rows={1}
         maxLength={MAX_LEN}
         disabled={pending}
-        placeholder={pending ? PROPOSAL_COPY.askDisabled : AI_CHAT_COPY.askPlaceholder}
+        placeholder={pending
+            ? PROPOSAL_COPY.askDisabled
+            : viewerAi === "answers_filters"
+              ? AI_CHAT_COPY.askPlaceholderAnswersFilters
+              : AI_CHAT_COPY.askPlaceholder}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -149,7 +155,9 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns.length, savedTurns.length, run.status, run.line]);
 
-  const starters = buildStarterQuestions(ctx.tables);
+  // 152: local starters/templates invite chart changes that Answers and filters refuses
+  const viewerAi = useViewerAiStore(selectEffectiveViewerAi);
+  const starters = viewerAi === "answers_filters" ? [] : buildStarterQuestions(ctx.tables);
 
   return (
     <div className={`ai-chat ai-chat--${variant}`}>
@@ -210,7 +218,7 @@ export function AiChat({ ctx, variant }: { ctx: AskContext; variant: "inline" | 
           const followUps =
             chat?.followUps && chat.followUps.length > 0
               ? chat.followUps
-              : hasChoices
+              : hasChoices || viewerAi === "answers_filters"
                 ? []
                 : buildTemplateFollowUps(ctx.tables, turn.prompt);
           const changedSomething = turn.entries.some((e) => e.result.status === "applied" && !e.undone);

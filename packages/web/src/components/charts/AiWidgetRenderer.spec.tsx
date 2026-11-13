@@ -196,6 +196,15 @@ describe("AiWidgetRenderer", () => {
 
 describe("AiWidgetRenderer Viewer AI (152)", () => {
   const SMALL = { x: 0, y: 0, w: 6, h: 10 };
+  const ctxStarters: AskContext = {
+    ...ctx,
+    tables: [{ id: 1, schema: "s", name: "taxi", columns: { fare_amount: "double", payment_type: "varchar(16)" } }],
+  };
+  const wrapS = (ui: React.ReactNode) => (
+    <DashboardContextProvider dashboardId={1} widgets={[]} dynamicViews={[]} retryDynamicView={() => {}} ai={ctxStarters}>
+      {ui}
+    </DashboardContextProvider>
+  );
   const setVai = (mode: "off" | "answers_filters" | "session_only", restricted: boolean) =>
     useViewerAiStore.getState().set({ dashboardId: 1, mode, restricted });
   afterEach(() => useViewerAiStore.getState().reset());
@@ -232,16 +241,16 @@ describe("AiWidgetRenderer Viewer AI (152)", () => {
   it("VAITILE-5: answers_filters hides starters; session_only keeps them", () => {
     const starter = "Show total fare_amount by payment_type";
     setVai("answers_filters", true);
-    const r = render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    const r = render(wrapS(<AiWidgetRenderer widget={w(LARGE)} />));
     expect(screen.queryByRole("button", { name: starter })).toBeNull();
     r.unmount();
     setVai("session_only", true);
-    render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    render(wrapS(<AiWidgetRenderer widget={w(LARGE)} />));
     expect(screen.getByRole("button", { name: starter })).toBeTruthy();
   });
 
   it("VAITILE-6: store untouched -> today's placeholder and starters", () => {
-    render(wrap(<AiWidgetRenderer widget={w(LARGE)} />));
+    render(wrapS(<AiWidgetRenderer widget={w(LARGE)} />));
     expect(screen.getByPlaceholderText("Ask a question about this dashboard")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show total fare_amount by payment_type" })).toBeTruthy();
   });
