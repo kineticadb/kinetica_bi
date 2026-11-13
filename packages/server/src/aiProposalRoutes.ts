@@ -1,12 +1,13 @@
 // Phase 150 (APPROVE-V22-03): apply or reject a held AI proposal. Apply re-checks every selected op through the ONE gateway (checkAiCandidate) against the client's current effective snapshot; the client folds only what this returns. Keep still re-validates anything it persists.
 // Never log request bodies (filter values).
 import type { Express, Request, Response } from "express";
-import { AskRequestSchema, ASK_REQUEST_MAX_BYTES, aiOpDependencies, isClosedSelection, type AiOp } from "@kinetica-bi/shared";
+import { AskRequestSchema, ASK_REQUEST_MAX_BYTES, aiOpDependencies, isClosedSelection, VIEWER_AI_OFF_CODE, VIEWER_AI_OFF_MESSAGE, type AiOp } from "@kinetica-bi/shared";
 import type { AuthedRequest } from "./auth";
 import { requirePermission } from "./rbac";
 import { PERMISSIONS } from "./lib/permissions";
 import { getAiConfig } from "./lib/aiConfig";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
+import { resolveViewerAi } from "./lib/viewerAi";
 import { checkAiCandidate } from "./lib/ai/gateway";
 import { buildGatewayDeps } from "./lib/ai/gatewayDeps";
 import { createLiveSchema } from "./lib/ai/liveSchema";
@@ -58,6 +59,13 @@ export function registerAiProposalRoutes(app: Express): void {
       return notFound(res);
     }
     if (!canViewDashboard(username, p.dashboardId)) return notFound(res);
+    // 152: Viewer AI Off refuses the whole Apply for a user without edit rights. The proposal stays undecided and expires
+    // (the web marks it expired). Answers and filters needs nothing here: the gateway re-check (buildGatewayDeps) fails
+    // every non-filter op with the mode reason, so the existing accepted/failed logic yields partly_applied / none.
+    const viewer = resolveViewerAi(username, p.dashboardId);
+    if (viewer.restricted && viewer.mode === "off") {
+      return res.status(423).json({ error: VIEWER_AI_OFF_MESSAGE, code: VIEWER_AI_OFF_CODE, mode: "off" });
+    }
 
     const { selected } = body;
     if (selected.some((i) => i >= p.ops.length) || !isClosedSelection(selected, aiOpDependencies(p.ops))) {

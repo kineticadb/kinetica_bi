@@ -6,6 +6,9 @@ import {
   AiDvMaterializeRequestSchema,
   AiDvDropRequestSchema,
   checkAiDvSpec,
+  VIEWER_AI_OFF_CODE,
+  VIEWER_AI_OFF_MESSAGE,
+  VIEWER_AI_AF_REASON,
 } from "@kinetica-bi/shared";
 import type { AuthedRequest } from "./auth";
 import { requirePermission } from "./rbac";
@@ -13,6 +16,7 @@ import { PERMISSIONS } from "./lib/permissions";
 import { aiCheckLimits } from "./lib/aiConfig";
 import { getDashboard, listDashboardTables } from "./db";
 import { canViewDashboard } from "./lib/dashboardAccessDb";
+import { resolveViewerAi } from "./lib/viewerAi";
 import { kineticaSql, kineticaShowTable } from "./kinetica";
 import { createLiveSchema } from "./lib/ai/liveSchema";
 import { validateAiDvSpec, compileAiDvSpec, AiDvCompileError, type AiDvTable } from "./lib/aiDvCompile";
@@ -78,6 +82,14 @@ export function registerAiDvRoutes(app: Express, deps: AiDvRouteDeps): void {
     const dashboard = getDashboard(body.dashboardId);
     if (!dashboard || !canViewDashboard(username, body.dashboardId)) {
       return res.status(404).json({ error: "Dashboard not found." });
+    }
+    // 152: a user without edit rights may only create AI views in Session only (defence in depth: the gateway already
+    // refuses add_dynamic_view under Off / Answers and filters). Claude Desktop builds are the caller's own unkept dashboards -> unrestricted.
+    const viewer = resolveViewerAi(username, body.dashboardId);
+    if (viewer.restricted && viewer.mode !== "session_only") {
+      return viewer.mode === "off"
+        ? res.status(423).json({ error: VIEWER_AI_OFF_MESSAGE, code: VIEWER_AI_OFF_CODE, mode: "off" })
+        : res.status(423).json({ error: VIEWER_AI_AF_REASON, code: "AI_VIEWER_RESTRICTED", mode: viewer.mode });
     }
 
     const shapeErrors = checkAiDvSpec(spec);
