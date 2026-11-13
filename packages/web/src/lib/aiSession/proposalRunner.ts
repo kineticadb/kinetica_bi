@@ -1,10 +1,12 @@
 // 150 (APPROVE-V22-03): tick, apply and reject a pending proposal. Apply sends only {selected, snapshot}; the client folds ONLY the ops the server re-checked and returned, into the same turn, through applyAiTurn.
+import { VIEWER_AI_OFF_CODE } from "@kinetica-bi/shared";
 import { aiOpDependencies, closeSelection, dependentsOf } from "@kinetica-bi/shared";
 import { applyAiProposal, rejectAiProposal } from "../../api/client";
 import { useAiSessionStore, selectPendingProposal } from "../../store/aiSessionStore";
 import { useToastStore } from "../../store/toast";
 import { applyAiTurn } from "../aiOps/applyAiTurn";
-import type { AskContext } from "./askRunner";
+import { useViewerAiStore } from "../../store/viewerAiStore";
+import { noteViewerAiReasons, type AskContext } from "./askRunner";
 
 export const PROPOSAL_RUNNER_COPY = {
   applyFailed: "Couldn't apply the changes. Try again.",
@@ -53,6 +55,12 @@ export async function applyPendingProposal(ctx: AskContext): Promise<void> {
   const cur = useAiSessionStore.getState();
   if (cur.epoch !== epoch0) return; // reset() already dropped the session; drop the late response
   if (!r.ok) {
+    if (r.code === VIEWER_AI_OFF_CODE) {
+      // 152: the server left the proposal undecided; expired unblocks the ask box
+      cur.setProposal(p.turnId, { status: "expired", ops: [], busy: false });
+      useViewerAiStore.getState().switchMode(ctx.dashboardId, "off");
+      return;
+    }
     if (r.status === 410 || r.status === 409) {
       cur.setProposal(p.turnId, { status: "expired", ops: [], busy: false });
       if (r.status === 409) toast(PROPOSAL_RUNNER_COPY.decided);
@@ -62,6 +70,7 @@ export async function applyPendingProposal(ctx: AskContext): Promise<void> {
     }
     return;
   }
+  noteViewerAiReasons(ctx.dashboardId, r.data.failed.flatMap((f) => f.reasons));
   if (r.data.outcome === "none") {
     cur.setProposal(p.turnId, { busy: false, failed: r.data.failed });
     return;

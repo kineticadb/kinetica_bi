@@ -5,7 +5,9 @@
 // Ops are applied only from a `result` event, atomically, through applyAiTurn. Error, cancel and a
 // lost connection apply zero ops. A late result after reset() (Discard / dashboard switch) is
 // dropped by the epoch check.
+import { VIEWER_AI_OFF_CODE, VIEWER_AI_AF_REASON } from "@kinetica-bi/shared";
 import type { AiClarification, AskRequest, AskResultEvent } from "@kinetica-bi/shared";
+import { useViewerAiStore } from "../../store/viewerAiStore";
 import { useAiSessionStore, hasPendingProposal } from "../../store/aiSessionStore";
 import { useToastStore } from "../../store/toast";
 import { streamAsk, AskHttpError, AI_CONNECTION_LOST } from "./askStream";
@@ -85,6 +87,11 @@ function applyResult(ctx: AskContext, question: string, r: AskResultEvent): void
   );
 }
 
+/** 152: the widget learns the mode on load and on a mode refusal (no polling). */
+export function noteViewerAiReasons(dashboardId: number, reasons: readonly string[]): void {
+  if (reasons.includes(VIEWER_AI_AF_REASON)) useViewerAiStore.getState().switchMode(dashboardId, "answers_filters");
+}
+
 function recordError(baseline: SessionBaseline, question: string, err: { code: string; message: string }, status?: number): void {
   const store = useAiSessionStore.getState();
   const noAccess = err.code === "PERMISSION_DENIED" || status === 403;
@@ -154,6 +161,10 @@ export async function runAsk(ctx: AskContext, question: string, opts?: { pick?: 
     useAiSessionStore.getState().setDraft(q);
   } else if (result) {
     applyResult(ctx, q, result);
+    noteViewerAiReasons(ctx.dashboardId, result.skipped.flatMap((s) => s.reasons));
+  } else if (failure && failure.code === VIEWER_AI_OFF_CODE) {
+    // 152: the ask never ran; no error turn, no toast - the tile switches to the Off line
+    useViewerAiStore.getState().switchMode(ctx.dashboardId, "off");
   } else if (failure && failure.status !== 401) {
     recordError(ctx.getBaseline(), q, failure, failure.status);
   }

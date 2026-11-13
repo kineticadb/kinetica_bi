@@ -2333,6 +2333,7 @@ export type AiAuditRowDto = {
 };
 export type AiAuditListDto = { rows: AiAuditRowDto[]; total: number; page: number; pageSize: 50 };
 export type AiAuditDetailDto = Omit<AiAuditRowDto, "question"> & {
+  viewerAi?: ViewerAiMode | null; // 152: set only for users without edit rights
   question: string;
   ratingReasons: string[] | null;
   ratingNote: string | null;

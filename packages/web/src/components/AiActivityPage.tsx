@@ -17,6 +17,7 @@ import type {
   AiAuditDashboardState,
 } from "../api/client";
 import type { AiAnswerRating, AiRatingReason } from "../api/client";
+import { isViewerAiMode, VIEWER_AI_LABEL } from "@kinetica-bi/shared";
 import { ThumbUpIcon, ThumbDownIcon } from "./charts/AiRatingIcons";
 import { AI_RATING_REASON_LABEL } from "./charts/AiRatingRow";
 import "./AiActivityPage.css";
@@ -38,6 +39,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   partly_applied: "Partly applied",
   rejected: "Rejected",
   not_decided: "Not decided",
+  viewer_ai_off: "Viewer AI off",
 };
 export const AI_ACTIVITY_COPY = {
   title: "AI activity",
@@ -261,6 +263,13 @@ function Detail({ d, onClose }: { d: AiAuditDetailDto; onClose: () => void }) {
           <dd>{orDash(d.allowListVersion)}</dd>
           <dt>Outcome detail</dt>
           <dd>{orDash(d.outcomeDetail)}</dd>
+          {/* 152: only users without edit rights have it */}
+          {d.viewerAi && isViewerAiMode(d.viewerAi) ? (
+            <>
+              <dt>Viewer AI</dt>
+              <dd>{VIEWER_AI_LABEL[d.viewerAi]}</dd>
+            </>
+          ) : null}
         </dl>
       </div>
       <div className="ds-actions">
