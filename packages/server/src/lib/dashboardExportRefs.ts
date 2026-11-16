@@ -17,6 +17,8 @@
  *   REF-8  config.options[].actions[].target               -> widget | layer | dynamicView (polymorphic),
  *          AND the legacy singular config.options[].action.target (pre-Phase-60.2 persisted blobs)
  *   REF-9  config.spatialTargets[].tableId (array)      -> table         (map widget, v1.5 Phase 28)
+ *   REF-10 config.extraMetrics[].metricId (array)       -> customMetric  (Data Table additional
+ *          metrics, v2.1.x — quick 261116-tmm)
  *
  * Plus, on `dashboard_layers` directly (not nested in `config`):
  *   `table_id`, `dynamic_view_id` (FK columns) and `filter_scope` (same shape as REF-7).
@@ -238,6 +240,22 @@ export const visitWidgetConfigRefs = (
   // the metrics list and shift every sibling's position.
   if (Array.isArray(cfg.metrics)) {
     for (const el of cfg.metrics) {
+      if (!isPlainObject(el)) continue;
+      const id = idOf(el.metricId);
+      if (id !== undefined) {
+        const next = visit({ kind: "customMetric", id });
+        if (next === undefined) delete el.metricId;
+        else el.metricId = next;
+      }
+    }
+  }
+
+  // REF-10: config.extraMetrics[].metricId (Data Table additional metrics) -> customMetric.
+  // Same strip rule as REF-5: delete the ELEMENT's metricId only. The element must stay in place —
+  // each extra's SQL alias (value_2, value_3, …) is its array POSITION, so dropping it would
+  // re-alias every later sibling. An emptied element is simply skipped when the SQL is built.
+  if (Array.isArray(cfg.extraMetrics)) {
+    for (const el of cfg.extraMetrics) {
       if (!isPlainObject(el)) continue;
       const id = idOf(el.metricId);
       if (id !== undefined) {
