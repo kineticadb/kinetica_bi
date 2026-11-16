@@ -606,6 +606,48 @@ describe("AggregatedWidgetRenderer — drill-down click (DRILL-01, DRILL-04)", (
     ]);
   });
 
+  // Quick 261116-bti: bar time bucketing — Auto re-picks the interval at render time.
+  const STORED = "SELECT DATE_TRUNC('month', ts) AS ts, SUM(fare) AS value FROM trips GROUP BY DATE_TRUNC('month', ts) ORDER BY DATE_TRUNC('month', ts) DESC LIMIT 100";
+  const timeBar = (extra: Record<string, unknown>) =>
+    makeWidget({
+      type: "bar",
+      config: { sql: STORED, tableId: 42, groupByColumns: ["ts"], groupByColumn: "ts", metricColumn: "fare", aggregation: "SUM", ...extra },
+    });
+  const isProbe = (sql: string) => sql.startsWith("SELECT EXTRACT(EPOCH FROM MIN(ts))");
+  const lo = Date.UTC(2015, 2, 5) / 1000;
+
+  it("BTI-9 Auto probes MIN/MAX over the RAW source, then runs the chart with the re-picked unit (3 days / target 50 -> day)", async () => {
+    const spy = vi.spyOn(clientModule, "runSql").mockImplementation(async (sql: string) =>
+      (isProbe(sql)
+        ? buildResponse(["lo", "hi"], [[lo], [lo + 3 * 86400]])
+        : buildResponse(["ts", "value"], [["2015-03-07 00:00:00.000", "2015-03-05 00:00:00.000"], [3, 5]])) as never,
+    );
+    render(wrap(<WidgetRenderer widget={timeBar({ timeInterval: "auto", timeTargetBars: 50 })} />));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const calls = spy.mock.calls.map((c) => c[0] as string);
+    expect(calls[0]).toBe("SELECT EXTRACT(EPOCH FROM MIN(ts)) AS lo, EXTRACT(EPOCH FROM MAX(ts)) AS hi FROM trips");
+    expect(calls[1]).toBe(STORED.replaceAll("'month'", "'day'"));
+  });
+
+  it("BTI-10 a fixed interval runs the stored SQL without a probe; a failed probe falls back to the stored unit", async () => {
+    const spy = vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(["ts", "value"], [["2015-03-01 00:00:00.000"], [1]]) as never,
+    );
+    const { unmount } = render(wrap(<WidgetRenderer widget={timeBar({ timeInterval: "month" })} />));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([STORED]);
+    unmount();
+    spy.mockReset();
+    spy.mockImplementation(async (sql: string) => {
+      if (isProbe(sql)) throw new Error("probe failed");
+      return buildResponse(["ts", "value"], [["2015-03-01 00:00:00.000"], [1]]) as never;
+    });
+    render(wrap(<WidgetRenderer widget={timeBar({ timeInterval: "auto" })} />));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toBe(STORED);
+  });
+
   // ── Phase 17-03: synchronous markMaterializing in dispatchDrillDown ─────────────
   // Regression spec: pre-17-03, markMaterializing was buried inside Effect 1's 300ms setTimeout,
   // leaving a window where Effect 2 (chart SQL), Effect 3 (WMS), and RecordsTableRenderer effects

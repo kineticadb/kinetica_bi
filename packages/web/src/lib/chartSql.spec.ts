@@ -189,3 +189,34 @@ describe("deriveChartConfig — Data Table extra metrics", () => {
     expect(deriveChartConfig("table", { ...ok, extraMetrics: ["tip"] }, ctx)).toBeNull();
   });
 });
+
+// Quick 261116-bti: bar chart time bucketing in the SQL generator.
+describe("buildChartSql — bar time bucketing (BTI)", () => {
+  const types = { ts: "timestamp", vendor: "string", fare: "double" };
+  const bar = (draft: Record<string, unknown>) =>
+    buildChartSql(base({ widgetType: "bar", draft, columnTypeMap: types }));
+  const d = { metricColumn: "fare", aggregation: "SUM", groupByColumn: "ts", limit: 100 };
+
+  it("BTI-5 a time x-axis buckets with DATE_TRUNC and orders by time (latest kept); Auto stores a month fallback", () => {
+    expect(bar({ ...d, timeInterval: "day" })).toBe(
+      "SELECT DATE_TRUNC('day', ts) AS ts, SUM(fare) AS value FROM demo.t GROUP BY DATE_TRUNC('day', ts) ORDER BY DATE_TRUNC('day', ts) DESC LIMIT 100",
+    );
+    expect(bar({ ...d, timeInterval: "auto" })).toContain("DATE_TRUNC('month', ts) AS ts");
+    expect(bar({ ...d, timeInterval: "auto", timeIntervalMin: "year" })).toContain("DATE_TRUNC('year', ts) AS ts");
+    expect(
+      bar({ metricColumn: "fare", aggregation: "SUM", groupByColumns: ["ts", "vendor"], groupByColumn: "ts", limit: 10, timeInterval: "hour" }),
+    ).toBe(
+      "SELECT DATE_TRUNC('hour', ts) AS ts, vendor, SUM(fare) AS value FROM demo.t GROUP BY DATE_TRUNC('hour', ts), vendor ORDER BY DATE_TRUNC('hour', ts) DESC LIMIT 240",
+    );
+  });
+
+  it("BTI-6 byte-identical when the interval is None/absent, the column is not temporal, or the type is not bar", () => {
+    const legacy = "SELECT ts, SUM(fare) AS value FROM demo.t GROUP BY ts ORDER BY value DESC LIMIT 100";
+    expect(bar(d)).toBe(legacy);
+    expect(bar({ ...d, timeInterval: "none" })).toBe(legacy);
+    expect(bar({ ...d, groupByColumn: "vendor", timeInterval: "auto" })).toBe(
+      "SELECT vendor, SUM(fare) AS value FROM demo.t GROUP BY vendor ORDER BY value DESC LIMIT 100",
+    );
+    expect(buildChartSql(base({ widgetType: "line", draft: { ...d, timeInterval: "auto" }, columnTypeMap: types }))).toBe(legacy);
+  });
+});

@@ -1730,3 +1730,43 @@ describe("ChartConfigPanel — Data Table additional metrics (TMM)", () => {
     expect(onSave.mock.calls[0][0].config.extraMetrics).toEqual([]);
   });
 });
+
+// Quick 261116-bti: bar chart time interval controls (shown only for a temporal x column).
+describe("ChartConfigPanel — bar time interval (BTI)", () => {
+  const TRIPS = { id: 7, name: "trips", schema: "public", columns: { ts: "timestamp", vendor: "string", fare: "double" } };
+  const cfg = { table: "public.trips", tableId: 7, groupByColumns: ["ts"], groupByColumn: "ts", metricColumn: "fare", aggregation: "SUM" };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) => (type === "bar" ? BAR_DEF : undefined));
+  });
+
+  it("BTI-7 a temporal x column defaults to Auto (target 50) and Apply persists it with DATE_TRUNC SQL", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bar" title="B" config={cfg} tables={[TRIPS]} onSave={onSave} onCancel={vi.fn()} />);
+    expect((screen.getByLabelText("Time interval") as HTMLSelectElement).value).toBe("auto");
+    expect((screen.getByLabelText("Minimum interval") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText(/^Target bars/) as HTMLInputElement).value).toBe("50");
+    fireEvent.change(screen.getByLabelText("Minimum interval"), { target: { value: "day" } });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved).toMatchObject({ timeInterval: "auto", timeIntervalMin: "day", timeTargetBars: 50 });
+    expect(saved.sql).toBe(
+      "SELECT DATE_TRUNC('month', ts) AS ts, SUM(fare) AS value FROM public.trips GROUP BY DATE_TRUNC('month', ts) ORDER BY DATE_TRUNC('month', ts) DESC LIMIT 100",
+    );
+  });
+
+  it("BTI-8 a fixed interval hides the Auto settings; a non-temporal x column shows no time controls", () => {
+    const onSave = vi.fn();
+    const { unmount } = render(<ChartConfigPanel widgetType="bar" title="B" config={cfg} tables={[TRIPS]} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Time interval"), { target: { value: "day" } });
+    expect(screen.queryByLabelText("Minimum interval")).toBeNull();
+    expect(screen.queryByLabelText(/^Target bars/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toContain("GROUP BY DATE_TRUNC('day', ts)");
+    unmount();
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" config={{ ...cfg, groupByColumns: ["vendor"], groupByColumn: "vendor" }} tables={[TRIPS]} onSave={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.queryByLabelText("Time interval")).toBeNull();
+  });
+});
