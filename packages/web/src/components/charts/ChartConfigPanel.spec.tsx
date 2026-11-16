@@ -1665,3 +1665,68 @@ describe("Phase 132 — line chart Group By builder (LINE-V126-01/04)", () => {
     expect(screen.getAllByRole("button", { name: "Remove column" })).toHaveLength(1);
   });
 });
+
+// Data Table multi-metric: an "Additional metrics" builder (table only) persists extraMetrics and
+// emits each extra aggregate as value_N before the primary `AS value`.
+describe("ChartConfigPanel — Data Table additional metrics (TMM)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) =>
+      type === "table" ? TABLE_DEF : type === "bar" ? BAR_DEF : undefined,
+    );
+  });
+
+  const tableConfig = { table: "public.taxi_trips", tableId: 42, groupByColumns: ["vendor_id"], groupByColumn: "vendor_id", metricColumn: "lat", aggregation: "SUM" };
+
+  it("TMM-10 add, pick and Apply an additional metric", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="table" title="T" config={tableConfig} tables={TABLES} onSave={onSave} onCancel={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /add metric/i }));
+    fireEvent.change(screen.getByLabelText("Metric 2"), { target: { value: "lon" } });
+    fireEvent.change(screen.getByLabelText("Metric 2 aggregation"), { target: { value: "AVG" } });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.extraMetrics).toEqual([{ column: "lon", aggregation: "AVG" }]);
+    expect(saved.sql).toBe(
+      "SELECT vendor_id, AVG(lon) AS value_2, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  it("TMM-11 remove an additional metric; the builder is capped and table-only", () => {
+    const onSave = vi.fn();
+    const { unmount } = render(
+      <ChartConfigPanel
+        widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ ...tableConfig, extraMetrics: [{ column: "lon", aggregation: "MAX" }, { column: "lat", aggregation: "MIN" }] }}
+      />,
+    );
+    expect((screen.getByLabelText("Metric 3") as HTMLSelectElement).value).toBe("lat");
+    fireEvent.click(screen.getByRole("button", { name: "Remove metric 2" }));
+    expect((screen.getByLabelText("Metric 2") as HTMLSelectElement).value).toBe("lat");
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: /add metric/i }));
+    expect(screen.getByRole("button", { name: /add metric/i })).toBeDisabled(); // 1 primary + 5 extras
+    unmount();
+
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" config={tableConfig} tables={TABLES} onSave={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button", { name: /add metric/i })).toBeNull();
+  });
+
+  it("TMM-12 changing the source table clears additional metrics", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ ...tableConfig, extraMetrics: [{ column: "lon", aggregation: "MAX" }] }}
+      />,
+    );
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "public.weather" } });
+    expect(screen.queryByLabelText("Metric 2")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.extraMetrics).toEqual([]);
+  });
+});

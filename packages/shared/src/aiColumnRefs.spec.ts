@@ -45,6 +45,14 @@ describe("aiColumnRefs (139)", () => {
       aiWidgetColumnRefs({ timeCol: "pickup_datetime", metrics: [{ column: "fare", aggregation: "SUM" }, { column: "tip", aggregation: "AVG" }, { column: "" }, 7] }),
     ).toEqual(["pickup_datetime", "fare", "tip"]);
   });
+  it("REFS-TMM-1 Data Table extraMetrics columns count as refs (custom-metric entries carry none)", () => {
+    expect(
+      aiWidgetColumnRefs({
+        metricColumn: "outages", groupByColumns: ["site"],
+        extraMetrics: [{ column: "mttr", aggregation: "AVG" }, { metricId: 4 }, { column: "" }, "x", { column: "outages", aggregation: "MAX" }],
+      }),
+    ).toEqual(["outages", "site", "mttr"]);
+  });
   it("REFS-6 binding key drift guard", () => {
     expect([...AI_COLUMN_BINDING_KEYS]).toEqual(["metric", "metricColumn", "groupByColumn", "groupByColumns"]);
   });

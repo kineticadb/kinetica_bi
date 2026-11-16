@@ -552,6 +552,60 @@ describe("AggregatedWidgetRenderer — drill-down click (DRILL-01, DRILL-04)", (
     expect(firstRowCells[1].textContent).toBe("Dubai");
   });
 
+  it("TMM-8 TableRenderer renders one column per metric (primary first), each bar scaled to its own max", async () => {
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(
+        ["site", "value_2", "value"],
+        [["A", "B"], [2, 8], [50, 100]],
+      ) as Record<string, unknown>,
+    );
+    const widget = makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT site, AVG(mttr) AS value_2, SUM(outages) AS value FROM t GROUP BY site ORDER BY value DESC LIMIT 100",
+        tableId: 42,
+        groupByColumns: ["site"],
+        metricColumn: "outages",
+        aggregation: "SUM",
+        extraMetrics: [{ column: "mttr", aggregation: "AVG" }],
+      },
+    });
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(2));
+
+    const headers = Array.from(container.querySelectorAll("thead th")).map((th) => th.textContent);
+    expect(headers).toEqual(["SITE", "SUM(outages)", "AVG(mttr)"]);
+
+    const row0 = Array.from(container.querySelectorAll("tbody tr")[0].querySelectorAll("td"));
+    expect(row0.map((td) => td.textContent)).toEqual(["A", "50", "2"]);
+    const widths = (tr: Element) =>
+      Array.from(tr.querySelectorAll(".widget-table-cell-bar-fill")).map((el) => (el as HTMLElement).style.width);
+    expect(widths(container.querySelectorAll("tbody tr")[0])).toEqual(["50%", "25%"]);
+    expect(widths(container.querySelectorAll("tbody tr")[1])).toEqual(["100%", "100%"]);
+  });
+
+  it("TMM-9 an extra metric whose alias is missing from the result (skipped at build) renders no column", async () => {
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(["site", "value_3", "value"], [["A"], [7], [1]]) as Record<string, unknown>,
+    );
+    const widget = makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT site, MAX(x) AS value_3, SUM(y) AS value FROM t GROUP BY site",
+        tableId: 42,
+        groupByColumns: ["site"],
+        metricColumn: "y",
+        aggregation: "SUM",
+        extraMetrics: [{ column: "", aggregation: "SUM" }, { column: "x", aggregation: "MAX" }],
+      },
+    });
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(1));
+    expect(Array.from(container.querySelectorAll("thead th")).map((th) => th.textContent)).toEqual([
+      "SITE", "SUM(y)", "MAX(x)",
+    ]);
+  });
+
   // ── Phase 17-03: synchronous markMaterializing in dispatchDrillDown ─────────────
   // Regression spec: pre-17-03, markMaterializing was buried inside Effect 1's 300ms setTimeout,
   // leaving a window where Effect 2 (chart SQL), Effect 3 (WMS), and RecordsTableRenderer effects
