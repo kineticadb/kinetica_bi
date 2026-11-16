@@ -88,6 +88,7 @@ import { yAxisScaleProps } from "../../lib/yAxisScale";
 import { isMultiColumnBarGroupBy, toBarPivotInput, BAR_SERIES_SEPARATOR } from "../../lib/barGroupedSeries";
 import { isCustomSelection, resolveMetricLabel } from "../../lib/customMetricSql";
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
+import { readTableExtraMetrics, extraMetricAlias, extraMetricHeader } from "../../lib/tableExtraMetrics";
 // Phase 121 gap closure (DXIM-V124-10): resolve a custom metric's expression at RENDER time.
 // widget.config.sql freezes whatever expression was live when Apply was last pressed, so an
 // imported widget rendered the SOURCE environment's definition and an edited metric kept
@@ -446,6 +447,15 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   const tableId = cfg.tableId as number | undefined;
   const storedSql = cfg.sql as string | undefined;
   const metricId = cfg.metricId as number | undefined;
+  // Data Table additional metrics: their custom metrics re-resolve live exactly like the primary.
+  // Keyed by JSON so a fresh-but-equal config array does not re-run the memo.
+  const extraMetricsKey = widget.type === "table" ? JSON.stringify(cfg.extraMetrics ?? null) : "null";
+  const extraMetrics = useMemo(
+    () => (widget.type === "table" ? readTableExtraMetrics(cfg) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [extraMetricsKey],
+  );
+  const hasCustomExtra = extraMetrics.some((m) => isCustomSelection(m.metricId));
 
   // Phase 121 gap closure (DXIM-V124-10). cfg.sql is a frozen snapshot: ChartConfigPanel resolved
   // metricId -> expression at Apply time and baked the TEXT in. Re-resolve it here so this renderer
@@ -455,17 +465,17 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // unhydrated store resolves to null (the 4a8c117 failure mode, one layer up).
   const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
   useEffect(() => {
-    if (isCustomSelection(metricId) && tableId !== undefined) {
+    if ((isCustomSelection(metricId) || hasCustomExtra) && tableId !== undefined) {
       useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metricId, tableId]);
+  }, [metricId, tableId, hasCustomExtra]);
 
   const liveMetric = useMemo(
-    () => applyLiveMetricExpr(storedSql, metricId, tableId),
+    () => applyLiveMetricExpr(storedSql, metricId, tableId, extraMetrics),
     // customMetricsConfigVersion is the reactive trigger — every store mutation bumps it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storedSql, metricId, tableId, customMetricsConfigVersion],
+    [storedSql, metricId, tableId, extraMetrics, customMetricsConfigVersion],
   );
   // While the table's metrics are still loading, SUSPEND rather than fall back to the frozen text —
   // falling back would flash the stale number on every dashboard open.
@@ -2027,10 +2037,16 @@ const TableRenderer = ({
     ? (config.groupByColumns as unknown[]).map(String).filter(Boolean)
     : [];
   const singleGroupBy = (config.groupByColumn as string) || "";
+  // Data Table additional metrics: one column per extra whose positional alias (value_2, …) is
+  // actually in the result — an entry skipped at SQL-build time simply has no column.
+  const extraMetricCols = readTableExtraMetrics(config)
+    .map((m, idx) => ({ m, idx, key: extraMetricAlias(idx) }))
+    .filter(({ key }) => dataKeys.includes(key));
+  const extraKeys = new Set(extraMetricCols.map((c) => c.key));
   const requestedGroupCols =
     configGroupCols.length > 0 ? configGroupCols
     : singleGroupBy ? [singleGroupBy]
-    : dataKeys.filter((k) => k !== "value");
+    : dataKeys.filter((k) => k !== "value" && !extraKeys.has(k));
   const groupCols = requestedGroupCols.filter((c) => dataKeys.includes(c));
   const metricColumn = (config.metricColumn as string) || "";
   const aggregation = (config.aggregation as string) || "";
@@ -2049,16 +2065,18 @@ const TableRenderer = ({
   // has no pagination, so render every returned row rather than clipping to a second limit.
   const displayData = data;
 
-  // Per-column max scan on the value column. Bar width = (row.value / colMax) * 100%.
-  // Scaled across rendered rows so the largest aggregated value always fills the cell.
-  let valueMax = -Infinity;
-  for (const row of displayData) {
-    const raw = row["value"];
-    if (raw === null || raw === undefined || raw === "") continue;
-    const n = typeof raw === "number" ? raw : Number(raw);
-    if (Number.isFinite(n) && n > valueMax) valueMax = n;
-  }
-  if (!(valueMax > 0)) valueMax = 1; // guard divide-by-zero when all values are 0/null
+  // Per-column max scan on each metric column. Bar width = (row[key] / colMax) * 100%.
+  // Scaled across rendered rows so each column's largest aggregated value fills its cell.
+  const columnMax = (key: string): number => {
+    let max = -Infinity;
+    for (const row of displayData) {
+      const raw = row[key];
+      if (raw === null || raw === undefined || raw === "") continue;
+      const n = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max > 0 ? max : 1; // guard divide-by-zero when all values are 0/null
+  };
 
   // Build a human header. If config carries the discrete fields we prefer
   // `AGG(metric)`; legacy widgets that only stored `sql` fall back to `value`.
@@ -2067,6 +2085,14 @@ const TableRenderer = ({
         ? `COUNT(DISTINCT ${metricColumn})`
         : `${aggregation}(${metricColumn})`)
     : "value";
+  // Primary metric first (it drives sort order), then the extras in configured order.
+  const metricCols = [
+    { key: "value", header: valueHeader },
+    ...extraMetricCols.map(({ m, idx, key }) => ({
+      key,
+      header: extraMetricHeader(m, idx, resolveMetricLabel(m.metricId, tableId) ?? undefined),
+    })),
+  ].map((c) => ({ ...c, max: columnMax(c.key) }));
 
   const drillEnabled =
     !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
@@ -2109,17 +2135,13 @@ const TableRenderer = ({
             {groupCols.map((c) => (
               <th key={c}>{c.toUpperCase()}</th>
             ))}
-            <th>{valueHeader}</th>
+            {metricCols.map((c) => (
+              <th key={c.key}>{c.header}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {displayData.map((row, i) => {
-            const rawValue = row["value"];
-            const n = typeof rawValue === "number" ? rawValue : Number(rawValue);
-            const safeN = Number.isFinite(n) ? n : 0;
-            const pct = safeN > 0 ? Math.min(100, (safeN / valueMax) * 100) : 0;
-            const display = formatBigNumberValue(safeN, { format: "smart" });
-
             const isFiltered =
               drillEnabled &&
               activeFilterValue !== undefined &&
@@ -2135,21 +2157,28 @@ const TableRenderer = ({
                 {groupCols.map((c) => (
                   <td key={c}>{String(row[c] ?? "")}</td>
                 ))}
-                {showValueBars ? (
-                  <td className="widget-table-cell-bar">
-                    <div
-                      className="widget-table-cell-bar-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: `linear-gradient(to right, ${barColor}b3 0%, ${barColor}33 100%)`,
-                      }}
-                      aria-hidden="true"
-                    />
-                    <span className="widget-table-cell-bar-text">{display}</span>
-                  </td>
-                ) : (
-                  <td>{display}</td>
-                )}
+                {metricCols.map((c) => {
+                  const rawValue = row[c.key];
+                  const n = typeof rawValue === "number" ? rawValue : Number(rawValue);
+                  const safeN = Number.isFinite(n) ? n : 0;
+                  const pct = safeN > 0 ? Math.min(100, (safeN / c.max) * 100) : 0;
+                  const display = formatBigNumberValue(safeN, { format: "smart" });
+                  return showValueBars ? (
+                    <td key={c.key} className="widget-table-cell-bar">
+                      <div
+                        className="widget-table-cell-bar-fill"
+                        style={{
+                          width: `${pct}%`,
+                          background: `linear-gradient(to right, ${barColor}b3 0%, ${barColor}33 100%)`,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <span className="widget-table-cell-bar-text">{display}</span>
+                    </td>
+                  ) : (
+                    <td key={c.key}>{display}</td>
+                  );
+                })}
               </tr>
             );
           })}

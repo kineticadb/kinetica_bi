@@ -32,7 +32,8 @@
  * findings, paired with a companion assertion proving the same fixture DOES fire once a real site
  * is added, so the guard can actually fail if this property is ever violated.
  *
- * The traversal covers all 40 inventoried sites as of Phase 123 (Plans 123-01 through 123-04).
+ * The traversal covers all 40 inventoried sites as of Phase 123 (Plans 123-01 through 123-04),
+ * plus widget.config.extraMetrics[].column (41st, Data Table additional metrics, v2.1.x).
  * Adding a 41st site means adding exactly FOUR things: one entry in `COLUMN_REF_SITES`, one block
  * inside `visitColumnRefSites`, one `SITE ` test, and one fixture entry in the master coverage
  * fixture (`tests/lib.columnRefs.spec.ts`, "site coverage — criterion 1"). The coverage test will
@@ -132,7 +133,7 @@ export type ColumnQuery = { tableId: number; columns: string[] };
 
 // -------------------------------------------------------------------------------------------
 // The registry. This IS the inventory: the traversal (visitColumnRefSites, below) may only emit
-// `site` values drawn from this list, and "GOLDEN: the site registry is exactly the 40 inventoried
+// `site` values drawn from this list, and "GOLDEN: the site registry is exactly the 41 inventoried
 // sites, in order" pins it exactly — so a later plan cannot quietly shrink the inventory by
 // forgetting a block. Two of these entries — `dynamicView.columns_json[].name` and the two
 // `configPatch.info_*` entries — were added on 2026-09-22 after an adversarial, DATA-DRIVEN sweep
@@ -155,6 +156,8 @@ export const COLUMN_REF_SITES = [
   "widget.config.sortField",
   "widget.config.columns",
   "widget.config.metrics[].column",
+  // Data Table additional metrics (v2.1.x): { column, aggregation } | { metricId } entries.
+  "widget.config.extraMetrics[].column",
   "widget.config.filterFields[].column",
   // --- widget spatial targets: table = the ELEMENT'S OWN tableId, never inherited (Plan 123-02) ---
   "widget.config.spatialTargets[].lonCol",
@@ -775,6 +778,23 @@ const visitColumnRefSites = (
           emitStructured({
             value: el.column, column, site: "widget.config.metrics[].column",
             path: `config.metrics[${i}].column`, recordKind, recordId, recordLabel, resolved,
+            query, emit,
+          });
+        }
+      }
+    }
+
+    // Data Table additional metrics. A custom-metric entry ({ metricId }) has no column here —
+    // its expression is covered by the customMetric.expression site.
+    if (Array.isArray(cfg.extraMetrics)) {
+      const arr = cfg.extraMetrics as unknown[];
+      for (let i = 0; i < arr.length; i++) {
+        const el = arr[i];
+        if (!isPlainObject(el)) continue;
+        for (const column of columns) {
+          emitStructured({
+            value: el.column, column, site: "widget.config.extraMetrics[].column",
+            path: `config.extraMetrics[${i}].column`, recordKind, recordId, recordLabel, resolved,
             query, emit,
           });
         }

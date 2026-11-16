@@ -19,6 +19,7 @@ import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsS
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 import { AGGREGATIONS } from "../../lib/aggregationLabels";
 import { buildChartSql, HEATMAP_LIMITS } from "../../lib/chartSql";
+import { readTableExtraMetrics, MAX_TABLE_EXTRA_METRICS, type TableExtraMetric } from "../../lib/tableExtraMetrics";
 
 type TableInfo = {
   id: number;
@@ -276,6 +277,7 @@ const ChartConfigPanel = ({
         metricColumn: "",
         aggregation: "SUM",
         groupByColumn: "",
+        ...(widgetType === "table" ? { extraMetrics: [] } : {}),
       }));
       return;
     }
@@ -287,6 +289,8 @@ const ChartConfigPanel = ({
         metricColumn: "",
         aggregation: "SUM",
         groupByColumn: "",
+        // Data Table additional metrics name columns of the OLD table.
+        ...(widgetType === "table" ? { extraMetrics: [] } : {}),
       };
       delete next.dynamicViewId;
       return next;
@@ -361,7 +365,7 @@ const ChartConfigPanel = ({
       maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
       resolveMetricExpr,
     });
-  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, draft.extraMetrics, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
     return (
@@ -688,6 +692,90 @@ const ChartConfigPanel = ({
                   </select>
                 </label>
                 )}
+
+                {/* Data Table additional metrics: each becomes its own column (value_2, value_3, …).
+                    The Metric Column above stays the primary metric — rows sort by it and drill,
+                    the AI and radio overlays keep reading it. Same cm:<id> picker as the primary. */}
+                {isTable && (() => {
+                  const extras = readTableExtraMetrics(draft);
+                  const chartTableId = selectedTable?.id;
+                  const customMetricsForTable = chartTableId !== undefined ? selectMetrics(chartTableId) : [];
+                  const setExtras = (next: TableExtraMetric[]) => set("extraMetrics", next);
+                  const update = (idx: number, patch: TableExtraMetric) =>
+                    setExtras(extras.map((m, i) => (i === idx ? patch : m)));
+                  return (
+                    <div className="config-group">
+                      <span className="config-group-label">Additional Metrics</span>
+                      {extras.map((m, idx) => {
+                        const label = `Metric ${idx + 2}`;
+                        const custom = isCustomSelection(m.metricId);
+                        return (
+                          <div key={idx} className="ds-field" style={{ flexDirection: "row", alignItems: "center", gap: "4px" }}>
+                            <span className="ds-field-label" style={{ whiteSpace: "nowrap" }}>{label}</span>
+                            <select
+                              className="ds-select"
+                              style={{ flex: 2, minWidth: 0 }}
+                              value={metricSelectValue(m.metricId, m.column || "")}
+                              disabled={dvColumnsMissing}
+                              aria-label={label}
+                              onChange={(e) => {
+                                const sel = decodeMetricSelection(e.target.value);
+                                update(idx, sel.kind === "custom"
+                                  ? { metricId: sel.metricId }
+                                  : { column: sel.column, aggregation: m.aggregation || "SUM" });
+                              }}
+                            >
+                              <option value="">Select a numeric column...</option>
+                              <optgroup label="Columns">
+                                {numericColumns.map((c) => (
+                                  <option key={c.name} value={c.name}>{c.name} ({c.type})</option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Custom metrics">
+                                {isOrphanedMetric(m.metricId, chartTableId) && (
+                                  <option value={encodeCustomValue(m.metricId!)}>(deleted metric)</option>
+                                )}
+                                {customMetricsForTable.map((cm) => (
+                                  <option key={cm.id} value={encodeCustomValue(cm.id)}>{cm.label}</option>
+                                ))}
+                              </optgroup>
+                            </select>
+                            {!custom && (
+                              <select
+                                className="ds-select"
+                                style={{ flex: 1, minWidth: 0 }}
+                                value={m.aggregation || "SUM"}
+                                disabled={dvColumnsMissing}
+                                aria-label={`${label} aggregation`}
+                                onChange={(e) => update(idx, { column: m.column ?? "", aggregation: e.target.value })}
+                              >
+                                {AGGREGATIONS.map((a) => (
+                                  <option key={a.value} value={a.value}>{a.label}</option>
+                                ))}
+                              </select>
+                            )}
+                            <button
+                              className="ghost-sm"
+                              type="button"
+                              disabled={dvColumnsMissing}
+                              aria-label={`Remove metric ${idx + 2}`}
+                              onClick={() => setExtras(extras.filter((_, i) => i !== idx))}
+                            >×</button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        className="ghost-sm"
+                        type="button"
+                        disabled={dvColumnsMissing || extras.length >= MAX_TABLE_EXTRA_METRICS}
+                        onClick={() => setExtras([...extras, { column: "", aggregation: "SUM" }])}
+                      >+ Add metric</button>
+                      <span className="config-hint">
+                        {`Each metric becomes a column; rows are sorted by the Metric Column above (${MAX_TABLE_EXTRA_METRICS + 1} metrics max).`}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Group By — bar, line (Phase 132) and the Data Table get the N-column ordered builder (Phase 102
                     BARGRP-V119-01; table added later); other grouped chart types keep the single

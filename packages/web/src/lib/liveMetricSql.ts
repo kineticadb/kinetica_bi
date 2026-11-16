@@ -30,6 +30,7 @@
 
 import { isCustomSelection, resolveMetricExpr } from "./customMetricSql";
 import { isMetricsHydrated } from "../store/customMetricsStore";
+import { extraMetricAlias, type TableExtraMetric } from "./tableExtraMetrics";
 
 export type LiveMetricSql =
   | { kind: "ready"; sql: string | undefined }
@@ -155,13 +156,27 @@ const VALUE_SUFFIX = " AS value";
 
 /** Returns the rewritten SQL, or null when the shape is not one this lib can safely rewrite. */
 export function replaceValueSelectItem(sql: string, newExpr: string): string | null {
+  return replaceAliasedSelectItem(sql, "value", newExpr);
+}
+
+/**
+ * Replace the expression of the select item aliased `alias`. The primary `value` must be the LAST
+ * item (the positional anchor above); a Data Table extra metric (`value_N`) may be any item, and
+ * exactly one item may carry that alias. Same fail-closed rules as replaceValueSelectItem.
+ */
+export function replaceAliasedSelectItem(sql: string, alias: string, newExpr: string): string | null {
   const parsed = parseAggregatedSelectList(sql);
   if (!parsed) return null;
 
-  const lastItem = parsed.items[parsed.items.length - 1];
+  const suffix = alias === "value" ? VALUE_SUFFIX : ` AS ${alias}`;
+  const candidates = alias === "value"
+    ? [parsed.items[parsed.items.length - 1]]
+    : parsed.items.filter((it) => sql.slice(it.start, it.end).trim().endsWith(suffix));
+  if (candidates.length !== 1) return null;
+  const lastItem = candidates[0];
   const rawItemText = sql.slice(lastItem.start, lastItem.end);
   const trimmedText = rawItemText.trim();
-  if (!trimmedText.endsWith(VALUE_SUFFIX)) return null;
+  if (!trimmedText.endsWith(suffix)) return null;
 
   // Validate newExpr: non-empty, balanced on parens/quotes, no top-level comma.
   const trimmedExpr = newExpr.trim();
@@ -174,7 +189,7 @@ export function replaceValueSelectItem(sql: string, newExpr: string): string | n
 
   const leadingItemWs = rawItemText.length - rawItemText.trimStart().length;
   const exprStart = lastItem.start + leadingItemWs;
-  const exprEnd = exprStart + trimmedText.length - VALUE_SUFFIX.length;
+  const exprEnd = exprStart + trimmedText.length - suffix.length;
 
   return sql.slice(0, exprStart) + trimmedExpr + sql.slice(exprEnd);
 }
@@ -187,11 +202,24 @@ export function applyLiveMetricExpr(
   storedSql: string | undefined,
   metricId: number | undefined,
   tableId: number | undefined,
+  extraMetrics: readonly TableExtraMetric[] = [],
 ): LiveMetricSql {
-  if (!isCustomSelection(metricId)) return { kind: "ready", sql: storedSql };
+  const customExtras = extraMetrics
+    .map((m, i) => ({ m, alias: extraMetricAlias(i) }))
+    .filter(({ m }) => isCustomSelection(m.metricId));
+  if (!isCustomSelection(metricId) && customExtras.length === 0) return { kind: "ready", sql: storedSql };
   if (storedSql === undefined || tableId === undefined) return { kind: "ready", sql: storedSql };
   if (!isMetricsHydrated(tableId)) return { kind: "pending" };
-  const expr = resolveMetricExpr(metricId, "", tableId);
-  if (expr === null || expr.trim() === "") return { kind: "ready", sql: storedSql }; // DELETED metric
-  return { kind: "ready", sql: replaceValueSelectItem(storedSql, expr) ?? storedSql }; // fail-closed
+  let sql = storedSql;
+  // Each swap is independent and fail-closed: a deleted metric or an unparseable item leaves that
+  // item's frozen text in place without blocking the others.
+  if (isCustomSelection(metricId)) {
+    const expr = resolveMetricExpr(metricId, "", tableId);
+    if (expr !== null && expr.trim() !== "") sql = replaceValueSelectItem(sql, expr) ?? sql;
+  }
+  for (const { m, alias } of customExtras) {
+    const expr = resolveMetricExpr(m.metricId, "", tableId);
+    if (expr !== null && expr.trim() !== "") sql = replaceAliasedSelectItem(sql, alias, expr) ?? sql;
+  }
+  return { kind: "ready", sql };
 }
