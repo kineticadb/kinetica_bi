@@ -17,10 +17,13 @@ describe("CATLABEL: category display text", () => {
   });
   it("CATLABEL-3 bar and line category axes format their ticks with it (structural; looks checked live)", () => {
     const src = readFileSync(resolve(__dirname, "../components/charts/WidgetRenderer.tsx"), "utf-8");
-    // the vertical bar axis wraps it (barCategoryTick shortens tilted labels); the others use it directly
-    expect(src).toMatch(/const barCategoryTick = \(v: unknown\): string => \(barXLayout\.tilt \? truncateBarLabel\(categoryLabel\(v\)\) : categoryLabel\(v\)\);/);
+    // Bar axes go through categoryText, which IS categoryLabel unless the bar is time-bucketed
+    // (quick 261116-bti: then the bucket is labelled at its interval). The vertical bar axis wraps
+    // it (barCategoryTick shortens tilted labels); the line axis uses categoryLabel directly.
+    expect(src).toMatch(/const categoryText = \(v: unknown\): string =>\s*timeUnit && v != null \? formatTimelineTick\(String\(v\), timeUnit, \{ withYear: timeWithYear \}\) : categoryLabel\(v\);/);
+    expect(src).toMatch(/const barCategoryTick = \(v: unknown\): string => \(barXLayout\.tilt \? truncateBarLabel\(categoryText\(v\)\) : categoryText\(v\)\);/);
     expect(src.match(/<XAxis\s+dataKey=\{xKey\}[^>]*tickFormatter=\{barCategoryTick\}/g)?.length).toBe(1);
-    expect(src.match(/<YAxis type="category" dataKey=\{xKey\}[^>]*tickFormatter=\{categoryLabel\}/g)?.length).toBe(1);
-    expect(src.match(/tickFormatter=\{categoryLabel\}/g)?.length).toBe(2);
+    expect(src.match(/<YAxis type="category" dataKey=\{xKey\}[^>]*tickFormatter=\{categoryText\}/g)?.length).toBe(1);
+    expect(src.match(/tickFormatter=\{categoryLabel\}/g)?.length).toBe(1);
   });
 });

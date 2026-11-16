@@ -12,6 +12,7 @@ import { isCustomSelection } from "./customMetricSql";
 import type { AiWidgetType } from "@kinetica-bi/shared";
 import { AI_WIDGET_DEFAULTS } from "./aiWidgetDefaults";
 import { buildExtraMetricSelect } from "./tableExtraMetrics";
+import { barTimeSettings, storedBarTimeUnit, barTimeBucketExpr } from "./barTimeBucket";
 
 /**
  * Heatmap "Result limit" ladder: a heatmap row is one (x,y) INTERSECTION, so it gets its own
@@ -99,6 +100,20 @@ export function buildChartSql(i: ChartSqlInput): string {
       ? buildExtraMetricSelect(draft, (id) => resolveMetricExpr(id, "", tableId))
       : "";
 
+    // Bar time bucketing (quick 261116-bti): a TEMPORAL x column with a time interval set groups by
+    // DATE_TRUNC('<unit>', x) — aliased back to the raw column name so row keys still match — and
+    // orders by time DESC so LIMIT keeps the latest periods (the renderer re-sorts ascending). Auto
+    // stores a fallback unit here; the renderer re-picks it from the live MIN/MAX on every load.
+    // null (interval None/absent, non-temporal column, not a bar) keeps the SQL byte-identical.
+    const barXCol = isMultiColumnBarGroupBy(draft)
+      ? (draft.groupByColumns as string[]).filter(Boolean)[0] ?? ""
+      : groupByColumn;
+    const barTimeUnit =
+      isBar && barXCol && inferDataTypeFromColumn(barXCol, columnTypeMap) === "datetime"
+        ? storedBarTimeUnit(barTimeSettings(draft))
+        : null;
+    const barTimeExpr = barTimeUnit ? barTimeBucketExpr(barXCol, barTimeUnit) : "";
+
     // Phase 102 (BARGRP-V119-01): multi-column GROUP BY for bar charts.
     // Guard: isMultiColumnBarGroupBy checks Array.isArray(groupByColumns) && length >= 2.
     // When false, execution falls through to the EXISTING single-column branches unchanged
@@ -160,6 +175,11 @@ export function buildChartSql(i: ChartSqlInput): string {
           `ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`
         );
       }
+      if (barTimeExpr) {
+        const sel = cols.map((c, idx) => (idx === 0 ? `${barTimeExpr} AS ${c}` : c)).join(", ");
+        const grp = cols.map((c, idx) => (idx === 0 ? barTimeExpr : c)).join(", ");
+        return `SELECT ${sel}, ${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${grp} ORDER BY ${barTimeExpr} DESC LIMIT ${sqlLimit}`;
+      }
       // GROUP BY uses real column names — NEVER the "value" alias (RESEARCH Pitfall 1).
       return `SELECT ${colsClause}, ${extraSelect}${multiMetricExpr} AS value FROM ${table}${cw} GROUP BY ${colsClause} ORDER BY value ${multiSortDir} LIMIT ${sqlLimit}`;
     }
@@ -173,6 +193,9 @@ export function buildChartSql(i: ChartSqlInput): string {
       const ALLOWED_LIMITS_C = [5, 10, 25, 50, 100, 250, 500];
       const rawLimitC = Number(draft.limit);
       const groupLimitC = ALLOWED_LIMITS_C.includes(rawLimitC) ? rawLimitC : 100;
+      if (barTimeExpr) {
+        return `SELECT ${barTimeExpr} AS ${groupByColumn}, ${metricExpr} AS value FROM ${table}${cw} GROUP BY ${barTimeExpr} ORDER BY ${barTimeExpr} DESC LIMIT ${groupLimitC}`;
+      }
       return `SELECT ${groupByColumn}, ${extraSelect}${metricExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDirC} LIMIT ${groupLimitC}`;
     }
     if (!metricColumn || !aggregation || !groupByColumn) {
@@ -186,6 +209,9 @@ export function buildChartSql(i: ChartSqlInput): string {
     const ALLOWED_LIMITS = [5, 10, 25, 50, 100, 250, 500];
     const rawLimit = Number(draft.limit);
     const groupLimit = ALLOWED_LIMITS.includes(rawLimit) ? rawLimit : 100;
+    if (barTimeExpr) {
+      return `SELECT ${barTimeExpr} AS ${groupByColumn}, ${aggExpr} AS value FROM ${table}${cw} GROUP BY ${barTimeExpr} ORDER BY ${barTimeExpr} DESC LIMIT ${groupLimit}`;
+    }
     return `SELECT ${groupByColumn}, ${extraSelect}${aggExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDir} LIMIT ${groupLimit}`;
   }
 }

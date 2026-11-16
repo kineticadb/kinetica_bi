@@ -100,6 +100,11 @@ import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
 import { categoryLabel } from "../../lib/categoryLabel";
 import { computeBarXAxisLayout, truncateBarLabel } from "../../lib/barChartLayout";
 import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
+import {
+  barTimeSettings, readBarTimeUnit, swapBarTimeUnit, buildBarTimeRangeSql, readBarTimeRangeMs, pickBarTimeUnit,
+  barTimeBucketRange, type BarTimeUnit,
+} from "../../lib/barTimeBucket";
+import { formatTimelineTick, bucketsSpanYears } from "../../lib/timelineBin";
 import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
@@ -170,8 +175,10 @@ function dispatchDrillDown(args: {
   value: unknown;
   dataType: DrillDownDataType;
   widgetId: number;
+  /** Quick 261116-bti: a time-bucketed bar drills with a `between` range. Absent = "eq" (legacy). */
+  operator?: ActiveFilter["operator"];
 }): void {
-  const { tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId } = args;
+  const { tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId, operator } = args;
 
   // ── Phase 63 dv branch ────────────────────────────────────────────────────
   // When the widget is dv-bound, the drill filters THAT dynamic view's data (dv-isolated
@@ -186,7 +193,7 @@ function dispatchDrillDown(args: {
     const isReplace = sameCol !== undefined && !isDedupe;
 
     if (!isDedupe && !isReplace) {
-      const chipText = buildChipText(column, value, dataType);
+      const chipText = buildChipText(column, value, dataType, operator);
       useToastStore.getState().showToast(chipText, "info");
     }
 
@@ -194,6 +201,7 @@ function dispatchDrillDown(args: {
       column,
       value: value as ActiveFilter["value"],
       dataType,
+      ...(operator ? { operator } : {}),
       sourceWidgetId: widgetId,
       addedAt: Date.now(),
     });
@@ -218,7 +226,7 @@ function dispatchDrillDown(args: {
   // First-add (column not in filters): show confirmation toast with chip text.
   // Suppressed on dedupe (no change) and replace (chip change is the feedback).
   if (!isDedupe && !isReplace) {
-    const chipText = buildChipText(column, value, dataType);
+    const chipText = buildChipText(column, value, dataType, operator);
     useToastStore.getState().showToast(chipText, "info");
   }
 
@@ -227,6 +235,7 @@ function dispatchDrillDown(args: {
     column,
     value: value as ActiveFilter["value"],
     dataType,
+    ...(operator ? { operator } : {}),
     sourceWidgetId: widgetId,
     addedAt: Date.now(),
   });
@@ -439,6 +448,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // Phase 132 (O-2): line categories dropped by the widget's own Result limit (LIMIT+1 probe) -> notice, never silent.
   const [lineCategoryTruncation, setLineCategoryTruncation] = useState<LineCategoryTruncation | null>(null);
   const [chartLimitedRows, setChartLimitedRows] = useState<number | null>(null);
+  // Quick 261116-bti: the DATE_TRUNC unit of the rows in `data` (time-bucketed bar), else null.
+  const [barTimeUnit, setBarTimeUnit] = useState<BarTimeUnit | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -705,8 +716,37 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     setLoading(true);
     setError(null);
 
-    const runChartQuery = async (sqlToRun: string): Promise<void> => {
+    // Quick 261116-bti: a time-bucketed bar on Auto re-picks its DATE_TRUNC unit from the MIN/MAX
+    // of the rows it is about to read — sqlToRun is already FROM-swapped to the filter/dv view, so
+    // a narrower filter yields a finer interval. Fixed units run as stored. Any probe failure (other
+    // than an abort) falls back to the stored unit; null = not a time-bucketed bar.
+    const resolveBarTime = async (sqlToRun: string): Promise<{ sql: string; unit: BarTimeUnit | null } | "aborted"> => {
+      if (widget.type !== "bar") return { sql: sqlToRun, unit: null };
+      const groupCols = Array.isArray(cfg.groupByColumns) ? (cfg.groupByColumns as string[]).filter(Boolean) : [];
+      const xCol = groupCols[0] || (cfg.groupByColumn as string) || "";
+      const stored = xCol ? readBarTimeUnit(sqlToRun, xCol) : null;
+      if (!stored) return { sql: sqlToRun, unit: null };
+      const settings = barTimeSettings(cfg);
+      const probeSql = settings.mode === "auto" ? buildBarTimeRangeSql(sqlToRun, xCol) : null;
+      if (!probeSql) return { sql: sqlToRun, unit: stored };
       try {
+        const res = await runSql<Record<string, unknown>>(probeSql, undefined, controller.signal);
+        const rangeMs = readBarTimeRangeMs(parseKineticaResponse(res));
+        if (!Number.isFinite(rangeMs)) return { sql: sqlToRun, unit: stored }; // no rows: nothing to fit
+        const unit = pickBarTimeUnit({ rangeMs, target: settings.target, floor: settings.floor });
+        const swapped = swapBarTimeUnit(sqlToRun, xCol, unit);
+        return swapped ? { sql: swapped, unit } : { sql: sqlToRun, unit: stored };
+      } catch (probeErr) {
+        if ((probeErr as Error)?.name === "AbortError") return "aborted";
+        return { sql: sqlToRun, unit: stored };
+      }
+    };
+
+    const runChartQuery = async (sqlToRunIn: string): Promise<void> => {
+      try {
+        const barTime = await resolveBarTime(sqlToRunIn);
+        if (barTime === "aborted") return;
+        const sqlToRun = barTime.sql;
         // Phase 127: a heatmap asks for its own LIMIT n+1 so "exactly n cells" is
         // distinguishable from "more than n exist". Bumped HERE so the view-not-found
         // retry paths (which re-enter runChartQuery) get it too.
@@ -744,6 +784,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
           setChartLimitedRows(serverHasMore === true ? Math.min(rows.length, bump.limit) : null);
           setHeatmapTruncation(null);
         } else {
+          setBarTimeUnit(barTime.unit); // batched with setData: the unit always matches the rows
           setData(rows);
           setChartLimitedRows(serverHasMore === true ? rows.length : null);
           setHeatmapTruncation(null);
@@ -928,7 +969,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
 
   const chart = (() => { switch (widget.type) {
     case "bar":
-      return <BarRenderer data={data} config={cfg} {...drillProps} />;
+      return <BarRenderer data={data} config={cfg} timeUnit={barTimeUnit} {...drillProps} />;
     case "line":
       // Phase 132 UAT (V9): a Line Chart saved with no X axis column used to plot the first raw rows
       // (repeating, unaggregated categories). Prompt for the required column instead of drawing that.
@@ -1063,7 +1104,8 @@ const BarRenderer = ({
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
-}: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
+  timeUnit = null,
+}: { data: Row[]; config: Record<string, unknown>; timeUnit?: BarTimeUnit | null } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
   const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
@@ -1096,6 +1138,10 @@ const BarRenderer = ({
   // Phase 102 (BARGRP-V119-02/03/04): multi-column group-by → N <Bar> series.
   const groupByColumns = (config.groupByColumns as string[] | undefined) ?? [];
   const multiSeries = isMultiColumnBarGroupBy(config);
+  // Quick 261116-bti: time-bucketed rows arrive newest-first (ORDER BY … DESC keeps the latest
+  // periods under LIMIT) — plot them oldest → newest. Untouched when the bar is not time-bucketed.
+  const timeXCol = groupByColumns.filter(Boolean)[0] || groupByColumn;
+  data = timeUnit ? sortLineRowsByX(data, (r) => (r as Record<string, unknown>)[timeXCol]) : data;
   const maxCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
   const colorTheme = (config.colorTheme as string) ?? DEFAULT_COLOR_THEME;
   // Compute pivot only when multiSeries; single-series path is untouched.
@@ -1165,6 +1211,21 @@ const BarRenderer = ({
     const payload = (nextState as { activePayload?: Array<{ payload?: Row }> } | null)
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
+    // Quick 261116-bti: a time bucket is a RANGE — drill `between` its first and last instant
+    // (an equality on the bucket start would match only rows at exactly that instant).
+    if (timeUnit) {
+      const bucket = (payload as Record<string, unknown>)[multiSeries ? "bucket" : x];
+      const range = bucket != null ? barTimeBucketRange(String(bucket), timeUnit) : null;
+      if (!range) return;
+      setClickedElement(bucket);
+      setTimeout(() => {
+        dispatchDrillDown({
+          tableId, dynamicViewId, dashboardId, column: timeXCol, value: range,
+          dataType: "datetime", operator: "between", widgetId,
+        });
+      }, 300);
+      return;
+    }
     // Phase 102 (BARGRP-V119-02): multi-series drill — bucket is the col1 category,
     // column is groupByColumns[0] (never the synthetic "bucket" key).
     if (multiSeries) {
@@ -1250,9 +1311,13 @@ const BarRenderer = ({
     return () => ro.disconnect();
   }, []);
   const barPlotWidthPx = Math.max(0, barWrapW - valueAxisWidth - (leftTitle ? 16 : 0) - 10);
-  const barMaxLabelChars = chartData.reduce((m, r) => Math.max(m, categoryLabel(r[xKey]).length), 0);
+  // Quick 261116-bti: time buckets are labelled at their interval's granularity ("2015 Q1", "Mar 5").
+  const timeWithYear = timeUnit ? bucketsSpanYears(chartData.map((r) => String(r[xKey] ?? ""))) : false;
+  const categoryText = (v: unknown): string =>
+    timeUnit && v != null ? formatTimelineTick(String(v), timeUnit, { withYear: timeWithYear }) : categoryLabel(v);
+  const barMaxLabelChars = chartData.reduce((m, r) => Math.max(m, categoryText(r[xKey]).length), 0);
   const barXLayout = computeBarXAxisLayout({ n: chartData.length, plotWidthPx: barPlotWidthPx, maxLabelChars: barMaxLabelChars });
-  const barCategoryTick = (v: unknown): string => (barXLayout.tilt ? truncateBarLabel(categoryLabel(v)) : categoryLabel(v));
+  const barCategoryTick = (v: unknown): string => (barXLayout.tilt ? truncateBarLabel(categoryText(v)) : categoryText(v));
 
   const chartEl = (
     <ResponsiveContainer width="100%" height="100%">
@@ -1274,7 +1339,7 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
-            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryLabel} width={leftTitle ? 104 : 90} label={leftLabelObj} />
+            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryText} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
@@ -1299,7 +1364,7 @@ const BarRenderer = ({
             // via useChartAxisColors) at low opacity so the hovered-category highlight follows
             // the active theme/brand instead.
             cursor={{ fill: AXIS_COLOR, fillOpacity: 0.12 }}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} formatCategory={timeUnit ? categoryText : undefined} />}
           />
         )}
         {/* One series repeats the chart title, so only a multi-series bar shows its legend (as the timeline does). */}

@@ -20,6 +20,7 @@ import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 import { AGGREGATIONS } from "../../lib/aggregationLabels";
 import { buildChartSql, HEATMAP_LIMITS } from "../../lib/chartSql";
 import { readTableExtraMetrics, MAX_TABLE_EXTRA_METRICS, type TableExtraMetric } from "../../lib/tableExtraMetrics";
+import { BAR_TIME_UNITS, DEFAULT_BAR_TIME_TARGET, MAX_BAR_TIME_TARGET, barTimeSettings } from "../../lib/barTimeBucket";
 
 type TableInfo = {
   id: number;
@@ -350,6 +351,17 @@ const ChartConfigPanel = ({
   // Phase 132 (D-02): Group By column 1 is required for the Line Chart.
   const lineMissingXColumn = isLine && requiresGroupBy && (effectiveGroupByColumns[0] ?? "") === "";
 
+  // Quick 261116-bti: a bar whose x column (group column 1) is TEMPORAL gets time bucketing. A bar
+  // that has never chosen an interval defaults to Auto / target 50 — the SQL preview AND the saved
+  // config both read this effective draft, so they cannot disagree.
+  const barTimeCol = isBar ? (effectiveGroupByColumns[0] ?? "") : "";
+  const barTimeEligible =
+    isBar && requiresGroupBy && barTimeCol !== "" && inferDataTypeFromColumn(barTimeCol, columnTypeMap) === "datetime";
+  const sqlDraft: Record<string, unknown> =
+    barTimeEligible && draft.timeInterval === undefined
+      ? { ...draft, timeInterval: "auto", timeTargetBars: draft.timeTargetBars ?? DEFAULT_BAR_TIME_TARGET }
+      : draft;
+
   // Build the SQL preview from structured fields
   const generatedSql = useMemo(() => {
     const table = draft.table as string;
@@ -359,13 +371,13 @@ const ChartConfigPanel = ({
       widgetType,
       table,
       tableId: selectedTable?.id,
-      draft,
+      draft: sqlDraft,
       flags: { usesAggregation, requiresGroupBy },
       columnTypeMap,
       maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
       resolveMetricExpr,
     });
-  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, draft.extraMetrics, columnTypeMap, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, draft.extraMetrics, draft.timeInterval, draft.timeIntervalMin, draft.timeTargetBars, barTimeEligible, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
     return (
@@ -865,6 +877,72 @@ const ChartConfigPanel = ({
                   );
                 })()}
 
+                {/* Quick 261116-bti: time interval for a bar whose x column is temporal. Auto re-picks
+                    the interval on every render from the filtered data's MIN/MAX. */}
+                {barTimeEligible && (() => {
+                  const t = barTimeSettings(sqlDraft);
+                  const unitLabel = (u: string) => u.charAt(0).toUpperCase() + u.slice(1);
+                  const finestFirst = [...BAR_TIME_UNITS].reverse();
+                  return (
+                    <div className="config-group">
+                      <span className="config-group-label">Time Interval</span>
+                      <label className="ds-field">
+                        <span className="ds-field-label">Time interval</span>
+                        <select
+                          className="ds-select"
+                          aria-label="Time interval"
+                          value={t.mode}
+                          disabled={dvColumnsMissing}
+                          onChange={(e) => set("timeInterval", e.target.value)}
+                        >
+                          <option value="auto">Auto (fit the target bar count)</option>
+                          {finestFirst.map((u) => (
+                            <option key={u} value={u}>{unitLabel(u)}</option>
+                          ))}
+                          <option value="none">None (one bar per raw value)</option>
+                        </select>
+                        <span className="config-hint">
+                          {`Groups ${barTimeCol} into time periods, ordered by time. Auto picks the finest interval that keeps the bars within the target, re-checked against the filtered data each time the chart loads.`}
+                        </span>
+                      </label>
+                      {t.mode === "auto" && (
+                        <>
+                          <label className="ds-field">
+                            <span className="ds-field-label">Minimum interval</span>
+                            <select
+                              className="ds-select"
+                              aria-label="Minimum interval"
+                              value={t.floor ?? ""}
+                              disabled={dvColumnsMissing}
+                              onChange={(e) => set("timeIntervalMin", e.target.value || undefined)}
+                            >
+                              <option value="">None</option>
+                              {finestFirst.map((u) => (
+                                <option key={u} value={u}>{unitLabel(u)}</option>
+                              ))}
+                            </select>
+                            <span className="config-hint">Auto never picks an interval finer than this.</span>
+                          </label>
+                          <label className="ds-field">
+                            <span className="ds-field-label">Target bars</span>
+                            <input
+                              type="number"
+                              aria-label="Target bars"
+                              min={5}
+                              max={MAX_BAR_TIME_TARGET}
+                              step={1}
+                              value={t.target}
+                              disabled={dvColumnsMissing}
+                              onChange={(e) => set("timeTargetBars", Number(e.target.value))}
+                            />
+                            <span className="config-hint">The most bars Auto aims for (the Result limit still caps rows).</span>
+                          </label>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Single Group By for grouped charts without the multi-column builder; hidden
                     for bignumber (requiresGroupBy false), bar, line, and the Data Table. */}
                 {requiresGroupBy && !usesMultiColumnGroupBy && (
@@ -1039,7 +1117,7 @@ const ChartConfigPanel = ({
             // Build config: spread draft, then explicitly set tableId/dynamicViewId.
             // When not dv-bound, ensure dynamicViewId is NOT present (mutual exclusion).
             const baseConfig: Record<string, unknown> = {
-              ...draft,
+              ...sqlDraft,
               sql: generatedSql,
               tableId: persistedTableId,
               drillDownColumn: finalDrillDownColumn,
