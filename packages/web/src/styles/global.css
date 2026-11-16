@@ -2096,7 +2096,7 @@ input[type="checkbox"],
 
 .widget-bignumber-label {
   font-size: var(--text-lg);
-  font-size: max(10px, calc(min(11cqh, 7cqw) * var(--bn-scale, 1)));
+  font-size: max(11px, calc(min(14cqh, 8cqw) * var(--bn-scale, 1)));
   color: var(--muted);
   font-weight: var(--font-weight-medium);
   line-height: 1.2;
@@ -2104,15 +2104,20 @@ input[type="checkbox"],
 
 .widget-bignumber-value {
   font-size: var(--text-2xl);
-  font-size: max(12px, calc(min(38cqh, 150cqw / var(--bn-chars, 4)) * var(--bn-scale, 1)));
+  font-size: max(12px, calc(min(45cqh, 180cqw / var(--bn-chars, 4)) * var(--bn-scale, 1)));
   font-weight: var(--font-weight-bold);
   line-height: 1.1;
   white-space: nowrap;
 }
 
+/* With a label and/or sub-label the value yields part of the height to them. */
+.widget-bignumber--labeled .widget-bignumber-value {
+  font-size: max(12px, calc(min(34cqh, 180cqw / var(--bn-chars, 4)) * var(--bn-scale, 1)));
+}
+
 .widget-bignumber-sub {
   font-size: var(--text-base);
-  font-size: max(9px, calc(min(8cqh, 5cqw) * var(--bn-scale, 1)));
+  font-size: max(10px, calc(min(10cqh, 6cqw) * var(--bn-scale, 1)));
   color: var(--muted);
   line-height: 1.2;
 }

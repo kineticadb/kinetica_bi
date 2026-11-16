@@ -2222,7 +2222,10 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
   );
 
   return (
-    <div className="widget-bignumber" style={fitStyle}>
+    <div
+      className={`widget-bignumber${label !== "" || subLabel ? " widget-bignumber--labeled" : ""}`}
+      style={fitStyle}
+    >
       {label !== "" && <div className="widget-bignumber-label">{label}</div>}
       <div className="widget-bignumber-value" style={{ color: effectiveColor }}>
         {prefix}{formatted}{suffix}
