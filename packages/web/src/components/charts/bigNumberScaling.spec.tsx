@@ -71,6 +71,16 @@ describe("Big Number scaling (BNS)", () => {
     }
   });
 
+  it("BNS-6 a label or sub-label marks the box --labeled so the value yields height to them", async () => {
+    expect((await renderBn({})).classList.contains("widget-bignumber--labeled")).toBe(false);
+    cleanup();
+    expect((await renderBn({ label: "Revenue" })).classList.contains("widget-bignumber--labeled")).toBe(true);
+    cleanup();
+    expect((await renderBn({ subLabel: "YTD" })).classList.contains("widget-bignumber--labeled")).toBe(true);
+    const css = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+    expect(css).toMatch(/\.widget-bignumber--labeled \.widget-bignumber-value\s*\{[^}]*font-size:[^;]*cqh[^;]*var\(--bn-scale/);
+  });
+
   it("BNS-3 the bignumber definition has a Font Size Scaling field (default 1, 0.25–4 step 0.05)", () => {
     const f = getChartType("bignumber")!.fields.find((x) => x.key === "fontScale");
     expect(f).toMatchObject({ label: "Font Size Scaling", type: "number", defaultValue: 1, min: 0.25, max: 4, step: 0.05 });
