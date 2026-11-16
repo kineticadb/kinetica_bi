@@ -123,6 +123,7 @@ let tUnrelated: ReturnType<typeof createTable>;
 let mScalar: ReturnType<typeof createCustomMetric>;
 let mArray: ReturnType<typeof createCustomMetric>;
 let mOrphan: ReturnType<typeof createCustomMetric>;
+let mExtra: ReturnType<typeof createCustomMetric>;
 let dv: ReturnType<typeof createDashboardDynamicView>;
 let layerTable: ReturnType<typeof createDashboardLayer>;
 let layerDv: ReturnType<typeof createDashboardLayer>;
@@ -185,6 +186,7 @@ beforeEach(async () => {
   mScalar = createCustomMetric(tWidget.id, "Scalar Metric", "SUM(c1)", null); // REF-4
   mArray = createCustomMetric(tWidget.id, "Array Metric", "AVG(c1)", null); // REF-5
   mOrphan = createCustomMetric(tWidget.id, "ZZ Unreferenced Metric", "MAX(c1)", null); // must not travel
+  mExtra = createCustomMetric(tWidget.id, "Extra Metric", "MIN(c1) * 2", null); // REF-10 (only referenced as an extra)
 
   dv = createDashboardDynamicView(dash.id, {
     source_table_id: tDvSource.id,
@@ -237,6 +239,19 @@ beforeEach(async () => {
     config: { tableId: tWidget.id, dynamicViewId: dv.id }, // REF-2
   });
   wRadio = createWidget(dash.id, { title: "Radio", type: "radiogroup", position: 6, config: {} }); // REF-8, patched below
+  // REF-10 — a Data Table whose ONLY reference to mExtra is an additional metric.
+  createWidget(dash.id, {
+    title: "MultiMetricTable",
+    type: "table",
+    position: 7,
+    config: {
+      tableId: tWidget.id,
+      metricColumn: "c1",
+      aggregation: "SUM",
+      groupByColumns: ["c1"],
+      extraMetrics: [{ column: "c1", aggregation: "AVG" }, { metricId: mExtra.id }],
+    },
+  });
 
   // Close the cycles — what makes REF-3, REF-6, REF-7 and REF-8 real.
   updateWidget(wMap.id, {
@@ -370,6 +385,15 @@ describe("IMPNEW — per-reference-kind NEW-id proofs, end to end through the ro
     expect(numLine.config.metrics[0].metricId).toBe(newMetric);
     expect(numLine.config.metrics[0].metricId).not.toBe(mArray.id);
     expect(getCustomMetric(mArray.id)).toBeDefined(); // old record unchanged
+  });
+
+  it("IMPNEW-REF10: a custom metric used only as a Data Table extra metric travels and its id is remapped", () => {
+    expect(file.customMetrics.map((m: any) => m.label)).toContain("Extra Metric");
+    const t = newWidgetByTitle("MultiMetricTable");
+    const newMetric = newMetricIdFor(mExtra.id);
+    expect(t.config.extraMetrics).toEqual([{ column: "c1", aggregation: "AVG" }, { metricId: newMetric }]);
+    expect(newMetric).not.toBe(mExtra.id);
+    expect(getCustomMetric(newMetric)?.expression).toBe("MIN(c1) * 2");
   });
 
   it("IMPNEW-REF6: the imported map widget's includedLayerIds are the two NEW layer ids", () => {

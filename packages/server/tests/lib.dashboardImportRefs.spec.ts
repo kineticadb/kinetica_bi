@@ -100,6 +100,18 @@ describe("remapWidgetConfigRefs — IMP-REF1..9: each kind rewrites to the NEW i
     expect(result.config).toEqual({ metrics: [{ metricId: 9001 }, { metricId: 9002 }] });
   });
 
+  it("IMP-REF10: every extraMetrics[].metricId is rewritten; column entries are untouched", () => {
+    const maps = makeMaps({ customMetric: [[1, 9001], [2, 9002]] });
+    const result = remapWidgetConfigRefs(
+      { extraMetrics: [{ metricId: 2 }, { column: "c1", aggregation: "AVG" }, { metricId: 1 }] },
+      maps,
+    );
+    expect(result.config).toEqual({
+      extraMetrics: [{ metricId: 9002 }, { column: "c1", aggregation: "AVG" }, { metricId: 9001 }],
+    });
+    expect(result.stripped).toEqual([]);
+  });
+
   it("IMP-REF6: every includedLayerIds element is rewritten to its NEW layer id", () => {
     const maps = makeMaps({
       layer: [
@@ -292,6 +304,13 @@ describe("remapWidgetConfigRefs — the strip rules (Pitfall 3)", () => {
       maps,
     );
     expect(result.config).toEqual({ metrics: [{ metricId: 9001 }, { label: "b" }] });
+    expect(result.stripped).toEqual([{ kind: "customMetric", id: 2 }]);
+  });
+
+  it("IMP-STRIP10: an unmapped extraMetrics[].metricId is deleted but the element survives (positional value_N aliases stay stable)", () => {
+    const maps = makeMaps({ customMetric: [[1, 9001]] });
+    const result = remapWidgetConfigRefs({ extraMetrics: [{ metricId: 2 }, { metricId: 1 }] }, maps);
+    expect(result.config).toEqual({ extraMetrics: [{}, { metricId: 9001 }] });
     expect(result.stripped).toEqual([{ kind: "customMetric", id: 2 }]);
   });
 
