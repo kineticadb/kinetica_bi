@@ -1113,8 +1113,12 @@ const FieldRenderer = ({
           <input
             type="number"
             value={Number(value ?? 0)}
+            min={field.min}
+            max={field.max}
+            step={field.step}
             onChange={(e) => onChange(Number(e.target.value))}
           />
+          {field.hint && <span className="config-hint">{field.hint}</span>}
         </label>
       );
 

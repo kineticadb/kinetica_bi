@@ -2188,6 +2188,13 @@ const TableRenderer = ({
   );
 };
 
+/** "Font Size Scaling": a positive finite number clamped to [0.25, 4]; anything else is 1. */
+const bigNumberFontScale = (raw: unknown): number => {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(4, Math.max(0.25, n));
+};
+
 const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<string, unknown> }) => {
   const keys = Object.keys(data[0] ?? {});
   const valueField = keys.includes("value") ? "value" : keys[0] || "";
@@ -2202,6 +2209,12 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
     format: config.format as string | undefined,
     decimals: config.decimals as number | undefined,
   });
+  // Auto-fit: global.css sizes the text from container units; --bn-chars lets the value's width
+  // share shrink for long numbers, --bn-scale is the operator's "Font Size Scaling" multiplier.
+  const fitStyle = {
+    "--bn-scale": String(bigNumberFontScale(config.fontScale)),
+    "--bn-chars": String(Math.max(1, `${prefix}${formatted}${suffix}`.length)),
+  } as React.CSSProperties;
   const effectiveColor = pickBigNumberColor(
     rawValue,
     color,
@@ -2209,7 +2222,7 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
   );
 
   return (
-    <div className="widget-bignumber">
+    <div className="widget-bignumber" style={fitStyle}>
       {label !== "" && <div className="widget-bignumber-label">{label}</div>}
       <div className="widget-bignumber-value" style={{ color: effectiveColor }}>
         {prefix}{formatted}{suffix}
