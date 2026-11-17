@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CB_COLOR_THEMES, getCbColorTheme, themeColorsFor } from "./cbColorThemes";
+import { CB_COLOR_THEMES, getCbColorTheme, seriesPaletteColors, themeColorsFor } from "./cbColorThemes";
 
 describe("cbColorThemes", () => {
   it("includes the full ColorBrewer set (18 sequential, 9 diverging, 8 qualitative = 35)", () => {
@@ -70,5 +70,16 @@ describe("cbColorThemes", () => {
 
   it("returns [] for count 0", () => {
     expect(themeColorsFor(getCbColorTheme("Blues")!, 0)).toEqual([]);
+  });
+});
+
+// Quick 261117-rev: the bar's grouped/stacked series palette can run in reverse.
+describe("seriesPaletteColors", () => {
+  it("REV-1: the theme's colors for N series, in order or reversed; an unknown theme falls back", () => {
+    const set1 = themeColorsFor(getCbColorTheme("Set1")!, 4);
+    expect(seriesPaletteColors("Set1", 4, "Set2")).toEqual(set1);
+    expect(seriesPaletteColors("Set1", 4, "Set2", true)).toEqual([...set1].reverse());
+    expect(seriesPaletteColors("nope", 3, "Set2")).toEqual(themeColorsFor(getCbColorTheme("Set2")!, 3));
+    expect(seriesPaletteColors("Set1", 0, "Set2")).toHaveLength(1);
   });
 });

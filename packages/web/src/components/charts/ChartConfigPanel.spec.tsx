@@ -1839,6 +1839,38 @@ describe("ChartConfigPanel — chart palette themes (CPT)", () => {
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
     expect(onSave.mock.calls[0][0].config.colorTheme).toBe("Paired");
   });
+
+  // Quick 261117-rev: Reverse Colors flips the palette order.
+  it("REV-2 pie: Reverse Colors flips Color 1..6, keeps the theme, and a theme picked while reversed fills reversed", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="pie" title="P" config={{ ...defs.pie.defaultConfig, ...base }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const hexInputs = () => screen.getAllByPlaceholderText("#hex").map((i) => (i as HTMLInputElement).value);
+    fireEvent.change(screen.getByLabelText("Color Theme"), { target: { value: "Dark2" } });
+    fireEvent.click(screen.getByLabelText("Reverse Colors"));
+    expect(hexInputs()).toEqual([...hex("Dark2", 6)].reverse());
+    expect((screen.getByLabelText("Color Theme") as HTMLSelectElement).value).toBe("Dark2");
+    fireEvent.change(screen.getByLabelText("Color Theme"), { target: { value: "Set1" } });
+    expect(hexInputs()).toEqual([...hex("Set1", 6)].reverse());
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.reverseColors).toBe(true);
+    expect(saved.colorTheme).toBe("Set1");
+    expect(PIE_COLOR_KEYS.map((k) => saved[k])).toEqual([...hex("Set1", 6)].reverse());
+  });
+
+  it("REV-3 bar: Reverse Colors shows only with the series palette, reverses its preview, and persists", () => {
+    const { unmount } = render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region"] }} tables={[SALES]} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByLabelText("Reverse Colors")).toBeNull();
+    unmount();
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region", "vendor"] }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const swatches = () => [...screen.getByLabelText("Color Palette preview").children].map((c) => (c as HTMLElement).title);
+    const before = swatches();
+    fireEvent.click(screen.getByLabelText("Reverse Colors"));
+    expect(swatches()).toEqual([...before].reverse());
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.reverseColors).toBe(true);
+  });
 });
 
 // Quick 261116-cnt: Count (*) — counts rows, the metric column is not used (and the panel says so).
