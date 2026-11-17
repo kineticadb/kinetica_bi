@@ -57,7 +57,7 @@ import type { NumericLineConfig } from "./NumericLineConfigPanel";
 import { useColumnDisplayConfigStore } from "../../store/columnDisplayConfigStore";
 import { resolveAxisFormatter, resolveFormatter } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
-import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
+import { countTickFormatter, valueFormatColumn, aggregateExpr } from "../../lib/aggregationLabels";
 // Phase 86 (AXIS-V117-02/03): Y-axis tick formatter — per-widget override OR bound column default.
 import { buildFormatter } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
@@ -314,9 +314,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
           // Reuse the same aggExpr shape as buildNumericLineSql (COUNT_DISTINCT → COUNT(DISTINCT)).
           // Phase 103: resolve custom metric expressions so a custom metric (empty column,
           // metricId set) does not produce an empty AVG() → "Invalid number of arguments".
-          const realAgg0 = metric0.aggregation === "COUNT_DISTINCT"
-            ? `COUNT(DISTINCT ${metric0.column})`
-            : `${metric0.aggregation}(${metric0.column})`;
+          const realAgg0 = aggregateExpr(metric0.aggregation, metric0.column);
           const aggSql = resolveMetricExpr(metric0.metricId, realAgg0, tableId) ?? realAgg0;
           const fromTarget = querySchema === "" ? queryTable : `${querySchema}.${queryTable}`;
           const topSql =
@@ -681,7 +679,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
                   stroke={toCssColor(m.color)}
                   strokeWidth={2}
                   dot={false}
-                  name={m.label && m.label !== "" ? m.label : `${m.aggregation}(${m.column})`}
+                  name={m.label && m.label !== "" ? m.label : aggregateExpr(m.aggregation, m.column)}
                   connectNulls={false}
                   isAnimationActive={false}
                 />

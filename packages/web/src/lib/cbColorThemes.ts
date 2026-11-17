@@ -105,3 +105,20 @@ export function themeColorsFor(theme: CbColorTheme, count: number): string[] {
   }
   return out;
 }
+
+/**
+ * Quick 261116-cpt: `count` theme colors as CSS "#rrggbb" (the shape chart `color` fields store),
+ * or [] for an unknown theme id.
+ */
+export function themeHexColors(themeId: string, count: number): string[] {
+  const theme = getCbColorTheme(themeId);
+  if (!theme) return [];
+  return themeColorsFor(theme, count).map((c) => `#${c.slice(2).toLowerCase()}`);
+}
+
+/** The theme's distinct colors for a preview strip: its largest defined variant, capped at `max`. */
+export function themePreviewHexColors(themeId: string, max = 8): string[] {
+  const theme = getCbColorTheme(themeId);
+  if (!theme) return [];
+  return themeHexColors(themeId, Math.min(max, Math.max(...Object.keys(theme.byCount).map(Number))));
+}

@@ -14,6 +14,11 @@ const pie: ChartTypeDefinition = {
     { key: "showLabels", label: "Show Labels", type: "boolean", defaultValue: true, group: "Appearance" },
 
     // Colors
+    {
+      key: "colorTheme", label: "Color Theme", type: "colorTheme", defaultValue: "", group: "Color Palette",
+      paletteKeys: ["color1", "color2", "color3", "color4", "color5", "color6"],
+      hint: "Fills Color 1–6 from a ColorBrewer theme. Editing a color afterwards switches back to Custom.",
+    },
     { key: "color1", label: "Color 1", type: "color", defaultValue: "#22c55e", group: "Color Palette" },
     { key: "color2", label: "Color 2", type: "color", defaultValue: "#38bdf8", group: "Color Palette" },
     { key: "color3", label: "Color 3", type: "color", defaultValue: "#a855f7", group: "Color Palette" },
@@ -32,6 +37,7 @@ const pie: ChartTypeDefinition = {
     innerRadius: 0,
     padAngle: 2,
     showLabels: true,
+    colorTheme: "",
     color1: "#22c55e",
     color2: "#38bdf8",
     color3: "#a855f7",

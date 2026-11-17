@@ -810,8 +810,22 @@ a {
   border-bottom-color: var(--muted) !important;
 }
 
-.dash-tables-grid {
-  grid-template-columns: 2fr 1fr 1fr auto;
+/* Manage Dashboard Tables (quick 261116-mdt). Each row is its own grid, so columns align only when
+   every row gets the same content-independent tracks: minmax(0, …) stops a long name widening its
+   own row. Compound selectors so this out-ranks the 5-column .ds-header/.ds-row template below. */
+.ds-header.dash-tables-grid,
+.ds-row.dash-tables-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) 4.5rem 7.5rem;
+}
+
+.dash-tables-grid > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "Remove? Yes Cancel" wraps inside the fixed Actions column rather than overflowing it. */
+.dash-tables-grid .confirm-actions {
+  flex-wrap: wrap;
 }
 
 /* Modal */

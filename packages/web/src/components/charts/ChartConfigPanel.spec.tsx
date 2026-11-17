@@ -8,7 +8,8 @@
  *   - __autoSuggestActive stripped from persisted config
  *   - No Apply / Cancel inside custom-panel chart UI (auto-save → modal header Close dismisses)
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { CB_COLOR_THEMES, getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ChartConfigPanel from "./ChartConfigPanel";
 import type { ConfigPanelProps } from "./registry";
@@ -1768,5 +1769,115 @@ describe("ChartConfigPanel — bar time interval (BTI)", () => {
       <ChartConfigPanel widgetType="bar" title="B" config={{ ...cfg, groupByColumns: ["vendor"], groupByColumn: "vendor" }} tables={[TRIPS]} onSave={vi.fn()} onCancel={vi.fn()} />,
     );
     expect(screen.queryByLabelText("Time interval")).toBeNull();
+  });
+});
+
+// Quick 261116-cpt: ColorBrewer theme pickers — pie (fills Color 1..6) and multi-series bar (series palette).
+describe("ChartConfigPanel — chart palette themes (CPT)", () => {
+  // Capture the REAL pie/bar definitions (the picker is declared in them, not in a fixture).
+  const defs: Record<string, import("./registry").ChartTypeDefinition> = {};
+  const PIE_COLOR_KEYS = ["color1", "color2", "color3", "color4", "color5", "color6"];
+  const SALES = { id: 5, name: "sales", schema: "public", columns: { region: "string", vendor: "string", amount: "double" } };
+  const base = { table: "public.sales", tableId: 5, groupByColumn: "region", metricColumn: "amount", aggregation: "SUM" };
+  const hex = (theme: string, n: number) =>
+    themeColorsFor(getCbColorTheme(theme)!, n).map((c) => `#${c.slice(2).toLowerCase()}`);
+
+  beforeAll(async () => {
+    const capture = vi.spyOn(registry, "registerChartType").mockImplementation((d) => { defs[d.type] = d; });
+    (await import("./definitions/pie")).default();
+    (await import("./definitions/bar")).default();
+    capture.mockRestore();
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) => defs[type]);
+  });
+
+  it("CPT-1 pie: the Color Theme picker starts at Custom, lists every ColorBrewer theme by group, and choosing one fills Color 1..6", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="pie" title="P" config={{ ...defs.pie.defaultConfig, ...base }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const select = screen.getByLabelText("Color Theme") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect([...select.querySelectorAll("optgroup")].map((g) => g.label)).toEqual(["Sequential", "Diverging", "Qualitative"]);
+    expect(select.querySelectorAll("optgroup option")).toHaveLength(CB_COLOR_THEMES.length);
+    fireEvent.change(select, { target: { value: "Dark2" } });
+    expect(select.value).toBe("Dark2");
+    const want = hex("Dark2", 6);
+    expect(screen.getAllByPlaceholderText("#hex").map((i) => (i as HTMLInputElement).value)).toEqual(want);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.colorTheme).toBe("Dark2");
+    expect(PIE_COLOR_KEYS.map((k) => saved[k])).toEqual(want);
+  });
+
+  it("CPT-2 pie: hand-editing a palette color after a theme flips the picker back to Custom", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="pie" title="P" config={{ ...defs.pie.defaultConfig, ...base, colorTheme: "Set1", ...Object.fromEntries(PIE_COLOR_KEYS.map((k, i) => [k, hex("Set1", 6)[i]])) }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    expect((screen.getByLabelText("Color Theme") as HTMLSelectElement).value).toBe("Set1");
+    fireEvent.change(screen.getAllByPlaceholderText("#hex")[2], { target: { value: "#123456" } });
+    expect((screen.getByLabelText("Color Theme") as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.colorTheme).toBe("");
+    expect(saved.color3).toBe("#123456");
+    expect(saved.color1).toBe(hex("Set1", 6)[0]);
+  });
+
+  it("CPT-3 bar: one group-by column shows Bar Color only; 2+ columns swap it for a Color Palette (default Set2) that persists", () => {
+    const { unmount } = render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region"] }} tables={[SALES]} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByLabelText("Color Palette")).toBeNull();
+    expect(screen.getByText("Bar Color")).toBeTruthy();
+    unmount();
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region", "vendor"] }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const select = screen.getByLabelText("Color Palette") as HTMLSelectElement;
+    expect(select.value).toBe("Set2");
+    expect(screen.queryByText("Bar Color")).toBeNull();
+    expect(screen.getByLabelText("Color Palette preview").children).toHaveLength(8);
+    fireEvent.change(select, { target: { value: "Paired" } });
+    expect(screen.getByLabelText("Color Palette preview").children).toHaveLength(8); // capped at 8 distinct swatches
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.colorTheme).toBe("Paired");
+  });
+});
+
+// Quick 261116-cnt: Count (*) — counts rows, the metric column is not used (and the panel says so).
+describe("ChartConfigPanel — Count (*) aggregation (CNT)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) =>
+      type === "table" ? TABLE_DEF : BAR_DEF_GROUPED);
+  });
+
+  it("CNT-6 choosing Count (*) needs no metric column, shows the note, and Apply saves COUNT(*) SQL", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ table: "public.taxi_trips", tableId: 42, metricColumn: "", aggregation: "SUM", groupByColumn: "vendor_id", groupByColumns: ["vendor_id"] }} />,
+    );
+    expect(screen.queryByText(/metric column is not used/i)).toBeNull();
+    const agg = screen.getByLabelText("Aggregation") as HTMLSelectElement;
+    expect([...agg.options].map((o) => o.textContent)).toContain("Count (*)");
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(screen.getAllByText("Count (*) counts every row, so the metric column is not used.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(
+      "SELECT vendor_id, COUNT(*) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  it("CNT-7 a Data Table additional metric can be Count (*) without a column", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ table: "public.taxi_trips", tableId: 42, metricColumn: "lat", aggregation: "SUM", groupByColumn: "vendor_id", groupByColumns: ["vendor_id"], extraMetrics: [{ column: "", aggregation: "SUM" }] }} />,
+    );
+    const agg = screen.getByLabelText("Metric 2 aggregation") as HTMLSelectElement;
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(screen.getAllByText("Count (*) counts every row, so the metric column is not used.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(
+      "SELECT vendor_id, COUNT(*) AS value_2, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
   });
 });

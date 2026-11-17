@@ -69,7 +69,7 @@ import {
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 import TextRenderer from "./TextRenderer";
-import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
+import { countTickFormatter, valueFormatColumn, aggregateExpr, isCountAll } from "../../lib/aggregationLabels";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 import {
@@ -1129,7 +1129,7 @@ const BarRenderer = ({
   // "<Aggregation> of <column>" (142 UAT: the line chart's rule, so a COUNT bar never reads as the raw column).
   const metricLabel = isCustomSelection(metricId)
     ? (resolveMetricLabel(metricId, tableId) ?? "")
-    : (tableId !== undefined && metricColumn
+    : (tableId !== undefined && (metricColumn || isCountAll(config.aggregation))
       ? resolveLineMetricTitle({ columnLabel: resolveLabel(tableId, metricColumn), metricColumn, aggregation: config.aggregation as string | undefined })
       : "");
   const { x, y } = resolveKeys(data, config);
@@ -2145,10 +2145,8 @@ const TableRenderer = ({
 
   // Build a human header. If config carries the discrete fields we prefer
   // `AGG(metric)`; legacy widgets that only stored `sql` fall back to `value`.
-  const valueHeader = aggregation && metricColumn
-    ? (aggregation === "COUNT_DISTINCT"
-        ? `COUNT(DISTINCT ${metricColumn})`
-        : `${aggregation}(${metricColumn})`)
+  const valueHeader = aggregation && (metricColumn || isCountAll(aggregation))
+    ? aggregateExpr(aggregation, metricColumn)
     : "value";
   // Primary metric first (it drives sort order), then the extras in configured order.
   const metricCols = [

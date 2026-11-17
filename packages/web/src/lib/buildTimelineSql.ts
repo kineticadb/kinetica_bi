@@ -10,6 +10,7 @@
  * Zero React/Recharts/Zustand imports. Consumed by Plan 45-03 TimelineRenderer.tsx.
  */
 
+import { aggregateExpr } from "./aggregationLabels";
 import type { TimelineInterval, TimelineMetric } from "./timelineBin";
 import { buildTimelineBucket } from "./timelineBin";
 import { MAX_SERIES } from "./groupedSeries";
@@ -73,10 +74,7 @@ function formatSeriesInValue(v: string | number): string {
  * COUNT_DISTINCT is NOT a Kinetica function — use COUNT(DISTINCT col) instead.
  */
 function aggExpr(metric: TimelineMetric): string {
-  if (metric.aggregation === "COUNT_DISTINCT") {
-    return `COUNT(DISTINCT ${metric.column})`;
-  }
-  return `${metric.aggregation}(${metric.column})`;
+  return aggregateExpr(metric.aggregation, metric.column); // COUNT_DISTINCT / COUNT_ALL shapes live there
 }
 
 /**
