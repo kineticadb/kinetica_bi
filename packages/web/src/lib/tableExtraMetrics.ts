@@ -14,6 +14,7 @@
  */
 import { isCustomSelection } from "./customMetricSql";
 import { AGGREGATIONS } from "./aggregationLabels";
+import { aggregateExpr as sharedAggregateExpr, isCountAll } from "./aggregationLabels";
 
 export type TableExtraMetric = { column?: string; aggregation?: string; metricId?: number };
 
@@ -29,7 +30,7 @@ export const isAllowedAggregation = (agg: unknown): agg is string =>
   typeof agg === "string" && AGG_VALUES.has(agg);
 
 export const aggregateExpr = (column: string, aggregation: string): string =>
-  aggregation === "COUNT_DISTINCT" ? `COUNT(DISTINCT ${column})` : `${aggregation}(${column})`;
+  sharedAggregateExpr(aggregation, column);
 
 /** Normalise `config.extraMetrics` to a list of entries (non-objects become empty entries). */
 export function readTableExtraMetrics(cfg: Record<string, unknown>): TableExtraMetric[] {
@@ -58,6 +59,7 @@ export function extraMetricExpr(
     const expr = resolveCustom(m.metricId);
     return expr && expr.trim() !== "" ? expr : null;
   }
+  if (isCountAll(m.aggregation)) return "COUNT(*)"; // counts rows; any column is ignored
   if (!m.column || !IDENT.test(m.column) || !isAllowedAggregation(m.aggregation)) return null;
   return aggregateExpr(m.column, m.aggregation);
 }
@@ -78,6 +80,7 @@ export function buildExtraMetricSelect(
 /** Column header for an entry: `AGG(col)`, the custom metric's label, or the alias as a fallback. */
 export function extraMetricHeader(m: TableExtraMetric, index: number, customLabel?: string): string {
   if (isCustomSelection(m.metricId)) return customLabel || extraMetricAlias(index);
+  if (isCountAll(m.aggregation)) return "COUNT(*)";
   if (m.column && m.aggregation) return aggregateExpr(m.column, m.aggregation);
   return extraMetricAlias(index);
 }

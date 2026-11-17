@@ -1,5 +1,5 @@
 // Phase 132 (LINE-V126-03): PURE module, zero React/Recharts/Zustand imports.
-import { aggregationLabel } from "./aggregationLabels";
+import { aggregationLabel, isCountAll } from "./aggregationLabels";
 
 export type LineMetricTitleInput = {
   yFieldLabel?: string;
@@ -18,6 +18,7 @@ export type LineMetricTitleInput = {
 export function resolveLineMetricTitle(a: LineMetricTitleInput): string {
   if (a.yFieldLabel && a.yFieldLabel.trim() !== "") return a.yFieldLabel;
   if (a.customLabel) return a.customLabel;
+  if (isCountAll(a.aggregation)) return "Count of rows"; // Count (*) ignores the metric column
   // A label equal to the raw column means "unset" (resolveLabel falls back to the raw name).
   if (a.metricColumn && a.columnLabel && a.columnLabel !== a.metricColumn) return a.columnLabel;
   if (a.metricColumn && a.aggregation) return `${aggregationLabel(a.aggregation)} of ${a.metricColumn}`;

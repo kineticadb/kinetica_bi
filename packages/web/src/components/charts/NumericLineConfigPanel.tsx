@@ -16,6 +16,7 @@
  * NO data fetch. NO Apply/Clear. Config-only; NumericLineRenderer owns the SQL lifecycle.
  */
 
+import { COUNT_ALL_NOTE, hasAggregateInput, isCountAll } from "../../lib/aggregationLabels";
 import { useEffect, useMemo } from "react";
 import type { ConfigPanelProps } from "./registry";
 import { inferDataTypeFromColumn, isColumnDrillDownSafe } from "../../lib/columnTypes";
@@ -63,6 +64,7 @@ const AGGREGATIONS: { value: NumericAggregation; label: string }[] = [
   { value: "MAX", label: "MAX" },
   { value: "COUNT", label: "COUNT" },
   { value: "COUNT_DISTINCT", label: "COUNT_DISTINCT" },
+  { value: "COUNT_ALL",      label: "COUNT(*)" },
   { value: "STDDEV", label: "STDDEV" },
   { value: "VARIANCE", label: "VARIANCE" },
 ];
@@ -169,12 +171,12 @@ export default function NumericLineConfigPanel({
     if (grouped) {
       const m0 = metrics[0];
       if (m0 === undefined) return false;
-      return isCustomSelection(m0.metricId) || (m0.column !== "" && m0.aggregation !== undefined);
+      return isCustomSelection(m0.metricId) || hasAggregateInput(m0.aggregation, m0.column);
     }
     return (
       metrics.length >= 1 &&
       metrics.length <= MAX_METRICS &&
-      metrics.every((m) => isCustomSelection(m.metricId) || (m.column !== "" && m.aggregation !== undefined))
+      metrics.every((m) => isCustomSelection(m.metricId) || hasAggregateInput(m.aggregation, m.column))
     );
   }, [tableId, xField, grouped, metrics]);
 
@@ -437,7 +439,7 @@ export default function NumericLineConfigPanel({
                   aria-label={`Metric ${idx + 1} aggregation`}
                   value={m.aggregation}
                   onChange={(e) => updateMetric(idx, { aggregation: e.target.value as NumericAggregation })}
-                  disabled={m.column === "" || columnMissing}
+                  disabled={columnMissing}
                 >
                   {AGGREGATIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
@@ -474,6 +476,10 @@ export default function NumericLineConfigPanel({
                   >
                     Remove
                   </button>
+                )}
+
+                {!isCustomSelection(m.metricId) && isCountAll(m.aggregation) && (
+                  <span className="config-hint">{COUNT_ALL_NOTE}</span>
                 )}
 
                 {columnMissing && (

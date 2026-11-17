@@ -13,6 +13,7 @@
  * Zero React/Recharts/Zustand imports.
  */
 
+import { aggregateExpr } from "./aggregationLabels";
 import type { NumericMetric } from "./numericBin";
 import { MAX_SERIES } from "./groupedSeries";
 import { andCustomWhere } from "./customWhere";
@@ -58,10 +59,7 @@ export type BuildNumericLineSqlArgs = {
 
 /** COUNT_DISTINCT is not a Kinetica function — emit COUNT(DISTINCT col). */
 function aggExpr(metric: NumericMetric): string {
-  if (metric.aggregation === "COUNT_DISTINCT") {
-    return `COUNT(DISTINCT ${metric.column})`;
-  }
-  return `${metric.aggregation}(${metric.column})`;
+  return aggregateExpr(metric.aggregation, metric.column); // COUNT_DISTINCT / COUNT_ALL shapes live there
 }
 
 /** Format a seriesIn value for SQL: numbers verbatim, strings single-quoted with internal quotes doubled. */

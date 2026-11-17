@@ -14,6 +14,7 @@
  *       value           — AGG(metricColumn)
  */
 
+import { aggregateExpr } from "./aggregationLabels";
 import type { CalendarDomain, CalendarSubdomain } from "./calendarBin";
 import { CELL_LIMIT } from "./calendarBin";
 import type { TimelineAggregation } from "./timelineBin"; // reuse the aggregation set
@@ -60,10 +61,7 @@ export type BuildCalendarSqlArgs = {
  *  permitted duplication per plan spec.)
  */
 function aggExpr(aggregation: TimelineAggregation, column: string): string {
-  if (aggregation === "COUNT_DISTINCT") {
-    return `COUNT(DISTINCT ${column})`;
-  }
-  return `${aggregation}(${column})`;
+  return aggregateExpr(aggregation, column); // COUNT_DISTINCT / COUNT_ALL shapes live there
 }
 
 /**

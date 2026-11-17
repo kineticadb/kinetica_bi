@@ -17,7 +17,7 @@ import {
 } from "../../lib/customMetricSql";
 import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsStore";
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
-import { AGGREGATIONS } from "../../lib/aggregationLabels";
+import { AGGREGATIONS, COUNT_ALL_NOTE, isCountAll } from "../../lib/aggregationLabels";
 import { buildChartSql, HEATMAP_LIMITS } from "../../lib/chartSql";
 import { readTableExtraMetrics, MAX_TABLE_EXTRA_METRICS, type TableExtraMetric } from "../../lib/tableExtraMetrics";
 import { CB_COLOR_THEMES, themeHexColors, themePreviewHexColors } from "../../lib/cbColorThemes";
@@ -700,7 +700,11 @@ const ChartConfigPanel = ({
                           ))}
                         </optgroup>
                       </select>
-                      <span className="config-hint">Numeric column to aggregate</span>
+                      <span className="config-hint">
+                        {isCountAll(draft.aggregation) && !isCustomSelection(storedMetricId)
+                          ? "Not used with Count (*)."
+                          : "Numeric column to aggregate"}
+                      </span>
                     </label>
                   );
                 })()}
@@ -719,6 +723,7 @@ const ChartConfigPanel = ({
                       <option key={a.value} value={a.value}>{a.label}</option>
                     ))}
                   </select>
+                  {isCountAll(draft.aggregation) && <span className="config-hint">{COUNT_ALL_NOTE}</span>}
                 </label>
                 )}
 
@@ -799,6 +804,9 @@ const ChartConfigPanel = ({
                         disabled={dvColumnsMissing || extras.length >= MAX_TABLE_EXTRA_METRICS}
                         onClick={() => setExtras([...extras, { column: "", aggregation: "SUM" }])}
                       >+ Add metric</button>
+                      {extras.some((m) => !isCustomSelection(m.metricId) && isCountAll(m.aggregation)) && (
+                        <span className="config-hint">{COUNT_ALL_NOTE}</span>
+                      )}
                       <span className="config-hint">
                         {`Each metric becomes a column; rows are sorted by the Metric Column above (${MAX_TABLE_EXTRA_METRICS + 1} metrics max).`}
                       </span>

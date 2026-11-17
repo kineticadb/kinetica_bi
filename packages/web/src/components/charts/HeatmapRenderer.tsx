@@ -36,7 +36,7 @@ import {
   sampleRamp,
 } from "../../lib/heatmapColorScale";
 import { formatBucketTick, isCyclicalBucket } from "../../lib/heatmapBucket";
-import { valueFormatColumn } from "../../lib/aggregationLabels";
+import { valueFormatColumn, aggregateExpr, isCountAll } from "../../lib/aggregationLabels";
 import {
   buildHeatmapGrid,
   cellKey,
@@ -219,9 +219,7 @@ const HeatmapRenderer = ({
   const metricLabel = useMemo(() => {
     const agg = (config.aggregation as string) || "";
     const col = (config.metricColumn as string) || "";
-    if (agg && col) {
-      return agg === "COUNT_DISTINCT" ? `COUNT(DISTINCT ${col})` : `${agg}(${col})`;
-    }
+    if (agg && (col || isCountAll(agg))) return aggregateExpr(agg, col);
     return "value";
   }, [config.aggregation, config.metricColumn]);
 

@@ -12,6 +12,7 @@ import { isCustomSelection } from "./customMetricSql";
 import type { AiWidgetType } from "@kinetica-bi/shared";
 import { AI_WIDGET_DEFAULTS } from "./aiWidgetDefaults";
 import { buildExtraMetricSelect } from "./tableExtraMetrics";
+import { aggregateExpr, hasAggregateInput } from "./aggregationLabels";
 import { barTimeSettings, storedBarTimeUnit, barTimeBucketExpr } from "./barTimeBucket";
 
 /**
@@ -81,13 +82,10 @@ export function buildChartSql(i: ChartSqlInput): string {
         if (!metricExpr) return `SELECT * FROM ${table} LIMIT 100`;
         return `SELECT ${metricExpr} AS value FROM ${table}${cw}`;
       }
-      if (!metricColumn || !aggregation) {
+      if (!hasAggregateInput(aggregation, metricColumn)) {
         return `SELECT * FROM ${table} LIMIT 100`;
       }
-      const aggExpr = aggregation === "COUNT_DISTINCT"
-        ? `COUNT(DISTINCT ${metricColumn})`
-        : `${aggregation}(${metricColumn})`;
-      return `SELECT ${aggExpr} AS value FROM ${table}${cw}`;
+      return `SELECT ${aggregateExpr(aggregation, metricColumn)} AS value FROM ${table}${cw}`;
     }
 
     // Grouped variant (bar / line / pie / scatter / table):
@@ -124,8 +122,8 @@ export function buildChartSql(i: ChartSqlInput): string {
       // Metric expr: reuse the SAME resolution as the single-column path (custom vs real).
       const multiMetricExpr = customMode
         ? resolveMetricExpr(metricId, "", tableId)
-        : (aggregation === "COUNT_DISTINCT" ? `COUNT(DISTINCT ${metricColumn})` : `${aggregation}(${metricColumn})`);
-      if (!colsClause || !multiMetricExpr || (!customMode && (!metricColumn || !aggregation))) {
+        : aggregateExpr(aggregation, metricColumn);
+      if (!colsClause || !multiMetricExpr || (!customMode && !hasAggregateInput(aggregation, metricColumn))) {
         return `SELECT * FROM ${table} LIMIT 100`;
       }
       const multiSortDir = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
@@ -198,12 +196,10 @@ export function buildChartSql(i: ChartSqlInput): string {
       }
       return `SELECT ${groupByColumn}, ${extraSelect}${metricExpr} AS value FROM ${table}${cw} GROUP BY ${groupByColumn} ORDER BY value ${groupSortDirC} LIMIT ${groupLimitC}`;
     }
-    if (!metricColumn || !aggregation || !groupByColumn) {
+    if (!hasAggregateInput(aggregation, metricColumn) || !groupByColumn) {
       return `SELECT * FROM ${table} LIMIT 100`;
     }
-    const aggExpr = aggregation === "COUNT_DISTINCT"
-      ? `COUNT(DISTINCT ${metricColumn})`
-      : `${aggregation}(${metricColumn})`;
+    const aggExpr = aggregateExpr(aggregation, metricColumn);
     // Operator-configurable sort direction + result limit (defaults DESC / 100).
     const groupSortDir = ((draft.sortDir as string) || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
     const ALLOWED_LIMITS = [5, 10, 25, 50, 100, 250, 500];
@@ -221,7 +217,7 @@ export function buildChartSql(i: ChartSqlInput): string {
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const TABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
 const DERIVE_AGGREGATIONS = new Set([
-  "SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "STDDEV", "VARIANCE",
+  "SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "COUNT_ALL", "STDDEV", "VARIANCE",
 ]);
 
 const DERIVE_TYPES = new Set(["bar", "line", "pie", "table", "bignumber"]);

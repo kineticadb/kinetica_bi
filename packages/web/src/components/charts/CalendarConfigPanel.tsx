@@ -16,6 +16,7 @@
  * NO raw hex literals — theme tokens only (theme-guard auto-scan asserts this).
  */
 
+import { COUNT_ALL_NOTE, isCountAll } from "../../lib/aggregationLabels";
 import { useEffect, useMemo, useState } from "react";
 import { MultiSelectChips } from "./MultiSelectChips";
 import type { ConfigPanelProps } from "./registry";
@@ -100,6 +101,7 @@ const AGGREGATIONS: { value: TimelineAggregation; label: string }[] = [
   { value: "MAX",            label: "MAX" },
   { value: "COUNT",          label: "COUNT" },
   { value: "COUNT_DISTINCT", label: "COUNT_DISTINCT" },
+  { value: "COUNT_ALL",      label: "COUNT(*)" },
   { value: "STDDEV",         label: "STDDEV" },
   { value: "VARIANCE",       label: "VARIANCE" },
 ];
@@ -546,6 +548,7 @@ export default function CalendarConfigPanel({
                 </option>
               ))}
             </select>
+            {isCountAll(aggregation) && <span className="config-hint">{COUNT_ALL_NOTE}</span>}
           </div>
           )}
 
