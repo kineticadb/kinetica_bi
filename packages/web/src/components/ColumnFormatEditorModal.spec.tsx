@@ -70,11 +70,21 @@ function renderModal(table: TableDto = TABLE) {
   return { ...utils, onClose };
 }
 
+/** Wait until the saved config has loaded and the editor form (auto-selected first column) is up. */
+async function waitForEditor() {
+  await screen.findByRole("textbox", { name: /display label/i });
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
 beforeEach(() => {
-  mockedClient.listColumnDisplayConfig.mockResolvedValue([]);
+  // The saved-config load is async and the editor form only renders once it resolves. Resolve it a
+  // little later than "immediately" so every test exercises that wait (CI flake, run #34: the tests
+  // waited for the column list, which renders at once, then looked for the not-yet-rendered form).
+  mockedClient.listColumnDisplayConfig.mockImplementation(
+    () => new Promise((resolve) => setTimeout(() => resolve([]), 60)),
+  );
   mockedClient.upsertColumnDisplayConfig.mockResolvedValue({
     table_id: 42,
     column_name: "revenue",
@@ -95,9 +105,7 @@ describe("ColumnFormatEditorModal", () => {
     renderModal();
 
     // Wait for load
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     // Auto-selects first column (revenue)
     const labelInput = screen.getByRole("textbox", { name: /display label/i });
@@ -111,9 +119,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T2: typing a label updates input; clearing leaves empty (placeholder = raw name)", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const labelInput = screen.getByRole("textbox", { name: /display label/i });
 
@@ -133,9 +139,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T3: switching kind to Number shows decimals + percent controls", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
 
@@ -153,9 +157,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T4: switching kind to Date shows preset dropdown", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
     fireEvent.change(kindSelect, { target: { value: "date" } });
@@ -180,9 +182,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T5: switching kind to Advanced shows specifier input + ×100 hint", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
     fireEvent.change(kindSelect, { target: { value: "d3" } });
@@ -198,9 +198,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T6: live preview text updates when a control changes", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
     // Switch to number
@@ -225,9 +223,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T7: Save button disabled when clean; enabled after an edit", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const saveBtn = screen.getByRole("button", { name: /^save$/i });
     expect(saveBtn).toBeDisabled();
@@ -245,9 +241,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T8: Save calls upsertColumnDisplayConfig + upsertColumn with correct args", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     // Columns default to "none"; explicitly pick Number to exercise the number-save path
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
@@ -304,9 +298,7 @@ describe("ColumnFormatEditorModal", () => {
 
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     // Clear the label and switch the kind back to None → now differs from the saved baseline
     const labelInput = screen.getByRole("textbox", { name: /display label/i });
@@ -341,9 +333,7 @@ describe("ColumnFormatEditorModal", () => {
 
     const { onClose } = renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     // Make a change
     const labelInput = screen.getByRole("textbox", { name: /display label/i });
@@ -376,9 +366,7 @@ describe("ColumnFormatEditorModal", () => {
   it("T11: switching kind to Smart abbreviation shows decimal-places control + SI live preview", async () => {
     renderModal();
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /revenue/i })).toBeInTheDocument();
-    });
+    await waitForEditor();
 
     const kindSelect = screen.getByRole("combobox", { name: /format kind/i });
     fireEvent.change(kindSelect, { target: { value: "si" } });
