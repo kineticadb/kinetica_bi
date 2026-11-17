@@ -15,6 +15,7 @@
  * NO data fetch. NO Apply/Clear. This is config-only; Plan 45-03 ships the renderer.
  */
 
+import { HexColorText } from "./HexColorText";
 import { COUNT_ALL_NOTE, hasAggregateInput, isCountAll } from "../../lib/aggregationLabels";
 import { useEffect, useMemo } from "react";
 import type { ConfigPanelProps } from "./registry";
@@ -477,6 +478,15 @@ export default function TimelineConfigPanel({
                     value={toCssColor(m.color)}
                     onChange={(e) => updateMetric(idx, { color: toAarrggbb(e.target.value) })}
                     style={{ width: 40, height: 28, padding: 0, border: "none" }}
+                  />
+                )}
+                {!grouped && (
+                  <HexColorText
+                    ariaLabel={`Metric ${idx + 1} color (hex)`}
+                    value={toCssColor(m.color)}
+                    onChange={(hex) => updateMetric(idx, { color: toAarrggbb(hex) })}
+                    className="ds-input"
+                    style={{ width: 92, flex: "0 0 92px", fontFamily: "monospace" }}
                   />
                 )}
 

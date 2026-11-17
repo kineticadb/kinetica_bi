@@ -40,6 +40,8 @@ export type ConfigField = {
   hint?: string;
   /** "colorTheme" fields: color field keys a chosen theme fills, in order (hand-editing one resets the theme to ""). */
   paletteKeys?: string[];
+  /** "colorTheme" fields: the boolean config key that reverses the theme's color order. */
+  reverseKey?: string;
   /** Show the field only when this returns true for the current draft config (default: always shown). */
   visibleWhen?: (config: Record<string, unknown>) => boolean;
 };

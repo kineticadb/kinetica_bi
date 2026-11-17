@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { legendTextFormatter } from "../../lib/chartLegend";
 import { mergeWidgetOverlay } from "../../lib/widgetOverlay";
 import MapChartRenderer from "./MapChartRenderer";
 import WidgetErrorBoundary from "../WidgetErrorBoundary";
@@ -95,7 +96,7 @@ import { readTableExtraMetrics, extraMetricAlias, extraMetricHeader } from "../.
 // rendering the OLD one (the frozen config.sql metric-expression defect).
 import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
-import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { getCbColorTheme, seriesPaletteColors, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
 import { categoryLabel } from "../../lib/categoryLabel";
 import { computeBarXAxisLayout, truncateBarLabel } from "../../lib/barChartLayout";
@@ -1151,7 +1152,7 @@ const BarRenderer = ({
     : { series: [] as string[], truncated: false, total: 0 };
   const chartData = multiSeries ? pivotSeriesRows(pivotInput, top.series) : data;
   const seriesColors = multiSeries
-    ? themeColorsFor(getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME)!, Math.max(1, top.series.length))
+    ? seriesPaletteColors(colorTheme, top.series.length, DEFAULT_COLOR_THEME, config.reverseColors === true)
     : [];
   const stacked = config.stacked === true;
   // x key: "bucket" in multi mode (pivotSeriesRows output), else resolved single-series x.
@@ -1368,7 +1369,7 @@ const BarRenderer = ({
           />
         )}
         {/* One series repeats the chart title, so only a multi-series bar shows its legend (as the timeline does). */}
-        {showLegend && multiSeries && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
+        {showLegend && multiSeries && <Legend formatter={legendTextFormatter} wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
         {/* Phase 102 (BARGRP-V119-02): multi-series path — N <Bar> elements, no <Cell>/<LabelList>. */}
         {multiSeries ? (
           top.series.map((sk, i) => (
@@ -1674,7 +1675,7 @@ const LineRenderer = ({
       }
     />
   ) : null;
-  const legendEl = showLegend && multiSeries ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
+  const legendEl = showLegend && multiSeries ? <Legend formatter={legendTextFormatter} wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
   const gridEl = showGrid ? <CartesianGrid stroke={GRID_COLOR} vertical={false} /> : null;
 
   const chart = multiSeries ? (
@@ -1956,7 +1957,7 @@ const PieRenderer = ({
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
-        {showLegend && <Legend />}
+        {showLegend && <Legend formatter={legendTextFormatter} />}
       </PieChart>
     </ResponsiveContainer>
   );

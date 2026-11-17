@@ -106,19 +106,57 @@ export function themeColorsFor(theme: CbColorTheme, count: number): string[] {
   return out;
 }
 
+/** Lighter than this (WCAG relative luminance) a series all but vanishes on a light card. */
+const SERIES_MAX_LUMINANCE = 0.8;
+
+function relativeLuminance(argb: string): number {
+  const h = argb.slice(-6);
+  const [r, g, b] = [0, 2, 4]
+    .map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 /**
- * Quick 261116-cpt: `count` theme colors as CSS "#rrggbb" (the shape chart `color` fields store),
+ * Quick 261117-wht: `count` AARRGGBB colors for chart SERIES (bar series, pie slices).
+ * Qualitative themes: the ColorBrewer colors as-is. Sequential/diverging themes: sampled evenly
+ * (in ramp order) from the theme's largest variant minus its near-white steps, which disappear on
+ * a light card (PuRd's lightest is #f1eef6); colors repeat past the usable count.
+ * Map class breaks and heatmap scales keep the full ramp (themeColorsFor).
+ */
+export function seriesThemeColors(theme: CbColorTheme, count: number): string[] {
+  const n = Math.max(0, Math.floor(count));
+  if (n === 0 || theme.group === "Qualitative") return themeColorsFor(theme, n);
+  const max = Math.max(...Object.keys(theme.byCount).map(Number));
+  const usable = themeColorsFor(theme, max).filter((c) => relativeLuminance(c) <= SERIES_MAX_LUMINANCE);
+  if (n >= usable.length) return Array.from({ length: n }, (_, i) => usable[i % usable.length]);
+  if (n === 1) return [usable[Math.floor((usable.length - 1) / 2)]];
+  return Array.from({ length: n }, (_, i) => usable[Math.round((i * (usable.length - 1)) / (n - 1))]);
+}
+
+/**
+ * Quick 261116-cpt: `count` series colors as CSS "#rrggbb" (the shape chart `color` fields store),
  * or [] for an unknown theme id.
  */
 export function themeHexColors(themeId: string, count: number): string[] {
   const theme = getCbColorTheme(themeId);
   if (!theme) return [];
-  return themeColorsFor(theme, count).map((c) => `#${c.slice(2).toLowerCase()}`);
+  return seriesThemeColors(theme, count).map((c) => `#${c.slice(2).toLowerCase()}`);
 }
 
-/** The theme's distinct colors for a preview strip: its largest defined variant, capped at `max`. */
+/** The theme's distinct series colors for a preview strip, capped at `max`. */
 export function themePreviewHexColors(themeId: string, max = 8): string[] {
   const theme = getCbColorTheme(themeId);
   if (!theme) return [];
-  return themeHexColors(themeId, Math.min(max, Math.max(...Object.keys(theme.byCount).map(Number))));
+  return [...new Set(themeHexColors(themeId, Math.min(max, Math.max(...Object.keys(theme.byCount).map(Number)))))];
+}
+
+/**
+ * Quick 261117-rev: AARRGGBB colors for `count` chart series (at least 1) from `themeId`
+ * (or `fallbackId` when unknown), optionally in reverse order.
+ */
+export function seriesPaletteColors(themeId: string, count: number, fallbackId: string, reverse = false): string[] {
+  const theme = getCbColorTheme(themeId) ?? getCbColorTheme(fallbackId)!;
+  const colors = seriesThemeColors(theme, Math.max(1, count));
+  return reverse ? colors.reverse() : colors;
 }
