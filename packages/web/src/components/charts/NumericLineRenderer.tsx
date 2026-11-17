@@ -18,6 +18,7 @@
  * filterVersion tick produced by setBulkFilters.
  */
 
+import { legendTextFormatter } from "../../lib/chartLegend";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
@@ -693,7 +694,7 @@ export default function NumericLineRenderer({ widget, tables: _tables }: Props):
           {/* Legend: always shown when grouped (series values matter); when ungrouped,
               only for multi-metric (unchanged). */}
           {((grouped && showLegend) || (!grouped && showLegend && metrics.length > 1)) && (
-            <Legend verticalAlign="bottom" />
+            <Legend formatter={legendTextFormatter} verticalAlign="bottom" />
           )}
 
           {/* Transient drag band — spans the bucket axis (x in horizontal, y in vertical). */}
