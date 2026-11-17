@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CB_COLOR_THEMES, getCbColorTheme, seriesPaletteColors, themeColorsFor } from "./cbColorThemes";
+import { CB_COLOR_THEMES, getCbColorTheme, seriesPaletteColors, themeColorsFor, themeHexColors } from "./cbColorThemes";
 
 describe("cbColorThemes", () => {
   it("includes the full ColorBrewer set (18 sequential, 9 diverging, 8 qualitative = 35)", () => {
@@ -81,5 +81,40 @@ describe("seriesPaletteColors", () => {
     expect(seriesPaletteColors("Set1", 4, "Set2", true)).toEqual([...set1].reverse());
     expect(seriesPaletteColors("nope", 3, "Set2")).toEqual(themeColorsFor(getCbColorTheme("Set2")!, 3));
     expect(seriesPaletteColors("Set1", 0, "Set2")).toHaveLength(1);
+  });
+});
+
+// Quick 261117-wht: chart series must stay visible on a light card, so sequential/diverging
+// themes never hand a series a near-white step (PuRd's lightest is #f1eef6).
+describe("series colors skip near-white steps", () => {
+  const lum = (argbOrHex: string) => {
+    const h = argbOrHex.replace("#", "").slice(-6);
+    const ch = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+
+  it("WHT-1: every sequential/diverging theme, 1-12 series: no color lighter than 0.8 luminance, exact count", () => {
+    for (const t of CB_COLOR_THEMES.filter((x) => x.group !== "Qualitative")) {
+      for (let n = 1; n <= 12; n++) {
+        const bar = seriesPaletteColors(t.id, n, "Set2");
+        const pie = themeHexColors(t.id, n);
+        expect(bar, `${t.id} n=${n}`).toHaveLength(n);
+        expect(pie, `${t.id} n=${n}`).toHaveLength(n);
+        for (const c of [...bar, ...pie]) expect(lum(c), `${t.id} n=${n} ${c}`).toBeLessThanOrEqual(0.8);
+      }
+    }
+  });
+
+  it("WHT-2: PuRd x5 keeps the ramp order (light → dark), distinct, without #f1eef6", () => {
+    const c = themeHexColors("PuRd", 5);
+    expect(new Set(c).size).toBe(5);
+    expect(c).not.toContain("#f1eef6");
+    const l = c.map(lum);
+    expect([...l].sort((a, b) => b - a)).toEqual(l);
+  });
+
+  it("WHT-3: qualitative themes are unchanged", () => {
+    expect(themeHexColors("Set2", 5)).toEqual(themeColorsFor(getCbColorTheme("Set2")!, 5).map((x) => `#${x.slice(2).toLowerCase()}`));
   });
 });
