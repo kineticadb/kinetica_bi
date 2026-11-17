@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { HexColorText } from "./HexColorText";
 import { getChartType, type ConfigField } from "./registry";
 import { FormatSpecEditor } from "./FormatSpecEditor";
 import type { FormatSpec } from "../../lib/columnFormatter";
@@ -1417,6 +1418,12 @@ const ColorRulesField = ({
             aria-label={`Rule ${i + 1} color`}
             value={r.color || "#22c55e"}
             onChange={(e) => update(i, { color: e.target.value })}
+          />
+          <HexColorText
+            ariaLabel={`Rule ${i + 1} color (hex)`}
+            value={r.color || "#22c55e"}
+            onChange={(hex) => update(i, { color: hex })}
+            style={{ flex: "0 0 7.5rem", minWidth: 0 }}
           />
           <button
             type="button"
