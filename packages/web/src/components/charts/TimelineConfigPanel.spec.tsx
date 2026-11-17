@@ -452,3 +452,23 @@ describe("TimelineConfigPanel — Count (*) (CNT)", () => {
     expect(screen.getByText("Count (*) counts every row, so the metric column is not used.")).toBeInTheDocument();
   });
 });
+
+// Quick 261117-hex: every color picker gets a hex text box. A partial value is not saved;
+// a complete #rrggbb (with or without "#") is, in this panel's AARRGGBB storage.
+describe("metric color hex box (HEX)", () => {
+  it("HEX-1 typing a hex value sets the metric color; a partial value is not saved", () => {
+    const { onChange } = renderPanel({
+      tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time",
+      metrics: [{ column: "fare_amount", aggregation: "SUM", color: "FF66C2A5" }],
+    });
+    const box = screen.getByLabelText("Metric 1 color (hex)") as HTMLInputElement;
+    expect(box.value).toBe("#66c2a5");
+    const calls = onChange.mock.calls.length;
+    fireEvent.change(box, { target: { value: "#12" } });
+    expect(onChange.mock.calls.length).toBe(calls);
+    expect(box.value).toBe("#12");
+    fireEvent.change(box, { target: { value: "6F2BD4" } });
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as { metrics: { color: string }[] };
+    expect(last.metrics[0].color).toBe("FF6F2BD4");
+  });
+});

@@ -1786,6 +1786,7 @@ describe("ChartConfigPanel — chart palette themes (CPT)", () => {
     const capture = vi.spyOn(registry, "registerChartType").mockImplementation((d) => { defs[d.type] = d; });
     (await import("./definitions/pie")).default();
     (await import("./definitions/bar")).default();
+    (await import("./definitions/bignumber")).default();
     capture.mockRestore();
   });
   beforeEach(() => {
@@ -1838,6 +1839,20 @@ describe("ChartConfigPanel — chart palette themes (CPT)", () => {
     expect(screen.getByLabelText("Color Palette preview").children).toHaveLength(8); // capped at 8 distinct swatches
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
     expect(onSave.mock.calls[0][0].config.colorTheme).toBe("Paired");
+  });
+
+  // Quick 261117-hex: the Big Number "Color by value range" rule color gets a hex box too.
+  it("HEX-3 bignumber: a rule's hex box sets its color; a partial value is not saved", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bignumber" title="N" config={{ ...defs.bignumber.defaultConfig, ...base, colorRules: [{ min: 0, color: "#22c55e" }] }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const box = screen.getByLabelText("Rule 1 color (hex)") as HTMLInputElement;
+    expect(box.value).toBe("#22c55e");
+    fireEvent.change(box, { target: { value: "#6f2" } });
+    expect((screen.getByLabelText("Rule 1 color") as HTMLInputElement).value).toBe("#22c55e");
+    fireEvent.change(box, { target: { value: "#6F2BD4" } });
+    expect((screen.getByLabelText("Rule 1 color") as HTMLInputElement).value).toBe("#6f2bd4");
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.colorRules[0].color).toBe("#6f2bd4");
   });
 
   // Quick 261117-rev: Reverse Colors flips the palette order.
