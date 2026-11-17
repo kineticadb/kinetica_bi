@@ -525,12 +525,22 @@ const ChartConfigPanel = ({
   // them afterwards means the palette is no longer that theme, so the picker returns to Custom ("").
   const setField = (field: ConfigField, value: unknown) => {
     if (field.type === "colorTheme" && field.paletteKeys?.length) {
-      const colors = themeHexColors(String(value), field.paletteKeys.length);
-      setDraft((prev) => ({
-        ...prev,
-        [field.key]: value,
-        ...Object.fromEntries(colors.map((c, i) => [field.paletteKeys![i], c])),
-      }));
+      const keys = field.paletteKeys;
+      setDraft((prev) => {
+        const colors = themeHexColors(String(value), keys.length);
+        if (field.reverseKey && prev[field.reverseKey] === true) colors.reverse();
+        return { ...prev, [field.key]: value, ...Object.fromEntries(colors.map((c, i) => [keys[i], c])) };
+      });
+      return;
+    }
+    // Quick 261117-rev: Reverse Colors flips the filled palette in place (the theme stays selected).
+    const reversing = chartDef.fields.find((f) => f.type === "colorTheme" && f.reverseKey === field.key && f.paletteKeys?.length);
+    if (reversing) {
+      const keys = reversing.paletteKeys!;
+      setDraft((prev) => {
+        const current = keys.map((k) => prev[k] ?? chartDef.fields.find((f) => f.key === k)?.defaultValue);
+        return { ...prev, [field.key]: value, ...Object.fromEntries(current.reverse().map((c, i) => [keys[i], c])) };
+      });
       return;
     }
     const owner = chartDef.fields.find((f) => f.type === "colorTheme" && f.paletteKeys?.includes(field.key));
@@ -1108,6 +1118,7 @@ const ChartConfigPanel = ({
                 key={field.key}
                 field={field}
                 value={draft[field.key] ?? field.defaultValue}
+                reversed={field.reverseKey ? draft[field.reverseKey] === true : false}
                 onChange={(v) => setField(field, v)}
               />
             ))}
@@ -1174,10 +1185,13 @@ const ChartConfigPanel = ({
 const FieldRenderer = ({
   field,
   value,
+  reversed = false,
   onChange,
 }: {
   field: ConfigField;
   value: unknown;
+  /** "colorTheme" fields: preview the palette in reverse order. */
+  reversed?: boolean;
   onChange: (value: unknown) => void;
 }) => {
   switch (field.type) {
@@ -1312,6 +1326,7 @@ const FieldRenderer = ({
     case "colorTheme": {
       const id = String(value ?? "");
       const preview = themePreviewHexColors(id);
+      if (reversed) preview.reverse();
       return (
         <div className="ds-field">
           <span className="ds-field-label">{field.label}</span>

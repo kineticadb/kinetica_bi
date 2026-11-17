@@ -122,3 +122,13 @@ export function themePreviewHexColors(themeId: string, max = 8): string[] {
   if (!theme) return [];
   return themeHexColors(themeId, Math.min(max, Math.max(...Object.keys(theme.byCount).map(Number))));
 }
+
+/**
+ * Quick 261117-rev: AARRGGBB colors for `count` chart series (at least 1) from `themeId`
+ * (or `fallbackId` when unknown), optionally in reverse order.
+ */
+export function seriesPaletteColors(themeId: string, count: number, fallbackId: string, reverse = false): string[] {
+  const theme = getCbColorTheme(themeId) ?? getCbColorTheme(fallbackId)!;
+  const colors = themeColorsFor(theme, Math.max(1, count));
+  return reverse ? colors.reverse() : colors;
+}

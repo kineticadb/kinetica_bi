@@ -95,7 +95,7 @@ import { readTableExtraMetrics, extraMetricAlias, extraMetricHeader } from "../.
 // rendering the OLD one (the frozen config.sql metric-expression defect).
 import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
-import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { getCbColorTheme, seriesPaletteColors, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
 import { categoryLabel } from "../../lib/categoryLabel";
 import { computeBarXAxisLayout, truncateBarLabel } from "../../lib/barChartLayout";
@@ -1151,7 +1151,7 @@ const BarRenderer = ({
     : { series: [] as string[], truncated: false, total: 0 };
   const chartData = multiSeries ? pivotSeriesRows(pivotInput, top.series) : data;
   const seriesColors = multiSeries
-    ? themeColorsFor(getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME)!, Math.max(1, top.series.length))
+    ? seriesPaletteColors(colorTheme, top.series.length, DEFAULT_COLOR_THEME, config.reverseColors === true)
     : [];
   const stacked = config.stacked === true;
   // x key: "bucket" in multi mode (pivotSeriesRows output), else resolved single-series x.
