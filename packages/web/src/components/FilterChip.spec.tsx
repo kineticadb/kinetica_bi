@@ -25,7 +25,7 @@
  */
 
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
@@ -279,5 +279,69 @@ describe("FilterChip AI tag (138 D-14)", () => {
     const b = render(<FilterChip {...base} provenance="from Fares" />);
     expect(b.container.querySelector(".filter-panel-chip-provenance")?.textContent).toBe("from Fares");
     expect(b.container.querySelectorAll(".widget-filter-badge")).toHaveLength(1);
+  });
+
+  // Quick 261117-hls: the on-canvas highlight must never outlive the hover / keyboard focus that
+  // started it ("stuck" purple outlines).
+  describe("highlight never gets stuck (HLS)", () => {
+    const origMatches = Element.prototype.matches;
+    let focusVisible = false;
+    const setup = () => {
+      vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, sel: string) {
+        return sel === ":focus-visible" ? focusVisible : origMatches.call(this, sel);
+      });
+      const state = { on: false };
+      const r = render(
+        <FilterChip variant="panel" text="payment_type = 'Credit'" removeAriaLabel="Remove filter" onRemove={vi.fn()}
+          appliesTo={[{ widgetId: 1, widgetTitle: "Sales" }]} onHighlight={() => { state.on = true; }} onClearHighlight={() => { state.on = false; }} />,
+      );
+      const chip = document.querySelector(".filter-panel-chip")!;
+      const applies = screen.getByText(/applies to 1 widgets/);
+      const chevron = screen.getByLabelText("Expand applies-to list");
+      return { state, r, chip, applies, chevron };
+    };
+    afterEach(() => { vi.restoreAllMocks(); focusVisible = false; });
+
+    it("HLS-1 a mouse-clicked button that regains focus (returning to the tab) does not re-highlight", () => {
+      const { state, chip, applies } = setup();
+      fireEvent.mouseEnter(chip);
+      fireEvent.focus(applies);            // click → focus (not :focus-visible)
+      fireEvent.mouseLeave(chip);
+      expect(state.on).toBe(false);
+      fireEvent.blur(applies);             // switch tab away …
+      fireEvent.focus(applies);            // … and back: the browser re-focuses the button
+      expect(state.on).toBe(false);
+    });
+
+    it("HLS-2 removing the chip while it is hovered clears the highlight", () => {
+      const { state, chip, r } = setup();
+      fireEvent.mouseEnter(chip);
+      expect(state.on).toBe(true);
+      r.unmount();
+      expect(state.on).toBe(false);
+    });
+
+    it("HLS-3 keyboard focus still highlights, and leaving the chip clears it", () => {
+      focusVisible = true;
+      const { state, applies } = setup();
+      fireEvent.focus(applies);
+      expect(state.on).toBe(true);
+      fireEvent.blur(applies, { relatedTarget: document.body });
+      expect(state.on).toBe(false);
+    });
+
+    it("HLS-4 focus moving inside the chip, or blurring while still hovered, keeps the highlight", () => {
+      focusVisible = true;
+      const { state, chip, applies, chevron } = setup();
+      fireEvent.focus(applies);
+      fireEvent.blur(applies, { relatedTarget: chevron });
+      fireEvent.focus(chevron);
+      expect(state.on).toBe(true);
+      fireEvent.mouseEnter(chip);
+      fireEvent.blur(chevron, { relatedTarget: document.body });
+      expect(state.on).toBe(true);       // the mouse is still over it
+      fireEvent.mouseLeave(chip);
+      expect(state.on).toBe(false);
+    });
   });
 });
