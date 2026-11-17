@@ -2323,6 +2323,11 @@ const WidgetConfigModal = ({
   );
 };
 
+// Quick 261116-mdt: snake_case table/schema names wrap after an underscore (<wbr>) rather than
+// mid-word inside the fixed-width columns; overflow-wrap:anywhere stays as the last resort.
+const breakAtUnderscores = (text: string) =>
+  text.split("_").flatMap((part, i, all) => (i < all.length - 1 ? [part, "_", <wbr key={i} />] : [part]));
+
 const TablePickerModal = ({
   associatedTables,
   onAdd,
@@ -2379,8 +2384,8 @@ const TablePickerModal = ({
               </div>
               {associatedTables.map((t) => (
                 <div key={t.id} className="ds-row dash-tables-grid">
-                  <span className="ds-name">{t.name}</span>
-                  <span className="ds-schema">{t.schema}</span>
+                  <span className="ds-name">{breakAtUnderscores(t.name)}</span>
+                  <span className="ds-schema">{breakAtUnderscores(t.schema)}</span>
                   <span>{Object.keys(t.columns).length}</span>
                   <span>
                     {confirmingId === t.id ? (
@@ -2419,8 +2424,8 @@ const TablePickerModal = ({
               </div>
               {available.map((t) => (
                 <div key={t.id} className="ds-row dash-tables-grid">
-                  <span className="ds-name">{t.name}</span>
-                  <span className="ds-schema">{t.schema}</span>
+                  <span className="ds-name">{breakAtUnderscores(t.name)}</span>
+                  <span className="ds-schema">{breakAtUnderscores(t.schema)}</span>
                   <span>{Object.keys(t.columns).length}</span>
                   <span>
                     <button className="btn-primary btn-sm" onClick={() => onAdd(t.id)}>

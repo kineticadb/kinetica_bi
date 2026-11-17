@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { AGGREGATIONS, aggregationLabel, countTickFormatter, isCountAggregation, valueFormatColumn } from "./aggregationLabels";
 
 describe("aggregationLabels", () => {
-  it("AGG-L1: the 8 aggregations in picker order", () => {
-    expect(AGGREGATIONS.map((a) => a.value)).toEqual(["SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "STDDEV", "VARIANCE"]);
-    expect(AGGREGATIONS.map((a) => a.label)).toEqual(["Sum", "Average", "Min", "Max", "Count", "Count Distinct", "Std Deviation", "Variance"]);
+  it("AGG-L1: the 9 aggregations in picker order (Count (*) added by quick 261116-cnt)", () => {
+    expect(AGGREGATIONS.map((a) => a.value)).toEqual(["SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_ALL", "COUNT_DISTINCT", "STDDEV", "VARIANCE"]);
+    expect(AGGREGATIONS.map((a) => a.label)).toEqual(["Sum", "Average", "Min", "Max", "Count", "Count (*)", "Count Distinct", "Std Deviation", "Variance"]);
   });
   it("AGG-L2: known values resolve to labels", () => {
     expect(aggregationLabel("COUNT_DISTINCT")).toBe("Count Distinct");

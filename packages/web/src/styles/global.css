@@ -820,8 +820,22 @@ a {
   border-bottom-color: var(--muted) !important;
 }
 
-.dash-tables-grid {
-  grid-template-columns: 2fr 1fr 1fr auto;
+/* Manage Dashboard Tables (quick 261116-mdt). Each row is its own grid, so columns align only when
+   every row gets the same content-independent tracks: minmax(0, …) stops a long name widening its
+   own row. Compound selectors so this out-ranks the 5-column .ds-header/.ds-row template below. */
+.ds-header.dash-tables-grid,
+.ds-row.dash-tables-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) 4.5rem 7.5rem;
+}
+
+.dash-tables-grid > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "Remove? Yes Cancel" wraps inside the fixed Actions column rather than overflowing it. */
+.dash-tables-grid .confirm-actions {
+  flex-wrap: wrap;
 }
 
 /* Modal */
@@ -2087,7 +2101,11 @@ input[type="checkbox"],
 .widget-csv-download { margin-right: auto; }
 .widget-csv-download:disabled { opacity: 0.6; cursor: progress; }
 
-/* Big number renderer */
+/* Big number renderer — text auto-fits the widget (quick 261116-bns). The box is a SIZE container
+   (its height comes from .widget-body's definite flex height, never from its content), so cqh/cqw
+   track the widget. The value takes the smaller of a height share and a width share divided by its
+   rendered length (--bn-chars), so long numbers still fit; --bn-scale is "Font Size Scaling".
+   Each first font-size line is the fallback for a browser without container units. */
 .widget-bignumber {
   display: flex;
   flex-direction: column;
@@ -2096,23 +2114,36 @@ input[type="checkbox"],
   height: 100%;
   gap: var(--space-1);
   text-align: center;
+  container-type: size;
+  overflow: hidden;
 }
 
 .widget-bignumber-label {
   font-size: var(--text-lg);
+  font-size: max(11px, calc(min(14cqh, 8cqw) * var(--bn-scale, 1)));
   color: var(--muted);
   font-weight: var(--font-weight-medium);
+  line-height: 1.2;
 }
 
 .widget-bignumber-value {
   font-size: var(--text-2xl);
+  font-size: max(12px, calc(min(45cqh, 180cqw / var(--bn-chars, 4)) * var(--bn-scale, 1)));
   font-weight: var(--font-weight-bold);
   line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* With a label and/or sub-label the value yields part of the height to them. */
+.widget-bignumber--labeled .widget-bignumber-value {
+  font-size: max(12px, calc(min(34cqh, 180cqw / var(--bn-chars, 4)) * var(--bn-scale, 1)));
 }
 
 .widget-bignumber-sub {
   font-size: var(--text-base);
+  font-size: max(10px, calc(min(10cqh, 6cqw) * var(--bn-scale, 1)));
   color: var(--muted);
+  line-height: 1.2;
 }
 
 @media (max-width: 900px) {

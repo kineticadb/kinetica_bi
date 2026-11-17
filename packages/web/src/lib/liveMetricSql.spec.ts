@@ -181,3 +181,31 @@ describe("liveMetricSql — applyLiveMetricExpr resolution", () => {
     expect(result).toEqual({ kind: "ready", sql: storedSql });
   });
 });
+
+describe("liveMetricSql — Data Table extra metrics (TMM)", () => {
+  it("TMM-6 swaps a custom EXTRA metric by its value_N alias and leaves the primary alone", () => {
+    useCustomMetricsStore.getState().reset();
+    useCustomMetricsStore.getState().setConfig(TABLE_ID, [makeRow(4, "AVG(b - c) * 2")]);
+    const storedSql =
+      "SELECT site, AVG(b - c) AS value_2, SUM(outages) AS value FROM t GROUP BY site ORDER BY value DESC LIMIT 100";
+    expect(applyLiveMetricExpr(storedSql, undefined, TABLE_ID, [{ metricId: 4 }])).toEqual({
+      kind: "ready",
+      sql: "SELECT site, AVG(b - c) * 2 AS value_2, SUM(outages) AS value FROM t GROUP BY site ORDER BY value DESC LIMIT 100",
+    });
+  });
+
+  it("TMM-7 swaps BOTH the primary and an extra; pending while unhydrated; non-custom extras keep identity", () => {
+    useCustomMetricsStore.getState().reset();
+    const storedSql =
+      "SELECT site, MAX(x) AS value_2, AVG(old) AS value_3, AVG(prim_old) AS value FROM t GROUP BY site";
+    const extras = [{ column: "x", aggregation: "MAX" }, { metricId: 4 }];
+    expect(applyLiveMetricExpr(storedSql, 2, TABLE_ID, extras)).toEqual({ kind: "pending" });
+    useCustomMetricsStore.getState().setConfig(TABLE_ID, [makeRow(2, "AVG(prim_new)"), makeRow(4, "AVG(new)")]);
+    expect(applyLiveMetricExpr(storedSql, 2, TABLE_ID, extras)).toEqual({
+      kind: "ready",
+      sql: "SELECT site, MAX(x) AS value_2, AVG(new) AS value_3, AVG(prim_new) AS value FROM t GROUP BY site",
+    });
+    const plain = "SELECT site, MAX(x) AS value_2, SUM(y) AS value FROM t GROUP BY site";
+    expect((applyLiveMetricExpr(plain, undefined, TABLE_ID, [{ column: "x", aggregation: "MAX" }]) as { sql: string }).sql).toBe(plain);
+  });
+});

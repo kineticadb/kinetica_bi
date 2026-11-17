@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { legendTextFormatter } from "../../lib/chartLegend";
 import { mergeWidgetOverlay } from "../../lib/widgetOverlay";
 import MapChartRenderer from "./MapChartRenderer";
 import WidgetErrorBoundary from "../WidgetErrorBoundary";
@@ -69,7 +70,7 @@ import {
 } from "../../store/columnDisplayConfigStore";
 import { ColumnFormatTooltip } from "./ColumnFormatTooltip";
 import TextRenderer from "./TextRenderer";
-import { countTickFormatter, valueFormatColumn } from "../../lib/aggregationLabels";
+import { countTickFormatter, valueFormatColumn, aggregateExpr, isCountAll } from "../../lib/aggregationLabels";
 import { buildFormatter, type FormatSpec } from "../../lib/columnFormatter";
 import { estimateValueAxisWidth } from "../../lib/estimateAxisWidth";
 import {
@@ -88,17 +89,23 @@ import { yAxisScaleProps } from "../../lib/yAxisScale";
 import { isMultiColumnBarGroupBy, toBarPivotInput, BAR_SERIES_SEPARATOR } from "../../lib/barGroupedSeries";
 import { isCustomSelection, resolveMetricLabel } from "../../lib/customMetricSql";
 import { useCustomMetricsStore } from "../../store/customMetricsStore";
+import { readTableExtraMetrics, extraMetricAlias, extraMetricHeader } from "../../lib/tableExtraMetrics";
 // Phase 121 gap closure (DXIM-V124-10): resolve a custom metric's expression at RENDER time.
 // widget.config.sql freezes whatever expression was live when Apply was last pressed, so an
 // imported widget rendered the SOURCE environment's definition and an edited metric kept
 // rendering the OLD one (the frozen config.sql metric-expression defect).
 import { applyLiveMetricExpr } from "../../lib/liveMetricSql";
 import { selectTopSeries, pivotSeriesRows } from "../../lib/groupedSeries";
-import { getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
+import { getCbColorTheme, seriesPaletteColors, themeColorsFor } from "../../lib/cbColorThemes";
 import { resolveLineMetricTitle } from "../../lib/lineChartTitle";
 import { categoryLabel } from "../../lib/categoryLabel";
 import { computeBarXAxisLayout, truncateBarLabel } from "../../lib/barChartLayout";
 import { computeLineXAxisLayout, isIsolatedLinePoint, lineGroupByColumns, lineXColumn, LINE_DOT_DENSITY_MAX } from "../../lib/lineChartLayout";
+import {
+  barTimeSettings, readBarTimeUnit, swapBarTimeUnit, buildBarTimeRangeSql, readBarTimeRangeMs, pickBarTimeUnit,
+  barTimeBucketRange, type BarTimeUnit,
+} from "../../lib/barTimeBucket";
+import { formatTimelineTick, bucketsSpanYears } from "../../lib/timelineBin";
 import { sortLineRowsByX, buildLineCategoryCountSql, parseCategoryCount, lineCategoryNoteText, LINE_CATEGORY_NOTE_TITLE, type LineCategoryTruncation } from "../../lib/lineChartData";
 import { DEFAULT_COLOR_THEME } from "./TimelineConfigPanel";
 import { useAuthStore } from "../../store/auth";
@@ -169,8 +176,10 @@ function dispatchDrillDown(args: {
   value: unknown;
   dataType: DrillDownDataType;
   widgetId: number;
+  /** Quick 261116-bti: a time-bucketed bar drills with a `between` range. Absent = "eq" (legacy). */
+  operator?: ActiveFilter["operator"];
 }): void {
-  const { tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId } = args;
+  const { tableId, dynamicViewId, dashboardId, column, value, dataType, widgetId, operator } = args;
 
   // ── Phase 63 dv branch ────────────────────────────────────────────────────
   // When the widget is dv-bound, the drill filters THAT dynamic view's data (dv-isolated
@@ -185,7 +194,7 @@ function dispatchDrillDown(args: {
     const isReplace = sameCol !== undefined && !isDedupe;
 
     if (!isDedupe && !isReplace) {
-      const chipText = buildChipText(column, value, dataType);
+      const chipText = buildChipText(column, value, dataType, operator);
       useToastStore.getState().showToast(chipText, "info");
     }
 
@@ -193,6 +202,7 @@ function dispatchDrillDown(args: {
       column,
       value: value as ActiveFilter["value"],
       dataType,
+      ...(operator ? { operator } : {}),
       sourceWidgetId: widgetId,
       addedAt: Date.now(),
     });
@@ -217,7 +227,7 @@ function dispatchDrillDown(args: {
   // First-add (column not in filters): show confirmation toast with chip text.
   // Suppressed on dedupe (no change) and replace (chip change is the feedback).
   if (!isDedupe && !isReplace) {
-    const chipText = buildChipText(column, value, dataType);
+    const chipText = buildChipText(column, value, dataType, operator);
     useToastStore.getState().showToast(chipText, "info");
   }
 
@@ -226,6 +236,7 @@ function dispatchDrillDown(args: {
     column,
     value: value as ActiveFilter["value"],
     dataType,
+    ...(operator ? { operator } : {}),
     sourceWidgetId: widgetId,
     addedAt: Date.now(),
   });
@@ -438,6 +449,8 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // Phase 132 (O-2): line categories dropped by the widget's own Result limit (LIMIT+1 probe) -> notice, never silent.
   const [lineCategoryTruncation, setLineCategoryTruncation] = useState<LineCategoryTruncation | null>(null);
   const [chartLimitedRows, setChartLimitedRows] = useState<number | null>(null);
+  // Quick 261116-bti: the DATE_TRUNC unit of the rows in `data` (time-bucketed bar), else null.
+  const [barTimeUnit, setBarTimeUnit] = useState<BarTimeUnit | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -446,6 +459,15 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   const tableId = cfg.tableId as number | undefined;
   const storedSql = cfg.sql as string | undefined;
   const metricId = cfg.metricId as number | undefined;
+  // Data Table additional metrics: their custom metrics re-resolve live exactly like the primary.
+  // Keyed by JSON so a fresh-but-equal config array does not re-run the memo.
+  const extraMetricsKey = widget.type === "table" ? JSON.stringify(cfg.extraMetrics ?? null) : "null";
+  const extraMetrics = useMemo(
+    () => (widget.type === "table" ? readTableExtraMetrics(cfg) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [extraMetricsKey],
+  );
+  const hasCustomExtra = extraMetrics.some((m) => isCustomSelection(m.metricId));
 
   // Phase 121 gap closure (DXIM-V124-10). cfg.sql is a frozen snapshot: ChartConfigPanel resolved
   // metricId -> expression at Apply time and baked the TEXT in. Re-resolve it here so this renderer
@@ -455,17 +477,17 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
   // unhydrated store resolves to null (the 4a8c117 failure mode, one layer up).
   const customMetricsConfigVersion = useCustomMetricsStore((s) => s.configVersion);
   useEffect(() => {
-    if (isCustomSelection(metricId) && tableId !== undefined) {
+    if ((isCustomSelection(metricId) || hasCustomExtra) && tableId !== undefined) {
       useCustomMetricsStore.getState().loadConfig(tableId).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metricId, tableId]);
+  }, [metricId, tableId, hasCustomExtra]);
 
   const liveMetric = useMemo(
-    () => applyLiveMetricExpr(storedSql, metricId, tableId),
+    () => applyLiveMetricExpr(storedSql, metricId, tableId, extraMetrics),
     // customMetricsConfigVersion is the reactive trigger — every store mutation bumps it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storedSql, metricId, tableId, customMetricsConfigVersion],
+    [storedSql, metricId, tableId, extraMetrics, customMetricsConfigVersion],
   );
   // While the table's metrics are still loading, SUSPEND rather than fall back to the frozen text —
   // falling back would flash the stale number on every dashboard open.
@@ -695,8 +717,37 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
     setLoading(true);
     setError(null);
 
-    const runChartQuery = async (sqlToRun: string): Promise<void> => {
+    // Quick 261116-bti: a time-bucketed bar on Auto re-picks its DATE_TRUNC unit from the MIN/MAX
+    // of the rows it is about to read — sqlToRun is already FROM-swapped to the filter/dv view, so
+    // a narrower filter yields a finer interval. Fixed units run as stored. Any probe failure (other
+    // than an abort) falls back to the stored unit; null = not a time-bucketed bar.
+    const resolveBarTime = async (sqlToRun: string): Promise<{ sql: string; unit: BarTimeUnit | null } | "aborted"> => {
+      if (widget.type !== "bar") return { sql: sqlToRun, unit: null };
+      const groupCols = Array.isArray(cfg.groupByColumns) ? (cfg.groupByColumns as string[]).filter(Boolean) : [];
+      const xCol = groupCols[0] || (cfg.groupByColumn as string) || "";
+      const stored = xCol ? readBarTimeUnit(sqlToRun, xCol) : null;
+      if (!stored) return { sql: sqlToRun, unit: null };
+      const settings = barTimeSettings(cfg);
+      const probeSql = settings.mode === "auto" ? buildBarTimeRangeSql(sqlToRun, xCol) : null;
+      if (!probeSql) return { sql: sqlToRun, unit: stored };
       try {
+        const res = await runSql<Record<string, unknown>>(probeSql, undefined, controller.signal);
+        const rangeMs = readBarTimeRangeMs(parseKineticaResponse(res));
+        if (!Number.isFinite(rangeMs)) return { sql: sqlToRun, unit: stored }; // no rows: nothing to fit
+        const unit = pickBarTimeUnit({ rangeMs, target: settings.target, floor: settings.floor });
+        const swapped = swapBarTimeUnit(sqlToRun, xCol, unit);
+        return swapped ? { sql: swapped, unit } : { sql: sqlToRun, unit: stored };
+      } catch (probeErr) {
+        if ((probeErr as Error)?.name === "AbortError") return "aborted";
+        return { sql: sqlToRun, unit: stored };
+      }
+    };
+
+    const runChartQuery = async (sqlToRunIn: string): Promise<void> => {
+      try {
+        const barTime = await resolveBarTime(sqlToRunIn);
+        if (barTime === "aborted") return;
+        const sqlToRun = barTime.sql;
         // Phase 127: a heatmap asks for its own LIMIT n+1 so "exactly n cells" is
         // distinguishable from "more than n exist". Bumped HERE so the view-not-found
         // retry paths (which re-enter runChartQuery) get it too.
@@ -734,6 +785,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
           setChartLimitedRows(serverHasMore === true ? Math.min(rows.length, bump.limit) : null);
           setHeatmapTruncation(null);
         } else {
+          setBarTimeUnit(barTime.unit); // batched with setData: the unit always matches the rows
           setData(rows);
           setChartLimitedRows(serverHasMore === true ? rows.length : null);
           setHeatmapTruncation(null);
@@ -918,7 +970,7 @@ const AggregatedWidgetRenderer = ({ widget }: Props) => {
 
   const chart = (() => { switch (widget.type) {
     case "bar":
-      return <BarRenderer data={data} config={cfg} {...drillProps} />;
+      return <BarRenderer data={data} config={cfg} timeUnit={barTimeUnit} {...drillProps} />;
     case "line":
       // Phase 132 UAT (V9): a Line Chart saved with no X axis column used to plot the first raw rows
       // (repeating, unaggregated categories). Prompt for the required column instead of drawing that.
@@ -1053,7 +1105,8 @@ const BarRenderer = ({
   dashboardId,
   drillDownColumn,
   drillDownColumnType,
-}: { data: Row[]; config: Record<string, unknown> } & DrillProps) => {
+  timeUnit = null,
+}: { data: Row[]; config: Record<string, unknown>; timeUnit?: BarTimeUnit | null } & DrillProps) => {
   const { grid: GRID_COLOR, axis: AXIS_COLOR } = useChartAxisColors();
   // Phase 77 Plan 02 (COLAPPLY-V115-02): configVersion subscription forces re-render on label/format edit.
   const configVersion = useColumnDisplayConfigStore((s) => s.configVersion);
@@ -1077,7 +1130,7 @@ const BarRenderer = ({
   // "<Aggregation> of <column>" (142 UAT: the line chart's rule, so a COUNT bar never reads as the raw column).
   const metricLabel = isCustomSelection(metricId)
     ? (resolveMetricLabel(metricId, tableId) ?? "")
-    : (tableId !== undefined && metricColumn
+    : (tableId !== undefined && (metricColumn || isCountAll(config.aggregation))
       ? resolveLineMetricTitle({ columnLabel: resolveLabel(tableId, metricColumn), metricColumn, aggregation: config.aggregation as string | undefined })
       : "");
   const { x, y } = resolveKeys(data, config);
@@ -1086,6 +1139,10 @@ const BarRenderer = ({
   // Phase 102 (BARGRP-V119-02/03/04): multi-column group-by → N <Bar> series.
   const groupByColumns = (config.groupByColumns as string[] | undefined) ?? [];
   const multiSeries = isMultiColumnBarGroupBy(config);
+  // Quick 261116-bti: time-bucketed rows arrive newest-first (ORDER BY … DESC keeps the latest
+  // periods under LIMIT) — plot them oldest → newest. Untouched when the bar is not time-bucketed.
+  const timeXCol = groupByColumns.filter(Boolean)[0] || groupByColumn;
+  data = timeUnit ? sortLineRowsByX(data, (r) => (r as Record<string, unknown>)[timeXCol]) : data;
   const maxCap = useAuthStore((s) => s.maxBarGroupBySeriesCap);
   const colorTheme = (config.colorTheme as string) ?? DEFAULT_COLOR_THEME;
   // Compute pivot only when multiSeries; single-series path is untouched.
@@ -1095,7 +1152,7 @@ const BarRenderer = ({
     : { series: [] as string[], truncated: false, total: 0 };
   const chartData = multiSeries ? pivotSeriesRows(pivotInput, top.series) : data;
   const seriesColors = multiSeries
-    ? themeColorsFor(getCbColorTheme(colorTheme) ?? getCbColorTheme(DEFAULT_COLOR_THEME)!, Math.max(1, top.series.length))
+    ? seriesPaletteColors(colorTheme, top.series.length, DEFAULT_COLOR_THEME, config.reverseColors === true)
     : [];
   const stacked = config.stacked === true;
   // x key: "bucket" in multi mode (pivotSeriesRows output), else resolved single-series x.
@@ -1155,6 +1212,21 @@ const BarRenderer = ({
     const payload = (nextState as { activePayload?: Array<{ payload?: Row }> } | null)
       ?.activePayload?.[0]?.payload;
     if (!payload) return;
+    // Quick 261116-bti: a time bucket is a RANGE — drill `between` its first and last instant
+    // (an equality on the bucket start would match only rows at exactly that instant).
+    if (timeUnit) {
+      const bucket = (payload as Record<string, unknown>)[multiSeries ? "bucket" : x];
+      const range = bucket != null ? barTimeBucketRange(String(bucket), timeUnit) : null;
+      if (!range) return;
+      setClickedElement(bucket);
+      setTimeout(() => {
+        dispatchDrillDown({
+          tableId, dynamicViewId, dashboardId, column: timeXCol, value: range,
+          dataType: "datetime", operator: "between", widgetId,
+        });
+      }, 300);
+      return;
+    }
     // Phase 102 (BARGRP-V119-02): multi-series drill — bucket is the col1 category,
     // column is groupByColumns[0] (never the synthetic "bucket" key).
     if (multiSeries) {
@@ -1240,9 +1312,13 @@ const BarRenderer = ({
     return () => ro.disconnect();
   }, []);
   const barPlotWidthPx = Math.max(0, barWrapW - valueAxisWidth - (leftTitle ? 16 : 0) - 10);
-  const barMaxLabelChars = chartData.reduce((m, r) => Math.max(m, categoryLabel(r[xKey]).length), 0);
+  // Quick 261116-bti: time buckets are labelled at their interval's granularity ("2015 Q1", "Mar 5").
+  const timeWithYear = timeUnit ? bucketsSpanYears(chartData.map((r) => String(r[xKey] ?? ""))) : false;
+  const categoryText = (v: unknown): string =>
+    timeUnit && v != null ? formatTimelineTick(String(v), timeUnit, { withYear: timeWithYear }) : categoryLabel(v);
+  const barMaxLabelChars = chartData.reduce((m, r) => Math.max(m, categoryText(r[xKey]).length), 0);
   const barXLayout = computeBarXAxisLayout({ n: chartData.length, plotWidthPx: barPlotWidthPx, maxLabelChars: barMaxLabelChars });
-  const barCategoryTick = (v: unknown): string => (barXLayout.tilt ? truncateBarLabel(categoryLabel(v)) : categoryLabel(v));
+  const barCategoryTick = (v: unknown): string => (barXLayout.tilt ? truncateBarLabel(categoryText(v)) : categoryText(v));
 
   const chartEl = (
     <ResponsiveContainer width="100%" height="100%">
@@ -1264,7 +1340,7 @@ const BarRenderer = ({
         {horizontal ? (
           <>
             <XAxis type="number" stroke={AXIS_COLOR} tick={{ fontSize: 11 }} label={bottomLabelObj} tickFormatter={valueAxisTickFormatter} {...scaleProps} />
-            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryLabel} width={leftTitle ? 104 : 90} label={leftLabelObj} />
+            <YAxis type="category" dataKey={xKey} stroke={AXIS_COLOR} tick={{ fontSize: 11 }} tickFormatter={categoryText} width={leftTitle ? 104 : 90} label={leftLabelObj} />
           </>
         ) : (
           <>
@@ -1289,11 +1365,11 @@ const BarRenderer = ({
             // via useChartAxisColors) at low opacity so the hovered-category highlight follows
             // the active theme/brand instead.
             cursor={{ fill: AXIS_COLOR, fillOpacity: 0.12 }}
-            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
+            content={<ColumnFormatTooltip tableId={tableId} groupByColumn={multiSeries ? (groupByColumns[0] ?? "") : groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} formatCategory={timeUnit ? categoryText : undefined} />}
           />
         )}
         {/* One series repeats the chart title, so only a multi-series bar shows its legend (as the timeline does). */}
-        {showLegend && multiSeries && <Legend wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
+        {showLegend && multiSeries && <Legend formatter={legendTextFormatter} wrapperStyle={{ paddingTop: bottomTitle ? 14 : 6, fontSize: 11 }} />}
         {/* Phase 102 (BARGRP-V119-02): multi-series path — N <Bar> elements, no <Cell>/<LabelList>. */}
         {multiSeries ? (
           top.series.map((sk, i) => (
@@ -1599,7 +1675,7 @@ const LineRenderer = ({
       }
     />
   ) : null;
-  const legendEl = showLegend && multiSeries ? <Legend wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
+  const legendEl = showLegend && multiSeries ? <Legend formatter={legendTextFormatter} wrapperStyle={{ paddingTop: 6, fontSize: 11 }} /> : null;
   const gridEl = showGrid ? <CartesianGrid stroke={GRID_COLOR} vertical={false} /> : null;
 
   const chart = multiSeries ? (
@@ -1881,7 +1957,7 @@ const PieRenderer = ({
             content={<ColumnFormatTooltip tableId={tableId} groupByColumn={groupByColumn} metricColumn={metricColumn} aggregation={config.aggregation as string | undefined} />}
           />
         )}
-        {showLegend && <Legend />}
+        {showLegend && <Legend formatter={legendTextFormatter} />}
       </PieChart>
     </ResponsiveContainer>
   );
@@ -2027,10 +2103,16 @@ const TableRenderer = ({
     ? (config.groupByColumns as unknown[]).map(String).filter(Boolean)
     : [];
   const singleGroupBy = (config.groupByColumn as string) || "";
+  // Data Table additional metrics: one column per extra whose positional alias (value_2, …) is
+  // actually in the result — an entry skipped at SQL-build time simply has no column.
+  const extraMetricCols = readTableExtraMetrics(config)
+    .map((m, idx) => ({ m, idx, key: extraMetricAlias(idx) }))
+    .filter(({ key }) => dataKeys.includes(key));
+  const extraKeys = new Set(extraMetricCols.map((c) => c.key));
   const requestedGroupCols =
     configGroupCols.length > 0 ? configGroupCols
     : singleGroupBy ? [singleGroupBy]
-    : dataKeys.filter((k) => k !== "value");
+    : dataKeys.filter((k) => k !== "value" && !extraKeys.has(k));
   const groupCols = requestedGroupCols.filter((c) => dataKeys.includes(c));
   const metricColumn = (config.metricColumn as string) || "";
   const aggregation = (config.aggregation as string) || "";
@@ -2049,24 +2131,32 @@ const TableRenderer = ({
   // has no pagination, so render every returned row rather than clipping to a second limit.
   const displayData = data;
 
-  // Per-column max scan on the value column. Bar width = (row.value / colMax) * 100%.
-  // Scaled across rendered rows so the largest aggregated value always fills the cell.
-  let valueMax = -Infinity;
-  for (const row of displayData) {
-    const raw = row["value"];
-    if (raw === null || raw === undefined || raw === "") continue;
-    const n = typeof raw === "number" ? raw : Number(raw);
-    if (Number.isFinite(n) && n > valueMax) valueMax = n;
-  }
-  if (!(valueMax > 0)) valueMax = 1; // guard divide-by-zero when all values are 0/null
+  // Per-column max scan on each metric column. Bar width = (row[key] / colMax) * 100%.
+  // Scaled across rendered rows so each column's largest aggregated value fills its cell.
+  const columnMax = (key: string): number => {
+    let max = -Infinity;
+    for (const row of displayData) {
+      const raw = row[key];
+      if (raw === null || raw === undefined || raw === "") continue;
+      const n = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max > 0 ? max : 1; // guard divide-by-zero when all values are 0/null
+  };
 
   // Build a human header. If config carries the discrete fields we prefer
   // `AGG(metric)`; legacy widgets that only stored `sql` fall back to `value`.
-  const valueHeader = aggregation && metricColumn
-    ? (aggregation === "COUNT_DISTINCT"
-        ? `COUNT(DISTINCT ${metricColumn})`
-        : `${aggregation}(${metricColumn})`)
+  const valueHeader = aggregation && (metricColumn || isCountAll(aggregation))
+    ? aggregateExpr(aggregation, metricColumn)
     : "value";
+  // Primary metric first (it drives sort order), then the extras in configured order.
+  const metricCols = [
+    { key: "value", header: valueHeader },
+    ...extraMetricCols.map(({ m, idx, key }) => ({
+      key,
+      header: extraMetricHeader(m, idx, resolveMetricLabel(m.metricId, tableId) ?? undefined),
+    })),
+  ].map((c) => ({ ...c, max: columnMax(c.key) }));
 
   const drillEnabled =
     !!drillDownColumn && (tableId !== undefined || dynamicViewId !== undefined);
@@ -2109,17 +2199,13 @@ const TableRenderer = ({
             {groupCols.map((c) => (
               <th key={c}>{c.toUpperCase()}</th>
             ))}
-            <th>{valueHeader}</th>
+            {metricCols.map((c) => (
+              <th key={c.key}>{c.header}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {displayData.map((row, i) => {
-            const rawValue = row["value"];
-            const n = typeof rawValue === "number" ? rawValue : Number(rawValue);
-            const safeN = Number.isFinite(n) ? n : 0;
-            const pct = safeN > 0 ? Math.min(100, (safeN / valueMax) * 100) : 0;
-            const display = formatBigNumberValue(safeN, { format: "smart" });
-
             const isFiltered =
               drillEnabled &&
               activeFilterValue !== undefined &&
@@ -2135,21 +2221,28 @@ const TableRenderer = ({
                 {groupCols.map((c) => (
                   <td key={c}>{String(row[c] ?? "")}</td>
                 ))}
-                {showValueBars ? (
-                  <td className="widget-table-cell-bar">
-                    <div
-                      className="widget-table-cell-bar-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: `linear-gradient(to right, ${barColor}b3 0%, ${barColor}33 100%)`,
-                      }}
-                      aria-hidden="true"
-                    />
-                    <span className="widget-table-cell-bar-text">{display}</span>
-                  </td>
-                ) : (
-                  <td>{display}</td>
-                )}
+                {metricCols.map((c) => {
+                  const rawValue = row[c.key];
+                  const n = typeof rawValue === "number" ? rawValue : Number(rawValue);
+                  const safeN = Number.isFinite(n) ? n : 0;
+                  const pct = safeN > 0 ? Math.min(100, (safeN / c.max) * 100) : 0;
+                  const display = formatBigNumberValue(safeN, { format: "smart" });
+                  return showValueBars ? (
+                    <td key={c.key} className="widget-table-cell-bar">
+                      <div
+                        className="widget-table-cell-bar-fill"
+                        style={{
+                          width: `${pct}%`,
+                          background: `linear-gradient(to right, ${barColor}b3 0%, ${barColor}33 100%)`,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <span className="widget-table-cell-bar-text">{display}</span>
+                    </td>
+                  ) : (
+                    <td key={c.key}>{display}</td>
+                  );
+                })}
               </tr>
             );
           })}
@@ -2157,6 +2250,13 @@ const TableRenderer = ({
       </table>
     </div>
   );
+};
+
+/** "Font Size Scaling": a positive finite number clamped to [0.25, 4]; anything else is 1. */
+const bigNumberFontScale = (raw: unknown): number => {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(4, Math.max(0.25, n));
 };
 
 const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<string, unknown> }) => {
@@ -2173,6 +2273,12 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
     format: config.format as string | undefined,
     decimals: config.decimals as number | undefined,
   });
+  // Auto-fit: global.css sizes the text from container units; --bn-chars lets the value's width
+  // share shrink for long numbers, --bn-scale is the operator's "Font Size Scaling" multiplier.
+  const fitStyle = {
+    "--bn-scale": String(bigNumberFontScale(config.fontScale)),
+    "--bn-chars": String(Math.max(1, `${prefix}${formatted}${suffix}`.length)),
+  } as React.CSSProperties;
   const effectiveColor = pickBigNumberColor(
     rawValue,
     color,
@@ -2180,7 +2286,10 @@ const BigNumberRenderer = ({ data, config }: { data: Row[]; config: Record<strin
   );
 
   return (
-    <div className="widget-bignumber">
+    <div
+      className={`widget-bignumber${label !== "" || subLabel ? " widget-bignumber--labeled" : ""}`}
+      style={fitStyle}
+    >
       {label !== "" && <div className="widget-bignumber-label">{label}</div>}
       <div className="widget-bignumber-value" style={{ color: effectiveColor }}>
         {prefix}{formatted}{suffix}

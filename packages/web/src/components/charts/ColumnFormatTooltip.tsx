@@ -49,6 +49,8 @@ export type ColumnFormatTooltipProps = {
   multiSeries?: boolean;
   /** Phase 132: when non-empty, the single-series value line uses this (the legend title) instead of the Format-columns label. */
   metricTitle?: string;
+  /** Quick 261116-bti: formats the category value (e.g. a time bucket at its interval). Default categoryLabel. */
+  formatCategory?: (v: unknown) => string;
 };
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ export function ColumnFormatTooltip({
   label,
   multiSeries,
   metricTitle,
+  formatCategory = categoryLabel,
 }: ColumnFormatTooltipProps): React.ReactElement | null {
   if (!active || !payload || payload.length === 0) {
     return null;
@@ -131,7 +134,7 @@ export function ColumnFormatTooltip({
           }}
         >
           {catLabel != null ? `${catLabel}: ` : ""}
-          {categoryLabel(categoryValue)}
+          {formatCategory(categoryValue)}
         </p>
       )}
 

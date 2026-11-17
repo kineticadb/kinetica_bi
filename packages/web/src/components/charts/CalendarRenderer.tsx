@@ -31,6 +31,7 @@
  * NO import of materializeFilter / dropFilterView / fromSwap.
  */
 
+import { aggregateExpr } from "../../lib/aggregationLabels";
 import { useEffect, useMemo, useState } from "react";
 import type { TableDto, WidgetDto } from "../../api/client";
 import { runSql } from "../../api/client";
@@ -611,7 +612,7 @@ export default function CalendarRenderer({
     : 0;
 
   // Agg label for tooltip
-  const aggLabel = `${aggregation}(${metricColumn})`;
+  const aggLabel = aggregateExpr(aggregation, metricColumn);
 
   return (
     <div className="widget-calendar" style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>

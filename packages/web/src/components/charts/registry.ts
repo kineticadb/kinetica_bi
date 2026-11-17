@@ -18,7 +18,10 @@ export type FieldType =
   | "colorRules"
   // Reusable number/date format picker (the shared FormatSpecEditor). Stored as a
   // FormatSpec object on config[key], or null/undefined = "use column default".
-  | "formatSpec";
+  | "formatSpec"
+  // Quick 261116-cpt: ColorBrewer theme picker (grouped select + preview strip). Stores the theme id
+  // on config[key]; with `paletteKeys`, choosing a theme also fills those color fields.
+  | "colorTheme";
 
 export type ConfigField = {
   key: string;
@@ -35,6 +38,12 @@ export type ConfigField = {
   group?: string;
   /** Hint text shown below the field */
   hint?: string;
+  /** "colorTheme" fields: color field keys a chosen theme fills, in order (hand-editing one resets the theme to ""). */
+  paletteKeys?: string[];
+  /** "colorTheme" fields: the boolean config key that reverses the theme's color order. */
+  reverseKey?: string;
+  /** Show the field only when this returns true for the current draft config (default: always shown). */
+  visibleWhen?: (config: Record<string, unknown>) => boolean;
 };
 
 /* ------------------------------------------------------------------ */

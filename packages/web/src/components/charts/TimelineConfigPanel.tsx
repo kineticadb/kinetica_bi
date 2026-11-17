@@ -15,6 +15,8 @@
  * NO data fetch. NO Apply/Clear. This is config-only; Plan 45-03 ships the renderer.
  */
 
+import { HexColorText } from "./HexColorText";
+import { COUNT_ALL_NOTE, hasAggregateInput, isCountAll } from "../../lib/aggregationLabels";
 import { useEffect, useMemo } from "react";
 import type { ConfigPanelProps } from "./registry";
 import {
@@ -68,6 +70,7 @@ const AGGREGATIONS: { value: TimelineAggregation; label: string }[] = [
   { value: "MAX",            label: "MAX" },
   { value: "COUNT",          label: "COUNT" },
   { value: "COUNT_DISTINCT", label: "COUNT_DISTINCT" },
+  { value: "COUNT_ALL",      label: "COUNT(*)" },
   { value: "STDDEV",         label: "STDDEV" },
   { value: "VARIANCE",       label: "VARIANCE" },
 ];
@@ -178,12 +181,12 @@ export default function TimelineConfigPanel({
     if (grouped) {
       const m0 = metrics[0];
       if (m0 === undefined) return false;
-      return isCustomSelection(m0.metricId) || (m0.column !== "" && m0.aggregation !== undefined);
+      return isCustomSelection(m0.metricId) || hasAggregateInput(m0.aggregation, m0.column);
     }
     return (
       metrics.length >= 1 &&
       metrics.length <= MAX_METRICS &&
-      metrics.every((m) => isCustomSelection(m.metricId) || (m.column !== "" && m.aggregation !== undefined))
+      metrics.every((m) => isCustomSelection(m.metricId) || hasAggregateInput(m.aggregation, m.column))
     );
   }, [tableId, timeCol, grouped, metrics]);
 
@@ -459,7 +462,7 @@ export default function TimelineConfigPanel({
                   aria-label={`Metric ${idx + 1} aggregation`}
                   value={m.aggregation}
                   onChange={(e) => updateMetric(idx, { aggregation: e.target.value as TimelineAggregation })}
-                  disabled={m.column === "" || columnMissing}
+                  disabled={columnMissing}
                 >
                   {AGGREGATIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
@@ -475,6 +478,15 @@ export default function TimelineConfigPanel({
                     value={toCssColor(m.color)}
                     onChange={(e) => updateMetric(idx, { color: toAarrggbb(e.target.value) })}
                     style={{ width: 40, height: 28, padding: 0, border: "none" }}
+                  />
+                )}
+                {!grouped && (
+                  <HexColorText
+                    ariaLabel={`Metric ${idx + 1} color (hex)`}
+                    value={toCssColor(m.color)}
+                    onChange={(hex) => updateMetric(idx, { color: toAarrggbb(hex) })}
+                    className="ds-input"
+                    style={{ width: 92, flex: "0 0 92px", fontFamily: "monospace" }}
                   />
                 )}
 
@@ -497,6 +509,10 @@ export default function TimelineConfigPanel({
                   >
                     Remove
                   </button>
+                )}
+
+                {!isCustomSelection(m.metricId) && isCountAll(m.aggregation) && (
+                  <span className="config-hint">{COUNT_ALL_NOTE}</span>
                 )}
 
                 {columnMissing && (

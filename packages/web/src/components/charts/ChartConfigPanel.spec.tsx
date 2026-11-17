@@ -8,7 +8,8 @@
  *   - __autoSuggestActive stripped from persisted config
  *   - No Apply / Cancel inside custom-panel chart UI (auto-save → modal header Close dismisses)
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { CB_COLOR_THEMES, getCbColorTheme, themeColorsFor } from "../../lib/cbColorThemes";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ChartConfigPanel from "./ChartConfigPanel";
 import type { ConfigPanelProps } from "./registry";
@@ -1663,5 +1664,267 @@ describe("Phase 132 — line chart Group By builder (LINE-V126-01/04)", () => {
     expect(screen.getByRole("button", { name: /apply/i })).not.toBeDisabled();
     expect(screen.getByLabelText("Primary group (x-axis)")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Remove column" })).toHaveLength(1);
+  });
+});
+
+// Data Table multi-metric: an "Additional metrics" builder (table only) persists extraMetrics and
+// emits each extra aggregate as value_N before the primary `AS value`.
+describe("ChartConfigPanel — Data Table additional metrics (TMM)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) =>
+      type === "table" ? TABLE_DEF : type === "bar" ? BAR_DEF : undefined,
+    );
+  });
+
+  const tableConfig = { table: "public.taxi_trips", tableId: 42, groupByColumns: ["vendor_id"], groupByColumn: "vendor_id", metricColumn: "lat", aggregation: "SUM" };
+
+  it("TMM-10 add, pick and Apply an additional metric", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="table" title="T" config={tableConfig} tables={TABLES} onSave={onSave} onCancel={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /add metric/i }));
+    fireEvent.change(screen.getByLabelText("Metric 2"), { target: { value: "lon" } });
+    fireEvent.change(screen.getByLabelText("Metric 2 aggregation"), { target: { value: "AVG" } });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.extraMetrics).toEqual([{ column: "lon", aggregation: "AVG" }]);
+    expect(saved.sql).toBe(
+      "SELECT vendor_id, AVG(lon) AS value_2, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  it("TMM-11 remove an additional metric; the builder is capped and table-only", () => {
+    const onSave = vi.fn();
+    const { unmount } = render(
+      <ChartConfigPanel
+        widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ ...tableConfig, extraMetrics: [{ column: "lon", aggregation: "MAX" }, { column: "lat", aggregation: "MIN" }] }}
+      />,
+    );
+    expect((screen.getByLabelText("Metric 3") as HTMLSelectElement).value).toBe("lat");
+    fireEvent.click(screen.getByRole("button", { name: "Remove metric 2" }));
+    expect((screen.getByLabelText("Metric 2") as HTMLSelectElement).value).toBe("lat");
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: /add metric/i }));
+    expect(screen.getByRole("button", { name: /add metric/i })).toBeDisabled(); // 1 primary + 5 extras
+    unmount();
+
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" config={tableConfig} tables={TABLES} onSave={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button", { name: /add metric/i })).toBeNull();
+  });
+
+  it("TMM-12 changing the source table clears additional metrics", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel
+        widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ ...tableConfig, extraMetrics: [{ column: "lon", aggregation: "MAX" }] }}
+      />,
+    );
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "public.weather" } });
+    expect(screen.queryByLabelText("Metric 2")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.extraMetrics).toEqual([]);
+  });
+});
+
+// Quick 261116-bti: bar chart time interval controls (shown only for a temporal x column).
+describe("ChartConfigPanel — bar time interval (BTI)", () => {
+  const TRIPS = { id: 7, name: "trips", schema: "public", columns: { ts: "timestamp", vendor: "string", fare: "double" } };
+  const cfg = { table: "public.trips", tableId: 7, groupByColumns: ["ts"], groupByColumn: "ts", metricColumn: "fare", aggregation: "SUM" };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) => (type === "bar" ? BAR_DEF : undefined));
+  });
+
+  it("BTI-7 a temporal x column defaults to Auto (target 50) and Apply persists it with DATE_TRUNC SQL", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bar" title="B" config={cfg} tables={[TRIPS]} onSave={onSave} onCancel={vi.fn()} />);
+    expect((screen.getByLabelText("Time interval") as HTMLSelectElement).value).toBe("auto");
+    expect((screen.getByLabelText("Minimum interval") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText(/^Target bars/) as HTMLInputElement).value).toBe("50");
+    fireEvent.change(screen.getByLabelText("Minimum interval"), { target: { value: "day" } });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved).toMatchObject({ timeInterval: "auto", timeIntervalMin: "day", timeTargetBars: 50 });
+    expect(saved.sql).toBe(
+      "SELECT DATE_TRUNC('month', ts) AS ts, SUM(fare) AS value FROM public.trips GROUP BY DATE_TRUNC('month', ts) ORDER BY DATE_TRUNC('month', ts) DESC LIMIT 100",
+    );
+  });
+
+  it("BTI-8 a fixed interval hides the Auto settings; a non-temporal x column shows no time controls", () => {
+    const onSave = vi.fn();
+    const { unmount } = render(<ChartConfigPanel widgetType="bar" title="B" config={cfg} tables={[TRIPS]} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Time interval"), { target: { value: "day" } });
+    expect(screen.queryByLabelText("Minimum interval")).toBeNull();
+    expect(screen.queryByLabelText(/^Target bars/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toContain("GROUP BY DATE_TRUNC('day', ts)");
+    unmount();
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" config={{ ...cfg, groupByColumns: ["vendor"], groupByColumn: "vendor" }} tables={[TRIPS]} onSave={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.queryByLabelText("Time interval")).toBeNull();
+  });
+});
+
+// Quick 261116-cpt: ColorBrewer theme pickers — pie (fills Color 1..6) and multi-series bar (series palette).
+describe("ChartConfigPanel — chart palette themes (CPT)", () => {
+  // Capture the REAL pie/bar definitions (the picker is declared in them, not in a fixture).
+  const defs: Record<string, import("./registry").ChartTypeDefinition> = {};
+  const PIE_COLOR_KEYS = ["color1", "color2", "color3", "color4", "color5", "color6"];
+  const SALES = { id: 5, name: "sales", schema: "public", columns: { region: "string", vendor: "string", amount: "double" } };
+  const base = { table: "public.sales", tableId: 5, groupByColumn: "region", metricColumn: "amount", aggregation: "SUM" };
+  const hex = (theme: string, n: number) =>
+    themeColorsFor(getCbColorTheme(theme)!, n).map((c) => `#${c.slice(2).toLowerCase()}`);
+
+  beforeAll(async () => {
+    const capture = vi.spyOn(registry, "registerChartType").mockImplementation((d) => { defs[d.type] = d; });
+    (await import("./definitions/pie")).default();
+    (await import("./definitions/bar")).default();
+    (await import("./definitions/bignumber")).default();
+    capture.mockRestore();
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) => defs[type]);
+  });
+
+  it("CPT-1 pie: the Color Theme picker starts at Custom, lists every ColorBrewer theme by group, and choosing one fills Color 1..6", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="pie" title="P" config={{ ...defs.pie.defaultConfig, ...base }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const select = screen.getByLabelText("Color Theme") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect([...select.querySelectorAll("optgroup")].map((g) => g.label)).toEqual(["Sequential", "Diverging", "Qualitative"]);
+    expect(select.querySelectorAll("optgroup option")).toHaveLength(CB_COLOR_THEMES.length);
+    fireEvent.change(select, { target: { value: "Dark2" } });
+    expect(select.value).toBe("Dark2");
+    const want = hex("Dark2", 6);
+    expect(screen.getAllByPlaceholderText("#hex").map((i) => (i as HTMLInputElement).value)).toEqual(want);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.colorTheme).toBe("Dark2");
+    expect(PIE_COLOR_KEYS.map((k) => saved[k])).toEqual(want);
+  });
+
+  it("CPT-2 pie: hand-editing a palette color after a theme flips the picker back to Custom", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="pie" title="P" config={{ ...defs.pie.defaultConfig, ...base, colorTheme: "Set1", ...Object.fromEntries(PIE_COLOR_KEYS.map((k, i) => [k, hex("Set1", 6)[i]])) }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    expect((screen.getByLabelText("Color Theme") as HTMLSelectElement).value).toBe("Set1");
+    fireEvent.change(screen.getAllByPlaceholderText("#hex")[2], { target: { value: "#123456" } });
+    expect((screen.getByLabelText("Color Theme") as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.colorTheme).toBe("");
+    expect(saved.color3).toBe("#123456");
+    expect(saved.color1).toBe(hex("Set1", 6)[0]);
+  });
+
+  it("CPT-3 bar: one group-by column shows Bar Color only; 2+ columns swap it for a Color Palette (default Set2) that persists", () => {
+    const { unmount } = render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region"] }} tables={[SALES]} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByLabelText("Color Palette")).toBeNull();
+    expect(screen.getByText("Bar Color")).toBeTruthy();
+    unmount();
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region", "vendor"] }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const select = screen.getByLabelText("Color Palette") as HTMLSelectElement;
+    expect(select.value).toBe("Set2");
+    expect(screen.queryByText("Bar Color")).toBeNull();
+    expect(screen.getByLabelText("Color Palette preview").children).toHaveLength(8);
+    fireEvent.change(select, { target: { value: "Paired" } });
+    expect(screen.getByLabelText("Color Palette preview").children).toHaveLength(8); // capped at 8 distinct swatches
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.colorTheme).toBe("Paired");
+  });
+
+  // Quick 261117-hex: the Big Number "Color by value range" rule color gets a hex box too.
+  it("HEX-3 bignumber: a rule's hex box sets its color; a partial value is not saved", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bignumber" title="N" config={{ ...defs.bignumber.defaultConfig, ...base, colorRules: [{ min: 0, color: "#22c55e" }] }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const box = screen.getByLabelText("Rule 1 color (hex)") as HTMLInputElement;
+    expect(box.value).toBe("#22c55e");
+    fireEvent.change(box, { target: { value: "#6f2" } });
+    expect((screen.getByLabelText("Rule 1 color") as HTMLInputElement).value).toBe("#22c55e");
+    fireEvent.change(box, { target: { value: "#6F2BD4" } });
+    expect((screen.getByLabelText("Rule 1 color") as HTMLInputElement).value).toBe("#6f2bd4");
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.colorRules[0].color).toBe("#6f2bd4");
+  });
+
+  // Quick 261117-rev: Reverse Colors flips the palette order.
+  it("REV-2 pie: Reverse Colors flips Color 1..6, keeps the theme, and a theme picked while reversed fills reversed", () => {
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="pie" title="P" config={{ ...defs.pie.defaultConfig, ...base }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const hexInputs = () => screen.getAllByPlaceholderText("#hex").map((i) => (i as HTMLInputElement).value);
+    fireEvent.change(screen.getByLabelText("Color Theme"), { target: { value: "Dark2" } });
+    fireEvent.click(screen.getByLabelText("Reverse Colors"));
+    expect(hexInputs()).toEqual([...hex("Dark2", 6)].reverse());
+    expect((screen.getByLabelText("Color Theme") as HTMLSelectElement).value).toBe("Dark2");
+    fireEvent.change(screen.getByLabelText("Color Theme"), { target: { value: "Set1" } });
+    expect(hexInputs()).toEqual([...hex("Set1", 6)].reverse());
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    const saved = onSave.mock.calls[0][0].config;
+    expect(saved.reverseColors).toBe(true);
+    expect(saved.colorTheme).toBe("Set1");
+    expect(PIE_COLOR_KEYS.map((k) => saved[k])).toEqual([...hex("Set1", 6)].reverse());
+  });
+
+  it("REV-3 bar: Reverse Colors shows only with the series palette, reverses its preview, and persists", () => {
+    const { unmount } = render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region"] }} tables={[SALES]} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByLabelText("Reverse Colors")).toBeNull();
+    unmount();
+    const onSave = vi.fn();
+    render(<ChartConfigPanel widgetType="bar" title="B" config={{ ...defs.bar.defaultConfig, ...base, groupByColumns: ["region", "vendor"] }} tables={[SALES]} onSave={onSave} onCancel={vi.fn()} />);
+    const swatches = () => [...screen.getByLabelText("Color Palette preview").children].map((c) => (c as HTMLElement).title);
+    const before = swatches();
+    fireEvent.click(screen.getByLabelText("Reverse Colors"));
+    expect(swatches()).toEqual([...before].reverse());
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.reverseColors).toBe(true);
+  });
+});
+
+// Quick 261116-cnt: Count (*) — counts rows, the metric column is not used (and the panel says so).
+describe("ChartConfigPanel — Count (*) aggregation (CNT)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) =>
+      type === "table" ? TABLE_DEF : BAR_DEF_GROUPED);
+  });
+
+  it("CNT-6 choosing Count (*) needs no metric column, shows the note, and Apply saves COUNT(*) SQL", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ table: "public.taxi_trips", tableId: 42, metricColumn: "", aggregation: "SUM", groupByColumn: "vendor_id", groupByColumns: ["vendor_id"] }} />,
+    );
+    expect(screen.queryByText(/metric column is not used/i)).toBeNull();
+    const agg = screen.getByLabelText("Aggregation") as HTMLSelectElement;
+    expect([...agg.options].map((o) => o.textContent)).toContain("Count (*)");
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(screen.getAllByText("Count (*) counts every row, so the metric column is not used.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(
+      "SELECT vendor_id, COUNT(*) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  it("CNT-7 a Data Table additional metric can be Count (*) without a column", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ table: "public.taxi_trips", tableId: 42, metricColumn: "lat", aggregation: "SUM", groupByColumn: "vendor_id", groupByColumns: ["vendor_id"], extraMetrics: [{ column: "", aggregation: "SUM" }] }} />,
+    );
+    const agg = screen.getByLabelText("Metric 2 aggregation") as HTMLSelectElement;
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(screen.getAllByText("Count (*) counts every row, so the metric column is not used.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(
+      "SELECT vendor_id, COUNT(*) AS value_2, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
   });
 });

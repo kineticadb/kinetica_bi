@@ -17,7 +17,7 @@
 // with the same discipline; the five new optional props are simply never
 // referenced there.
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronDown, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import type { WidgetApplyEntry } from "../lib/computeReverseFilterMap";
@@ -54,6 +54,26 @@ export function FilterChip({
 }: FilterChipProps) {
   const [expanded, setExpanded] = useState(false);
 
+  // Quick 261117-hls: the canvas highlight is ON while the chip is hovered OR holds KEYBOARD focus,
+  // and OFF otherwise. Tracking both keeps it from sticking: a mouse-clicked button that regains
+  // focus when the user returns to the tab is not :focus-visible; focus moving between the chip's
+  // own buttons is not a blur; a blur while the mouse is still over the chip keeps it on; and a chip
+  // removed while hovered (its ✕, "Clear all") clears its highlight on unmount.
+  const hoveredRef = useRef(false);
+  const focusedRef = useRef(false);
+  const litRef = useRef(false);
+  const handlersRef = useRef({ onHighlight, onClearHighlight });
+  handlersRef.current = { onHighlight, onClearHighlight };
+  const syncHighlight = () => {
+    const lit = hoveredRef.current || focusedRef.current;
+    if (lit === litRef.current) return;
+    litRef.current = lit;
+    (lit ? handlersRef.current.onHighlight : handlersRef.current.onClearHighlight)?.();
+  };
+  useEffect(() => () => {
+    if (litRef.current) handlersRef.current.onClearHighlight?.();
+  }, []);
+
   if (variant === "topbar") {
     // Byte-identical for non-AI chips; the AI tag is a conditional sibling.
     // `provenance` is intentionally unused in this branch (parity).
@@ -83,10 +103,14 @@ export function FilterChip({
   return (
     <div
       className="filter-panel-chip"
-      onMouseEnter={onHighlight}
-      onMouseLeave={onClearHighlight}
-      onFocus={onHighlight}
-      onBlur={onClearHighlight}
+      onMouseEnter={() => { hoveredRef.current = true; syncHighlight(); }}
+      onMouseLeave={() => { hoveredRef.current = false; syncHighlight(); }}
+      onFocus={(e) => { focusedRef.current = isKeyboardFocus(e.target); syncHighlight(); }}
+      onBlur={(e) => {
+        if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+        focusedRef.current = false;
+        syncHighlight();
+      }}
     >
       <div className="filter-panel-chip-row">
         <span className="filter-panel-chip-value" title={text}>
@@ -158,4 +182,13 @@ export function FilterChip({
       )}
     </div>
   );
+}
+
+/** True when `el` was focused from the keyboard (not by a click). */
+function isKeyboardFocus(el: Element): boolean {
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return false; // engines without :focus-visible: hover still drives the highlight
+  }
 }

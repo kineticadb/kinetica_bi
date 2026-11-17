@@ -18,6 +18,7 @@ export type TimelineAggregation =
   | "MAX"
   | "COUNT"
   | "COUNT_DISTINCT"
+  | "COUNT_ALL"
   | "STDDEV"
   | "VARIANCE";
 
