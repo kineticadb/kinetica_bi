@@ -19,6 +19,8 @@ import { useCustomMetricsStore, selectMetrics } from "../../store/customMetricsS
 import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 import { AGGREGATIONS } from "../../lib/aggregationLabels";
 import { buildChartSql, HEATMAP_LIMITS } from "../../lib/chartSql";
+import { readTableExtraMetrics, MAX_TABLE_EXTRA_METRICS, type TableExtraMetric } from "../../lib/tableExtraMetrics";
+import { BAR_TIME_UNITS, DEFAULT_BAR_TIME_TARGET, MAX_BAR_TIME_TARGET, barTimeSettings } from "../../lib/barTimeBucket";
 
 type TableInfo = {
   id: number;
@@ -276,6 +278,7 @@ const ChartConfigPanel = ({
         metricColumn: "",
         aggregation: "SUM",
         groupByColumn: "",
+        ...(widgetType === "table" ? { extraMetrics: [] } : {}),
       }));
       return;
     }
@@ -287,6 +290,8 @@ const ChartConfigPanel = ({
         metricColumn: "",
         aggregation: "SUM",
         groupByColumn: "",
+        // Data Table additional metrics name columns of the OLD table.
+        ...(widgetType === "table" ? { extraMetrics: [] } : {}),
       };
       delete next.dynamicViewId;
       return next;
@@ -346,6 +351,17 @@ const ChartConfigPanel = ({
   // Phase 132 (D-02): Group By column 1 is required for the Line Chart.
   const lineMissingXColumn = isLine && requiresGroupBy && (effectiveGroupByColumns[0] ?? "") === "";
 
+  // Quick 261116-bti: a bar whose x column (group column 1) is TEMPORAL gets time bucketing. A bar
+  // that has never chosen an interval defaults to Auto / target 50 — the SQL preview AND the saved
+  // config both read this effective draft, so they cannot disagree.
+  const barTimeCol = isBar ? (effectiveGroupByColumns[0] ?? "") : "";
+  const barTimeEligible =
+    isBar && requiresGroupBy && barTimeCol !== "" && inferDataTypeFromColumn(barTimeCol, columnTypeMap) === "datetime";
+  const sqlDraft: Record<string, unknown> =
+    barTimeEligible && draft.timeInterval === undefined
+      ? { ...draft, timeInterval: "auto", timeTargetBars: draft.timeTargetBars ?? DEFAULT_BAR_TIME_TARGET }
+      : draft;
+
   // Build the SQL preview from structured fields
   const generatedSql = useMemo(() => {
     const table = draft.table as string;
@@ -355,13 +371,13 @@ const ChartConfigPanel = ({
       widgetType,
       table,
       tableId: selectedTable?.id,
-      draft,
+      draft: sqlDraft,
       flags: { usesAggregation, requiresGroupBy },
       columnTypeMap,
       maxBarGroupBySeriesCap: useAuthStore.getState().maxBarGroupBySeriesCap,
       resolveMetricExpr,
     });
-  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, columnTypeMap, selectedTable]);
+  }, [usesAggregation, requiresGroupBy, isHeatmap, isLine, draft.table, draft.columns, draft.sortField, draft.sortDirection, draft.metricColumn, draft.aggregation, draft.groupByColumn, draft.groupByColumns, draft.sortDir, draft.limit, draft.customWhere, draft.metricId, draft.xBucket, draft.yBucket, draft.extraMetrics, draft.timeInterval, draft.timeIntervalMin, draft.timeTargetBars, barTimeEligible, columnTypeMap, selectedTable]);
 
   if (!chartDef) {
     return (
@@ -689,6 +705,90 @@ const ChartConfigPanel = ({
                 </label>
                 )}
 
+                {/* Data Table additional metrics: each becomes its own column (value_2, value_3, …).
+                    The Metric Column above stays the primary metric — rows sort by it and drill,
+                    the AI and radio overlays keep reading it. Same cm:<id> picker as the primary. */}
+                {isTable && (() => {
+                  const extras = readTableExtraMetrics(draft);
+                  const chartTableId = selectedTable?.id;
+                  const customMetricsForTable = chartTableId !== undefined ? selectMetrics(chartTableId) : [];
+                  const setExtras = (next: TableExtraMetric[]) => set("extraMetrics", next);
+                  const update = (idx: number, patch: TableExtraMetric) =>
+                    setExtras(extras.map((m, i) => (i === idx ? patch : m)));
+                  return (
+                    <div className="config-group">
+                      <span className="config-group-label">Additional Metrics</span>
+                      {extras.map((m, idx) => {
+                        const label = `Metric ${idx + 2}`;
+                        const custom = isCustomSelection(m.metricId);
+                        return (
+                          <div key={idx} className="ds-field" style={{ flexDirection: "row", alignItems: "center", gap: "4px" }}>
+                            <span className="ds-field-label" style={{ whiteSpace: "nowrap" }}>{label}</span>
+                            <select
+                              className="ds-select"
+                              style={{ flex: 2, minWidth: 0 }}
+                              value={metricSelectValue(m.metricId, m.column || "")}
+                              disabled={dvColumnsMissing}
+                              aria-label={label}
+                              onChange={(e) => {
+                                const sel = decodeMetricSelection(e.target.value);
+                                update(idx, sel.kind === "custom"
+                                  ? { metricId: sel.metricId }
+                                  : { column: sel.column, aggregation: m.aggregation || "SUM" });
+                              }}
+                            >
+                              <option value="">Select a numeric column...</option>
+                              <optgroup label="Columns">
+                                {numericColumns.map((c) => (
+                                  <option key={c.name} value={c.name}>{c.name} ({c.type})</option>
+                                ))}
+                              </optgroup>
+                              <optgroup label="Custom metrics">
+                                {isOrphanedMetric(m.metricId, chartTableId) && (
+                                  <option value={encodeCustomValue(m.metricId!)}>(deleted metric)</option>
+                                )}
+                                {customMetricsForTable.map((cm) => (
+                                  <option key={cm.id} value={encodeCustomValue(cm.id)}>{cm.label}</option>
+                                ))}
+                              </optgroup>
+                            </select>
+                            {!custom && (
+                              <select
+                                className="ds-select"
+                                style={{ flex: 1, minWidth: 0 }}
+                                value={m.aggregation || "SUM"}
+                                disabled={dvColumnsMissing}
+                                aria-label={`${label} aggregation`}
+                                onChange={(e) => update(idx, { column: m.column ?? "", aggregation: e.target.value })}
+                              >
+                                {AGGREGATIONS.map((a) => (
+                                  <option key={a.value} value={a.value}>{a.label}</option>
+                                ))}
+                              </select>
+                            )}
+                            <button
+                              className="ghost-sm"
+                              type="button"
+                              disabled={dvColumnsMissing}
+                              aria-label={`Remove metric ${idx + 2}`}
+                              onClick={() => setExtras(extras.filter((_, i) => i !== idx))}
+                            >×</button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        className="ghost-sm"
+                        type="button"
+                        disabled={dvColumnsMissing || extras.length >= MAX_TABLE_EXTRA_METRICS}
+                        onClick={() => setExtras([...extras, { column: "", aggregation: "SUM" }])}
+                      >+ Add metric</button>
+                      <span className="config-hint">
+                        {`Each metric becomes a column; rows are sorted by the Metric Column above (${MAX_TABLE_EXTRA_METRICS + 1} metrics max).`}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 {/* Group By — bar, line (Phase 132) and the Data Table get the N-column ordered builder (Phase 102
                     BARGRP-V119-01; table added later); other grouped chart types keep the single
                     Group By select unchanged. Bar turns extra columns into colored series; the
@@ -772,6 +872,72 @@ const ChartConfigPanel = ({
                         <span className="config-hint" role="alert" style={{ color: "var(--danger)" }}>
                           Group By column 1 is required: choose the column for the x-axis.
                         </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Quick 261116-bti: time interval for a bar whose x column is temporal. Auto re-picks
+                    the interval on every render from the filtered data's MIN/MAX. */}
+                {barTimeEligible && (() => {
+                  const t = barTimeSettings(sqlDraft);
+                  const unitLabel = (u: string) => u.charAt(0).toUpperCase() + u.slice(1);
+                  const finestFirst = [...BAR_TIME_UNITS].reverse();
+                  return (
+                    <div className="config-group">
+                      <span className="config-group-label">Time Interval</span>
+                      <label className="ds-field">
+                        <span className="ds-field-label">Time interval</span>
+                        <select
+                          className="ds-select"
+                          aria-label="Time interval"
+                          value={t.mode}
+                          disabled={dvColumnsMissing}
+                          onChange={(e) => set("timeInterval", e.target.value)}
+                        >
+                          <option value="auto">Auto (fit the target bar count)</option>
+                          {finestFirst.map((u) => (
+                            <option key={u} value={u}>{unitLabel(u)}</option>
+                          ))}
+                          <option value="none">None (one bar per raw value)</option>
+                        </select>
+                        <span className="config-hint">
+                          {`Groups ${barTimeCol} into time periods, ordered by time. Auto picks the finest interval that keeps the bars within the target, re-checked against the filtered data each time the chart loads.`}
+                        </span>
+                      </label>
+                      {t.mode === "auto" && (
+                        <>
+                          <label className="ds-field">
+                            <span className="ds-field-label">Minimum interval</span>
+                            <select
+                              className="ds-select"
+                              aria-label="Minimum interval"
+                              value={t.floor ?? ""}
+                              disabled={dvColumnsMissing}
+                              onChange={(e) => set("timeIntervalMin", e.target.value || undefined)}
+                            >
+                              <option value="">None</option>
+                              {finestFirst.map((u) => (
+                                <option key={u} value={u}>{unitLabel(u)}</option>
+                              ))}
+                            </select>
+                            <span className="config-hint">Auto never picks an interval finer than this.</span>
+                          </label>
+                          <label className="ds-field">
+                            <span className="ds-field-label">Target bars</span>
+                            <input
+                              type="number"
+                              aria-label="Target bars"
+                              min={5}
+                              max={MAX_BAR_TIME_TARGET}
+                              step={1}
+                              value={t.target}
+                              disabled={dvColumnsMissing}
+                              onChange={(e) => set("timeTargetBars", Number(e.target.value))}
+                            />
+                            <span className="config-hint">The most bars Auto aims for (the Result limit still caps rows).</span>
+                          </label>
+                        </>
                       )}
                     </div>
                   );
@@ -951,7 +1117,7 @@ const ChartConfigPanel = ({
             // Build config: spread draft, then explicitly set tableId/dynamicViewId.
             // When not dv-bound, ensure dynamicViewId is NOT present (mutual exclusion).
             const baseConfig: Record<string, unknown> = {
-              ...draft,
+              ...sqlDraft,
               sql: generatedSql,
               tableId: persistedTableId,
               drillDownColumn: finalDrillDownColumn,
@@ -1025,8 +1191,12 @@ const FieldRenderer = ({
           <input
             type="number"
             value={Number(value ?? 0)}
+            min={field.min}
+            max={field.max}
+            step={field.step}
             onChange={(e) => onChange(Number(e.target.value))}
           />
+          {field.hint && <span className="config-hint">{field.hint}</span>}
         </label>
       );
 

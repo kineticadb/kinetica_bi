@@ -26,6 +26,10 @@ const bignumber: ChartTypeDefinition = {
 
     // Appearance
     { key: "color", label: "Value Color", type: "color", defaultValue: "#22c55e", group: "Appearance" },
+    // The value, label and sub-label auto-fit the widget (CSS container units in global.css);
+    // this multiplies that fitted size.
+    { key: "fontScale", label: "Font Size Scaling", type: "number", defaultValue: 1, min: 0.25, max: 4, step: 0.05, group: "Appearance",
+      hint: "Customize font size scaling to improve fit. Text auto-fits the widget; 1.00 = fitted size, lower = smaller, higher = larger." },
     { key: "colorRules", label: "Color by value range", type: "colorRules", defaultValue: [], group: "Appearance",
       hint: "Override the value color when it falls in a range. First matching rule wins; leave Min or Max blank for an open end." },
     { key: "showDelta", label: "Show Delta", type: "boolean", defaultValue: false, group: "Appearance" },
@@ -43,6 +47,7 @@ const bignumber: ChartTypeDefinition = {
     suffix: "",
     color: "#22c55e",
     colorRules: [],
+    fontScale: 1,
     showDelta: false,
     deltaField: "",
     customWhere: "",

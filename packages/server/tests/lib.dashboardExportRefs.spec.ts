@@ -101,6 +101,15 @@ describe("collectWidgetConfigRefs — REF-1..9", () => {
     ).toEqual(refs({ customMetricIds: [1, 2] }));
   });
 
+  it("REF-10: config.extraMetrics[].metricId (Data Table additional metrics) is collected; column entries carry none", () => {
+    expect(
+      collectWidgetConfigRefs({
+        metricId: 3,
+        extraMetrics: [{ column: "c1", aggregation: "SUM" }, { metricId: 7 }, { metricId: 5 }, "x"],
+      }),
+    ).toEqual(refs({ customMetricIds: [3, 5, 7] }));
+  });
+
   it("REF-6: config.includedLayerIds collects every element as a layer reference", () => {
     expect(collectWidgetConfigRefs({ includedLayerIds: [3, 1, 2] })).toEqual(
       refs({ layerIds: [1, 2, 3] }),

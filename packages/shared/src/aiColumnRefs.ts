@@ -35,6 +35,13 @@ export function aiWidgetColumnRefs(cfg: Readonly<Record<string, unknown>>): stri
       if (typeof c === "string" && c.trim() !== "") out.push(c.trim());
     }
   }
+  // Data Table additional metrics: { column, aggregation } entries ({ metricId } carries no column)
+  if (Array.isArray(cfg.extraMetrics)) {
+    for (const m of cfg.extraMetrics) {
+      const c = typeof m === "object" && m !== null ? (m as { column?: unknown }).column : undefined;
+      if (typeof c === "string" && c.trim() !== "") out.push(c.trim());
+    }
+  }
   return dedupe(out);
 }
 

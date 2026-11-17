@@ -552,6 +552,102 @@ describe("AggregatedWidgetRenderer — drill-down click (DRILL-01, DRILL-04)", (
     expect(firstRowCells[1].textContent).toBe("Dubai");
   });
 
+  it("TMM-8 TableRenderer renders one column per metric (primary first), each bar scaled to its own max", async () => {
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(
+        ["site", "value_2", "value"],
+        [["A", "B"], [2, 8], [50, 100]],
+      ) as Record<string, unknown>,
+    );
+    const widget = makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT site, AVG(mttr) AS value_2, SUM(outages) AS value FROM t GROUP BY site ORDER BY value DESC LIMIT 100",
+        tableId: 42,
+        groupByColumns: ["site"],
+        metricColumn: "outages",
+        aggregation: "SUM",
+        extraMetrics: [{ column: "mttr", aggregation: "AVG" }],
+      },
+    });
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(2));
+
+    const headers = Array.from(container.querySelectorAll("thead th")).map((th) => th.textContent);
+    expect(headers).toEqual(["SITE", "SUM(outages)", "AVG(mttr)"]);
+
+    const row0 = Array.from(container.querySelectorAll("tbody tr")[0].querySelectorAll("td"));
+    expect(row0.map((td) => td.textContent)).toEqual(["A", "50", "2"]);
+    const widths = (tr: Element) =>
+      Array.from(tr.querySelectorAll(".widget-table-cell-bar-fill")).map((el) => (el as HTMLElement).style.width);
+    expect(widths(container.querySelectorAll("tbody tr")[0])).toEqual(["50%", "25%"]);
+    expect(widths(container.querySelectorAll("tbody tr")[1])).toEqual(["100%", "100%"]);
+  });
+
+  it("TMM-9 an extra metric whose alias is missing from the result (skipped at build) renders no column", async () => {
+    vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(["site", "value_3", "value"], [["A"], [7], [1]]) as Record<string, unknown>,
+    );
+    const widget = makeWidget({
+      type: "table",
+      config: {
+        sql: "SELECT site, MAX(x) AS value_3, SUM(y) AS value FROM t GROUP BY site",
+        tableId: 42,
+        groupByColumns: ["site"],
+        metricColumn: "y",
+        aggregation: "SUM",
+        extraMetrics: [{ column: "", aggregation: "SUM" }, { column: "x", aggregation: "MAX" }],
+      },
+    });
+    const { container } = render(wrap(<WidgetRenderer widget={widget} />));
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(1));
+    expect(Array.from(container.querySelectorAll("thead th")).map((th) => th.textContent)).toEqual([
+      "SITE", "SUM(y)", "MAX(x)",
+    ]);
+  });
+
+  // Quick 261116-bti: bar time bucketing — Auto re-picks the interval at render time.
+  const STORED = "SELECT DATE_TRUNC('month', ts) AS ts, SUM(fare) AS value FROM trips GROUP BY DATE_TRUNC('month', ts) ORDER BY DATE_TRUNC('month', ts) DESC LIMIT 100";
+  const timeBar = (extra: Record<string, unknown>) =>
+    makeWidget({
+      type: "bar",
+      config: { sql: STORED, tableId: 42, groupByColumns: ["ts"], groupByColumn: "ts", metricColumn: "fare", aggregation: "SUM", ...extra },
+    });
+  const isProbe = (sql: string) => sql.startsWith("SELECT EXTRACT(EPOCH FROM MIN(ts))");
+  const lo = Date.UTC(2015, 2, 5) / 1000;
+
+  it("BTI-9 Auto probes MIN/MAX over the RAW source, then runs the chart with the re-picked unit (3 days / target 50 -> day)", async () => {
+    const spy = vi.spyOn(clientModule, "runSql").mockImplementation(async (sql: string) =>
+      (isProbe(sql)
+        ? buildResponse(["lo", "hi"], [[lo], [lo + 3 * 86400]])
+        : buildResponse(["ts", "value"], [["2015-03-07 00:00:00.000", "2015-03-05 00:00:00.000"], [3, 5]])) as never,
+    );
+    render(wrap(<WidgetRenderer widget={timeBar({ timeInterval: "auto", timeTargetBars: 50 })} />));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const calls = spy.mock.calls.map((c) => c[0] as string);
+    expect(calls[0]).toBe("SELECT EXTRACT(EPOCH FROM MIN(ts)) AS lo, EXTRACT(EPOCH FROM MAX(ts)) AS hi FROM trips");
+    expect(calls[1]).toBe(STORED.replaceAll("'month'", "'day'"));
+  });
+
+  it("BTI-10 a fixed interval runs the stored SQL without a probe; a failed probe falls back to the stored unit", async () => {
+    const spy = vi.spyOn(clientModule, "runSql").mockResolvedValue(
+      buildResponse(["ts", "value"], [["2015-03-01 00:00:00.000"], [1]]) as never,
+    );
+    const { unmount } = render(wrap(<WidgetRenderer widget={timeBar({ timeInterval: "month" })} />));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([STORED]);
+    unmount();
+    spy.mockReset();
+    spy.mockImplementation(async (sql: string) => {
+      if (isProbe(sql)) throw new Error("probe failed");
+      return buildResponse(["ts", "value"], [["2015-03-01 00:00:00.000"], [1]]) as never;
+    });
+    render(wrap(<WidgetRenderer widget={timeBar({ timeInterval: "auto" })} />));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toBe(STORED);
+  });
+
   // ── Phase 17-03: synchronous markMaterializing in dispatchDrillDown ─────────────
   // Regression spec: pre-17-03, markMaterializing was buried inside Effect 1's 300ms setTimeout,
   // leaving a window where Effect 2 (chart SQL), Effect 3 (WMS), and RecordsTableRenderer effects

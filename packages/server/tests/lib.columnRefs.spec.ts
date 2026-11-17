@@ -108,7 +108,7 @@ const makeTableView = (
 // -----------------------------------------------------------------------------------------------
 
 describe("COLUMN_REF_SITES", () => {
-  it("GOLDEN: the site registry is exactly the 40 inventoried sites, in order", () => {
+  it("GOLDEN: the site registry is exactly the 41 inventoried sites, in order", () => {
     expect(COLUMN_REF_SITES).toEqual([
       "widget.config.metricColumn",
       "widget.config.groupByColumn",
@@ -120,6 +120,7 @@ describe("COLUMN_REF_SITES", () => {
       "widget.config.sortField",
       "widget.config.columns",
       "widget.config.metrics[].column",
+      "widget.config.extraMetrics[].column",
       "widget.config.filterFields[].column",
       "widget.config.spatialTargets[].lonCol",
       "widget.config.spatialTargets[].latCol",
@@ -151,7 +152,7 @@ describe("COLUMN_REF_SITES", () => {
       "tableView.filter_clause",
       "dynamicView.columns_json[].name",
     ]);
-    expect(COLUMN_REF_SITES).toHaveLength(40);
+    expect(COLUMN_REF_SITES).toHaveLength(41);
   });
 
   it("GOLDEN: FREE_SQL_SITES is exactly the five locked free-SQL sites and every entry is in COLUMN_REF_SITES", () => {
@@ -858,6 +859,28 @@ describe("widget structured sites — arrays", () => {
     const refs2 = collectColumnRefs(input, { tableId: 6, columns: ["QOS_SignalStrength"] });
     const hit2 = refs2.find((r) => r.site === "widget.config.metrics[].column");
     expect(hit2?.path).toBe("config.metrics[1].column");
+  });
+
+  it("SITE widget.config.extraMetrics[].column: a Data Table's additional metric columns each yield a finding (SYNTHETIC — new in v2.1.x)", () => {
+    const widget = makeWidget({
+      id: 9101, type: "table",
+      config: {
+        tableId: 6, metricColumn: "outages", aggregation: "SUM", groupByColumns: ["site"],
+        extraMetrics: [{ column: "mttr", aggregation: "AVG" }, { metricId: 4 }, { column: "tickets", aggregation: "COUNT" }],
+      },
+    });
+    const input = { ...emptyInput(), widgets: [widget] };
+    const hit1 = collectColumnRefs(input, { tableId: 6, columns: ["mttr"] })
+      .find((r) => r.site === "widget.config.extraMetrics[].column");
+    expect(hit1?.path).toBe("config.extraMetrics[0].column");
+    const hit2 = collectColumnRefs(input, { tableId: 6, columns: ["tickets"] })
+      .find((r) => r.site === "widget.config.extraMetrics[].column");
+    expect(hit2?.path).toBe("config.extraMetrics[2].column");
+    // Same-named column on a different table: no finding.
+    expect(
+      collectColumnRefs(input, { tableId: 7, columns: ["mttr"] })
+        .filter((r) => r.site === "widget.config.extraMetrics[].column"),
+    ).toHaveLength(0);
   });
 
   it("SITE widget.config.filterFields[].column: widget 25's three filterFields each yield a finding", () => {
@@ -1681,14 +1704,14 @@ describe("configPatch.metric and column display config", () => {
 
 // -----------------------------------------------------------------------------------------------
 // Site coverage — criterion 1 (Plan 123-04, Task 3). Paired with Plan 123-01's own
-// "GOLDEN: the site registry is exactly the 40 inventoried sites, in order" test: together, a site
+// "GOLDEN: the site registry is exactly the 41 inventoried sites, in order" test: together, a site
 // cannot be removed from the REGISTRY (golden reddens) nor from the TRAVERSAL (coverage below
 // reddens) without a NAMED test failing — criterion 1's literal demand, made structural.
 // -----------------------------------------------------------------------------------------------
 
 describe("site coverage — criterion 1", () => {
   // One sentinel per site, derived from the site id, so a typo cannot silently alias two sites —
-  // the plan checker computed all 40 and confirmed ZERO collisions before this plan was executed.
+  // the plan checker computed all 40 and confirmed ZERO collisions before this plan was executed (41st, extraMetrics, added v2.1.x).
   const sentinel = (site: string) => "zz_" + site.replace(/[^A-Za-z0-9]+/g, "_");
 
   // ONE widget, carrying every widget-structured field, every array field, AND a configPatch all
@@ -1709,6 +1732,7 @@ describe("site coverage — criterion 1", () => {
       sortField: sentinel("widget.config.sortField"),
       columns: sentinel("widget.config.columns"),
       metrics: [{ column: sentinel("widget.config.metrics[].column") }],
+      extraMetrics: [{ column: sentinel("widget.config.extraMetrics[].column"), aggregation: "SUM" }],
       filterFields: [{ column: sentinel("widget.config.filterFields[].column") }],
       spatialTargets: [{
         tableId: 1,

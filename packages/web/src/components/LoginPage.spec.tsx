@@ -1,7 +1,7 @@
 // Phase 7 (OIDC-01): LoginPage renders OIDC branch or password branch based on authStore.authMode.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import LoginPage from "./LoginPage";
 import { useAuthStore } from "../store/auth";
 
@@ -170,11 +170,19 @@ describe("LoginPage — AUTHLINK-115 deep-link banner (password branch)", () => 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("AUTHLINK-115: submitting the password form does NOT call onSignInCommit", () => {
-    setAuth({ authMode: "password" });
+  it("AUTHLINK-115: submitting the password form does NOT call onSignInCommit", async () => {
+    // Stub login and AWAIT the submit settling. The real login() does a network round trip whose
+    // rejection used to land after the test ended: handleSubmit's setState then ran against a
+    // torn-down jsdom ("ReferenceError: window is not defined"), an unhandled error that failed
+    // the master CI run for f737ef5 (2026-11-09) although every assertion passed.
+    const login = vi.fn().mockResolvedValue(undefined);
+    setAuth({ authMode: "password", login });
     const onSignInCommit = vi.fn();
     render(<LoginPage deepLinkPending={true} onSignInCommit={onSignInCommit} />);
-    fireEvent.submit(screen.getByRole("button", { name: /^sign in$/i }).closest("form")!);
+    const button = screen.getByRole("button", { name: /^sign in$/i });
+    fireEvent.submit(button.closest("form")!);
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(button).not.toBeDisabled()); // finally { setSubmitting(false) } ran
     expect(onSignInCommit).not.toHaveBeenCalled();
   });
 });
