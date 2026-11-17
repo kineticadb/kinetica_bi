@@ -1,4 +1,6 @@
 import { registerChartType, type ChartTypeDefinition } from "../registry";
+import { DEFAULT_COLOR_THEME } from "../TimelineConfigPanel";
+import { isMultiColumnBarGroupBy } from "../../../lib/barGroupedSeries";
 
 const bar: ChartTypeDefinition = {
   type: "bar",
@@ -13,7 +15,14 @@ const bar: ChartTypeDefinition = {
 
     // Appearance
     { key: "horizontal", label: "Horizontal Bars", type: "boolean", defaultValue: false, group: "Appearance" },
-    { key: "color", label: "Bar Color", type: "color", defaultValue: "#22c55e", group: "Appearance" },
+    // Quick 261116-cpt: one series → a single Bar Color; 2+ group-by columns (grouped/stacked series)
+    // → a ColorBrewer palette the renderer cycles across the series (it already read colorTheme).
+    { key: "color", label: "Bar Color", type: "color", defaultValue: "#22c55e", group: "Appearance", visibleWhen: (c) => !isMultiColumnBarGroupBy(c) },
+    {
+      key: "colorTheme", label: "Color Palette", type: "colorTheme", defaultValue: DEFAULT_COLOR_THEME, group: "Appearance",
+      visibleWhen: isMultiColumnBarGroupBy,
+      hint: "Colors the grouped or stacked series. Colors repeat when there are more series than the palette has.",
+    },
     { key: "barRadius", label: "Corner Radius", type: "range", defaultValue: 4, min: 0, max: 20, step: 1, group: "Appearance" },
     { key: "minBarSize", label: "Min Bar Size (px)", type: "number", defaultValue: 0, min: 0, max: 200, step: 1, group: "Appearance", hint: "Minimum thickness per bar (width for vertical, height for horizontal bars). When the bars can't all fit at this size, the chart scrolls. 0 = fit to widget." },
     { key: "stacked", label: "Stacked", type: "boolean", defaultValue: false, group: "Appearance", hint: "With 2+ group-by columns: stack the series instead of clustering them." },
@@ -43,6 +52,7 @@ const bar: ChartTypeDefinition = {
     yAxisLabel: "",
     horizontal: false,
     color: "#22c55e",
+    colorTheme: DEFAULT_COLOR_THEME,
     barRadius: 4,
     minBarSize: 0,
     stacked: false,

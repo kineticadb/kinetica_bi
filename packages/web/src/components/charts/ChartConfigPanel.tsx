@@ -20,6 +20,7 @@ import { HEATMAP_CELL_LIMIT } from "../../lib/heatmapGrid";
 import { AGGREGATIONS } from "../../lib/aggregationLabels";
 import { buildChartSql, HEATMAP_LIMITS } from "../../lib/chartSql";
 import { readTableExtraMetrics, MAX_TABLE_EXTRA_METRICS, type TableExtraMetric } from "../../lib/tableExtraMetrics";
+import { CB_COLOR_THEMES, themeHexColors, themePreviewHexColors } from "../../lib/cbColorThemes";
 import { BAR_TIME_UNITS, DEFAULT_BAR_TIME_TARGET, MAX_BAR_TIME_TARGET, barTimeSettings } from "../../lib/barTimeBucket";
 
 type TableInfo = {
@@ -518,6 +519,22 @@ const ChartConfigPanel = ({
 
   const set = (key: string, value: unknown) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Quick 261116-cpt: a theme picker with paletteKeys fills those color fields; hand-editing one of
+  // them afterwards means the palette is no longer that theme, so the picker returns to Custom ("").
+  const setField = (field: ConfigField, value: unknown) => {
+    if (field.type === "colorTheme" && field.paletteKeys?.length) {
+      const colors = themeHexColors(String(value), field.paletteKeys.length);
+      setDraft((prev) => ({
+        ...prev,
+        [field.key]: value,
+        ...Object.fromEntries(colors.map((c, i) => [field.paletteKeys![i], c])),
+      }));
+      return;
+    }
+    const owner = chartDef.fields.find((f) => f.type === "colorTheme" && f.paletteKeys?.includes(field.key));
+    setDraft((prev) => ({ ...prev, [field.key]: value, ...(owner ? { [owner.key]: "" } : {}) }));
   };
 
   // Group chart-specific fields (skip Query group since we handle it)
@@ -1078,12 +1095,12 @@ const ChartConfigPanel = ({
         {groups.map((group) => (
           <div key={group.label} className="config-group">
             <div className="config-group-label">{group.label}</div>
-            {group.fields.map((field) => (
+            {group.fields.filter((field) => !field.visibleWhen || field.visibleWhen(draft)).map((field) => (
               <FieldRenderer
                 key={field.key}
                 field={field}
                 value={draft[field.key] ?? field.defaultValue}
-                onChange={(v) => set(field.key, v)}
+                onChange={(v) => setField(field, v)}
               />
             ))}
           </div>
@@ -1283,6 +1300,45 @@ const FieldRenderer = ({
           {field.hint && <span className="config-hint">{field.hint}</span>}
         </div>
       );
+
+    case "colorTheme": {
+      const id = String(value ?? "");
+      const preview = themePreviewHexColors(id);
+      return (
+        <div className="ds-field">
+          <span className="ds-field-label">{field.label}</span>
+          <select
+            className="ds-select"
+            aria-label={field.label}
+            value={id}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            {field.paletteKeys && <option value="">Custom</option>}
+            {(["Sequential", "Diverging", "Qualitative"] as const).map((group) => (
+              <optgroup key={group} label={group}>
+                {CB_COLOR_THEMES.filter((t) => t.group === group).map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {/* Same preview strip as the timeline's palette picker. The pie's own color fields below
+              already show its palette, so only a series palette (no paletteKeys) gets the strip. */}
+          {!field.paletteKeys && preview.length > 0 && (
+            <div aria-label={`${field.label} preview`} style={{ display: "flex", gap: 3, marginTop: 6 }}>
+              {preview.map((c, i) => (
+                <span
+                  key={`${c}_${i}`}
+                  title={c}
+                  style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: c, display: "inline-block" }}
+                />
+              ))}
+            </div>
+          )}
+          {field.hint && <span className="config-hint">{field.hint}</span>}
+        </div>
+      );
+    }
 
     default:
       return null;
