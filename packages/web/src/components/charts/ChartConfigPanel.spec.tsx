@@ -1840,3 +1840,44 @@ describe("ChartConfigPanel — chart palette themes (CPT)", () => {
     expect(onSave.mock.calls[0][0].config.colorTheme).toBe("Paired");
   });
 });
+
+// Quick 261116-cnt: Count (*) — counts rows, the metric column is not used (and the panel says so).
+describe("ChartConfigPanel — Count (*) aggregation (CNT)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(registry, "getChartType").mockImplementation((type: string) =>
+      type === "table" ? TABLE_DEF : BAR_DEF_GROUPED);
+  });
+
+  it("CNT-6 choosing Count (*) needs no metric column, shows the note, and Apply saves COUNT(*) SQL", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="bar" title="B" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ table: "public.taxi_trips", tableId: 42, metricColumn: "", aggregation: "SUM", groupByColumn: "vendor_id", groupByColumns: ["vendor_id"] }} />,
+    );
+    expect(screen.queryByText(/metric column is not used/i)).toBeNull();
+    const agg = screen.getByLabelText("Aggregation") as HTMLSelectElement;
+    expect([...agg.options].map((o) => o.textContent)).toContain("Count (*)");
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(screen.getAllByText("Count (*) counts every row, so the metric column is not used.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(
+      "SELECT vendor_id, COUNT(*) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
+  });
+
+  it("CNT-7 a Data Table additional metric can be Count (*) without a column", () => {
+    const onSave = vi.fn();
+    render(
+      <ChartConfigPanel widgetType="table" title="T" tables={TABLES} onSave={onSave} onCancel={vi.fn()}
+        config={{ table: "public.taxi_trips", tableId: 42, metricColumn: "lat", aggregation: "SUM", groupByColumn: "vendor_id", groupByColumns: ["vendor_id"], extraMetrics: [{ column: "", aggregation: "SUM" }] }} />,
+    );
+    const agg = screen.getByLabelText("Metric 2 aggregation") as HTMLSelectElement;
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(screen.getAllByText("Count (*) counts every row, so the metric column is not used.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    expect(onSave.mock.calls[0][0].config.sql).toBe(
+      "SELECT vendor_id, COUNT(*) AS value_2, SUM(lat) AS value FROM public.taxi_trips GROUP BY vendor_id ORDER BY value DESC LIMIT 100",
+    );
+  });
+});

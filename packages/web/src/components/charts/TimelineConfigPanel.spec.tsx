@@ -425,3 +425,30 @@ describe("TimelineConfigPanel — Filter Scope (Phase 109.1)", () => {
     expect(screen.getByText(/Accept all filters/i)).toBeInTheDocument();
   });
 });
+
+// Quick 261116-cnt: Count (*) on a timeline metric row — no column needed, note shown.
+describe("TimelineConfigPanel — Count (*) (CNT)", () => {
+  it("CNT-8 Count (*) is selectable before a column is picked and makes the metric complete", () => {
+    const isValid = vi.fn();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <TimelineConfigPanel
+        config={{ tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time", metrics: [{ column: "", aggregation: "SUM", color: "FF66C2A5" }] } as Record<string, unknown>}
+        onChange={onChange} tables={TABLES} isValid={isValid}
+      />,
+    );
+    expect(isValid).toHaveBeenLastCalledWith(false);
+    const agg = screen.getByLabelText("Metric 1 aggregation") as HTMLSelectElement;
+    expect(agg.disabled).toBe(false);
+    fireEvent.change(agg, { target: { value: "COUNT_ALL" } });
+    expect(onChange.mock.calls.at(-1)![0].metrics[0].aggregation).toBe("COUNT_ALL");
+    rerender(
+      <TimelineConfigPanel
+        config={{ tableId: 1, tableRef: "demo.nyctaxi", timeCol: "pickup_time", metrics: [{ column: "", aggregation: "COUNT_ALL", color: "FF66C2A5" }] } as Record<string, unknown>}
+        onChange={onChange} tables={TABLES} isValid={isValid}
+      />,
+    );
+    expect(isValid).toHaveBeenLastCalledWith(true);
+    expect(screen.getByText("Count (*) counts every row, so the metric column is not used.")).toBeInTheDocument();
+  });
+});
